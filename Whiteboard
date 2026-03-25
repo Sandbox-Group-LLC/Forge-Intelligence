@@ -421,3 +421,209 @@ One-click publish, not a social media manager:
 
 **Output:** Published Content + Distribution Report → feeds Stage 7
 
+
+### Stage 7 — Performance Intelligence *(Gap: Revenue Attribution)*
+
+**Brain-First:** Performance Agent reads decay patterns, prior attribution models, and GEO citation history before scoring.
+
+---
+
+#### What We Measure
+
+**Layer 1: Traditional SEO (GSC)**
+- Ranking velocity post-publish
+- Impressions → CTR → clicks
+- Query match to intended GEO topics
+- **Writes to Brain:** Ranking patterns by content type, length, schema
+
+**Layer 2: GEO Citation Tracking** *(unique differentiator)*
+- Is content cited in ChatGPT, Perplexity, Google AI Overviews, Gemini?
+- Which sections quoted verbatim?
+- Which competitor content cited instead?
+- **Writes to Brain:** GEO citation patterns — brief structures, entity density, schema combos that get cited
+
+**Layer 3: Engagement Signals**
+- Scroll depth, time on page vs. word count ratio
+- Social shares, saves, comments (platform-specific)
+- Video watch time (if video in package)
+- **Writes to Brain:** Engagement patterns by persona, format, channel, topic
+
+**Layer 4: Revenue Attribution**
+```
+Anonymous (always available):
+→ UTM-tagged traffic → GA4 goal completions
+→ Content → form fill → conversion event
+→ Pipeline influence (content viewed before deal closed)
+
+Identified (CRM connected):
+→ Contact touched content → deal progressed
+→ Multi-touch attribution across content pieces
+→ LTV correlation — do customers who consumed X content churn less?
+→ Content-to-revenue: brief → persona → $X pipeline
+```
+
+**Layer 5: Content Decay Monitoring**
+- Detects ranking/citation/engagement drop before it goes cold
+- Auto-queues refresh recommendation silently (no noise)
+- Full decay report available on request only (pull, not push)
+- **Writes to Brain:** Decay patterns by content type + topic category
+
+---
+
+#### The ROI Dashboard
+
+**View 1: Content Health**
+- Live content ranked by performance score
+- 🟢🟡🔴 decay status
+- "Needs refresh" queue with suggested updates
+
+**View 2: Pattern Library**
+- Top performing hooks, formats, lengths by channel
+- Best converting SME injections
+- GEO brief structures that got cited
+- Persona-to-content match scores
+
+**View 3: Revenue Impact**
+- Pipeline influenced (anonymous)
+- Deals closed where content was touchpoint (CRM)
+- Content ROI per asset (cost to generate vs. revenue attributed)
+- Projected ROI for content in queue
+
+---
+
+#### Delivery Tiers
+
+| Feature | Standard | Pro | Add-On |
+|---------|----------|-----|--------|
+| Performance digest | Daily/Weekly | Daily/Weekly | — |
+| Live streaming DB | — | — | ✅ |
+| Medium-confidence patterns | ✅ (default) | ✅ | — |
+| Deep Pattern Analysis (full range) | — | ✅ | — |
+| Pre-cog score (runs silently for all) | Hidden | ✅ Pay-to-view | — |
+| Decay auto-monitoring | ✅ | ✅ | — |
+| Decay reporting | On request | On request | — |
+| Industry Benchmark Reports | — | Opt-in | ✅ |
+
+**Reads from Brain:** All tables
+**Writes to Brain:** Performance scores, decay flags, attribution data, engagement patterns
+
+**Output:** Content ROI Dashboard + Pattern Library → feeds Stage 8
+
+---
+
+### Stage 8 — The Feedback Loop *(Gap: Compounding Intelligence)*
+
+**The Pattern Extractor Agent — runs on weekly cadence by default.**
+
+---
+
+#### 4 Automated Actions
+
+**1. Pattern Promotion**
+```
+IF performance_score > threshold
+AND sample_size > medium_confidence_minimum:
+  → Extract: hook, format, length, persona, GEO structure, SME style
+  → Write to Patterns table: success_rate + confidence_score
+  → Tag: channel, industry, content type
+  → Apply recency weighting (recent wins > old wins)
+  → Full confidence range always in Brain — medium threshold
+     is default surface. Deep Pattern Analysis unlocks full range.
+```
+
+**2. Mistake Crystallization**
+```
+IF content underperformed
+OR human edits > threshold
+OR compliance rejection:
+  → Write Mistake: type, root cause, agent responsible
+  → Generate prevention guardrail
+  → Auto-update agent prompt constraints
+  → Flag HIGH severity for human review
+```
+
+**3. Persona Refinement**
+```
+IF engagement deviates from persona assumption:
+  → Update vocabulary preferences
+  → Adjust pain point weighting
+  → Update objection patterns from conversion data
+  → Flag persona drift if deviation > threshold
+```
+
+**4. Context Hub Refresh (weekly)**
+```
+  → Re-run Third-Party Voice Crawler
+  → Re-score competitive gap map
+  → Update GEO opportunity scores
+  → Refresh decay queue
+```
+
+---
+
+#### The Pre-Cog Score
+
+Runs **under the hood for all tiers**. Pay-to-view at Pro tier.
+
+```
+BEFORE Stage 6 publishes:
+  → Pattern Extractor scores the full content package
+  → Compares against all Brain Patterns
+  → Outputs:
+      - Predicted Ranking Velocity
+      - GEO Citation Probability
+      - Engagement Score
+      - Conversion Likelihood
+  → Standard users: score hidden, content silently improved
+  → Pro users: full Pre-cog dashboard visible
+      "Predicted top 5 ranking within 60 days"
+      "Low GEO citation probability — restructure H2s"
+```
+
+*Free users feel the platform is better. They just don't know why. That's the upgrade hook.*
+
+---
+
+#### Cross-Client Pattern Sharing
+
+**Default: OFF. Explicit opt-in required.**
+
+Value exchange framing:
+> "Share anonymized patterns with our industry benchmark pool
+>  and unlock Industry Benchmark Reports for your vertical."
+
+Opt-in = gain, not concession. Enterprise and regulated industries stay off by default.
+
+---
+
+#### The Compounding Effect Over Time
+
+```
+Day 1:    Brain empty. Agents start from brand context only.
+Week 4:   10–15 patterns. Agents prefer proven structures.
+Month 3:  50+ patterns. 20+ guardrails. Human edit rate drops ~30%.
+Month 6:  Personas behavioral. Agents self-correct before human review.
+          ROI dashboard shows content-to-pipeline attribution.
+Month 12: Brain is a proprietary asset.
+          Switching = starting over.
+          Competitor cannot replicate output with same prompt.
+          This is the moat.
+```
+
+---
+
+#### Stage 8 Open Questions (Resolved)
+
+| Question | Decision |
+|----------|----------|
+| Performance cadence | Daily/weekly digest. Live streaming = add-on. |
+| Pattern threshold | Medium confidence default. Full range = Deep Pattern Analysis (Pro). |
+| Pre-cog score | Runs for all. Pay-to-view at Pro tier. |
+| Decay monitoring | Auto-silent. Reporting on request only. |
+| Cross-client patterns | Opt-in. Default OFF. Industry Benchmark Reports as value exchange. |
+
+**Reads from Brain:** All tables
+**Writes to Brain:** Updated Patterns, Mistakes, Personas, Context Hub
+
+**Output:** Updated Context Hub + Performance Playbook → loops back to Stage 1
+
