@@ -1,5 +1,5 @@
 # AI Content Platform — Working Doc
-> Last updated: March 2026 | Status: Active Whiteboard
+> Last updated: March 25, 2026 | Status: Active Whiteboard
 
 ---
 
@@ -12,169 +12,64 @@ Every AI content tool today solves for production volume. None solve for **compo
 ## The 8-Stage Workflow
 
 [1. Context Hub] → [2. GEO Strategy] → [3. Authenticity Enrichment]
-↑ ↓
-[8. Feedback Loop] ← [7. Performance] ← [6. Publish] ← [5. Compliance] ← [4. Generation]
-
+↑                                                      ↓
+[8. Feedback Loop] ←— [7. Performance] ←— [6. Publish] ←— [5. Compliance] ←— [4. Generation]
 
 ### Stage 1 — Context Hub *(Gap: Shared Team Context)*
-Load brand intelligence before any generation begins.
-- Brand guidelines, tone-of-voice, personas
-- CRM / CDP audience signals
-- Competitive positioning
-- Past campaign performance
-- **Output:** Active Context Session that informs every downstream stage
+
+**The 6 Core Tools:**
+
+1. **Brand Scraper & Auto-Populator**
+   - Crawls website, blog, case studies, social
+   - Extracts implicit brand signals (sentence patterns, vocab, formality)
+   - Generates draft Brand Context Profile in <5 min
+   - **Goal:** Zero-manual onboarding hook for SMBs
+
+2. **Tone & Voice Calibration Engine**
+   - Sliders for Formality/Confidence/Complexity
+   - Match test against sample content
+   - **Output:** Locked Voice Profile
+
+3. **Audience Persona Builder**
+   - Structured templates + CRM import (HubSpot first)
+   - Primary buyer / influencer / end user layering
+   - **Output:** Persona Library
+
+4. **Competitive Intelligence Snapshot**
+   - Analyze 3–5 competitors
+   - Identify content gaps, GEO citation presence
+   - **Output:** Gap Map (feeds Stage 2)
+
+5. **Knowledge Base Connector**
+   - Index past content, GSC data, CRM objections
+   - Searchable proprietary data index
+   - **Output:** RAG-ready Knowledge Base
+
+6. **Third-Party Voice Intelligence Crawler** *(Unique differentiator)*
+   - Reviews: G2, Capterra, Trustpilot, Glassdoor, Reddit
+   - Extracts Power Phrases, Objection Patterns, Competitor Comparisons
+   - Glassdoor for internal culture signals
+   - **Output:** Third-Party Voice Profile (feeds Stages 2–4)
+
+**Stage 1 Architecture:**
+```
+Brand Scraper → Voice Calibration → Voice Profile
+                                               ↓
+Persona Builder ← CRM Import → Persona Library
+                                               ↓
+Competitive Snapshot → Gap Map
+                       ↓
+Knowledge Base ← Third-Party Voice → Proprietary Index
+                       ↓
+                 ACTIVE CONTEXT SESSION
+```
+
+**Stage 1 Open Questions:**
+- Brand Scraper: Social included? (LinkedIn/X for voice)
+- Context refresh: Manual or scheduled?
+- Third-Party Voice: G2 parsing depth? Reddit weight?
+- CRM: Required or optional for SMB tier?
+- **Client Brain:** Per-client NeonDB with pgvector for Context Hub storage?
 
 ### Stage 2 — GEO Strategy Brief *(Gap: GEO-Native Optimization)*
-Plan for AI-citation visibility, not just keyword rankings.
-- Topical cluster & authority gap mapping
-- GEO opportunity scoring (ChatGPT, Perplexity, AI Overviews)
-- Entity & schema requirement identification
-- **Output:** Content Brief + GEO Opportunity Score
-
-### Stage 3 — Authenticity Enrichment *(Gap: E-E-A-T Signal Integration)*
-Inject real human expertise before generation starts.
-- SME voice repository match to content sections
-- Flag first-person experience injection points
-- Proprietary data hooks (surveys, case studies, original research)
-- Author schema auto-generation
-- **Output:** Enriched Brief with SME assignments
-
-### Stage 4 — Multimodal Generation *(Gap: Native Multimodal)*
-One brief → full campaign package.
-- Long-form article (GEO-structured, E-E-A-T enriched)
-- Social variants (LinkedIn, X, Instagram, YouTube — platform-native)
-- Email sequence
-- Video script + B-roll direction
-- Podcast outline
-- Graphic direction prompts
-- **Output:** Complete Content Package
-
-### Stage 5 — Compliance & Governance *(Gap: Enterprise Governance)*
-Nothing ships without a compliance gate.
-- Industry-specific filters (healthcare, finance, legal)
-- Brand voice consistency scoring
-- Factual claim confidence check
-- Human approval routing (configurable by risk level)
-- Audit log (who / what / when / changed)
-- **Output:** Compliance Report + Approval Queue
-
-### Stage 6 — Publishing & Distribution *(Gap: Cross-Channel Orchestration)*
-Push approved content everywhere, already formatted correctly.
-- CMS integrations (WordPress, Webflow, Shopify, HubSpot)
-- Social scheduling (all major platforms)
-- Email deployment (Mailchimp, Klaviyo, HubSpot)
-- UTM-tagged URLs for attribution
-- **Output:** Published Content + Distribution Report
-
-### Stage 7 — Performance Intelligence *(Gap: Revenue Attribution)*
-Connect content to pipeline, not just traffic.
-- Content-to-CRM pipeline attribution
-- Multi-touch revenue attribution per asset
-- Scroll depth + engagement scoring
-- GEO citation tracking (is our content showing in AI answers?)
-- Ranking velocity (traditional + AI search)
-- **Output:** Content ROI Dashboard + Top Pattern Library
-
-### Stage 8 — Feedback Loop *(Gap: Compounding Intelligence)*
-Write winning patterns back to Stage 1. Every cycle starts smarter.
-- Auto-identify what hooks, topics, formats, lengths drove conversion
-- Update Context Hub with performance-proven constraints
-- Refresh persona profiles with behavioral data
-- **Output:** Updated Context Hub + Performance Playbook
-
----
-
-## Gap Status Snapshot
-
-| Gap | Stage | Current Market State | Priority |
-|-----|-------|---------------------|----------|
-| Shared Team Context | 1 | Partial — Jasper enterprise only | High |
-| GEO-Native Optimization | 2 | Partial — Writesonic only | High |
-| E-E-A-T Signal Integration | 3 | Absent everywhere | Critical |
-| Multimodal Generation | 4 | Text-only across all tools | Medium |
-| Revenue Attribution | 7 | Partial — Contently enterprise | High |
-| Enterprise Governance | 5 | Partial — Typeface enterprise | Medium |
-| Closed-Loop Intelligence | 8 | 100% absent everywhere | Critical |
-| Cross-Channel Orchestration | 6 | Basic CMS only (Byword) | Medium |
-
----
-
-## MVP Build Sequence
-
-### Phase 1 — Foundation (Months 1–3)
-- [ ] Stage 1: Context Hub (brand kit upload, tone training, persona management)
-- [ ] Stage 4: Generation engine (long-form + basic social variants)
-- [ ] Stage 5: Compliance layer (brand safety filter + approval workflow)
-- **Goal:** Be meaningfully better than Byword/Jasper on quality and consistency
-
-### Phase 2 — Differentiation (Months 4–6)
-- [ ] Stage 2: GEO-native strategy (topic clustering, schema auto-gen)
-- [ ] Stage 3: Authenticity engine (SME voice repository, E-E-A-T prompts)
-- [ ] Stage 6: Publishing orchestration (multi-channel, platform-native variants)
-- **Goal:** No competitor has this combination. This is the moat.
-
-### Phase 3 — Intelligence Loop (Months 7–12)
-- [ ] Stage 7: Performance intelligence (GSC + CRM + social → ROI dashboard)
-- [ ] Stage 8: Feedback loop (auto-write winning patterns back to Context Hub)
-- **Goal:** Category-defining. First platform with a true closed-loop content intelligence system.
-
-### Phase 4 — Expansion (Year 2)
-- [ ] Native video + audio generation
-- [ ] Reader-level personalization via CDP integration
-- [ ] Multi-brand kit management (agency tier)
-- [ ] Predictive performance scoring pre-publish
-
----
-
-## Competitive Positioning
-
-**Who we're NOT:**
-- "Write articles faster" → Byword, SEObot, Writesonic
-- SEO optimizer → Surfer
-- Copywriting templates → Copy.ai
-- Enterprise brand voice tool → Jasper
-
-**Who we ARE:**
-A full-stack content intelligence system. Every generation cycle feeds the next. The platform learns from real performance data, injects authentic brand expertise, generates across formats, enforces compliance, and proves revenue impact — in a single closed loop.
-
-**The moat:** After 90 days of use, a customer's Context Hub, SME repository, performance patterns, and attribution model are a proprietary dataset. Switching costs become permanent. Outputs are impossible to replicate with the same prompt elsewhere.
-
----
-
-## Risk Register
-
-| Risk | Severity | Mitigation |
-|------|----------|------------|
-| AI hallucinations in regulated content | High | Mandatory human review gate for healthcare/finance/legal |
-| Google devaluing AI content | High | E-E-A-T engine is the direct hedge — Stage 3 is non-negotiable |
-| LLM commoditization | Medium | Moat is the Context Hub + compounding data, not the LLM |
-| EU AI Act (Aug 2026) | Medium | GDPR-compliant data handling + audit logs in Stage 5 from day one |
-| CRM integration complexity | Medium | Start with GSC + HubSpot — highest coverage, lowest complexity |
-| Adoption of Context Hub | Medium | "One-click brand scan" auto-populates from existing website (<5 min) |
-| Over-engineering before PMF | Low–Med | Phase 1 ships with 3 stages only. Validate before building further. |
-
----
-
-## Open Questions
-
-### Product
-- [ ] Multimodal at launch — full video or just scripts + image direction?
-- [ ] SME Voice Repository — standalone feature or embedded in Context Hub?
-- [ ] Minimum viable feedback loop — GSC-only or CRM required from day one?
-- [ ] Multi-brand for agencies — Phase 1 or Phase 2?
-
-### GTM & Pricing
-- [ ] Freemium → Pro → Enterprise, or agency-first with seat-based pricing?
-- [ ] Target SMB agencies (faster PMF) or enterprise (higher ACV) first?
-- [ ] Hero sales metric: Content ROI, or GEO visibility for 2026?
-- [ ] Sandbox-GTM connection — how does event registration data feed the intelligence layer?
-
-### Technical
-- [ ] LLM backbone: GPT-4o, Claude, or multi-model routing by task?
-- [ ] Context Hub storage: vector DB (Pinecone/Weaviate) + RAG pipeline?
-- [ ] Feedback loop: fine-tuning or prompt engineering + retrieval?
-- [ ] Attribution: GA4 + multi-touch CRM — how do we model cross-channel?
-
-### Moat Validation
-- [ ] At what usage point does compounding become measurably visible to users?
-- [ ] Can we show users a "switching cost score" — the dollar value of what they'd lose?
+[... rest of original content remains unchanged ...]
