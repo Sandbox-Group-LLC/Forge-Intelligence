@@ -71,5 +71,68 @@ Knowledge Base ← Third-Party Voice → Proprietary Index
 - CRM: Required or optional for SMB tier?
 - **Client Brain:** Per-client NeonDB with pgvector for Context Hub storage?
 
+
+## Client Brain Architecture — The Compounding Intelligence Layer
+
+### Core Concept
+Each client gets their own **isolated NeonDB instance** with pgvector for semantic search + structured memory schema. Multi-agent shared memory fabric.
+
+```
+Client Brain (NeonDB + pgvector)
+├── Memories (vector embeddings)
+├── Patterns (what worked) 
+├── Mistakes (what failed + why)
+├── Agent Coordination Log
+└── Predictive Guardrails
+```
+
+### The 4 Memory Tables
+
+**1. Memories** (vectorized RAG)
+```
+content_id | embedding | metadata | raw_content | performance_outcome
+```
+
+**2. Patterns** (structured wins)
+```
+pattern_type | success_rate | confidence | example_id | recency_weight
+```
+
+**3. Mistakes** (failures + root cause)
+```
+mistake_type | content_id | human_feedback | fix_applied | guardrail_created
+```
+
+**4. Agent Coordination** (multi-agent sync)
+```
+agent_id | query | memory_used | decision | outcome
+```
+
+### Multi-Agent Workflow
+```
+Stage 1 Agent → Stage 2 → Stage 3 → Stage 4 → Stage 5
+  ↓ Query Brain              ↓ Query Brain
+Stage 7 WRITES → Stage 8 Updates Patterns/Mistakes
+```
+
+### Predictive Guardrails (Minority Report)
+- Pre-gen: "Similar content failed. Override?"
+- Pre-compliance: "Phrasing flagged in healthcare mistakes"
+- Pre-publish: "Format failed on this channel before"
+
+### Tech Stack
+```
+NeonDB per-client + pgvector + TimescaleDB
+RLS for isolation + auto-embed triggers
+Supabase/Neon edge functions for agents
+```
+**Cost:** ~$20/mo per active client
+
+### Client Brain Open Questions
+1. Agent count MVP: 3 or full 8?
+2. Mistake logging: Human-only or AI self-critique?
+3. Memory retention: Prune low-confidence? Time decay?
+4. Cross-client: Anonymized pattern sharing by industry?
+5. NeonDB: Per-client DB or RLS shared instance?
 ### Stage 2 — GEO Strategy Brief *(Gap: GEO-Native Optimization)*
 [... rest of original content remains unchanged ...]
