@@ -1,15 +1,15 @@
-import Anthropic from '@anthropic-ai/sdk';
-
 /**
- * Tool definitions for Context Agent (Claude tool_use format)
- * These are passed to the Anthropic API as available tools.
+ * Context Agent tool definitions.
+ * Plain objects — no Anthropic SDK type imports needed.
+ * Compatible with all @anthropic-ai/sdk versions.
  */
-export const contextAgentTools: Anthropic.Tool[] = [
+
+export const contextAgentTools = [
   {
     name: 'scrape_domain',
-    description: 'Crawls the brand website to extract implicit voice signals, vocabulary, tone patterns, value props, and structural content signals. Do NOT summarize what the brand says about itself — extract HOW they actually write.',
+    description: 'Crawls the brand website to extract implicit voice signals, vocabulary, tone patterns, value props, and structural content signals.',
     input_schema: {
-      type: 'object' as const,
+      type: 'object',
       properties: {
         url: { type: 'string', description: 'The full URL to scrape.' },
         depth: { type: 'number', description: 'Crawl depth. Default: 1.' }
@@ -19,9 +19,9 @@ export const contextAgentTools: Anthropic.Tool[] = [
   },
   {
     name: 'scrape_reviews',
-    description: 'Fetches third-party voice signals from G2, Glassdoor, Reddit, and Trustpilot for a brand. Returns customer power phrases, objection patterns, and friction points.',
+    description: 'Fetches third-party voice signals from G2, Glassdoor, Reddit, and Trustpilot.',
     input_schema: {
-      type: 'object' as const,
+      type: 'object',
       properties: {
         brand_name: { type: 'string', description: 'The brand name to search reviews for.' }
       },
@@ -30,9 +30,9 @@ export const contextAgentTools: Anthropic.Tool[] = [
   },
   {
     name: 'scrape_competitors',
-    description: 'Analyzes competitor websites to map topical coverage and identify content gaps the client can own.',
+    description: 'Analyzes competitor websites to map topical coverage and identify content gaps.',
     input_schema: {
-      type: 'object' as const,
+      type: 'object',
       properties: {
         urls: {
           type: 'array',
@@ -45,15 +45,14 @@ export const contextAgentTools: Anthropic.Tool[] = [
   },
   {
     name: 'query_brain',
-    description: 'MANDATORY FIRST CALL. Reads the Client Brain before any external scraping. Queries Patterns and Mistakes tables to understand what has worked and failed in this industry.',
+    description: 'MANDATORY FIRST CALL. Reads the Client Brain Patterns and Mistakes tables.',
     input_schema: {
-      type: 'object' as const,
+      type: 'object',
       properties: {
-        client_id: { type: 'string', description: 'The unique client identifier.' },
+        client_id: { type: 'string' },
         table: {
           type: 'string',
-          enum: ['memories', 'patterns', 'mistakes', 'agent_coordination'],
-          description: 'Which Brain table to query.'
+          enum: ['memories', 'patterns', 'mistakes', 'agent_coordination']
         }
       },
       required: ['client_id', 'table']
@@ -61,17 +60,14 @@ export const contextAgentTools: Anthropic.Tool[] = [
   },
   {
     name: 'write_to_brain',
-    description: 'Commits the completed Brand Intelligence Profile to the Client Brain (brand_profiles table) and writes new patterns observed during extraction.',
+    description: 'Commits the completed Brand Intelligence Profile to NeonDB.',
     input_schema: {
-      type: 'object' as const,
+      type: 'object',
       properties: {
         client_id: { type: 'string' },
-        data_payload: {
-          type: 'object',
-          description: 'The structured JSON payload to write. Must include voice_profile, personas, third_party_signals, competitive_gaps.'
-        }
+        data_payload: { type: 'object' }
       },
       required: ['client_id', 'data_payload']
     }
   }
-];
+] as const;
