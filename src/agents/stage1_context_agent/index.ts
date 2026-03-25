@@ -46,7 +46,6 @@ export interface BrandProfile {
  * Context Agent — Stage 1
  * Model: Claude Sonnet 4.6
  * Architecture: Sequential prompts (Brain-First → Scrape → Synthesize → Write)
- * No tool-calling loop — each step is a discrete, typed Claude call.
  */
 export async function runContextAgent(input: ContextAgentInput): Promise<{
   brandProfileId: string;
@@ -126,9 +125,10 @@ Return ONLY a valid JSON object in this exact structure:
     messages: [{ role: 'user', content: synthesisPrompt }]
   });
 
+  // Fix: use SDK's own TextBlock type — handles citations field in ^0.39.0
   const rawText = synthesisResponse.content
-    .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
-    .map(b => b.text)
+    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .map((b: Anthropic.TextBlock) => b.text)
     .join('\n');
 
   // Extract JSON from response
