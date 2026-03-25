@@ -736,7 +736,109 @@ Month 12: Brain is a proprietary asset.
 - [ ] Native video + audio generation
 - [ ] Multi-brand kit management
 - [ ] Industry Benchmark Reports (opt-in cross-client, default OFF)
-- [ ] Marketo / Klaviyo / Mailchimp email campaign integrations (Track B)
+- [ ] Marketo / Klaviyo / Mailchimp email campaign integrati---
+
+## Tech Stack & Implementation
+
+### LLM Routing by Agent Task
+
+| Agent/Task | Model | Reasoning |
+|------------|-------|-----------|
+| Context Agent (Stage 1) | Claude Sonnet 4.6 | Reasoning/planning: brand scraping, pattern extraction, persona structuring |
+| GEO Strategist (Stage 2) | Claude Sonnet 4.6 | Multi-step reasoning: competitive → structured brief |
+| Authenticity Enricher (Stage 3) | Gemini 2.5 Pro | Writing-adjacent: voice matching, natural E-E-A-T injections |
+| Multimodal Generator (Stage 4) | Gemini 2.5 Pro | Publishable copy generation (your proven experience) |
+| Compliance Agent (Stage 5) | Claude Sonnet 4.6 | Structured rule checking, fast + precise |
+| Pattern Extractor (Stage 8) | Claude Opus 4.6 | Complex reasoning: performance analysis, guardrail generation |
+| Pre-cog Scorer | Claude Opus 4.6 | Probabilistic reasoning across Brain data |
+| GTM Strategy layer | GPT 5.2 | Branding, tone, positioning (your workflow) |
+
+**Routing Logic:** Task-matched, not one-model-fits-all. Cost + capability optimized.
+
+---
+
+### Media Generation
+
+| Task | Tool | Notes |
+|------|------|-------|
+| Blog/article hero images | Black Forest Labs Flux | Primary — replaces Stability |
+| Social graphics | Flux + brand kit overlay | Generated → brand colors/fonts applied |
+| Video scripts | Gemini 2.5 Pro → ElevenLabs narration | Script generation → audio production |
+| Audio/podcast | Gemini → ElevenLabs | Outline → voiced output |
+
+**Stability AI:** Retired. Redundant with Flux.
+
+---
+
+### Infrastructure
+
+| Layer | Tool | Role |
+|-------|------|-----|
+| Client Brain | NeonDB + pgvector | Per-client DB, embeddings, RLS isolation |
+| Embeddings | VoyagerAI | Brain memory retrieval |
+| Hosting | Render | Agent API deployment |
+| Domain | Namecheap | — |
+| Email | Resend | Notifications, digests, alerts |
+| Scheduled Jobs | EasyCron | Pattern Extractor, Brain refresh, decay monitoring, digests |
+| CRM | HubSpot | Track A attribution (Phase 2) |
+
+**EasyCron Job Schedule:**
+```
+Weekly: Pattern Extractor → promote patterns, crystallize mistakes
+Weekly: Context Hub refresh → Third-Party Voice, GEO re-score
+Daily: Decay monitoring → silent refresh queue
+Daily/Weekly: Performance digest → compile + Resend
+```
+
+---
+
+### Agent Orchestration: Option B — Claude Native + Custom
+
+**Why Option B:**
+- Claude Sonnet/Opus doing heavy lifting → use Anthropic's native tool use
+- No framework debt (LangChain/LangGraph abstraction overhead)
+- Linear Phase 1 handoffs don't need complex coordination
+- Maximum control over Brain reads/writes
+- Scales to multi-agent without framework surprises
+
+**Phase 1 Flow (3 agents, linear):**
+```
+Context Agent → outputs Context Session → 
+GEO Strategist reads session → outputs GEO Brief → 
+Authenticity Enricher reads brief → outputs Enriched Brief
+```
+Each agent follows Brain-First protocol before acting.
+
+**Phase 3+ (full 8 agents):** Custom orchestration layer coordinates Brain access, but still Claude-native tool calls.
+
+---
+
+### Integration Priority Queue
+
+| Integration | Phase | Type | Notes |
+|-------------|-------|------|-------|
+| GSC | 2 | Native | SEO baseline |
+| HubSpot Track A | 2 | Deep | Campaign-level attribution |
+| WordPress | 2 | Deep | REST API → Gutenberg |
+| Webflow | 2 | Deep | CMS API |
+| LinkedIn/X OAuth | 2 | Lightweight | One-click publish |
+| GA4 | 3 | Native | Anonymous attribution |
+| HubSpot Track B | 3 | Deep | Email/contact attribution |
+| Mailchimp/Klaviyo | 3 | Deep | Email campaigns |
+
+---
+
+### Cost Model
+
+| Component | Per Client | Notes |
+|-----------|------------|-------|
+| NeonDB/pgvector | ~$20/mo | Scales with usage |
+| LLM calls | $0.50–$2/brief | Model routing keeps lean |
+| EasyCron | Negligible | — |
+| Resend | $0.10/1k emails | Digests + notifications |
+| **Total COGS** | ~$25/mo | $99/mo SMB → 75% margin |
+
+ons (Track B)
 - [ ] EU AI Act compliance layer (GDPR audit logs, consent management)
 - [ ] Predictive persona drift alerting
 
