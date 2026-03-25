@@ -129,6 +129,53 @@ Supabase/Neon edge functions for agents
 **Cost:** ~$20/mo per active client
 
 ### Client Brain Open Questions
+### Open Q1 Resolved: 3 Agents for Phase 1 MVP
+
+**Stages 1-3 → 3 Agents (Context Intelligence Engine)**
+
+```
+Agent 1: CONTEXT AGENT (Stage 1)
+├── Brand Scraper → Voice Profile
+├── Persona Builder → Persona Library
+├── Competitive Snapshot → Gap Map
+├── Knowledge Base → Proprietary Index
+└── Third-Party Voice → Customer Language
+↓ Unified Context Session
+
+Agent 2: GEO STRATEGIST (Stage 2)
+├── Context + Gap Map → Topical analysis
+├── GEO citation opportunities
+├── Structured brief + schema map
+↓ GEO Brief
+
+Agent 3: AUTHENTICITY ENRICHER (Stage 3)
+├── GEO Brief + Context
+├── SME voice injection
+├── E-E-A-T signals + human hooks
+├── Author schema generation
+↓ Enriched Brief (Phase 1 deliverable)
+```
+
+**Phase 1 Value Prop:**
+Input: Company URL + 3 competitors
+Output: Brand Intelligence Profile + GEO/Enriched Brief
+Demo: <10 min | Price: $99/mo SMB
+
+**Updated Phase 1 Scope:**
+```
+Phase 1 — Context Intelligence Engine (Months 1–3)
+[x] Stage 1: Context Hub (5 tools)
+[x] Client Brain: NeonDB/pgvector + 3 agents
+[x] Stage 2: GEO Strategy Brief
+[x] Stage 3: Authenticity enrichment  
+[x] Demo dashboard: "Your Brand Intelligence"
+```
+
+**Why Perfect MVP:**
+- Ships complete value (briefs that convert)
+- Technical simplicity (shared Brain, no publishing)
+- Clear Phase 2 handoff (add Stage 4 generation)
+
 1. Agent count MVP: 3 or full 8?
 2. Mistake logging: Human-only or AI self-critique?
 3. Memory retention: Prune low-confidence? Time decay?
