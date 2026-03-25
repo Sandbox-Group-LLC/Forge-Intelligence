@@ -11,9 +11,25 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Health check
+// Root — browser / domain ping response
+app.get('/', (_req, res) => {
+  res.json({
+    platform: 'Forge by Sandbox',
+    version: '0.1.0',
+    status: 'operational',
+    description: 'Compounding Content Intelligence Platform',
+    docs: '/health'
+  });
+});
+
+// Health check — Render pinger
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', platform: 'Forge by Sandbox', version: '0.1.0' });
+  res.json({
+    status: 'ok',
+    platform: 'Forge by Sandbox',
+    version: '0.1.0',
+    uptime: process.uptime()
+  });
 });
 
 // Full pipeline: Stages 1 → 2 → 3
@@ -56,6 +72,11 @@ app.post('/api/v1/geo-brief', async (_req, res) => {
 // Stage 3 placeholder
 app.post('/api/v1/enrich', async (_req, res) => {
   res.json({ status: 'coming_soon', stage: 3, message: 'Authenticity Enricher wiring in progress' });
+});
+
+// 404 catch-all
+app.use((_req, res) => {
+  res.status(404).json({ error: 'Not found', platform: 'Forge by Sandbox' });
 });
 
 app.listen(PORT, () => {
