@@ -181,5 +181,136 @@ Phase 1 — Context Intelligence Engine (Months 1–3)
 3. Memory retention: Prune low-confidence? Time decay?
 4. Cross-client: Anonymized pattern sharing by industry?
 5. NeonDB: Per-client DB or RLS shared instance?
+
+### Open Q2 Resolved: AI Self-Critique + Brain-First Protocol
+
+**Every agent prompt opens with the same mandatory instruction:**
+
+```
+SYSTEM: Before any action, query the Client Brain.
+  1. Read Mistakes relevant to this task
+  2. Read Patterns that succeeded in this context
+  3. Read Memories of similar past content
+  4. THEN act — informed by all three
+```
+
+**Self-critique fires at two moments:**
+- **Pre-output:** Agent scores its own output against Patterns before surfacing it
+- **Post-performance:** When Stage 7 reports back, originating agent writes its own failure analysis to Mistakes table, tagged by root cause
+
+Agents never start cold. Every action is preceded by a full Brain read.
+
+
+
 ### Stage 2 — GEO Strategy Brief *(Gap: GEO-Native Optimization)*
-[... rest of original content remains unchanged ...]
+
+**Brain-First:** GEO Strategist Agent reads Mistakes + Patterns + Memories before every brief.
+
+**Tool 1: Topical Authority Mapper**
+- Maps brand content + competitor coverage across topical clusters
+- Scores each gap by GEO citation probability
+- **Writes to Brain:** Competitive topic graph (scheduled refresh)
+
+**Tool 2: GEO Opportunity Scorer**
+- Scores gaps across ChatGPT, Perplexity, Google AI Overviews, Gemini
+- Weights recency bias, entity authority, structural fit
+- Surfaces "quick win" topics where brand has authority but no content
+- **Reads from Brain:** Past AI-citation performance
+- **Writes to Brain:** GEO opportunity scores per topic
+
+**Tool 3: Entity & Schema Mapper**
+- Identifies entities needing structured markup
+- Auto-generates schema: Article, FAQ, HowTo, Organization, Breadcrumb
+- Maps competitor entities being cited that you aren't
+- **Writes to Brain:** Schema requirements per content type
+
+**Tool 4: Brief Generator**
+- Combines Topical Map + GEO Scores + Entity Map + Stage 1 Context Session
+- Outputs structured brief: H1/H2 hierarchy, entities, FAQ structure, GEO anchors
+- **Reads from Brain:** All Patterns, Mistakes, Memories before generating
+- **Writes to Brain:** Brief template flagged as Pattern if it converts
+
+**Output:** GEO Brief + Opportunity Score → feeds Stage 3
+
+
+### Stage 3 — Authenticity Enrichment *(Gap: E-E-A-T Signal Integration)*
+
+**Brain-First:** Authenticity Enricher reads which SME injections previously converted vs. fell flat.
+
+- SME voice repository match to content sections
+- Flag first-person experience injection points
+- Proprietary data hooks (surveys, case studies, original research)
+- Author schema auto-generation
+- Customer power phrases from Third-Party Voice Crawler
+- **Reads from Brain:** Voice patterns that drove engagement
+- **Writes to Brain:** E-E-A-T patterns that passed compliance + converted
+
+**Output:** Enriched Brief with SME assignments + confidence scores per section → feeds Stage 4
+
+
+### Stage 4 — Multimodal Generation *(Gap: Native Multimodal)*
+
+**Brain-First:** Generator reads ALL Brain tables before producing a single word.
+
+**Generated Package:**
+```
+├── Long-form article
+│     ├── E-E-A-T injections HIGHLIGHTED
+│     ├── SME hooks FLAGGED ("Insert quote — suggested: [X]")
+│     └── Confidence score per section (Brain-derived)
+├── Social variants (LinkedIn, X, Instagram, YouTube)
+├── Email sequence
+├── Video script + B-roll direction
+├── Podcast outline
+└── Graphic direction prompts
+```
+
+**Confidence Scoring (Brain-derived):**
+- 🟢 Green — high pattern match, auto-approvable
+- 🟡 Yellow — SME input needed or fact needs verification
+- 🔴 Red — explicit human decision required
+
+**Reads from Brain:** Every Pattern, Mistake, Memory
+**Writes to Brain:** Raw generation log (later scored by Stage 7)
+
+**Output:** Complete Content Package with confidence scores → feeds Stage 5
+
+---
+
+### Stage 5 — Compliance & Human Refinement Gate *(Gap: Enterprise Governance)*
+
+**Three configurable modes by client risk level:**
+
+```
+MODE 1: Auto-Ship (low-risk, high-trust)
+→ AI self-critique passes → auto-publishes
+→ Human gets notification only
+
+MODE 2: Approve-to-Ship (standard)
+→ Human reviews yellows/reds only
+→ One-click approve on greens
+→ Inline edit on yellows
+→ Decision required on reds
+
+MODE 3: Full Review (regulated industries)
+→ Every piece routes to named human approver
+→ Compliance agent runs full check
+→ Legal/medical claims escalated
+→ Full audit log written to Brain
+```
+
+**The Mistakes Loop:**
+Every human edit is a signal. Consistent edits to a phrasing pattern → AI self-critique flags it → writes to Mistakes → stops generating that pattern without being told twice.
+
+**Compliance checks:**
+- Industry-specific filters (healthcare, finance, legal)
+- Brand voice consistency score
+- Factual claim confidence check
+- Approval routing (configurable by risk level)
+
+**Reads from Brain:** Mistakes table (compliance history)
+**Writes to Brain:** Human edits as Mistakes + guardrails
+
+**Output:** Compliance Report + Approved Content Package → feeds Stage 6
+
+]
