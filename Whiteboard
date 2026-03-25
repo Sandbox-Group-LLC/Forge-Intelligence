@@ -314,3 +314,110 @@ Every human edit is a signal. Consistent edits to a phrasing pattern → AI self
 **Output:** Compliance Report + Approved Content Package → feeds Stage 6
 
 ]
+### Stage 6 — Publishing & Distribution *(Gap: Cross-Channel Orchestration)*
+
+**Brain-First:** Publishing Agent reads UTM patterns, channel performance, and timing data before scheduling anything.
+
+---
+
+#### Architecture: Native vs. Integrate vs. Export
+
+**Tier 1 — Native (always, non-negotiable)**
+
+These depend on the Brain and cannot live outside the platform:
+
+- **UTM Intelligence Engine**
+  - Auto-generates UTMs tied to Brain attribution model
+  - Structured UTMs map to: content brief, persona, GEO score, originating agent
+  - Stage 7 attribution breaks without this. Must be native.
+
+- **Content Version Control**
+  - Every draft, edit, human override, and compliance decision versioned
+  - Brain stores deltas — what was changed, by whom, and why
+  - Mistakes loop depends on this. Must be native.
+
+- **Publishing Queue (Control Room)**
+  - Single dashboard: Draft → Enriched → Approved → Scheduled → Live → Measured
+  - Internal approval flow: Author → Editor → Approver (role hierarchy)
+  - Reviewer hierarchy maps to Brain confidence weighting:
+    - Senior approver edit = high-signal Mistake, weighted heavily
+    - Junior edit = standard Mistake signal
+  - Phase 1: Internal client (Marketing → Leadership)
+  - Phase 2/3: External client (Agency → Client) via white-label
+
+---
+
+**Tier 2 — Deep Integrations (Phase 2)**
+
+We build the connector. They own the destination.
+
+Priority 1:
+- WordPress (REST API → Gutenberg blocks)
+- Webflow (CMS API → collection schema)
+- HubSpot (two-track — see below)
+- Shopify (product + blog)
+
+Priority 2:
+- Ghost, LinkedIn Articles, Mailchimp/Klaviyo/Marketo, Buffer
+
+**HubSpot Two-Track Architecture:**
+```
+Track A: Campaign-level (Phase 2, no email required)
+→ Push content performance + GEO metrics + engagement
+→ as campaign activity in HubSpot
+→ Works for blog, social, video
+→ No contact data needed
+
+Track B: Direct email campaigns (Phase 2/3)
+→ Full contact + deal-level attribution
+→ Requires email address as delivery mechanism
+→ Mailchimp/Klaviyo/Marketo same bucket
+→ Requires consent management + GDPR compliance layer
+→ Anonymous campaign data ≠ identified contact data
+→ Two different integration architectures — do not collapse
+```
+
+---
+
+**Tier 3 — Smart Export (Phase 1)**
+
+JSON-first. Full Brain metadata intact on export.
+
+```
+├── JSON (primary) — full Brain metadata: persona, GEO score,
+│     SME injections, confidence flags, agent provenance
+│     → Switching cost is visible: export to another tool = lose all metadata
+├── Markdown — universal fallback
+├── HTML — paste-ready for any CMS
+└── PDF — compliance/legal review workflows
+```
+
+*Google Docs, plain text, etc. = client converts from JSON themselves. Not our problem.*
+
+---
+
+**Tier 4 — Lightweight Native Social (Phase 1)**
+
+One-click publish, not a social media manager:
+- LinkedIn + X OAuth → publish from Publishing Queue
+- Brain-derived optimal timing (from pattern data — when did similar content get most engagement?)
+- No scheduling queue, no analytics dashboard, no audience management
+- Buffer/Hootsuite handle that — we stay in our lane but don't block all-in-one buyers
+
+---
+
+#### Stage 6 Open Questions (Resolved)
+
+| Question | Decision |
+|----------|----------|
+| Export format | JSON-first. Client converts downstream. |
+| HubSpot depth | Two-track: campaign-level Phase 2, email/contact Phase 2-3 |
+| White-label | Phase 2-3. GTM brand-first, agency second. |
+| Social scheduling | Lightweight native (publish only). No Hootsuite rebuild. |
+| Approval flow | Internal first (Marketing → Leadership). Agency flow reuses same baseline. |
+
+**Reads from Brain:** UTM patterns, channel performance, timing data
+**Writes to Brain:** Publish log, human edits as Mistakes (weighted by reviewer role)
+
+**Output:** Published Content + Distribution Report → feeds Stage 7
+
