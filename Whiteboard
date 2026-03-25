@@ -627,3 +627,130 @@ Month 12: Brain is a proprietary asset.
 
 **Output:** Updated Context Hub + Performance Playbook → loops back to Stage 1
 
+---
+
+## MVP Build Roadmap
+
+### Phase 1 — Context Intelligence Engine *(Months 1–3)*
+> **Deliverable:** Brand Intelligence Profile + GEO/E-E-A-T enriched brief in <10 min from a URL
+> **Target:** SMB marketing teams, boutique agencies
+> **Pricing:** $99/mo SMB · $499/mo Agency
+
+**What ships:**
+- [ ] Client Brain: NeonDB/pgvector per-client instance
+- [ ] Brain-First protocol on all agents (read Mistakes → Patterns → Memories before acting)
+- [ ] Agent 1 — Context Agent (Stage 1)
+  - Brand Scraper & Auto-Populator
+  - Tone & Voice Calibration Engine
+  - Audience Persona Builder (manual + HubSpot import)
+  - Competitive Intelligence Snapshot (3–5 competitors)
+  - Knowledge Base Connector (past content, GSC)
+  - Third-Party Voice Crawler (G2, Glassdoor, Reddit, Trustpilot)
+- [ ] Agent 2 — GEO Strategist (Stage 2)
+  - Topical Authority Mapper
+  - GEO Opportunity Scorer
+  - Entity & Schema Mapper
+  - Brief Generator
+- [ ] Agent 3 — Authenticity Enricher (Stage 3)
+  - SME Voice Repository
+  - E-E-A-T injection layer
+  - Author schema auto-generation
+  - Customer power phrase injection
+- [ ] Publishing Queue stub (Draft → Enriched status only)
+- [ ] JSON export with full Brain metadata
+- [ ] Demo dashboard: "Your Brand Intelligence Profile"
+
+**What does NOT ship in Phase 1:**
+- Generation (Stage 4)
+- Compliance gate (Stage 5)
+- Publishing integrations (Stage 6)
+- Performance tracking (Stage 7)
+- Feedback loop (Stage 8)
+
+---
+
+### Phase 2 — Generation + Governance *(Months 4–6)*
+> **Deliverable:** Full multimodal content package with human approval gate
+> **Target:** Growth-stage marketing teams, agencies
+> **Pricing:** $299/mo Pro · $799/mo Agency Pro
+
+**What ships:**
+- [ ] Stage 4 — Multimodal Generator
+  - Long-form article (GEO-structured, E-E-A-T enriched)
+  - Social variants (LinkedIn, X, Instagram, YouTube)
+  - Email sequence
+  - Video script + B-roll direction
+  - Podcast outline + graphic direction prompts
+  - 🟢🟡🔴 confidence scoring per section
+- [ ] Stage 5 — Compliance & Refinement Gate
+  - Mode 1: Auto-Ship
+  - Mode 2: Approve-to-Ship (default)
+  - Mode 3: Full Review
+  - Reviewer role hierarchy (Author → Editor → Approver)
+  - Mistakes loop: human edits → Brain guardrails
+- [ ] Stage 6 — Publishing (Phase 2 scope)
+  - UTM Intelligence Engine
+  - Publishing Queue (full status flow)
+  - Content Version Control
+  - WordPress + Webflow + HubSpot (Track A: campaign-level) integrations
+  - LinkedIn + X one-click OAuth publish
+  - Smart export: JSON (primary), Markdown, HTML, PDF
+- [ ] Pre-cog score running silently (hidden, Standard tier)
+- [ ] White-label architecture: data model supports it, UI not yet built
+
+---
+
+### Phase 3 — Intelligence Loop *(Months 7–12)*
+> **Deliverable:** Closed-loop compounding content intelligence system
+> **Target:** Enterprise marketing teams, mid-market agencies
+> **Pricing:** $599/mo Enterprise · Custom agency
+
+**What ships:**
+- [ ] Stage 7 — Performance Intelligence
+  - GSC integration (ranking velocity, CTR, query match)
+  - GEO citation tracking (ChatGPT, Perplexity, AI Overviews, Gemini)
+  - Engagement layer (scroll depth, time on page, social signals)
+  - Revenue attribution Track A (anonymous UTM → GA4 → pipeline)
+  - Decay monitoring (auto-silent, reporting on request)
+  - ROI Dashboard: Content Health + Pattern Library + Revenue Impact
+- [ ] Stage 8 — Pattern Extractor Agent
+  - Pattern Promotion (medium confidence default)
+  - Mistake Crystallization + auto-guardrail generation
+  - Persona Refinement from behavioral data
+  - Weekly Context Hub auto-refresh
+- [ ] Pre-cog score dashboard (Pro pay-to-view unlock)
+- [ ] Daily/weekly digest delivery
+- [ ] Revenue attribution Track B: HubSpot email/contact (CRM connected)
+- [ ] Deep Pattern Analysis add-on
+- [ ] Live streaming DB add-on
+
+---
+
+### Phase 4 — Scale & Expansion *(Year 2)*
+> **Target:** Enterprise, regulated industries, agency networks
+
+**What ships:**
+- [ ] White-label agency layer (UI + multi-client dashboard)
+- [ ] External client approval flow (Agency → Client portal)
+- [ ] Reader-level personalization via CDP integration
+- [ ] Native video + audio generation
+- [ ] Multi-brand kit management
+- [ ] Industry Benchmark Reports (opt-in cross-client, default OFF)
+- [ ] Marketo / Klaviyo / Mailchimp email campaign integrations (Track B)
+- [ ] EU AI Act compliance layer (GDPR audit logs, consent management)
+- [ ] Predictive persona drift alerting
+
+---
+
+## Pricing Tier Summary
+
+| Tier | Phase | Price | Core Value |
+|------|-------|-------|------------|
+| SMB Standard | 1 | $99/mo | Brand Intelligence + Enriched Briefs |
+| Agency Standard | 1 | $499/mo | Multi-client briefs + competitive snapshots |
+| Pro | 2 | $299/mo | Full content generation + approval gate |
+| Agency Pro | 2 | $799/mo | Agency generation + client publishing |
+| Enterprise | 3 | $599/mo | Full intelligence loop + ROI dashboard |
+| Add-ons | 3+ | TBD | Live DB, Deep Patterns, Benchmarks |
+| White-label | 4 | Custom | Agency network licensing |
+
