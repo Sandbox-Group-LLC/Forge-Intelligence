@@ -35,11 +35,17 @@ export async function writeMemory(
 
 // Brain-First: get top patterns + mistakes before agent acts
 export async function getBrainContext(clientId: string) {
-  const [patterns, mistakes] = await Promise.all([
-    sql(`SELECT * FROM patterns WHERE client_id = $1 AND confidence_score >= 0.6
-         ORDER BY recency_weight DESC, success_rate DESC LIMIT 20`, [clientId]),
-    sql(`SELECT * FROM mistakes WHERE client_id = $1 AND severity IN ('HIGH', 'CRITICAL')
-         ORDER BY created_at DESC LIMIT 10`, [clientId])
-  ]);
-  return { patterns, mistakes };
+  try {
+    const [patterns, mistakes] = await Promise.all([
+      sql(`SELECT * FROM patterns WHERE client_id = $1 AND confidence_score >= 0.6
+           ORDER BY recency_weight DESC, success_rate DESC LIMIT 20`, [clientId]),
+      sql(`SELECT * FROM mistakes WHERE client_id = $1 AND severity IN ('HIGH', 'CRITICAL')
+           ORDER BY created_at DESC LIMIT 10`, [clientId])
+    ]);
+    return { patterns, mistakes };
+  } catch (err: any) {
+    // Tables may not exist yet for new clients — return empty brain context
+    console.warn(`[Brain] getBrainContext fallback — tables not ready: ${err.message}`);
+    return { patterns: [], mistakes: [] };
+  }
 }
