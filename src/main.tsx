@@ -20,7 +20,7 @@ createRoot(document.getElementById('root')!).render(
             </AppProvider>
           }
         />
-        <Route path="/geo-strategist" element={<GeoStrategistPage />} />
+        <Route path="/geo-strategist" element={<AppProvider><GeoStrategistPage /></AppProvider>} />
       </Routes>
     </BrowserRouter>
   </StrictMode>
