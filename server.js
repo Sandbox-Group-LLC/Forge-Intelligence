@@ -585,16 +585,18 @@ function normalizeGeoData(briefData, topicalMap, geoOpportunities, entitySchema,
 
 // Extracts the first complete JSON object or array from a string — handles trailing text/markdown
 function extractJSON(text, type = 'object') {
-  // Strip markdown code fences if present
-  const stripped = text.replace(/```(?:json)?\s*/gi, '').replace(/```\s*/g, '').trim();
   const open = type === 'array' ? '[' : '{';
   const close = type === 'array' ? ']' : '}';
-  const start = stripped.indexOf(open);
+  // Find the first opening brace/bracket — skip any preamble or markdown fences
+  const start = text.indexOf(open);
   if (start === -1) return null;
   let depth = 0;
-  for (let i = start; i < stripped.length; i++) {
-    if (stripped[i] === open) depth++;
-    else if (stripped[i] === close) { depth--; if (depth === 0) return stripped.slice(start, i + 1); }
+  for (let i = start; i < text.length; i++) {
+    if (text[i] === open) depth++;
+    else if (text[i] === close) {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
   }
   return null;
 }
