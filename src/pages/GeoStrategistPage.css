@@ -1,55 +1,10 @@
-.geo-page {
+.geo-content {
   min-height: 100vh;
   color: var(--color-text-primary);
   font-family: Inter, system-ui, sans-serif;
 }
 
-/* ── Nav — matches TopBar exactly ── */
-.geo-nav {
-  height: 64px;
-  min-height: 64px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
-  background: linear-gradient(90deg, rgba(15,23,42,0.90), rgba(15,23,42,0.85));
-  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
-  box-shadow: 0 10px 30px rgba(15,23,42,0.85);
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-
-.geo-wordmark {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  text-decoration: none;
-  color: var(--color-text-primary);
-}
-.geo-diamond {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--color-accent);
-}
-.geo-wordmark-text {
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--color-text-primary);
-}
-
-.geo-back {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 13px;
-  color: var(--color-text-muted);
-  text-decoration: none;
-  transition: color 0.15s;
-}
-.geo-back:hover { color: var(--color-text-primary); text-decoration: none; }
+/* Nav handled by global AppShell/TopBar */
 
 /* ── Shell ── */
 .geo-shell {
