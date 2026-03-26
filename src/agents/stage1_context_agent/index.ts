@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { queryBrain, writeToBrain, sql } from '../../brain/client';
+import { writeToBrain, sql } from '../../brain/client';
 import { getBrainContext } from '../../brain/memory';
 import { scrapeDomain, scrapeReviews, scrapeCompetitors } from '../../tools/scraper';
 import { config } from 'dotenv';
@@ -45,24 +45,46 @@ export interface BrandProfile {
 /**
  * Context Agent — Stage 1
  * Model: Claude Sonnet 4.6
- * Architecture: Sequential prompts (Brain-First → Scrape → Synthesize → Write)
+ * Architecture: Brain-First → Cache Check → Scrape → Synthesize → Write → Log
  */
 export async function runContextAgent(input: ContextAgentInput): Promise<{
   brandProfileId: string;
+  cached: boolean;
   profile: BrandProfile;
 }> {
   const { clientId, url, competitors } = input;
   const startTime = Date.now();
   let tokensUsed = 0;
-  let brandProfileId = 'unknown';
 
   console.log(`[Context Agent] Starting — client: ${clientId}, url: ${url}`);
 
-  // ── STEP 0: Brain-First Protocol ─────────────────────────────────────────
+  // ── STEP 0: Cache Check — return immediately if profile exists ────────────
+  const existing = await sql(
+    `SELECT id, voice_profile, personas, third_party_signals, competitive_gaps
+     FROM brand_profiles WHERE client_id = $1::uuid LIMIT 1`,
+    [clientId]
+  );
+
+  if (existing.length > 0) {
+    const row = existing[0] as Record<string, unknown>;
+    console.log(`[Context Agent] Cache hit — returning existing profile: ${row.id}`);
+    return {
+      brandProfileId: row.id as string,
+      cached: true,
+      profile: {
+        voice_profile: typeof row.voice_profile === 'string' ? JSON.parse(row.voice_profile) : row.voice_profile,
+        personas: typeof row.personas === 'string' ? JSON.parse(row.personas) : row.personas,
+        third_party_signals: typeof row.third_party_signals === 'string' ? JSON.parse(row.third_party_signals) : row.third_party_signals,
+        competitive_gaps: typeof row.competitive_gaps === 'string' ? JSON.parse(row.competitive_gaps) : row.competitive_gaps,
+      } as BrandProfile
+    };
+  }
+
+  // ── STEP 1: Brain-First Protocol ─────────────────────────────────────────
   const brainContext = await getBrainContext(clientId);
   console.log(`[Context Agent] Brain loaded: ${brainContext.patterns.length} patterns, ${brainContext.mistakes.length} mistakes`);
 
-  // ── STEP 1: Scrape raw signals ────────────────────────────────────────────
+  // ── STEP 2: Scrape raw signals ────────────────────────────────────────────
   console.log('[Context Agent] Scraping domain...');
   const [domainSignals, reviewSignals, competitorSignals] = await Promise.all([
     scrapeDomain(url),
@@ -70,7 +92,7 @@ export async function runContextAgent(input: ContextAgentInput): Promise<{
     competitors?.length ? scrapeCompetitors(competitors) : Promise.resolve('No competitors provided.')
   ]);
 
-  // ── STEP 2: Synthesize into structured Brand Profile ─────────────────────
+  // ── STEP 3: Synthesize into structured Brand Profile ─────────────────────
   console.log('[Context Agent] Synthesizing Brand Intelligence Profile...');
 
   const synthesisPrompt = `You are the Context Agent for Forge by Sandbox.
@@ -144,7 +166,7 @@ Return ONLY a valid JSON object in this exact structure:
   const profile: BrandProfile = JSON.parse(jsonMatch[0]);
   console.log(`[Context Agent] Profile built. Tone: "${profile.voice_profile?.tone_summary}"`);
 
-  // ── STEP 3: Write to Brain ────────────────────────────────────────────────
+  // ── STEP 4: Write to Brain ────────────────────────────────────────────────
   const saved = await writeToBrain('brand_profiles', {
     client_id: clientId,
     voice_profile: JSON.stringify(profile.voice_profile),
@@ -154,10 +176,10 @@ Return ONLY a valid JSON object in this exact structure:
     last_scraped: new Date().toISOString()
   });
 
-  brandProfileId = (saved as Array<{ id: string }>)[0]?.id ?? 'unknown';
+  const brandProfileId = (saved as { id: string })?.id ?? 'unknown';
   console.log(`[Context Agent] Profile written to Brain: ${brandProfileId}`);
 
-  // ── STEP 4: Log agent activity ────────────────────────────────────────────
+  // ── STEP 5: Log agent activity ────────────────────────────────────────────
   try {
     const latencyMs = Date.now() - startTime;
     await sql(
@@ -185,5 +207,5 @@ Return ONLY a valid JSON object in this exact structure:
     console.warn(`[Context Agent] Activity log failed (non-fatal): ${logErr.message}`);
   }
 
-  return { brandProfileId, profile };
+  return { brandProfileId, cached: false, profile };
 }
