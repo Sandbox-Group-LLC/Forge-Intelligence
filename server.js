@@ -70,7 +70,6 @@ async function initDB() {
   }
 
   // Clean up legacy rows where brand_name/brand_url were set to UUID instead of real values
-  // Strategy: extract domain from profile_data, fall back to capitalizing the first segment of brand_url
   try {
     const uuidRegex = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
     const badRows = await pool.query(
@@ -79,14 +78,12 @@ async function initDB() {
     );
 
     const domainToName = (url) => {
-      // e.g. "zapier.com" or "https://zapier.com" -> "Zapier"
       const clean = url.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].split('.')[0];
       return clean.charAt(0).toUpperCase() + clean.slice(1);
     };
 
     for (const row of badRows.rows) {
       const pd = row.profile_data || {};
-      // Try to get the real URL from profile_data first
       const realUrl = pd.brandUrl || pd.brand_url || null;
       const realName = pd.brandName || pd.brand_name || (realUrl ? domainToName(realUrl) : null);
       if (realUrl || realName) {
@@ -130,7 +127,6 @@ async function initDB() {
     `);
     const cols = colResult.rows.map(r => r.column_name);
 
-    // Add any missing new columns
     const required = [
       { name: 'brand_url',    def: "TEXT NOT NULL DEFAULT ''" },
       { name: 'brand_name',   def: "TEXT NOT NULL DEFAULT ''" },
@@ -148,8 +144,6 @@ async function initDB() {
       }
     }
 
-    // Migrate old columns into profile_data for any rows where profile_data is empty
-    // Old schema: voice_profile, personas, third_party_signals, competitive_gaps, client_id, last_scraped
     if (cols.includes('voice_profile')) {
       await pool.query(`
         UPDATE brand_profiles
@@ -171,20 +165,45 @@ async function initDB() {
       console.log('NeonDB: migrated old columns into profile_data');
     }
 
-    // Convert id column from uuid to text if needed
     const idColResult = await pool.query(`
       SELECT data_type FROM information_schema.columns
       WHERE table_schema = 'public' AND table_name = 'brand_profiles' AND column_name = 'id'
     `);
     if (idColResult.rows.length && idColResult.rows[0].data_type === 'uuid') {
-      await pool.query(`
-        ALTER TABLE brand_profiles
-          ALTER COLUMN id TYPE TEXT USING id::text
-      `);
+      await pool.query(`ALTER TABLE brand_profiles ALTER COLUMN id TYPE TEXT USING id::text`);
       console.log('NeonDB: converted id column from uuid to text');
     }
 
     console.log('NeonDB: schema reconciled');
+  }
+
+  // ── geo_briefs table ────────────────────────────────────────────────────────
+  try {
+    const geoCheck = await pool.query(`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = 'geo_briefs'
+    `);
+    if (geoCheck.rows.length === 0) {
+      await pool.query(`
+        CREATE TABLE geo_briefs (
+          id TEXT PRIMARY KEY,
+          brand_profile_id TEXT NOT NULL REFERENCES brand_profiles(id) ON DELETE CASCADE,
+          brand_url TEXT NOT NULL,
+          brand_name TEXT NOT NULL,
+          version INTEGER NOT NULL DEFAULT 1,
+          brief_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_gb_brand_profile ON geo_briefs(brand_profile_id);
+        CREATE INDEX IF NOT EXISTS idx_gb_brand_url ON geo_briefs(brand_url);
+      `);
+      console.log('NeonDB: geo_briefs table created');
+    } else {
+      console.log('NeonDB: geo_briefs table already exists');
+    }
+  } catch(e) {
+    console.log('NeonDB: geo_briefs init note:', e.message);
   }
 }
 
@@ -309,7 +328,6 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
     const profileData = JSON.parse(jsonMatch[0]);
 
     if (saveToBrain) {
-      // Always derive brand name: Claude response > domain extraction > fallback
       const domainToName = (url) => {
         const clean = url.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].split('.')[0];
         return clean.charAt(0).toUpperCase() + clean.slice(1);
@@ -349,6 +367,180 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
 
   } catch (err) {
     console.error('Context Agent error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── GEO Strategist API (Stage 2) ──────────────────────────────────────────────
+
+app.get('/api/geo-strategist/briefs', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, brand_profile_id, brand_url, brand_name, version, brief_data, created_at, updated_at
+       FROM geo_briefs ORDER BY updated_at DESC`
+    );
+    const data = result.rows.map(r => ({
+      id: r.id,
+      brandProfileId: r.brand_profile_id,
+      brandUrl: r.brand_url,
+      brandName: r.brand_name,
+      version: r.version,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      ...r.brief_data
+    }));
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/geo-strategist/briefs/:id', async (req, res) => {
+  try {
+    const result = await pool.query(`SELECT * FROM geo_briefs WHERE id = $1`, [req.params.id]);
+    if (!result.rows.length) return res.status(404).json({ success: false, error: 'Not found' });
+    const r = result.rows[0];
+    res.json({ success: true, data: {
+      id: r.id, brandProfileId: r.brand_profile_id,
+      brandUrl: r.brand_url, brandName: r.brand_name,
+      version: r.version, createdAt: r.created_at, updatedAt: r.updated_at,
+      ...r.brief_data
+    }});
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/geo-strategist/analyze', async (req, res) => {
+  const { brandProfileId, topicFocus = '', additionalContext = '' } = req.body;
+  if (!brandProfileId) {
+    return res.status(400).json({ success: false, error: 'brandProfileId is required' });
+  }
+
+  try {
+    // ── Brain-First: load Stage 1 context ────────────────────────────────────
+    const profileResult = await pool.query(
+      `SELECT * FROM brand_profiles WHERE id = $1`, [brandProfileId]
+    );
+    if (!profileResult.rows.length) {
+      return res.status(404).json({ success: false, error: 'Brand profile not found. Run Stage 1 first.' });
+    }
+    const profile = profileResult.rows[0];
+    const pd = profile.profile_data || {};
+
+    // ── Check for existing GEO brief for this brand profile ──────────────────
+    const existingBrief = await pool.query(
+      `SELECT * FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY version DESC LIMIT 1`,
+      [brandProfileId]
+    );
+    if (existingBrief.rows.length > 0 && !topicFocus && !additionalContext) {
+      const r = existingBrief.rows[0];
+      return res.json({ success: true, cached: true, data: {
+        id: r.id, brandProfileId: r.brand_profile_id,
+        brandUrl: r.brand_url, brandName: r.brand_name,
+        version: r.version, createdAt: r.created_at, updatedAt: r.updated_at,
+        ...r.brief_data
+      }});
+    }
+
+    // ── Build prompt from Stage 1 context ────────────────────────────────────
+    const voiceProfile = pd.voiceProfile || {};
+    const personas = pd.personas || [];
+    const competitiveGaps = pd.competitiveGaps || [];
+    const topicSection = topicFocus ? `\nFocus topic: ${topicFocus}` : '';
+    const contextSection = additionalContext ? `\nAdditional context: ${additionalContext}` : '';
+
+    const prompt = `You are the Forge Intelligence GEO Strategist — Stage 2 of an 8-stage Brand Intelligence platform.
+
+Your job: Take the Stage 1 Brand Intelligence Profile and generate a comprehensive GEO (Generative Engine Optimization) strategy brief. GEO means optimizing content to be cited by AI systems: ChatGPT, Perplexity, Google AI Overviews, Gemini, and Claude.
+
+<brand_context>
+Brand: ${profile.brand_name}
+URL: ${profile.brand_url}
+Voice summary: ${voiceProfile.summary || 'Not available'}
+Tone: ${voiceProfile.writingStyle || 'Not available'}
+Key phrases: ${(voiceProfile.keyPhrases || []).join(', ')}
+Personas: ${personas.map(p => p.name + ' — ' + p.role).join('; ')}
+Competitive gaps identified: ${competitiveGaps.map(g => g.topic + ' (priority: ' + g.priority + ')').join('; ')}
+</brand_context>${topicSection}${contextSection}
+
+Return ONLY valid JSON (no markdown, no explanation):
+{
+  "executiveSummary": "string — 2-3 sentence strategic overview of this brand's GEO opportunity",
+  "topicalClusters": [{
+    "id": "string",
+    "clusterName": "string",
+    "strategicRationale": "string",
+    "geoCitationProbability": "high|medium|low",
+    "competitorPresence": "strong|moderate|weak|none",
+    "recommendedTopics": [{
+      "title": "string",
+      "intent": "informational|commercial|navigational|transactional",
+      "geoAiTargets": ["ChatGPT"|"Perplexity"|"Google AI Overviews"|"Gemini"|"Claude"],
+      "whiteSpaceScore": 0-100,
+      "suggestedH1": "string",
+      "keyEntities": ["string"],
+      "suggestedSchema": ["Article"|"FAQ"|"HowTo"|"Organization"|"Breadcrumb"|"Product"]
+    }]
+  }],
+  "quickWins": [{
+    "topic": "string",
+    "rationale": "string — why this is a quick win for this specific brand",
+    "estimatedTimeToRank": "string",
+    "geoAiTarget": "string"
+  }],
+  "entityStrategy": {
+    "coreEntities": ["string"],
+    "missingEntities": ["string — entities competitors are cited for that this brand isn't"],
+    "authorityBuilding": "string — specific recommendation for building entity authority"
+  },
+  "contentCalendarRecommendation": {
+    "month1": ["string"],
+    "month2": ["string"],
+    "month3": ["string"]
+  },
+  "geoScorecard": {
+    "currentGeoReadiness": 0-100,
+    "primaryGap": "string",
+    "topOpportunity": "string"
+  }
+}
+Requirements: 3-4 topicalClusters each with 3-4 recommendedTopics, 3-5 quickWins, month calendar with 3-4 topics each month.`;
+
+    const message = await anthropic.messages.create({
+      model: 'claude-opus-4-5',
+      max_tokens: 6000,
+      messages: [{ role: 'user', content: prompt }]
+    });
+
+    const raw = message.content[0].text;
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('Claude returned no valid JSON');
+    const briefData = JSON.parse(jsonMatch[0]);
+
+    // ── Persist GEO brief ────────────────────────────────────────────────────
+    const versionResult = await pool.query(
+      `SELECT COALESCE(MAX(version), 0) as max_v FROM geo_briefs WHERE brand_profile_id = $1`, [brandProfileId]
+    );
+    const nextVersion = versionResult.rows[0].max_v + 1;
+    const id = randomUUID();
+
+    const inserted = await pool.query(
+      `INSERT INTO geo_briefs (id, brand_profile_id, brand_url, brand_name, version, brief_data)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [id, brandProfileId, profile.brand_url, profile.brand_name, nextVersion, JSON.stringify(briefData)]
+    );
+    const r = inserted.rows[0];
+
+    res.json({ success: true, cached: false, data: {
+      id: r.id, brandProfileId: r.brand_profile_id,
+      brandUrl: r.brand_url, brandName: r.brand_name,
+      version: r.version, createdAt: r.created_at, updatedAt: r.updated_at,
+      ...briefData
+    }});
+
+  } catch (err) {
+    console.error('GEO Strategist error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
