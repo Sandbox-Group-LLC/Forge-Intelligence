@@ -45,7 +45,12 @@ async function fetchBrains(): Promise<HistoryEntry[]> {
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [currentView, setCurrentView] = useState<ViewType>('new-analysis');
+  const [currentView, setCurrentView] = useState<ViewType>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const viewParam = params.get('view');
+    const valid: ViewType[] = ['new-analysis', 'active-run', 'brand-profile', 'strategy', 'brain-history'];
+    return (valid.includes(viewParam as ViewType) ? viewParam : 'new-analysis') as ViewType;
+  });
   const [brandProfile, setBrandProfile] = useState<BrandProfile | null>(null);
   const [analysisInput, setAnalysisInput] = useState<AnalysisInput>({
     brandUrl: '',
