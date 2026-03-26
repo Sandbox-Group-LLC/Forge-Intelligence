@@ -1,6 +1,6 @@
 # Forge Intelligence — Master SSOT
 
-> **Last updated:** March 26, 2026 | **Status:** Phase 1 — Active Build
+> **Last updated:** March 26, 2026 (1:54 PM PDT) | **Status:** Phase 1 — Active Build
 > **This README is the single source of truth for all AI sessions, dev work, and project decisions.**
 > When starting a new AI session, read this file top to bottom before touching anything.
 
@@ -30,6 +30,8 @@
 | Waitlist email capture | ✅ LIVE | Resend wired, emails delivering |
 | `/context-agent` workspace | ✅ LIVE | Full UI built + styled with 12-directive design system |
 | Context Agent backend | ✅ LIVE | Stage 1, Claude Sonnet 4.6, Brain-First protocol |
+| GEO Strategist backend | ✅ LIVE | Stage 2, Claude Sonnet 4.6, 12 topics, per-platform scoring |
+| `/geo-strategist` workspace | ✅ LIVE | Topical Authority + GEO Opportunities + Entity & Schema + GEO Brief tabs |
 | NeonDB brand profiles | ✅ LIVE | Persisting on every call, cache hits working |
 | Activity logging | ✅ LIVE | `agent_activity_log` table, tokens + latency tracked |
 | Real `brandProfileId` | ✅ LIVE | Returns UUID on every call, `cached: true` on repeat |
@@ -37,7 +39,6 @@
 
 ### 🔲 What Is NOT Built Yet
 
-- Stage 2 — GEO Strategist agent
 - Stage 3 — Authenticity Enricher agent
 - Stage 4 — Multimodal Generator
 - Stage 5 — Compliance & Human Refinement Gate
@@ -113,7 +114,7 @@ See `Content Platform Global Env Vars.docx` in repo for full list. Key vars:
 │   │   │   ├── index.ts   ← Context Agent — fully wired, live
 │   │   │   └── tools.ts   ← Scraper tools
 │   │   ├── stage2_geo_strategist/
-│   │   │   └── system_prompt.md   ← Prompt spec written, agent NOT built
+│   │   │   └── system_prompt.md   ← Prompt spec written, wired in server.js
 │   │   └── stage3_authenticity_enricher/
 │   │       └── system_prompt.md   ← Prompt spec written, agent NOT built
 │   └── tools/
@@ -173,6 +174,45 @@ Returns service status + uptime.
 
 **Important:** `clientId` must be a valid UUID v4. Auto-generation of UUID server-side if non-UUID is passed is on the backlog.
 
+
+### `POST /api/geo-strategist/analyze`
+**The main Stage 2 endpoint.**
+
+```json
+// Request
+{
+  "brandProfileId": "799a5acf-8bbf-4beb-a704-b5adb07a5a37"
+}
+
+// Response
+{
+  "success": true,
+  "data": {
+    "topicalAuthorityMap": [
+      {
+        "topic": "AI Training Infrastructure Leadership",
+        "citationProbability": 92,
+        "coverage": "NVIDIA dominates discourse with CUDA ecosystem and H100/A100 citations",
+        "priority": "high"
+      }
+    ],
+    "geoOpportunities": [
+      {
+        "topic": "Sovereign AI and Local Inference",
+        "chatgpt": 72, "perplexity": 75, "aiOverviews": 68, "gemini": 71,
+        "quickWin": true
+      }
+    ],
+    "entitySchema": { ... },
+    "geoBrief": { ... },
+    "opportunityScore": 74,
+    "cached": false
+  }
+}
+```
+
+**Caching:** Results stored in `geo_briefs` table in NeonDB. Stale cache auto-detected (topics named "Unknown" or zero scores trigger fresh run).
+
 ### `POST /api/waitlist`
 Captures waitlist email, stores in DB, sends confirmation via Resend.
 
@@ -223,11 +263,11 @@ The UI is built on these non-negotiable directives, applied to all screens:
 
 - **Landing page** (`forgeintelligence.ai`) — hero, interrupt, 3 pillars, moat section, GEO FAQ bait, waitlist CTA
 - **`/context-agent` workspace** — fully styled, wired to live API, shows brand profile output
+- **`/geo-strategist` workspace** — fully styled, 4-tab layout (Topical Authority, GEO Opportunities, Entity & Schema, GEO Brief), wired to live API
 
 ### Screens NOT Built Yet
 
 - Admin dashboard (agent activity log)
-- Stage 2 GEO Brief workspace
 - Stage 3 Enriched Brief workspace
 - Stage 4 Content generation workspace
 - Client brain viewer
@@ -248,7 +288,7 @@ See `Whiteboard` file for full detailed spec on all 8 stages. Summary:
 | Stage | Name | Status | Agent | Model |
 |-------|------|--------|-------|-------|
 | 1 | Context Hub | ✅ LIVE | Context Agent | Claude Sonnet 4.6 |
-| 2 | GEO Strategy | 🔲 Not built | GEO Strategist | Claude Sonnet 4.6 |
+| 2 | GEO Strategy | ✅ LIVE | GEO Strategist | Claude Sonnet 4.6 |
 | 3 | Authenticity Enrichment | 🔲 Not built | Authenticity Enricher | Gemini 2.5 Pro |
 | 4 | Multimodal Generation | 🔲 Not built | Generator | Gemini 2.5 Pro |
 | 5 | Compliance & Human Gate | 🔲 Not built | Compliance Agent | Claude Sonnet 4.6 |
@@ -412,7 +452,7 @@ Forge connects to the broader Sandbox Group ecosystem:
 - [x] NeonDB setup (`forge_platform`, `forge_brain`, full schema)
 - [x] Context Agent (Stage 1) — fully wired, persisting, caching, logging
 - [x] `/context-agent` workspace UI — fully built + styled
-- [ ] Stage 2 — GEO Strategist agent (prompt spec written, agent NOT built)
+- [x] Stage 2 — GEO Strategist agent (LIVE — Topical Authority Mapper, GEO Opportunity Scorer, Entity & Schema Mapper, Brief Generator)
 - [ ] Stage 3 — Authenticity Enricher agent (prompt spec written, agent NOT built)
 - [ ] Admin dashboard (surface `agent_activity_log`)
 - [ ] Brand brain pre-seeding script (run against target prospect domains)
