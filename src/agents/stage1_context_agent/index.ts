@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { queryBrain, writeToBrain } from '../../brain/client';
+import { queryBrain, writeToBrain, sql } from '../../brain/client';
 import { getBrainContext } from '../../brain/memory';
 import { scrapeDomain, scrapeReviews, scrapeCompetitors } from '../../tools/scraper';
 import { config } from 'dotenv';
@@ -52,6 +52,10 @@ export async function runContextAgent(input: ContextAgentInput): Promise<{
   profile: BrandProfile;
 }> {
   const { clientId, url, competitors } = input;
+  const startTime = Date.now();
+  let tokensUsed = 0;
+  let brandProfileId = 'unknown';
+
   console.log(`[Context Agent] Starting — client: ${clientId}, url: ${url}`);
 
   // ── STEP 0: Brain-First Protocol ─────────────────────────────────────────
@@ -125,13 +129,13 @@ Return ONLY a valid JSON object in this exact structure:
     messages: [{ role: 'user', content: synthesisPrompt }]
   });
 
-  // Fix: use SDK's own TextBlock type — handles citations field in ^0.39.0
+  tokensUsed = synthesisResponse.usage.input_tokens + synthesisResponse.usage.output_tokens;
+
   const rawText = synthesisResponse.content
     .filter((b): b is Anthropic.TextBlock => b.type === 'text')
     .map((b: Anthropic.TextBlock) => b.text)
     .join('\n');
 
-  // Extract JSON from response
   const jsonMatch = rawText.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
     throw new Error('[Context Agent] No valid JSON in synthesis response');
@@ -150,8 +154,36 @@ Return ONLY a valid JSON object in this exact structure:
     last_scraped: new Date().toISOString()
   });
 
-  const profileId = (saved as Array<{ id: string }>)[0]?.id ?? 'unknown';
-  console.log(`[Context Agent] Profile written to Brain: ${profileId}`);
+  brandProfileId = (saved as Array<{ id: string }>)[0]?.id ?? 'unknown';
+  console.log(`[Context Agent] Profile written to Brain: ${brandProfileId}`);
 
-  return { brandProfileId: profileId, profile };
+  // ── STEP 4: Log agent activity ────────────────────────────────────────────
+  try {
+    const latencyMs = Date.now() - startTime;
+    await sql(
+      `INSERT INTO agent_activity_log
+        (client_id, brand_profile_id, agent_name, stage, input_summary, output_summary, tokens_used, latency_ms, status)
+       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        clientId,
+        brandProfileId !== 'unknown' ? brandProfileId : null,
+        'context-agent',
+        1,
+        JSON.stringify({ url, competitors }),
+        JSON.stringify({
+          personas_count: profile.personas?.length,
+          white_space: profile.competitive_gaps?.white_space,
+          tone_summary: profile.voice_profile?.tone_summary
+        }),
+        tokensUsed,
+        latencyMs,
+        'complete'
+      ]
+    );
+    console.log(`[Context Agent] Activity logged — ${tokensUsed} tokens, ${latencyMs}ms`);
+  } catch (logErr: any) {
+    console.warn(`[Context Agent] Activity log failed (non-fatal): ${logErr.message}`);
+  }
+
+  return { brandProfileId, profile };
 }
