@@ -94,6 +94,8 @@ function GeoStrategistContent() {
       if (!data.success) throw new Error(data.error || 'Analysis failed');
       setCompletedStages([1,2,3,4,5]);
       setCurrentStage(0);
+      console.log('[GEO DEBUG] topicalAuthorityMap[0]:', JSON.stringify(data.data?.topicalAuthorityMap?.[0]));
+      console.log('[GEO DEBUG] geoOpportunities[0]:', JSON.stringify(data.data?.geoOpportunities?.[0]));
       setResult(data.data);
       setActiveTab('topical');
     } catch(e: any) {
@@ -194,12 +196,12 @@ function GeoStrategistContent() {
               </div>
               <div className="geo-grid">
                 {(result.topicalAuthorityMap || []).map((item, i) => (
-                  <div key={i} className={`geo-card priority-${item.priority}`}>
+                  <div key={i} className={`geo-card priority-${item.priority || 'low'}`}>
                     <div className="geo-card-top">
-                      <span className="geo-topic">{item.topic}</span>
-                      <span className={`geo-priority-badge ${item.priority}`}>{item.priority}</span>
+                      <span className="geo-topic">{item.topic || (item as any).cluster || (item as any).name || 'Unknown'}</span>
+                      <span className={`geo-priority-badge ${item.priority || 'low'}`}>{item.priority || 'low'}</span>
                     </div>
-                    <div className="geo-card-coverage">{item.coverage}</div>
+                    <div className="geo-card-coverage">{item.coverage || (item as any).rationale || (item as any).description || ''}</div>
                     <div className="geo-citation-bar">
                       <div className="geo-citation-label">Citation Probability</div>
                       <div className="geo-bar-track"><div className="geo-bar-fill" style={{ width: `${item.citationProbability}%` }} /></div>
