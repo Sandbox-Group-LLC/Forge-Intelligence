@@ -205,6 +205,25 @@ async function initDB() {
   } catch(e) {
     console.log('NeonDB: geo_briefs init note:', e.message);
   }
+
+  // ── enriched_briefs table ─────────────────────────────────────────────────
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS enriched_briefs (
+      id TEXT PRIMARY KEY,
+      brand_profile_id TEXT NOT NULL,
+      geo_brief_id TEXT,
+      brand_url TEXT NOT NULL DEFAULT '',
+      brand_name TEXT NOT NULL DEFAULT '',
+      version INTEGER NOT NULL DEFAULT 1,
+      confidence_score INTEGER DEFAULT 0,
+      enriched_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`);
+    console.log('NeonDB: enriched_briefs table ensured');
+  } catch(e) {
+    console.log('NeonDB: enriched_briefs init note:', e.message);
+  }
 }
 
   // ── geo_briefs: add opportunity_score column if missing ─────────────────────
@@ -1114,18 +1133,6 @@ Return ONLY valid JSON:
     } catch(e) { console.log('[ENRICH] Tool 4 parse warn:', e.message); assembledBrief = { enrichedSections: [], overallConfidence: 0, readyForStage4: false }; }
 
     // ── Persist to enriched_briefs ────────────────────────────────────────────
-    await pool.query(`CREATE TABLE IF NOT EXISTS enriched_briefs (
-      id TEXT PRIMARY KEY,
-      brand_profile_id TEXT NOT NULL,
-      geo_brief_id TEXT,
-      brand_url TEXT NOT NULL DEFAULT '',
-      brand_name TEXT NOT NULL DEFAULT '',
-      version INTEGER NOT NULL DEFAULT 1,
-      confidence_score INTEGER DEFAULT 0,
-      enriched_data JSONB NOT NULL DEFAULT '{}'::jsonb,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )`);
 
     const vRes = await pool.query(
       `SELECT COALESCE(MAX(version), 0) as max_v FROM enriched_briefs WHERE brand_profile_id = $1`, [brandProfileId]
