@@ -18,6 +18,11 @@ const icons = {
       <line x1="12" x2="12" y1="15" y2="3"/>
     </svg>
   ),
+  zap: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+    </svg>
+  ),
   save: (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
@@ -106,6 +111,13 @@ export function BrandProfile() {
             <span className="btn-icon">{icons.save}</span>
             Save Version
           </button>
+          <a
+            href={`/geo-strategist?profileId=${brandProfile.id}`}
+            className="btn-action geo-cta"
+          >
+            <span className="btn-icon">{icons.zap}</span>
+            Run GEO Strategy →
+          </a>
         </div>
       </div>
 
