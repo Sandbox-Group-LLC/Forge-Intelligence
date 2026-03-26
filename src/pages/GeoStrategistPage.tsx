@@ -67,6 +67,7 @@ function GeoStrategistContent() {
 
   const runAnalysis = async () => {
     if (!selectedBrainId) return;
+    const shouldForce = isRerun;
     setIsRunning(true);
     setResult(null);
     setError('');
@@ -77,7 +78,7 @@ function GeoStrategistContent() {
     const analyzePromise = fetch('/api/geo-strategist/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ brandProfileId: selectedBrainId, force: isRerun })
+      body: JSON.stringify({ brandProfileId: selectedBrainId, force: shouldForce })
     });
 
     const timings = [1500, 3000, 3500, 2500];
