@@ -55,7 +55,7 @@ export default function Landing() {
         </div>
 
         <div style={styles.content}>
-          <p style={styles.eyebrow}>Context Agent · Early Access</p>
+          <p style={styles.eyebrow}>Context Hub · Early Access</p>
           <h1 style={styles.headline}>The intelligence layer behind modern marketing.</h1>
           <p style={styles.subline}>
             Forge Intelligence gives marketing teams a unified view of brand context, audience signals, and strategic direction — so every decision starts from clarity, not guesswork.
