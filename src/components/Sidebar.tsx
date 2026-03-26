@@ -160,7 +160,25 @@ export function Sidebar() {
             <button
               key={item.id}
               className={`nav-item ${status}`}
-              onClick={() => status !== 'disabled' && setCurrentView(item.id)}
+              onClick={() => {
+                if (status === 'disabled') return;
+                const routeMap: Record<string, string> = {
+                  'new-analysis': '/context-hub',
+                  'active-run': '/context-hub?view=active-run',
+                  'brand-profile': '/context-hub?view=brand-profile',
+                  'strategy': '/context-hub?view=strategy',
+                  'brain-history': '/context-hub?view=brain-history',
+                  'geo-strategist': '/geo-strategist',
+                  'authenticity-enricher': '/authenticity-enricher',
+                };
+                const targetPath = routeMap[item.id] || '/context-hub';
+                const currentPath = window.location.pathname;
+                if (currentPath !== targetPath.split('?')[0]) {
+                  window.location.href = targetPath;
+                } else {
+                  setCurrentView(item.id);
+                }
+              }}
               disabled={status === 'disabled'}
               title={sidebarCollapsed ? item.label : undefined}
             >
