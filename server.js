@@ -484,12 +484,16 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
 // ── GEO data normalizer — shared by fresh + cached responses ─────────────────
 function normalizeGeoData(briefData, topicalMap, geoOpportunities, entitySchema, profile) {
   const gaps = (topicalMap && topicalMap.gapsByCluster) || [];
-  const topicalAuthorityMap = gaps.map(g => ({
-    topic: g.topic || g.cluster || 'Unknown',
-    coverage: g.rationale || g.owner || '',
-    citationProbability: g.geoCitationScore || g.citationProbability || 0,
-    priority: (g.geoCitationScore || 0) >= 70 ? 'high' : (g.geoCitationScore || 0) >= 40 ? 'medium' : 'low'
-  }));
+  if (gaps.length > 0) console.log('[GEO] normalizer gap keys:', Object.keys(gaps[0]));
+  const topicalAuthorityMap = gaps.map(g => {
+    const score = g.geoCitationScore || g.citationProbability || g.score || g.geoScore || g.probability || 0;
+    return {
+      topic: g.topic || g.cluster || g.name || g.title || 'Unknown',
+      coverage: g.rationale || g.description || g.reason || g.owner || g.gap || '',
+      citationProbability: score,
+      priority: score >= 70 ? 'high' : score >= 40 ? 'medium' : 'low'
+    };
+  });
 
   const topicMap = {};
   (geoOpportunities || []).forEach(o => {
@@ -630,9 +634,10 @@ BRAIN MEMORIES (high performers): ${JSON.stringify(brainMemories)}`;
         const bd = r.brief_data || {};
         const cachedTopical = bd.topicalAuthorityMap || [];
         const cachedGeo = bd.geoOpportunitiesNorm || [];
-        // If cached data is stale/empty, bypass cache and re-run
-        if (cachedTopical.length === 0 || cachedGeo.length === 0) {
-          console.log('[GEO] Cache stale — topical or geo empty, forcing fresh run');
+        const topicalIsReal = cachedTopical.length > 0 && cachedTopical.some(t => t.topic && t.topic !== 'Unknown' && t.citationProbability > 0);
+        const geoIsReal = cachedGeo.length > 0 && cachedGeo.some(g => g.topic && (g.chatgpt > 0 || g.perplexity > 0));
+        if (!topicalIsReal || !geoIsReal) {
+          console.log('[GEO] Cache stale — topical or geo has bad data, forcing fresh run');
           // fall through to fresh analysis
         } else {
           const normalized = { topicalAuthorityMap: cachedTopical, geoOpportunities: cachedGeo, entitySchemaMap: bd.entitySchemaMap, geoBrief: bd.geoBrief };
@@ -683,6 +688,7 @@ Return ONLY valid JSON:
       topicalMap = { gapsByCluster: gaps, brandClusters: [], competitorClusters: [] };
     } catch(e) { console.log('[GEO] Tool 1 parse warn:', e.message, '| raw:', topicalRes.content[0].text.slice(0,200)); }
     console.log(`[GEO] Tool 1 gaps: ${topicalMap.gapsByCluster.length}`);
+    if (topicalMap.gapsByCluster.length > 0) console.log("[GEO] Tool 1 sample:", JSON.stringify(topicalMap.gapsByCluster[0]));
 
     // ── Tool 2: GEO Opportunity Scorer ────────────────────────────────────────
     console.log('[GEO] Tool 2: GEO Opportunity Scorer...');
