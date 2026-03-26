@@ -830,6 +830,350 @@ Return ONLY valid JSON:
 });
 
 
+
+// ── Authenticity Enricher API (Stage 3) ──────────────────────────────────────
+
+app.get('/api/authenticity-enricher/briefs', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, brand_profile_id, geo_brief_id, brand_url, brand_name, version,
+              confidence_score, enriched_data, created_at, updated_at
+       FROM enriched_briefs ORDER BY updated_at DESC`
+    );
+    res.json({ success: true, data: result.rows.map(r => ({
+      id: r.id, brandProfileId: r.brand_profile_id, geoBriefId: r.geo_brief_id,
+      brandUrl: r.brand_url, brandName: r.brand_name, version: r.version,
+      confidenceScore: r.confidence_score, createdAt: r.created_at, updatedAt: r.updated_at,
+      ...r.enriched_data
+    }))});
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+app.post('/api/authenticity-enricher/analyze', async (req, res) => {
+  const { brandProfileId, geoBriefId, manualInputs = {}, force = false } = req.body;
+  if (!brandProfileId) return res.status(400).json({ success: false, error: 'brandProfileId is required' });
+  const startTime = Date.now();
+
+  try {
+    // ── Brain-First ──────────────────────────────────────────────────────────
+    let brainPatterns = [], brainMistakes = [];
+    try {
+      const [pRes, mRes] = await Promise.all([
+        pool.query(`SELECT pattern_type, success_rate, tags FROM patterns ORDER BY success_rate DESC LIMIT 10`),
+        pool.query(`SELECT mistake_type, human_feedback, guardrail_created FROM mistakes ORDER BY created_at DESC LIMIT 10`)
+      ]);
+      brainPatterns = pRes.rows;
+      brainMistakes = mRes.rows;
+    } catch(e) { console.log('[ENRICH] Brain cold:', e.message); }
+
+    // ── Load brand profile ───────────────────────────────────────────────────
+    const profileResult = await pool.query(`SELECT * FROM brand_profiles WHERE id = $1`, [brandProfileId]);
+    if (!profileResult.rows.length) return res.status(404).json({ success: false, error: 'Brand profile not found. Run Stage 1 first.' });
+    const profile = profileResult.rows[0];
+    const pd = profile.profile_data || {};
+
+    // ── Load GEO brief if available ──────────────────────────────────────────
+    let geoBrief = null;
+    if (geoBriefId) {
+      const gbRes = await pool.query(`SELECT * FROM geo_briefs WHERE id = $1`, [geoBriefId]);
+      if (gbRes.rows.length) geoBrief = { ...gbRes.rows[0].brief_data, brandName: gbRes.rows[0].brand_name };
+    } else {
+      const gbRes = await pool.query(
+        `SELECT * FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY version DESC LIMIT 1`, [brandProfileId]
+      );
+      if (gbRes.rows.length) geoBrief = { ...gbRes.rows[0].brief_data, briefId: gbRes.rows[0].id, brandName: gbRes.rows[0].brand_name };
+    }
+
+    // ── Cache check ──────────────────────────────────────────────────────────
+    if (!force && !Object.keys(manualInputs).length) {
+      const existing = await pool.query(
+        `SELECT * FROM enriched_briefs WHERE brand_profile_id = $1 ORDER BY version DESC LIMIT 1`, [brandProfileId]
+      );
+      if (existing.rows.length > 0) {
+        const r = existing.rows[0];
+        const ed = r.enriched_data || {};
+        const isReal = ed.smeSignals && ed.smeSignals.some(s => s.confidence > 0);
+        if (isReal) {
+          console.log('[ENRICH] Cache hit for', profile.brand_url);
+          return res.json({ success: true, cached: true, data: {
+            id: r.id, brandProfileId: r.brand_profile_id, geoBriefId: r.geo_brief_id,
+            brandUrl: r.brand_url, brandName: r.brand_name, version: r.version,
+            confidenceScore: r.confidence_score, createdAt: r.created_at, updatedAt: r.updated_at,
+            ...r.enriched_data
+          }});
+        }
+        console.log('[ENRICH] Cache stale — forcing fresh run');
+      }
+    }
+
+    const voiceProfile = pd.voiceProfile || {};
+    const personas = pd.personas || [];
+    const thirdPartySignals = pd.thirdPartySignals || [];
+    const brandUrl = profile.brand_url;
+    const brandName = profile.brand_name;
+
+    // Build manual inputs context string
+    const manualCtx = Object.keys(manualInputs).length
+      ? `\nMANUAL INPUTS PROVIDED BY USER (treat as verified, high-confidence):\n${JSON.stringify(manualInputs, null, 2)}`
+      : '';
+
+    // ── Tool 1: SME Signal Scraper ────────────────────────────────────────────
+    console.log('[ENRICH] Tool 1: SME Signal Scraper...');
+
+    let sonarSignals = {};
+    try {
+      const sonarRes = await fetch('https://api.perplexity.ai/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'sonar',
+          messages: [{
+            role: 'user',
+            content: `Research ${brandName} (${brandUrl}) and return ONLY valid JSON (no markdown):
+{
+  "awards": ["award name and year if known"],
+  "certifications": ["certifications, accreditations, standards"],
+  "caseStudies": ["brief description of notable case studies or client outcomes"],
+  "originalResearch": ["surveys, reports, studies, or proprietary data published"],
+  "namedExperts": ["name and title of known SMEs, executives, or thought leaders at this company"],
+  "mediaAppearances": ["podcasts, publications, speaking engagements"],
+  "customerQuotes": ["verbatim or paraphrased quotes from customers or reviews"],
+  "foundingStory": "brief founding/origin story if notable",
+  "notableClients": ["notable clients or logos if public"]
+}
+Return empty arrays if not found. Be factual and accurate.`
+          }],
+          max_tokens: 1000
+        })
+      });
+      if (sonarRes.ok) {
+        const sd = await sonarRes.json();
+        const match = sd.choices[0].message.content.match(/\{[\s\S]*\}/);
+        if (match) sonarSignals = JSON.parse(match[0]);
+      }
+    } catch(e) { console.log('[ENRICH] Sonar scrape failed:', e.message); }
+
+    console.log('[ENRICH] Sonar signals found:', Object.keys(sonarSignals).filter(k => {
+      const v = sonarSignals[k]; return Array.isArray(v) ? v.length > 0 : !!v;
+    }).join(', ') || 'none');
+
+    // ── Tool 2: E-E-A-T Confidence Scorer + Gap Detector ─────────────────────
+    console.log('[ENRICH] Tool 2: E-E-A-T Confidence Scorer...');
+
+    const scorerRes = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 2000,
+      messages: [{ role: 'user', content: `You are the E-E-A-T Confidence Scorer for Forge Intelligence Stage 3.
+
+BRAND: ${brandName} (${brandUrl})
+SCRAPED SIGNALS: ${JSON.stringify(sonarSignals)}${manualCtx}
+THIRD PARTY SIGNALS FROM STAGE 1: ${JSON.stringify(thirdPartySignals).slice(0, 600)}
+
+Score each E-E-A-T dimension 0-100 based on available evidence. Flag gaps where confidence < 60.
+
+Return ONLY valid JSON:
+{
+  "scores": {
+    "experience": {"score": 0, "rationale": "string", "evidence": ["string"]},
+    "expertise": {"score": 0, "rationale": "string", "evidence": ["string"]},
+    "authoritativeness": {"score": 0, "rationale": "string", "evidence": ["string"]},
+    "trustworthiness": {"score": 0, "rationale": "string", "evidence": ["string"]}
+  },
+  "overallEEATScore": 0,
+  "gaps": [
+    {
+      "dimension": "experience|expertise|authoritativeness|trustworthiness",
+      "gapType": "sme_credentials|awards|case_studies|original_research|customer_proof|author_authority|founding_story|certifications",
+      "severity": "high|medium|low",
+      "tooltip": "friendly 1-sentence prompt asking user to provide this specific information",
+      "placeholder": "example of what to enter",
+      "whyItMatters": "1 sentence on how this improves AI citations"
+    }
+  ],
+  "smeSignals": [
+    {
+      "type": "award|certification|case_study|research|quote|expert|media|client|story",
+      "value": "string",
+      "confidence": 0,
+      "source": "scraped|manual",
+      "injectionPoint": "where in content this should appear"
+    }
+  ]
+}` }]
+    });
+
+    let scorerData = {};
+    try {
+      const sd = extractJSON(scorerRes.content[0].text, 'object');
+      if (!sd) throw new Error('No JSON in Tool 2');
+      scorerData = JSON.parse(sd);
+    } catch(e) { console.log('[ENRICH] Tool 2 parse warn:', e.message); scorerData = { scores: {}, gaps: [], smeSignals: [], overallEEATScore: 0 }; }
+
+    const gaps = scorerData.gaps || [];
+    const needsManualInput = gaps.some(g => g.severity === 'high') && !Object.keys(manualInputs).length;
+    console.log(`[ENRICH] E-E-A-T score: ${scorerData.overallEEATScore} | Gaps: ${gaps.length} | NeedsManual: ${needsManualInput}`);
+
+    // ── Tool 3: Voice + Persona Injection Mapper ──────────────────────────────
+    console.log('[ENRICH] Tool 3: Voice & Persona Injection Mapper...');
+
+    const injectionRes = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 2000,
+      messages: [{ role: 'user', content: `You are the Voice & Persona Injection Mapper for Forge Intelligence Stage 3.
+
+BRAND VOICE: ${JSON.stringify(voiceProfile).slice(0, 600)}
+PERSONAS: ${JSON.stringify(personas).slice(0, 600)}
+E-E-A-T SIGNALS: ${JSON.stringify(scorerData.smeSignals || []).slice(0, 600)}
+GEO BRIEF CONTEXT: ${geoBrief ? JSON.stringify({ targetTopic: geoBrief.targetTopic, h2s: (geoBrief.h2s || []).slice(0,4), quickWins: (geoBrief.quickWins || []).slice(0,3) }) : 'not available'}${manualCtx}
+
+BRAIN PATTERNS (use these): ${JSON.stringify(brainPatterns).slice(0, 400)}
+BRAIN MISTAKES (avoid these): ${JSON.stringify(brainMistakes).slice(0, 400)}
+
+Generate injection strategy for each content section. Return ONLY valid JSON:
+{
+  "voiceConsistencyScore": 0,
+  "injectionMap": [
+    {
+      "section": "string (H2 or content section)",
+      "injectionType": "sme_quote|stat|case_study|first_person_hook|customer_voice|founding_story|award_mention|certification_reference",
+      "suggestedContent": "string (actual suggested injection text)",
+      "persona": "which persona this resonates with",
+      "eeatDimension": "experience|expertise|authoritativeness|trustworthiness",
+      "confidence": 0
+    }
+  ],
+  "powerPhrases": ["customer power phrases to weave in from third party signals"],
+  "authorSchema": {
+    "name": "string or null",
+    "title": "string or null",
+    "expertise": ["string"],
+    "credentials": ["string"],
+    "sameAs": ["urls"]
+  },
+  "contentHooks": [
+    {
+      "hook": "string (opening line or paragraph hook)",
+      "persona": "string",
+      "type": "curiosity|pain_point|stat|story|contrarian"
+    }
+  ]
+}` }]
+    });
+
+    let injectionData = {};
+    try {
+      const id2 = extractJSON(injectionRes.content[0].text, 'object');
+      if (!id2) throw new Error('No JSON in Tool 3');
+      injectionData = JSON.parse(id2);
+    } catch(e) { console.log('[ENRICH] Tool 3 parse warn:', e.message); injectionData = { injectionMap: [], powerPhrases: [], authorSchema: {}, contentHooks: [] }; }
+
+    // ── Tool 4: Enriched Brief Assembler ─────────────────────────────────────
+    console.log('[ENRICH] Tool 4: Enriched Brief Assembler...');
+
+    const assemblerRes = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 3000,
+      messages: [{ role: 'user', content: `You are the Enriched Brief Assembler for Forge Intelligence Stage 3.
+
+BRAND: ${brandName}
+E-E-A-T SCORES: ${JSON.stringify(scorerData.scores || {})}
+INJECTION MAP: ${JSON.stringify(injectionData.injectionMap || []).slice(0, 800)}
+POWER PHRASES: ${JSON.stringify(injectionData.powerPhrases || [])}
+AUTHOR SCHEMA: ${JSON.stringify(injectionData.authorSchema || {})}
+GEO BRIEF: ${geoBrief ? JSON.stringify({ h1: geoBrief.h1, h2s: (geoBrief.h2s || []).slice(0,6), faqStructure: (geoBrief.faqStructure || []).slice(0,4) }) : 'not available'}
+GAPS REMAINING: ${JSON.stringify(gaps.filter(g => g.severity === 'high').map(g => g.gapType))}
+
+Assemble the final enriched brief with all E-E-A-T signals woven in. Flag sections needing human SME input.
+
+Return ONLY valid JSON:
+{
+  "enrichedTitle": "string",
+  "enrichedH1": "string",
+  "enrichedSections": [
+    {
+      "heading": "string",
+      "eeatInjections": ["specific injections for this section"],
+      "confidenceFlag": "green|yellow|red",
+      "flagReason": "string or null",
+      "smeRequired": false
+    }
+  ],
+  "enrichedFAQ": [{"q": "string", "a": "string", "eeatSignal": "string"}],
+  "authorSchemaMarkup": {},
+  "overallConfidence": 0,
+  "readyForStage4": true,
+  "humanReviewItems": ["specific items needing human verification or SME input"]
+}` }]
+    });
+
+    let assembledBrief = {};
+    try {
+      const ab = extractJSON(assemblerRes.content[0].text, 'object');
+      if (!ab) throw new Error('No JSON in Tool 4');
+      assembledBrief = JSON.parse(ab);
+    } catch(e) { console.log('[ENRICH] Tool 4 parse warn:', e.message); assembledBrief = { enrichedSections: [], overallConfidence: 0, readyForStage4: false }; }
+
+    // ── Persist to enriched_briefs ────────────────────────────────────────────
+    await pool.query(`CREATE TABLE IF NOT EXISTS enriched_briefs (
+      id TEXT PRIMARY KEY,
+      brand_profile_id TEXT NOT NULL,
+      geo_brief_id TEXT,
+      brand_url TEXT NOT NULL DEFAULT '',
+      brand_name TEXT NOT NULL DEFAULT '',
+      version INTEGER NOT NULL DEFAULT 1,
+      confidence_score INTEGER DEFAULT 0,
+      enriched_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`);
+
+    const vRes = await pool.query(
+      `SELECT COALESCE(MAX(version), 0) as max_v FROM enriched_briefs WHERE brand_profile_id = $1`, [brandProfileId]
+    );
+    const nextVersion = vRes.rows[0].max_v + 1;
+    const newId = randomUUID();
+
+    const enrichedData = {
+      eeatScores: scorerData.scores,
+      overallEEATScore: scorerData.overallEEATScore,
+      gaps,
+      needsManualInput,
+      smeSignals: scorerData.smeSignals,
+      injectionMap: injectionData.injectionMap,
+      powerPhrases: injectionData.powerPhrases,
+      authorSchema: injectionData.authorSchema,
+      contentHooks: injectionData.contentHooks,
+      voiceConsistencyScore: injectionData.voiceConsistencyScore,
+      ...assembledBrief,
+      sonarSignals,
+      manualInputsProvided: manualInputs,
+      geoBriefId: geoBrief?.briefId || geoBriefId || null
+    };
+
+    const confidenceScore = assembledBrief.overallConfidence || scorerData.overallEEATScore || 0;
+
+    await pool.query(
+      `INSERT INTO enriched_briefs (id, brand_profile_id, geo_brief_id, brand_url, brand_name, version, confidence_score, enriched_data)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [newId, brandProfileId, enrichedData.geoBriefId, profile.brand_url, brandName, nextVersion, confidenceScore, JSON.stringify(enrichedData)]
+    );
+
+    const latencyMs = Date.now() - startTime;
+    console.log(`[ENRICH] Complete — Score: ${confidenceScore} | Gaps: ${gaps.length} | NeedsManual: ${needsManualInput} | Latency: ${latencyMs}ms`);
+
+    res.json({ success: true, cached: false, data: {
+      id: newId, brandProfileId, brandUrl: profile.brand_url, brandName,
+      version: nextVersion, confidenceScore, latencyMs, needsManualInput,
+      ...enrichedData
+    }});
+
+  } catch (err) {
+    console.error('[ENRICH] Error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
 // ── Waitlist ──────────────────────────────────────────────────────────────────
 app.post('/api/waitlist', async function (req, res) {
   const { email } = req.body;
