@@ -452,7 +452,7 @@ export default function AuthenticityEnricherPage() {
                   </div>
                   {sec.eeatInjections?.map((inj, j) => (
                     <div key={j} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', marginBottom: '4px' }}>
-                      <Zap size={12} color="#3563FF" style={{ marginTop: '2px', flexShrink: 0 }} />
+                      <span style={{ marginTop: '2px', flexShrink: 0, display: 'flex' }}><Zap size={12} color="#3563FF" /></span>
                       <span style={{ fontSize: '12px', color: '#94A3B8', lineHeight: 1.5 }}>{inj}</span>
                     </div>
                   ))}
