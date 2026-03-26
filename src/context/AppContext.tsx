@@ -81,7 +81,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         brandUrl: analysisInput.brandUrl,
-        brandName: analysisInput.brandUrl.replace(/https?:\/\//, '').split('/')[0],
+        brandName: (() => {
+          const domain = analysisInput.brandUrl.replace(/https?:\/\//, '').replace(/^www\./, '').split('/')[0].split('.')[0];
+          return domain.charAt(0).toUpperCase() + domain.slice(1);
+        })(),
         competitorUrls: analysisInput.competitorUrls,
         audienceNotes: analysisInput.audienceNotes,
         strategicNotes: analysisInput.strategicNotes,
