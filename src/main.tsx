@@ -5,6 +5,7 @@ import { AppProvider } from './context/AppContext';
 import Landing from './Landing';
 import ContextAgentPage from './pages/ContextAgentPage';
 import GeoStrategistPage from './pages/GeoStrategistPage';
+import AuthenticityEnricherPage from './pages/AuthenticityEnricherPage';
 import './index.css';
 
 createRoot(document.getElementById('root')!).render(
@@ -21,6 +22,7 @@ createRoot(document.getElementById('root')!).render(
           }
         />
         <Route path="/geo-strategist" element={<AppProvider><GeoStrategistPage /></AppProvider>} />
+        <Route path="/authenticity-enricher" element={<AppProvider><AuthenticityEnricherPage /></AppProvider>} />
       </Routes>
     </BrowserRouter>
   </StrictMode>
