@@ -167,7 +167,7 @@ Phase 1 — Context Intelligence Engine (Months 1–3)
 [x] Stage 1: Context Hub — ✅ LIVE
 [x] Client Brain: NeonDB/pgvector + 3 agents — ✅ LIVE
 [x] Stage 2: GEO Strategy Brief — ✅ LIVE (March 26, 2026)
-[ ] Stage 3: Authenticity enrichment — NOT built
+[~] Stage 3: Authenticity enrichment — 🔄 BUILDING (March 26, 2026)
 [ ] Demo dashboard: "Your Brand Intelligence" — NOT built
 ```
 
@@ -687,7 +687,14 @@ How Forge connects to the broader Sandbox Group ecosystem:
   - [x] GEO Opportunity Scorer — per-platform scoring (ChatGPT/Perplexity/AI Overviews/Gemini), Quick Win detection
   - [x] Entity & Schema Mapper
   - [x] Brief Generator
-- [ ] Agent 3 — Authenticity Enricher (Stage 3)
+- [~] Agent 3 — Authenticity Enricher (Stage 3) — 🔄 BUILDING
+  - [x] SME Signal Scraper (Perplexity Sonar)
+  - [x] E-E-A-T Confidence Scorer + Gap Detector
+  - [x] Voice & Persona Injection Mapper
+  - [x] Enriched Brief Assembler
+  - [x] Manual Input Fallback — targeted prompt cards with tooltips
+  - [x] Author Schema Generator
+  - [x] `/authenticity-enricher` workspace UI
   - SME Voice Repository
   - E-E-A-T injection layer
   - Author schema auto-generation
