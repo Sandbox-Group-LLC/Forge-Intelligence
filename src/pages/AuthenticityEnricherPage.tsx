@@ -537,6 +537,7 @@ function AuthenticityEnricherContent() {
           )}
         </>
       )}
+    </div>{/* geo-shell */}
     </div>
   );
 }
