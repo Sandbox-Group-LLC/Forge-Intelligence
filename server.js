@@ -484,7 +484,7 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
 // ── GEO data normalizer — shared by fresh + cached responses ─────────────────
 function normalizeGeoData(briefData, topicalMap, geoOpportunities, entitySchema, profile) {
   const gaps = (topicalMap && topicalMap.gapsByCluster) || [];
-  if (gaps.length > 0) console.log('[GEO] normalizer gap keys:', Object.keys(gaps[0]));
+  if (gaps.length > 0) console.log('[GEO] normalizer gaps[0] RAW:', JSON.stringify(gaps[0]));
   const topicalAuthorityMap = gaps.map(g => {
     const score = g.geoCitationScore || g.citationProbability || g.score || g.geoScore || g.probability || 0;
     return {
@@ -814,6 +814,9 @@ Return ONLY valid JSON:
     const latencyMs = Date.now() - startTime;
     console.log(`[GEO] Complete — Score: ${opportunityScore} | Latency: ${latencyMs}ms | QuickWins: ${quickWins.length}`);
 
+    console.log('[GEO] FINAL topicalAuthorityMap[0]:', JSON.stringify(topicalAuthorityMap[0]));
+    console.log('[GEO] FINAL geoOpportunities[0]:', JSON.stringify(geoOpportunitiesNorm[0]));
+    console.log('[GEO] FINAL counts — topical:', topicalAuthorityMap.length, 'geo:', geoOpportunitiesNorm.length);
     res.json({ success: true, cached: false, data: {
       id, brandProfileId, brandUrl: profile.brand_url, brandName: profile.brand_name,
       version: nextVersion, opportunityScore, latencyMs,
