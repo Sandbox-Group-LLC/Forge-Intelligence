@@ -1126,6 +1126,31 @@ Respond with this exact JSON structure:
     const nextVersion = vRes.rows[0].max_v + 1;
     const newId = randomUUID();
 
+    // Fallback brief if Tool 4 returned empty sections
+    if (!assembledBrief.enrichedSections || assembledBrief.enrichedSections.length === 0) {
+      const fallbackSections = (geoBrief?.h2s || []).slice(0, 6).map((h2, idx) => {
+        const injection = (injectionData.injectionMap || []).find(i => i.section && h2 && i.section.toLowerCase().includes(h2.toLowerCase().slice(0,20)));
+        return {
+          heading: h2,
+          eeatInjections: injection ? [injection.suggestedContent] : [],
+          confidenceFlag: scorerData.overallEEATScore >= 75 ? 'green' : scorerData.overallEEATScore >= 50 ? 'yellow' : 'red',
+          flagReason: null,
+          smeRequired: false
+        };
+      });
+      assembledBrief = {
+        enrichedTitle: geoBrief?.title || brandName,
+        enrichedH1: geoBrief?.h1 || '',
+        enrichedSections: fallbackSections,
+        enrichedFAQ: (geoBrief?.faqStructure || []).slice(0,3).map(f => ({ q: f.question || f.q || '', a: f.answer || f.a || '', eeatSignal: '' })),
+        authorSchemaMarkup: {},
+        overallConfidence: scorerData.overallEEATScore || 0,
+        readyForStage4: fallbackSections.length > 0,
+        humanReviewItems: ['Tool 4 used fallback — re-run for full enrichment']
+      };
+      console.log('[ENRICH] Tool 4 fallback brief built from GEO brief —', fallbackSections.length, 'sections');
+    }
+
     const enrichedData = {
       eeatScores: scorerData.scores,
       overallEEATScore: scorerData.overallEEATScore,
