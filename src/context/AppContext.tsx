@@ -1,6 +1,6 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { ViewType, BrandProfile, AnalysisInput, ProcessingStage, HistoryEntry } from '../types';
-import { mockBrandProfile, mockHistoryEntries, initialProcessingStages, sampleAnalysisInput } from '../data/mockData';
+import { initialProcessingStages, sampleAnalysisInput } from '../data/mockData';
 
 interface AppContextType {
   currentView: ViewType;
@@ -23,6 +23,27 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+function mapBrainToHistoryEntry(b: any): HistoryEntry {
+  return {
+    id: b.id,
+    brandUrl: b.brandUrl,
+    brandName: b.brandName,
+    timestamp: b.updatedAt,
+    version: b.version,
+    isActive: b.isActive,
+    isCached: b.cacheStatus === 'cached'
+  };
+}
+
+async function fetchBrains(): Promise<HistoryEntry[]> {
+  const res = await fetch('/api/context-agent/brains');
+  const data = await res.json();
+  if (data.success && Array.isArray(data.data)) {
+    return data.data.map(mapBrainToHistoryEntry);
+  }
+  return [];
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [currentView, setCurrentView] = useState<ViewType>('new-analysis');
   const [brandProfile, setBrandProfile] = useState<BrandProfile | null>(null);
@@ -36,52 +57,77 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
   const [processingStages, setProcessingStages] = useState<ProcessingStage[]>(initialProcessingStages);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>(mockHistoryEntries);
+  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Load brain history from Neon on mount
+  useEffect(() => {
+    fetchBrains().then(entries => setHistoryEntries(entries)).catch(() => {});
+  }, []);
 
   const loadSampleData = () => {
     setAnalysisInput(sampleAnalysisInput);
   };
 
-  const startAnalysis = () => {
+  const startAnalysis = async () => {
     setIsProcessing(true);
     setCurrentView('active-run');
-    setProcessingStages(initialProcessingStages.map(s => ({ ...s, status: 'pending' })));
+    const stages = initialProcessingStages.map(s => ({ ...s, status: 'pending' as const }));
+    setProcessingStages(stages);
 
-    const stageTimings = [1500, 1000, 3000, 2500, 1000];
-    let currentStage = 0;
+    // Fire the real API call immediately
+    const analyzePromise = fetch('/api/context-agent/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        brandUrl: analysisInput.brandUrl,
+        brandName: analysisInput.brandUrl.replace(/https?:\/\//, '').split('/')[0],
+        competitorUrls: analysisInput.competitorUrls,
+        audienceNotes: analysisInput.audienceNotes,
+        strategicNotes: analysisInput.strategicNotes,
+        checkBrainFirst: analysisInput.checkBrainFirst,
+        saveToBrain: analysisInput.saveToBrain
+      })
+    });
 
-    const runStage = () => {
-      if (currentStage >= stageTimings.length) {
-        setIsProcessing(false);
-        setBrandProfile(mockBrandProfile);
-        setCurrentView('brand-profile');
-        return;
-      }
+    // Drive stage UI while Claude works
+    const stageTimings = [2000, 3000, 4000, 3000];
+    for (let i = 0; i < stageTimings.length; i++) {
+      setProcessingStages(prev => prev.map((s, idx) =>
+        idx === i ? { ...s, status: 'running' as const, startTime: Date.now() } : s
+      ));
+      await new Promise(r => setTimeout(r, stageTimings[i]));
+      setProcessingStages(prev => prev.map((s, idx) =>
+        idx === i ? { ...s, status: 'complete' as const, endTime: Date.now() } : s
+      ));
+    }
 
-      setProcessingStages(prev => prev.map((stage, idx) => {
-        if (idx === currentStage) {
-          return { ...stage, status: 'running', startTime: Date.now() };
-        }
-        if (idx < currentStage) {
-          return { ...stage, status: 'complete' };
-        }
-        return stage;
-      }));
+    // Final stage waits for API response
+    setProcessingStages(prev => prev.map((s, idx) =>
+      idx === stages.length - 1 ? { ...s, status: 'running' as const, startTime: Date.now() } : s
+    ));
 
-      setTimeout(() => {
-        setProcessingStages(prev => prev.map((stage, idx) => {
-          if (idx === currentStage) {
-            return { ...stage, status: 'complete', endTime: Date.now() };
-          }
-          return stage;
-        }));
-        currentStage++;
-        runStage();
-      }, stageTimings[currentStage]);
-    };
+    try {
+      const res = await analyzePromise;
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
 
-    runStage();
+      setProcessingStages(prev => prev.map(s => ({ ...s, status: 'complete' as const, endTime: Date.now() })));
+      setBrandProfile(data.data as BrandProfile);
+
+      // Refresh brain history
+      fetchBrains().then(entries => setHistoryEntries(entries)).catch(() => {});
+
+      setIsProcessing(false);
+      setCurrentView('brand-profile');
+    } catch (err) {
+      setProcessingStages(prev => prev.map((s, idx) =>
+        idx === stages.length - 1
+          ? { ...s, status: 'error' as const, message: err instanceof Error ? err.message : 'Analysis failed' }
+          : s
+      ));
+      setIsProcessing(false);
+    }
   };
 
   return (
