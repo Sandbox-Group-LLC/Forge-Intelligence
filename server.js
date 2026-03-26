@@ -16,6 +16,14 @@ const pool = new Pool({ connectionString: process.env.NEON_DATABASE_URL });
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 async function initDB() {
+  // Always ensure id column is TEXT (old schema used UUID)
+  try {
+    await pool.query(`ALTER TABLE brand_profiles ALTER COLUMN id TYPE TEXT USING id::text`);
+    console.log('NeonDB: id column ensured as TEXT');
+  } catch(e) {
+    // Already text or table doesn't exist yet — both fine
+  }
+
   const tableCheck = await pool.query(`
     SELECT table_name FROM information_schema.tables
     WHERE table_schema = 'public' AND table_name = 'brand_profiles'
