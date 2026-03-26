@@ -216,6 +216,8 @@ async function initDB() {
     await pool.query(`ALTER TABLE geo_briefs ADD COLUMN IF NOT EXISTS brief_data JSONB NOT NULL DEFAULT '{}'::jsonb`);
     await pool.query(`ALTER TABLE geo_briefs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
     await pool.query(`ALTER TABLE geo_briefs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    await pool.query(`ALTER TABLE geo_briefs ALTER COLUMN client_id DROP NOT NULL`);
+    await pool.query(`ALTER TABLE geo_briefs ALTER COLUMN client_id SET DEFAULT NULL`);
     console.log('NeonDB: geo_briefs columns ensured');
   } catch(e) { console.log('NeonDB: geo_briefs migration note:', e.message); }
 
@@ -714,9 +716,9 @@ Return ONLY valid JSON:
     const fullBriefData = { ...briefData, topicalMap, geoOpportunities, entitySchema };
 
     await pool.query(
-      `INSERT INTO geo_briefs (id, brand_profile_id, brand_url, brand_name, version, opportunity_score, brief_data)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [id, brandProfileId, profile.brand_url, profile.brand_name, nextVersion, opportunityScore, JSON.stringify(fullBriefData)]
+      `INSERT INTO geo_briefs (id, client_id, brand_profile_id, brand_url, brand_name, version, opportunity_score, brief_data)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [id, null, brandProfileId, profile.brand_url, profile.brand_name, nextVersion, opportunityScore, JSON.stringify(fullBriefData)]
     );
 
     // ── Write pattern if score >= 75 ──────────────────────────────────────────
