@@ -46,6 +46,7 @@ function GeoStrategistContent() {
   const [result, setResult] = useState<GeoResult | null>(null);
   const [activeTab, setActiveTab] = useState<'topical' | 'geo' | 'entity' | 'brief'>('topical');
   const [error, setError] = useState('');
+  const [isRerun, setIsRerun] = useState(false);
 
   useEffect(() => {
     setCurrentView('geo-strategist');
@@ -71,11 +72,12 @@ function GeoStrategistContent() {
     setError('');
     setCompletedStages([]);
     setCurrentStage(1);
+    setIsRerun(false);
 
     const analyzePromise = fetch('/api/geo-strategist/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ brandProfileId: selectedBrainId })
+      body: JSON.stringify({ brandProfileId: selectedBrainId, force: isRerun })
     });
 
     const timings = [1500, 3000, 3500, 2500];
@@ -181,7 +183,7 @@ function GeoStrategistContent() {
                 {t.icon}{t.label}
               </button>
             ))}
-            <button className="geo-rerun-btn" onClick={() => { setResult(null); setCompletedStages([]); }}>New Analysis</button>
+            <button className="geo-rerun-btn" onClick={() => { setResult(null); setCompletedStages([]); setIsRerun(true); }}>New Analysis</button>
           </div>
 
           {activeTab === 'topical' && (
