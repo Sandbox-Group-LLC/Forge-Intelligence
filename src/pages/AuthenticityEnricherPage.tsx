@@ -191,30 +191,34 @@ function AuthenticityEnricherContent() {
 
   return (
     <div className="geo-content">
+      <div className="geo-shell">
       <div className="geo-header">
-        <div className="geo-header-left">
+        <div >
           <div className="geo-eyebrow">Stage 3</div>
           <h1 className="geo-title">Authenticity Enricher</h1>
-          <p className="geo-subtitle">
+          <p className="geo-description">
             Injects E-E-A-T signals, SME credentials, and voice-matched hooks to make content AI-citation ready.
           </p>
         </div>
-        <div className="geo-header-right">
-          {result && (
-            <div className="opportunity-score-badge" style={{ background: result.confidenceScore >= 75 ? '#14B8A614' : result.confidenceScore >= 50 ? '#F5B94214' : '#EF444414', border: `1px solid ${result.confidenceScore >= 75 ? '#14B8A640' : result.confidenceScore >= 50 ? '#F5B94240' : '#EF444440'}` }}>
-              <span style={{ fontSize: '11px', color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.08em' }}>E-E-A-T Score</span>
-              <span style={{ fontSize: '28px', fontWeight: 700, color: result.confidenceScore >= 75 ? '#14B8A6' : result.confidenceScore >= 50 ? '#F5B942' : '#EF4444' }}>{result.confidenceScore}</span>
-            </div>
-          )}
-        </div>
+        {result && (
+          <div className="geo-score-badge" style={{
+            background: result.confidenceScore >= 75 ? 'var(--color-accent-muted)' : result.confidenceScore >= 50 ? '#F5B94214' : '#EF444414',
+            border: `1px solid ${result.confidenceScore >= 75 ? 'var(--color-accent-70)' : result.confidenceScore >= 50 ? '#F5B94240' : '#EF444440'}`
+          }}>
+            <div className="score-value" style={{ color: result.confidenceScore >= 75 ? 'var(--color-accent)' : result.confidenceScore >= 50 ? '#F5B942' : '#EF4444', fontSize: '36px' }}>{result.confidenceScore}</div>
+            <div className="score-label">E-E-A-T Score</div>
+          </div>
+        )}
       </div>
 
       {/* Brain selector */}
-      <div className="geo-controls">
-        <select className="geo-brain-select" value={selectedBrainId} onChange={e => setSelectedBrainId(e.target.value)}>
+      <div className="geo-input-bar">
+        <div className="geo-select-wrap">
+        <select className="geo-select" value={selectedBrainId} onChange={e => setSelectedBrainId(e.target.value)}>
           <option value="">Select a Brain...</option>
           {brains.map(b => <option key={b.id} value={b.id}>{b.brandName} — {b.brandUrl}</option>)}
         </select>
+        </div>
         <button className="geo-run-btn" onClick={() => runAnalysis(false)} disabled={!selectedBrainId || isRunning}>
           {isRunning ? 'Enriching...' : result ? 'Run Again' : 'Run Enrichment'}
         </button>
@@ -538,6 +542,7 @@ function AuthenticityEnricherContent() {
         </>
       )}
     </div>{/* geo-shell */}
+    </div>{/* /geo-shell */}
     </div>
   );
 }
