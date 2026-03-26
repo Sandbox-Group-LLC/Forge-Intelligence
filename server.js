@@ -688,7 +688,7 @@ Return ONLY valid JSON:
       topicalMap = { gapsByCluster: gaps, brandClusters: [], competitorClusters: [] };
     } catch(e) { console.log('[GEO] Tool 1 parse warn:', e.message, '| raw:', topicalRes.content[0].text.slice(0,200)); }
     console.log(`[GEO] Tool 1 gaps: ${topicalMap.gapsByCluster.length}`);
-    if (topicalMap.gapsByCluster.length > 0) console.log("[GEO] Tool 1 sample:", JSON.stringify(topicalMap.gapsByCluster[0]));
+    if (topicalMap.gapsByCluster.length > 0) console.log("[GEO] Tool 1 sample:", JSON.stringify(topicalMap.gapsByCluster.slice(0,2)));
 
     // ── Tool 2: GEO Opportunity Scorer ────────────────────────────────────────
     console.log('[GEO] Tool 2: GEO Opportunity Scorer...');
