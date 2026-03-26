@@ -63,6 +63,11 @@ const icons = {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="m9 18 6-6-6-6"/>
     </svg>
+  ),
+  zap: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+    </svg>
   )
 };
 
@@ -77,7 +82,8 @@ const navItems: NavItem[] = [
   { id: 'active-run', label: 'Active Run', icon: 'activity' },
   { id: 'brand-profile', label: 'Brand Profile', icon: 'layers' },
   { id: 'strategy', label: 'Strategy', icon: 'compass' },
-  { id: 'brain-history', label: 'Brain History', icon: 'bookOpen' }
+  { id: 'brain-history', label: 'Brain History', icon: 'bookOpen' },
+  { id: 'geo-strategist', label: 'GEO Strategist', icon: 'zap' }
 ];
 
 export function Sidebar() {
@@ -87,6 +93,7 @@ export function Sidebar() {
     if (id === currentView) return 'active';
     if (id === 'active-run' && !isProcessing) return 'disabled';
     if ((id === 'brand-profile' || id === 'strategy') && !brandProfile) return 'disabled';
+    if (id === 'geo-strategist') return window.location.pathname.startsWith('/geo-strategist') ? 'active' : 'available';
     return 'available';
   };
 
@@ -116,19 +123,31 @@ export function Sidebar() {
         {navItems.map(item => {
           const status = getItemStatus(item.id);
           return (
-            <button
-              key={item.id}
-              className={`nav-item ${status}`}
-              onClick={() => status !== 'disabled' && setCurrentView(item.id)}
-              disabled={status === 'disabled'}
-              title={sidebarCollapsed ? item.label : undefined}
-            >
-              <span className="nav-icon">{icons[item.icon]}</span>
-              {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
-              {item.id === 'active-run' && isProcessing && (
-                <span className="nav-badge pulse"></span>
-              )}
-            </button>
+            {item.id === 'geo-strategist' ? (
+              <a
+                key={item.id}
+                href="/geo-strategist"
+                className={`nav-item ${status}`}
+                title={sidebarCollapsed ? item.label : undefined}
+              >
+                <span className="nav-icon">{icons[item.icon]}</span>
+                {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
+              </a>
+            ) : (
+              <button
+                key={item.id}
+                className={`nav-item ${status}`}
+                onClick={() => status !== 'disabled' && setCurrentView(item.id)}
+                disabled={status === 'disabled'}
+                title={sidebarCollapsed ? item.label : undefined}
+              >
+                <span className="nav-icon">{icons[item.icon]}</span>
+                {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
+                {item.id === 'active-run' && isProcessing && (
+                  <span className="nav-badge pulse"></span>
+                )}
+              </button>
+            )}
           );
         })}
       </nav>
