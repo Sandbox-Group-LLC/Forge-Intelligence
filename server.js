@@ -210,7 +210,8 @@ async function initDB() {
   // ── geo_briefs: add opportunity_score column if missing ─────────────────────
   try {
     await pool.query(`ALTER TABLE geo_briefs ADD COLUMN IF NOT EXISTS opportunity_score INTEGER DEFAULT 0`);
-    console.log('NeonDB: geo_briefs.opportunity_score ensured');
+    await pool.query(`ALTER TABLE geo_briefs ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1`);
+    console.log('NeonDB: geo_briefs columns ensured');
   } catch(e) { console.log('NeonDB: geo_briefs migration note:', e.message); }
 
   // ── Brain tables: patterns, mistakes, memories ────────────────────────────
