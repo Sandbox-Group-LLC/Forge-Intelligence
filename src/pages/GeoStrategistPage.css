@@ -1,5 +1,4 @@
 .geo-content {
-  min-height: 100vh;
   color: var(--color-text-primary);
   font-family: Inter, system-ui, sans-serif;
 }
@@ -8,9 +7,6 @@
 
 /* ── Shell ── */
 .geo-shell {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 48px 32px;
   display: flex;
   flex-direction: column;
   gap: 32px;
