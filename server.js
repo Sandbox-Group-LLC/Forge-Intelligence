@@ -15,25 +15,71 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const pool = new Pool({ connectionString: process.env.NEON_DATABASE_URL });
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// Boot: ensure brand_profiles table exists
+// Boot: introspect existing table and reconcile schema
 async function initDB() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS brand_profiles (
-      id TEXT PRIMARY KEY,
-      brand_url TEXT NOT NULL,
-      brand_name TEXT NOT NULL,
-      version INTEGER NOT NULL DEFAULT 1,
-      is_active BOOLEAN NOT NULL DEFAULT true,
-      cache_status TEXT NOT NULL DEFAULT 'fresh',
-      profile_data JSONB NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-    CREATE INDEX IF NOT EXISTS idx_bp_url ON brand_profiles(brand_url);
-    CREATE INDEX IF NOT EXISTS idx_bp_active ON brand_profiles(is_active);
+  // Check if table exists
+  const tableCheck = await pool.query(`
+    SELECT table_name FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'brand_profiles'
   `);
-  console.log('NeonDB ready');
+
+  if (tableCheck.rows.length === 0) {
+    // Fresh table
+    await pool.query(`
+      CREATE TABLE brand_profiles (
+        id TEXT PRIMARY KEY,
+        brand_url TEXT NOT NULL,
+        brand_name TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        cache_status TEXT NOT NULL DEFAULT 'fresh',
+        profile_data JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_bp_url ON brand_profiles(brand_url);
+      CREATE INDEX IF NOT EXISTS idx_bp_active ON brand_profiles(is_active);
+    `);
+    console.log('NeonDB: brand_profiles table created');
+  } else {
+    // Table exists — check actual columns and add any missing ones
+    const colResult = await pool.query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'brand_profiles'
+    `);
+    const cols = colResult.rows.map(r => r.column_name);
+    console.log('NeonDB: existing columns:', cols);
+
+    const required = [
+      { name: 'brand_url', def: 'TEXT NOT NULL DEFAULT \'\'' },
+      { name: 'brand_name', def: 'TEXT NOT NULL DEFAULT \'\'' },
+      { name: 'version', def: 'INTEGER NOT NULL DEFAULT 1' },
+      { name: 'is_active', def: 'BOOLEAN NOT NULL DEFAULT true' },
+      { name: 'cache_status', def: 'TEXT NOT NULL DEFAULT \'fresh\'' },
+      { name: 'profile_data', def: 'JSONB NOT NULL DEFAULT \'{}\'::jsonb' },
+      { name: 'created_at', def: 'TIMESTAMPTZ NOT NULL DEFAULT NOW()' },
+      { name: 'updated_at', def: 'TIMESTAMPTZ NOT NULL DEFAULT NOW()' },
+    ];
+
+    for (const col of required) {
+      if (!cols.includes(col.name)) {
+        await pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS ${col.name} ${col.def}`);
+        console.log(`NeonDB: added column ${col.name}`);
+      }
+    }
+
+    // If old schema used camelCase columns, migrate data
+    if (cols.includes('brandurl') && !cols.includes('brand_url')) {
+      await pool.query(`UPDATE brand_profiles SET brand_url = brandurl WHERE brand_url = ''`);
+    }
+    if (cols.includes('brandname') && !cols.includes('brand_name')) {
+      await pool.query(`UPDATE brand_profiles SET brand_name = brandname WHERE brand_name = ''`);
+    }
+
+    console.log('NeonDB: schema reconciled');
+  }
 }
+
 initDB().catch(err => console.error('DB init error:', err));
 
 app.use(express.json());
@@ -41,7 +87,6 @@ app.use(express.static(path.join(__dirname, 'dist')));
 
 // ── Context Agent API ────────────────────────────────────────────────────────
 
-// GET all active brand brains
 app.get('/api/context-agent/brains', async (req, res) => {
   try {
     const result = await pool.query(
@@ -66,12 +111,9 @@ app.get('/api/context-agent/brains', async (req, res) => {
   }
 });
 
-// GET single brain by ID
 app.get('/api/context-agent/brains/:id', async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT * FROM brand_profiles WHERE id = $1`, [req.params.id]
-    );
+    const result = await pool.query(`SELECT * FROM brand_profiles WHERE id = $1`, [req.params.id]);
     if (!result.rows.length) return res.status(404).json({ success: false, error: 'Not found' });
     const r = result.rows[0];
     res.json({ success: true, data: {
@@ -84,7 +126,6 @@ app.get('/api/context-agent/brains/:id', async (req, res) => {
   }
 });
 
-// GET version history for a brand URL
 app.get('/api/context-agent/history/:encodedUrl', async (req, res) => {
   try {
     const brandUrl = decodeURIComponent(req.params.encodedUrl);
@@ -98,7 +139,6 @@ app.get('/api/context-agent/history/:encodedUrl', async (req, res) => {
   }
 });
 
-// POST run a new Context Agent analysis via Claude
 app.post('/api/context-agent/analyze', async (req, res) => {
   const { brandUrl, brandName, competitorUrls = [], audienceNotes = '', strategicNotes = '', checkBrainFirst = true, saveToBrain = true } = req.body;
   if (!brandUrl || !brandName) {
@@ -106,7 +146,6 @@ app.post('/api/context-agent/analyze', async (req, res) => {
   }
 
   try {
-    // Check brain first if requested
     if (checkBrainFirst) {
       const existing = await pool.query(
         `SELECT * FROM brand_profiles WHERE brand_url = $1 AND is_active = true ORDER BY version DESC LIMIT 1`,
@@ -114,19 +153,16 @@ app.post('/api/context-agent/analyze', async (req, res) => {
       );
       if (existing.rows.length > 0) {
         const r = existing.rows[0];
-        const cached = { id: r.id, brandUrl: r.brand_url, brandName: r.brand_name,
-          version: r.version, isActive: r.is_active, cacheStatus: 'cached',
-          createdAt: r.created_at, updatedAt: r.updated_at, ...r.profile_data };
-        // Update cache_status to cached
         await pool.query(`UPDATE brand_profiles SET cache_status = 'cached' WHERE id = $1`, [r.id]);
-        return res.json({ success: true, data: cached });
+        return res.json({ success: true, data: {
+          id: r.id, brandUrl: r.brand_url, brandName: r.brand_name,
+          version: r.version, isActive: r.is_active, cacheStatus: 'cached',
+          createdAt: r.created_at, updatedAt: r.updated_at, ...r.profile_data
+        }});
       }
     }
 
-    // Build Context Agent prompt
-    const competitorSection = competitorUrls.length
-      ? `\nCompetitor URLs to analyze: ${competitorUrls.join(', ')}`
-      : '';
+    const competitorSection = competitorUrls.length ? `\nCompetitor URLs: ${competitorUrls.join(', ')}` : '';
     const audienceSection = audienceNotes ? `\nAudience context: ${audienceNotes}` : '';
     const strategicSection = strategicNotes ? `\nStrategic context: ${strategicNotes}` : '';
 
@@ -134,46 +170,24 @@ app.post('/api/context-agent/analyze', async (req, res) => {
 
 Analyze the brand at: ${brandUrl}${competitorSection}${audienceSection}${strategicSection}
 
-Your job is to produce a complete Brand Brain profile. Crawl the brand signals, infer voice patterns, build personas, map competitive gaps, and generate strategic recommendations.
-
-Return ONLY valid JSON with this exact structure (no markdown, no explanation):
+Return ONLY valid JSON (no markdown, no explanation):
 {
   "voiceProfile": {
-    "summary": "2-3 sentence brand voice summary",
-    "toneAttributes": [
-      { "attribute": "string", "score": 0-100, "description": "string" }
-    ],
+    "summary": "string",
+    "toneAttributes": [{ "attribute": "string", "score": 0-100, "description": "string" }],
     "writingStyle": "string",
     "keyPhrases": ["string"]
   },
-  "personas": [
-    {
-      "id": "persona_001",
-      "name": "string",
-      "role": "string",
-      "painPoints": ["string"],
-      "triggers": ["string"],
-      "skepticism": "string",
-      "motivations": ["string"]
-    }
-  ],
-  "thirdPartySignals": [
-    { "source": "string", "signalType": "string", "value": "string or null", "confidence": 0-100, "lastChecked": "ISO8601" }
-  ],
-  "competitiveGaps": [
-    { "topic": "string", "ownedBy": "string or null", "whitespaceOpportunity": "string", "priority": "high|medium|low" }
-  ],
-  "strategicRecommendations": [
-    { "id": "rec_001", "category": "string", "title": "string", "description": "string", "impact": "high|medium|low", "effort": "high|medium|low" }
-  ]
+  "personas": [{
+    "id": "string", "name": "string", "role": "string",
+    "painPoints": ["string"], "triggers": ["string"],
+    "skepticism": "string", "motivations": ["string"]
+  }],
+  "thirdPartySignals": [{ "source": "string", "signalType": "string", "value": "string or null", "confidence": 0-100, "lastChecked": "ISO8601" }],
+  "competitiveGaps": [{ "topic": "string", "ownedBy": "string or null", "whitespaceOpportunity": "string", "priority": "high|medium|low" }],
+  "strategicRecommendations": [{ "id": "string", "category": "string", "title": "string", "description": "string", "impact": "high|medium|low", "effort": "high|medium|low" }]
 }
-
-Requirements:
-- toneAttributes: exactly 5 attributes
-- personas: 2-3 distinct buyer personas
-- thirdPartySignals: 4-6 signals (G2, LinkedIn, Crunchbase, Twitter/X, SimilarWeb, Reddit)
-- competitiveGaps: 3-5 gaps
-- strategicRecommendations: 4-6 actionable recommendations`;
+Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competitiveGaps, 4-6 strategicRecommendations`;
 
     const message = await anthropic.messages.create({
       model: 'claude-opus-4-5',
@@ -187,14 +201,11 @@ Requirements:
     const profileData = JSON.parse(jsonMatch[0]);
 
     if (saveToBrain) {
-      // Deactivate old versions for this URL
       await pool.query(`UPDATE brand_profiles SET is_active = false WHERE brand_url = $1`, [brandUrl]);
-
-      // Get next version number
       const versionResult = await pool.query(
-        `SELECT MAX(version) as max_v FROM brand_profiles WHERE brand_url = $1`, [brandUrl]
+        `SELECT COALESCE(MAX(version), 0) as max_v FROM brand_profiles WHERE brand_url = $1`, [brandUrl]
       );
-      const nextVersion = (versionResult.rows[0].max_v || 0) + 1;
+      const nextVersion = versionResult.rows[0].max_v + 1;
       const id = `bp_${Date.now()}`;
 
       const inserted = await pool.query(
@@ -202,7 +213,6 @@ Requirements:
          VALUES ($1, $2, $3, $4, true, 'fresh', $5) RETURNING *`,
         [id, brandUrl, brandName, nextVersion, JSON.stringify(profileData)]
       );
-
       const r = inserted.rows[0];
       return res.json({ success: true, data: {
         id: r.id, brandUrl: r.brand_url, brandName: r.brand_name,
@@ -224,12 +234,10 @@ Requirements:
   }
 });
 
-// ── Waitlist ─────────────────────────────────────────────────────────────────
+// ── Waitlist ──────────────────────────────────────────────────────────────────
 app.post('/api/waitlist', async function (req, res) {
   const { email } = req.body;
-  if (!email || !email.includes('@')) {
-    return res.status(400).json({ error: 'Invalid email' });
-  }
+  if (!email || !email.includes('@')) return res.status(400).json({ error: 'Invalid email' });
   try {
     await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -252,7 +260,7 @@ app.post('/api/waitlist', async function (req, res) {
   <p style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#3563FF;margin:0 0 24px">Forge Intelligence</p>
   <h1 style="font-size:24px;font-weight:600;margin:0 0 16px;line-height:1.3">You're on the list.</h1>
   <p style="color:#94A3B8;font-size:15px;line-height:1.7;margin:0 0 24px">Thanks for your interest in Forge Intelligence. We'll reach out when early access opens.</p>
-  <p style="color:#94A3B8;font-size:15px;line-height:1.7;margin:0">Questions? Reply to this email or reach us at <a href="mailto:hello@forgeintelligence.ai" style="color:#3563FF;text-decoration:none">hello@forgeintelligence.ai</a>.</p>
+  <p style="color:#94A3B8;font-size:15px;line-height:1.7;margin:0">Questions? <a href="mailto:hello@forgeintelligence.ai" style="color:#3563FF;text-decoration:none">hello@forgeintelligence.ai</a></p>
   <p style="margin:40px 0 0;font-size:12px;color:#475569">© 2026 Sandbox Group LLC</p>
 </div>`,
       }),
@@ -264,7 +272,6 @@ app.post('/api/waitlist', async function (req, res) {
   }
 });
 
-// ── Asset proxy ───────────────────────────────────────────────────────────────
 app.get('/api/assets/:filename', async function (req, res) {
   try {
     const response = await fetch('https://forge-os.ai/api/assets/' + req.params.filename);
@@ -278,7 +285,6 @@ app.get('/api/assets/:filename', async function (req, res) {
   }
 });
 
-// SPA catch-all
 app.get('*', function (req, res) {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
