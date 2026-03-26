@@ -1,8 +1,8 @@
 :root {
   /* Base colors */
-  --color-bg-base: #0d0d12;
-  --color-bg-card: #131318;
-  --color-bg-elevated: #1a1a22;
+  --color-bg-base: #050915;
+  --color-bg-card: #0b1220;
+  --color-bg-elevated: #111827;
   --color-bg-hover: #22222c;
   
   /* Border colors */
@@ -67,6 +67,12 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-image: radial-gradient(circle at top left, rgba(53,99,255,0.22), transparent 55%),
+                    radial-gradient(circle at bottom right, rgba(20,184,166,0.12), transparent 55%),
+                    linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 56px 56px, 56px 56px;
+  background-position: 0 0, 0 0, 0 0, 0 0;
 }
 
 a {

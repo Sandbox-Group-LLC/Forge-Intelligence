@@ -3,6 +3,7 @@
   height: 100vh;
   width: 100%;
   overflow: hidden;
+  position: relative;
 }
 
 .app-main {
@@ -42,4 +43,14 @@
   .view-container {
     padding: 20px 16px;
   }
+}
+
+.app-main::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at top center, rgba(15,118,255,0.14), transparent 55%);
+  opacity: 0.8;
+  z-index: -1;
 }
