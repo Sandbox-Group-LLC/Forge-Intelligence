@@ -38,7 +38,7 @@ const STAGES = [
 ];
 
 function GeoStrategistContent() {
-  const { setCurrentView, historyEntries, brandProfile } = useApp();
+  const { setCurrentView, historyEntries } = useApp();
   const [selectedBrainId, setSelectedBrainId] = useState('');
   const [isRunning, setIsRunning] = useState(false);
   const [currentStage, setCurrentStage] = useState(0);
