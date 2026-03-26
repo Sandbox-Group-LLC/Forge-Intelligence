@@ -291,12 +291,20 @@ app.get('/api/context-hub/history/:encodedUrl', async (req, res) => {
 });
 
 app.post('/api/context-hub/analyze', async (req, res) => {
-  const { brandUrl, brandName, competitorUrls = [], audienceNotes = '', strategicNotes = '', checkBrainFirst = true, saveToBrain = true } = req.body;
-  if (!brandUrl || !brandName) {
-    return res.status(400).json({ success: false, error: 'brandUrl and brandName are required' });
+  const { brandUrl, competitorUrls = [], audienceNotes = '', strategicNotes = '', checkBrainFirst = true, saveToBrain = true } = req.body;
+  if (!brandUrl) {
+    return res.status(400).json({ success: false, error: 'brandUrl is required' });
   }
 
+  const domainToName = (url) => {
+    const clean = url.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].split('.')[0];
+    return clean.charAt(0).toUpperCase() + clean.slice(1);
+  };
+  const brandName = domainToName(brandUrl);
+  const startTime = Date.now();
+
   try {
+    // ── Brain-First: cache check ──────────────────────────────────────────────
     if (checkBrainFirst) {
       const existing = await pool.query(
         `SELECT * FROM brand_profiles WHERE brand_url = $1 AND is_active = true ORDER BY version DESC LIMIT 1`,
@@ -305,7 +313,8 @@ app.post('/api/context-hub/analyze', async (req, res) => {
       if (existing.rows.length > 0) {
         const r = existing.rows[0];
         await pool.query(`UPDATE brand_profiles SET cache_status = 'cached' WHERE id = $1`, [r.id]);
-        return res.json({ success: true, data: {
+        console.log(`[Context Hub] Cache hit for ${brandUrl}`);
+        return res.json({ success: true, cached: true, data: {
           id: r.id, brandUrl: r.brand_url, brandName: r.brand_name,
           version: r.version, isActive: r.is_active, cacheStatus: 'cached',
           createdAt: r.created_at, updatedAt: r.updated_at, ...r.profile_data
@@ -313,13 +322,70 @@ app.post('/api/context-hub/analyze', async (req, res) => {
       }
     }
 
-    const competitorSection = competitorUrls.length ? `\nCompetitor URLs: ${competitorUrls.join(', ')}` : '';
-    const audienceSection = audienceNotes ? `\nAudience context: ${audienceNotes}` : '';
-    const strategicSection = strategicNotes ? `\nStrategic context: ${strategicNotes}` : '';
+    // ── Tool 1: Perplexity Sonar — competitor + ICP discovery ────────────────
+    console.log(`[Context Hub] Tool 1: Perplexity Sonar research for ${brandUrl}...`);
+    let sonarCompetitors = [];
+    let sonarICP = '';
+    let sonarContext = '';
+
+    try {
+      const sonarRes = await fetch('https://api.perplexity.ai/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'sonar',
+          messages: [{
+            role: 'user',
+            content: `Research the brand at ${brandUrl} and return ONLY valid JSON (no markdown):
+{
+  "brandDescription": "1-2 sentence description of what this company does",
+  "competitors": ["url1", "url2", "url3"],
+  "targetICP": "specific description of their ideal customer profile — job title, company size, pain points",
+  "marketCategory": "the specific market category this brand competes in",
+  "keyDifferentiators": ["string"],
+  "contentThemes": ["main topics this brand and competitors publish content about"]
+}
+Return exactly 3 competitor URLs. Be specific and accurate.`
+          }],
+          max_tokens: 800
+        })
+      });
+
+      if (sonarRes.ok) {
+        const sonarData = await sonarRes.json();
+        const sonarText = sonarData.choices[0].message.content;
+        const sonarMatch = sonarText.match(/\{[\s\S]*\}/);
+        if (sonarMatch) {
+          const sonarJson = JSON.parse(sonarMatch[0]);
+          // Merge Sonar competitors with any manual overrides passed by user
+          sonarCompetitors = competitorUrls.length > 0 ? competitorUrls : (sonarJson.competitors || []);
+          sonarICP = sonarJson.targetICP || '';
+          sonarContext = `Brand description: ${sonarJson.brandDescription}
+Market category: ${sonarJson.marketCategory}
+Key differentiators: ${(sonarJson.keyDifferentiators || []).join(', ')}
+Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
+          console.log(`[Context Hub] Sonar found ${sonarCompetitors.length} competitors, ICP: ${sonarICP.slice(0, 80)}...`);
+        }
+      }
+    } catch(e) {
+      console.log('[Context Hub] Sonar research failed, proceeding without:', e.message);
+    }
+
+    // ── Tool 2: Claude — Brand Intelligence Profile ───────────────────────────
+    console.log(`[Context Hub] Tool 2: Claude brand analysis...`);
+
+    const competitorSection = sonarCompetitors.length ? `\nCompetitor URLs (auto-discovered): ${sonarCompetitors.join(', ')}` : '';
+    const icpSection = sonarICP ? `\nICP context (auto-discovered): ${sonarICP}` : '';
+    const marketSection = sonarContext ? `\nMarket context: ${sonarContext}` : '';
+    const audienceSection = audienceNotes ? `\nAdditional audience context: ${audienceNotes}` : '';
+    const strategicSection = strategicNotes ? `\nAdditional strategic context: ${strategicNotes}` : '';
 
     const prompt = `You are the Forge Intelligence Context Agent — Stage 1 of an 8-stage Brand Intelligence platform.
 
-Analyze the brand at: ${brandUrl}${competitorSection}${audienceSection}${strategicSection}
+Analyze the brand at: ${brandUrl}${competitorSection}${icpSection}${marketSection}${audienceSection}${strategicSection}
 
 Return ONLY valid JSON (no markdown, no explanation):
 {
@@ -336,9 +402,11 @@ Return ONLY valid JSON (no markdown, no explanation):
   }],
   "thirdPartySignals": [{ "source": "string", "signalType": "string", "value": "string or null", "confidence": 0-100, "lastChecked": "ISO8601" }],
   "competitiveGaps": [{ "topic": "string", "ownedBy": "string or null", "whitespaceOpportunity": "string", "priority": "high|medium|low" }],
-  "strategicRecommendations": [{ "id": "string", "category": "string", "title": "string", "description": "string", "impact": "high|medium|low", "effort": "high|medium|low" }]
+  "strategicRecommendations": [{ "id": "string", "category": "string", "title": "string", "description": "string", "impact": "high|medium|low", "effort": "high|medium|low" }],
+  "discoveredCompetitors": ["string"],
+  "marketCategory": "string"
 }
-Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competitiveGaps, 4-6 strategicRecommendations`;
+Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competitiveGaps, 4-6 strategicRecommendations. Use the ICP and market context provided to make personas and gaps highly specific.`;
 
     const message = await anthropic.messages.create({
       model: 'claude-opus-4-5',
@@ -351,16 +419,16 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
     if (!jsonMatch) throw new Error('Claude returned no valid JSON');
     const profileData = JSON.parse(jsonMatch[0]);
 
+    // Inject discovered competitors into profile
+    profileData.discoveredCompetitors = sonarCompetitors;
+
+    const latencyMs = Date.now() - startTime;
+    console.log(`[Context Hub] Complete — ${brandName} | Latency: ${latencyMs}ms | Competitors found: ${sonarCompetitors.length}`);
+
     if (saveToBrain) {
-      const domainToName = (url) => {
-        const clean = url.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].split('.')[0];
-        return clean.charAt(0).toUpperCase() + clean.slice(1);
-      };
       const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      const isUUID = (s) => uuidPattern.test(s);
-      const resolvedBrandName = (profileData.brandName && !isUUID(profileData.brandName))
-        ? profileData.brandName
-        : (!isUUID(brandName) ? brandName : domainToName(brandUrl));
+      const resolvedBrandName = (profileData.brandName && !uuidPattern.test(profileData.brandName))
+        ? profileData.brandName : brandName;
 
       await pool.query(`UPDATE brand_profiles SET is_active = false WHERE brand_url = $1`, [brandUrl]);
       const versionResult = await pool.query(
@@ -375,22 +443,24 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
         [id, brandUrl, resolvedBrandName, nextVersion, JSON.stringify(profileData)]
       );
       const r = inserted.rows[0];
-      return res.json({ success: true, data: {
+      return res.json({ success: true, cached: false, data: {
         id: r.id, brandUrl: r.brand_url, brandName: r.brand_name,
         version: r.version, isActive: r.is_active, cacheStatus: r.cache_status,
+        latencyMs, discoveredCompetitors: sonarCompetitors,
         createdAt: r.created_at, updatedAt: r.updated_at, ...profileData
       }});
     }
 
-    res.json({ success: true, data: {
+    res.json({ success: true, cached: false, data: {
       id: randomUUID(), brandUrl, brandName,
       version: 1, isActive: false, cacheStatus: 'fresh',
+      latencyMs, discoveredCompetitors: sonarCompetitors,
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       ...profileData
     }});
 
   } catch (err) {
-    console.error('Context Agent error:', err);
+    console.error('[Context Hub] Error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
