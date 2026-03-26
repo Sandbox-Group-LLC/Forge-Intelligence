@@ -1005,51 +1005,28 @@ Return empty arrays if not found. Be factual and accurate.`
     const scorerRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-5',
       max_tokens: 2000,
-      messages: [{ role: 'user', content: `You are the E-E-A-T Confidence Scorer for Forge Intelligence Stage 3.
+      system: 'You are a JSON API. You must respond with valid JSON only — no markdown, no explanation, no code fences.',
+      messages: [
+        { role: 'user', content: `E-E-A-T scoring task for ${brandName} (${brandUrl}).
 
-BRAND: ${brandName} (${brandUrl})
-SCRAPED SIGNALS: ${JSON.stringify(sonarSignals)}${manualCtx}
-THIRD PARTY SIGNALS FROM STAGE 1: ${JSON.stringify(thirdPartySignals).slice(0, 600)}
+SCRAPED SIGNALS: ${JSON.stringify(sonarSignals).slice(0, 800)}
+STAGE 1 SIGNALS: ${JSON.stringify(thirdPartySignals).slice(0, 400)}${manualCtx}
 
-Score each E-E-A-T dimension 0-100 based on available evidence. Flag gaps where confidence < 60.
+Score Experience, Expertise, Authoritativeness, Trustworthiness 0-100. List gaps where score < 60. List smeSignals found.
 
-Return ONLY valid JSON:
-{
-  "scores": {
-    "experience": {"score": 0, "rationale": "string", "evidence": ["string"]},
-    "expertise": {"score": 0, "rationale": "string", "evidence": ["string"]},
-    "authoritativeness": {"score": 0, "rationale": "string", "evidence": ["string"]},
-    "trustworthiness": {"score": 0, "rationale": "string", "evidence": ["string"]}
-  },
-  "overallEEATScore": 0,
-  "gaps": [
-    {
-      "dimension": "experience|expertise|authoritativeness|trustworthiness",
-      "gapType": "sme_credentials|awards|case_studies|original_research|customer_proof|author_authority|founding_story|certifications",
-      "severity": "high|medium|low",
-      "tooltip": "friendly 1-sentence prompt asking user to provide this specific information",
-      "placeholder": "example of what to enter",
-      "whyItMatters": "1 sentence on how this improves AI citations"
-    }
-  ],
-  "smeSignals": [
-    {
-      "type": "award|certification|case_study|research|quote|expert|media|client|story",
-      "value": "string",
-      "confidence": 0,
-      "source": "scraped|manual",
-      "injectionPoint": "where in content this should appear"
-    }
-  ]
-}` }]
+Respond with this exact JSON structure:
+{"scores":{"experience":{"score":0,"rationale":"","evidence":[]},"expertise":{"score":0,"rationale":"","evidence":[]},"authoritativeness":{"score":0,"rationale":"","evidence":[]},"trustworthiness":{"score":0,"rationale":"","evidence":[]}},"overallEEATScore":0,"gaps":[{"dimension":"","gapType":"sme_credentials|awards|case_studies|original_research|customer_proof|author_authority|founding_story|certifications","severity":"high|medium|low","tooltip":"","placeholder":"","whyItMatters":""}],"smeSignals":[{"type":"award|certification|case_study|research|quote|expert|media|client|story","value":"","confidence":0,"source":"scraped|manual","injectionPoint":""}]}` },
+        { role: 'assistant', content: '{' }
+      ]
     });
 
     let scorerData = {};
     try {
-      const sd = extractJSON(scorerRes.content[0].text, 'object');
+      const rawT2 = '{' + scorerRes.content[0].text;
+      const sd = extractJSON(rawT2, 'object');
       if (!sd) throw new Error('No JSON in Tool 2');
       scorerData = JSON.parse(sd);
-    } catch(e) { console.log('[ENRICH] Tool 2 parse warn:', e.message); scorerData = { scores: {}, gaps: [], smeSignals: [], overallEEATScore: 0 }; }
+    } catch(e) { console.log('[ENRICH] Tool 2 parse warn:', e.message, '| raw:', scorerRes.content[0].text.slice(0,200)); scorerData = { scores: {}, gaps: [], smeSignals: [], overallEEATScore: 0 }; }
 
     const gaps = scorerData.gaps || [];
     const needsManualInput = gaps.some(g => g.severity === 'high') && !Object.keys(manualInputs).length;
@@ -1061,53 +1038,30 @@ Return ONLY valid JSON:
     const injectionRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-5',
       max_tokens: 2000,
-      messages: [{ role: 'user', content: `You are the Voice & Persona Injection Mapper for Forge Intelligence Stage 3.
+      system: 'You are a JSON API. You must respond with valid JSON only — no markdown, no explanation, no code fences.',
+      messages: [
+        { role: 'user', content: `Voice & persona injection mapping task for ${brandName}.
 
-BRAND VOICE: ${JSON.stringify(voiceProfile).slice(0, 600)}
-PERSONAS: ${JSON.stringify(personas).slice(0, 600)}
-E-E-A-T SIGNALS: ${JSON.stringify(scorerData.smeSignals || []).slice(0, 600)}
-GEO BRIEF CONTEXT: ${geoBrief ? JSON.stringify({ targetTopic: geoBrief.targetTopic, h2s: (geoBrief.h2s || []).slice(0,4), quickWins: (geoBrief.quickWins || []).slice(0,3) }) : 'not available'}${manualCtx}
+VOICE: ${JSON.stringify(voiceProfile).slice(0, 400)}
+PERSONAS: ${JSON.stringify(personas).slice(0, 400)}
+SME SIGNALS: ${JSON.stringify(scorerData.smeSignals || []).slice(0, 400)}
+GEO TOPICS: ${geoBrief ? JSON.stringify((geoBrief.h2s || []).slice(0,4)) : '[]'}${manualCtx}
 
-BRAIN PATTERNS (use these): ${JSON.stringify(brainPatterns).slice(0, 400)}
-BRAIN MISTAKES (avoid these): ${JSON.stringify(brainMistakes).slice(0, 400)}
+Map E-E-A-T signals to content sections. Generate hooks. Build author schema.
 
-Generate injection strategy for each content section. Return ONLY valid JSON:
-{
-  "voiceConsistencyScore": 0,
-  "injectionMap": [
-    {
-      "section": "string (H2 or content section)",
-      "injectionType": "sme_quote|stat|case_study|first_person_hook|customer_voice|founding_story|award_mention|certification_reference",
-      "suggestedContent": "string (actual suggested injection text)",
-      "persona": "which persona this resonates with",
-      "eeatDimension": "experience|expertise|authoritativeness|trustworthiness",
-      "confidence": 0
-    }
-  ],
-  "powerPhrases": ["customer power phrases to weave in from third party signals"],
-  "authorSchema": {
-    "name": "string or null",
-    "title": "string or null",
-    "expertise": ["string"],
-    "credentials": ["string"],
-    "sameAs": ["urls"]
-  },
-  "contentHooks": [
-    {
-      "hook": "string (opening line or paragraph hook)",
-      "persona": "string",
-      "type": "curiosity|pain_point|stat|story|contrarian"
-    }
-  ]
-}` }]
+Respond with this exact JSON structure:
+{"voiceConsistencyScore":0,"injectionMap":[{"section":"","injectionType":"sme_quote|stat|case_study|first_person_hook|customer_voice|founding_story|award_mention|certification_reference","suggestedContent":"","persona":"","eeatDimension":"experience|expertise|authoritativeness|trustworthiness","confidence":0}],"powerPhrases":[],"authorSchema":{"name":null,"title":null,"expertise":[],"credentials":[],"sameAs":[]},"contentHooks":[{"hook":"","persona":"","type":"curiosity|pain_point|stat|story|contrarian"}]}` },
+        { role: 'assistant', content: '{' }
+      ]
     });
 
     let injectionData = {};
     try {
-      const id2 = extractJSON(injectionRes.content[0].text, 'object');
+      const rawT3 = '{' + injectionRes.content[0].text;
+      const id2 = extractJSON(rawT3, 'object');
       if (!id2) throw new Error('No JSON in Tool 3');
       injectionData = JSON.parse(id2);
-    } catch(e) { console.log('[ENRICH] Tool 3 parse warn:', e.message); injectionData = { injectionMap: [], powerPhrases: [], authorSchema: {}, contentHooks: [] }; }
+    } catch(e) { console.log('[ENRICH] Tool 3 parse warn:', e.message, '| raw:', injectionRes.content[0].text.slice(0,200)); injectionData = { injectionMap: [], powerPhrases: [], authorSchema: {}, contentHooks: [] }; }
 
     // ── Tool 4: Enriched Brief Assembler ─────────────────────────────────────
     console.log('[ENRICH] Tool 4: Enriched Brief Assembler...');
@@ -1115,37 +1069,23 @@ Generate injection strategy for each content section. Return ONLY valid JSON:
     const assemblerRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-5',
       max_tokens: 3000,
-      messages: [{ role: 'user', content: `You are the Enriched Brief Assembler for Forge Intelligence Stage 3.
+      system: 'You are a JSON API. You must respond with valid JSON only — no markdown, no explanation, no code fences.',
+      messages: [
+        { role: 'user', content: `Enriched brief assembly task for ${brandName}.
 
-BRAND: ${brandName}
-E-E-A-T SCORES: ${JSON.stringify(scorerData.scores || {})}
-INJECTION MAP: ${JSON.stringify(injectionData.injectionMap || []).slice(0, 800)}
-POWER PHRASES: ${JSON.stringify(injectionData.powerPhrases || [])}
-AUTHOR SCHEMA: ${JSON.stringify(injectionData.authorSchema || {})}
-GEO BRIEF: ${geoBrief ? JSON.stringify({ h1: geoBrief.h1, h2s: (geoBrief.h2s || []).slice(0,6), faqStructure: (geoBrief.faqStructure || []).slice(0,4) }) : 'not available'}
-GAPS REMAINING: ${JSON.stringify(gaps.filter(g => g.severity === 'high').map(g => g.gapType))}
+EEAT SCORES: ${JSON.stringify(scorerData.scores || {}).slice(0, 400)}
+INJECTIONS: ${JSON.stringify(injectionData.injectionMap || []).slice(0, 600)}
+POWER PHRASES: ${JSON.stringify(injectionData.powerPhrases || []).slice(0, 200)}
+AUTHOR SCHEMA: ${JSON.stringify(injectionData.authorSchema || {}).slice(0, 200)}
+GEO H2S: ${geoBrief ? JSON.stringify((geoBrief.h2s || []).slice(0,6)) : '[]'}
+HIGH GAPS: ${JSON.stringify(gaps.filter(g => g.severity === 'high').map(g => g.gapType))}
 
-Assemble the final enriched brief with all E-E-A-T signals woven in. Flag sections needing human SME input.
+Assemble enriched brief. Flag sections green/yellow/red by confidence. Mark smeRequired where needed.
 
-Return ONLY valid JSON:
-{
-  "enrichedTitle": "string",
-  "enrichedH1": "string",
-  "enrichedSections": [
-    {
-      "heading": "string",
-      "eeatInjections": ["specific injections for this section"],
-      "confidenceFlag": "green|yellow|red",
-      "flagReason": "string or null",
-      "smeRequired": false
-    }
-  ],
-  "enrichedFAQ": [{"q": "string", "a": "string", "eeatSignal": "string"}],
-  "authorSchemaMarkup": {},
-  "overallConfidence": 0,
-  "readyForStage4": true,
-  "humanReviewItems": ["specific items needing human verification or SME input"]
-}` }]
+Respond with this exact JSON structure:
+{"enrichedTitle":"","enrichedH1":"","enrichedSections":[{"heading":"","eeatInjections":[],"confidenceFlag":"green|yellow|red","flagReason":null,"smeRequired":false}],"enrichedFAQ":[{"q":"","a":"","eeatSignal":""}],"authorSchemaMarkup":{},"overallConfidence":0,"readyForStage4":true,"humanReviewItems":[]}` },
+        { role: 'assistant', content: '{' }
+      ]
     });
 
     let assembledBrief = {};
