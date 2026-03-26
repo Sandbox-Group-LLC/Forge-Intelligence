@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import Landing from './Landing';
 import ContextAgentPage from './pages/ContextAgentPage';
+import GeoStrategistPage from './pages/GeoStrategistPage';
 import './index.css';
 
 createRoot(document.getElementById('root')!).render(
@@ -19,6 +20,7 @@ createRoot(document.getElementById('root')!).render(
             </AppProvider>
           }
         />
+        <Route path="/geo-strategist" element={<GeoStrategistPage />} />
       </Routes>
     </BrowserRouter>
   </StrictMode>
