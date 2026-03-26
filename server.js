@@ -211,6 +211,8 @@ async function initDB() {
   try {
     await pool.query(`ALTER TABLE geo_briefs ADD COLUMN IF NOT EXISTS opportunity_score INTEGER DEFAULT 0`);
     await pool.query(`ALTER TABLE geo_briefs ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1`);
+    await pool.query(`ALTER TABLE geo_briefs ADD COLUMN IF NOT EXISTS brand_url TEXT NOT NULL DEFAULT ''`);
+    await pool.query(`ALTER TABLE geo_briefs ADD COLUMN IF NOT EXISTS brand_name TEXT NOT NULL DEFAULT ''`);
     console.log('NeonDB: geo_briefs columns ensured');
   } catch(e) { console.log('NeonDB: geo_briefs migration note:', e.message); }
 
@@ -468,6 +470,20 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
 
 // ── GEO Strategist API (Stage 2) ──────────────────────────────────────────────
 
+// Extracts the first complete JSON object or array from a string — handles trailing text/markdown
+function extractJSON(text, type = 'object') {
+  const open = type === 'array' ? '[' : '{';
+  const close = type === 'array' ? ']' : '}';
+  const start = text.indexOf(open);
+  if (start === -1) return null;
+  let depth = 0;
+  for (let i = start; i < text.length; i++) {
+    if (text[i] === open) depth++;
+    else if (text[i] === close) { depth--; if (depth === 0) return text.slice(start, i + 1); }
+  }
+  return null;
+}
+
 app.get('/api/geo-strategist/briefs', async (req, res) => {
   try {
     const result = await pool.query(
@@ -586,8 +602,8 @@ Return ONLY valid JSON:
     });
     let topicalMap = {};
     try {
-      const tm = topicalRes.content[0].text.match(/\{[\s\S]*\}/);
-      topicalMap = JSON.parse(tm[0]);
+      const tm = extractJSON(topicalRes.content[0].text, 'object');
+      topicalMap = JSON.parse(tm);
     } catch(e) { console.log('[GEO] Tool 1 parse warn:', e.message); topicalMap = { brandClusters: [], competitorClusters: [], gapsByCluster: [] }; }
 
     // ── Tool 2: GEO Opportunity Scorer ────────────────────────────────────────
@@ -611,8 +627,8 @@ Return ONLY valid JSON array:
     });
     let geoOpportunities = [];
     try {
-      const go = scorerRes.content[0].text.match(/\[[\s\S]*\]/);
-      geoOpportunities = JSON.parse(go[0]);
+      const go = extractJSON(scorerRes.content[0].text, 'array');
+      geoOpportunities = JSON.parse(go);
     } catch(e) { console.log('[GEO] Tool 2 parse warn:', e.message); }
 
     // ── Tool 3: Entity & Schema Mapper ────────────────────────────────────────
@@ -633,8 +649,8 @@ Return ONLY valid JSON array:
     });
     let entitySchema = [];
     try {
-      const es = entityRes.content[0].text.match(/\[[\s\S]*\]/);
-      entitySchema = JSON.parse(es[0]);
+      const es = extractJSON(entityRes.content[0].text, 'array');
+      entitySchema = JSON.parse(es);
     } catch(e) { console.log('[GEO] Tool 3 parse warn:', e.message); }
 
     // ── Tool 4: Brief Generator ───────────────────────────────────────────────
@@ -676,8 +692,8 @@ Return ONLY valid JSON:
     });
     let briefData = {};
     try {
-      const bd = briefRes.content[0].text.match(/\{[\s\S]*\}/);
-      briefData = JSON.parse(bd[0]);
+      const bd = extractJSON(briefRes.content[0].text, 'object');
+      briefData = JSON.parse(bd);
     } catch(e) { console.log('[GEO] Tool 4 parse warn:', e.message); briefData = { targetTopic, overallOpportunityScore: 50 }; }
 
     const opportunityScore = briefData.overallOpportunityScore || 0;
