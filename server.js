@@ -210,7 +210,7 @@ async function initDB() {
   try {
     await pool.query(`CREATE TABLE IF NOT EXISTS enriched_briefs (
       id TEXT PRIMARY KEY,
-      brand_profile_id TEXT NOT NULL,
+      brand_profile_id TEXT NOT NULL DEFAULT '',
       geo_brief_id TEXT,
       brand_url TEXT NOT NULL DEFAULT '',
       brand_name TEXT NOT NULL DEFAULT '',
@@ -220,7 +220,30 @@ async function initDB() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`);
-    console.log('NeonDB: enriched_briefs table ensured');
+    // Migration: ensure all columns exist on pre-existing table
+    const enrichCols = [
+      { name: 'brand_profile_id', def: "TEXT NOT NULL DEFAULT ''" },
+      { name: 'geo_brief_id',     def: 'TEXT' },
+      { name: 'brand_url',        def: "TEXT NOT NULL DEFAULT ''" },
+      { name: 'brand_name',       def: "TEXT NOT NULL DEFAULT ''" },
+      { name: 'version',          def: 'INTEGER NOT NULL DEFAULT 1' },
+      { name: 'confidence_score', def: 'INTEGER DEFAULT 0' },
+      { name: 'enriched_data',    def: "JSONB NOT NULL DEFAULT '{}'::jsonb" },
+      { name: 'created_at',       def: 'TIMESTAMPTZ NOT NULL DEFAULT NOW()' },
+      { name: 'updated_at',       def: 'TIMESTAMPTZ NOT NULL DEFAULT NOW()' },
+    ];
+    const enrichColRes = await pool.query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'enriched_briefs'
+    `);
+    const existingEnrichCols = enrichColRes.rows.map(r => r.column_name);
+    for (const col of enrichCols) {
+      if (!existingEnrichCols.includes(col.name)) {
+        await pool.query(`ALTER TABLE enriched_briefs ADD COLUMN IF NOT EXISTS ${col.name} ${col.def}`);
+        console.log('NeonDB: enriched_briefs added column:', col.name);
+      }
+    }
+    console.log('NeonDB: enriched_briefs table ensured — cols:', existingEnrichCols.join(', '));
   } catch(e) {
     console.log('NeonDB: enriched_briefs init note:', e.message);
   }
