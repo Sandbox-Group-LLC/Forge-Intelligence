@@ -587,7 +587,6 @@ function normalizeGeoData(briefData, topicalMap, geoOpportunities, entitySchema,
 function extractJSON(text, type = 'object') {
   const open = type === 'array' ? '[' : '{';
   const close = type === 'array' ? ']' : '}';
-  // Find the first opening brace/bracket — skip any preamble or markdown fences
   const start = text.indexOf(open);
   if (start === -1) return null;
   let depth = 0;
@@ -597,6 +596,21 @@ function extractJSON(text, type = 'object') {
       depth--;
       if (depth === 0) return text.slice(start, i + 1);
     }
+  }
+  // JSON was truncated (hit token limit) — attempt recovery by closing open structures
+  if (depth > 0) {
+    let partial = text.slice(start).trimEnd();
+    // Remove any trailing incomplete string or value
+    partial = partial.replace(/,\s*$/, '').replace(/"[^"]*$/, '"truncated"');
+    // Close all open braces/brackets
+    const stack = [];
+    for (const ch of partial) {
+      if (ch === '{') stack.push('}');
+      else if (ch === '[') stack.push(']');
+      else if (ch === '}' || ch === ']') stack.pop();
+    }
+    partial += stack.reverse().join('');
+    try { JSON.parse(partial); return partial; } catch(e) { /* unrecoverable */ }
   }
   return null;
 }
@@ -1043,10 +1057,10 @@ Respond with this exact JSON structure:
 
     const injectionRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-5',
-      max_tokens: 2000,
+      max_tokens: 4096,
       system: 'You are a JSON API. You must respond with valid JSON only — no markdown, no explanation, no code fences.',
       messages: [
-        { role: 'user', content: `Voice & persona injection mapping task for ${brandName}.
+        { role: 'user', content: `Voice & persona injection mapping task for ${brandName}. Be concise — max 4 injectionMap items, 2 hooks, 3 powerPhrases.
 
 VOICE: ${JSON.stringify(voiceProfile).slice(0, 400)}
 PERSONAS: ${JSON.stringify(personas).slice(0, 400)}
@@ -1072,7 +1086,7 @@ Respond with this exact JSON structure:
 
     const assemblerRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-5',
-      max_tokens: 3000,
+      max_tokens: 4096,
       system: 'You are a JSON API. You must respond with valid JSON only — no markdown, no explanation, no code fences.',
       messages: [
         { role: 'user', content: `Enriched brief assembly task for ${brandName}.
