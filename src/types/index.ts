@@ -87,4 +87,4 @@ export interface HistoryEntry {
   isCached: boolean;
 }
 
-export type ViewType = 'new-analysis' | 'active-run' | 'brand-profile' | 'strategy' | 'brain-history';
+export type ViewType = 'new-analysis' | 'active-run' | 'brand-profile' | 'strategy' | 'brain-history' | 'geo-strategist';
