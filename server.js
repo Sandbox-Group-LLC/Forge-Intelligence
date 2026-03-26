@@ -69,6 +69,32 @@ async function initDB() {
     console.log('NeonDB: legacy migration note:', e.message);
   }
 
+  // Clean up old rows where brand_name/brand_url were incorrectly set to UUID (client_id)
+  try {
+    const uuidRegex = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+    // For rows where brand_url looks like a UUID, try to recover brand_name from profile_data
+    const badRows = await pool.query(
+      `SELECT id, brand_url, profile_data FROM brand_profiles WHERE brand_url ~ $1`, [uuidRegex]
+    );
+    for (const row of badRows.rows) {
+      const pd = row.profile_data || {};
+      const recoveredName = pd.brandName || pd.brand_name || null;
+      const recoveredUrl  = pd.brandUrl  || pd.brand_url  || null;
+      if (recoveredName || recoveredUrl) {
+        await pool.query(
+          `UPDATE brand_profiles SET brand_name = COALESCE($1, brand_name), brand_url = COALESCE($2, brand_url) WHERE id = $3`,
+          [recoveredName, recoveredUrl, row.id]
+        );
+      }
+    }
+    if (badRows.rows.length > 0) console.log(\`NeonDB: cleaned \${badRows.rows.length} legacy UUID brand rows\`);
+  } catch(e) {
+    console.log('NeonDB: UUID cleanup note:', e.message);
+
+  } catch(e) {
+    console.log('NeonDB: legacy migration note:', e.message);
+  }
+
   const tableCheck = await pool.query(`
     SELECT table_name FROM information_schema.tables
     WHERE table_schema = 'public' AND table_name = 'brand_profiles'
@@ -277,6 +303,9 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
     const profileData = JSON.parse(jsonMatch[0]);
 
     if (saveToBrain) {
+      // Use brand name from Claude's response if available, fall back to what was passed in
+      const resolvedBrandName = profileData.brandName || profileData.brand_name || brandName;
+
       await pool.query(`UPDATE brand_profiles SET is_active = false WHERE brand_url = $1`, [brandUrl]);
       const versionResult = await pool.query(
         `SELECT COALESCE(MAX(version), 0) as max_v FROM brand_profiles WHERE brand_url = $1`, [brandUrl]
@@ -287,7 +316,7 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
       const inserted = await pool.query(
         `INSERT INTO brand_profiles (id, brand_url, brand_name, version, is_active, cache_status, profile_data)
          VALUES ($1, $2, $3, $4, true, 'fresh', $5) RETURNING *`,
-        [id, brandUrl, brandName, nextVersion, JSON.stringify(profileData)]
+        [id, brandUrl, resolvedBrandName, nextVersion, JSON.stringify(profileData)]
       );
       const r = inserted.rows[0];
       return res.json({ success: true, data: {
