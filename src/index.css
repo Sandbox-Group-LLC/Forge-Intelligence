@@ -68,11 +68,9 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-image: radial-gradient(circle at top left, rgba(53,99,255,0.22), transparent 55%),
-                    radial-gradient(circle at bottom right, rgba(20,184,166,0.12), transparent 55%),
-                    linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
-                    linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
-  background-size: 100% 100%, 100% 100%, 56px 56px, 56px 56px;
-  background-position: 0 0, 0 0, 0 0, 0 0;
+                    radial-gradient(circle at bottom right, rgba(20,184,166,0.12), transparent 55%);
+  background-size: 100% 100%, 100% 100%;
+  background-position: 0 0, 0 0;
 }
 
 a {
