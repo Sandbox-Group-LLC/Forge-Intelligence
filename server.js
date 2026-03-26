@@ -628,7 +628,10 @@ BRAIN MEMORIES (high performers): ${JSON.stringify(brainMemories)}`;
       if (existing.rows.length > 0) {
         const r = existing.rows[0];
         const bd = r.brief_data || {};
-        const normalized = normalizeGeoData(bd, bd.topicalMap || {}, bd.geoOpportunities || [], bd.entitySchema || [], r);
+        // Use pre-stored normalized arrays if available, else re-normalize
+        const normalized = (bd.topicalAuthorityMap && bd.topicalAuthorityMap.length)
+          ? { topicalAuthorityMap: bd.topicalAuthorityMap, geoOpportunities: bd.geoOpportunitiesNorm || [], entitySchemaMap: bd.entitySchemaMap, geoBrief: bd.geoBrief }
+          : normalizeGeoData(bd, bd.topicalMap || {}, bd.geoOpportunities || [], bd.entitySchema || [], r);
         return res.json({ success: true, cached: true, data: {
           id: r.id, brandProfileId: r.brand_profile_id,
           brandUrl: r.brand_url, brandName: r.brand_name,
@@ -666,13 +669,15 @@ Map topical authority clusters. Score each gap by GEO citation probability (0-10
 Return ONLY valid JSON:
 {"brandClusters":["topic"],"competitorClusters":["topic"],"gapsByCluster":[{"topic":"string","geoCitationScore":0,"owner":"string|null","rationale":"string"}]}` }]
     });
-    let topicalMap = {};
+    let topicalMap = { gapsByCluster: [] };
     try {
-      const tm = extractJSON(topicalRes.content[0].text, 'object');
-      if (!tm) throw new Error('No JSON object found in Tool 1 response');
-      topicalMap = JSON.parse(tm);
-    } catch(e) { console.log('[GEO] Tool 1 parse warn:', e.message, '| raw:', topicalRes.content[0].text.slice(0,200)); topicalMap = { brandClusters: [], competitorClusters: [], gapsByCluster: [] }; }
-    console.log(`[GEO] Tool 1 gaps: ${(topicalMap.gapsByCluster||[]).length}`);
+      // Tool 1 returns a flat array
+      const tm = extractJSON(topicalRes.content[0].text, 'array');
+      if (!tm) throw new Error('No JSON array found in Tool 1 response');
+      const gaps = JSON.parse(tm);
+      topicalMap = { gapsByCluster: gaps, brandClusters: [], competitorClusters: [] };
+    } catch(e) { console.log('[GEO] Tool 1 parse warn:', e.message, '| raw:', topicalRes.content[0].text.slice(0,200)); }
+    console.log(`[GEO] Tool 1 gaps: ${topicalMap.gapsByCluster.length}`);
 
     // ── Tool 2: GEO Opportunity Scorer ────────────────────────────────────────
     console.log('[GEO] Tool 2: GEO Opportunity Scorer...');
@@ -681,17 +686,14 @@ Return ONLY valid JSON:
       max_tokens: 2000,
       messages: [{ role: 'user', content: `You are the GEO Opportunity Scorer for Forge Intelligence.
 
-TOPICAL MAP: ${JSON.stringify(topicalMap)}
-BRAND WHITESPACE: ${whitespace}
+BRAND: ${profile.brand_name} (${profile.brand_url})
+TOPICAL GAPS: ${JSON.stringify(topicalMap.gapsByCluster.slice(0, 10))}
+WHITESPACE: ${whitespace.slice(0, 300)}
 
-Score each gap across ChatGPT, Perplexity, Google AI Overviews, and Gemini.
-- recencyBias (0-1): platform preference for fresh content
-- entityAuthority (0-1): brand entity recognition in this topic
-- structuralFit (0-1): FAQ/HowTo/Article schema citation likelihood
-- quickWin: true if brand has authority but no content yet
+For each topic gap, score citation probability 0-100 across all 4 AI platforms. quickWin=true if score >= 70 and low brand presence.
 
-Return ONLY valid JSON array:
-[{"platform":"string","topic":"string","score":0,"recencyBias":0,"entityAuthority":0,"structuralFit":0,"quickWin":false}]` }]
+Return ONLY a raw JSON array (no markdown, no explanation):
+[{"platform":"ChatGPT","topic":"string","score":80,"quickWin":true},{"platform":"Perplexity","topic":"string","score":70,"quickWin":false},{"platform":"Google AI Overviews","topic":"string","score":65,"quickWin":false},{"platform":"Gemini","topic":"string","score":60,"quickWin":false}]` }]
     });
     let geoOpportunities = [];
     try {
@@ -776,7 +778,8 @@ Return ONLY valid JSON:
     );
     const nextVersion = versionResult.rows[0].max_v + 1;
     const id = randomUUID();
-    const fullBriefData = { ...briefData, topicalMap, geoOpportunities, entitySchema };
+    const { topicalAuthorityMap, geoOpportunities: geoOpportunitiesNorm, entitySchemaMap, geoBrief } = normalizeGeoData(briefData, topicalMap, geoOpportunities, entitySchema, profile);
+    const fullBriefData = { ...briefData, topicalMap, geoOpportunities, entitySchema, topicalAuthorityMap, geoOpportunitiesNorm, entitySchemaMap, geoBrief };
 
     await pool.query(
       `INSERT INTO geo_briefs (id, client_id, brand_profile_id, brand_url, brand_name, version, opportunity_score, brief_data)
@@ -800,7 +803,6 @@ Return ONLY valid JSON:
     const latencyMs = Date.now() - startTime;
     console.log(`[GEO] Complete — Score: ${opportunityScore} | Latency: ${latencyMs}ms | QuickWins: ${quickWins.length}`);
 
-    const { topicalAuthorityMap, geoOpportunities: geoOpportunitiesNorm, entitySchemaMap, geoBrief } = normalizeGeoData(briefData, topicalMap, geoOpportunities, entitySchema, profile);
     res.json({ success: true, cached: false, data: {
       id, brandProfileId, brandUrl: profile.brand_url, brandName: profile.brand_name,
       version: nextVersion, opportunityScore, latencyMs,
