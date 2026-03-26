@@ -243,6 +243,12 @@ async function initDB() {
         console.log('NeonDB: enriched_briefs added column:', col.name);
       }
     }
+    // Drop NOT NULL on client_id if it exists (legacy column)
+    try {
+      await pool.query(`ALTER TABLE enriched_briefs ALTER COLUMN client_id DROP NOT NULL`);
+      await pool.query(`ALTER TABLE enriched_briefs ALTER COLUMN client_id SET DEFAULT NULL`);
+      console.log('NeonDB: enriched_briefs client_id made nullable');
+    } catch(e) { /* column may not exist — fine */ }
     console.log('NeonDB: enriched_briefs table ensured — cols:', existingEnrichCols.join(', '));
   } catch(e) {
     console.log('NeonDB: enriched_briefs init note:', e.message);
@@ -1016,14 +1022,12 @@ Score Experience, Expertise, Authoritativeness, Trustworthiness 0-100. List gaps
 
 Respond with this exact JSON structure:
 {"scores":{"experience":{"score":0,"rationale":"","evidence":[]},"expertise":{"score":0,"rationale":"","evidence":[]},"authoritativeness":{"score":0,"rationale":"","evidence":[]},"trustworthiness":{"score":0,"rationale":"","evidence":[]}},"overallEEATScore":0,"gaps":[{"dimension":"","gapType":"sme_credentials|awards|case_studies|original_research|customer_proof|author_authority|founding_story|certifications","severity":"high|medium|low","tooltip":"","placeholder":"","whyItMatters":""}],"smeSignals":[{"type":"award|certification|case_study|research|quote|expert|media|client|story","value":"","confidence":0,"source":"scraped|manual","injectionPoint":""}]}` },
-        { role: 'assistant', content: '{' }
       ]
     });
 
     let scorerData = {};
     try {
-      const rawT2 = '{' + scorerRes.content[0].text;
-      const sd = extractJSON(rawT2, 'object');
+      const sd = extractJSON(scorerRes.content[0].text, 'object');
       if (!sd) throw new Error('No JSON in Tool 2');
       scorerData = JSON.parse(sd);
     } catch(e) { console.log('[ENRICH] Tool 2 parse warn:', e.message, '| raw:', scorerRes.content[0].text.slice(0,200)); scorerData = { scores: {}, gaps: [], smeSignals: [], overallEEATScore: 0 }; }
@@ -1051,14 +1055,12 @@ Map E-E-A-T signals to content sections. Generate hooks. Build author schema.
 
 Respond with this exact JSON structure:
 {"voiceConsistencyScore":0,"injectionMap":[{"section":"","injectionType":"sme_quote|stat|case_study|first_person_hook|customer_voice|founding_story|award_mention|certification_reference","suggestedContent":"","persona":"","eeatDimension":"experience|expertise|authoritativeness|trustworthiness","confidence":0}],"powerPhrases":[],"authorSchema":{"name":null,"title":null,"expertise":[],"credentials":[],"sameAs":[]},"contentHooks":[{"hook":"","persona":"","type":"curiosity|pain_point|stat|story|contrarian"}]}` },
-        { role: 'assistant', content: '{' }
       ]
     });
 
     let injectionData = {};
     try {
-      const rawT3 = '{' + injectionRes.content[0].text;
-      const id2 = extractJSON(rawT3, 'object');
+      const id2 = extractJSON(injectionRes.content[0].text, 'object');
       if (!id2) throw new Error('No JSON in Tool 3');
       injectionData = JSON.parse(id2);
     } catch(e) { console.log('[ENRICH] Tool 3 parse warn:', e.message, '| raw:', injectionRes.content[0].text.slice(0,200)); injectionData = { injectionMap: [], powerPhrases: [], authorSchema: {}, contentHooks: [] }; }
@@ -1084,14 +1086,12 @@ Assemble enriched brief. Flag sections green/yellow/red by confidence. Mark smeR
 
 Respond with this exact JSON structure:
 {"enrichedTitle":"","enrichedH1":"","enrichedSections":[{"heading":"","eeatInjections":[],"confidenceFlag":"green|yellow|red","flagReason":null,"smeRequired":false}],"enrichedFAQ":[{"q":"","a":"","eeatSignal":""}],"authorSchemaMarkup":{},"overallConfidence":0,"readyForStage4":true,"humanReviewItems":[]}` },
-        { role: 'assistant', content: '{' }
       ]
     });
 
     let assembledBrief = {};
     try {
-      const rawT4 = '{' + assemblerRes.content[0].text;
-      const ab = extractJSON(rawT4, 'object');
+      const ab = extractJSON(assemblerRes.content[0].text, 'object');
       if (!ab) throw new Error('No JSON in Tool 4');
       assembledBrief = JSON.parse(ab);
     } catch(e) { console.log('[ENRICH] Tool 4 parse warn:', e.message, '| raw:', assemblerRes.content[0].text.slice(0,200)); assembledBrief = { enrichedSections: [], overallConfidence: 0, readyForStage4: false }; }
