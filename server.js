@@ -207,6 +207,30 @@ async function initDB() {
   }
 }
 
+  // ── geo_briefs: add opportunity_score column if missing ─────────────────────
+  try {
+    await pool.query(`ALTER TABLE geo_briefs ADD COLUMN IF NOT EXISTS opportunity_score INTEGER DEFAULT 0`);
+    console.log('NeonDB: geo_briefs.opportunity_score ensured');
+  } catch(e) { console.log('NeonDB: geo_briefs migration note:', e.message); }
+
+  // ── Brain tables: patterns, mistakes, memories ────────────────────────────
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS patterns (
+      id TEXT PRIMARY KEY, pattern_type VARCHAR(100), success_rate FLOAT,
+      confidence_score FLOAT, tags JSONB, created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS mistakes (
+      id TEXT PRIMARY KEY, mistake_type VARCHAR(100), human_feedback TEXT,
+      guardrail_created TEXT, severity VARCHAR(20), created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS memories (
+      id TEXT PRIMARY KEY, raw_content TEXT, metadata JSONB,
+      performance_outcome JSONB, created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    console.log('NeonDB: Brain tables (patterns, mistakes, memories) ensured');
+  } catch(e) { console.log('NeonDB: Brain tables note:', e.message); }
+
+
 initDB().catch(err => console.error('DB init error:', err));
 
 app.use(express.json());
@@ -376,17 +400,14 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
 app.get('/api/geo-strategist/briefs', async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, brand_profile_id, brand_url, brand_name, version, brief_data, created_at, updated_at
+      `SELECT id, brand_profile_id, brand_url, brand_name, version, opportunity_score, brief_data, created_at, updated_at
        FROM geo_briefs ORDER BY updated_at DESC`
     );
     const data = result.rows.map(r => ({
-      id: r.id,
-      brandProfileId: r.brand_profile_id,
-      brandUrl: r.brand_url,
-      brandName: r.brand_name,
-      version: r.version,
-      createdAt: r.created_at,
-      updatedAt: r.updated_at,
+      id: r.id, brandProfileId: r.brand_profile_id,
+      brandUrl: r.brand_url, brandName: r.brand_name,
+      version: r.version, opportunityScore: r.opportunity_score,
+      createdAt: r.created_at, updatedAt: r.updated_at,
       ...r.brief_data
     }));
     res.json({ success: true, data });
@@ -403,7 +424,8 @@ app.get('/api/geo-strategist/briefs/:id', async (req, res) => {
     res.json({ success: true, data: {
       id: r.id, brandProfileId: r.brand_profile_id,
       brandUrl: r.brand_url, brandName: r.brand_name,
-      version: r.version, createdAt: r.created_at, updatedAt: r.updated_at,
+      version: r.version, opportunityScore: r.opportunity_score,
+      createdAt: r.created_at, updatedAt: r.updated_at,
       ...r.brief_data
     }});
   } catch (err) {
@@ -417,133 +439,222 @@ app.post('/api/geo-strategist/analyze', async (req, res) => {
     return res.status(400).json({ success: false, error: 'brandProfileId is required' });
   }
 
+  const startTime = Date.now();
+
   try {
-    // ── Brain-First: load Stage 1 context ────────────────────────────────────
-    const profileResult = await pool.query(
-      `SELECT * FROM brand_profiles WHERE id = $1`, [brandProfileId]
-    );
+    // ── Step 0: Brain-First Protocol ─────────────────────────────────────────
+    let brainPatterns = [], brainMistakes = [], brainMemories = [];
+    try {
+      const [pRes, mRes, memRes] = await Promise.all([
+        pool.query(`SELECT pattern_type, success_rate, confidence_score, tags FROM patterns ORDER BY success_rate DESC LIMIT 10`),
+        pool.query(`SELECT mistake_type, human_feedback, guardrail_created, severity FROM mistakes ORDER BY created_at DESC LIMIT 10`),
+        pool.query(`SELECT raw_content, metadata, performance_outcome FROM memories ORDER BY created_at DESC LIMIT 5`),
+      ]);
+      brainPatterns = pRes.rows;
+      brainMistakes = mRes.rows;
+      brainMemories = memRes.rows;
+    } catch(e) {
+      console.log('[GEO] Brain tables not seeded — proceeding cold:', e.message);
+    }
+
+    const brainContext = `BRAIN PATTERNS (what worked): ${JSON.stringify(brainPatterns)}
+BRAIN MISTAKES (DO NOT repeat): ${JSON.stringify(brainMistakes)}
+BRAIN MEMORIES (high performers): ${JSON.stringify(brainMemories)}`;
+
+    // ── Step 1: Load Stage 1 brand profile ───────────────────────────────────
+    const profileResult = await pool.query(`SELECT * FROM brand_profiles WHERE id = $1`, [brandProfileId]);
     if (!profileResult.rows.length) {
       return res.status(404).json({ success: false, error: 'Brand profile not found. Run Stage 1 first.' });
     }
     const profile = profileResult.rows[0];
     const pd = profile.profile_data || {};
 
-    // ── Check for existing GEO brief for this brand profile ──────────────────
-    const existingBrief = await pool.query(
-      `SELECT * FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY version DESC LIMIT 1`,
-      [brandProfileId]
-    );
-    if (existingBrief.rows.length > 0 && !topicFocus && !additionalContext) {
-      const r = existingBrief.rows[0];
-      return res.json({ success: true, cached: true, data: {
-        id: r.id, brandProfileId: r.brand_profile_id,
-        brandUrl: r.brand_url, brandName: r.brand_name,
-        version: r.version, createdAt: r.created_at, updatedAt: r.updated_at,
-        ...r.brief_data
-      }});
+    // ── Cache check ──────────────────────────────────────────────────────────
+    if (!topicFocus && !additionalContext) {
+      const existing = await pool.query(
+        `SELECT * FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY version DESC LIMIT 1`, [brandProfileId]
+      );
+      if (existing.rows.length > 0) {
+        const r = existing.rows[0];
+        return res.json({ success: true, cached: true, data: {
+          id: r.id, brandProfileId: r.brand_profile_id,
+          brandUrl: r.brand_url, brandName: r.brand_name,
+          version: r.version, opportunityScore: r.opportunity_score,
+          createdAt: r.created_at, updatedAt: r.updated_at,
+          ...r.brief_data
+        }});
+      }
     }
 
-    // ── Build prompt from Stage 1 context ────────────────────────────────────
     const voiceProfile = pd.voiceProfile || {};
     const personas = pd.personas || [];
-    const competitiveGaps = pd.competitiveGaps || [];
-    const topicSection = topicFocus ? `\nFocus topic: ${topicFocus}` : '';
-    const contextSection = additionalContext ? `\nAdditional context: ${additionalContext}` : '';
+    const competitiveGaps = pd.competitiveGaps || {};
+    const whitespace = typeof competitiveGaps === 'string' ? competitiveGaps : (competitiveGaps.whitespace || '');
+    const competitorTopics = Array.isArray(competitiveGaps) ? competitiveGaps : (competitiveGaps.competitorOwnedTopics || []);
 
-    const prompt = `You are the Forge Intelligence GEO Strategist — Stage 2 of an 8-stage Brand Intelligence platform.
+    // ── Tool 1: Topical Authority Mapper ─────────────────────────────────────
+    console.log('[GEO] Tool 1: Topical Authority Mapper...');
+    const topicalRes = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 1500,
+      messages: [{ role: 'user', content: `You are the Topical Authority Mapper for Forge Intelligence GEO Strategist.
 
-Your job: Take the Stage 1 Brand Intelligence Profile and generate a comprehensive GEO (Generative Engine Optimization) strategy brief. GEO means optimizing content to be cited by AI systems: ChatGPT, Perplexity, Google AI Overviews, Gemini, and Claude.
+${brainContext}
 
-<brand_context>
-Brand: ${profile.brand_name}
-URL: ${profile.brand_url}
-Voice summary: ${voiceProfile.summary || 'Not available'}
-Tone: ${voiceProfile.writingStyle || 'Not available'}
-Key phrases: ${(voiceProfile.keyPhrases || []).join(', ')}
-Personas: ${personas.map(p => p.name + ' — ' + p.role).join('; ')}
-Competitive gaps identified: ${competitiveGaps.map(g => g.topic + ' (priority: ' + g.priority + ')').join('; ')}
-</brand_context>${topicSection}${contextSection}
+BRAND: ${profile.brand_name} (${profile.brand_url})
+Voice summary: ${JSON.stringify(voiceProfile).slice(0, 500)}
+Personas: ${JSON.stringify(personas).slice(0, 500)}
+Competitor-owned topics: ${JSON.stringify(competitorTopics)}
+Brand whitespace opportunity: ${whitespace}
+${topicFocus ? 'Focus topic: ' + topicFocus : ''}
 
-Return ONLY valid JSON (no markdown, no explanation):
-{
-  "executiveSummary": "string — 2-3 sentence strategic overview of this brand's GEO opportunity",
-  "topicalClusters": [{
-    "id": "string",
-    "clusterName": "string",
-    "strategicRationale": "string",
-    "geoCitationProbability": "high|medium|low",
-    "competitorPresence": "strong|moderate|weak|none",
-    "recommendedTopics": [{
-      "title": "string",
-      "intent": "informational|commercial|navigational|transactional",
-      "geoAiTargets": ["ChatGPT"|"Perplexity"|"Google AI Overviews"|"Gemini"|"Claude"],
-      "whiteSpaceScore": 0-100,
-      "suggestedH1": "string",
-      "keyEntities": ["string"],
-      "suggestedSchema": ["Article"|"FAQ"|"HowTo"|"Organization"|"Breadcrumb"|"Product"]
-    }]
-  }],
-  "quickWins": [{
-    "topic": "string",
-    "rationale": "string — why this is a quick win for this specific brand",
-    "estimatedTimeToRank": "string",
-    "geoAiTarget": "string"
-  }],
-  "entityStrategy": {
-    "coreEntities": ["string"],
-    "missingEntities": ["string — entities competitors are cited for that this brand isn't"],
-    "authorityBuilding": "string — specific recommendation for building entity authority"
-  },
-  "contentCalendarRecommendation": {
-    "month1": ["string"],
-    "month2": ["string"],
-    "month3": ["string"]
-  },
-  "geoScorecard": {
-    "currentGeoReadiness": 0-100,
-    "primaryGap": "string",
-    "topOpportunity": "string"
-  }
-}
-Requirements: 3-4 topicalClusters each with 3-4 recommendedTopics, 3-5 quickWins, month calendar with 3-4 topics each month.`;
+Map topical authority clusters. Score each gap by GEO citation probability (0-100).
 
-    const message = await anthropic.messages.create({
-      model: 'claude-opus-4-5',
-      max_tokens: 6000,
-      messages: [{ role: 'user', content: prompt }]
+Return ONLY valid JSON:
+{"brandClusters":["topic"],"competitorClusters":["topic"],"gapsByCluster":[{"topic":"string","geoCitationScore":0,"owner":"string|null","rationale":"string"}]}` }]
     });
+    let topicalMap = {};
+    try {
+      const tm = topicalRes.content[0].text.match(/\{[\s\S]*\}/);
+      topicalMap = JSON.parse(tm[0]);
+    } catch(e) { console.log('[GEO] Tool 1 parse warn:', e.message); topicalMap = { brandClusters: [], competitorClusters: [], gapsByCluster: [] }; }
 
-    const raw = message.content[0].text;
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('Claude returned no valid JSON');
-    const briefData = JSON.parse(jsonMatch[0]);
+    // ── Tool 2: GEO Opportunity Scorer ────────────────────────────────────────
+    console.log('[GEO] Tool 2: GEO Opportunity Scorer...');
+    const scorerRes = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 2000,
+      messages: [{ role: 'user', content: `You are the GEO Opportunity Scorer for Forge Intelligence.
 
-    // ── Persist GEO brief ────────────────────────────────────────────────────
+TOPICAL MAP: ${JSON.stringify(topicalMap)}
+BRAND WHITESPACE: ${whitespace}
+
+Score each gap across ChatGPT, Perplexity, Google AI Overviews, and Gemini.
+- recencyBias (0-1): platform preference for fresh content
+- entityAuthority (0-1): brand entity recognition in this topic
+- structuralFit (0-1): FAQ/HowTo/Article schema citation likelihood
+- quickWin: true if brand has authority but no content yet
+
+Return ONLY valid JSON array:
+[{"platform":"string","topic":"string","score":0,"recencyBias":0,"entityAuthority":0,"structuralFit":0,"quickWin":false}]` }]
+    });
+    let geoOpportunities = [];
+    try {
+      const go = scorerRes.content[0].text.match(/\[[\s\S]*\]/);
+      geoOpportunities = JSON.parse(go[0]);
+    } catch(e) { console.log('[GEO] Tool 2 parse warn:', e.message); }
+
+    // ── Tool 3: Entity & Schema Mapper ────────────────────────────────────────
+    console.log('[GEO] Tool 3: Entity & Schema Mapper...');
+    const entityRes = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 1500,
+      messages: [{ role: 'user', content: `You are the Entity & Schema Mapper for Forge Intelligence.
+
+BRAND: ${profile.brand_name}
+COMPETITIVE GAPS: ${JSON.stringify(competitorTopics).slice(0, 400)}
+TOP GEO OPPORTUNITIES: ${JSON.stringify(geoOpportunities.slice(0, 8))}
+
+Identify entities needing structured markup for AI citation. Flag competitor entities this brand is NOT being cited for.
+
+Return ONLY valid JSON array:
+[{"entity":"string","schemaTypes":["Article"],"competitorCiting":false,"priority":"high|medium|low","rationale":"string"}]` }]
+    });
+    let entitySchema = [];
+    try {
+      const es = entityRes.content[0].text.match(/\[[\s\S]*\]/);
+      entitySchema = JSON.parse(es[0]);
+    } catch(e) { console.log('[GEO] Tool 3 parse warn:', e.message); }
+
+    // ── Tool 4: Brief Generator ───────────────────────────────────────────────
+    console.log('[GEO] Tool 4: Brief Generator...');
+    const quickWins = geoOpportunities.filter(o => o.quickWin).slice(0, 3);
+    const targetTopic = topicFocus || quickWins[0]?.topic || geoOpportunities[0]?.topic || whitespace || profile.brand_name + ' strategy';
+
+    const briefRes = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 4000,
+      messages: [{ role: 'user', content: `You are the GEO Brief Generator for Forge Intelligence.
+
+MANDATORY BRAIN-FIRST CHECK:
+${brainContext}
+DO NOT repeat patterns flagged as mistakes above.
+
+BRAND: ${profile.brand_name} | Voice: ${JSON.stringify(voiceProfile).slice(0, 400)}
+Personas: ${JSON.stringify(personas).slice(0, 400)}
+Whitespace: ${whitespace}
+TARGET TOPIC: ${targetTopic}
+TOP OPPORTUNITIES: ${JSON.stringify(geoOpportunities.slice(0, 6))}
+HIGH-PRIORITY ENTITIES: ${JSON.stringify(entitySchema.filter(e => e.priority === 'high'))}
+${additionalContext ? 'Additional context: ' + additionalContext : ''}
+
+Generate a complete GEO-optimized content brief structured for AI citation.
+
+Return ONLY valid JSON:
+{
+  "targetTopic":"string","executiveSummary":"string","h1":"string",
+  "h2s":[{"heading":"string","intent":"string","geoAnchor":"string"}],
+  "entities":["string"],"faqStructure":[{"question":"string","answerDirection":"string"}],
+  "geoAnchors":["string"],"schemaRequirements":["string"],
+  "overallOpportunityScore":0,"targetPlatforms":["string"],
+  "contentCalendar":{"month1":["string"],"month2":["string"],"month3":["string"]},
+  "quickWins":[{"topic":"string","rationale":"string","geoTarget":"string"}],
+  "geoScorecard":{"currentReadiness":0,"primaryGap":"string","topOpportunity":"string"},
+  "briefRationale":"string"
+}` }]
+    });
+    let briefData = {};
+    try {
+      const bd = briefRes.content[0].text.match(/\{[\s\S]*\}/);
+      briefData = JSON.parse(bd[0]);
+    } catch(e) { console.log('[GEO] Tool 4 parse warn:', e.message); briefData = { targetTopic, overallOpportunityScore: 50 }; }
+
+    const opportunityScore = briefData.overallOpportunityScore || 0;
+
+    // ── Persist to geo_briefs ─────────────────────────────────────────────────
     const versionResult = await pool.query(
       `SELECT COALESCE(MAX(version), 0) as max_v FROM geo_briefs WHERE brand_profile_id = $1`, [brandProfileId]
     );
     const nextVersion = versionResult.rows[0].max_v + 1;
     const id = randomUUID();
+    const fullBriefData = { ...briefData, topicalMap, geoOpportunities, entitySchema };
 
-    const inserted = await pool.query(
-      `INSERT INTO geo_briefs (id, brand_profile_id, brand_url, brand_name, version, brief_data)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [id, brandProfileId, profile.brand_url, profile.brand_name, nextVersion, JSON.stringify(briefData)]
+    await pool.query(
+      `INSERT INTO geo_briefs (id, brand_profile_id, brand_url, brand_name, version, opportunity_score, brief_data)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [id, brandProfileId, profile.brand_url, profile.brand_name, nextVersion, opportunityScore, JSON.stringify(fullBriefData)]
     );
-    const r = inserted.rows[0];
+
+    // ── Write pattern if score >= 75 ──────────────────────────────────────────
+    if (opportunityScore >= 75) {
+      try {
+        await pool.query(
+          `INSERT INTO patterns (id, pattern_type, success_rate, confidence_score, tags, created_at)
+           VALUES ($1, $2, $3, $4, $5, NOW()) ON CONFLICT DO NOTHING`,
+          [randomUUID(), 'geo-brief-high-score', opportunityScore / 100, opportunityScore / 100,
+           JSON.stringify({ topic: briefData.targetTopic, platforms: briefData.targetPlatforms, score: opportunityScore, brandUrl: profile.brand_url })]
+        );
+        console.log(`[GEO] Pattern written — score ${opportunityScore} >= 75`);
+      } catch(e) { console.log('[GEO] Pattern write skipped:', e.message); }
+    }
+
+    const latencyMs = Date.now() - startTime;
+    console.log(`[GEO] Complete — Score: ${opportunityScore} | Latency: ${latencyMs}ms | QuickWins: ${quickWins.length}`);
 
     res.json({ success: true, cached: false, data: {
-      id: r.id, brandProfileId: r.brand_profile_id,
-      brandUrl: r.brand_url, brandName: r.brand_name,
-      version: r.version, createdAt: r.created_at, updatedAt: r.updated_at,
-      ...briefData
+      id, brandProfileId, brandUrl: profile.brand_url, brandName: profile.brand_name,
+      version: nextVersion, opportunityScore, latencyMs,
+      quickWinsCount: quickWins.length,
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      ...fullBriefData
     }});
 
   } catch (err) {
-    console.error('GEO Strategist error:', err);
+    console.error('[GEO] Error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
 
 // ── Waitlist ──────────────────────────────────────────────────────────────────
 app.post('/api/waitlist', async function (req, res) {
