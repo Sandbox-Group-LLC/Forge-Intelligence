@@ -23,19 +23,6 @@
   position: relative;
 }
 
-/* Grid overlay — matches landing page exactly */
-.app-content::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
-  background-size: 56px 56px;
-  pointer-events: none;
-  z-index: 0;
-}
-
 .view-container {
   padding: 32px;
   max-width: 1400px;
