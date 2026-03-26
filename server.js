@@ -69,25 +69,34 @@ async function initDB() {
     console.log('NeonDB: legacy migration note:', e.message);
   }
 
-  // Clean up old rows where brand_name/brand_url were incorrectly set to UUID (client_id)
+  // Clean up legacy rows where brand_name/brand_url were set to UUID instead of real values
+  // Strategy: extract domain from profile_data, fall back to capitalizing the first segment of brand_url
   try {
     const uuidRegex = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
-    // For rows where brand_url looks like a UUID, try to recover brand_name from profile_data
     const badRows = await pool.query(
-      `SELECT id, brand_url, profile_data FROM brand_profiles WHERE brand_url ~ $1`, [uuidRegex]
+      `SELECT id, brand_url, brand_name, profile_data FROM brand_profiles WHERE brand_url ~ $1 OR brand_name ~ $1`,
+      [uuidRegex]
     );
+
+    const domainToName = (url) => {
+      // e.g. "zapier.com" or "https://zapier.com" -> "Zapier"
+      const clean = url.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].split('.')[0];
+      return clean.charAt(0).toUpperCase() + clean.slice(1);
+    };
+
     for (const row of badRows.rows) {
       const pd = row.profile_data || {};
-      const recoveredName = pd.brandName || pd.brand_name || null;
-      const recoveredUrl  = pd.brandUrl  || pd.brand_url  || null;
-      if (recoveredName || recoveredUrl) {
+      // Try to get the real URL from profile_data first
+      const realUrl = pd.brandUrl || pd.brand_url || null;
+      const realName = pd.brandName || pd.brand_name || (realUrl ? domainToName(realUrl) : null);
+      if (realUrl || realName) {
         await pool.query(
-          `UPDATE brand_profiles SET brand_name = COALESCE($1, brand_name), brand_url = COALESCE($2, brand_url) WHERE id = $3`,
-          [recoveredName, recoveredUrl, row.id]
+          `UPDATE brand_profiles SET brand_url = COALESCE($1, brand_url), brand_name = COALESCE($2, brand_name) WHERE id = $3`,
+          [realUrl, realName, row.id]
         );
       }
     }
-    if (badRows.rows.length > 0) console.log('NeonDB: cleaned ' + badRows.rows.length + ' legacy UUID brand rows');
+    if (badRows.rows.length > 0) console.log('NeonDB: fixed ' + badRows.rows.length + ' legacy UUID brand rows');
   } catch(e) {
     console.log('NeonDB: UUID cleanup note:', e.message);
   }
