@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import pkg from 'pg';
 import Anthropic from '@anthropic-ai/sdk';
+import { randomUUID } from 'crypto';
 
 const { Pool } = pkg;
 const __filename = fileURLToPath(import.meta.url);
@@ -246,7 +247,7 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
         `SELECT COALESCE(MAX(version), 0) as max_v FROM brand_profiles WHERE brand_url = $1`, [brandUrl]
       );
       const nextVersion = versionResult.rows[0].max_v + 1;
-      const id = `bp_${Date.now()}`;
+      const id = randomUUID();
 
       const inserted = await pool.query(
         `INSERT INTO brand_profiles (id, brand_url, brand_name, version, is_active, cache_status, profile_data)
@@ -262,7 +263,7 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
     }
 
     res.json({ success: true, data: {
-      id: `bp_tmp_${Date.now()}`, brandUrl, brandName,
+      id: randomUUID(), brandUrl, brandName,
       version: 1, isActive: false, cacheStatus: 'fresh',
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       ...profileData
