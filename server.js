@@ -34,8 +34,19 @@ async function initDB() {
     console.log('NeonDB: id already TEXT or table not yet created:', e.message);
   }
 
-  // Drop NOT NULL constraints on legacy columns so new inserts don't need them
+  // Migration: drop FK + NOT NULL on all legacy columns so new inserts work
   try {
+    // 1. Drop any foreign key constraints referencing clients table
+    const fkResult = await pool.query(`
+      SELECT conname FROM pg_constraint
+      WHERE conrelid = 'brand_profiles'::regclass AND contype = 'f'
+    `);
+    for (const row of fkResult.rows) {
+      await pool.query(`ALTER TABLE brand_profiles DROP CONSTRAINT IF EXISTS "${row.conname}"`);
+      console.log('NeonDB: dropped FK constraint:', row.conname);
+    }
+
+    // 2. Drop NOT NULL on all legacy columns in one statement
     await pool.query(`
       ALTER TABLE brand_profiles
         ALTER COLUMN client_id DROP NOT NULL,
@@ -46,8 +57,16 @@ async function initDB() {
         ALTER COLUMN last_scraped DROP NOT NULL
     `);
     console.log('NeonDB: legacy NOT NULL constraints dropped');
+
+    // 3. Set default for client_id so old rows are unaffected
+    await pool.query(`
+      ALTER TABLE brand_profiles
+        ALTER COLUMN client_id SET DEFAULT NULL
+    `);
+    console.log('NeonDB: client_id default set to NULL');
+
   } catch(e) {
-    // Columns may not exist or already nullable
+    console.log('NeonDB: legacy migration note:', e.message);
   }
 
   const tableCheck = await pool.query(`
