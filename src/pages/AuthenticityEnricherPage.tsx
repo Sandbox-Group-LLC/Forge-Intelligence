@@ -1,4 +1,7 @@
 import { useState, useEffect } from 'react';
+import { AppShell } from '../layouts/AppShell';
+import { useApp } from '../context/AppContext';
+import './GeoStrategistPage.css';
 // Inline SVG icon components (no lucide-react dependency)
 const ShieldCheck = ({ size = 16, color = 'currentColor' }: { size?: number; color?: string }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -108,7 +111,7 @@ const GAP_ICONS: Record<string, any> = {
 const CONFIDENCE_COLORS = { green: '#14B8A6', yellow: '#F5B942', red: '#EF4444' };
 const EEAT_LABELS = ['experience', 'expertise', 'authoritativeness', 'trustworthiness'];
 
-export default function AuthenticityEnricherPage() {
+function AuthenticityEnricherContent() {
   const [brains, setBrains] = useState<BrainOption[]>([]);
   const [selectedBrainId, setSelectedBrainId] = useState('');
   const [isRunning, setIsRunning] = useState(false);
@@ -121,7 +124,10 @@ export default function AuthenticityEnricherPage() {
   const [showManualForm, setShowManualForm] = useState(false);
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
 
+  const { setCurrentView } = useApp();
+
   useEffect(() => {
+    setCurrentView('authenticity-enricher');
     fetch('/api/context-hub/brains')
       .then(r => r.json())
       .then(d => { if (d.success) setBrains(d.data); });
@@ -525,4 +531,8 @@ export default function AuthenticityEnricherPage() {
       )}
     </div>
   );
+}
+
+export default function AuthenticityEnricherPage() {
+  return <AppShell><AuthenticityEnricherContent /></AppShell>;
 }
