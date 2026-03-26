@@ -628,17 +628,22 @@ BRAIN MEMORIES (high performers): ${JSON.stringify(brainMemories)}`;
       if (existing.rows.length > 0) {
         const r = existing.rows[0];
         const bd = r.brief_data || {};
-        // Use pre-stored normalized arrays if available, else re-normalize
-        const normalized = (bd.topicalAuthorityMap && bd.topicalAuthorityMap.length)
-          ? { topicalAuthorityMap: bd.topicalAuthorityMap, geoOpportunities: bd.geoOpportunitiesNorm || [], entitySchemaMap: bd.entitySchemaMap, geoBrief: bd.geoBrief }
-          : normalizeGeoData(bd, bd.topicalMap || {}, bd.geoOpportunities || [], bd.entitySchema || [], r);
-        return res.json({ success: true, cached: true, data: {
-          id: r.id, brandProfileId: r.brand_profile_id,
-          brandUrl: r.brand_url, brandName: r.brand_name,
-          version: r.version, opportunityScore: r.opportunity_score,
-          createdAt: r.created_at, updatedAt: r.updated_at,
-          ...normalized
-        }});
+        const cachedTopical = bd.topicalAuthorityMap || [];
+        const cachedGeo = bd.geoOpportunitiesNorm || [];
+        // If cached data is stale/empty, bypass cache and re-run
+        if (cachedTopical.length === 0 || cachedGeo.length === 0) {
+          console.log('[GEO] Cache stale — topical or geo empty, forcing fresh run');
+          // fall through to fresh analysis
+        } else {
+          const normalized = { topicalAuthorityMap: cachedTopical, geoOpportunities: cachedGeo, entitySchemaMap: bd.entitySchemaMap, geoBrief: bd.geoBrief };
+          return res.json({ success: true, cached: true, data: {
+            id: r.id, brandProfileId: r.brand_profile_id,
+            brandUrl: r.brand_url, brandName: r.brand_name,
+            version: r.version, opportunityScore: r.opportunity_score,
+            createdAt: r.created_at, updatedAt: r.updated_at,
+            ...normalized
+          }});
+        }
       }
     }
 
