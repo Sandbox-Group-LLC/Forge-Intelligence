@@ -86,6 +86,19 @@ async function initDB() {
       console.log('NeonDB: migrated old columns into profile_data');
     }
 
+    // Convert id column from uuid to text if needed
+    const idColResult = await pool.query(`
+      SELECT data_type FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'brand_profiles' AND column_name = 'id'
+    `);
+    if (idColResult.rows.length && idColResult.rows[0].data_type === 'uuid') {
+      await pool.query(`
+        ALTER TABLE brand_profiles
+          ALTER COLUMN id TYPE TEXT USING id::text
+      `);
+      console.log('NeonDB: converted id column from uuid to text');
+    }
+
     console.log('NeonDB: schema reconciled');
   }
 }
