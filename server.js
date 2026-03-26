@@ -956,9 +956,15 @@ app.post('/api/authenticity-enricher/analyze', async (req, res) => {
       if (existing.rows.length > 0) {
         const r = existing.rows[0];
         const ed = r.enriched_data || {};
-        const isReal = ed.smeSignals && ed.smeSignals.some(s => s.confidence > 0);
+        // Only serve cache if ALL tools produced real data
+        const hasEEAT = ed.eeatScores && Object.keys(ed.eeatScores).length > 0 &&
+          Object.values(ed.eeatScores).some(s => s.score > 0);
+        const hasInjections = ed.injectionMap && ed.injectionMap.length > 0 &&
+          ed.injectionMap.some(i => i.suggestedContent && i.suggestedContent.length > 10);
+        const hasBrief = ed.enrichedSections && ed.enrichedSections.length > 0;
+        const isReal = hasEEAT && hasInjections && hasBrief;
         if (isReal) {
-          console.log('[ENRICH] Cache hit for', profile.brand_url);
+          console.log(`[ENRICH] Cache hit for ${r.brand_url} — eeat:${hasEEAT} injections:${hasInjections} brief:${hasBrief}`);
           return res.json({ success: true, cached: true, data: {
             id: r.id, brandProfileId: r.brand_profile_id, geoBriefId: r.geo_brief_id,
             brandUrl: r.brand_url, brandName: r.brand_name, version: r.version,
@@ -966,7 +972,7 @@ app.post('/api/authenticity-enricher/analyze', async (req, res) => {
             ...r.enriched_data
           }});
         }
-        console.log('[ENRICH] Cache stale — forcing fresh run');
+        console.log(`[ENRICH] Cache stale — eeat:${hasEEAT} injections:${hasInjections} brief:${hasBrief} — forcing fresh run`);
       }
     }
 
