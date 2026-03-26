@@ -133,7 +133,7 @@ function AuthenticityEnricherContent() {
       .then(d => { if (d.success) setBrains(d.data); });
   }, []);
 
-  const runAnalysis = async (withManual = false) => {
+  const runAnalysis = async (withManual = false, forceRefresh = false) => {
     if (!selectedBrainId) return;
     setIsRunning(true);
     setResult(null);
@@ -147,7 +147,7 @@ function AuthenticityEnricherContent() {
       body: JSON.stringify({
         brandProfileId: selectedBrainId,
         manualInputs: withManual ? manualInputs : {},
-        force: withManual
+        force: withManual || forceRefresh
       })
     });
 
@@ -216,8 +216,16 @@ function AuthenticityEnricherContent() {
           {brains.map(b => <option key={b.id} value={b.id}>{b.brandName} — {b.brandUrl}</option>)}
         </select>
         <button className="geo-run-btn" onClick={() => runAnalysis(false)} disabled={!selectedBrainId || isRunning}>
-          {isRunning ? 'Enriching...' : result ? 'New Analysis' : 'Run Enrichment'}
+          {isRunning ? 'Enriching...' : result ? 'Run Again' : 'Run Enrichment'}
         </button>
+        {result && !isRunning && (
+          <button
+            onClick={() => runAnalysis(false, true)}
+            style={{ background: 'transparent', border: '1px solid #334155', borderRadius: '8px', padding: '8px 14px', color: '#64748B', fontSize: '13px', cursor: 'pointer', marginLeft: '8px' }}
+          >
+            Force Fresh
+          </button>
+        )}
       </div>
 
       {/* Stage progress */}
