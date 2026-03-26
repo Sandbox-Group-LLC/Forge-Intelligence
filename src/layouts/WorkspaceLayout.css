@@ -4,6 +4,7 @@
   width: 100%;
   overflow: hidden;
   position: relative;
+  background: transparent;
 }
 
 .app-main {
@@ -18,13 +19,29 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  background: var(--color-bg-base);
+  background: transparent;
+  position: relative;
+}
+
+/* Grid overlay — matches landing page exactly */
+.app-content::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+  background-size: 56px 56px;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .view-container {
   padding: 32px;
   max-width: 1400px;
   margin: 0 auto;
+  position: relative;
+  z-index: 1;
   animation: fadeIn 0.3s ease;
 }
 
@@ -43,14 +60,4 @@
   .view-container {
     padding: 20px 16px;
   }
-}
-
-.app-main::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background: radial-gradient(circle at top center, rgba(15,118,255,0.14), transparent 55%);
-  opacity: 0.8;
-  z-index: -1;
 }
