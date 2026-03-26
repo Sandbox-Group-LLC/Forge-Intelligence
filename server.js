@@ -90,9 +90,6 @@ async function initDB() {
     if (badRows.rows.length > 0) console.log('NeonDB: cleaned ' + badRows.rows.length + ' legacy UUID brand rows');
   } catch(e) {
     console.log('NeonDB: UUID cleanup note:', e.message);
-
-  } catch(e) {
-    console.log('NeonDB: legacy migration note:', e.message);
   }
 
   const tableCheck = await pool.query(`
