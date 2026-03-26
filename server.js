@@ -19,17 +19,17 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 async function initDB() {
   // Always ensure id column is TEXT (old schema used UUID)
   try {
-    // Drop PK constraint first so we can change the column type
-    await pool.query(`
-      ALTER TABLE brand_profiles DROP CONSTRAINT IF EXISTS brand_profiles_pkey
-    `);
-    await pool.query(`
-      ALTER TABLE brand_profiles ALTER COLUMN id TYPE TEXT USING id::text
-    `);
-    await pool.query(`
-      ALTER TABLE brand_profiles ADD PRIMARY KEY (id)
-    `);
-    console.log('NeonDB: id column ensured as TEXT with PK recreated');
+    // 1. Drop FK on geo_briefs that depends on brand_profiles.id
+    await pool.query(`ALTER TABLE geo_briefs DROP CONSTRAINT IF EXISTS geo_briefs_brand_profile_id_fkey`);
+    // 2. Drop PK so we can change type
+    await pool.query(`ALTER TABLE brand_profiles DROP CONSTRAINT IF EXISTS brand_profiles_pkey`);
+    // 3. Change both columns to TEXT
+    await pool.query(`ALTER TABLE brand_profiles ALTER COLUMN id TYPE TEXT USING id::text`);
+    await pool.query(`ALTER TABLE geo_briefs ALTER COLUMN brand_profile_id TYPE TEXT USING brand_profile_id::text`);
+    // 4. Recreate PK and FK
+    await pool.query(`ALTER TABLE brand_profiles ADD PRIMARY KEY (id)`);
+    await pool.query(`ALTER TABLE geo_briefs ADD CONSTRAINT geo_briefs_brand_profile_id_fkey FOREIGN KEY (brand_profile_id) REFERENCES brand_profiles(id) ON DELETE CASCADE`);
+    console.log('NeonDB: id + geo_briefs.brand_profile_id both converted to TEXT, FK recreated');
   } catch(e) {
     console.log('NeonDB: id already TEXT or table not yet created:', e.message);
   }
