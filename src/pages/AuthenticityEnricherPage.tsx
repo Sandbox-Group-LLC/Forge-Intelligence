@@ -87,7 +87,7 @@ interface EnrichResult {
   brandName: string; confidenceScore: number; needsManualInput: boolean;
   overallEEATScore: number; eeatScores: Record<string, EEATScore>;
   gaps: Gap[]; smeSignals: SMESignal[]; injectionMap: InjectionItem[];
-  powerPhrases: string[]; contentHooks: any[]; authorSchema: any;
+  powerPhrases: string[]; contentHooks: any[]; authorSchema: any; authorSchemaMarkup?: any;
   enrichedTitle: string; enrichedH1: string; enrichedSections: EnrichedSection[];
   enrichedFAQ: any[]; humanReviewItems: string[]; readyForStage4: boolean;
 }
