@@ -1090,10 +1090,11 @@ Respond with this exact JSON structure:
 
     let assembledBrief = {};
     try {
-      const ab = extractJSON(assemblerRes.content[0].text, 'object');
+      const rawT4 = '{' + assemblerRes.content[0].text;
+      const ab = extractJSON(rawT4, 'object');
       if (!ab) throw new Error('No JSON in Tool 4');
       assembledBrief = JSON.parse(ab);
-    } catch(e) { console.log('[ENRICH] Tool 4 parse warn:', e.message); assembledBrief = { enrichedSections: [], overallConfidence: 0, readyForStage4: false }; }
+    } catch(e) { console.log('[ENRICH] Tool 4 parse warn:', e.message, '| raw:', assemblerRes.content[0].text.slice(0,200)); assembledBrief = { enrichedSections: [], overallConfidence: 0, readyForStage4: false }; }
 
     // ── Persist to enriched_briefs ────────────────────────────────────────────
 
