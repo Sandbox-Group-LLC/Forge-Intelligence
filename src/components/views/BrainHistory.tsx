@@ -98,10 +98,9 @@ export function BrainHistory() {
     })));
   };
 
-  const handleViewProfile = async () => {
-    if (selectedEntries.length !== 1) return;
+  const handleViewProfile = async (id: string) => {
     try {
-      const res = await fetch(`/api/context-hub/brains/${selectedEntries[0]}`);
+      const res = await fetch(`/api/context-hub/brains/${id}`);
       const data = await res.json();
       if (data.success && data.data) {
         setBrandProfile(data.data);
@@ -234,8 +233,7 @@ export function BrainHistory() {
                     )}
                     <button
                       className="btn-view"
-                      onClick={handleViewProfile}
-                      disabled={selectedEntries.length !== 1}
+                      onClick={() => handleViewProfile(entry.id)}
                     >
                       View
                     </button>
