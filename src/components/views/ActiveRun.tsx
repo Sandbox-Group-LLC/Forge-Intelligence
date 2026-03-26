@@ -101,7 +101,7 @@ export function ActiveRun() {
   };
 
   return (
-    <div className="active-run">
+    <div className="active-run view-shell-centered">
       <div className="run-header">
         <div className="run-title-section">
           <h2 className="view-title">Context Agent Running</h2>

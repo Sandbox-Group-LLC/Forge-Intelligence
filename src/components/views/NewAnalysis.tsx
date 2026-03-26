@@ -63,7 +63,7 @@ export function NewAnalysis() {
   const canSubmit = analysisInput.brandUrl.trim().length > 0;
 
   return (
-    <div className="new-analysis">
+    <div className="new-analysis view-shell-centered">
       <div className="view-header">
         <h2 className="view-title">Start a New Analysis</h2>
         <p className="view-description">

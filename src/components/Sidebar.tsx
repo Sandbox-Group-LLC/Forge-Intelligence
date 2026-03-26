@@ -95,17 +95,12 @@ export function Sidebar() {
       <div className="sidebar-header">
         <div className="sidebar-brand">
           {!sidebarCollapsed ? (
-            <img 
-              src="/api/assets/Forge_Intelligence.png" 
-              alt="Forge Intelligence" 
-              className="sidebar-logo-img"
-            />
+            <>
+              <span className="sidebar-logo-mark">{icons.diamond}</span>
+              <span className="sidebar-logo-text">Forge Intelligence</span>
+            </>
           ) : (
-            <img 
-              src="/api/assets/Forge_Intelligence.png" 
-              alt="Forge Intelligence" 
-              className="sidebar-logo-collapsed-img"
-            />
+            <span className="sidebar-logo-mark">{icons.diamond}</span>
           )}
         </div>
         <button 

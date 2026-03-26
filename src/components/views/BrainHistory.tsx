@@ -120,7 +120,7 @@ export function BrainHistory() {
   }
 
   return (
-    <div className="brain-history">
+    <div className="brain-history view-shell-centered">
       <div className="history-header">
         <div className="header-info">
           <h2 className="view-title">Brain History</h2>
