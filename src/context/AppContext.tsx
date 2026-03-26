@@ -36,7 +36,7 @@ function mapBrainToHistoryEntry(b: any): HistoryEntry {
 }
 
 async function fetchBrains(): Promise<HistoryEntry[]> {
-  const res = await fetch('/api/context-agent/brains');
+  const res = await fetch('/api/context-hub/brains');
   const data = await res.json();
   if (data.success && Array.isArray(data.data)) {
     return data.data.map(mapBrainToHistoryEntry);
@@ -76,7 +76,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setProcessingStages(stages);
 
     // Fire the real API call immediately
-    const analyzePromise = fetch('/api/context-agent/analyze', {
+    const analyzePromise = fetch('/api/context-hub/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
