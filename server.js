@@ -238,7 +238,7 @@ app.use(express.static(path.join(__dirname, 'dist')));
 
 // ── Context Agent API ─────────────────────────────────────────────────────────
 
-app.get('/api/context-agent/brains', async (req, res) => {
+app.get('/api/context-hub/brains', async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT id, brand_url, brand_name, version, is_active, cache_status,
@@ -262,7 +262,7 @@ app.get('/api/context-agent/brains', async (req, res) => {
   }
 });
 
-app.get('/api/context-agent/brains/:id', async (req, res) => {
+app.get('/api/context-hub/brains/:id', async (req, res) => {
   try {
     const result = await pool.query(`SELECT * FROM brand_profiles WHERE id = $1`, [req.params.id]);
     if (!result.rows.length) return res.status(404).json({ success: false, error: 'Not found' });
@@ -277,7 +277,7 @@ app.get('/api/context-agent/brains/:id', async (req, res) => {
   }
 });
 
-app.get('/api/context-agent/history/:encodedUrl', async (req, res) => {
+app.get('/api/context-hub/history/:encodedUrl', async (req, res) => {
   try {
     const brandUrl = decodeURIComponent(req.params.encodedUrl);
     const result = await pool.query(
@@ -290,7 +290,7 @@ app.get('/api/context-agent/history/:encodedUrl', async (req, res) => {
   }
 });
 
-app.post('/api/context-agent/analyze', async (req, res) => {
+app.post('/api/context-hub/analyze', async (req, res) => {
   const { brandUrl, brandName, competitorUrls = [], audienceNotes = '', strategicNotes = '', checkBrainFirst = true, saveToBrain = true } = req.body;
   if (!brandUrl || !brandName) {
     return res.status(400).json({ success: false, error: 'brandUrl and brandName are required' });
