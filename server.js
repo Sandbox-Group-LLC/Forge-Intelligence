@@ -87,7 +87,7 @@ async function initDB() {
         );
       }
     }
-    if (badRows.rows.length > 0) console.log(\`NeonDB: cleaned \${badRows.rows.length} legacy UUID brand rows\`);
+    if (badRows.rows.length > 0) console.log('NeonDB: cleaned ' + badRows.rows.length + ' legacy UUID brand rows');
   } catch(e) {
     console.log('NeonDB: UUID cleanup note:', e.message);
 
