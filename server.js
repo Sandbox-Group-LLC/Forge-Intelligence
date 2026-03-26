@@ -15,16 +15,13 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const pool = new Pool({ connectionString: process.env.NEON_DATABASE_URL });
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// Boot: introspect existing table and reconcile schema
 async function initDB() {
-  // Check if table exists
   const tableCheck = await pool.query(`
     SELECT table_name FROM information_schema.tables
     WHERE table_schema = 'public' AND table_name = 'brand_profiles'
   `);
 
   if (tableCheck.rows.length === 0) {
-    // Fresh table
     await pool.query(`
       CREATE TABLE brand_profiles (
         id TEXT PRIMARY KEY,
@@ -33,34 +30,32 @@ async function initDB() {
         version INTEGER NOT NULL DEFAULT 1,
         is_active BOOLEAN NOT NULL DEFAULT true,
         cache_status TEXT NOT NULL DEFAULT 'fresh',
-        profile_data JSONB NOT NULL,
+        profile_data JSONB NOT NULL DEFAULT '{}'::jsonb,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       CREATE INDEX IF NOT EXISTS idx_bp_url ON brand_profiles(brand_url);
       CREATE INDEX IF NOT EXISTS idx_bp_active ON brand_profiles(is_active);
     `);
-    console.log('NeonDB: brand_profiles table created');
+    console.log('NeonDB: brand_profiles table created fresh');
   } else {
-    // Table exists — check actual columns and add any missing ones
     const colResult = await pool.query(`
       SELECT column_name FROM information_schema.columns
       WHERE table_schema = 'public' AND table_name = 'brand_profiles'
     `);
     const cols = colResult.rows.map(r => r.column_name);
-    console.log('NeonDB: existing columns:', cols);
 
+    // Add any missing new columns
     const required = [
-      { name: 'brand_url', def: 'TEXT NOT NULL DEFAULT \'\'' },
-      { name: 'brand_name', def: 'TEXT NOT NULL DEFAULT \'\'' },
-      { name: 'version', def: 'INTEGER NOT NULL DEFAULT 1' },
-      { name: 'is_active', def: 'BOOLEAN NOT NULL DEFAULT true' },
-      { name: 'cache_status', def: 'TEXT NOT NULL DEFAULT \'fresh\'' },
-      { name: 'profile_data', def: 'JSONB NOT NULL DEFAULT \'{}\'::jsonb' },
-      { name: 'created_at', def: 'TIMESTAMPTZ NOT NULL DEFAULT NOW()' },
-      { name: 'updated_at', def: 'TIMESTAMPTZ NOT NULL DEFAULT NOW()' },
+      { name: 'brand_url',    def: "TEXT NOT NULL DEFAULT ''" },
+      { name: 'brand_name',   def: "TEXT NOT NULL DEFAULT ''" },
+      { name: 'version',      def: 'INTEGER NOT NULL DEFAULT 1' },
+      { name: 'is_active',    def: 'BOOLEAN NOT NULL DEFAULT true' },
+      { name: 'cache_status', def: "TEXT NOT NULL DEFAULT 'fresh'" },
+      { name: 'profile_data', def: "JSONB NOT NULL DEFAULT '{}'::jsonb" },
+      { name: 'created_at',   def: 'TIMESTAMPTZ NOT NULL DEFAULT NOW()' },
+      { name: 'updated_at',   def: 'TIMESTAMPTZ NOT NULL DEFAULT NOW()' },
     ];
-
     for (const col of required) {
       if (!cols.includes(col.name)) {
         await pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS ${col.name} ${col.def}`);
@@ -68,12 +63,27 @@ async function initDB() {
       }
     }
 
-    // If old schema used camelCase columns, migrate data
-    if (cols.includes('brandurl') && !cols.includes('brand_url')) {
-      await pool.query(`UPDATE brand_profiles SET brand_url = brandurl WHERE brand_url = ''`);
-    }
-    if (cols.includes('brandname') && !cols.includes('brand_name')) {
-      await pool.query(`UPDATE brand_profiles SET brand_name = brandname WHERE brand_name = ''`);
+    // Migrate old columns into profile_data for any rows where profile_data is empty
+    // Old schema: voice_profile, personas, third_party_signals, competitive_gaps, client_id, last_scraped
+    if (cols.includes('voice_profile')) {
+      await pool.query(`
+        UPDATE brand_profiles
+        SET
+          profile_data = jsonb_build_object(
+            'voiceProfile',            COALESCE(voice_profile, '{}'::jsonb),
+            'personas',                COALESCE(personas, '[]'::jsonb),
+            'thirdPartySignals',       COALESCE(third_party_signals, '[]'::jsonb),
+            'competitiveGaps',         COALESCE(competitive_gaps, '[]'::jsonb),
+            'strategicRecommendations', '[]'::jsonb
+          ),
+          brand_url  = COALESCE(NULLIF(brand_url, ''), COALESCE(client_id, id)),
+          brand_name = COALESCE(NULLIF(brand_name, ''), COALESCE(client_id, id)),
+          is_active  = true,
+          version    = 1,
+          cache_status = 'fresh'
+        WHERE profile_data = '{}'::jsonb OR profile_data IS NULL
+      `);
+      console.log('NeonDB: migrated old columns into profile_data');
     }
 
     console.log('NeonDB: schema reconciled');
@@ -85,7 +95,7 @@ initDB().catch(err => console.error('DB init error:', err));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// ── Context Agent API ────────────────────────────────────────────────────────
+// ── Context Agent API ─────────────────────────────────────────────────────────
 
 app.get('/api/context-agent/brains', async (req, res) => {
   try {
