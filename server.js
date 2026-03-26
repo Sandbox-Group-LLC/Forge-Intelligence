@@ -603,8 +603,9 @@ Return ONLY valid JSON:
     let topicalMap = {};
     try {
       const tm = extractJSON(topicalRes.content[0].text, 'object');
+      if (!tm) throw new Error('No JSON object found in Tool 1 response');
       topicalMap = JSON.parse(tm);
-    } catch(e) { console.log('[GEO] Tool 1 parse warn:', e.message); topicalMap = { brandClusters: [], competitorClusters: [], gapsByCluster: [] }; }
+    } catch(e) { console.log('[GEO] Tool 1 parse warn:', e.message, '| raw:', topicalRes.content[0].text.slice(0,200)); topicalMap = { brandClusters: [], competitorClusters: [], gapsByCluster: [] }; }
 
     // ── Tool 2: GEO Opportunity Scorer ────────────────────────────────────────
     console.log('[GEO] Tool 2: GEO Opportunity Scorer...');
@@ -628,8 +629,9 @@ Return ONLY valid JSON array:
     let geoOpportunities = [];
     try {
       const go = extractJSON(scorerRes.content[0].text, 'array');
+      if (!go) throw new Error('No JSON array found in Tool 2 response');
       geoOpportunities = JSON.parse(go);
-    } catch(e) { console.log('[GEO] Tool 2 parse warn:', e.message); }
+    } catch(e) { console.log('[GEO] Tool 2 parse warn:', e.message, '| raw:', scorerRes.content[0].text.slice(0,200)); }
 
     // ── Tool 3: Entity & Schema Mapper ────────────────────────────────────────
     console.log('[GEO] Tool 3: Entity & Schema Mapper...');
@@ -650,8 +652,9 @@ Return ONLY valid JSON array:
     let entitySchema = [];
     try {
       const es = extractJSON(entityRes.content[0].text, 'array');
+      if (!es) throw new Error('No JSON array found in Tool 3 response');
       entitySchema = JSON.parse(es);
-    } catch(e) { console.log('[GEO] Tool 3 parse warn:', e.message); }
+    } catch(e) { console.log('[GEO] Tool 3 parse warn:', e.message, '| raw:', entityRes.content[0].text.slice(0,200)); }
 
     // ── Tool 4: Brief Generator ───────────────────────────────────────────────
     console.log('[GEO] Tool 4: Brief Generator...');
@@ -693,8 +696,9 @@ Return ONLY valid JSON:
     let briefData = {};
     try {
       const bd = extractJSON(briefRes.content[0].text, 'object');
+      if (!bd) throw new Error('No JSON object found in Tool 4 response');
       briefData = JSON.parse(bd);
-    } catch(e) { console.log('[GEO] Tool 4 parse warn:', e.message); briefData = { targetTopic, overallOpportunityScore: 50 }; }
+    } catch(e) { console.log('[GEO] Tool 4 parse warn:', e.message, '| raw:', briefRes.content[0].text.slice(0,200)); briefData = { targetTopic, overallOpportunityScore: 50 }; }
 
     const opportunityScore = briefData.overallOpportunityScore || 0;
 
