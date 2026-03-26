@@ -70,14 +70,14 @@ async function initDB() {
         UPDATE brand_profiles
         SET
           profile_data = jsonb_build_object(
-            'voiceProfile',            COALESCE(voice_profile, '{}'::jsonb),
-            'personas',                COALESCE(personas, '[]'::jsonb),
-            'thirdPartySignals',       COALESCE(third_party_signals, '[]'::jsonb),
-            'competitiveGaps',         COALESCE(competitive_gaps, '[]'::jsonb),
+            'voiceProfile',             COALESCE(voice_profile, '{}'::jsonb),
+            'personas',                 COALESCE(personas, '[]'::jsonb),
+            'thirdPartySignals',        COALESCE(third_party_signals, '[]'::jsonb),
+            'competitiveGaps',          COALESCE(competitive_gaps, '[]'::jsonb),
             'strategicRecommendations', '[]'::jsonb
           ),
-          brand_url  = COALESCE(NULLIF(brand_url, ''), COALESCE(client_id, id)),
-          brand_name = COALESCE(NULLIF(brand_name, ''), COALESCE(client_id, id)),
+          brand_url  = COALESCE(NULLIF(brand_url, ''), client_id::text, id::text),
+          brand_name = COALESCE(NULLIF(brand_name, ''), client_id::text, id::text),
           is_active  = true,
           version    = 1,
           cache_status = 'fresh'
