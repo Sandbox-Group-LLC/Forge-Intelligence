@@ -309,8 +309,16 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
     const profileData = JSON.parse(jsonMatch[0]);
 
     if (saveToBrain) {
-      // Use brand name from Claude's response if available, fall back to what was passed in
-      const resolvedBrandName = profileData.brandName || profileData.brand_name || brandName;
+      // Always derive brand name: Claude response > domain extraction > fallback
+      const domainToName = (url) => {
+        const clean = url.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].split('.')[0];
+        return clean.charAt(0).toUpperCase() + clean.slice(1);
+      };
+      const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const isUUID = (s) => uuidPattern.test(s);
+      const resolvedBrandName = (profileData.brandName && !isUUID(profileData.brandName))
+        ? profileData.brandName
+        : (!isUUID(brandName) ? brandName : domainToName(brandUrl));
 
       await pool.query(`UPDATE brand_profiles SET is_active = false WHERE brand_url = $1`, [brandUrl]);
       const versionResult = await pool.query(
