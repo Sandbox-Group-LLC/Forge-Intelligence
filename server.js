@@ -620,7 +620,8 @@ BRAIN MEMORIES (high performers): ${JSON.stringify(brainMemories)}`;
     const pd = profile.profile_data || {};
 
     // ── Cache check ──────────────────────────────────────────────────────────
-    if (!topicFocus && !additionalContext) {
+    const forceRefresh = req.body.force === true;
+    if (!topicFocus && !additionalContext && !forceRefresh) {
       const existing = await pool.query(
         `SELECT * FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY version DESC LIMIT 1`, [brandProfileId]
       );
@@ -671,6 +672,7 @@ Return ONLY valid JSON:
       if (!tm) throw new Error('No JSON object found in Tool 1 response');
       topicalMap = JSON.parse(tm);
     } catch(e) { console.log('[GEO] Tool 1 parse warn:', e.message, '| raw:', topicalRes.content[0].text.slice(0,200)); topicalMap = { brandClusters: [], competitorClusters: [], gapsByCluster: [] }; }
+    console.log(`[GEO] Tool 1 gaps: ${(topicalMap.gapsByCluster||[]).length}`);
 
     // ── Tool 2: GEO Opportunity Scorer ────────────────────────────────────────
     console.log('[GEO] Tool 2: GEO Opportunity Scorer...');
@@ -697,6 +699,7 @@ Return ONLY valid JSON array:
       if (!go) throw new Error('No JSON array found in Tool 2 response');
       geoOpportunities = JSON.parse(go);
     } catch(e) { console.log('[GEO] Tool 2 parse warn:', e.message, '| raw:', scorerRes.content[0].text.slice(0,200)); }
+    console.log(`[GEO] Tool 2 opportunities: ${(geoOpportunities||[]).length}`);
 
     // ── Tool 3: Entity & Schema Mapper ────────────────────────────────────────
     console.log('[GEO] Tool 3: Entity & Schema Mapper...');
