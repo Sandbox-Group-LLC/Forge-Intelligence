@@ -480,6 +480,55 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
   }
 });
 
+
+// ── GEO data normalizer — shared by fresh + cached responses ─────────────────
+function normalizeGeoData(briefData, topicalMap, geoOpportunities, entitySchema, profile) {
+  const gaps = (topicalMap && topicalMap.gapsByCluster) || [];
+  const topicalAuthorityMap = gaps.map(g => ({
+    topic: g.topic || g.cluster || 'Unknown',
+    coverage: g.rationale || g.owner || '',
+    citationProbability: g.geoCitationScore || g.citationProbability || 0,
+    priority: (g.geoCitationScore || 0) >= 70 ? 'high' : (g.geoCitationScore || 0) >= 40 ? 'medium' : 'low'
+  }));
+
+  const topicMap = {};
+  (geoOpportunities || []).forEach(o => {
+    const t = o.topic || 'Unknown';
+    if (!topicMap[t]) topicMap[t] = { topic: t, chatgpt: 0, perplexity: 0, aiOverviews: 0, gemini: 0, quickWin: o.quickWin || false };
+    const p = (o.platform || '').toLowerCase().replace(/\s/g, '');
+    if (p.includes('chatgpt') || p.includes('openai')) topicMap[t].chatgpt = o.score || 0;
+    else if (p.includes('perplexity')) topicMap[t].perplexity = o.score || 0;
+    else if (p.includes('overview') || p.includes('google')) topicMap[t].aiOverviews = o.score || 0;
+    else if (p.includes('gemini')) topicMap[t].gemini = o.score || 0;
+    if (o.quickWin) topicMap[t].quickWin = true;
+  });
+  const geoOpportunitiesNorm = Object.values(topicMap);
+
+  const entitySchemaMap = (entitySchema || []).map(e => ({
+    entity: e.entity || '',
+    schemaType: Array.isArray(e.schemaTypes) ? e.schemaTypes[0] : (e.schemaType || 'Article'),
+    competitorCited: e.competitorCiting || e.competitorCited || false,
+    recommendation: e.rationale || e.recommendation || ''
+  }));
+
+  const h2sRaw = briefData.h2s || [];
+  const geoBrief = {
+    title: briefData.titleTag || briefData.title || briefData.targetTopic || (profile && profile.brand_name) || '',
+    h1: briefData.h1 || briefData.targetTopic || '',
+    h2s: h2sRaw.map(h => typeof h === 'string' ? h : h.heading || h.h2 || ''),
+    faqItems: (briefData.faqStructure || briefData.faqItems || []).map(f => ({
+      q: f.question || f.q || '',
+      a: f.answerDirection || f.answer || f.a || ''
+    })),
+    geoAnchors: briefData.geoAnchors || [],
+    estimatedCitationLift: briefData.geoScorecard
+      ? `+${Math.round((briefData.geoScorecard.currentReadiness || 0) * 0.4)}% in 90 days`
+      : '+15–30% in 90 days'
+  };
+
+  return { topicalAuthorityMap, geoOpportunities: geoOpportunitiesNorm, entitySchemaMap, geoBrief };
+}
+
 // ── GEO Strategist API (Stage 2) ──────────────────────────────────────────────
 
 // Extracts the first complete JSON object or array from a string — handles trailing text/markdown
@@ -577,12 +626,14 @@ BRAIN MEMORIES (high performers): ${JSON.stringify(brainMemories)}`;
       );
       if (existing.rows.length > 0) {
         const r = existing.rows[0];
+        const bd = r.brief_data || {};
+        const normalized = normalizeGeoData(bd, bd.topicalMap || {}, bd.geoOpportunities || [], bd.entitySchema || [], r);
         return res.json({ success: true, cached: true, data: {
           id: r.id, brandProfileId: r.brand_profile_id,
           brandUrl: r.brand_url, brandName: r.brand_name,
           version: r.version, opportunityScore: r.opportunity_score,
           createdAt: r.created_at, updatedAt: r.updated_at,
-          ...r.brief_data
+          ...normalized
         }});
       }
     }
@@ -746,51 +797,7 @@ Return ONLY valid JSON:
     const latencyMs = Date.now() - startTime;
     console.log(`[GEO] Complete — Score: ${opportunityScore} | Latency: ${latencyMs}ms | QuickWins: ${quickWins.length}`);
 
-    // ── Normalize into frontend-expected shape ────────────────────────────────
-    const gaps = topicalMap.gapsByCluster || [];
-    const topicalAuthorityMap = gaps.map(g => ({
-      topic: g.topic || g.cluster || 'Unknown',
-      coverage: g.rationale || g.owner || '',
-      citationProbability: g.geoCitationScore || g.citationProbability || 0,
-      priority: (g.geoCitationScore || 0) >= 70 ? 'high' : (g.geoCitationScore || 0) >= 40 ? 'medium' : 'low'
-    }));
-
-    // geoOpportunities: flatten per-platform array into per-topic rows
-    const topicMap = {};
-    (geoOpportunities || []).forEach(o => {
-      const t = o.topic || 'Unknown';
-      if (!topicMap[t]) topicMap[t] = { topic: t, chatgpt: 0, perplexity: 0, aiOverviews: 0, gemini: 0, quickWin: o.quickWin || false };
-      const p = (o.platform || '').toLowerCase().replace(/\s/g, '');
-      if (p.includes('chatgpt') || p.includes('openai')) topicMap[t].chatgpt = o.score || 0;
-      else if (p.includes('perplexity')) topicMap[t].perplexity = o.score || 0;
-      else if (p.includes('overview') || p.includes('google')) topicMap[t].aiOverviews = o.score || 0;
-      else if (p.includes('gemini')) topicMap[t].gemini = o.score || 0;
-      if (o.quickWin) topicMap[t].quickWin = true;
-    });
-    const geoOpportunitiesNorm = Object.values(topicMap);
-
-    const entitySchemaMap = (entitySchema || []).map(e => ({
-      entity: e.entity || '',
-      schemaType: Array.isArray(e.schemaTypes) ? e.schemaTypes[0] : (e.schemaType || 'Article'),
-      competitorCited: e.competitorCiting || e.competitorCited || false,
-      recommendation: e.rationale || e.recommendation || ''
-    }));
-
-    const h2sRaw = briefData.h2s || [];
-    const geoBrief = {
-      title: briefData.titleTag || briefData.title || briefData.targetTopic || profile.brand_name,
-      h1: briefData.h1 || briefData.targetTopic || '',
-      h2s: h2sRaw.map(h => typeof h === 'string' ? h : h.heading || h.h2 || ''),
-      faqItems: (briefData.faqStructure || briefData.faqItems || []).map(f => ({
-        q: f.question || f.q || '',
-        a: f.answerDirection || f.answer || f.a || ''
-      })),
-      geoAnchors: briefData.geoAnchors || [],
-      estimatedCitationLift: briefData.geoScorecard
-        ? `+${Math.round((briefData.geoScorecard.currentReadiness || 0) * 0.4)}% in 90 days`
-        : '+15–30% in 90 days'
-    };
-
+    const { topicalAuthorityMap, geoOpportunities: geoOpportunitiesNorm, entitySchemaMap, geoBrief } = normalizeGeoData(briefData, topicalMap, geoOpportunities, entitySchema, profile);
     res.json({ success: true, cached: false, data: {
       id, brandProfileId, brandUrl: profile.brand_url, brandName: profile.brand_name,
       version: nextVersion, opportunityScore, latencyMs,
