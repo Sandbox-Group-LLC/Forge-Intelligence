@@ -35,7 +35,13 @@ const viewTitles: Record<string, string> = {
   'brand-profile': 'Brand Profile',
   'strategy': 'Strategy',
   'brain-history': 'Brain History',
-  'geo-strategist': 'GEO Strategist'
+  'geo-strategist': 'GEO Strategist',
+  'authenticity-enricher': 'Authenticity Enricher',
+};
+
+const pathTitles: Record<string, string> = {
+  '/geo-strategist': 'GEO Strategist',
+  '/authenticity-enricher': 'Authenticity Enricher',
 };
 
 export function TopBar() {
@@ -51,7 +57,7 @@ export function TopBar() {
         >
           {icons.menu}
         </button>
-        <h1 className="topbar-title">{viewTitles[currentView]}</h1>
+        <h1 className="topbar-title">{pathTitles[window.location.pathname] || viewTitles[currentView] || 'Forge Intelligence'}</h1>
         {brandProfile && currentView === 'brand-profile' && (
           <span className="topbar-subtitle">
             {brandProfile.brandName} · v{brandProfile.version}
