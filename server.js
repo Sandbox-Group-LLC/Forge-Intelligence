@@ -221,6 +221,13 @@ async function initDB() {
     console.log('NeonDB: geo_briefs columns ensured');
   } catch(e) { console.log('NeonDB: geo_briefs migration note:', e.message); }
 
+  // ── patterns: drop client_id NOT NULL if present ───────────────────────────
+  try {
+    await pool.query(`ALTER TABLE patterns ALTER COLUMN client_id DROP NOT NULL`);
+    await pool.query(`ALTER TABLE patterns ALTER COLUMN client_id SET DEFAULT NULL`);
+    console.log('NeonDB: patterns.client_id nullable ensured');
+  } catch(e) { console.log('NeonDB: patterns migration note:', e.message); }
+
   // ── Brain tables: patterns, mistakes, memories ────────────────────────────
   try {
     await pool.query(`CREATE TABLE IF NOT EXISTS patterns (
@@ -477,14 +484,16 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
 
 // Extracts the first complete JSON object or array from a string — handles trailing text/markdown
 function extractJSON(text, type = 'object') {
+  // Strip markdown code fences if present
+  const stripped = text.replace(/```(?:json)?\s*/gi, '').replace(/```\s*/g, '').trim();
   const open = type === 'array' ? '[' : '{';
   const close = type === 'array' ? ']' : '}';
-  const start = text.indexOf(open);
+  const start = stripped.indexOf(open);
   if (start === -1) return null;
   let depth = 0;
-  for (let i = start; i < text.length; i++) {
-    if (text[i] === open) depth++;
-    else if (text[i] === close) { depth--; if (depth === 0) return text.slice(start, i + 1); }
+  for (let i = start; i < stripped.length; i++) {
+    if (stripped[i] === open) depth++;
+    else if (stripped[i] === close) { depth--; if (depth === 0) return stripped.slice(start, i + 1); }
   }
   return null;
 }
