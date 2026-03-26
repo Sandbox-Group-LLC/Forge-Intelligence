@@ -665,19 +665,19 @@ BRAIN MEMORIES (high performers): ${JSON.stringify(brainMemories)}`;
       max_tokens: 1500,
       messages: [{ role: 'user', content: `You are the Topical Authority Mapper for Forge Intelligence GEO Strategist.
 
-${brainContext}
-
 BRAND: ${profile.brand_name} (${profile.brand_url})
-Voice summary: ${JSON.stringify(voiceProfile).slice(0, 500)}
-Personas: ${JSON.stringify(personas).slice(0, 500)}
-Competitor-owned topics: ${JSON.stringify(competitorTopics)}
-Brand whitespace opportunity: ${whitespace}
-${topicFocus ? 'Focus topic: ' + topicFocus : ''}
+PERSONAS: ${JSON.stringify(personas).slice(0, 400)}
+COMPETITOR TOPICS: ${JSON.stringify(competitorTopics).slice(0, 400)}
+WHITESPACE: ${whitespace.slice(0, 300)}
+${topicFocus ? 'FOCUS: ' + topicFocus : ''}
 
-Map topical authority clusters. Score each gap by GEO citation probability (0-100).
+Identify 8-12 topical gaps where this brand has low AI citation probability vs competitors.
 
-Return ONLY valid JSON:
-{"brandClusters":["topic"],"competitorClusters":["topic"],"gapsByCluster":[{"topic":"string","geoCitationScore":0,"owner":"string|null","rationale":"string"}]}` }]
+YOU MUST return a raw JSON array using EXACTLY these field names: topic, geoCitationScore, owner, rationale.
+Example:
+[{"topic":"AI PC and Edge Inference","geoCitationScore":85,"owner":"NVIDIA","rationale":"NVIDIA dominates this topic across AI platforms"},{"topic":"Open Ecosystem Software","geoCitationScore":72,"owner":null,"rationale":"Unclaimed whitespace with high intent"}]
+
+Return ONLY the raw JSON array. No markdown. No backticks. No explanation. No other keys.` }]
     });
     let topicalMap = { gapsByCluster: [] };
     try {
