@@ -35,7 +35,7 @@ const icons = {
 };
 
 export function BrainHistory() {
-  const { historyEntries, setHistoryEntries, setCurrentView } = useApp();
+  const { historyEntries, setHistoryEntries, setCurrentView, setBrandProfile } = useApp();
   const [selectedEntries, setSelectedEntries] = useState<string[]>([]);
   const [filterBrand, setFilterBrand] = useState<string>('');
 
@@ -98,8 +98,18 @@ export function BrainHistory() {
     })));
   };
 
-  const handleViewProfile = () => {
-    setCurrentView('brand-profile');
+  const handleViewProfile = async () => {
+    if (selectedEntries.length !== 1) return;
+    try {
+      const res = await fetch(`/api/context-hub/brains/${selectedEntries[0]}`);
+      const data = await res.json();
+      if (data.success && data.data) {
+        setBrandProfile(data.data);
+        setCurrentView('brand-profile');
+      }
+    } catch (e) {
+      console.error('Failed to load brain profile:', e);
+    }
   };
 
   const canCompare = selectedEntries.length === 2;
@@ -225,6 +235,7 @@ export function BrainHistory() {
                     <button
                       className="btn-view"
                       onClick={handleViewProfile}
+                      disabled={selectedEntries.length !== 1}
                     >
                       View
                     </button>
