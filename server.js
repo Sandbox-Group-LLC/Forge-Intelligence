@@ -18,10 +18,19 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 async function initDB() {
   // Always ensure id column is TEXT (old schema used UUID)
   try {
-    await pool.query(`ALTER TABLE brand_profiles ALTER COLUMN id TYPE TEXT USING id::text`);
-    console.log('NeonDB: id column ensured as TEXT');
+    // Drop PK constraint first so we can change the column type
+    await pool.query(`
+      ALTER TABLE brand_profiles DROP CONSTRAINT IF EXISTS brand_profiles_pkey
+    `);
+    await pool.query(`
+      ALTER TABLE brand_profiles ALTER COLUMN id TYPE TEXT USING id::text
+    `);
+    await pool.query(`
+      ALTER TABLE brand_profiles ADD PRIMARY KEY (id)
+    `);
+    console.log('NeonDB: id column ensured as TEXT with PK recreated');
   } catch(e) {
-    // Already text or table doesn't exist yet — both fine
+    console.log('NeonDB: id already TEXT or table not yet created:', e.message);
   }
 
   const tableCheck = await pool.query(`
