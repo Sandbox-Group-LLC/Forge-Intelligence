@@ -586,3 +586,21 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ── GEO Strategy CTA ── */
+.btn-action.geo-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  background: var(--color-accent);
+  color: #fff;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-action.geo-cta:hover {
+  background: var(--color-accent-hover);
+  text-decoration: none;
+}
