@@ -53,6 +53,7 @@ export function NewAnalysis() {
   return (
     <div className="new-analysis view-shell-centered">
       <div className="view-header">
+        <div className="geo-eyebrow">Stage 1</div>
         <h2 className="view-title">Generate Brand Intelligence</h2>
         <p className="view-description">
           Drop in a URL. Forge discovers competitors, maps your ICP, and builds a full Brand Intelligence Profile — automatically.
