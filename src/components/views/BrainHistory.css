@@ -1,8 +1,6 @@
-.view-shell-centered { max-width: 980px; margin: 0 auto; }
+.view-shell-centered { margin: 0 auto; }
 
-.brain-history {
-  max-width: 900px;
-}
+.brain-history {}
 
 /* Empty State */
 .brain-history.empty-state {
