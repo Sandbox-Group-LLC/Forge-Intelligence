@@ -122,8 +122,8 @@ export function Sidebar() {
       <nav className="sidebar-nav">
         {navItems.map(item => {
           const status = getItemStatus(item.id);
-          return (
-            {item.id === 'geo-strategist' ? (
+          if (item.id === 'geo-strategist') {
+            return (
               <a
                 key={item.id}
                 href="/geo-strategist"
@@ -133,21 +133,23 @@ export function Sidebar() {
                 <span className="nav-icon">{icons[item.icon]}</span>
                 {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
               </a>
-            ) : (
-              <button
-                key={item.id}
-                className={`nav-item ${status}`}
-                onClick={() => status !== 'disabled' && setCurrentView(item.id)}
-                disabled={status === 'disabled'}
-                title={sidebarCollapsed ? item.label : undefined}
-              >
-                <span className="nav-icon">{icons[item.icon]}</span>
-                {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
-                {item.id === 'active-run' && isProcessing && (
-                  <span className="nav-badge pulse"></span>
-                )}
-              </button>
-            )}
+            );
+          }
+          return (
+            <button
+              key={item.id}
+              className={`nav-item ${status}`}
+              onClick={() => status !== 'disabled' && setCurrentView(item.id)}
+              disabled={status === 'disabled'}
+              title={sidebarCollapsed ? item.label : undefined}
+            >
+              <span className="nav-icon">{icons[item.icon]}</span>
+              {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
+              {item.id === 'active-run' && isProcessing && (
+                <span className="nav-badge pulse"></span>
+              )}
+            </button>
+            
           );
         })}
       </nav>
