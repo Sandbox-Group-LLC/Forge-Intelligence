@@ -68,6 +68,12 @@ const icons = {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
     </svg>
+  ),
+  shieldCheck: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      <path d="m9 12 2 2 4-4"/>
+    </svg>
   )
 };
 
@@ -83,7 +89,8 @@ const navItems: NavItem[] = [
   { id: 'brand-profile', label: 'Brand Profile', icon: 'layers' },
   { id: 'strategy', label: 'Strategy', icon: 'compass' },
   { id: 'brain-history', label: 'Brain History', icon: 'bookOpen' },
-  { id: 'geo-strategist', label: 'GEO Strategist', icon: 'zap' }
+  { id: 'geo-strategist', label: 'GEO Strategist', icon: 'zap' },
+  { id: 'authenticity-enricher', label: 'Authenticity Enricher', icon: 'shieldCheck' }
 ];
 
 export function Sidebar() {
@@ -94,6 +101,7 @@ export function Sidebar() {
     if (id === 'active-run' && !isProcessing) return 'disabled';
     if ((id === 'brand-profile' || id === 'strategy') && !brandProfile) return 'disabled';
     if (id === 'geo-strategist') return window.location.pathname.startsWith('/geo-strategist') ? 'active' : 'available';
+    if (id === 'authenticity-enricher') return window.location.pathname.startsWith('/authenticity-enricher') ? 'active' : 'available';
     return 'available';
   };
 
@@ -127,6 +135,19 @@ export function Sidebar() {
               <a
                 key={item.id}
                 href="/geo-strategist"
+                className={`nav-item ${status}`}
+                title={sidebarCollapsed ? item.label : undefined}
+              >
+                <span className="nav-icon">{icons[item.icon]}</span>
+                {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
+              </a>
+            );
+          }
+          if (item.id === 'authenticity-enricher') {
+            return (
+              <a
+                key={item.id}
+                href="/authenticity-enricher"
                 className={`nav-item ${status}`}
                 title={sidebarCollapsed ? item.label : undefined}
               >
