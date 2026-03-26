@@ -34,6 +34,22 @@ async function initDB() {
     console.log('NeonDB: id already TEXT or table not yet created:', e.message);
   }
 
+  // Drop NOT NULL constraints on legacy columns so new inserts don't need them
+  try {
+    await pool.query(`
+      ALTER TABLE brand_profiles
+        ALTER COLUMN client_id DROP NOT NULL,
+        ALTER COLUMN voice_profile DROP NOT NULL,
+        ALTER COLUMN personas DROP NOT NULL,
+        ALTER COLUMN third_party_signals DROP NOT NULL,
+        ALTER COLUMN competitive_gaps DROP NOT NULL,
+        ALTER COLUMN last_scraped DROP NOT NULL
+    `);
+    console.log('NeonDB: legacy NOT NULL constraints dropped');
+  } catch(e) {
+    // Columns may not exist or already nullable
+  }
+
   const tableCheck = await pool.query(`
     SELECT table_name FROM information_schema.tables
     WHERE table_schema = 'public' AND table_name = 'brand_profiles'
