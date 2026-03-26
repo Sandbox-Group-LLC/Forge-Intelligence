@@ -175,6 +175,13 @@ Returns service status + uptime.
 **Important:** `clientId` must be a valid UUID v4. Auto-generation of UUID server-side if non-UUID is passed is on the backlog.
 
 
+### `POST /api/authenticity-enricher/analyze`
+**Body:** `{ brandProfileId, geoBriefId?, manualInputs?, force? }`  
+**Returns:** E-E-A-T scores, SME signals, injection map, enriched brief sections, author schema, confidence score, gaps + manual input prompts  
+**Tools:** Perplexity SME scraper → E-E-A-T scorer → Voice/Persona mapper → Enriched Brief assembler
+
+---
+
 ### `POST /api/geo-strategist/analyze`
 **The main Stage 2 endpoint.**
 
