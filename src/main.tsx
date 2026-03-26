@@ -2,8 +2,8 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
-import App from './App';
 import Landing from './Landing';
+import ContextAgentPage from './pages/ContextAgentPage';
 import './index.css';
 
 createRoot(document.getElementById('root')!).render(
@@ -15,7 +15,7 @@ createRoot(document.getElementById('root')!).render(
           path="/context-agent/*"
           element={
             <AppProvider>
-              <App />
+              <ContextAgentPage />
             </AppProvider>
           }
         />
