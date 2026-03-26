@@ -34,7 +34,8 @@ const viewTitles: Record<string, string> = {
   'active-run': 'Active Run',
   'brand-profile': 'Brand Profile',
   'strategy': 'Strategy',
-  'brain-history': 'Brain History'
+  'brain-history': 'Brain History',
+  'geo-strategist': 'GEO Strategist'
 };
 
 export function TopBar() {
