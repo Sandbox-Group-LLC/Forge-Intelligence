@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
 import { AppShell } from '../layouts/AppShell';
-import { useApp } from '../context/AppContext';
 import './CampaignGeneratorPage.css';
 
 // ── Inline icon components (lucide-react not available) ─────────────────────
