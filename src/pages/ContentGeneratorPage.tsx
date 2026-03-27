@@ -86,6 +86,8 @@ function ContentGeneratorContent() {
   const [isRunning, setIsRunning] = useState(false);
   const [streamText, setStreamText] = useState('');
   const [article, setArticle] = useState<GeneratedArticle | null>(null);
+  const [articleImageUrl, setArticleImageUrl] = useState<string | null>(null);
+  const [imageLoading, setImageLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'article' | 'meta' | 'schema'>('article');
   const streamRef = useRef<EventSource | null>(null);
