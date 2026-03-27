@@ -115,7 +115,10 @@ export default function Landing() {
 const styles: Record<string, React.CSSProperties> = {
   root: {
     minHeight: '100vh',
-    backgroundColor: '#0F1720',
+    backgroundColor: '#0B0F1A',
+    backgroundImage: 'radial-gradient(circle at top left, rgba(53,99,255,0.22), transparent 55%), radial-gradient(circle at bottom right, rgba(20,184,166,0.12), transparent 55%)',
+    backgroundSize: '100% 100%, 100% 100%',
+    backgroundAttachment: 'fixed',
     color: '#F8FAFC',
     fontFamily: "Inter, 'Geist', system-ui, -apple-system, sans-serif",
     display: 'flex',
