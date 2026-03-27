@@ -26,6 +26,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/geo-strategist" element={<AppProvider><GeoStrategistPage /></AppProvider>} />
         <Route path="/authenticity-enricher" element={<AppProvider><AuthenticityEnricherPage /></AppProvider>} />
         <Route path="/content-generator" element={<AppProvider><ContentGeneratorPage /></AppProvider>} />
+        <Route path="/campaign-generator" element={<AppProvider><CampaignGeneratorPage /></AppProvider>} />
       </Routes>
     </BrowserRouter>
   </StrictMode>
