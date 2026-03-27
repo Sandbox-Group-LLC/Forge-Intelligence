@@ -1572,7 +1572,6 @@ app.post('/api/campaign/create', async (req, res) => {
 // GET /api/campaign/list/:brandProfileId
 app.get('/api/campaign/list/:brandProfileId', async (req, res) => {
   try {
-    const pool = getPool();
     const result = await pool.query(
       `SELECT id, name, topic_cluster, status, created_at,
        (SELECT COUNT(*) FROM campaign_articles WHERE campaign_id = campaigns.id AND status = 'complete') as completed_count
@@ -1588,7 +1587,6 @@ app.get('/api/campaign/list/:brandProfileId', async (req, res) => {
 // GET /api/campaign/:id
 app.get('/api/campaign/:id', async (req, res) => {
   try {
-    const pool = getPool();
     const camp = await pool.query(`SELECT * FROM campaigns WHERE id = $1`, [req.params.id]);
     const articles = await pool.query(
       `SELECT * FROM campaign_articles WHERE campaign_id = $1 ORDER BY article_index`,
