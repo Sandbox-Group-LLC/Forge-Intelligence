@@ -1582,6 +1582,69 @@ Return ONLY valid JSON matching the output format. No markdown, no commentary.`;
 });
 
 // POST /api/campaign/create — save campaign plan to DB
+// ── Test: image generation endpoint (no article needed) ──────────────────────
+app.post('/api/test/image', async (req, res) => {
+  try {
+    const title = req.body.title || 'The Future of B2B Marketing Intelligence';
+    const tone  = req.body.tone  || 'Professional, strategic, data-driven';
+
+    // Step 1: Claude Haiku generates the Flux prompt
+    const imgPromptRes = await anthropic.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 200,
+      messages: [{
+        role: 'user',
+        content: `Write a single-sentence Flux image generation prompt for this B2B article hero image.
+Article title: "${title}"
+Brand tone: ${tone}
+
+Rules:
+- Photorealistic, professional B2B editorial style
+- No text, charts, or UI screenshots
+- Evoke the strategic theme of the article
+- Cinematic lighting, dark moody tones with blue or teal accent light
+- 1 sentence only, no explanation
+
+Output only the prompt.`
+      }]
+    });
+
+    const fluxPrompt = imgPromptRes.content[0]?.type === 'text'
+      ? imgPromptRes.content[0].text.trim()
+      : `Professional B2B editorial photo, dark cinematic lighting`;
+
+    // Step 2: Fire Flux
+    const falRes = await fetch('https://fal.run/fal-ai/flux/dev', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Key ${process.env.FAL_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        prompt: fluxPrompt,
+        image_size: 'landscape_16_9',
+        num_inference_steps: 28,
+        guidance_scale: 3.5,
+        num_images: 1,
+        enable_safety_checker: true,
+      })
+    });
+
+    if (!falRes.ok) {
+      const errText = await falRes.text();
+      return res.status(500).json({ success: false, error: `fal.ai ${falRes.status}: ${errText}` });
+    }
+
+    const falData = await falRes.json();
+    const imageUrl = falData?.images?.[0]?.url;
+    if (!imageUrl) return res.status(500).json({ success: false, error: 'No image URL returned' });
+
+    res.json({ success: true, image_url: imageUrl, prompt: fluxPrompt });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.post('/api/campaign/create', async (req, res) => {
   const { brandProfileId, plan } = req.body;
   if (!brandProfileId || !plan) return res.status(400).json({ error: 'brandProfileId and plan required' });
