@@ -111,7 +111,7 @@ export default function ComplianceGatePage() {
         setReport(d.report);
         setSelectedArticle(prev => prev ? { ...prev, compliance_report: d.report } : prev);
         if (mode === 'auto-ship' && d.report.autoApprovable) {
-          await submitApproval(article, d.report);
+          await submitApproval(article);
           return;
         }
         setStep('review');
@@ -125,7 +125,7 @@ export default function ComplianceGatePage() {
     }
   };
 
-  const submitApproval = async (article: Article, critiqueReport?: ComplianceReport) => {
+  const submitApproval = async (article: Article) => {
     setSubmitLoading(true);
     try {
       const edits = Object.entries(editedSections).map(([idx, content]) => ({
@@ -162,16 +162,6 @@ export default function ComplianceGatePage() {
     setDecisions({});
     setReport(article.compliance_report || null);
     if (article.compliance_report) setStep('review');
-  };
-
-  const allRedDecided = () => {
-    if (!selectedArticle?.article_json?.sections) return true;
-    return selectedArticle.article_json.sections
-      .filter(s => s.confidenceTier === 'red')
-      .every((_, i) => {
-        const realIdx = selectedArticle.article_json.sections.findIndex((s, idx) => s.confidenceTier === 'red' && idx === i);
-        return decisions[realIdx] !== undefined;
-      });
   };
 
   const statusBadge = (status: ComplianceStatus) => {
