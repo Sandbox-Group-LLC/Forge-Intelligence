@@ -277,3 +277,17 @@
   display: inline-block;
   flex-shrink: 0;
 }
+
+/* ── Image loading bar (between stream and article render) ───────────────── */
+.cg-image-loading-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 20px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--color-text-muted, #64748B);
+  margin-top: 12px;
+}
