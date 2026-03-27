@@ -1451,13 +1451,16 @@ app.post('/api/campaign/plan', async (req, res) => {
   if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
 
   try {
-    // Load brand brain
-    const clientId = brandProfileId.replace('.', '-').split('-')[0];
-    const profilePath = path.join(__dirname, 'data', 'brand-profiles', `${brandProfileId}.json`);
-    const profileData = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
+    // Load brand brain from DB
+    const profileResult = await pool.query(
+      `SELECT * FROM brand_profiles WHERE id = $1`, [brandProfileId]
+    );
+    if (!profileResult.rows.length) {
+      return res.status(404).json({ error: 'Brand profile not found. Run Stage 1 first.' });
+    }
+    const profileData = profileResult.rows[0].profile_data || profileResult.rows[0];
 
     // Load GEO brief and enriched brief from DB
-    const pool = getPool();
     const geoRes = await pool.query(
       `SELECT content FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
       [brandProfileId]
