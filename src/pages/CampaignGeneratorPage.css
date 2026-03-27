@@ -160,3 +160,41 @@
 .camp-reader-close:hover { background: rgba(255,255,255,0.05); }
 
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+/* ── Article image thumbnail (card) ─────────────────────────────────────────── */
+.camp-article-thumb {
+  width: 100%;
+  height: 90px;
+  border-radius: 6px;
+  overflow: hidden;
+  margin: 6px 0 4px;
+}
+.camp-article-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.camp-article-img-loading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin: 6px 0 4px;
+}
+
+/* ── Article hero image (reader) ────────────────────────────────────────────── */
+.camp-reader-hero {
+  width: 100%;
+  height: 280px;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+.camp-reader-hero img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
