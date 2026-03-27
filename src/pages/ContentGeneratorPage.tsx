@@ -43,6 +43,41 @@ interface GeneratedArticle {
   brainMatchScore: number;
 }
 
+
+// ── Stream progress — shows section titles as they appear, hides raw JSON ────
+function StreamProgress({ text }: { text: string }) {
+  const headings = Array.from(text.matchAll(/"heading":\s*"([^"]{8,80})"/g))
+    .map(m => m[1])
+    .filter((h, i, arr) => arr.indexOf(h) === i); // dedupe
+
+  if (!headings.length) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px 0' }}>
+        <span style={{ display: 'inline-block', animation: 'blink 1s step-end infinite', color: '#3563FF', fontSize: '20px' }}>▋</span>
+        <span style={{ color: '#475569', fontSize: '13px' }}>Analyzing Brain context...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <div style={{ fontSize: '12px', color: '#475569', marginBottom: '4px' }}>
+        Writing {headings.length} section{headings.length !== 1 ? 's' : ''}...
+      </div>
+      {headings.map((h, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span style={{ color: '#14B8A6', fontSize: '12px' }}>✓</span>
+          <span style={{ fontSize: '13px', color: '#94A3B8' }}>{h}</span>
+        </div>
+      ))}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <span style={{ display: 'inline-block', animation: 'blink 1s step-end infinite', color: '#3563FF', fontSize: '14px' }}>▋</span>
+        <span style={{ fontSize: '13px', color: '#475569' }}>Writing next section...</span>
+      </div>
+    </div>
+  );
+}
+
 function ContentGeneratorContent() {
   const [brains, setBrains] = useState<Brain[]>([]);
   const [briefs, setBriefs] = useState<EnrichedBrief[]>([]);
@@ -161,7 +196,7 @@ function ContentGeneratorContent() {
             <span>Generating — Brain is writing...</span>
           </div>
           <div className="cg-stream-body">
-            {streamText || <span className="cg-stream-cursor">▋</span>}
+            <StreamProgress text={streamText} />
           </div>
         </div>
       )}
