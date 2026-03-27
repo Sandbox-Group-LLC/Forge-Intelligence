@@ -1449,10 +1449,11 @@ Brand: ${brandName}
 Brand tone: ${toneSummary}
 
 Rules:
-- Photorealistic, professional B2B editorial style
-- No text, charts, or UI screenshots
-- Evoke the strategic theme of the article
-- Cinematic lighting, dark moody tones with blue or teal accent light
+- NO people, faces, or human subjects whatsoever
+- Abstract, architectural, or environmental composition only
+- Dark moody cinematic lighting with deep blue or teal accent light
+- Photorealistic editorial style — think Wired magazine cover, not stock photo
+- Evoke the strategic theme through objects, environments, light, and texture
 - 1 sentence only, no explanation
 
 Output only the prompt.`
@@ -1595,10 +1596,11 @@ Article title: "${title}"
 Brand tone: ${tone}
 
 Rules:
-- Photorealistic, professional B2B editorial style
-- No text, charts, or UI screenshots
-- Evoke the strategic theme of the article
-- Cinematic lighting, dark moody tones with blue or teal accent light
+- NO people, faces, or human subjects whatsoever
+- Abstract, architectural, or environmental composition only
+- Dark moody cinematic lighting with deep blue or teal accent light
+- Photorealistic editorial style — think Wired magazine cover, not stock photo
+- Evoke the strategic theme through objects, environments, light, and texture
 - 1 sentence only, no explanation
 
 Output only the prompt.`
@@ -1805,10 +1807,11 @@ Content type: ${angle.content_type}
 Persona: ${angle.primary_persona}
 
 Rules:
-- Photorealistic, professional B2B editorial style
-- No text, charts, or UI screenshots
-- Evoke the strategic theme of the article
-- Cinematic lighting, dark moody tones with blue or teal accent light
+- NO people, faces, or human subjects whatsoever
+- Abstract, architectural, or environmental composition only
+- Dark moody cinematic lighting with deep blue or teal accent light
+- Photorealistic editorial style — think Wired magazine cover, not stock photo
+- Evoke the strategic theme through objects, environments, light, and texture
 - 1 sentence only, no explanation
 
 Output only the prompt.`
