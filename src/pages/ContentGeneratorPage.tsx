@@ -109,7 +109,7 @@ function ContentGeneratorContent() {
     setStreamText('');
     setArticle(null);
     setArticleImageUrl(null);
-    setImageLoading(false);
+    setImageLoading(true);
     setError('');
 
     const es = new EventSource(
@@ -217,7 +217,7 @@ function ContentGeneratorContent() {
 
       {error && <div className="geo-error">{error}</div>}
 
-      {imageLoading && !article && (
+      {imageLoading && (
         <div className="cg-image-loading-bar">
           <span className="cg-spinner-sm" /> Generating hero image…
         </div>
