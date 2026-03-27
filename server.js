@@ -1506,10 +1506,6 @@ Output only the prompt.`
   }
 });
 
-app.get('*', function (req, res) {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-});
-
 
 // ── Campaign Generator ────────────────────────────────────────────────────────
 
@@ -1955,4 +1951,8 @@ Return ONLY valid JSON matching the content generator output format.`;
 
 app.listen(PORT, '0.0.0.0', function () {
   console.log('Forge Intelligence running on port ' + PORT);
+});
+
+app.get('*', function (req, res) {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
