@@ -170,12 +170,17 @@ Phase 1 — Context Intelligence Engine (Months 1–3)
 [x] Stage 3: Authenticity Enricher — ✅ LIVE (March 26, 2026)
     - UI: /authenticity-enricher, Brain selector, ShieldCheck run btn
     - Backend: E-E-A-T scoring, SME signals, voice injection, author schema
-[~] Stage 4: Content Generator — 🔄 IN PROGRESS (March 26, 2026)
+[x] Stage 4: Content Generator — ✅ LIVE (March 26, 2026)
+    - /content-generator — Brain selector + Enriched Brief selector + SSE streaming renderer
     - Long-form article only (MVP scope — prove context engine first)
-    - Streaming SSE output (theatrical but earned)
-    - Per-brand generated_content_{uuid} table
-    - Confidence scoring per section (🟢🟡🔴)
+    - Streaming SSE output via EventSource (theatrical but earned)
+    - Per-brand generated_content_{uuid} table (auto-provisioned on first call)
+    - Confidence scoring per section (🟢🟡🔴) with inline E-E-A-T + SME hook display
+    - Article / Meta / Schema tabs
+    - Activity logged to agent_activity_log
     - Multi-tenancy refactor flagged for production (dev UI allows manual brand selection)
+    - Defensive rendering on all Claude output fields (React #31 guard)
+[ ] Stage 5: Compliance & Human Refinement Gate — NOT built
 [ ] Demo dashboard: "Your Brand Intelligence" — NOT built
 ```
 
