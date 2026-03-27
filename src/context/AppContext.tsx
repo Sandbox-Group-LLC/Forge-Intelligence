@@ -48,7 +48,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [currentView, setCurrentView] = useState<ViewType>(() => {
     const params = new URLSearchParams(window.location.search);
     const viewParam = params.get('view');
-    const valid: ViewType[] = ['new-analysis', 'active-run', 'brand-profile', 'strategy', 'brain-history'];
+    const valid: ViewType[] = ['new-analysis', 'active-run', 'brand-profile', 'strategy', 'brain-history', 'content-generator'];
     return (valid.includes(viewParam as ViewType) ? viewParam : 'new-analysis') as ViewType;
   });
   const [brandProfile, setBrandProfile] = useState<BrandProfile | null>(null);
