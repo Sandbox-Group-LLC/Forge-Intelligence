@@ -1,6 +1,6 @@
 # Forge Intelligence — Master SSOT
 
-> **Last updated:** March 26, 2026 (5:43 PM PDT) | **Status:** Phase 1 — Active Build
+> **Last updated:** March 26, 2026 (5:50 PM PDT) | **Status:** Phase 1 — Active Build
 > **This README is the single source of truth for all AI sessions, dev work, and project decisions.**
 > When starting a new AI session, read this file top to bottom before touching anything.
 
@@ -42,7 +42,7 @@
 ### 🔲 What Is NOT Built Yet
 
 - Stage 3 — Authenticity Enricher agent
-- Stage 4 — Content Generator (long-form article, streaming) — 🔄 IN PROGRESS
+| Stage 4 Content Generator | 🔄 DEPLOYING | `/content-generator` — SSE streaming, Brain-First, confidence scoring, per-brand DB table |
 - Stage 5 — Compliance & Human Refinement Gate
 - Stage 6 — Publishing & Distribution
 - Stage 7 — Performance Intelligence
@@ -489,7 +489,7 @@ Forge connects to the broader Sandbox Group ecosystem:
 
 ### Phase 2 — Generation + Governance (Months 4–6)
 
-- Stage 4 — Content Generator (long-form article, streaming) — 🔄 IN PROGRESS (long-form + social + email + video + podcast)
+| Stage 4 Content Generator | 🔄 DEPLOYING | `/content-generator` — SSE streaming, Brain-First, confidence scoring, per-brand DB table | (long-form + social + email + video + podcast)
 - Stage 5 — Compliance & Human Refinement Gate (3 modes)
 - Stage 6 — Publishing (UTM engine, queue, version control, WordPress/Webflow/HubSpot integrations)
 - Pre-cog score running silently (hidden Standard tier)
