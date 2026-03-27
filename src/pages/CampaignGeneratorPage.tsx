@@ -51,6 +51,7 @@ interface ArticleStatus {
   index: number; title: string; week: number;
   status: 'pending' | 'generating' | 'complete' | 'failed';
   article?: any; error?: string;
+  imageUrl?: string; imageLoading?: boolean;
 }
 
 // ── Stream progress component ─────────────────────────────────────────────────
@@ -143,7 +144,19 @@ function CampaignGeneratorContent() {
         const d = JSON.parse(e.data);
         setStreamBuffer('');
         setArticleStatuses(prev => prev.map(a =>
-          a.index === d.index ? { ...a, status: 'complete', article: d.article } : a
+          a.index === d.index ? { ...a, status: 'complete', article: d.article, imageLoading: true } : a
+        ));
+      });
+      es.addEventListener('image_done', (e) => {
+        const d = JSON.parse(e.data);
+        setArticleStatuses(prev => prev.map(a =>
+          a.index === d.index ? { ...a, imageUrl: d.image_url, imageLoading: false } : a
+        ));
+      });
+      es.addEventListener('image_error', (e) => {
+        const d = JSON.parse(e.data);
+        setArticleStatuses(prev => prev.map(a =>
+          a.index === d.index ? { ...a, imageLoading: false } : a
         ));
       });
       es.addEventListener('article_error', (e) => {
@@ -152,7 +165,11 @@ function CampaignGeneratorContent() {
           a.index === d.index ? { ...a, status: 'failed', error: d.error } : a
         ));
       });
-      es.addEventListener('campaign_done', () => { es.close(); setStep('complete'); });
+      es.addEventListener('campaign_done', () => {
+        setStep('complete');
+        // Keep SSE open 90s for async image_done events, then close
+        setTimeout(() => es.close(), 90000);
+      });
       es.addEventListener('error', (e: any) => { es.close(); setError(e.data?.message || 'Generation failed'); });
     } catch (e: any) { setError(e.message); }
   };
@@ -266,7 +283,16 @@ function CampaignGeneratorContent() {
                   <div className="camp-article-stream"><StreamProgress text={streamBuffer} /></div>
                 )}
                 {a.status === 'complete' && (
-                  <div className="camp-article-view-hint"><BookOpen size={11} /> Click to read</div>
+                  <>
+                    {a.imageUrl ? (
+                      <div className="camp-article-thumb">
+                        <img src={a.imageUrl} alt={a.title} />
+                      </div>
+                    ) : a.imageLoading ? (
+                      <div className="camp-article-img-loading"><span className="camp-spinner-sm" /> Generating image…</div>
+                    ) : null}
+                    <div className="camp-article-view-hint"><BookOpen size={11} /> Click to read</div>
+                  </>
                 )}
                 {a.status === 'failed' && <div className="camp-article-error">{a.error}</div>}
               </div>
@@ -285,6 +311,11 @@ function CampaignGeneratorContent() {
                 </div>
                 <button className="camp-reader-close" onClick={() => setActiveArticle(null)}>✕</button>
               </div>
+              {articleStatuses.find(a => a.article === activeArticle)?.imageUrl && (
+                <div className="camp-reader-hero">
+                  <img src={articleStatuses.find(a => a.article === activeArticle)!.imageUrl} alt={activeArticle.title} />
+                </div>
+              )}
               {activeArticle.sections?.map((section: any, i: number) => (
                 <div key={i} className="cg-section-card">
                   <div className="cg-confidence-strip" style={{ background: section.confidence >= 80 ? '#10B981' : section.confidence >= 65 ? '#F59E0B' : '#EF4444' }} />
