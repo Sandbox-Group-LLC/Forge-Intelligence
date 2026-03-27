@@ -100,7 +100,7 @@ function CampaignGeneratorContent() {
   const selectedBrain = brains.find(b => b.id === selectedBrainId);
 
   const handlePlan = async () => {
-    if (!brandProfile) return;
+    if (!selectedBrainId) return;
     setIsPlanning(true); setError('');
     try {
       const res = await fetch('/api/campaign/plan', {
@@ -115,7 +115,7 @@ function CampaignGeneratorContent() {
   };
 
   const handleGenerate = async () => {
-    if (!plan || !brandProfile) return;
+    if (!plan || !selectedBrainId) return;
     setError('');
     try {
       const res = await fetch('/api/campaign/create', {
