@@ -51,7 +51,7 @@ export function NewAnalysis() {
   const canSubmit = analysisInput.brandUrl.trim().length > 0;
 
   return (
-    <div className="new-analysis view-shell-centered">
+    <div className="new-analysis">
       <div className="view-header">
         <div className="geo-eyebrow">Stage 1</div>
         <h2 className="view-title">Generate Brand Intelligence</h2>
