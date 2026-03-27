@@ -1466,7 +1466,7 @@ Output only the prompt.`
         const falRes = await fetch('https://fal.run/fal-ai/flux/dev', {
           method: 'POST',
           headers: {
-            'Authorization': `Key ${process.env.FAL_KEY}`,
+            'Authorization': `Key ${process.env.FAL_API_KEY}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
@@ -1764,7 +1764,7 @@ Output only the prompt.`
         const falRes = await fetch('https://fal.run/fal-ai/flux/dev', {
           method: 'POST',
           headers: {
-            'Authorization': `Key ${process.env.FAL_KEY}`,
+            'Authorization': `Key ${process.env.FAL_API_KEY}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
