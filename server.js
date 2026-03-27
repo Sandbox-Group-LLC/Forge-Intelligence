@@ -1965,6 +1965,20 @@ Return ONLY valid JSON matching the content generator output format.`;
 });
 
 
+// ── Stage 5: Compliance Gate
+// Ensures compliance columns exist on any generated_content table (idempotent)
+async function ensureComplianceColumns(tableName) {
+  const cols = [
+    ['review_mode',        'TEXT DEFAULT \'approve-to-ship\''],
+    ['compliance_status',  'TEXT DEFAULT \'pending\''],
+    ['compliance_report',  'JSONB'],
+    ['reviewed_at',        'TIMESTAMPTZ'],
+  ];
+  for (const [col, def] of cols) {
+    await pool.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS ${col} ${def}`).catch(() => {});
+  }
+}
+
 // ── Stage 5: Compliance Gate ─────────────────────────────────────────────
 
 // GET latest draft article for a brand
@@ -1974,6 +1988,7 @@ app.get('/api/compliance/latest/:brandProfileId', async (req, res) => {
   try {
     const safeId = brandProfileId.replace(/-/g, '_');
     const tableName = `generated_content_${safeId}`;
+    await ensureComplianceColumns(tableName);
     const result = await pool.query(
       `SELECT * FROM ${tableName} ORDER BY created_at DESC LIMIT 10`
     );
@@ -1991,6 +2006,7 @@ app.post('/api/compliance/critique', async (req, res) => {
     const safeId = brandProfileId.replace(/-/g, '_');
     const tableName = `generated_content_${safeId}`;
 
+    await ensureComplianceColumns(tableName);
     // Load article
     const articleRes = await pool.query(`SELECT * FROM ${tableName} WHERE id = $1`, [contentId]);
     if (!articleRes.rows.length) return res.status(404).json({ error: 'Article not found' });
@@ -2067,6 +2083,7 @@ app.post('/api/compliance/approve', async (req, res) => {
     const safeId = brandProfileId.replace(/-/g, '_');
     const tableName = `generated_content_${safeId}`;
 
+    await ensureComplianceColumns(tableName);
     // Load original article
     const articleRes = await pool.query(`SELECT * FROM ${tableName} WHERE id = $1`, [contentId]);
     if (!articleRes.rows.length) return res.status(404).json({ error: 'Article not found' });
