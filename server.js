@@ -1611,11 +1611,6 @@ app.get('/api/campaign/generate/:id', async (req, res) => {
   const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 
   try {
-    const Anthropic = require('@anthropic-ai/sdk');
-    const fs = require('fs');
-    const path = require('path');
-    const pool = getPool();
-
     const campRes = await pool.query(`SELECT * FROM campaigns WHERE id = $1`, [req.params.id]);
     const campaign = campRes.rows[0];
     if (!campaign) { send('error', { message: 'Campaign not found' }); return res.end(); }
@@ -1626,8 +1621,9 @@ app.get('/api/campaign/generate/:id', async (req, res) => {
     );
     const articles = articlesRes.rows;
 
-    const profilePath = path.join(__dirname, 'data', 'brand-profiles', `${campaign.brand_profile_id}.json`);
-    const profileData = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
+    const profileResult = await pool.query(`SELECT * FROM brand_profiles WHERE id = $1`, [campaign.brand_profile_id]);
+    if (!profileResult.rows.length) { send('error', { message: 'Brand profile not found' }); return res.end(); }
+    const profileData = profileResult.rows[0].profile_data || profileResult.rows[0];
 
     const geoRes = await pool.query(
       `SELECT brief_data FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
@@ -1657,7 +1653,6 @@ app.get('/api/campaign/generate/:id', async (req, res) => {
     const cgSystemPrompt = fs.readFileSync(
       path.join(__dirname, 'src/agents/stage4_content_generator/system_prompt.md'), 'utf8'
     );
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
     await pool.query(`UPDATE campaigns SET status = 'generating', updated_at = NOW() WHERE id = $1`, [req.params.id]);
 
@@ -1694,7 +1689,7 @@ IMPORTANT: Use the angle profile above to lock the persona, funnel position, con
 Return ONLY valid JSON matching the content generator output format.`;
 
       let fullText = '';
-      const stream = await client.messages.stream({
+      const stream = await anthropic.messages.stream({
         model: 'claude-sonnet-4-5',
         max_tokens: 8096,
         system: cgSystemPrompt,
