@@ -1449,11 +1449,12 @@ Brand: ${brandName}
 Brand tone: ${toneSummary}
 
 Rules:
-- NO people, faces, or human subjects whatsoever
-- Abstract, architectural, or environmental composition only
-- Dark moody cinematic lighting with deep blue or teal accent light
-- Photorealistic editorial style — think Wired magazine cover, not stock photo
-- Evoke the strategic theme through objects, environments, light, and texture
+- NO people, faces, or human subjects
+- NO control rooms, war rooms, military bunkers, or sci-fi command centers
+- NO holographic displays, floating screens, or neon-lit data walls
+- Think abstract macro photography, architectural detail, or natural textures with editorial lighting
+- Photorealistic — Wired or Harvard Business Review cover energy, not a movie set
+- Muted dark palette with a single subtle accent color (deep blue, slate, or warm amber)
 - 1 sentence only, no explanation
 
 Output only the prompt.`
@@ -1596,11 +1597,12 @@ Article title: "${title}"
 Brand tone: ${tone}
 
 Rules:
-- NO people, faces, or human subjects whatsoever
-- Abstract, architectural, or environmental composition only
-- Dark moody cinematic lighting with deep blue or teal accent light
-- Photorealistic editorial style — think Wired magazine cover, not stock photo
-- Evoke the strategic theme through objects, environments, light, and texture
+- NO people, faces, or human subjects
+- NO control rooms, war rooms, military bunkers, or sci-fi command centers
+- NO holographic displays, floating screens, or neon-lit data walls
+- Think abstract macro photography, architectural detail, or natural textures with editorial lighting
+- Photorealistic — Wired or Harvard Business Review cover energy, not a movie set
+- Muted dark palette with a single subtle accent color (deep blue, slate, or warm amber)
 - 1 sentence only, no explanation
 
 Output only the prompt.`
@@ -1807,11 +1809,12 @@ Content type: ${angle.content_type}
 Persona: ${angle.primary_persona}
 
 Rules:
-- NO people, faces, or human subjects whatsoever
-- Abstract, architectural, or environmental composition only
-- Dark moody cinematic lighting with deep blue or teal accent light
-- Photorealistic editorial style — think Wired magazine cover, not stock photo
-- Evoke the strategic theme through objects, environments, light, and texture
+- NO people, faces, or human subjects
+- NO control rooms, war rooms, military bunkers, or sci-fi command centers
+- NO holographic displays, floating screens, or neon-lit data walls
+- Think abstract macro photography, architectural detail, or natural textures with editorial lighting
+- Photorealistic — Wired or Harvard Business Review cover energy, not a movie set
+- Muted dark palette with a single subtle accent color (deep blue, slate, or warm amber)
 - 1 sentence only, no explanation
 
 Output only the prompt.`
