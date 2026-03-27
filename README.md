@@ -1,6 +1,6 @@
 # Forge Intelligence — Master SSOT
 
-> **Last updated:** March 26, 2026 (6:47 PM PDT) | **Status:** Phase 1 — Active Build
+> **Last updated:** March 26, 2026 (9:59 PM PDT) | **Status:** Phase 1 — Active Build
 > **This README is the single source of truth for all AI sessions, dev work, and project decisions.**
 > When starting a new AI session, read this file top to bottom before touching anything.
 
@@ -20,7 +20,7 @@
 
 ---
 
-## Current Build Status (as of March 26, 2026 — ~12:30am)
+## Current Build Status (as of March 26, 2026 — 9:59 PM PDT)
 
 ### ✅ What Is Live Right Now
 
@@ -43,7 +43,8 @@
 
 - Stage 3 — Authenticity Enricher agent
 | Stage 4 Content Generator | ✅ LIVE | `/content-generator` — SSE streaming, Brain-First, confidence scoring, per-brand `generated_content_{uuid}` table |
-- Stage 5 — Compliance & Human Refinement Gate
+| Hero Image Generation | ✅ LIVE | Flux via fal.ai — Claude writes editorial prompt, image generated async post-SSE, injected at article top |
+| Stage 5 — Compliance & Human Gate | 🔲 Tomorrow | Three-mode review (Auto/Approve/Full), human edit loop → Brain Mistakes |
 - Stage 6 — Publishing & Distribution
 - Stage 7 — Performance Intelligence
 - Stage 8 — Pattern Extractor / Feedback Loop
@@ -300,8 +301,7 @@ The UI is built on these non-negotiable directives, applied to all screens:
 ### Screens NOT Built Yet
 
 - Admin dashboard (agent activity log)
-- Stage 3 Enriched Brief workspace
-- Stage 4 Content generation workspace
+- Stage 5 Compliance & Human Refinement Gate workspace
 - Client brain viewer
 - Billing / account management
 
