@@ -101,7 +101,8 @@ const navItems: NavItem[] = [
   { id: 'geo-strategist', label: 'GEO Strategist', icon: 'zap' },
   { id: 'authenticity-enricher', label: 'Authenticity Enricher', icon: 'shieldCheck' },
   { id: 'content-generator', label: 'Content Generator', icon: 'fileText' },
-  { id: 'campaign-generator', label: 'Campaign Generator', icon: 'layers' }
+  { id: 'campaign-generator', label: 'Campaign Generator', icon: 'layers' },
+  { id: 'compliance-gate', label: 'Compliance Gate', icon: 'shieldCheck' }
 ];
 
 export function Sidebar() {
@@ -183,6 +184,7 @@ export function Sidebar() {
                   'authenticity-enricher': '/app/authenticity-enricher',
                   'content-generator': '/app/content-generator',
                   'campaign-generator': '/app/campaign-generator',
+                  'compliance-gate': '/app/compliance-gate',
                 };
                 const targetPath = routeMap[item.id] || '/app/context-hub';
                 const currentPath = window.location.pathname;
