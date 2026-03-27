@@ -64,15 +64,8 @@
 
 .cg-section-header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
-.cg-section-header > *:first-child {
-  flex: 1;
+  flex-direction: column;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -90,8 +83,12 @@
   font-size: 11px;
   padding: 4px 10px;
   border-radius: 20px;
-  white-space: nowrap;
-  flex-shrink: 0;
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  line-height: 1.5;
+  display: inline-block;
+  max-width: 100%;
 }
 
 .cg-section-body {
