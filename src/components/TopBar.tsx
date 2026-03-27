@@ -37,11 +37,13 @@ const viewTitles: Record<string, string> = {
   'brain-history': 'Brain History',
   'geo-strategist': 'GEO Strategist',
   'authenticity-enricher': 'Authenticity Enricher',
+  'content-generator': 'Content Generator',
 };
 
 const pathTitles: Record<string, string> = {
   '/geo-strategist': 'GEO Strategist',
   '/authenticity-enricher': 'Authenticity Enricher',
+  '/content-generator': 'Content Generator',
 };
 
 export function TopBar() {
