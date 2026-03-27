@@ -221,6 +221,15 @@ function ContentGeneratorContent() {
           {activeTab === 'article' && (
             <div className="cg-article">
               <h2 className="cg-article-title">{article.title}</h2>
+              {articleImageUrl ? (
+                <div className="cg-article-hero">
+                  <img src={articleImageUrl} alt={article.title} />
+                </div>
+              ) : imageLoading ? (
+                <div className="cg-article-hero-loading">
+                  <span className="cg-spinner-sm" /> Generating hero image…
+                </div>
+              ) : null}
               {article.sections?.map(section => (
                 <div key={section.id} className="cg-section" style={{ borderLeftColor: tierColor(section.confidenceTier) }}>
                   <div className="cg-section-header">
