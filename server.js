@@ -1278,6 +1278,10 @@ async function ensureGeneratedContentTable(brandProfileId) {
   // Add new columns to existing tables (idempotent)
   await pool.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS hero_image_url TEXT`).catch(() => {});
   await pool.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS hero_image_prompt TEXT`).catch(() => {});
+  await pool.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS review_mode TEXT DEFAULT 'approve-to-ship'`).catch(() => {});
+  await pool.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS compliance_status TEXT DEFAULT 'pending'`).catch(() => {});
+  await pool.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS compliance_report JSONB`).catch(() => {});
+  await pool.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ`).catch(() => {});
   return tableName;
 }
 
@@ -2126,6 +2130,154 @@ app.get('/api/compliance/content/:brandProfileId', async (req, res) => {
     res.json({ success: true, articles: result.rows });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+
+// ── Stage 5: Compliance Gate ─────────────────────────────────────────────────
+
+// GET latest draft article for a brand
+app.get('/api/compliance/latest/:brandProfileId', async (req, res) => {
+  const { brandProfileId } = req.params;
+  if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
+  try {
+    const safeId = brandProfileId.replace(/-/g, '_');
+    const tableName = `generated_content_${safeId}`;
+    const result = await pool.query(
+      `SELECT * FROM ${tableName} ORDER BY created_at DESC LIMIT 10`
+    );
+    res.json({ success: true, articles: result.rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST compliance critique — Claude reads article + brain mistakes, returns report
+app.post('/api/compliance/critique', async (req, res) => {
+  const { brandProfileId, contentId } = req.body;
+  if (!brandProfileId || !contentId) return res.status(400).json({ error: 'brandProfileId and contentId required' });
+  try {
+    const safeId = brandProfileId.replace(/-/g, '_');
+    const tableName = `generated_content_${safeId}`;
+
+    // Load article
+    const articleRes = await pool.query(`SELECT * FROM ${tableName} WHERE id = $1`, [contentId]);
+    if (!articleRes.rows.length) return res.status(404).json({ error: 'Article not found' });
+    const article = articleRes.rows[0];
+    const articleJson = article.article_json;
+
+    // Load brand profile + brain mistakes
+    const brandRes = await pool.query('SELECT * FROM brand_profiles WHERE id = $1', [brandProfileId]);
+    const brand = brandRes.rows[0];
+    const mistakesRes = await pool.query(`SELECT * FROM mistakes ORDER BY created_at DESC LIMIT 20`).catch(() => ({ rows: [] }));
+    const mistakes = mistakesRes.rows;
+
+    const systemPrompt = `You are a compliance and brand voice auditor. Analyze this article against the brand profile and known mistakes. Return a JSON compliance report.
+
+Brand Voice Profile:
+${JSON.stringify(brand?.voice_profile || {}, null, 2)}
+
+Known Mistakes to Avoid:
+${mistakes.map(m => `- ${m.mistake_type}: ${m.human_feedback}`).join('\n') || 'None recorded yet'}
+
+Return ONLY valid JSON in this exact structure:
+{
+  "overallScore": <0-100>,
+  "brandVoiceScore": <0-100>,
+  "factualConfidence": <0-100>,
+  "autoApprovable": <true if all sections green>,
+  "summary": "<2 sentence overall assessment>",
+  "flags": [
+    {
+      "sectionIndex": <number>,
+      "sectionHeading": "<heading>",
+      "severity": "yellow" | "red",
+      "type": "brand_voice" | "factual_claim" | "legal_risk" | "sme_required",
+      "reason": "<why flagged>",
+      "suggestion": "<recommended fix>"
+    }
+  ],
+  "mistakesApplied": ["<list of mistake patterns that influenced this critique>"]
+}`;
+
+    const critiqueRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 2000,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: `Article to audit:\n\n${JSON.stringify(articleJson, null, 2)}` }]
+      })
+    });
+    const critiqueData = await critiqueRes.json();
+    const rawText = critiqueData.content?.[0]?.text || '{}';
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    const report = JSON.parse(jsonMatch ? jsonMatch[0] : rawText);
+
+    // Persist compliance report to article record
+    await pool.query(
+      `UPDATE ${tableName} SET compliance_report = $1, compliance_status = 'reviewed', updated_at = NOW() WHERE id = $2`,
+      [JSON.stringify(report), contentId]
+    );
+
+    res.json({ success: true, report });
+  } catch (err) {
+    console.error('[COMPLIANCE] Critique error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST approve — save human edits, write mistakes to brain, mark approved
+app.post('/api/compliance/approve', async (req, res) => {
+  const { brandProfileId, contentId, reviewMode, editedSections, decisions } = req.body;
+  if (!brandProfileId || !contentId) return res.status(400).json({ error: 'brandProfileId and contentId required' });
+  try {
+    const safeId = brandProfileId.replace(/-/g, '_');
+    const tableName = `generated_content_${safeId}`;
+
+    // Load original article
+    const articleRes = await pool.query(`SELECT * FROM ${tableName} WHERE id = $1`, [contentId]);
+    if (!articleRes.rows.length) return res.status(404).json({ error: 'Article not found' });
+    const article = articleRes.rows[0];
+    let articleJson = article.article_json;
+
+    // Apply human edits to article sections
+    if (editedSections && Array.isArray(editedSections)) {
+      editedSections.forEach(edit => {
+        if (articleJson.sections && articleJson.sections[edit.sectionIndex]) {
+          const orig = articleJson.sections[edit.sectionIndex].content;
+          if (orig !== edit.content) {
+            // Write to brain mistakes table
+            pool.query(
+              `INSERT INTO mistakes (id, mistake_type, human_feedback, guardrail_created, severity, created_at)
+               VALUES (gen_random_uuid()::text, $1, $2, $3, $4, NOW())`,
+              [
+                'human_edit',
+                `Section "${articleJson.sections[edit.sectionIndex].heading}": original phrase edited by human reviewer`,
+                `Avoid phrasing: "${orig.substring(0, 200)}..." — prefer: "${edit.content.substring(0, 200)}..."`,
+                'yellow'
+              ]
+            ).catch(e => console.error('[COMPLIANCE] Mistake write error:', e.message));
+            articleJson.sections[edit.sectionIndex].content = edit.content;
+          }
+        }
+      });
+    }
+
+    // Handle red section decisions
+    const finalStatus = reviewMode === 'auto-ship' ? 'approved' :
+      decisions && Object.values(decisions).some(d => d === 'rejected') ? 'rejected' : 'approved';
+
+    await pool.query(
+      `UPDATE ${tableName} SET article_json = $1, compliance_status = $2, review_mode = $3, reviewed_at = NOW(), updated_at = NOW() WHERE id = $4`,
+      [JSON.stringify(articleJson), finalStatus, reviewMode || 'approve-to-ship', contentId]
+    );
+
+    res.json({ success: true, status: finalStatus, contentId });
+  } catch (err) {
+    console.error('[COMPLIANCE] Approve error:', err);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
