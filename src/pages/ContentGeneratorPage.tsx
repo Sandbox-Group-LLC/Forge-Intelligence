@@ -120,16 +120,26 @@ function ContentGeneratorContent() {
     });
 
     es.addEventListener('done', (e) => {
-      es.close();
       setIsRunning(false);
       try {
         const parsed = JSON.parse(e.data);
         setArticle(parsed);
         setStreamText('');
+        setImageLoading(true);
       } catch {
+        es.close();
         setError('Failed to parse generated article. Raw output preserved.');
         setStreamText(prev => prev || e.data);
       }
+    });
+    es.addEventListener('image_done', (e) => {
+      try { const d = JSON.parse(e.data); setArticleImageUrl(d.image_url); } catch {}
+      setImageLoading(false);
+      es.close();
+    });
+    es.addEventListener('image_error', () => {
+      setImageLoading(false);
+      es.close();
     });
 
     es.addEventListener('error', (e: any) => {
