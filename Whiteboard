@@ -167,7 +167,15 @@ Phase 1 — Context Intelligence Engine (Months 1–3)
 [x] Stage 1: Context Hub — ✅ LIVE
 [x] Client Brain: NeonDB/pgvector + 3 agents — ✅ LIVE
 [x] Stage 2: GEO Strategy Brief — ✅ LIVE (March 26, 2026)
-[~] Stage 3: Authenticity enrichment — 🔄 BUILDING (March 26, 2026)
+[x] Stage 3: Authenticity Enricher — ✅ LIVE (March 26, 2026)
+    - UI: /authenticity-enricher, Brain selector, ShieldCheck run btn
+    - Backend: E-E-A-T scoring, SME signals, voice injection, author schema
+[~] Stage 4: Content Generator — 🔄 IN PROGRESS (March 26, 2026)
+    - Long-form article only (MVP scope — prove context engine first)
+    - Streaming SSE output (theatrical but earned)
+    - Per-brand generated_content_{uuid} table
+    - Confidence scoring per section (🟢🟡🔴)
+    - Multi-tenancy refactor flagged for production (dev UI allows manual brand selection)
 [ ] Demo dashboard: "Your Brand Intelligence" — NOT built
 ```
 
