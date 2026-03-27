@@ -1070,7 +1070,7 @@ Respond with this exact JSON structure:
 
     const injectionRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-5',
-      max_tokens: 4096,
+      max_tokens: 8096,
       system: 'You are a JSON API. You must respond with valid JSON only — no markdown, no explanation, no code fences.',
       messages: [
         { role: 'user', content: `Voice & persona injection mapping task for ${brandName}. Be concise — max 4 injectionMap items, 2 hooks, 3 powerPhrases.
@@ -1099,7 +1099,7 @@ Respond with this exact JSON structure:
 
     const assemblerRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-5',
-      max_tokens: 4096,
+      max_tokens: 8096,
       system: 'You are a JSON API. You must respond with valid JSON only — no markdown, no explanation, no code fences.',
       messages: [
         { role: 'user', content: `Enriched brief assembly task for ${brandName}.
@@ -1357,7 +1357,7 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
     let fullText = '';
     const stream = await client.messages.stream({
       model: 'claude-sonnet-4-5',
-      max_tokens: 4096,
+      max_tokens: 8096,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }]
     });
@@ -1374,7 +1374,35 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
     let parsed;
     try {
       const jsonMatch = fullText.match(/\{[\s\S]*\}/);
-      parsed = JSON.parse(jsonMatch ? jsonMatch[0] : fullText);
+      const jsonStr = jsonMatch ? jsonMatch[0] : fullText;
+      try {
+        parsed = JSON.parse(jsonStr);
+      } catch(e) {
+        // Claude truncated mid-JSON — attempt recovery by closing open structures
+        // Find last complete section object and trim there
+        const lastGoodSection = jsonStr.lastIndexOf('", "confidence"');
+        if (lastGoodSection > 0) {
+          // Find the closing brace for that section
+          let trimPos = jsonStr.indexOf('}', lastGoodSection);
+          if (trimPos > 0) {
+            // Close the sections array and root object
+            const partial = jsonStr.substring(0, trimPos + 1) + '] }';
+            try {
+              parsed = JSON.parse(partial);
+              parsed._truncated = true;
+            } catch(e2) {
+              send('error', 'JSON parse failed: ' + e.message);
+              return res.end();
+            }
+          } else {
+            send('error', 'JSON parse failed: ' + e.message);
+            return res.end();
+          }
+        } else {
+          send('error', 'JSON parse failed: ' + e.message);
+          return res.end();
+        }
+      }
     } catch(e) {
       send('error', 'JSON parse failed: ' + e.message);
       return res.end();
