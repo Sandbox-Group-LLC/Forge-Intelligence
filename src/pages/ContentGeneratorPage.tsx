@@ -217,6 +217,12 @@ function ContentGeneratorContent() {
 
       {error && <div className="geo-error">{error}</div>}
 
+      {imageLoading && !article && (
+        <div className="cg-image-loading-bar">
+          <span className="cg-spinner-sm" /> Generating hero image…
+        </div>
+      )}
+
       {article && !isRunning && (
         <>
           <div className="cg-meta-bar">
