@@ -1,6 +1,9 @@
 .geo-content {
   color: var(--color-text-primary);
   font-family: Inter, system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
 }
 
 /* Nav handled by global AppShell/TopBar */
