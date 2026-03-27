@@ -1,6 +1,6 @@
 # Forge Intelligence — Master SSOT
 
-> **Last updated:** March 27, 2026 (2:24 PM PDT) | **Status:** Phase 1 Complete — Stages 1–5 LIVE ✅
+> **Last updated:** March 27, 2026 (4:18 PM PDT) | **Status:** Stage 6 In Progress — Integrations + Publishing Queue LIVE 🚧
 > **This README is the single source of truth for all AI sessions, dev work, and project decisions.**
 > When starting a new AI session, read this file top to bottom before touching anything.
 
@@ -327,7 +327,7 @@ See `Whiteboard` file for full detailed spec on all 8 stages. Summary:
 | 4 | Content Generator | ✅ LIVE | Content Generator | Claude Sonnet 4.6 |
 | 4.5 | Campaign Generator | ✅ LIVE | Campaign Angle Planner | Claude Sonnet 4.6 |
 | 5 | Compliance & Human Gate | ✅ LIVE | Compliance Gate | Claude Sonnet 4.6 |
-| 6 | Publishing & Distribution | 🔲 Not built | Publishing Agent | — |
+| 6 | Publishing & Distribution | 🚧 In Progress | Publishing Agent | WP REST API live, others Stage 6.1 |
 | 7 | Performance Intelligence | 🔲 Not built | Performance Agent | Claude Sonnet 4.6 |
 | 8 | Feedback Loop | 🔲 Not built | Pattern Extractor | Claude Opus 4.6 |
 
