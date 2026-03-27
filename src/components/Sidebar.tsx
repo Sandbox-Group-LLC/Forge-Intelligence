@@ -90,7 +90,8 @@ const navItems: NavItem[] = [
   { id: 'strategy', label: 'Strategy', icon: 'compass' },
   { id: 'brain-history', label: 'Brain History', icon: 'bookOpen' },
   { id: 'geo-strategist', label: 'GEO Strategist', icon: 'zap' },
-  { id: 'authenticity-enricher', label: 'Authenticity Enricher', icon: 'shieldCheck' }
+  { id: 'authenticity-enricher', label: 'Authenticity Enricher', icon: 'shieldCheck' },
+  { id: 'content-generator', label: 'Content Generator', icon: 'fileText' }
 ];
 
 export function Sidebar() {
@@ -170,6 +171,7 @@ export function Sidebar() {
                   'brain-history': '/context-hub?view=brain-history',
                   'geo-strategist': '/geo-strategist',
                   'authenticity-enricher': '/authenticity-enricher',
+                  'content-generator': '/content-generator',
                 };
                 const targetPath = routeMap[item.id] || '/context-hub';
                 const currentPath = window.location.pathname;
