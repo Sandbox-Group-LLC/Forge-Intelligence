@@ -73,7 +73,7 @@ export default function ComplianceGatePage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetch('/api/brands').then(r => r.json()).then(d => {
+    fetch('/api/context-hub/brains').then(r => r.json()).then(d => {
       if (d.success) setBrands(d.brands || []);
     }).catch(() => {});
   }, []);
