@@ -178,10 +178,10 @@ function CampaignGeneratorContent() {
 
   return (
     <div className="cg-page">
-      <div className="cg-header">
-        <div className="cg-stage-label">STAGE 4.5</div>
-        <h1 className="cg-title">Campaign Generator</h1>
-        <p className="cg-subtitle">8-article campaign — 2 per week for 4 weeks. One brain, zero slop.</p>
+      <div className="geo-header">
+        <div className="geo-eyebrow">Stage 4.5</div>
+        <h1 className="geo-title">Campaign Generator</h1>
+        <p className="geo-description">8-article campaign — 2 per week for 4 weeks. One brain, zero slop.</p>
       </div>
 
       {step === 'setup' && (
