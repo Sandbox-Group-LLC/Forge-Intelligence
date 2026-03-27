@@ -1288,6 +1288,8 @@ app.get('/api/content-generator/generate', async (req, res) => {
   res.flushHeaders();
 
   const send = (event, data) => res.write(`event: ${event}\ndata: ${data}\n\n`);
+  const keepalive = setInterval(() => res.write(': ping\n\n'), 30000);
+  req.on('close', () => clearInterval(keepalive));
 
   try {
     // ── Brain-First: load all context ────────────────────────────────────────
@@ -1429,7 +1431,73 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
     ).catch(() => {});
 
     send('done', JSON.stringify(parsed));
-    res.end();
+
+    // Fire Flux image generation in parallel — don't block the done event
+    (async () => {
+      try {
+        const brandName = profileData?.voice_profile?.brand_name || profile.brand_name || '';
+        const toneSummary = profileData?.voice_profile?.tone_summary || '';
+
+        const imgPromptRes = await anthropic.messages.create({
+          model: 'claude-haiku-4-5',
+          max_tokens: 200,
+          messages: [{
+            role: 'user',
+            content: `Write a single-sentence Flux image generation prompt for this B2B article hero image.
+Article title: "${parsed.title}"
+Brand: ${brandName}
+Brand tone: ${toneSummary}
+
+Rules:
+- Photorealistic, professional B2B editorial style
+- No text, charts, or UI screenshots
+- Evoke the strategic theme of the article
+- Cinematic lighting, dark moody tones with blue or teal accent light
+- 1 sentence only, no explanation
+
+Output only the prompt.`
+          }]
+        });
+
+        const fluxPrompt = imgPromptRes.content[0]?.type === 'text'
+          ? imgPromptRes.content[0].text.trim()
+          : `Professional B2B editorial photo representing ${parsed.title}, dark cinematic lighting`;
+
+        const falRes = await fetch('https://fal.run/fal-ai/flux/dev', {
+          method: 'POST',
+          headers: {
+            'Authorization': \`Key \${process.env.FAL_KEY}\`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            prompt: fluxPrompt,
+            image_size: 'landscape_16_9',
+            num_inference_steps: 28,
+            guidance_scale: 3.5,
+            num_images: 1,
+            enable_safety_checker: true,
+          })
+        });
+
+        if (!falRes.ok) throw new Error(\`fal.ai \${falRes.status}\`);
+        const falData = await falRes.json();
+        const imageUrl = falData?.images?.[0]?.url;
+        if (!imageUrl) throw new Error('No image URL from fal.ai');
+
+        // Persist image_url alongside the article
+        await pool.query(
+          \`UPDATE generated_content_\${brandProfileId.replace(/-/g, '_')} SET image_url = $1 WHERE title = $2 ORDER BY created_at DESC LIMIT 1\`,
+          [imageUrl, parsed.title]
+        ).catch(() => {}); // Non-fatal if table name differs
+
+        send('image_done', JSON.stringify({ image_url: imageUrl, prompt: fluxPrompt }));
+      } catch (imgErr) {
+        console.error('[CONTENT-GEN] Image error:', imgErr.message);
+        send('image_error', JSON.stringify({ error: imgErr.message }));
+      } finally {
+        res.end();
+      }
+    })();
 
   } catch (err) {
     console.error('[CONTENT-GEN] Error:', err);
