@@ -1330,22 +1330,26 @@ app.get('/api/content-generator/generate', async (req, res) => {
       ? fs.readFileSync(systemPromptPath, 'utf8')
       : 'You are a content generator. Produce a high-quality long-form article.';
 
+    const trimTo = (obj, maxChars = 8000) => {
+      const s = JSON.stringify(obj, null, 2);
+      return s.length > maxChars ? s.substring(0, maxChars) + '\n...[truncated for token budget]' : s;
+    };
     const userPrompt = `Generate a long-form article using the following Brand Intelligence context.
 
 BRAND PROFILE:
-${JSON.stringify(profileData, null, 2)}
+${trimTo(profileData, 6000)}
 
 GEO BRIEF:
-${geoBrief ? JSON.stringify(geoBrief, null, 2) : 'Not available — infer topical strategy from brand profile.'}
+${geoBrief ? trimTo(geoBrief, 4000) : 'Not available — infer topical strategy from brand profile.'}
 
 ENRICHED BRIEF:
-${enrichedBrief ? JSON.stringify(enrichedBrief, null, 2) : 'Not available — use brand profile voice and personas.'}
+${enrichedBrief ? trimTo(enrichedBrief, 6000) : 'Not available — use brand profile voice and personas.'}
 
 BRAIN PATTERNS (what worked):
-${JSON.stringify(patternsRes.rows, null, 2)}
+${trimTo(patternsRes.rows, 2000)}
 
 BRAIN MISTAKES (what to avoid):
-${JSON.stringify(mistakesRes.rows, null, 2)}
+${trimTo(mistakesRes.rows, 2000)}
 
 Return ONLY valid JSON matching the specified output format. No markdown, no code fences, no commentary.`;
 
