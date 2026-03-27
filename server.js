@@ -1466,7 +1466,7 @@ Output only the prompt.`
         const falRes = await fetch('https://fal.run/fal-ai/flux/dev', {
           method: 'POST',
           headers: {
-            'Authorization': `Key \${process.env.FAL_KEY}`,
+            'Authorization': `Key ${process.env.FAL_KEY}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
@@ -1479,14 +1479,14 @@ Output only the prompt.`
           })
         });
 
-        if (!falRes.ok) throw new Error(`fal.ai \${falRes.status}`);
+        if (!falRes.ok) throw new Error(`fal.ai ${falRes.status}`);
         const falData = await falRes.json();
         const imageUrl = falData?.images?.[0]?.url;
         if (!imageUrl) throw new Error('No image URL from fal.ai');
 
         // Persist image_url alongside the article
         await pool.query(
-          `UPDATE generated_content_\${brandProfileId.replace(/-/g, '_')} SET image_url = $1 WHERE title = $2 ORDER BY created_at DESC LIMIT 1`,
+          `UPDATE generated_content_${brandProfileId.replace(/-/g, '_')} SET image_url = $1 WHERE title = $2 ORDER BY created_at DESC LIMIT 1`,
           [imageUrl, parsed.title]
         ).catch(() => {}); // Non-fatal if table name differs
 
