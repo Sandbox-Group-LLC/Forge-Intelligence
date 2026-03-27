@@ -83,6 +83,18 @@ const icons = {
       <line x1="16" y1="17" x2="8" y2="17"/>
       <line x1="10" y1="9" x2="8" y2="9"/>
     </svg>
+  ),
+  plug: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/>
+      <path d="M18 8H6a2 2 0 0 0-2 2v3a6 6 0 0 0 12 0v-3a2 2 0 0 0-2-2z"/>
+    </svg>
+  ),
+  sendCloud: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="22" y1="2" x2="11" y2="13"/>
+      <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+    </svg>
   )
 };
 
@@ -102,7 +114,9 @@ const navItems: NavItem[] = [
   { id: 'authenticity-enricher', label: 'Authenticity Enricher', icon: 'shieldCheck' },
   { id: 'content-generator', label: 'Content Generator', icon: 'fileText' },
   { id: 'campaign-generator', label: 'Campaign Generator', icon: 'layers' },
-  { id: 'compliance-gate', label: 'Compliance Gate', icon: 'shieldCheck' }
+  { id: 'compliance-gate', label: 'Compliance Gate', icon: 'shieldCheck' },
+  { id: 'integrations', label: 'Integrations', icon: 'plug' },
+  { id: 'publishing-queue', label: 'Publishing Queue', icon: 'sendCloud' }
 ];
 
 export function Sidebar() {
@@ -168,6 +182,32 @@ export function Sidebar() {
               </a>
             );
           }
+          if (item.id === 'integrations') {
+            return (
+              <a
+                key={item.id}
+                href="/app/integrations"
+                className={`nav-item ${window.location.pathname.startsWith('/app/integrations') ? 'active' : 'available'}`}
+                title={sidebarCollapsed ? item.label : undefined}
+              >
+                <span className="nav-icon">{icons[item.icon]}</span>
+                {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
+              </a>
+            );
+          }
+          if (item.id === 'publishing-queue') {
+            return (
+              <a
+                key={item.id}
+                href="/app/publishing-queue"
+                className={`nav-item ${window.location.pathname.startsWith('/app/publishing-queue') ? 'active' : 'available'}`}
+                title={sidebarCollapsed ? item.label : undefined}
+              >
+                <span className="nav-icon">{icons[item.icon]}</span>
+                {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
+              </a>
+            );
+          }
           return (
             <button
               key={item.id}
@@ -185,6 +225,8 @@ export function Sidebar() {
                   'content-generator': '/app/content-generator',
                   'campaign-generator': '/app/campaign-generator',
                   'compliance-gate': '/app/compliance-gate',
+                  'integrations': '/app/integrations',
+                  'publishing-queue': '/app/publishing-queue',
                 };
                 const targetPath = routeMap[item.id] || '/app/context-hub';
                 const currentPath = window.location.pathname;
