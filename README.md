@@ -1,6 +1,6 @@
 # Forge Intelligence — Master SSOT
 
-> **Last updated:** March 26, 2026 (1:54 PM PDT) | **Status:** Phase 1 — Active Build
+> **Last updated:** March 26, 2026 (5:43 PM PDT) | **Status:** Phase 1 — Active Build
 > **This README is the single source of truth for all AI sessions, dev work, and project decisions.**
 > When starting a new AI session, read this file top to bottom before touching anything.
 
@@ -32,6 +32,8 @@
 | Context Agent backend | ✅ LIVE | Stage 1, Claude Sonnet 4.6, Brain-First protocol |
 | GEO Strategist backend | ✅ LIVE | Stage 2, Claude Sonnet 4.6, 12 topics, per-platform scoring |
 | `/geo-strategist` workspace | ✅ LIVE | Topical Authority + GEO Opportunities + Entity & Schema + GEO Brief tabs |
+| `/authenticity-enricher` workspace | ✅ LIVE | Stage 3 UI — Brain selector, Run Enrichment, E-E-A-T output |
+| Authenticity Enricher backend | ✅ LIVE | Stage 3, Claude Sonnet 4.6, E-E-A-T + SME signals + author schema |
 | NeonDB brand profiles | ✅ LIVE | Persisting on every call, cache hits working |
 | Activity logging | ✅ LIVE | `agent_activity_log` table, tokens + latency tracked |
 | Real `brandProfileId` | ✅ LIVE | Returns UUID on every call, `cached: true` on repeat |
@@ -40,7 +42,7 @@
 ### 🔲 What Is NOT Built Yet
 
 - Stage 3 — Authenticity Enricher agent
-- Stage 4 — Multimodal Generator
+- Stage 4 — Content Generator (long-form article, streaming) — 🔄 IN PROGRESS
 - Stage 5 — Compliance & Human Refinement Gate
 - Stage 6 — Publishing & Distribution
 - Stage 7 — Performance Intelligence
@@ -219,6 +221,26 @@ Returns service status + uptime.
 ```
 
 **Caching:** Results stored in `geo_briefs` table in NeonDB. Stale cache auto-detected (topics named "Unknown" or zero scores trigger fresh run).
+
+
+### `POST /api/content-generator/generate`
+**Stage 4 — Content Generator (streaming)**
+
+**Body:** `{ brandProfileId, enrichedBriefId?, force? }`
+
+**Response:** Server-Sent Events (SSE) stream — article body chunks with confidence metadata
+
+**Brain-First:** Reads `brand_profiles`, `geo_briefs`, `enriched_briefs` before generating a single word.
+
+**Output stored in:** `generated_content_{brandProfileId}` table (per-brand, UUID-keyed)
+
+**Confidence tiers (per section):**
+- 🟢 Green — high Brain pattern match, auto-approvable
+- 🟡 Yellow — SME input needed or fact needs verification  
+- 🔴 Red — explicit human decision required
+
+> **Multi-tenancy note:** Current UI allows manual brand/brief selection for dev/test purposes.
+> Production refactor required: remove brand selector, scope all calls to authenticated client's brandProfileId only.
 
 ### `POST /api/waitlist`
 Captures waitlist email, stores in DB, sends confirmation via Resend.
@@ -467,7 +489,7 @@ Forge connects to the broader Sandbox Group ecosystem:
 
 ### Phase 2 — Generation + Governance (Months 4–6)
 
-- Stage 4 — Multimodal Generator (long-form + social + email + video + podcast)
+- Stage 4 — Content Generator (long-form article, streaming) — 🔄 IN PROGRESS (long-form + social + email + video + podcast)
 - Stage 5 — Compliance & Human Refinement Gate (3 modes)
 - Stage 6 — Publishing (UTM engine, queue, version control, WordPress/Webflow/HubSpot integrations)
 - Pre-cog score running silently (hidden Standard tier)
