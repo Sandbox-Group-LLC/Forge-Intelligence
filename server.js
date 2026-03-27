@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 3000;
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 
 const pool = new Pool({ connectionString: process.env.NEON_DATABASE_URL });
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 1200000 }); // 20min
 
 async function initDB() {
   // Always ensure id column is TEXT (old schema used UUID)
@@ -1612,6 +1612,10 @@ app.get('/api/campaign/generate/:id', async (req, res) => {
 
   const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 
+  // Keepalive ping every 30s so Render/proxies don't drop the SSE connection
+  const keepalive = setInterval(() => res.write(': ping\n\n'), 30000);
+  req.on('close', () => clearInterval(keepalive));
+
   try {
     const campRes = await pool.query(`SELECT * FROM campaigns WHERE id = $1`, [req.params.id]);
     const campaign = campRes.rows[0];
@@ -1807,10 +1811,11 @@ Return ONLY valid JSON matching the content generator output format.`;
 
     await pool.query(`UPDATE campaigns SET status = 'complete', updated_at = NOW() WHERE id = $1`, [req.params.id]);
     send('campaign_done', { campaignId: req.params.id });
-    // Note: don't res.end() here — SSE stays open so async image_done events can still fire
-    // campaign_done signals the UI articles are complete; it closes only after images resolve
+    // Stay open 90s for async image_done events, then close gracefully
+    setTimeout(() => { clearInterval(keepalive); res.end(); }, 90000);
   } catch (err) {
     console.error('Campaign generate error:', err);
+    clearInterval(keepalive);
     res.write(`event: error\ndata: ${JSON.stringify({ message: err.message })}\n\n`);
     res.end();
   }
