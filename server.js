@@ -1268,11 +1268,16 @@ async function ensureGeneratedContentTable(brandProfileId) {
       article_json JSONB,
       overall_confidence INTEGER,
       brain_match_score INTEGER,
+      hero_image_url TEXT,
+      hero_image_prompt TEXT,
       status TEXT DEFAULT 'draft',
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  // Add new columns to existing tables (idempotent)
+  await pool.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS hero_image_url TEXT`).catch(() => {});
+  await pool.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS hero_image_prompt TEXT`).catch(() => {});
   return tableName;
 }
 
@@ -1486,11 +1491,11 @@ Output only the prompt.`
         const imageUrl = falData?.images?.[0]?.url;
         if (!imageUrl) throw new Error('No image URL from fal.ai');
 
-        // Persist image_url alongside the article
+        // Persist hero image URL + prompt to the content record
         await pool.query(
-          `UPDATE generated_content_${brandProfileId.replace(/-/g, '_')} SET image_url = $1 WHERE title = $2 ORDER BY created_at DESC LIMIT 1`,
-          [imageUrl, parsed.title]
-        ).catch(() => {}); // Non-fatal if table name differs
+          `UPDATE ${tableName} SET hero_image_url = $1, hero_image_prompt = $2, updated_at = NOW() WHERE id = $3`,
+          [imageUrl, fluxPrompt, contentId]
+        ).catch((e) => console.error('[CONTENT-GEN] Image persist failed:', e.message));
 
         send('image_done', JSON.stringify({ image_url: imageUrl, prompt: fluxPrompt }));
       } catch (imgErr) {
