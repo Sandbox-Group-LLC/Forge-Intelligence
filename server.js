@@ -1519,8 +1519,6 @@ app.post('/api/campaign/create', async (req, res) => {
   if (!brandProfileId || !plan) return res.status(400).json({ error: 'brandProfileId and plan required' });
 
   try {
-    const pool = getPool();
-
     // Ensure tables exist
     await pool.query(`
       CREATE TABLE IF NOT EXISTS campaigns (
