@@ -292,6 +292,48 @@ async function initDB() {
       performance_outcome JSONB, created_at TIMESTAMPTZ DEFAULT NOW()
     )`);
     console.log('NeonDB: Brain tables (patterns, mistakes, memories) ensured');
+
+    // Publishing tables
+    await pool.query(`CREATE TABLE IF NOT EXISTS publishing_channels (
+      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      brand_profile_id TEXT NOT NULL,
+      channel VARCHAR(50) NOT NULL,
+      credentials JSONB NOT NULL DEFAULT '{}',
+      utm_template JSONB NOT NULL DEFAULT '{}',
+      is_active BOOLEAN DEFAULT true,
+      last_tested_at TIMESTAMPTZ,
+      test_status VARCHAR(20) DEFAULT 'untested',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(brand_profile_id, channel)
+    )`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS publishing_queue (
+      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      brand_profile_id TEXT NOT NULL,
+      content_id TEXT NOT NULL,
+      title TEXT,
+      channels JSONB NOT NULL DEFAULT '[]',
+      status VARCHAR(30) DEFAULT 'staged',
+      scheduled_at TIMESTAMPTZ,
+      published_at TIMESTAMPTZ,
+      publish_results JSONB DEFAULT '{}',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS publish_log (
+      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      queue_item_id TEXT NOT NULL,
+      brand_profile_id TEXT NOT NULL,
+      content_id TEXT NOT NULL,
+      channel VARCHAR(50) NOT NULL,
+      status VARCHAR(20) NOT NULL,
+      response_data JSONB,
+      utm_params JSONB,
+      published_url TEXT,
+      error_message TEXT,
+      attempted_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    console.log('NeonDB: Publishing tables ensured');
   } catch(e) { console.log('NeonDB: Brain tables note:', e.message); }
 
 
@@ -2122,9 +2164,278 @@ app.post('/api/compliance/approve', async (req, res) => {
       [JSON.stringify(articleJson), finalStatus, reviewMode || 'approve-to-ship', contentId]
     );
 
+    // Auto-stage into publishing queue on approval
+    if (finalStatus === 'approved') {
+      const articleTitle = articleJson.title || article.title || 'Untitled Article';
+      pool.query(
+        `INSERT INTO publishing_queue (brand_profile_id, content_id, title, status, created_at, updated_at)
+         VALUES ($1, $2, $3, 'staged', NOW(), NOW())
+         ON CONFLICT DO NOTHING`,
+        [brandProfileId, contentId, articleTitle]
+      ).catch(e => console.error('[QUEUE] Auto-stage error:', e.message));
+    }
+
     res.json({ success: true, status: finalStatus, contentId });
   } catch (err) {
     console.error('[COMPLIANCE] Approve error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
+// ── Stage 6: Publishing & Distribution ───────────────────────────────────────
+
+// Resolve UTM tokens against article + brand context
+function resolveUtmParams(template, ctx) {
+  const resolved = {};
+  for (const [k, v] of Object.entries(template)) {
+    resolved[k] = v
+      .replace('{campaign_slug}', ctx.campaignSlug || 'forge')
+      .replace('{article_slug}', ctx.articleSlug || 'article')
+      .replace('{brand_slug}', ctx.brandSlug || 'brand')
+      .replace('{channel}', ctx.channel || k);
+  }
+  return resolved;
+}
+
+function buildUtmString(params) {
+  return Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+}
+
+// GET /api/publishing/queue/:brandProfileId
+app.get('/api/publishing/queue/:brandProfileId', async (req, res) => {
+  const { brandProfileId } = req.params;
+  try {
+    const result = await pool.query(
+      `SELECT * FROM publishing_queue WHERE brand_profile_id = $1 ORDER BY created_at DESC`,
+      [brandProfileId]
+    );
+    res.json({ success: true, items: result.rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/publishing/queue (all brands — for global queue view)
+app.get('/api/publishing/queue', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT pq.*, bp.brand_name, bp.brand_url
+       FROM publishing_queue pq
+       LEFT JOIN brand_profiles bp ON bp.id = pq.brand_profile_id
+       ORDER BY pq.created_at DESC LIMIT 100`
+    );
+    res.json({ success: true, items: result.rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PATCH /api/publishing/queue/:itemId
+app.patch('/api/publishing/queue/:itemId', async (req, res) => {
+  const { itemId } = req.params;
+  const { channels, scheduledAt, status } = req.body;
+  try {
+    const fields = [];
+    const vals = [];
+    let i = 1;
+    if (channels !== undefined) { fields.push(`channels = $${i++}`); vals.push(JSON.stringify(channels)); }
+    if (scheduledAt !== undefined) { fields.push(`scheduled_at = $${i++}`); vals.push(scheduledAt || null); }
+    if (status !== undefined) { fields.push(`status = $${i++}`); vals.push(status); }
+    fields.push(`updated_at = NOW()`);
+    vals.push(itemId);
+    await pool.query(`UPDATE publishing_queue SET ${fields.join(', ')} WHERE id = $${i}`, vals);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE /api/publishing/queue/:itemId
+app.delete('/api/publishing/queue/:itemId', async (req, res) => {
+  const { itemId } = req.params;
+  try {
+    await pool.query('DELETE FROM publishing_queue WHERE id = $1', [itemId]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/publishing/channels/:brandProfileId
+app.get('/api/publishing/channels/:brandProfileId', async (req, res) => {
+  const { brandProfileId } = req.params;
+  try {
+    const result = await pool.query(
+      `SELECT id, brand_profile_id, channel, utm_template, is_active, last_tested_at, test_status, created_at, updated_at
+       FROM publishing_channels WHERE brand_profile_id = $1 ORDER BY channel`,
+      [brandProfileId]
+    );
+    res.json({ success: true, channels: result.rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/publishing/channels — upsert channel connection
+app.post('/api/publishing/channels', async (req, res) => {
+  const { brandProfileId, channel, credentials, utmTemplate } = req.body;
+  if (!brandProfileId || !channel) return res.status(400).json({ error: 'brandProfileId and channel required' });
+  try {
+    const result = await pool.query(
+      `INSERT INTO publishing_channels (brand_profile_id, channel, credentials, utm_template, updated_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (brand_profile_id, channel)
+       DO UPDATE SET credentials = $3, utm_template = $4, updated_at = NOW()
+       RETURNING id`,
+      [brandProfileId, channel, JSON.stringify(credentials || {}), JSON.stringify(utmTemplate || {})]
+    );
+    res.json({ success: true, id: result.rows[0].id });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE /api/publishing/channels/:id
+app.delete('/api/publishing/channels/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM publishing_channels WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/publishing/publish — publish a queue item to selected channels
+app.post('/api/publishing/publish', async (req, res) => {
+  const { queueItemId, channels: selectedChannels } = req.body;
+  if (!queueItemId) return res.status(400).json({ error: 'queueItemId required' });
+  try {
+    // Load queue item + article
+    const queueRes = await pool.query('SELECT * FROM publishing_queue WHERE id = $1', [queueItemId]);
+    if (!queueRes.rows.length) return res.status(404).json({ error: 'Queue item not found' });
+    const item = queueRes.rows[0];
+
+    const safeId = item.brand_profile_id.replace(/-/g, '_');
+    const contentTable = `generated_content_${safeId}`;
+    const contentRes = await pool.query(`SELECT * FROM ${contentTable} WHERE id = $1`, [item.content_id]);
+    if (!contentRes.rows.length) return res.status(404).json({ error: 'Article not found' });
+    const article = contentRes.rows[0];
+
+    // Load brand profile
+    const brandRes = await pool.query('SELECT * FROM brand_profiles WHERE id = $1', [item.brand_profile_id]);
+    const brand = brandRes.rows[0] || {};
+    const brandSlug = (brand.brand_url || 'brand').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+    const articleSlug = (article.title || 'article').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 60);
+
+    // Load channel connections for this brand
+    const channelsRes = await pool.query(
+      'SELECT * FROM publishing_channels WHERE brand_profile_id = $1',
+      [item.brand_profile_id]
+    );
+    const channelMap = {};
+    for (const ch of channelsRes.rows) channelMap[ch.channel] = ch;
+
+    const targets = selectedChannels || item.channels || [];
+    const results = {};
+
+    for (const channel of targets) {
+      const chConfig = channelMap[channel];
+      if (!chConfig) { results[channel] = { status: 'error', error: 'Channel not connected' }; continue; }
+
+      const utmCtx = { channel, brandSlug, articleSlug, campaignSlug: article.campaign_id || 'forge-content' };
+      const utmParams = resolveUtmParams(chConfig.utm_template || {}, utmCtx);
+      const utmString = buildUtmString(utmParams);
+      const creds = chConfig.credentials || {};
+
+      try {
+        if (channel === 'wordpress') {
+          // ── Real WordPress REST API publish ──
+          const wpUrl = creds.siteUrl?.replace(/\/+$/, '');
+          if (!wpUrl || !creds.username || !creds.appPassword) throw new Error('Missing WordPress credentials');
+
+          const articleJson = article.article_json || {};
+          const sections = articleJson.sections || [];
+          const htmlContent = sections.map(s =>
+            `<h2>${s.heading}</h2><p>${s.content}</p>`
+          ).join('\n');
+
+          const authHeader = 'Basic ' + Buffer.from(`${creds.username}:${creds.appPassword}`).toString('base64');
+          const wpRes = await fetch(`${wpUrl}/wp-json/wp/v2/posts`, {
+            method: 'POST',
+            headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: article.title,
+              content: htmlContent + (utmString ? `\n<!-- UTM: ${utmString} -->` : ''),
+              status: 'publish',
+              excerpt: sections[0]?.content?.slice(0, 160) || '',
+              meta: { forge_utm: utmString, forge_brain: item.brand_profile_id }
+            })
+          });
+          const wpData = await wpRes.json();
+          if (!wpRes.ok) throw new Error(wpData.message || 'WordPress publish failed');
+          results[channel] = { status: 'published', url: wpData.link, postId: wpData.id, utmParams };
+
+        } else if (channel === 'webflow') {
+          results[channel] = { status: 'staged', message: 'Webflow: credentials saved, live API wired in Stage 6.1', utmParams };
+
+        } else if (channel === 'hubspot') {
+          results[channel] = { status: 'staged', message: 'HubSpot: credentials saved, live API wired in Stage 6.1', utmParams };
+
+        } else if (channel === 'linkedin') {
+          results[channel] = { status: 'staged', message: 'LinkedIn: credentials saved, live API wired in Stage 6.1', utmParams };
+
+        } else if (channel === 'x') {
+          results[channel] = { status: 'staged', message: 'X: credentials saved, live API wired in Stage 6.1', utmParams };
+
+        } else {
+          results[channel] = { status: 'error', error: `Unknown channel: ${channel}` };
+        }
+      } catch (chErr) {
+        results[channel] = { status: 'error', error: chErr.message };
+      }
+
+      // Write publish log
+      await pool.query(
+        `INSERT INTO publish_log (queue_item_id, brand_profile_id, content_id, channel, status, response_data, utm_params, published_url, error_message)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          queueItemId, item.brand_profile_id, item.content_id, channel,
+          results[channel].status,
+          JSON.stringify(results[channel]),
+          JSON.stringify(utmParams),
+          results[channel].url || null,
+          results[channel].error || null
+        ]
+      );
+    }
+
+    // Update queue item status
+    const allPublished = targets.every(ch => results[ch]?.status === 'published');
+    const anyError = targets.some(ch => results[ch]?.status === 'error');
+    const newStatus = allPublished ? 'published' : anyError ? 'partial' : 'staged';
+
+    await pool.query(
+      `UPDATE publishing_queue SET status = $1, channels = $2, publish_results = $3, published_at = $4, updated_at = NOW() WHERE id = $5`,
+      [newStatus, JSON.stringify(targets), JSON.stringify(results), allPublished ? new Date() : null, queueItemId]
+    );
+
+    // Write memory to Brain on any successful publish
+    const successfulChannels = targets.filter(ch => results[ch]?.status === 'published' || results[ch]?.status === 'staged');
+    if (successfulChannels.length > 0) {
+      pool.query(
+        `INSERT INTO memories (id, raw_content, metadata, created_at)
+         VALUES (gen_random_uuid()::text, $1, $2, NOW())`,
+        [
+          `Published: ${article.title}`,
+          JSON.stringify({ contentId: item.content_id, channels: successfulChannels, brandProfileId: item.brand_profile_id, publishedAt: new Date(), utmResults: results })
+        ]
+      ).catch(e => console.error('[MEMORY] Write error:', e.message));
+    }
+
+    res.json({ success: true, status: newStatus, results });
+  } catch (err) {
+    console.error('[PUBLISH] Error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
