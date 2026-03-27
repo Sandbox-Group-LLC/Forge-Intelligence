@@ -1462,16 +1462,16 @@ app.post('/api/campaign/plan', async (req, res) => {
 
     // Load GEO brief and enriched brief from DB
     const geoRes = await pool.query(
-      `SELECT content FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      `SELECT brief_data FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
       [brandProfileId]
     );
     const enrichedRes = await pool.query(
-      `SELECT content FROM enriched_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      `SELECT enriched_data FROM enriched_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
       [brandProfileId]
     );
 
-    const geoBrief = geoRes.rows[0]?.content || null;
-    const enrichedBrief = enrichedRes.rows[0]?.content || null;
+    const geoBrief = geoRes.rows[0]?.brief_data || null;
+    const enrichedBrief = enrichedRes.rows[0]?.enriched_data || null;
 
     const trimTo = (obj, maxChars = 6000) => {
       const s = typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2);
@@ -1630,11 +1630,11 @@ app.get('/api/campaign/generate/:id', async (req, res) => {
     const profileData = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
 
     const geoRes = await pool.query(
-      `SELECT content FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      `SELECT brief_data FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
       [campaign.brand_profile_id]
     );
     const enrichedRes = await pool.query(
-      `SELECT content FROM enriched_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      `SELECT enriched_data FROM enriched_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
       [campaign.brand_profile_id]
     );
     const patternsRes = await pool.query(
@@ -1646,8 +1646,8 @@ app.get('/api/campaign/generate/:id', async (req, res) => {
       [campaign.brand_profile_id]
     );
 
-    const geoBrief = geoRes.rows[0]?.content || null;
-    const enrichedBrief = enrichedRes.rows[0]?.content || null;
+    const geoBrief = geoRes.rows[0]?.brief_data || null;
+    const enrichedBrief = enrichedRes.rows[0]?.enriched_data || null;
 
     const trimTo = (obj, maxChars = 6000) => {
       const s = typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2);
