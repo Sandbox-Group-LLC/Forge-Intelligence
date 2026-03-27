@@ -7,6 +7,7 @@ import ContextAgentPage from './pages/ContextAgentPage';
 import GeoStrategistPage from './pages/GeoStrategistPage';
 import AuthenticityEnricherPage from './pages/AuthenticityEnricherPage';
 import ContentGeneratorPage from './pages/ContentGeneratorPage';
+import CampaignGeneratorPage from './pages/CampaignGeneratorPage';
 import './index.css';
 
 createRoot(document.getElementById('root')!).render(
