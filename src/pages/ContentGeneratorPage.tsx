@@ -56,7 +56,7 @@ function ContentGeneratorContent() {
   const streamRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
-    fetch('/api/brain/list').then(r => r.json()).then(d => { if (d.success) setBrains(d.data); });
+    fetch('/api/context-hub/brains').then(r => r.json()).then(d => { if (d.success) setBrains(d.data); });
   }, []);
 
   useEffect(() => {
