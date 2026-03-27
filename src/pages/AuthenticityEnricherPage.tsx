@@ -418,13 +418,13 @@ function AuthenticityEnricherContent() {
                     {result.injectionMap.map((inj, i) => (
                       <div key={i} style={{ background: '#1E293B', border: '1px solid #334155', borderRadius: '8px', padding: '14px 16px' }}>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: '12px', fontWeight: 600, color: '#F8FAFC' }}>{inj.section}</span>
+                          <span style={{ fontSize: '12px', fontWeight: 600, color: '#F8FAFC' }}>{typeof inj.section === 'string' ? inj.section : (inj as any).type || (inj as any).placement || 'Section'}</span>
                           <ChevronRight size={12} color="#475569" />
-                          <span style={{ fontSize: '11px', color: '#3563FF', background: '#3563FF15', padding: '2px 7px', borderRadius: '4px' }}>{inj.injectionType}</span>
+                          <span style={{ fontSize: '11px', color: '#3563FF', background: '#3563FF15', padding: '2px 7px', borderRadius: '4px' }}>{inj.injectionType || (inj as any).type || '—'}</span>
                           <span style={{ fontSize: '11px', color: '#475569' }}>{inj.eeatDimension}</span>
                           <span style={{ marginLeft: 'auto', fontSize: '12px', color: inj.confidence >= 70 ? '#14B8A6' : '#F5B942' }}>{inj.confidence}%</span>
                         </div>
-                        <p style={{ fontSize: '12px', color: '#94A3B8', margin: '0 0 4px', lineHeight: 1.6 }}>{inj.suggestedContent}</p>
+                        <p style={{ fontSize: '12px', color: '#94A3B8', margin: '0 0 4px', lineHeight: 1.6 }}>{typeof inj.suggestedContent === 'string' ? inj.suggestedContent : (inj as any)?.content || ''}</p>
                         <p style={{ fontSize: '11px', color: '#475569', margin: 0 }}>Resonates with: {inj.persona}</p>
                       </div>
                     ))}
@@ -470,7 +470,7 @@ function AuthenticityEnricherContent() {
                   {sec.eeatInjections?.map((inj, j) => (
                     <div key={j} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', marginBottom: '4px' }}>
                       <span style={{ marginTop: '2px', flexShrink: 0, display: 'flex' }}><Zap size={12} color="#3563FF" /></span>
-                      <span style={{ fontSize: '12px', color: '#94A3B8', lineHeight: 1.5 }}>{inj}</span>
+                      <span style={{ fontSize: '12px', color: '#94A3B8', lineHeight: 1.5 }}>{typeof inj === 'string' ? inj : (inj as any)?.content || (inj as any)?.text || JSON.stringify(inj)}</span>
                     </div>
                   ))}
                   {sec.flagReason && <p style={{ fontSize: '11px', color: '#64748B', margin: '8px 0 0' }}>Note: {sec.flagReason}</p>}
@@ -486,7 +486,7 @@ function AuthenticityEnricherContent() {
                   {result.humanReviewItems.map((item, i) => (
                     <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', marginBottom: '6px' }}>
                       <span style={{ color: '#EF4444', fontSize: '12px', flexShrink: 0 }}>•</span>
-                      <span style={{ fontSize: '12px', color: '#94A3B8' }}>{item}</span>
+                      <span style={{ fontSize: '12px', color: '#94A3B8' }}>{typeof item === 'string' ? item : (item as any)?.item || (item as any)?.action || JSON.stringify(item)}</span>
                     </div>
                   ))}
                 </div>
