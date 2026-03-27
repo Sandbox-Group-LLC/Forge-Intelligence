@@ -1451,11 +1451,6 @@ app.post('/api/campaign/plan', async (req, res) => {
   if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
 
   try {
-    const Anthropic = require('@anthropic-ai/sdk');
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const fs = require('fs');
-    const path = require('path');
-
     // Load brand brain
     const clientId = brandProfileId.replace('.', '-').split('-')[0];
     const profilePath = path.join(__dirname, 'data', 'brand-profiles', `${brandProfileId}.json`);
@@ -1497,7 +1492,7 @@ ${enrichedBrief ? trimTo(enrichedBrief, 4000) : 'Not available — infer from br
 
 Return ONLY valid JSON matching the output format. No markdown, no commentary.`;
 
-    const message = await client.messages.create({
+    const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-5',
       max_tokens: 4096,
       system: systemPrompt,
