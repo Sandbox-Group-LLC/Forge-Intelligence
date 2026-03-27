@@ -13,7 +13,8 @@
 
 
 .view-header {
-  margin-bottom: 32px;
+  margin-bottom: 0;
+  padding-bottom: 32px;
   display: flex;
   flex-direction: column;
   gap: 8px;
