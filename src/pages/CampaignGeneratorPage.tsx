@@ -162,7 +162,7 @@ function CampaignGeneratorContent() {
       {step === 'setup' && (
         <div className="camp-setup">
           <div className="camp-brand-display">
-            <div className="camp-brand-name">{brandProfile?.name || 'No brand selected'}</div>
+            <div className="camp-brand-name">{brandProfile?.brandName || 'No brand selected'}</div>
             <div className="camp-brand-sub">Brain connected · Angle diversity enforced</div>
           </div>
           <div className="camp-stats">
