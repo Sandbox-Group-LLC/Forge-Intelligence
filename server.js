@@ -1442,6 +1442,305 @@ app.get('*', function (req, res) {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
+
+// ── Campaign Generator ────────────────────────────────────────────────────────
+
+// POST /api/campaign/plan — generate 8 angle profiles
+app.post('/api/campaign/plan', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.body;
+  if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
+
+  try {
+    const Anthropic = require('@anthropic-ai/sdk');
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const fs = require('fs');
+    const path = require('path');
+
+    // Load brand brain
+    const clientId = brandProfileId.replace('.', '-').split('-')[0];
+    const profilePath = path.join(__dirname, 'data', 'brand-profiles', `${brandProfileId}.json`);
+    const profileData = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
+
+    // Load GEO brief and enriched brief from DB
+    const pool = getPool();
+    const geoRes = await pool.query(
+      `SELECT content FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [brandProfileId]
+    );
+    const enrichedRes = await pool.query(
+      `SELECT content FROM enriched_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [brandProfileId]
+    );
+
+    const geoBrief = geoRes.rows[0]?.content || null;
+    const enrichedBrief = enrichedRes.rows[0]?.content || null;
+
+    const trimTo = (obj, maxChars = 6000) => {
+      const s = typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2);
+      return s.length > maxChars ? s.substring(0, maxChars) + '\n...[truncated]' : s;
+    };
+
+    const systemPrompt = fs.readFileSync(
+      path.join(__dirname, 'src/agents/stage4_campaign_planner/system_prompt.md'), 'utf8'
+    );
+
+    const userPrompt = `Generate 8 campaign angle profiles for the following brand brain.
+
+BRAND PROFILE:
+${trimTo(profileData, 4000)}
+
+GEO BRIEF:
+${geoBrief ? trimTo(geoBrief, 4000) : 'Not available — infer from brand profile.'}
+
+ENRICHED BRIEF:
+${enrichedBrief ? trimTo(enrichedBrief, 4000) : 'Not available — infer from brand profile.'}
+
+Return ONLY valid JSON matching the output format. No markdown, no commentary.`;
+
+    const message = await client.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }]
+    });
+
+    const raw = message.content[0].text;
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    const plan = JSON.parse(jsonMatch ? jsonMatch[0] : raw);
+
+    res.json({ success: true, plan });
+  } catch (err) {
+    console.error('Campaign plan error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/campaign/create — save campaign plan to DB
+app.post('/api/campaign/create', requireAuth, async (req, res) => {
+  const { brandProfileId, plan } = req.body;
+  if (!brandProfileId || !plan) return res.status(400).json({ error: 'brandProfileId and plan required' });
+
+  try {
+    const pool = getPool();
+
+    // Ensure tables exist
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS campaigns (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        brand_profile_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        topic_cluster TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'planning',
+        plan JSONB NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS campaign_articles (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+        brand_profile_id TEXT NOT NULL,
+        article_index INTEGER NOT NULL,
+        angle_profile JSONB NOT NULL,
+        week_number INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        generated_content JSONB,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    const campRes = await pool.query(
+      `INSERT INTO campaigns (brand_profile_id, name, topic_cluster, plan)
+       VALUES ($1, $2, $3, $4) RETURNING id`,
+      [brandProfileId, plan.campaign_name, plan.topic_cluster, JSON.stringify(plan)]
+    );
+    const campaignId = campRes.rows[0].id;
+
+    for (const article of plan.articles) {
+      await pool.query(
+        `INSERT INTO campaign_articles (campaign_id, brand_profile_id, article_index, angle_profile, week_number)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [campaignId, brandProfileId, article.index, JSON.stringify(article), article.week]
+      );
+    }
+
+    res.json({ success: true, campaignId });
+  } catch (err) {
+    console.error('Campaign create error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/campaign/list/:brandProfileId
+app.get('/api/campaign/list/:brandProfileId', requireAuth, async (req, res) => {
+  try {
+    const pool = getPool();
+    const result = await pool.query(
+      `SELECT id, name, topic_cluster, status, created_at,
+       (SELECT COUNT(*) FROM campaign_articles WHERE campaign_id = campaigns.id AND status = 'complete') as completed_count
+       FROM campaigns WHERE brand_profile_id = $1 ORDER BY created_at DESC`,
+      [req.params.brandProfileId]
+    );
+    res.json({ campaigns: result.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/campaign/:id
+app.get('/api/campaign/:id', requireAuth, async (req, res) => {
+  try {
+    const pool = getPool();
+    const camp = await pool.query(`SELECT * FROM campaigns WHERE id = $1`, [req.params.id]);
+    const articles = await pool.query(
+      `SELECT * FROM campaign_articles WHERE campaign_id = $1 ORDER BY article_index`,
+      [req.params.id]
+    );
+    res.json({ campaign: camp.rows[0], articles: articles.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/campaign/generate/:id — SSE — generate all pending articles sequentially
+app.get('/api/campaign/generate/:id', requireAuth, async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+
+  try {
+    const Anthropic = require('@anthropic-ai/sdk');
+    const fs = require('fs');
+    const path = require('path');
+    const pool = getPool();
+
+    const campRes = await pool.query(`SELECT * FROM campaigns WHERE id = $1`, [req.params.id]);
+    const campaign = campRes.rows[0];
+    if (!campaign) { send('error', { message: 'Campaign not found' }); return res.end(); }
+
+    const articlesRes = await pool.query(
+      `SELECT * FROM campaign_articles WHERE campaign_id = $1 AND status = 'pending' ORDER BY article_index`,
+      [req.params.id]
+    );
+    const articles = articlesRes.rows;
+
+    const profilePath = path.join(__dirname, 'data', 'brand-profiles', `${campaign.brand_profile_id}.json`);
+    const profileData = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
+
+    const geoRes = await pool.query(
+      `SELECT content FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [campaign.brand_profile_id]
+    );
+    const enrichedRes = await pool.query(
+      `SELECT content FROM enriched_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [campaign.brand_profile_id]
+    );
+    const patternsRes = await pool.query(
+      `SELECT pattern_type, description, confidence_score FROM brain_patterns WHERE brand_profile_id = $1 ORDER BY confidence_score DESC LIMIT 5`,
+      [campaign.brand_profile_id]
+    );
+    const mistakesRes = await pool.query(
+      `SELECT mistake_type, description FROM brain_mistakes WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 5`,
+      [campaign.brand_profile_id]
+    );
+
+    const geoBrief = geoRes.rows[0]?.content || null;
+    const enrichedBrief = enrichedRes.rows[0]?.content || null;
+
+    const trimTo = (obj, maxChars = 6000) => {
+      const s = typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2);
+      return s.length > maxChars ? s.substring(0, maxChars) + '\n...[truncated]' : s;
+    };
+
+    const cgSystemPrompt = fs.readFileSync(
+      path.join(__dirname, 'src/agents/stage4_content_generator/system_prompt.md'), 'utf8'
+    );
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+    await pool.query(`UPDATE campaigns SET status = 'generating', updated_at = NOW() WHERE id = $1`, [req.params.id]);
+
+    for (const articleRow of articles) {
+      const angle = articleRow.angle_profile;
+      send('article_start', { index: angle.index, title: angle.title, week: angle.week });
+
+      await pool.query(
+        `UPDATE campaign_articles SET status = 'generating', updated_at = NOW() WHERE id = $1`,
+        [articleRow.id]
+      );
+
+      const userPrompt = `Generate a long-form article using the following Brand Intelligence context.
+
+CAMPAIGN ANGLE (follow this precisely):
+${JSON.stringify(angle, null, 2)}
+
+BRAND PROFILE:
+${trimTo(profileData, 5000)}
+
+GEO BRIEF:
+${geoBrief ? trimTo(geoBrief, 3000) : 'Not available.'}
+
+ENRICHED BRIEF:
+${enrichedBrief ? trimTo(enrichedBrief, 5000) : 'Not available.'}
+
+BRAIN PATTERNS:
+${trimTo(patternsRes.rows, 1500)}
+
+BRAIN MISTAKES:
+${trimTo(mistakesRes.rows, 1500)}
+
+IMPORTANT: Use the angle profile above to lock the persona, funnel position, content type, and E-E-A-T focus.
+Return ONLY valid JSON matching the content generator output format.`;
+
+      let fullText = '';
+      const stream = await client.messages.stream({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 8096,
+        system: cgSystemPrompt,
+        messages: [{ role: 'user', content: userPrompt }]
+      });
+
+      for await (const chunk of stream) {
+        if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text_delta') {
+          fullText += chunk.delta.text;
+          send('chunk', chunk.delta.text);
+        }
+      }
+
+      let parsed;
+      try {
+        const jsonMatch = fullText.match(/\{[\s\S]*\}/);
+        parsed = JSON.parse(jsonMatch ? jsonMatch[0] : fullText);
+      } catch (e) {
+        await pool.query(
+          `UPDATE campaign_articles SET status = 'failed', updated_at = NOW() WHERE id = $1`,
+          [articleRow.id]
+        );
+        send('article_error', { index: angle.index, error: e.message });
+        continue;
+      }
+
+      await pool.query(
+        `UPDATE campaign_articles SET status = 'complete', generated_content = $1, updated_at = NOW() WHERE id = $2`,
+        [JSON.stringify(parsed), articleRow.id]
+      );
+
+      send('article_done', { index: angle.index, article: parsed });
+    }
+
+    await pool.query(`UPDATE campaigns SET status = 'complete', updated_at = NOW() WHERE id = $1`, [req.params.id]);
+    send('campaign_done', { campaignId: req.params.id });
+    res.end();
+  } catch (err) {
+    console.error('Campaign generate error:', err);
+    res.write(`event: error\ndata: ${JSON.stringify({ message: err.message })}\n\n`);
+    res.end();
+  }
+});
+
 app.listen(PORT, '0.0.0.0', function () {
   console.log('Forge Intelligence running on port ' + PORT);
 });
