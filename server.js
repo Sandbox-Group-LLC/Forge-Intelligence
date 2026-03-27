@@ -1542,6 +1542,8 @@ app.post('/api/campaign/create', async (req, res) => {
         week_number INTEGER NOT NULL,
         status TEXT NOT NULL DEFAULT 'pending',
         generated_content JSONB,
+        image_url TEXT,
+        image_prompt TEXT,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
@@ -1561,6 +1563,10 @@ app.post('/api/campaign/create', async (req, res) => {
         [campaignId, brandProfileId, article.index, JSON.stringify(article), article.week]
       );
     }
+
+    // Migration safety: add image columns if they don't exist yet
+    await pool.query(`ALTER TABLE campaign_articles ADD COLUMN IF NOT EXISTS image_url TEXT`);
+    await pool.query(`ALTER TABLE campaign_articles ADD COLUMN IF NOT EXISTS image_prompt TEXT`);
 
     res.json({ success: true, campaignId });
   } catch (err) {
@@ -1652,6 +1658,75 @@ app.get('/api/campaign/generate/:id', async (req, res) => {
 
     await pool.query(`UPDATE campaigns SET status = 'generating', updated_at = NOW() WHERE id = $1`, [req.params.id]);
 
+    // ── Flux image generation helper ────────────────────────────────────────────
+    const generateArticleImage = async (articleRow, angle, parsed) => {
+      try {
+        // Step 1: Claude generates a tight Flux image prompt from the article context
+        const imgPromptRes = await anthropic.messages.create({
+          model: 'claude-haiku-4-5',
+          max_tokens: 200,
+          messages: [{
+            role: 'user',
+            content: `Write a single-sentence Flux image generation prompt for this B2B article hero image.
+Article title: "${angle.title}"
+Funnel stage: ${angle.funnel_position}
+Content type: ${angle.content_type}
+Persona: ${angle.primary_persona}
+
+Rules:
+- Photorealistic, professional B2B editorial style
+- No text, charts, or UI screenshots
+- Evoke the strategic theme of the article
+- Cinematic lighting, dark moody tones with blue or teal accent light
+- 1 sentence only, no explanation
+
+Output only the prompt.`
+          }]
+        });
+
+        const fluxPrompt = imgPromptRes.content[0].type === 'text'
+          ? imgPromptRes.content[0].text.trim()
+          : `Professional B2B editorial photo representing ${angle.title}, dark moody cinematic lighting`;
+
+        // Step 2: Fire Flux via fal.ai REST API
+        const falRes = await fetch('https://fal.run/fal-ai/flux/dev', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Key ${process.env.FAL_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            prompt: fluxPrompt,
+            image_size: 'landscape_16_9',
+            num_inference_steps: 28,
+            guidance_scale: 3.5,
+            num_images: 1,
+            enable_safety_checker: true,
+          })
+        });
+
+        if (!falRes.ok) {
+          const errText = await falRes.text();
+          throw new Error(`fal.ai error ${falRes.status}: ${errText}`);
+        }
+
+        const falData = await falRes.json();
+        const imageUrl = falData?.images?.[0]?.url;
+        if (!imageUrl) throw new Error('No image URL returned from fal.ai');
+
+        // Step 3: Persist image_url to DB
+        await pool.query(
+          `UPDATE campaign_articles SET image_url = $1, updated_at = NOW() WHERE id = $2`,
+          [imageUrl, articleRow.id]
+        );
+
+        return { imageUrl, fluxPrompt };
+      } catch (err) {
+        console.error('Flux image error for article', angle.index, err.message);
+        return { imageUrl: null, error: err.message };
+      }
+    };
+
     for (const articleRow of articles) {
       const angle = articleRow.angle_profile;
       send('article_start', { index: angle.index, title: angle.title, week: angle.week });
@@ -1712,23 +1787,35 @@ Return ONLY valid JSON matching the content generator output format.`;
         continue;
       }
 
+      // Save article + kick off Flux in parallel — don't await Flux here
       await pool.query(
         `UPDATE campaign_articles SET status = 'complete', generated_content = $1, updated_at = NOW() WHERE id = $2`,
         [JSON.stringify(parsed), articleRow.id]
       );
 
       send('article_done', { index: angle.index, article: parsed });
+
+      // Fire image generation async — emits image_done when ready, never blocks article loop
+      generateArticleImage(articleRow, angle, parsed).then(({ imageUrl, fluxPrompt, error }) => {
+        if (imageUrl) {
+          send('image_done', { index: angle.index, image_url: imageUrl, prompt: fluxPrompt });
+        } else {
+          send('image_error', { index: angle.index, error: error || 'Image generation failed' });
+        }
+      });
     }
 
     await pool.query(`UPDATE campaigns SET status = 'complete', updated_at = NOW() WHERE id = $1`, [req.params.id]);
     send('campaign_done', { campaignId: req.params.id });
-    res.end();
+    // Note: don't res.end() here — SSE stays open so async image_done events can still fire
+    // campaign_done signals the UI articles are complete; it closes only after images resolve
   } catch (err) {
     console.error('Campaign generate error:', err);
     res.write(`event: error\ndata: ${JSON.stringify({ message: err.message })}\n\n`);
     res.end();
   }
 });
+
 
 app.listen(PORT, '0.0.0.0', function () {
   console.log('Forge Intelligence running on port ' + PORT);
