@@ -108,6 +108,8 @@ function ContentGeneratorContent() {
     setIsRunning(true);
     setStreamText('');
     setArticle(null);
+    setArticleImageUrl(null);
+    setImageLoading(false);
     setError('');
 
     const es = new EventSource(
