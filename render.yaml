@@ -1,0 +1,20 @@
+services:
+  # Development — fast, raw deploys, no gates
+  - type: web
+    name: forge-dev
+    runtime: node
+    branch: main
+    buildCommand: npm install && npm run build
+    startCommand: node server.js
+    envVars:
+      - fromGroup: forge-env-vars
+
+  # Production — branch-protected, PR-only merges, public app
+  - type: web
+    name: forge-production
+    runtime: node
+    branch: production
+    buildCommand: npm install && npm run build
+    startCommand: node server.js
+    envVars:
+      - fromGroup: forge-env-vars
