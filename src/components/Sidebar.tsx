@@ -145,7 +145,7 @@ export function Sidebar() {
             return (
               <a
                 key={item.id}
-                href="/geo-strategist"
+                href="/app/geo-strategist"
                 className={`nav-item ${status}`}
                 title={sidebarCollapsed ? item.label : undefined}
               >
@@ -158,7 +158,7 @@ export function Sidebar() {
             return (
               <a
                 key={item.id}
-                href="/authenticity-enricher"
+                href="/app/authenticity-enricher"
                 className={`nav-item ${status}`}
                 title={sidebarCollapsed ? item.label : undefined}
               >
@@ -174,17 +174,17 @@ export function Sidebar() {
               onClick={() => {
                 if (status === 'disabled') return;
                 const routeMap: Record<string, string> = {
-                  'new-analysis': '/context-hub',
-                  'active-run': '/context-hub?view=active-run',
-                  'brand-profile': '/context-hub?view=brand-profile',
-                  'strategy': '/context-hub?view=strategy',
-                  'brain-history': '/context-hub?view=brain-history',
-                  'geo-strategist': '/geo-strategist',
-                  'authenticity-enricher': '/authenticity-enricher',
-                  'content-generator': '/content-generator',
-                  'campaign-generator': '/campaign-generator',
+                  'new-analysis': '/app/context-hub',
+                  'active-run': '/app/context-hub?view=active-run',
+                  'brand-profile': '/app/context-hub?view=brand-profile',
+                  'strategy': '/app/context-hub?view=strategy',
+                  'brain-history': '/app/context-hub?view=brain-history',
+                  'geo-strategist': '/app/geo-strategist',
+                  'authenticity-enricher': '/app/authenticity-enricher',
+                  'content-generator': '/app/content-generator',
+                  'campaign-generator': '/app/campaign-generator',
                 };
-                const targetPath = routeMap[item.id] || '/context-hub';
+                const targetPath = routeMap[item.id] || '/app/context-hub';
                 const currentPath = window.location.pathname;
                 if (currentPath !== targetPath.split('?')[0]) {
                   window.location.href = targetPath;
