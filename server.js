@@ -1446,7 +1446,7 @@ app.get('*', function (req, res) {
 // ── Campaign Generator ────────────────────────────────────────────────────────
 
 // POST /api/campaign/plan — generate 8 angle profiles
-app.post('/api/campaign/plan', requireAuth, async (req, res) => {
+app.post('/api/campaign/plan', async (req, res) => {
   const { brandProfileId } = req.body;
   if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
 
@@ -1516,7 +1516,7 @@ Return ONLY valid JSON matching the output format. No markdown, no commentary.`;
 });
 
 // POST /api/campaign/create — save campaign plan to DB
-app.post('/api/campaign/create', requireAuth, async (req, res) => {
+app.post('/api/campaign/create', async (req, res) => {
   const { brandProfileId, plan } = req.body;
   if (!brandProfileId || !plan) return res.status(400).json({ error: 'brandProfileId and plan required' });
 
@@ -1574,7 +1574,7 @@ app.post('/api/campaign/create', requireAuth, async (req, res) => {
 });
 
 // GET /api/campaign/list/:brandProfileId
-app.get('/api/campaign/list/:brandProfileId', requireAuth, async (req, res) => {
+app.get('/api/campaign/list/:brandProfileId', async (req, res) => {
   try {
     const pool = getPool();
     const result = await pool.query(
@@ -1590,7 +1590,7 @@ app.get('/api/campaign/list/:brandProfileId', requireAuth, async (req, res) => {
 });
 
 // GET /api/campaign/:id
-app.get('/api/campaign/:id', requireAuth, async (req, res) => {
+app.get('/api/campaign/:id', async (req, res) => {
   try {
     const pool = getPool();
     const camp = await pool.query(`SELECT * FROM campaigns WHERE id = $1`, [req.params.id]);
@@ -1605,7 +1605,7 @@ app.get('/api/campaign/:id', requireAuth, async (req, res) => {
 });
 
 // GET /api/campaign/generate/:id — SSE — generate all pending articles sequentially
-app.get('/api/campaign/generate/:id', requireAuth, async (req, res) => {
+app.get('/api/campaign/generate/:id', async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
