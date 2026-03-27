@@ -2377,7 +2377,46 @@ app.post('/api/publishing/publish', async (req, res) => {
           results[channel] = { status: 'published', url: wpData.link, postId: wpData.id, utmParams };
 
         } else if (channel === 'webflow') {
-          results[channel] = { status: 'staged', message: 'Webflow: credentials saved, live API wired in Stage 6.1', utmParams };
+          // ── Real Webflow CMS publish ──
+          const webflowToken = creds.apiToken || process.env.WEBFLOW_API_TOKEN;
+          const siteId = creds.siteId || '69c715bf39ddf47aae9481b1';
+          const collectionId = creds.collectionId || '69c7189df169a5faf671dba4';
+          if (!webflowToken) throw new Error('Missing Webflow API token');
+
+          const articleJson = article.article_json || {};
+          const sections = articleJson.sections || [];
+          const bodyHtml = sections.map(s =>
+            `<h2>${s.heading}</h2><p>${s.content}</p>`
+          ).join('\n');
+          const excerpt = sections[0]?.content?.slice(0, 160) || '';
+          const slug = (article.title || 'article').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 60);
+
+          const wfRes = await fetch(`https://api.webflow.com/v2/collections/${collectionId}/items`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${webflowToken}`,
+              'Content-Type': 'application/json',
+              'accept-version': '1.0.0'
+            },
+            body: JSON.stringify({
+              isArchived: false,
+              isDraft: false,
+              fieldData: {
+                name: article.title || 'Untitled',
+                slug,
+                excerpt,
+                body: bodyHtml,
+                'published-on': new Date().toISOString(),
+                category: articleJson.category || 'Thought Leadership',
+                'forge-utm': utmString,
+                'forge-brain-id': item.brand_profile_id,
+              }
+            })
+          });
+          const wfData = await wfRes.json();
+          if (!wfRes.ok) throw new Error(wfData.message || JSON.stringify(wfData));
+          const publishedUrl = `https://${brand.brand_url || siteId}/articles/${slug}`;
+          results[channel] = { status: 'published', url: publishedUrl, itemId: wfData.id, utmParams };
 
         } else if (channel === 'hubspot') {
           results[channel] = { status: 'staged', message: 'HubSpot: credentials saved, live API wired in Stage 6.1', utmParams };
