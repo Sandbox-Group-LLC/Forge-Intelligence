@@ -61,10 +61,12 @@
 | Service | Details |
 |---------|---------|
 | **Repo** | `github.com/Sandbox-Group-LLC/Forge-Intelligence` |
-| **Branch** | `main` (auto-deploys to Render) |
-| **Render service** | `srv-d726u7ea2pns739kopmg` |
+| **Branch: main** | Development — fast deploys, no gates → `dev.forgeintelligence.ai` |
+| **Branch: production** | Public app — PR-only merges → `forgeintelligence.ai/app/*` |
+| **Render (dev)** | `forge-dev` service watching `main` |
+| **Render (prod)** | `forge-production` service watching `production` |
 | **Live domain** | `forgeintelligence.ai` (Hostinger DNS → Render CNAME) |
-| **Render URL** | `forge-bysandbox.onrender.com` |
+| **Auth (upcoming)** | Clerk — wired into `production` branch, org-slug multi-tenancy Phase 2 |
 | **Email** | Resend — waitlist capture + future digests/alerts |
 
 ### NeonDB
