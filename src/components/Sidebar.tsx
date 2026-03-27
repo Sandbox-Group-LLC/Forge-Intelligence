@@ -100,7 +100,8 @@ const navItems: NavItem[] = [
   { id: 'brain-history', label: 'Brain History', icon: 'bookOpen' },
   { id: 'geo-strategist', label: 'GEO Strategist', icon: 'zap' },
   { id: 'authenticity-enricher', label: 'Authenticity Enricher', icon: 'shieldCheck' },
-  { id: 'content-generator', label: 'Content Generator', icon: 'fileText' }
+  { id: 'content-generator', label: 'Content Generator', icon: 'fileText' },
+  { id: 'campaign-generator', label: 'Campaign Generator', icon: 'zap' }
 ];
 
 export function Sidebar() {
