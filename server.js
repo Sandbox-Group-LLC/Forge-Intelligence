@@ -1420,12 +1420,13 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
     }
 
     const tableName = await ensureGeneratedContentTable(brandProfileId);
-    await pool.query(
+    const contentInsert = await pool.query(
       `INSERT INTO ${tableName} (brand_profile_id, enriched_brief_id, title, article_json, overall_confidence, brain_match_score, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'draft')`,
+       VALUES ($1, $2, $3, $4, $5, $6, 'draft') RETURNING id`,
       [brandProfileId, enrichedBriefId || null, parsed.title, JSON.stringify(parsed),
        parsed.overallConfidence || null, parsed.brainMatchScore || null]
     );
+    const contentId = contentInsert.rows[0]?.id;
 
     await pool.query(
       `INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata)
