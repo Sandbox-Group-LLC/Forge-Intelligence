@@ -8,6 +8,7 @@ import GeoStrategistPage from './pages/GeoStrategistPage';
 import AuthenticityEnricherPage from './pages/AuthenticityEnricherPage';
 import ContentGeneratorPage from './pages/ContentGeneratorPage';
 import CampaignGeneratorPage from './pages/CampaignGeneratorPage';
+import ComplianceGatePage from './pages/ComplianceGatePage';
 import './index.css';
 
 createRoot(document.getElementById('root')!).render(
@@ -27,6 +28,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/app/authenticity-enricher" element={<AppProvider><AuthenticityEnricherPage /></AppProvider>} />
         <Route path="/app/content-generator" element={<AppProvider><ContentGeneratorPage /></AppProvider>} />
         <Route path="/app/campaign-generator" element={<AppProvider><CampaignGeneratorPage /></AppProvider>} />
+        <Route path="/app/compliance-gate" element={<AppProvider><ComplianceGatePage /></AppProvider>} />
 
         {/* Legacy redirects — keep old paths working during transition */}
         <Route path="/context-hub/*" element={<Navigate to="/app/context-hub" replace />} />
@@ -34,6 +36,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/authenticity-enricher" element={<Navigate to="/app/authenticity-enricher" replace />} />
         <Route path="/content-generator" element={<Navigate to="/app/content-generator" replace />} />
         <Route path="/campaign-generator" element={<Navigate to="/app/campaign-generator" replace />} />
+        <Route path="/compliance-gate" element={<Navigate to="/app/compliance-gate" replace />} />
       </Routes>
     </BrowserRouter>
   </StrictMode>
