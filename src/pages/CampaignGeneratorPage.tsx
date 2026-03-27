@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { AppShell } from '../layouts/AppShell';
 import { useApp } from '../context/AppContext';
 import './CampaignGeneratorPage.css';
@@ -31,6 +31,8 @@ const BookOpen = ({ size = 16 }: { size?: number }) => (
 );
 
 // ── Types ────────────────────────────────────────────────────────────────────
+interface Brain { id: string; brandName: string; brandUrl: string; }
+
 const FUNNEL_COLORS: Record<string, string> = {
   TOFU: '#3B82F6', MOFU: '#8B5CF6', BOFU: '#10B981',
 };
@@ -80,7 +82,8 @@ function StreamProgress({ text }: { text: string }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 function CampaignGeneratorContent() {
-  const { brandProfile } = useApp();
+  const [brains, setBrains] = useState<Brain[]>([]);
+  const [selectedBrainId, setSelectedBrainId] = useState('');
   const [step, setStep] = useState<'setup' | 'plan' | 'generating' | 'complete'>('setup');
   const [isPlanning, setIsPlanning] = useState(false);
   const [plan, setPlan] = useState<{ campaign_name: string; topic_cluster: string; articles: AngleProfile[] } | null>(null);
@@ -90,13 +93,19 @@ function CampaignGeneratorContent() {
   const [error, setError] = useState('');
   const esRef = useRef<EventSource | null>(null);
 
+  useEffect(() => {
+    fetch('/api/context-hub/brains').then(r => r.json()).then(d => { if (d.success) setBrains(d.data); });
+  }, []);
+
+  const selectedBrain = brains.find(b => b.id === selectedBrainId);
+
   const handlePlan = async () => {
     if (!brandProfile) return;
     setIsPlanning(true); setError('');
     try {
       const res = await fetch('/api/campaign/plan', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brandProfileId: brandProfile.id }),
+        body: JSON.stringify({ brandProfileId: selectedBrainId }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
@@ -111,7 +120,7 @@ function CampaignGeneratorContent() {
     try {
       const res = await fetch('/api/campaign/create', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brandProfileId: brandProfile.id, plan }),
+        body: JSON.stringify({ brandProfileId: selectedBrainId, plan }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
@@ -162,8 +171,18 @@ function CampaignGeneratorContent() {
       {step === 'setup' && (
         <div className="camp-setup">
           <div className="camp-brand-display">
-            <div className="camp-brand-name">{brandProfile?.brandName || 'No brand selected'}</div>
-            <div className="camp-brand-sub">Brain connected · Angle diversity enforced</div>
+            <select
+              className="geo-select"
+              value={selectedBrainId}
+              onChange={e => setSelectedBrainId(e.target.value)}
+              style={{ width: '100%', marginBottom: '4px' }}
+            >
+              <option value="">Select a Brain...</option>
+              {brains.map(b => <option key={b.id} value={b.id}>{b.brandName} — {b.brandUrl}</option>)}
+            </select>
+            <div className="camp-brand-sub">
+              {selectedBrain ? `${selectedBrain.brandName} · Angle diversity enforced` : 'Choose an existing brain to begin'}
+            </div>
           </div>
           <div className="camp-stats">
             {[['8','Articles'],['4','Weeks'],['~$1.14','Total cost'],['~18min','Est. time']].map(([n,l]) => (
@@ -173,7 +192,7 @@ function CampaignGeneratorContent() {
               </div>
             ))}
           </div>
-          <button className="camp-plan-btn" onClick={handlePlan} disabled={isPlanning || !brandProfile}>
+          <button className="camp-plan-btn" onClick={handlePlan} disabled={isPlanning || !selectedBrainId}>
             {isPlanning ? <><span className="camp-spinner" />Planning angles...</> : <><Zap size={16} />Plan Campaign</>}
           </button>
           {error && <div className="geo-error">{error}</div>}
