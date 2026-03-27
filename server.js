@@ -1965,7 +1965,7 @@ Return ONLY valid JSON matching the content generator output format.`;
 });
 
 
-Stage 5: Compliance Gate ─────────────────────────────────────────────────
+// ── Stage 5: Compliance Gate ─────────────────────────────────────────────
 
 // GET latest draft article for a brand
 app.get('/api/compliance/latest/:brandProfileId', async (req, res) => {
