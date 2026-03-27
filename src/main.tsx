@@ -9,6 +9,8 @@ import AuthenticityEnricherPage from './pages/AuthenticityEnricherPage';
 import ContentGeneratorPage from './pages/ContentGeneratorPage';
 import CampaignGeneratorPage from './pages/CampaignGeneratorPage';
 import ComplianceGatePage from './pages/ComplianceGatePage';
+import IntegrationsPage from './pages/IntegrationsPage';
+import PublishingQueuePage from './pages/PublishingQueuePage';
 import './index.css';
 
 createRoot(document.getElementById('root')!).render(
@@ -29,6 +31,8 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/app/content-generator" element={<AppProvider><ContentGeneratorPage /></AppProvider>} />
         <Route path="/app/campaign-generator" element={<AppProvider><CampaignGeneratorPage /></AppProvider>} />
         <Route path="/app/compliance-gate" element={<AppProvider><ComplianceGatePage /></AppProvider>} />
+        <Route path="/app/integrations" element={<AppProvider><IntegrationsPage /></AppProvider>} />
+        <Route path="/app/publishing-queue" element={<AppProvider><PublishingQueuePage /></AppProvider>} />
 
         {/* Legacy redirects — keep old paths working during transition */}
         <Route path="/context-hub/*" element={<Navigate to="/app/context-hub" replace />} />
@@ -37,6 +41,8 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/content-generator" element={<Navigate to="/app/content-generator" replace />} />
         <Route path="/campaign-generator" element={<Navigate to="/app/campaign-generator" replace />} />
         <Route path="/compliance-gate" element={<Navigate to="/app/compliance-gate" replace />} />
+        <Route path="/integrations" element={<Navigate to="/app/integrations" replace />} />
+        <Route path="/publishing-queue" element={<Navigate to="/app/publishing-queue" replace />} />
       </Routes>
     </BrowserRouter>
   </StrictMode>
