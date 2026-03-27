@@ -220,7 +220,7 @@ function AuthenticityEnricherContent() {
         </select>
         </div>
         <button className="geo-run-btn" onClick={() => runAnalysis(false)} disabled={!selectedBrainId || isRunning}>
-          <Zap size={14} />{isRunning ? 'Enriching...' : result ? 'Run Again' : 'Run Enrichment'}
+          <ShieldCheck size={14} />{isRunning ? 'Enriching...' : result ? 'Run Again' : 'Run Enrichment'}
         </button>
         {result && !isRunning && (
           <button
