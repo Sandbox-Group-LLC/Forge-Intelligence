@@ -191,8 +191,7 @@ function AuthenticityEnricherContent() {
 
   return (
     <div className="geo-content">
-      <div className="geo-shell">
-      <div className="geo-header">
+          <div className="geo-header">
         <div >
           <div className="geo-eyebrow">Stage 3</div>
           <h1 className="geo-title">Authenticity Enricher</h1>
@@ -541,7 +540,6 @@ function AuthenticityEnricherContent() {
           )}
         </>
       )}
-    </div>{/* /geo-shell */}
     </div>
   );
 }
