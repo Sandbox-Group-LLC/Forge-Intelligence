@@ -60,7 +60,7 @@ const tierColor = (tier: string) => tier === 'green' ? '#22C55E' : tier === 'yel
 export default function ComplianceGatePage() {
   const [mode, setMode] = useState<ReviewMode>('approve-to-ship');
   const [brandProfileId, setBrandProfileId] = useState('');
-  const [brands, setBrands] = useState<{ id: string; domain: string }[]>([]);
+  const [brands, setBrands] = useState<{ id: string; brandName?: string; brandUrl?: string }[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [report, setReport] = useState<ComplianceReport | null>(null);
@@ -74,7 +74,7 @@ export default function ComplianceGatePage() {
 
   useEffect(() => {
     fetch('/api/context-hub/brains').then(r => r.json()).then(d => {
-      if (d.success) setBrands(d.brands || []);
+      if (d.success) setBrands(d.data || []);
     }).catch(() => {});
   }, []);
 
@@ -207,7 +207,7 @@ export default function ComplianceGatePage() {
                 onChange={e => { setBrandProfileId(e.target.value); loadArticles(e.target.value); }}
               >
                 <option value="">Select a Brain...</option>
-                {brands.map(b => <option key={b.id} value={b.id}>{b.domain}</option>)}
+                {brands.map(b => <option key={b.id} value={b.id}>{b.brandName || b.brandUrl}</option>)}
               </select>
             </div>
 
