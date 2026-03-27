@@ -1583,10 +1583,10 @@ Return ONLY valid JSON matching the output format. No markdown, no commentary.`;
 
 // POST /api/campaign/create — save campaign plan to DB
 // ── Test: image generation endpoint (no article needed) ──────────────────────
-app.post('/api/test/image', async (req, res) => {
+app.get('/api/test/image', async (req, res) => {
   try {
-    const title = req.body.title || 'The Future of B2B Marketing Intelligence';
-    const tone  = req.body.tone  || 'Professional, strategic, data-driven';
+    const title = req.query.title || 'The Future of B2B Marketing Intelligence';
+    const tone  = req.query.tone  || 'Professional, strategic, data-driven';
 
     // Step 1: Claude Haiku generates the Flux prompt
     const imgPromptRes = await anthropic.messages.create({
