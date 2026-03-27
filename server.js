@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import pkg from 'pg';
 import Anthropic from '@anthropic-ai/sdk';
@@ -899,11 +900,17 @@ Return ONLY valid JSON:
 
 app.get('/api/authenticity-enricher/briefs', async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT id, brand_profile_id, geo_brief_id, brand_url, brand_name, version,
-              confidence_score, enriched_data, created_at, updated_at
-       FROM enriched_briefs ORDER BY updated_at DESC`
-    );
+    const { brandProfileId } = req.query;
+    const query = brandProfileId
+      ? `SELECT id, brand_profile_id, geo_brief_id, brand_url, brand_name, version,
+                confidence_score, enriched_data, created_at, updated_at
+         FROM enriched_briefs WHERE brand_profile_id = $1 ORDER BY updated_at DESC`
+      : `SELECT id, brand_profile_id, geo_brief_id, brand_url, brand_name, version,
+                confidence_score, enriched_data, created_at, updated_at
+         FROM enriched_briefs ORDER BY updated_at DESC`;
+    const result = brandProfileId
+      ? await pool.query(query, [brandProfileId])
+      : await pool.query(query);
     res.json({ success: true, data: result.rows.map(r => ({
       id: r.id, brandProfileId: r.brand_profile_id, geoBriefId: r.geo_brief_id,
       brandUrl: r.brand_url, brandName: r.brand_name, version: r.version,
@@ -1240,6 +1247,162 @@ app.get('/api/assets/:filename', async function (req, res) {
     res.send(Buffer.from(buffer));
   } catch (err) {
     res.status(404).send('Asset not found');
+  }
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stage 4 — Content Generator (SSE streaming)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Provision per-brand generated_content table if it doesn't exist
+async function ensureGeneratedContentTable(brandProfileId) {
+  const safeId = brandProfileId.replace(/-/g, '_');
+  const tableName = `generated_content_${safeId}`;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${tableName} (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      brand_profile_id UUID NOT NULL,
+      enriched_brief_id UUID,
+      title TEXT,
+      article_json JSONB,
+      overall_confidence INTEGER,
+      brain_match_score INTEGER,
+      status TEXT DEFAULT 'draft',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  return tableName;
+}
+
+app.get('/api/content-generator/generate', async (req, res) => {
+  const { brandProfileId, enrichedBriefId, force } = req.query;
+  if (!brandProfileId) return res.status(400).json({ success: false, error: 'brandProfileId required' });
+
+  // SSE headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const send = (event, data) => res.write(`event: ${event}\ndata: ${data}\n\n`);
+
+  try {
+    // ── Brain-First: load all context ────────────────────────────────────────
+    const [profileRes, patternsRes, mistakesRes] = await Promise.all([
+      pool.query('SELECT * FROM brand_profiles WHERE id = $1', [brandProfileId]),
+      pool.query('SELECT pattern_type, success_rate, tags FROM patterns ORDER BY success_rate DESC LIMIT 10').catch(() => ({ rows: [] })),
+      pool.query('SELECT mistake_type, human_feedback FROM mistakes ORDER BY created_at DESC LIMIT 10').catch(() => ({ rows: [] }))
+    ]);
+
+    if (!profileRes.rows.length) {
+      send('error', 'Brand profile not found. Run Stage 1 first.');
+      return res.end();
+    }
+    const profile = profileRes.rows[0];
+    const profileData = profile.profile_data || {};
+
+    // Load GEO brief
+    let geoBrief = null;
+    try {
+      const gbRes = await pool.query(
+        'SELECT * FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY version DESC LIMIT 1',
+        [brandProfileId]
+      );
+      if (gbRes.rows.length) geoBrief = { ...gbRes.rows[0].brief_data, brandName: gbRes.rows[0].brand_name };
+    } catch(e) { console.log('[CONTENT-GEN] No geo brief:', e.message); }
+
+    // Load Enriched Brief
+    let enrichedBrief = null;
+    try {
+      const ebQuery = enrichedBriefId
+        ? pool.query('SELECT * FROM enriched_briefs WHERE id = $1', [enrichedBriefId])
+        : pool.query('SELECT * FROM enriched_briefs WHERE brand_profile_id = $1 ORDER BY version DESC LIMIT 1', [brandProfileId]);
+      const ebRes = await ebQuery;
+      if (ebRes.rows.length) enrichedBrief = { ...ebRes.rows[0].enriched_data, brandName: ebRes.rows[0].brand_name };
+    } catch(e) { console.log('[CONTENT-GEN] No enriched brief:', e.message); }
+
+    // ── Build prompt ─────────────────────────────────────────────────────────
+    const systemPromptPath = path.join(__dirname, 'src/agents/stage4_content_generator/system_prompt.md');
+    const systemPrompt = fs.existsSync(systemPromptPath)
+      ? fs.readFileSync(systemPromptPath, 'utf8')
+      : 'You are a content generator. Produce a high-quality long-form article.';
+
+    const userPrompt = `Generate a long-form article using the following Brand Intelligence context.
+
+BRAND PROFILE:
+${JSON.stringify(profileData, null, 2)}
+
+GEO BRIEF:
+${geoBrief ? JSON.stringify(geoBrief, null, 2) : 'Not available — infer topical strategy from brand profile.'}
+
+ENRICHED BRIEF:
+${enrichedBrief ? JSON.stringify(enrichedBrief, null, 2) : 'Not available — use brand profile voice and personas.'}
+
+BRAIN PATTERNS (what worked):
+${JSON.stringify(patternsRes.rows, null, 2)}
+
+BRAIN MISTAKES (what to avoid):
+${JSON.stringify(mistakesRes.rows, null, 2)}
+
+Return ONLY valid JSON matching the specified output format. No markdown, no code fences, no commentary.`;
+
+    send('chunk', 'Brain loaded. Building article...');
+
+    // ── Stream from Claude ────────────────────────────────────────────────────
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+    let fullText = '';
+    const stream = await client.messages.stream({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }]
+    });
+
+    for await (const chunk of stream) {
+      if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text_delta') {
+        const text = chunk.delta.text;
+        fullText += text;
+        send('chunk', text.replace(/\n/g, '⏎'));
+      }
+    }
+
+    // ── Parse + persist ───────────────────────────────────────────────────────
+    let parsed;
+    try {
+      const jsonMatch = fullText.match(/\{[\s\S]*\}/);
+      parsed = JSON.parse(jsonMatch ? jsonMatch[0] : fullText);
+    } catch(e) {
+      send('error', 'JSON parse failed: ' + e.message);
+      return res.end();
+    }
+
+    const tableName = await ensureGeneratedContentTable(brandProfileId);
+    await pool.query(
+      `INSERT INTO ${tableName} (brand_profile_id, enriched_brief_id, title, article_json, overall_confidence, brain_match_score, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'draft')`,
+      [brandProfileId, enrichedBriefId || null, parsed.title, JSON.stringify(parsed),
+       parsed.overallConfidence || null, parsed.brainMatchScore || null]
+    );
+
+    await pool.query(
+      `INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      ['stage4_content_generator', brandProfileId, 'success',
+       (stream.usage?.input_tokens || 0) + (stream.usage?.output_tokens || 0),
+       0, JSON.stringify({ title: parsed.title, overallConfidence: parsed.overallConfidence })]
+    ).catch(() => {});
+
+    send('done', JSON.stringify(parsed));
+    res.end();
+
+  } catch (err) {
+    console.error('[CONTENT-GEN] Error:', err);
+    send('error', err.message || 'Generation failed');
+    res.end();
   }
 });
 
