@@ -1,6 +1,6 @@
 # Forge Intelligence — Master SSOT
 
-> **Last updated:** March 26, 2026 (5:50 PM PDT) | **Status:** Phase 1 — Active Build
+> **Last updated:** March 26, 2026 (6:16 PM PDT) | **Status:** Phase 1 — Active Build
 > **This README is the single source of truth for all AI sessions, dev work, and project decisions.**
 > When starting a new AI session, read this file top to bottom before touching anything.
 
@@ -42,7 +42,7 @@
 ### 🔲 What Is NOT Built Yet
 
 - Stage 3 — Authenticity Enricher agent
-| Stage 4 Content Generator | 🔄 DEPLOYING | `/content-generator` — SSE streaming, Brain-First, confidence scoring, per-brand DB table |
+| Stage 4 Content Generator | ✅ LIVE | `/content-generator` — SSE streaming, Brain-First, confidence scoring, per-brand `generated_content_{uuid}` table |
 - Stage 5 — Compliance & Human Refinement Gate
 - Stage 6 — Publishing & Distribution
 - Stage 7 — Performance Intelligence
@@ -91,6 +91,7 @@ forge_brain_{uuid}   ← per-client brain (provisioned at signup, Phase 2+)
 - `brand_profiles` — per-brain brand profile
 - `geo_briefs` — Stage 2 output
 - `enriched_briefs` — Stage 3 output
+- `generated_content_{brandProfileId}` — Stage 4 output (per-brand table, auto-provisioned on first generate call)
 
 **Active `NEON_DATABASE_URL`** points to `forge_platform`. Set in Render environment variables.
 
@@ -118,7 +119,9 @@ See `Content Platform Global Env Vars.docx` in repo for full list. Key vars:
 │   │   ├── stage2_geo_strategist/
 │   │   │   └── system_prompt.md   ← Prompt spec written, wired in server.js
 │   │   └── stage3_authenticity_enricher/
-│   │       └── system_prompt.md   ← Prompt spec written, agent NOT built
+│   │       └── system_prompt.md   ← Prompt spec written, agent LIVE
+│   │   └── stage4_content_generator/
+│   │       └── system_prompt.md   ← Brain-First, confidence tiers, E-E-A-T injection format
 │   └── tools/
 │       └── scraper.ts     ← Brand/review/competitor scraper (Claude direct prompt, no tool-calling)
 ├── brain/
@@ -489,7 +492,7 @@ Forge connects to the broader Sandbox Group ecosystem:
 
 ### Phase 2 — Generation + Governance (Months 4–6)
 
-| Stage 4 Content Generator | 🔄 DEPLOYING | `/content-generator` — SSE streaming, Brain-First, confidence scoring, per-brand DB table | (long-form + social + email + video + podcast)
+| Stage 4 Content Generator | ✅ LIVE | `/content-generator` — SSE streaming, Brain-First, confidence scoring, per-brand `generated_content_{uuid}` table | (long-form + social + email + video + podcast)
 - Stage 5 — Compliance & Human Refinement Gate (3 modes)
 - Stage 6 — Publishing (UTM engine, queue, version control, WordPress/Webflow/HubSpot integrations)
 - Pre-cog score running silently (hidden Standard tier)
