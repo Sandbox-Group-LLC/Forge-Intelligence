@@ -1,5 +1,5 @@
 # AI Content Platform — Working Doc
-> Last updated: March 26, 2026 (1:54 PM PDT) | Status: Active Whiteboard
+> Last updated: March 26, 2026 (9:59 PM PDT) | Status: Active Whiteboard
 
 ---
 
@@ -261,9 +261,19 @@ Agents never start cold. Every action is preceded by a full Brain read.
 **Output:** Enriched Brief with SME assignments + confidence scores per section → feeds Stage 4
 
 
-### Stage 4 — Multimodal Generation *(Gap: Native Multimodal)*
+### Stage 4 — Multimodal Generation *(Gap: Native Multimodal)* ✅ LIVE
 
 **Brain-First:** Generator reads ALL Brain tables before producing a single word.
+
+**What shipped (March 26, 2026):**
+- SSE streaming — per-section article generation with live progress panel
+- Per-section confidence badges (🟢🟡🔴) with reason text
+- E-E-A-T tags per section (key phrase, pain point, differentiation signals)
+- Hero image generation — Claude writes an editorial Flux prompt from title + topic, Flux generates async post-SSE, injected at article top
+- Brain Match score + citation count in meta bar
+- Per-brand `generated_content_{uuid}` table auto-provisioned on first run
+- `/api/test/image` debug endpoint for prompt tuning
+- Image prompt guardrails: no war rooms, no sci-fi control panels, macro/architectural editorial style
 
 **Generated Package:**
 ```
