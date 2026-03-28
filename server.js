@@ -2982,24 +2982,32 @@ app.get('*', async function (req, res) {
             const readMinutes = Math.max(1, Math.round(wordCount / 200));
 
             const html = await fs.readFile(path.join(__dirname, 'dist', 'index.html'), 'utf8');
-            const injected = html.replace(
-              '<head>',
-              `<head>
-  <title>${title}</title>
+            const brandName = matchedBrand.profile_data?.voice_profile?.brand_name || brandSlug;
+            const authorName = matchedBrand.profile_data?.voice_profile?.author_name || brandName;
+            const ogMeta = `
+  <title>${title} | ${brandName}</title>
   <meta name="description" content="${description}" />
   <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="${brandName}" />
   <meta property="og:title" content="${title}" />
   <meta property="og:description" content="${description}" />
   <meta property="og:url" content="${canonicalUrl}" />
   ${imageUrl ? `<meta property="og:image" content="${imageUrl}" />
+  <meta property="og:image:secure_url" content="${imageUrl}" />
   <meta property="og:image:width" content="1280" />
-  <meta property="og:image:height" content="720" />` : ''}
-  <meta property="article:read_time" content="${readMinutes}" />
+  <meta property="og:image:height" content="720" />
+  <meta property="og:image:type" content="image/jpeg" />` : ''}
+  <meta property="article:author" content="${authorName}" />
+  <meta property="article:published_time" content="${new Date().toISOString()}" />
+  <meta name="author" content="${authorName}" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${title}" />
   <meta name="twitter:description" content="${description}" />
-  ${imageUrl ? `<meta name="twitter:image" content="${imageUrl}" />` : ''}`
-            );
+  ${imageUrl ? `<meta name="twitter:image" content="${imageUrl}" />` : ''}`;
+            // Replace existing <title> and inject all OG tags after <head>
+            const injected = html
+              .replace(/<title>[^<]*<\/title>/, '')
+              .replace('<head>', '<head>' + ogMeta);
             return res.send(injected);
           }
         }
