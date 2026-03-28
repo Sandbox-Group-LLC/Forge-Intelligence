@@ -295,3 +295,40 @@
   border-radius: var(--radius-md);
   line-height: 1.5;
 }
+
+
+/* OAuth status block */
+.int-oauth-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  border-radius: 8px;
+  color: #10b981;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.int-reauth-btn {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.5);
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.int-reauth-btn:hover {
+  border-color: rgba(255,255,255,0.3);
+  color: rgba(255,255,255,0.8);
+}
+
+/* Read-only credential inputs */
+.int-field-input[readonly] {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+}
