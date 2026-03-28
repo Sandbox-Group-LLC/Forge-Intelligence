@@ -394,7 +394,7 @@ app.get('/api/articles/:brandSlug/:articleSlug', async (req, res) => {
   try {
     const { brandSlug, articleSlug } = req.params;
     // Find brand by matching slug of brand_url or brand_name
-    const brandsRes = await pool.query('SELECT id, brand_url, profile_data FROM brand_profiles');
+    const brandsRes = await pool.query('SELECT id, brand_url, brand_name, profile_data FROM brand_profiles');
     let matchedBrand = null;
     for (const b of brandsRes.rows) {
       const slug = (b.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
@@ -429,7 +429,7 @@ app.get('/api/articles/:brandSlug/:articleSlug', async (req, res) => {
       overallConfidence: matchedArticle.overall_confidence,
       heroImageUrl: matchedArticle.hero_image_url || null,
       metaDescription: articleJson.metaDescription || null,
-      brandName: matchedBrand?.profile_data?.voice_profile?.brand_name || matchedBrand?.profile_data?.brand_name || brandSlug,
+      brandName: matchedBrand?.brand_name || matchedBrand?.profile_data?.voice_profile?.brand_name || brandSlug,
       createdAt: matchedArticle.created_at,
     });
   } catch (err) {
@@ -603,7 +603,7 @@ app.post('/api/content/regenerate-image/:contentId', async (req, res) => {
 app.post('/api/articles/:brandSlug/:articleSlug/ensure-image', async (req, res) => {
   const { brandSlug, articleSlug } = req.params;
   try {
-    const brandsRes = await pool.query('SELECT id, brand_url, profile_data FROM brand_profiles');
+    const brandsRes = await pool.query('SELECT id, brand_url, brand_name, profile_data FROM brand_profiles');
     let matchedBrand = null;
     for (const b of brandsRes.rows) {
       const slug = (b.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
@@ -665,7 +665,7 @@ app.post('/api/articles/:brandSlug/:articleSlug/ensure-image', async (req, res) 
 app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
   const { brandSlug, articleSlug } = req.params;
   try {
-    const brandsRes = await pool.query('SELECT id, brand_url, profile_data FROM brand_profiles');
+    const brandsRes = await pool.query('SELECT id, brand_url, brand_name, profile_data FROM brand_profiles');
     let matchedBrand = null;
     for (const b of brandsRes.rows) {
       const slug = (b.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
@@ -694,7 +694,7 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
     const description = (aj.metaDescription || (aj.sections?.[0]?.body || aj.sections?.[0]?.content || '').slice(0, 200)).replace(/"/g, '&quot;').replace(/</g, '&lt;');
     const imageUrl = article.hero_image_url || '';
     const canonicalUrl = `https://forgeintelligence.ai/articles/${brandSlug}/${articleSlug}`;
-    const brandName = (matchedBrand.profile_data?.voice_profile?.brand_name || matchedBrand.profile_data?.brand_name || brandSlug).replace(/"/g, '&quot;');
+    const brandName = (matchedBrand.brand_name || matchedBrand.profile_data?.voice_profile?.brand_name || brandSlug).replace(/"/g, '&quot;');
     const authorName = (matchedBrand.profile_data?.voice_profile?.author_name || brandName).replace(/"/g, '&quot;');
     const wordCount = (aj.sections || []).reduce((acc, s) => acc + ((s.body || s.content || '').split(' ').length), 0);
     const readMinutes = Math.max(1, Math.round(wordCount / 200));
