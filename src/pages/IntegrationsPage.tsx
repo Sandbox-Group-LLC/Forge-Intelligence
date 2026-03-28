@@ -67,13 +67,13 @@ const CHANNELS: ChannelDef[] = [
   {
     id: 'hubspot',
     label: 'HubSpot',
-    description: 'Create blog posts and associate with campaigns. Live publish in Stage 6.1.',
+    description: 'Contact tracking + campaign attribution. Connects published article UTMs to HubSpot contacts. Not a publishing destination.',
     color: '#FF7A59',
     logo: 'HS',
     liveStatus: 'staged',
     credentialFields: [
-      { key: 'accessToken', label: 'Private App Token', placeholder: 'pat-na1-...', type: 'password' },
-      { key: 'portalId', label: 'Portal ID', placeholder: '12345678' },
+      { key: 'accessToken', label: 'Private App Token', placeholder: 'pat-na2-...', type: 'password' },
+      { key: 'portalId', label: 'Portal ID', placeholder: '244954048' },
     ],
   },
   {
@@ -107,7 +107,7 @@ const CHANNELS: ChannelDef[] = [
 const DEFAULT_UTM: Record<ChannelId, Record<string, string>> = {
   wordpress: { utm_source: 'forge', utm_medium: 'organic', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   webflow:   { utm_source: 'forge', utm_medium: 'organic', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
-  hubspot:   { utm_source: 'forge', utm_medium: 'email',   utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
+  hubspot:   { utm_source: 'hubspot', utm_medium: 'attribution', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   linkedin:  { utm_source: 'linkedin', utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   x:         { utm_source: 'x', utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
 };
