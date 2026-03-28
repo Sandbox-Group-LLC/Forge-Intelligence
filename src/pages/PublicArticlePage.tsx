@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import './PublicArticlePage.css';
 
-interface ArticleSection { heading: string; content: string; }
+interface ArticleSection { heading: string; content?: string; body?: string; }
 interface ArticleData {
   title: string;
   sections: ArticleSection[];
@@ -83,7 +83,7 @@ export default function PublicArticlePage() {
             {(article.sections || []).map((section, i) => (
               <section key={i} className="pa-section">
                 {section.heading && <h2 className="pa-section-heading">{section.heading}</h2>}
-                <p className="pa-section-body">{section.content}</p>
+                <p className="pa-section-body">{(section as any).body || (section as any).content || ''}</p>
               </section>
             ))}
           </div>
