@@ -1,5 +1,5 @@
 # AI Content Platform — Working Doc
-> Last updated: March 28, 2026 (8:13 AM PDT) | Status: Stage 6 In Progress | Active Whiteboard
+> Last updated: March 28, 2026 (3:07 PM PDT) | Status: Stage 6 LIVE — Publishing Queue + LinkedIn + Public Article Page ✅ | Active Whiteboard
 
 ---
 
@@ -443,6 +443,32 @@ One-click publish, not a social media manager:
 **Writes to Brain:** Publish log, human edits as Mistakes (weighted by reviewer role)
 
 **Output:** Published Content + Distribution Report → feeds Stage 7
+
+---
+
+#### ✅ Stage 6 — Live Implementation (March 28, 2026)
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Publishing Queue UI | ✅ LIVE | `/publishing-queue` — Draft→Approved→Published, preview modal, channel selector |
+| LinkedIn API publish | ✅ LIVE | `ugcPosts` endpoint, OAuth token per brand, article link card injected |
+| AI post copy | ✅ LIVE | Claude Haiku writes 3-4 para overview; ends with `Read more: [url]` |
+| LinkedIn image card | ✅ LIVE | Server-side OG meta injection before `express.static` — `og:image`, `og:title`, `article:author` |
+| Public article page | ✅ LIVE | `forgeintelligence.ai/articles/:brandSlug/:articleSlug` |
+| Editorial article design | ✅ LIVE | Full-bleed hero, 740px reading column, section accent bars, italic lede, responsive |
+| Hero image generation | ✅ LIVE | `buildImagePrompt()` — pulls `brand_name`, `tone_summary`, `industry`, `positioning`, `target_persona`, `visual_style`, `accent_color` from voice profile |
+| Auto image backfill | ✅ LIVE | `/ensure-image` endpoint — generates + saves hero if NULL, called on article page load |
+| Read time accuracy | ✅ LIVE | Reads `section.body` field at 200 wpm |
+| Brand byline | ✅ LIVE | Reads `brand_profiles.brand_name` column (not nested voice_profile JSON) |
+| OG meta — article route | ✅ LIVE | Dedicated `app.get('/articles/:brand/:slug')` runs before `express.static` |
+
+**Architecture note:** LinkedIn's crawler never executes JavaScript. The OG meta route MUST be a named Express route placed before `app.use(express.static('dist'))`. A catch-all after static is useless for crawlers.
+
+**Next for Stage 6:**
+- Post scheduling (queue → auto-publish at time)
+- LinkedIn/X analytics pull-back into queue UI (impressions, clicks)
+- WordPress live publish (REST API connector)
+- Webflow live publish (CMS API connector)
 
 
 ### Stage 7 — Performance Intelligence *(Gap: Revenue Attribution)*
