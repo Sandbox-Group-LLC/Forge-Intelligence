@@ -4,7 +4,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import pkg from 'pg';
 import Anthropic from '@anthropic-ai/sdk';
-import { randomUUID } from 'crypto';
+import { randomUUID, randomBytes, createHmac } from 'crypto';
 
 const { Pool } = pkg;
 const __filename = fileURLToPath(import.meta.url);
@@ -2332,7 +2332,7 @@ app.delete('/api/publishing/channels/:id', async (req, res) => {
 app.get('/api/linkedin/auth', (req, res) => {
   const clientId = process.env.LINKEDIN_CLIENT_ID;
   const redirectUri = encodeURIComponent('https://forgeintelligence.ai/auth/linkedin/callback');
-  const state = require('crypto').randomBytes(16).toString('hex');
+  const state = randomBytes(16).toString('hex');
   const scopes = 'openid profile email w_member_social';
   const url = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&state=${state}&scope=${encodeURIComponent(scopes)}`;
   res.json({ authUrl: url, state });
@@ -2541,11 +2541,10 @@ app.post('/api/publishing/publish', async (req, res) => {
           const tweetText = `${excerpt}... ${articleUrl}${utmString ? '?' + utmString : ''}`.slice(0, 280);
 
           // Build OAuth 1.0a signature
-          const crypto = require('crypto');
           const tweetUrl = 'https://api.twitter.com/2/tweets';
           const oauthParams = {
             oauth_consumer_key: xApiKey,
-            oauth_nonce: crypto.randomBytes(16).toString('hex'),
+            oauth_nonce: randomBytes(16).toString('hex'),
             oauth_signature_method: 'HMAC-SHA1',
             oauth_timestamp: String(Math.floor(Date.now() / 1000)),
             oauth_token: xAccessToken,
@@ -2555,7 +2554,7 @@ app.post('/api/publishing/publish', async (req, res) => {
             .map(([k,v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
           const baseString = `POST&${encodeURIComponent(tweetUrl)}&${encodeURIComponent(sortedParams)}`;
           const signingKey = `${encodeURIComponent(xApiSecret)}&${encodeURIComponent(xAccessSecret)}`;
-          const signature = crypto.createHmac('sha1', signingKey).update(baseString).digest('base64');
+          const signature = createHmac('sha1', signingKey).update(baseString).digest('base64');
           oauthParams['oauth_signature'] = signature;
           const authHeader = 'OAuth ' + Object.entries(oauthParams).sort(([a],[b]) => a.localeCompare(b))
             .map(([k,v]) => `${encodeURIComponent(k)}="${encodeURIComponent(v)}"`).join(', ');
