@@ -511,19 +511,6 @@ app.get('/api/publishing/log/:queueItemId', async (req, res) => {
 });
 
 
-// ── Content fetch for preview ─────────────────────────────────────────────────
-app.get('/api/content/:safeId/:contentId', async (req, res) => {
-  try {
-    const { safeId, contentId } = req.params;
-    const tableName = `generated_content_${safeId}`;
-    const r = await pool.query(`SELECT * FROM ${tableName} WHERE id = $1`, [contentId]);
-    if (!r.rows.length) return res.status(404).json({ error: 'Article not found' });
-    res.json({ success: true, article: r.rows[0] });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // ── On-demand hero image regeneration ────────────────────────────────────────
 app.post('/api/content/regenerate-image/:contentId', async (req, res) => {
   const { contentId } = req.params;
@@ -575,6 +562,19 @@ Output only the prompt.` }]
 });
 
 app.use(express.static(path.join(__dirname, 'dist')));
+
+// ── Content fetch for preview ─────────────────────────────────────────────────
+app.get('/api/content/:safeId/:contentId', async (req, res) => {
+  try {
+    const { safeId, contentId } = req.params;
+    const tableName = `generated_content_${safeId}`;
+    const r = await pool.query(`SELECT * FROM ${tableName} WHERE id = $1`, [contentId]);
+    if (!r.rows.length) return res.status(404).json({ error: 'Article not found' });
+    res.json({ success: true, article: r.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ── Context Agent API ─────────────────────────────────────────────────────────
 
