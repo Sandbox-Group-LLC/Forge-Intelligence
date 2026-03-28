@@ -1435,29 +1435,48 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
       try {
         parsed = JSON.parse(jsonStr);
       } catch(e) {
-        // Claude truncated mid-JSON — attempt recovery by closing open structures
-        // Find last complete section object and trim there
-        const lastGoodSection = jsonStr.lastIndexOf('", "confidence"');
-        if (lastGoodSection > 0) {
-          // Find the closing brace for that section
-          let trimPos = jsonStr.indexOf('}', lastGoodSection);
-          if (trimPos > 0) {
-            // Close the sections array and root object
-            const partial = jsonStr.substring(0, trimPos + 1) + '] }';
-            try {
-              parsed = JSON.parse(partial);
+        // Claude truncated mid-JSON — robust bracket-counting recovery
+        const attemptRecovery = (str) => {
+          // Strip any trailing partial token/word at the cut point
+          let s = str.replace(/,\s*$/, '').replace(/:\s*$/, '').replace(/"[^"]*$/, '"');
+          // Count unclosed braces and brackets
+          let braces = 0, brackets = 0;
+          let inString = false, escape = false;
+          for (const ch of s) {
+            if (escape) { escape = false; continue; }
+            if (ch === '\\') { escape = true; continue; }
+            if (ch === '"') { inString = !inString; continue; }
+            if (inString) continue;
+            if (ch === '{') braces++;
+            else if (ch === '}') braces--;
+            else if (ch === '[') brackets++;
+            else if (ch === ']') brackets--;
+          }
+          // Close any open arrays then objects
+          s += ']'.repeat(Math.max(0, brackets));
+          s += '}'.repeat(Math.max(0, braces));
+          return s;
+        };
+        try {
+          const recovered = attemptRecovery(jsonStr);
+          parsed = JSON.parse(recovered);
+          parsed._truncated = true;
+        } catch(e2) {
+          // Last resort — try stripping to last complete top-level section
+          try {
+            const lastBrace = jsonStr.lastIndexOf('},\n');
+            if (lastBrace > 100) {
+              const trimmed = jsonStr.substring(0, lastBrace + 1) + '] }';
+              parsed = JSON.parse(trimmed);
               parsed._truncated = true;
-            } catch(e2) {
+            } else {
               send('error', 'JSON parse failed: ' + e.message);
               return res.end();
             }
-          } else {
+          } catch(e3) {
             send('error', 'JSON parse failed: ' + e.message);
             return res.end();
           }
-        } else {
-          send('error', 'JSON parse failed: ' + e.message);
-          return res.end();
         }
       }
     } catch(e) {
