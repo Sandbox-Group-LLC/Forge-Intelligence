@@ -510,6 +510,70 @@ app.get('/api/publishing/log/:queueItemId', async (req, res) => {
   }
 });
 
+
+// ── Content fetch for preview ─────────────────────────────────────────────────
+app.get('/api/content/:safeId/:contentId', async (req, res) => {
+  try {
+    const { safeId, contentId } = req.params;
+    const tableName = `generated_content_${safeId}`;
+    const r = await pool.query(`SELECT * FROM ${tableName} WHERE id = $1`, [contentId]);
+    if (!r.rows.length) return res.status(404).json({ error: 'Article not found' });
+    res.json({ success: true, article: r.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── On-demand hero image regeneration ────────────────────────────────────────
+app.post('/api/content/regenerate-image/:contentId', async (req, res) => {
+  const { contentId } = req.params;
+  const { brandProfileId } = req.body;
+  if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
+  try {
+    const safeId = brandProfileId.replace(/-/g, '_');
+    const tableName = `generated_content_${safeId}`;
+    const artRes = await pool.query(`SELECT * FROM ${tableName} WHERE id = $1`, [contentId]);
+    if (!artRes.rows.length) return res.status(404).json({ error: 'Article not found' });
+    const article = artRes.rows[0];
+
+    const brandRes = await pool.query('SELECT * FROM brand_profiles WHERE id = $1', [brandProfileId]);
+    const brand = brandRes.rows[0] || {};
+    const profileData = brand.profile_data || {};
+    const brandName = profileData?.voice_profile?.brand_name || brand.brand_url || '';
+    const toneSummary = profileData?.voice_profile?.tone_summary || '';
+
+    const imgPromptRes = await anthropic.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 200,
+      messages: [{ role: 'user', content: `Write a single-sentence Flux image generation prompt for a B2B article hero image.
+Title: "${article.title}"
+Brand: ${brandName}
+Tone: ${toneSummary}
+Rules: NO people/faces, NO sci-fi/holographic displays. Abstract macro photography or architectural detail, dark editorial lighting, muted palette.
+Output only the prompt.` }]
+    });
+    const fluxPrompt = imgPromptRes.content[0]?.type === 'text' ? imgPromptRes.content[0].text.trim() : `Professional B2B editorial photo for ${article.title}`;
+
+    const falRes = await fetch('https://fal.run/fal-ai/flux/schnell', {
+      method: 'POST',
+      headers: { 'Authorization': `Key ${process.env.FAL_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: fluxPrompt, image_size: 'landscape_16_9', num_inference_steps: 4, num_images: 1 })
+    });
+    if (!falRes.ok) throw new Error(`fal.ai ${falRes.status}: ${await falRes.text()}`);
+    const falData = await falRes.json();
+    const imageUrl = falData?.images?.[0]?.url;
+    if (!imageUrl) throw new Error('No image URL returned');
+
+    await pool.query(`UPDATE ${tableName} SET hero_image_url = $1, hero_image_prompt = $2, updated_at = NOW() WHERE id = $3`,
+      [imageUrl, fluxPrompt, contentId]);
+
+    res.json({ success: true, imageUrl, prompt: fluxPrompt });
+  } catch (err) {
+    console.error('[REGEN-IMAGE]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // ── Context Agent API ─────────────────────────────────────────────────────────
@@ -1706,7 +1770,7 @@ Output only the prompt.`
           ? imgPromptRes.content[0].text.trim()
           : `Professional B2B editorial photo representing ${parsed.title}, dark cinematic lighting`;
 
-        const falRes = await fetch('https://fal.run/fal-ai/flux/dev', {
+        const falRes = await fetch('https://fal.run/fal-ai/flux/schnell', {
           method: 'POST',
           headers: {
             'Authorization': `Key ${process.env.FAL_API_KEY}`,
@@ -1715,8 +1779,7 @@ Output only the prompt.`
           body: JSON.stringify({
             prompt: fluxPrompt,
             image_size: 'landscape_16_9',
-            num_inference_steps: 28,
-            guidance_scale: 3.5,
+            num_inference_steps: 4,
             num_images: 1,
             enable_safety_checker: true,
           })
@@ -1856,7 +1919,7 @@ Output only the prompt.`
       : `Professional B2B editorial photo, dark cinematic lighting`;
 
     // Step 2: Fire Flux
-    const falRes = await fetch('https://fal.run/fal-ai/flux/dev', {
+    const falRes = await fetch('https://fal.run/fal-ai/flux/schnell', {
       method: 'POST',
       headers: {
         'Authorization': `Key ${process.env.FAL_API_KEY}`,
@@ -2068,7 +2131,7 @@ Output only the prompt.`
           : `Professional B2B editorial photo representing ${angle.title}, dark moody cinematic lighting`;
 
         // Step 2: Fire Flux via fal.ai REST API
-        const falRes = await fetch('https://fal.run/fal-ai/flux/dev', {
+        const falRes = await fetch('https://fal.run/fal-ai/flux/schnell', {
           method: 'POST',
           headers: {
             'Authorization': `Key ${process.env.FAL_API_KEY}`,
@@ -2077,8 +2140,7 @@ Output only the prompt.`
           body: JSON.stringify({
             prompt: fluxPrompt,
             image_size: 'landscape_16_9',
-            num_inference_steps: 28,
-            guidance_scale: 3.5,
+            num_inference_steps: 4,
             num_images: 1,
             enable_safety_checker: true,
           })
