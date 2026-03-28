@@ -341,6 +341,54 @@ initDB().catch(err => console.error('DB init error:', err));
 
 app.use(express.json());
 
+// ── Shared: Build brand-voice-aware Flux image prompt ────────────────────────
+async function buildImagePrompt(title, voiceProfile = {}, firstBody = '') {
+  const brandName = voiceProfile.brand_name || '';
+  const toneSummary = voiceProfile.tone_summary || '';
+  const industry = voiceProfile.industry || voiceProfile.target_industry || '';
+  const positioning = voiceProfile.positioning || voiceProfile.brand_positioning || '';
+  const targetPersona = voiceProfile.target_persona || voiceProfile.primary_persona || '';
+  const visualStyle = voiceProfile.visual_style || voiceProfile.brand_aesthetic || '';
+  const accentColor = voiceProfile.accent_color || voiceProfile.brand_color || '';
+
+  const brandContext = [
+    brandName && `Brand: ${brandName}`,
+    industry && `Industry: ${industry}`,
+    toneSummary && `Tone: ${toneSummary}`,
+    positioning && `Positioning: ${positioning}`,
+    targetPersona && `Audience: ${targetPersona}`,
+    visualStyle && `Visual style: ${visualStyle}`,
+    accentColor && `Brand accent color: ${accentColor}`,
+  ].filter(Boolean).join('\n');
+
+  const bodySnippet = (firstBody || '').slice(0, 250);
+
+  const res = await anthropic.messages.create({
+    model: 'claude-haiku-4-5',
+    max_tokens: 200,
+    messages: [{ role: 'user', content: `Write a single-sentence Flux image generation prompt for a B2B article hero image.
+
+Article title: "${title}"
+${brandContext ? brandContext + '\n' : ''}${bodySnippet ? 'Article context: ' + bodySnippet : ''}
+
+Rules:
+- Directly reflect the article topic and brand identity above
+- Photorealistic editorial photography — Wired, HBR, or Fast Company cover energy
+- Abstract macro, architectural detail, natural textures, or environmental storytelling
+- Dark cinematic lighting with intentional shadows; muted palette with one accent color${accentColor ? ' (' + accentColor + ')' : ' (deep indigo, slate, or warm amber)'}
+- NO floating UI elements, holographic screens, neon data walls, or sci-fi aesthetics
+- NO stock-photo clichés (handshakes, lightbulbs, generic offices)
+- 1 sentence only, no explanation, no quotes
+
+Output only the prompt.` }]
+  });
+
+  return res.content[0]?.type === 'text'
+    ? res.content[0].text.trim()
+    : `Professional B2B editorial photography for article about ${title}, dark cinematic lighting`;
+}
+
+
 // ── Public Article Viewer ─────────────────────────────────────────────────────
 app.get('/api/articles/:brandSlug/:articleSlug', async (req, res) => {
   try {
@@ -381,7 +429,7 @@ app.get('/api/articles/:brandSlug/:articleSlug', async (req, res) => {
       overallConfidence: matchedArticle.overall_confidence,
       heroImageUrl: matchedArticle.hero_image_url || null,
       metaDescription: articleJson.metaDescription || null,
-      brandName: matchedArticle.profile_data?.voice_profile?.brand_name || brandSlug,
+      brandName: matchedBrand?.profile_data?.voice_profile?.brand_name || matchedBrand?.profile_data?.brand_name || brandSlug,
       createdAt: matchedArticle.created_at,
     });
   } catch (err) {
@@ -527,20 +575,8 @@ app.post('/api/content/regenerate-image/:contentId', async (req, res) => {
     const brandRes = await pool.query('SELECT * FROM brand_profiles WHERE id = $1', [brandProfileId]);
     const brand = brandRes.rows[0] || {};
     const profileData = brand.profile_data || {};
-    const brandName = profileData?.voice_profile?.brand_name || brand.brand_url || '';
-    const toneSummary = profileData?.voice_profile?.tone_summary || '';
-
-    const imgPromptRes = await anthropic.messages.create({
-      model: 'claude-haiku-4-5',
-      max_tokens: 200,
-      messages: [{ role: 'user', content: `Write a single-sentence Flux image generation prompt for a B2B article hero image.
-Title: "${article.title}"
-Brand: ${brandName}
-Tone: ${toneSummary}
-Rules: NO people/faces, NO sci-fi/holographic displays. Abstract macro photography or architectural detail, dark editorial lighting, muted palette.
-Output only the prompt.` }]
-    });
-    const fluxPrompt = imgPromptRes.content[0]?.type === 'text' ? imgPromptRes.content[0].text.trim() : `Professional B2B editorial photo for ${article.title}`;
+    const regenBody = (article.article_json?.sections?.[0]?.body || article.article_json?.sections?.[0]?.content || '').slice(0, 250);
+    const fluxPrompt = await buildImagePrompt(article.title, profileData?.voice_profile || {}, regenBody);
 
     const falRes = await fetch('https://fal.run/fal-ai/flux/schnell', {
       method: 'POST',
@@ -658,7 +694,7 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
     const description = (aj.metaDescription || (aj.sections?.[0]?.body || aj.sections?.[0]?.content || '').slice(0, 200)).replace(/"/g, '&quot;').replace(/</g, '&lt;');
     const imageUrl = article.hero_image_url || '';
     const canonicalUrl = `https://forgeintelligence.ai/articles/${brandSlug}/${articleSlug}`;
-    const brandName = (matchedBrand.profile_data?.voice_profile?.brand_name || brandSlug).replace(/"/g, '&quot;');
+    const brandName = (matchedBrand.profile_data?.voice_profile?.brand_name || matchedBrand.profile_data?.brand_name || brandSlug).replace(/"/g, '&quot;');
     const authorName = (matchedBrand.profile_data?.voice_profile?.author_name || brandName).replace(/"/g, '&quot;');
     const wordCount = (aj.sections || []).reduce((acc, s) => acc + ((s.body || s.content || '').split(' ').length), 0);
     const readMinutes = Math.max(1, Math.round(wordCount / 200));
@@ -1886,35 +1922,8 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
     // Fire Flux image generation in parallel — don't block the done event
     (async () => {
       try {
-        const brandName = profileData?.voice_profile?.brand_name || profile.brand_name || '';
-        const toneSummary = profileData?.voice_profile?.tone_summary || '';
-
-        const imgPromptRes = await anthropic.messages.create({
-          model: 'claude-haiku-4-5',
-          max_tokens: 200,
-          messages: [{
-            role: 'user',
-            content: `Write a single-sentence Flux image generation prompt for this B2B article hero image.
-Article title: "${parsed.title}"
-Brand: ${brandName}
-Brand tone: ${toneSummary}
-
-Rules:
-- NO people, faces, or human subjects
-- NO control rooms, war rooms, military bunkers, or sci-fi command centers
-- NO holographic displays, floating screens, or neon-lit data walls
-- Think abstract macro photography, architectural detail, or natural textures with editorial lighting
-- Photorealistic — Wired or Harvard Business Review cover energy, not a movie set
-- Muted dark palette with a single subtle accent color (deep blue, slate, or warm amber)
-- 1 sentence only, no explanation
-
-Output only the prompt.`
-          }]
-        });
-
-        const fluxPrompt = imgPromptRes.content[0]?.type === 'text'
-          ? imgPromptRes.content[0].text.trim()
-          : `Professional B2B editorial photo representing ${parsed.title}, dark cinematic lighting`;
+        const streamFirstBody = (parsed.sections?.[0]?.body || parsed.sections?.[0]?.content || '').slice(0, 250);
+        const fluxPrompt = await buildImagePrompt(parsed.title, profileData?.voice_profile || {}, streamFirstBody);
 
         const falRes = await fetch('https://fal.run/fal-ai/flux/schnell', {
           method: 'POST',
@@ -2035,30 +2044,19 @@ Return ONLY valid JSON matching the output format. No markdown, no commentary.`;
 app.get('/api/test/image', async (req, res) => {
   try {
     const title = req.query.title || 'The Future of B2B Marketing Intelligence';
-    const tone  = req.query.tone  || 'Professional, strategic, data-driven';
-
-    // Step 1: Claude Haiku generates the Flux prompt
-    const imgPromptRes = await anthropic.messages.create({
-      model: 'claude-haiku-4-5',
-      max_tokens: 200,
-      messages: [{
-        role: 'user',
-        content: `Write a single-sentence Flux image generation prompt for this B2B article hero image.
-Article title: "${title}"
-Brand tone: ${tone}
-
-Rules:
-- NO people, faces, or human subjects
-- NO control rooms, war rooms, military bunkers, or sci-fi command centers
-- NO holographic displays, floating screens, or neon-lit data walls
-- Think abstract macro photography, architectural detail, or natural textures with editorial lighting
-- Photorealistic — Wired or Harvard Business Review cover energy, not a movie set
-- Muted dark palette with a single subtle accent color (deep blue, slate, or warm amber)
-- 1 sentence only, no explanation
-
-Output only the prompt.`
-      }]
+    const voiceProfile = { tone_summary: req.query.tone || 'Professional, strategic, data-driven' };
+    const fluxPrompt = await buildImagePrompt(title, voiceProfile, '');
+    const falRes = await fetch('https://fal.run/fal-ai/flux/schnell', {
+      method: 'POST',
+      headers: { 'Authorization': `Key ${process.env.FAL_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: fluxPrompt, image_size: 'landscape_16_9', num_inference_steps: 4, num_images: 1 })
     });
+    const falData = await falRes.json();
+    res.json({ prompt: fluxPrompt, imageUrl: falData?.images?.[0]?.url, raw: falData });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
     const fluxPrompt = imgPromptRes.content[0]?.type === 'text'
       ? imgPromptRes.content[0].text.trim()
@@ -2247,72 +2245,30 @@ app.get('/api/campaign/generate/:id', async (req, res) => {
     // ── Flux image generation helper ────────────────────────────────────────────
     const generateArticleImage = async (articleRow, angle, parsed) => {
       try {
-        // Step 1: Claude generates a tight Flux image prompt from the article context
-        const imgPromptRes = await anthropic.messages.create({
-          model: 'claude-haiku-4-5',
-          max_tokens: 200,
-          messages: [{
-            role: 'user',
-            content: `Write a single-sentence Flux image generation prompt for this B2B article hero image.
-Article title: "${angle.title}"
-Funnel stage: ${angle.funnel_position}
-Content type: ${angle.content_type}
-Persona: ${angle.primary_persona}
+        const batchBody = (parsed.sections?.[0]?.body || parsed.sections?.[0]?.content || angle.description || '').slice(0, 250);
+        const fluxPrompt = await buildImagePrompt(parsed.title || angle.title, profileData?.voice_profile || {}, batchBody);
 
-Rules:
-- NO people, faces, or human subjects
-- NO control rooms, war rooms, military bunkers, or sci-fi command centers
-- NO holographic displays, floating screens, or neon-lit data walls
-- Think abstract macro photography, architectural detail, or natural textures with editorial lighting
-- Photorealistic — Wired or Harvard Business Review cover energy, not a movie set
-- Muted dark palette with a single subtle accent color (deep blue, slate, or warm amber)
-- 1 sentence only, no explanation
-
-Output only the prompt.`
-          }]
-        });
-
-        const fluxPrompt = imgPromptRes.content[0].type === 'text'
-          ? imgPromptRes.content[0].text.trim()
-          : `Professional B2B editorial photo representing ${angle.title}, dark moody cinematic lighting`;
-
-        // Step 2: Fire Flux via fal.ai REST API
         const falRes = await fetch('https://fal.run/fal-ai/flux/schnell', {
           method: 'POST',
-          headers: {
-            'Authorization': `Key ${process.env.FAL_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            prompt: fluxPrompt,
-            image_size: 'landscape_16_9',
-            num_inference_steps: 4,
-            num_images: 1,
-            enable_safety_checker: true,
-          })
+          headers: { 'Authorization': `Key ${process.env.FAL_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: fluxPrompt, image_size: 'landscape_16_9', num_inference_steps: 4, num_images: 1 })
         });
-
-        if (!falRes.ok) {
-          const errText = await falRes.text();
-          throw new Error(`fal.ai error ${falRes.status}: ${errText}`);
-        }
-
+        if (!falRes.ok) throw new Error(`fal.ai error ${falRes.status}`);
         const falData = await falRes.json();
         const imageUrl = falData?.images?.[0]?.url;
-        if (!imageUrl) throw new Error('No image URL returned from fal.ai');
+        if (!imageUrl) throw new Error('No image URL');
 
-        // Step 3: Persist image_url to DB
+        const safeId2 = articleRow.brand_profile_id?.replace(/-/g, '_');
         await pool.query(
-          `UPDATE campaign_articles SET image_url = $1, updated_at = NOW() WHERE id = $2`,
-          [imageUrl, articleRow.id]
+          `UPDATE generated_content_${safeId2} SET hero_image_url = $1, hero_image_prompt = $2, updated_at = NOW() WHERE id = $3`,
+          [imageUrl, fluxPrompt, articleRow.id]
         );
-
-        return { imageUrl, fluxPrompt };
-      } catch (err) {
-        console.error('Flux image error for article', angle.index, err.message);
-        return { imageUrl: null, error: err.message };
+        return imageUrl;
+      } catch(e) {
+        console.error('[IMG-GEN]', e.message);
+        return null;
       }
-    };
+    };;
 
     for (const articleRow of articles) {
       const angle = articleRow.angle_profile;
