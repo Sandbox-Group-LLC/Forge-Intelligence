@@ -1718,6 +1718,16 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
       return res.end();
     }
 
+    // Strip AI artifact placeholders from section bodies before saving
+    if (parsed.sections) {
+      const artifactRx = /\[NEEDS CITATION:[^\]]*\]|\[CITATION:[^\]]*\]|\[SOURCE:[^\]]*\]/gi;
+      parsed.sections = parsed.sections.map((s) => ({
+        ...s,
+        body: s.body ? s.body.replace(artifactRx, '').trim() : s.body,
+        content: s.content ? s.content.replace(artifactRx, '').trim() : s.content,
+      }));
+    }
+
     const tableName = await ensureGeneratedContentTable(brandProfileId);
     const contentInsert = await pool.query(
       `INSERT INTO ${tableName} (brand_profile_id, enriched_brief_id, title, article_json, overall_confidence, brain_match_score, status)
