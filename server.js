@@ -2332,9 +2332,12 @@ app.delete('/api/publishing/channels/:id', async (req, res) => {
 app.get('/api/linkedin/auth', (req, res) => {
   const clientId = process.env.LINKEDIN_CLIENT_ID;
   const redirectUri = encodeURIComponent('https://forgeintelligence.ai/auth/linkedin/callback');
-  const state = randomBytes(16).toString('hex');
+  const brandProfileId = req.query.brandProfileId || 'system';
+  const nonce = randomBytes(16).toString('hex');
+  // Embed brandProfileId in state so callback knows which brand to save to
+  const state = `${brandProfileId}|${nonce}`;
   const scopes = 'openid profile email w_member_social';
-  const url = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&state=${state}&scope=${encodeURIComponent(scopes)}`;
+  const url = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&state=${encodeURIComponent(state)}&scope=${encodeURIComponent(scopes)}`;
   res.json({ authUrl: url, state });
 });
 
@@ -2361,14 +2364,16 @@ app.get('/auth/linkedin/callback', async (req, res) => {
     const profile = await profileRes.json();
     const authorUrn = `urn:li:person:${profile.sub}`;
 
-    // Store token in publishing_channels for this brand
-    // brand_profile_id passed via state param (or session) — for now store as system default
+    // Parse brandProfileId from state param
+    const stateDecoded = decodeURIComponent(state || '');
+    const brandProfileId = stateDecoded.includes('|') ? stateDecoded.split('|')[0] : 'system';
+
     await pool.query(`
       INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_connected, connected_at)
-      VALUES ('system', 'linkedin', $1, true, NOW())
+      VALUES ($1, 'linkedin', $2, true, NOW())
       ON CONFLICT (brand_profile_id, channel) DO UPDATE
-        SET credentials = $1, is_connected = true, connected_at = NOW()
-    `, [JSON.stringify({ accessToken: tokenData.access_token, expiresIn: tokenData.expires_in, authorUrn, name: profile.name })]);
+        SET credentials = $2, is_connected = true, connected_at = NOW()
+    `, [brandProfileId, JSON.stringify({ accessToken: tokenData.access_token, expiresIn: tokenData.expires_in, authorUrn, name: profile.name })]);
 
     res.redirect('/app/integrations?linkedin_connected=true');
   } catch (err) {
