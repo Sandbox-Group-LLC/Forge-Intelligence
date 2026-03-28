@@ -380,6 +380,7 @@ app.get('/api/articles/:brandSlug/:articleSlug', async (req, res) => {
       category: articleJson.category || articleJson.targetPersona || null,
       overallConfidence: matchedArticle.overall_confidence,
       heroImageUrl: matchedArticle.hero_image_url || null,
+      metaDescription: articleJson.metaDescription || null,
       brandName: matchedArticle.profile_data?.voice_profile?.brand_name || brandSlug,
       createdAt: matchedArticle.created_at,
     });
