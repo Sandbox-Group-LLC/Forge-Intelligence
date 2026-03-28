@@ -1,6 +1,6 @@
 # Forge Intelligence — Master SSOT
 
-> **Last updated:** March 28, 2026 (8:13 AM PDT) | **Status:** Stage 6 In Progress — Integrations + Publishing Queue LIVE 🚧
+> **Last updated:** March 28, 2026 (3:07 PM PDT) | **Status:** Stage 6 LIVE — Publishing Queue + LinkedIn + Public Article Page ✅
 > **This README is the single source of truth for all AI sessions, dev work, and project decisions.**
 > When starting a new AI session, read this file top to bottom before touching anything.
 
@@ -38,19 +38,27 @@
 | Activity logging | ✅ LIVE | `agent_activity_log` table, tokens + latency tracked |
 | Real `brandProfileId` | ✅ LIVE | Returns UUID on every call, `cached: true` on repeat |
 | Render deployment | ✅ LIVE | Auto-deploys on push to main |
+| Stage 4 Content Generator | ✅ LIVE | `/content-generator` — SSE streaming, Brain-First, confidence scoring, per-brand table |
+| Hero Image Generation | ✅ LIVE | Flux via fal.ai — `buildImagePrompt()` injects full brand voice profile; auto-backfills missing images |
+| Stage 5 Compliance Gate | ✅ LIVE | Three-mode review (Auto/Approve/Full), human edit loop → Brain Mistakes |
+| Publishing Queue UI | ✅ LIVE | `/publishing-queue` — Draft→Approved→Published flow, preview modal |
+| LinkedIn Publishing | ✅ LIVE | API publish via `ugcPosts`; AI-generated post copy (Claude Haiku); `Read more:` link |
+| Public Article Page | ✅ LIVE | `forgeintelligence.ai/articles/:brandSlug/:articleSlug` — editorial dark layout |
+| OG Meta Injection | ✅ LIVE | Server-side `og:image`, `og:title`, `og:description`, `article:author` for social crawlers |
+| Article Read Time | ✅ LIVE | Accurate word count from `section.body`, 200 wpm |
+| Brand Byline | ✅ LIVE | Reads `brand_name` column from `brand_profiles` |
 
 ### 🔲 What Is NOT Built Yet
 
-- Stage 3 — Authenticity Enricher agent
-| Stage 4 Content Generator | ✅ LIVE | `/content-generator` — SSE streaming, Brain-First, confidence scoring, per-brand `generated_content_{uuid}` table |
-| Hero Image Generation | ✅ LIVE | Flux via fal.ai — Claude writes editorial prompt, image generated async post-SSE, injected at article top |
-| Stage 5 — Compliance & Human Gate | 🔲 Tomorrow | Three-mode review (Auto/Approve/Full), human edit loop → Brain Mistakes |
-- Stage 6 — Publishing & Distribution
+- Post scheduling (queue → auto-publish at set time)
+- LinkedIn/X analytics pull-back (impressions, clicks into queue UI)
+- WordPress live API publish
+- Webflow live API publish
 - Stage 7 — Performance Intelligence
 - Stage 8 — Pattern Extractor / Feedback Loop
 - Admin dashboard (agent activity log UI)
 - Pre-seed / bulk brand brain seeding script
-- HubSpot, WordPress, Webflow integrations
+- Multi-brand stress testing (second brand onboarded)
 
 ---
 
@@ -113,7 +121,7 @@ See `Content Platform Global Env Vars.docx` in repo for full list. Key vars:
 /
 ├── README.md              ← THIS FILE. SSOT. Read before touching anything.
 ├── Whiteboard             ← Full product spec (8-stage workflow, detailed architecture)
-├── server.js              ← Main Express server + all API routes
+├── server.js              ← Main Express server + all API routes (includes shared buildImagePrompt() fn)
 ├── src/
 │   ├── agents/
 │   │   ├── stage1_context_agent/
@@ -248,6 +256,29 @@ Returns service status + uptime.
 > **Multi-tenancy note:** Current UI allows manual brand/brief selection for dev/test purposes.
 > Production refactor required: remove brand selector, scope all calls to authenticated client's brandProfileId only.
 
+### `GET /api/publishing/queue/:brandProfileId`
+Returns all articles in the publishing queue for a brand — status, channel, scheduled time.
+
+### `POST /api/publishing/publish`
+Publishes an article to a channel (LinkedIn, WordPress, etc.). LinkedIn uses `ugcPosts` API. Returns published URL + post ID.
+
+### `POST /api/publishing/generate-post-copy`
+**Body:** `{ title, headings, readMinutes, articleUrl }`  
+Claude Haiku generates a 3–4 paragraph LinkedIn post — full overview, no ellipsis cutoffs, ends with `Read more: [url]`.
+
+### `POST /api/publishing/regen-image`
+**Body:** `{ brandProfileId, contentId }`  
+Regenerates hero image for an article via Flux/fal.ai. Uses `buildImagePrompt()` with full brand voice profile.
+
+### `GET /articles/:brandSlug/:articleSlug`
+**Public article page** — server-side renders `index.html` with full OG meta tags injected (`og:image`, `og:title`, `og:description`, `og:image:secure_url`, `article:author`, `twitter:card`) before serving SPA. Must run BEFORE `express.static` middleware.
+
+### `POST /api/articles/:brandSlug/:articleSlug/ensure-image`
+Auto-generates and saves hero image if `hero_image_url` is NULL. Called by article page on load. Returns `{ imageUrl, generated: bool }`.
+
+### `GET /api/articles/:brandSlug/:articleSlug`
+Returns full article JSON including `sections`, `heroImageUrl`, `metaDescription`, `brandName` (from `brand_profiles.brand_name` column), `createdAt`.
+
 ### `POST /api/waitlist`
 Captures waitlist email, stores in DB, sends confirmation via Resend.
 
@@ -300,6 +331,9 @@ The UI is built on these non-negotiable directives, applied to all screens:
 - **`/context-agent` workspace** — fully styled, wired to live API, shows brand profile output
 - **`/geo-strategist` workspace** — fully styled, 4-tab layout (Topical Authority, GEO Opportunities, Entity & Schema, GEO Brief), wired to live API
 
+- **`/publishing-queue` workspace** — Publishing Queue UI, preview modal, channel selector, AI post copy
+- **`/articles/:brandSlug/:articleSlug`** — Public editorial article page (full-bleed hero, reading column, brand byline, read time)
+
 ### Screens NOT Built Yet
 
 - Admin dashboard (agent activity log)
@@ -327,7 +361,7 @@ See `Whiteboard` file for full detailed spec on all 8 stages. Summary:
 | 4 | Content Generator | ✅ LIVE | Content Generator | Claude Sonnet 4.6 |
 | 4.5 | Campaign Generator | ✅ LIVE | Campaign Angle Planner | Claude Sonnet 4.6 |
 | 5 | Compliance & Human Gate | ✅ LIVE | Compliance Gate | Claude Sonnet 4.6 |
-| 6 | Publishing & Distribution | 🚧 In Progress | Publishing Agent | WP REST API live, others Stage 6.1 |
+| 6 | Publishing & Distribution | ✅ LIVE | Publishing Agent | Queue UI + LinkedIn API + Public Article Page + OG meta live |
 | 7 | Performance Intelligence | 🔲 Not built | Performance Agent | Claude Sonnet 4.6 |
 | 8 | Feedback Loop | 🔲 Not built | Pattern Extractor | Claude Opus 4.6 |
 
