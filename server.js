@@ -340,6 +340,55 @@ async function initDB() {
 initDB().catch(err => console.error('DB init error:', err));
 
 app.use(express.json());
+
+// ── Public Article Viewer ─────────────────────────────────────────────────────
+app.get('/api/articles/:brandSlug/:articleSlug', async (req, res) => {
+  try {
+    const { brandSlug, articleSlug } = req.params;
+    // Find brand by matching slug of brand_url or brand_name
+    const brandsRes = await pool.query('SELECT id, brand_url, profile_data FROM brand_profiles');
+    let matchedBrand = null;
+    for (const b of brandsRes.rows) {
+      const slug = (b.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+      const nameSlug = (b.profile_data?.voice_profile?.brand_name || '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+      if (slug.startsWith(brandSlug) || nameSlug.startsWith(brandSlug) || brandSlug.includes(slug.split('-')[0])) {
+        matchedBrand = b;
+        break;
+      }
+    }
+    if (!matchedBrand) return res.status(404).json({ error: 'Brand not found' });
+
+    const safeId = matchedBrand.id.replace(/-/g, '_');
+    const tableName = `generated_content_${safeId}`;
+    const articlesRes = await pool.query(`SELECT * FROM ${tableName} WHERE status != 'deleted' ORDER BY created_at DESC`);
+
+    // Find article by matching title slug
+    let matchedArticle = null;
+    for (const a of articlesRes.rows) {
+      const tSlug = (a.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 80);
+      if (tSlug === articleSlug || tSlug.startsWith(articleSlug) || articleSlug.startsWith(tSlug.slice(0, 30))) {
+        matchedArticle = a;
+        break;
+      }
+    }
+    if (!matchedArticle) return res.status(404).json({ error: 'Article not found' });
+
+    const articleJson = matchedArticle.article_json || {};
+    res.json({
+      title: matchedArticle.title,
+      sections: articleJson.sections || [],
+      category: articleJson.category || articleJson.targetPersona || null,
+      overallConfidence: matchedArticle.overall_confidence,
+      heroImageUrl: matchedArticle.hero_image_url || null,
+      brandName: matchedArticle.profile_data?.voice_profile?.brand_name || brandSlug,
+      createdAt: matchedArticle.created_at,
+    });
+  } catch (err) {
+    console.error('[PUBLIC-ARTICLE]', err.message);
+    res.status(500).json({ error: 'Failed to load article' });
+  }
+});
+
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // ── Context Agent API ─────────────────────────────────────────────────────────
@@ -2507,7 +2556,8 @@ app.post('/api/publishing/publish', async (req, res) => {
             const articleJson = article.article_json || {};
             const sections = articleJson.sections || [];
             const excerpt = (sections[0]?.content || article.title || '').slice(0, 600);
-            const articleUrl = `https://forgeintelligence.ai/articles/${(article.title||'article').toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,50)}${utmString ? '?' + utmString : ''}`;
+            const liBrandSlug = (brand.brand_url || brand.brand_name || 'brand').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().split('-').slice(0,3).join('-');
+            const articleUrl = `https://forgeintelligence.ai/articles/${liBrandSlug}/${articleSlug}${utmString ? '?' + utmString : ''}`;
             const liRes = await fetch('https://api.linkedin.com/v2/ugcPosts', {
               method: 'POST',
               headers: { 'Authorization': `Bearer ${liToken}`, 'Content-Type': 'application/json', 'X-Restli-Protocol-Version': '2.0.0' },
