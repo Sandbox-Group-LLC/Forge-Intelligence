@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { AppShell } from '../layouts/AppShell';
 import './PerformanceDashboardPage.css';
 
-// ── Types ─────────────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────────────────────
 interface AnalyticsTotals {
   posts: number; impressions: number; clicks: number;
   reactions: number; comments: number; reposts: number;
@@ -43,7 +43,7 @@ function timeAgo(ts: string | null): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-// ── SVG Sparkline (pure, no deps) ─────────────────────────────────────────
+// ── SVG Sparkline (pure, no deps) ───────────────────────────────────────────────────────────
 function Sparkline({ data, key: _k }: { data: number[]; key?: string }) {
   if (!data || data.length < 2) return (
     <svg width="100%" height="40" viewBox="0 0 200 40" className="sparkline-empty">
@@ -76,12 +76,21 @@ function Sparkline({ data, key: _k }: { data: number[]; key?: string }) {
   );
 }
 
-// ── Trend Chart (30-day line, inline SVG) ─────────────────────────────────
-function TrendChart({ data }: { data: TrendPoint[] }) {
+// ── Trend Chart (30-day line, inline SVG) ──────────────────────────────────────────────────
+function TrendChart({ data, onSync }: { data: TrendPoint[]; onSync?: () => void }) {
   if (!data || data.length === 0) return (
     <div className="trend-empty">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
       <p>Sync analytics to see your 30-day trend</p>
+      {onSync && (
+        <button className="trend-empty-cta" onClick={onSync}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
+            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
+          </svg>
+          Sync now
+        </button>
+      )}
     </div>
   );
   const w = 600, h = 140, padX = 40, padY = 16;
@@ -102,7 +111,6 @@ function TrendChart({ data }: { data: TrendPoint[] }) {
           <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0"/>
         </linearGradient>
       </defs>
-      {/* Grid lines */}
       {[0, 0.25, 0.5, 0.75, 1].map(v => {
         const y = padY + v * (h - padY * 2);
         return <line key={v} x1={padX} y1={y} x2={w - padX} y2={y} stroke="var(--color-border)" strokeWidth="1" strokeDasharray="3 4" opacity="0.5" />;
@@ -119,7 +127,7 @@ function TrendChart({ data }: { data: TrendPoint[] }) {
   );
 }
 
-// ── Main Component ────────────────────────────────────────────────────────
+// ── Main Component ─────────────────────────────────────────────────────────────────────────────────
 export default function PerformanceDashboardPage() {
   const [brandProfileId, setBrandProfileId] = useState('');
   const [brands, setBrands] = useState<{id: string; brandName: string; brandUrl: string}[]>([]);
@@ -131,7 +139,6 @@ export default function PerformanceDashboardPage() {
   const [syncMsg, setSyncMsg] = useState('');
   const [error, setError] = useState('');
 
-  // Load brands
   useEffect(() => {
     fetch('/api/brand-profiles/list')
       .then(r => r.json())
@@ -142,7 +149,6 @@ export default function PerformanceDashboardPage() {
       }).catch(() => {});
   }, []);
 
-  // Load dashboard data
   const loadDashboard = useCallback(async () => {
     if (!brandProfileId) return;
     setLoading(true); setError('');
@@ -161,7 +167,6 @@ export default function PerformanceDashboardPage() {
 
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
 
-  // Sync analytics
   const handleSync = async () => {
     if (!brandProfileId || syncing) return;
     setSyncing(true); setSyncMsg('');
@@ -277,7 +282,7 @@ export default function PerformanceDashboardPage() {
                 )}
               </div>
               <div className="perf-trend-card">
-                <TrendChart data={data?.trend || []} />
+                <TrendChart data={data?.trend || []} onSync={handleSync} />
               </div>
             </div>
 
