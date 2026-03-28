@@ -272,8 +272,8 @@ export default function PerformanceDashboardPage() {
             <div className="perf-section">
               <div className="perf-section-header">
                 <h2 className="perf-section-title">30-Day Impressions</h2>
-                {data?.trend?.length > 0 && (
-                  <span className="perf-section-meta">{data.trend.length} data points</span>
+                {(data?.trend?.length ?? 0) > 0 && (
+                  <span className="perf-section-meta">{data?.trend?.length} data points</span>
                 )}
               </div>
               <div className="perf-trend-card">
@@ -336,7 +336,7 @@ export default function PerformanceDashboardPage() {
             </div>
 
             {/* ── Brain Signals ── */}
-            {data?.topPosts?.length > 0 && (
+            {(data?.topPosts?.length ?? 0) > 0 && (
               <div className="perf-section">
                 <div className="perf-section-header">
                   <h2 className="perf-section-title">Brain Signals</h2>
@@ -348,7 +348,7 @@ export default function PerformanceDashboardPage() {
                 <div className="perf-brain-grid">
                   <div className="perf-brain-card">
                     <span className="perf-brain-label">Top performing content</span>
-                    {data.topPosts.slice(0, 3).map((p, i) => (
+                    {data?.topPosts?.slice(0, 3).map((p, i) => (
                       <div key={i} className="perf-brain-row">
                         <span className="perf-brain-rank">#{i + 1}</span>
                         <span className="perf-brain-post-title">{p.title || 'Untitled'}</span>
