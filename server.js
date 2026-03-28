@@ -344,12 +344,16 @@ app.use(express.json());
 // ── Shared: Build brand-voice-aware Flux image prompt ────────────────────────
 async function buildImagePrompt(title, voiceProfile = {}, firstBody = '') {
   const brandName = voiceProfile.brand_name || '';
-  const toneSummary = voiceProfile.tone_summary || '';
-  const industry = voiceProfile.industry || voiceProfile.target_industry || '';
+  // tone: handle both snake_case (legacy) and camelCase (Context Agent output)
+  const toneAttrStr = Array.isArray(voiceProfile.toneAttributes)
+    ? voiceProfile.toneAttributes.map(a => a.attribute).join(', ')
+    : '';
+  const toneSummary = voiceProfile.tone_summary || voiceProfile.summary || voiceProfile.writingStyle || toneAttrStr || '';
+  const industry = voiceProfile.industry || voiceProfile.target_industry || voiceProfile.marketCategory || '';
   const positioning = voiceProfile.positioning || voiceProfile.brand_positioning || '';
-  const targetPersona = voiceProfile.target_persona || voiceProfile.primary_persona || '';
-  const visualStyle = voiceProfile.visual_style || voiceProfile.brand_aesthetic || '';
-  const accentColor = voiceProfile.accent_color || voiceProfile.brand_color || '';
+  const targetPersona = voiceProfile.targetPersona || voiceProfile.target_persona || voiceProfile.primary_persona || '';
+  const visualStyle = voiceProfile.visualStyle || voiceProfile.visual_style || voiceProfile.brand_aesthetic || '';
+  const accentColor = voiceProfile.accentColor || voiceProfile.accent_color || voiceProfile.brand_color || '';
 
   const brandContext = [
     brandName && `Brand: ${brandName}`,
@@ -905,7 +909,12 @@ Return ONLY valid JSON (no markdown, no explanation):
     "summary": "string",
     "toneAttributes": [{ "attribute": "string", "score": 0-100, "description": "string" }],
     "writingStyle": "string",
-    "keyPhrases": ["string"]
+    "keyPhrases": ["string"],
+    "industry": "string — e.g. \'B2B SaaS\', \'Fintech\', \'Healthcare IT\', \'Manufacturing\'",
+    "positioning": "string — one tight sentence: what they do, for whom, and why they win",
+    "targetPersona": "string — primary buyer in plain language, e.g. \'VP of Marketing at mid-market SaaS\'",
+    "visualStyle": "string — inferred from site aesthetic, e.g. \'dark editorial minimal\', \'bright human photography\', \'technical precision grids\', \'warm organic textures\'",
+    "accentColor": "string — dominant brand color as hex if detectable, otherwise descriptor e.g. \'#3563FF\' or \'deep indigo\'"
   },
   "personas": [{
     "id": "string", "name": "string", "role": "string",
@@ -918,7 +927,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   "discoveredCompetitors": ["string"],
   "marketCategory": "string"
 }
-Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competitiveGaps, 4-6 strategicRecommendations. Use the ICP and market context provided to make personas and gaps highly specific.`;
+Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competitiveGaps, 4-6 strategicRecommendations. Use the ICP and market context provided to make personas and gaps highly specific. For visualStyle and accentColor: infer carefully from the brand website design, color palette, imagery, and overall aesthetic — these feed directly into AI hero image generation and must reflect the real brand identity. For industry, positioning, and targetPersona: be specific and commercially precise, not generic.`;
 
     const message = await anthropic.messages.create({
       model: 'claude-opus-4-5',
