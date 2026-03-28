@@ -22,6 +22,23 @@
 
 ## Current Build Status (as of March 26, 2026 — 9:59 PM PDT)
 
+## Known Issues
+
+### Performance Dashboard — Styling Pass Needed
+**Status:** In progress  
+**File:** `src/pages/PerformanceDashboardPage.tsx`
+
+The Performance dashboard is functional but visually rough. Identified issues:
+- KPI cards have no surface elevation — flat on background with no depth
+- KPI labels are all-caps raw text with no typographic hierarchy
+- Channel tab bar lacks proper active/inactive states; "Soon" badges are unstyled text
+- Page header has no breathing room; Sync button is unstyled
+- Section headers ("30-Day Impressions", "Top Posts") use inconsistent weight/size
+- Empty state for the trend chart is a floating icon with no context or CTA
+- No `tabular-nums` on numeric values
+
+**Fix:** Full styling pass on `PerformanceDashboardPage.tsx` — KPI cards need elevated surface treatment, tab bar needs pill-style active states, all labels need proper type hierarchy using existing Tailwind tokens.
+
 ### ✅ What Is Live Right Now
 
 | Component | Status | Notes |
