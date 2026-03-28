@@ -98,7 +98,6 @@ export default function PublishingQueuePage() {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [contentPreview, setContentPreview] = useState<{ item: QueueItem; article: any; postCopy: Record<string, string> } | null>(null);
-  const [loadingPreview, setLoadingPreview] = useState(false);
   const [publishLog, setPublishLog] = useState<Record<string, { channel: string; live_status: string; published_url?: string; last_synced_at?: string }[]>>({});
   const [syncing, setSyncing] = useState<string | null>(null);
   const [republishing, setRepublishing] = useState<string | null>(null); // "itemId:channel" 
@@ -274,10 +273,8 @@ export default function PublishingQueuePage() {
   };
 
   const openContentPreview = async (item: QueueItem) => {
-    setLoadingPreview(true);
     try {
-      const brandRes = await fetch(`/api/publishing/channels/${item.brand_profile_id}`);
-      const brandData = await brandRes.json();
+      await fetch(`/api/publishing/channels/${item.brand_profile_id}`);
       const safeId = item.brand_profile_id.replace(/-/g, '_');
       const artRes = await fetch(`/api/content/${safeId}/${item.content_id}`);
       const artData = await artRes.json();
@@ -294,7 +291,6 @@ export default function PublishingQueuePage() {
       };
       setContentPreview({ item, article, postCopy: defaultCopy });
     } finally {
-      setLoadingPreview(false);
     }
   };
 
