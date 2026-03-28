@@ -52,7 +52,20 @@ export default function PublicArticlePage() {
     if (!brandSlug || !articleSlug) return;
     fetch(`/api/articles/${brandSlug}/${articleSlug}`)
       .then(r => { if (!r.ok) throw new Error('not found'); return r.json(); })
-      .then(d => { setArticle(d); setLoading(false); })
+      .then(async (d) => {
+        setArticle(d);
+        setLoading(false);
+        // If no hero image, generate one silently in background
+        if (!d.heroImageUrl) {
+          try {
+            const imgRes = await fetch(`/api/articles/${brandSlug}/${articleSlug}/ensure-image`, { method: 'POST' });
+            const imgData = await imgRes.json();
+            if (imgData.imageUrl) {
+              setArticle((prev: any) => prev ? { ...prev, heroImageUrl: imgData.imageUrl } : prev);
+            }
+          } catch(_) {}
+        }
+      })
       .catch(() => { setNotFound(true); setLoading(false); });
   }, [brandSlug, articleSlug]);
 
