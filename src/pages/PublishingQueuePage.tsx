@@ -39,6 +39,16 @@ const ExternalLink = () => (
     <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
   </svg>
 );
+const Eye = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+  </svg>
+);
+const Edit2 = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+  </svg>
+);
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CHANNEL_LABELS: Record<string, { label: string; color: string }> = {
@@ -87,6 +97,8 @@ export default function PublishingQueuePage() {
   const [filterBrand, setFilterBrand] = useState<string>('all');
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [contentPreview, setContentPreview] = useState<{ item: QueueItem; article: any; postCopy: Record<string, string> } | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
   const [publishLog, setPublishLog] = useState<Record<string, { channel: string; live_status: string; published_url?: string; last_synced_at?: string }[]>>({});
   const [syncing, setSyncing] = useState<string | null>(null);
   const [republishing, setRepublishing] = useState<string | null>(null); // "itemId:channel" 
@@ -261,6 +273,31 @@ export default function PublishingQueuePage() {
     setUtmPreview({ item, channels: channelMap });
   };
 
+  const openContentPreview = async (item: QueueItem) => {
+    setLoadingPreview(true);
+    try {
+      const brandRes = await fetch(`/api/publishing/channels/${item.brand_profile_id}`);
+      const brandData = await brandRes.json();
+      const safeId = item.brand_profile_id.replace(/-/g, '_');
+      const artRes = await fetch(`/api/content/${safeId}/${item.content_id}`);
+      const artData = await artRes.json();
+      const article = artData.success ? artData.article : null;
+
+      // Build default post copy per channel
+      const sections = article?.article_json?.sections || [];
+      const firstBody = sections[0]?.body || sections[0]?.content || '';
+      const defaultCopy: Record<string, string> = {
+        linkedin: `${article?.title || item.title}\n\n${firstBody.slice(0, 500)}${firstBody.length > 500 ? '...' : ''}`,
+        x: `${(article?.title || item.title).slice(0, 100)}\n\n${firstBody.slice(0, 200)}`,
+        wordpress: article?.title || item.title,
+        webflow: article?.title || item.title,
+      };
+      setContentPreview({ item, article, postCopy: defaultCopy });
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
+
   // Filter logic
   const filteredItems = items.filter(item => {
     if (filterStatus !== 'all' && item.status !== filterStatus) return false;
@@ -364,6 +401,9 @@ export default function PublishingQueuePage() {
                       <span className={`pq-status-pill status-${item.status}`}>
                         {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
                       </span>
+                      <button className="pq-icon-btn" title="Preview & Edit Post" onClick={() => openContentPreview(item)}>
+                        <Eye />
+                      </button>
                       <button className="pq-icon-btn" title="UTM Preview" onClick={() => openUtmPreview(item)}>
                         <Link2 />
                       </button>
@@ -533,6 +573,134 @@ export default function PublishingQueuePage() {
           </div>
         </div>
       )}
+
+      {/* ── Content Preview & Edit Modal ─────────────────────────────── */}
+      {contentPreview && (() => {
+        const { item, article, postCopy } = contentPreview;
+        const sections = article?.article_json?.sections || [];
+        const heroImageUrl = article?.hero_image_url;
+        const connChannels = connectedChannels[item.brand_profile_id] || [];
+        const sel = selectedChannels[item.id] || [];
+
+        return (
+          <div className="pq-modal-overlay" onClick={() => setContentPreview(null)}>
+            <div className="pq-modal pq-preview-modal" onClick={e => e.stopPropagation()}>
+              <div className="pq-modal-header">
+                <div>
+                  <div className="pq-modal-title">Content Preview</div>
+                  <div className="pq-modal-sub">{item.title}</div>
+                </div>
+                <button className="pq-modal-close" onClick={() => setContentPreview(null)}><X /></button>
+              </div>
+
+              <div className="pq-preview-layout">
+                {/* Left: article preview */}
+                <div className="pq-preview-article">
+                  {heroImageUrl ? (
+                    <img src={heroImageUrl} alt={item.title} className="pq-preview-hero" />
+                  ) : (
+                    <div className="pq-preview-no-image">
+                      <span>No hero image generated</span>
+                      <button
+                        className="pq-regen-image-btn"
+                        onClick={async () => {
+                          const r = await fetch(`/api/content/regenerate-image/${item.content_id}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ brandProfileId: item.brand_profile_id })
+                          });
+                          const d = await r.json();
+                          if (d.imageUrl) {
+                            setContentPreview(prev => prev ? {
+                              ...prev,
+                              article: { ...prev.article, hero_image_url: d.imageUrl }
+                            } : null);
+                          }
+                        }}
+                      >↺ Generate Image</button>
+                    </div>
+                  )}
+                  <h1 className="pq-preview-title">{article?.title || item.title}</h1>
+                  {article?.article_json?.metaDescription && (
+                    <p className="pq-preview-meta-desc">{article.article_json.metaDescription}</p>
+                  )}
+                  <div className="pq-preview-sections">
+                    {sections.map((s: any, i: number) => (
+                      <div key={i} className="pq-preview-section">
+                        {s.heading && <h2 className="pq-preview-heading">{s.heading}</h2>}
+                        <p className="pq-preview-body">{s.body || s.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Right: post copy editor per channel */}
+                <div className="pq-preview-side">
+                  <div className="pq-preview-side-title"><Edit2 /> Post Copy</div>
+                  <p className="pq-preview-side-hint">Edit the intro copy for each social channel before publishing.</p>
+
+                  {connChannels.map(ch => {
+                    const def = CHANNEL_LABELS[ch];
+                    const isTextChannel = ch === 'linkedin' || ch === 'x';
+                    if (!isTextChannel) return null;
+                    return (
+                      <div key={ch} className="pq-copy-block">
+                        <div className="pq-copy-channel-label" style={{ color: def?.color }}>
+                          {def?.label}
+                          <span className="pq-copy-char-count">
+                            {(postCopy[ch] || '').length} chars
+                            {ch === 'x' && (postCopy[ch] || '').length > 280 && (
+                              <span className="pq-copy-over"> · over 280!</span>
+                            )}
+                          </span>
+                        </div>
+                        <textarea
+                          className="pq-copy-textarea"
+                          value={postCopy[ch] || ''}
+                          rows={ch === 'linkedin' ? 6 : 4}
+                          onChange={e => setContentPreview(prev => prev ? {
+                            ...prev,
+                            postCopy: { ...prev.postCopy, [ch]: e.target.value }
+                          } : null)}
+                        />
+                      </div>
+                    );
+                  })}
+
+                  <div className="pq-preview-actions">
+                    <button className="pq-cancel-btn" onClick={() => setContentPreview(null)}>Cancel</button>
+                    <button
+                      className="pq-publish-now-btn"
+                      disabled={publishing === item.id || sel.length === 0}
+                      onClick={async () => {
+                        setPublishing(item.id);
+                        setError('');
+                        try {
+                          const r = await fetch('/api/publishing/publish', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ queueItemId: item.id, channels: sel, postCopy: contentPreview.postCopy })
+                          });
+                          const d = await r.json();
+                          if (d.success) {
+                            setSuccessMsg(`Published to ${sel.join(', ')}`);
+                            setContentPreview(null);
+                            loadQueue();
+                            setTimeout(() => setSuccessMsg(''), 5000);
+                          } else { setError(d.error || 'Publish failed'); }
+                        } finally { setPublishing(null); }
+                      }}
+                    >
+                      <Send /> {publishing === item.id ? 'Publishing...' : `Publish to ${sel.length} channel${sel.length !== 1 ? 's' : ''}`}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
     </AppShell>
   );
 }
