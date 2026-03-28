@@ -1304,8 +1304,8 @@ async function ensureGeneratedContentTable(brandProfileId) {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ${tableName} (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      brand_profile_id UUID NOT NULL,
-      enriched_brief_id UUID,
+      brand_profile_id TEXT NOT NULL,
+      enriched_brief_id TEXT,
       title TEXT,
       article_json JSONB,
       overall_confidence INTEGER,
@@ -1573,7 +1573,8 @@ Output only the prompt.`
     })();
 
   } catch (err) {
-    console.error('[CONTENT-GEN] Error:', err);
+    console.error('[CONTENT-GEN] Error:', err?.message || err);
+    console.error('[CONTENT-GEN] Stack:', err?.stack);
     send('error', err.message || 'Generation failed');
     res.end();
   }
