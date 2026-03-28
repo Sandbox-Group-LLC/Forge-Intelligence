@@ -72,7 +72,12 @@ export default function PublicArticlePage() {
     </div>
   );
 
-  const readTime = Math.max(1, Math.round((article.sections || []).reduce((acc, s) => acc + (s.content?.split(' ').length || 0), 0) / 200));
+  const readTime = Math.max(1, Math.round(
+    (article.sections || []).reduce((acc, s) => {
+      const text = (s as any).body || s.content || '';
+      return acc + text.split(' ').length;
+    }, 0) / 200
+  ));
 
   return (
     <div className="pa-page">
