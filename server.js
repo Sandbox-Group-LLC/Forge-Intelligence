@@ -2425,7 +2425,49 @@ app.post('/api/publishing/publish', async (req, res) => {
           results[channel] = { status: 'staged', message: 'LinkedIn: credentials saved, live API wired in Stage 6.1', utmParams };
 
         } else if (channel === 'x') {
-          results[channel] = { status: 'staged', message: 'X: credentials saved, live API wired in Stage 6.1', utmParams };
+          // ── Real X (Twitter) API v2 publish via OAuth 1.0a ──
+          const xApiKey       = creds.apiKey       || process.env.X_API_KEY;
+          const xApiSecret    = creds.apiSecret    || process.env.X_API_SECRET;
+          const xAccessToken  = creds.accessToken  || process.env.X_ACCESS_TOKEN;
+          const xAccessSecret = creds.accessSecret || process.env.X_ACCESS_SECRET;
+          if (!xApiKey || !xApiSecret || !xAccessToken || !xAccessSecret) throw new Error('Missing X credentials');
+
+          const articleJson = article.article_json || {};
+          const sections = articleJson.sections || [];
+          const excerpt = (sections[0]?.content || article.title || '').slice(0, 200);
+          const articleUrl = `https://forgeintelligence.ai/articles/${(article.title||'article').toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,50)}`;
+          const tweetText = `${excerpt}... ${articleUrl}${utmString ? '?' + utmString : ''}`.slice(0, 280);
+
+          // Build OAuth 1.0a signature
+          const crypto = require('crypto');
+          const tweetUrl = 'https://api.twitter.com/2/tweets';
+          const oauthParams = {
+            oauth_consumer_key: xApiKey,
+            oauth_nonce: crypto.randomBytes(16).toString('hex'),
+            oauth_signature_method: 'HMAC-SHA1',
+            oauth_timestamp: String(Math.floor(Date.now() / 1000)),
+            oauth_token: xAccessToken,
+            oauth_version: '1.0',
+          };
+          const sortedParams = Object.entries(oauthParams).sort(([a],[b]) => a.localeCompare(b))
+            .map(([k,v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+          const baseString = `POST&${encodeURIComponent(tweetUrl)}&${encodeURIComponent(sortedParams)}`;
+          const signingKey = `${encodeURIComponent(xApiSecret)}&${encodeURIComponent(xAccessSecret)}`;
+          const signature = crypto.createHmac('sha1', signingKey).update(baseString).digest('base64');
+          oauthParams['oauth_signature'] = signature;
+          const authHeader = 'OAuth ' + Object.entries(oauthParams).sort(([a],[b]) => a.localeCompare(b))
+            .map(([k,v]) => `${encodeURIComponent(k)}="${encodeURIComponent(v)}"`).join(', ');
+
+          const xRes = await fetch(tweetUrl, {
+            method: 'POST',
+            headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: tweetText })
+          });
+          const xData = await xRes.json();
+          if (!xRes.ok) throw new Error(xData.detail || xData.title || JSON.stringify(xData));
+          const tweetId = xData.data?.id;
+          const tweetUrl2 = `https://x.com/makemysandbox/status/${tweetId}`;
+          results[channel] = { status: 'published', url: tweetUrl2, tweetId, utmParams };
 
         } else {
           results[channel] = { status: 'error', error: `Unknown channel: ${channel}` };
