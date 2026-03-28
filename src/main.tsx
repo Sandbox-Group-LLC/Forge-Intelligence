@@ -12,6 +12,7 @@ import ComplianceGatePage from './pages/ComplianceGatePage';
 import IntegrationsPage from './pages/IntegrationsPage';
 import PublishingQueuePage from './pages/PublishingQueuePage';
 import PublicArticlePage from './pages/PublicArticlePage';
+import PerformanceDashboardPage from './pages/PerformanceDashboardPage';
 import './index.css';
 
 createRoot(document.getElementById('root')!).render(
@@ -34,6 +35,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/app/compliance-gate" element={<AppProvider><ComplianceGatePage /></AppProvider>} />
         <Route path="/app/integrations" element={<AppProvider><IntegrationsPage /></AppProvider>} />
         <Route path="/app/publishing-queue" element={<AppProvider><PublishingQueuePage /></AppProvider>} />
+        <Route path="/app/performance" element={<AppProvider><PerformanceDashboardPage /></AppProvider>} />
 
         {/* Public article viewer — no AppProvider needed */}
         <Route path="/articles/:brandSlug/:articleSlug" element={<PublicArticlePage />} />
@@ -47,6 +49,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/compliance-gate" element={<Navigate to="/app/compliance-gate" replace />} />
         <Route path="/integrations" element={<Navigate to="/app/integrations" replace />} />
         <Route path="/publishing-queue" element={<Navigate to="/app/publishing-queue" replace />} />
+        <Route path="/performance" element={<Navigate to="/app/performance" replace />} />
       </Routes>
     </BrowserRouter>
   </StrictMode>
