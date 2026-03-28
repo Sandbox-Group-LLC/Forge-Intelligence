@@ -50,6 +50,34 @@ const Edit2 = () => (
   </svg>
 );
 
+// ── Markdown renderer ────────────────────────────────────────────────────────
+function renderMarkdown(text: string): React.ReactNode[] {
+  if (!text) return [];
+  // Strip AI artifact tags
+  const cleaned = text
+    .replace(/\[NEEDS CITATION:[^\]]*\]/gi, '')
+    .replace(/\[CITATION:[^\]]*\]/gi, '')
+    .replace(/\[SOURCE:[^\]]*\]/gi, '')
+    .trim();
+
+  // Split into paragraphs on double newline
+  return cleaned.split(/\n\n+/).map((para, pi) => {
+    // Parse inline: **bold**, *italic*, then plain text
+    const parts: React.ReactNode[] = [];
+    const inlineRegex = /\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`/g;
+    let last = 0, match;
+    while ((match = inlineRegex.exec(para)) !== null) {
+      if (match.index > last) parts.push(para.slice(last, match.index));
+      if (match[1]) parts.push(<strong key={match.index}>{match[1]}</strong>);
+      else if (match[2]) parts.push(<em key={match.index}>{match[2]}</em>);
+      else if (match[3]) parts.push(<code key={match.index} style={{background:'rgba(255,255,255,0.08)',padding:'1px 5px',borderRadius:'3px',fontSize:'0.9em'}}>{match[3]}</code>);
+      last = match.index + match[0].length;
+    }
+    if (last < para.length) parts.push(para.slice(last));
+    return <p key={pi} className="pq-preview-body" style={{marginBottom: pi < cleaned.split(/\n\n+/).length - 1 ? '12px' : 0}}>{parts}</p>;
+  });
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CHANNEL_LABELS: Record<string, { label: string; color: string }> = {
   wordpress: { label: 'WordPress', color: '#3858E9' },
@@ -624,7 +652,7 @@ export default function PublishingQueuePage() {
                     {sections.map((s: any, i: number) => (
                       <div key={i} className="pq-preview-section">
                         {s.heading && <h2 className="pq-preview-heading">{s.heading}</h2>}
-                        <p className="pq-preview-body">{s.body || s.content}</p>
+                        <>{renderMarkdown(s.body || s.content || '')}</>
                       </div>
                     ))}
                   </div>
