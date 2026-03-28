@@ -308,12 +308,30 @@ export default function PublishingQueuePage() {
       const artData = await artRes.json();
       const article = artData.success ? artData.article : null;
 
-      // Build default post copy per channel
+      // Build default post copy — fetch AI-generated copy from server
       const sections = article?.article_json?.sections || [];
-      const firstBody = sections[0]?.body || sections[0]?.content || '';
+      const liBrandSlug = (article?.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().split('-').slice(0,3).join('-') || item.brand_profile_id.slice(0,8);
+      const artSlug = (article?.title || item.title).toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 80);
+      const articleUrl = `https://forgeintelligence.ai/articles/${liBrandSlug}/${artSlug}`;
+      const wordCount = sections.reduce((acc: number, s: any) => acc + ((s.body || s.content || '').split(' ').length), 0);
+      const readMin = Math.max(2, Math.round(wordCount / 200));
+      const headings = sections.slice(1, 5).map((s: any) => s.heading).filter(Boolean).join(', ');
+
+      // Ask server to generate the LinkedIn copy
+      let liCopy = `${article?.title || item.title}\n\nRead more: ${articleUrl}`;
+      try {
+        const copyRes = await fetch('/api/publishing/generate-post-copy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: article?.title || item.title, headings, readMinutes: readMin, articleUrl })
+        });
+        const copyData = await copyRes.json();
+        if (copyData.copy) liCopy = copyData.copy;
+      } catch(_) {}
+
       const defaultCopy: Record<string, string> = {
-        linkedin: `${article?.title || item.title}\n\n${firstBody.slice(0, 500)}${firstBody.length > 500 ? '...' : ''}`,
-        x: `${(article?.title || item.title).slice(0, 100)}\n\n${firstBody.slice(0, 200)}`,
+        linkedin: liCopy,
+        x: `${(article?.title || item.title).slice(0, 200)}\n\nRead more: ${articleUrl}`,
         wordpress: article?.title || item.title,
         webflow: article?.title || item.title,
       };
