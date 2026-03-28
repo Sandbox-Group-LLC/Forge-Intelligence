@@ -35,6 +35,7 @@ interface ChannelDef {
   logo: string;
   credentialFields: { key: string; label: string; placeholder: string; type?: string }[];
   liveStatus: 'live' | 'staged';
+  oauthFlow?: boolean;
 }
 
 const CHANNELS: ChannelDef[] = [
@@ -67,7 +68,7 @@ const CHANNELS: ChannelDef[] = [
   {
     id: 'hubspot',
     label: 'HubSpot',
-    description: 'Contact tracking + campaign attribution. Connects published article UTMs to HubSpot contacts. Not a publishing destination.',
+    description: 'Contact tracking + campaign attribution. Connects published article UTMs to HubSpot contacts.',
     color: '#FF7A59',
     logo: 'HS',
     liveStatus: 'staged',
@@ -83,6 +84,7 @@ const CHANNELS: ChannelDef[] = [
     color: '#0A66C2',
     logo: 'in',
     liveStatus: 'live',
+    oauthFlow: true,
     credentialFields: [
       { key: 'accessToken', label: 'OAuth Access Token', placeholder: 'Auto-filled after OAuth', type: 'password' },
       { key: 'authorUrn', label: 'Author URN', placeholder: 'Auto-filled after OAuth' },
@@ -124,6 +126,8 @@ interface SavedChannel {
 
 interface Brain { id: string; brandName?: string; brandUrl?: string; }
 
+const LS_BRAND_KEY = 'forge_integrations_brand';
+
 export default function IntegrationsPage() {
   const [brands, setBrands] = useState<Brain[]>([]);
   const [selectedBrand, setSelectedBrand] = useState('');
@@ -140,15 +144,28 @@ export default function IntegrationsPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  // Load brands
   useEffect(() => {
     fetch('/api/context-hub/brains').then(r => r.json()).then(d => {
-      if (d.success) setBrands(d.data || []);
+      if (d.success) {
+        setBrands(d.data || []);
+        // Restore last-used brand from localStorage
+        const stored = localStorage.getItem(LS_BRAND_KEY);
+        if (stored && d.data?.some((b: Brain) => b.id === stored)) {
+          setSelectedBrand(stored);
+        }
+      }
     });
   }, []);
 
+  // Persist selectedBrand to localStorage
   useEffect(() => {
-    if (!selectedBrand) return;
-    fetch(`/api/publishing/channels/${selectedBrand}`)
+    if (selectedBrand) localStorage.setItem(LS_BRAND_KEY, selectedBrand);
+  }, [selectedBrand]);
+
+  // Load saved channels when brand changes
+  const loadChannels = (brandId: string) => {
+    fetch(`/api/publishing/channels/${brandId}`)
       .then(r => r.json())
       .then(d => {
         if (d.success) {
@@ -157,7 +174,6 @@ export default function IntegrationsPage() {
           };
           for (const ch of d.channels) map[ch.channel as ChannelId] = ch;
           setSavedChannels(map);
-          // Pre-fill UTM templates from saved data
           const newUtm = { ...DEFAULT_UTM };
           for (const ch of d.channels) {
             if (ch.utm_template && Object.keys(ch.utm_template).length > 0) {
@@ -167,14 +183,25 @@ export default function IntegrationsPage() {
           setUtmTemplates(newUtm);
         }
       });
+  };
+
+  useEffect(() => {
+    if (selectedBrand) loadChannels(selectedBrand);
   }, [selectedBrand]);
 
-  // Handle LinkedIn OAuth callback params
+  // Handle LinkedIn OAuth callback
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('linkedin_connected') === 'true') {
       setSuccess('LinkedIn connected successfully!');
+      setExpanded('linkedin');
       window.history.replaceState({}, '', '/app/integrations');
+      // Reload channels after short delay to let DB settle
+      const brand = localStorage.getItem(LS_BRAND_KEY);
+      if (brand) {
+        setSelectedBrand(brand);
+        setTimeout(() => loadChannels(brand), 500);
+      }
     }
     if (params.get('linkedin_error')) {
       setError(`LinkedIn authorization failed: ${decodeURIComponent(params.get('linkedin_error') || '')}`);
@@ -182,15 +209,13 @@ export default function IntegrationsPage() {
     }
   }, []);
 
-
   const handleSave = async (channelId: ChannelId) => {
-    // LinkedIn uses OAuth2 — redirect instead of credential form
     if (channelId === 'linkedin') {
       try {
         const res = await fetch('/api/linkedin/auth');
         const { authUrl } = await res.json();
         window.location.href = authUrl;
-      } catch (e) {
+      } catch {
         setError('Could not start LinkedIn authorization. Try again.');
       }
       return;
@@ -212,17 +237,9 @@ export default function IntegrationsPage() {
       const d = await r.json();
       if (d.success) {
         setSuccess(`${CHANNELS.find(c => c.id === channelId)?.label} connected successfully`);
-        // Refresh saved channels
-        const refresh = await fetch(`/api/publishing/channels/${selectedBrand}`).then(r => r.json());
-        if (refresh.success) {
-          const map: Record<ChannelId, SavedChannel | null> = {
-            wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null
-          };
-          for (const ch of refresh.channels) map[ch.channel as ChannelId] = ch;
-          setSavedChannels(map);
-        }
-        setExpanded(null);
-        setTimeout(() => setSuccess(''), 3000);
+        loadChannels(selectedBrand);
+        setExpanded(channelId);
+        setTimeout(() => setSuccess(''), 4000);
       } else {
         setError(d.error || 'Save failed');
       }
@@ -241,6 +258,7 @@ export default function IntegrationsPage() {
       await fetch(`/api/publishing/channels/${saved.id}`, { method: 'DELETE' });
       setSavedChannels(prev => ({ ...prev, [channelId]: null }));
       setCredentials(prev => ({ ...prev, [channelId]: {} }));
+      setExpanded(null);
       setSuccess('');
     } finally {
       setDisconnecting(null);
@@ -323,10 +341,8 @@ export default function IntegrationsPage() {
                         </button>
                         <button
                           className="int-edit-btn"
-                          onClick={() => {
-                            if (ch.id === 'linkedin') return; // LinkedIn uses OAuth, no expand needed
-                            setExpanded(isOpen ? null : ch.id);
-                          }}
+                          onClick={() => setExpanded(isOpen ? null : ch.id)}
+                          title={isOpen ? 'Collapse' : 'View & edit settings'}
                         >
                           {isOpen ? <ChevronUp /> : <ChevronDown />}
                         </button>
@@ -357,29 +373,60 @@ export default function IntegrationsPage() {
                   </div>
                 </div>
 
-                {/* Expanded form */}
+                {/* Expanded panel */}
                 {isOpen && (
                   <div className="int-card-form">
-                    <div className="int-form-section">
-                      <div className="int-form-label">Credentials</div>
-                      <div className="int-fields">
-                        {ch.credentialFields.map(f => (
-                          <div key={f.key} className="int-field">
-                            <label className="int-field-label">{f.label}</label>
-                            <input
-                              className="int-field-input"
-                              type={f.type || 'text'}
-                              placeholder={f.placeholder}
-                              value={credentials[ch.id][f.key] || ''}
-                              onChange={e => setCredentials(prev => ({
-                                ...prev,
-                                [ch.id]: { ...prev[ch.id], [f.key]: e.target.value }
-                              }))}
-                            />
-                          </div>
-                        ))}
+                    {/* Credential fields — hide for OAuth channels when already connected */}
+                    {!(ch.oauthFlow && connected) && (
+                      <div className="int-form-section">
+                        <div className="int-form-label">
+                          {connected ? 'Credentials' : 'Credentials'}
+                        </div>
+                        <div className="int-fields">
+                          {ch.credentialFields.map(f => (
+                            <div key={f.key} className="int-field">
+                              <label className="int-field-label">{f.label}</label>
+                              <input
+                                className="int-field-input"
+                                type={connected ? 'password' : (f.type || 'text')}
+                                placeholder={connected ? '••••••••••••' : f.placeholder}
+                                value={connected ? '' : (credentials[ch.id][f.key] || '')}
+                                readOnly={connected}
+                                onChange={connected ? undefined : e => setCredentials(prev => ({
+                                  ...prev,
+                                  [ch.id]: { ...prev[ch.id], [f.key]: e.target.value }
+                                }))}
+                              />
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    )}
+
+                    {/* OAuth connected — show read-only status */}
+                    {ch.oauthFlow && connected && (
+                      <div className="int-form-section">
+                        <div className="int-form-label">OAuth Status</div>
+                        <div className="int-oauth-status">
+                          <CheckCircle />
+                          <span>Authorized via OAuth2 · Token stored securely · Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '—'}</span>
+                        </div>
+                        <button
+                          className="int-reauth-btn"
+                          onClick={async () => {
+                            try {
+                              const res = await fetch('/api/linkedin/auth');
+                              const { authUrl } = await res.json();
+                              window.location.href = authUrl;
+                            } catch {
+                              setError('Could not start re-authorization.');
+                            }
+                          }}
+                        >
+                          Re-authorize
+                        </button>
+                      </div>
+                    )}
 
                     <div className="int-form-section">
                       <div className="int-form-label">
@@ -404,14 +451,47 @@ export default function IntegrationsPage() {
                     </div>
 
                     <div className="int-form-footer">
-                      <button className="int-cancel-btn" onClick={() => setExpanded(null)}>Cancel</button>
-                      <button
-                        className="int-save-btn"
-                        onClick={() => handleSave(ch.id)}
-                        disabled={saving === ch.id}
-                      >
-                        {saving === ch.id ? 'Saving...' : connected ? 'Update Connection' : `Connect ${ch.label}`}
-                      </button>
+                      <button className="int-cancel-btn" onClick={() => setExpanded(null)}>Close</button>
+                      {!ch.oauthFlow && (
+                        <button
+                          className="int-save-btn"
+                          onClick={() => handleSave(ch.id)}
+                          disabled={saving === ch.id}
+                        >
+                          {saving === ch.id ? 'Saving...' : connected ? 'Update Connection' : `Connect ${ch.label}`}
+                        </button>
+                      )}
+                      {ch.oauthFlow && connected && (
+                        <button
+                          className="int-save-btn"
+                          onClick={async () => {
+                            if (!selectedBrand) return;
+                            setSaving(ch.id);
+                            try {
+                              const r = await fetch('/api/publishing/channels', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  brandProfileId: selectedBrand,
+                                  channel: ch.id,
+                                  credentials: {},
+                                  utmTemplate: utmTemplates[ch.id],
+                                })
+                              });
+                              const d = await r.json();
+                              if (d.success) {
+                                setSuccess('UTM template saved');
+                                setTimeout(() => setSuccess(''), 3000);
+                              }
+                            } finally {
+                              setSaving(null);
+                            }
+                          }}
+                          disabled={saving === ch.id}
+                        >
+                          {saving === ch.id ? 'Saving...' : 'Save UTM Template'}
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
