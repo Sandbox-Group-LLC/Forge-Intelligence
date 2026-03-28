@@ -1,5 +1,5 @@
 # AI Content Platform — Working Doc
-> Last updated: March 28, 2026 (3:07 PM PDT) | Status: Stage 6 LIVE — Publishing Queue + LinkedIn + Public Article Page ✅ | Active Whiteboard
+> Last updated: March 28, 2026 (4:54 PM PDT) | Status: Stage 6 LIVE — Publishing Queue + LinkedIn + Public Article Page ✅ | Stage 7B Polish ✅ | Active Whiteboard
 
 ---
 
@@ -128,7 +128,6 @@ Supabase/Neon edge functions for agents
 ```
 **Cost:** ~$20/mo per active client
 
-### Client Brain Open Questions
 ### Open Q1 Resolved: 3 Agents for Phase 1 MVP
 
 **Stages 1-3 → 3 Agents (Context Intelligence Engine)**
@@ -161,27 +160,36 @@ Input: Company URL + 3 competitors
 Output: Brand Intelligence Profile + GEO/Enriched Brief
 Demo: <10 min | Price: $99/mo SMB
 
-**Updated Phase 1 Scope:**
+**Updated Phase 1 Scope — ACTUAL BUILD STATUS:**
 ```
 Phase 1 — Context Intelligence Engine (Months 1–3)
 [x] Stage 1: Context Hub — ✅ LIVE
 [x] Client Brain: NeonDB/pgvector + 3 agents — ✅ LIVE
-[x] Stage 2: GEO Strategy Brief — ✅ LIVE (March 26, 2026)
-[x] Stage 3: Authenticity Enricher — ✅ LIVE (March 26, 2026)
+[x] Stage 2: GEO Strategy Brief — ✅ LIVE
+[x] Stage 3: Authenticity Enricher — ✅ LIVE
     - UI: /authenticity-enricher, Brain selector, ShieldCheck run btn
     - Backend: E-E-A-T scoring, SME signals, voice injection, author schema
-[x] Stage 4: Content Generator — ✅ LIVE (March 26, 2026)
+[x] Stage 4: Content Generator — ✅ LIVE
     - /content-generator — Brain selector + Enriched Brief selector + SSE streaming renderer
-    - Long-form article only (MVP scope — prove context engine first)
-    - Streaming SSE output via EventSource (theatrical but earned)
-    - Per-brand generated_content_{uuid} table (auto-provisioned on first call)
-    - Confidence scoring per section (🟢🟡🔴) with inline E-E-A-T + SME hook display
-    - Article / Meta / Schema tabs
-    - Activity logged to agent_activity_log
-    - Multi-tenancy refactor flagged for production (dev UI allows manual brand selection)
-    - Defensive rendering on all Claude output fields (React #31 guard)
-[ ] Stage 5: Compliance & Human Refinement Gate — NOT built
-[ ] Demo dashboard: "Your Brand Intelligence" — NOT built
+    - Long-form article only (MVP scope)
+    - Confidence scoring per section (🟢🟡🔴)
+    - Hero image generation via Flux/fal.ai
+[x] Stage 5: Compliance Gate — ✅ LIVE
+    - Three-mode review (Auto/Approve/Full), human edit loop → Brain Mistakes
+[x] Stage 6: Publishing Queue + LinkedIn + Public Article Page — ✅ LIVE
+    - /publishing-queue, Draft→Approved→Published
+    - LinkedIn API publish via ugcPosts
+    - Public article: forgeintelligence.ai/articles/:brandSlug/:articleSlug
+    - OG meta server-side injection for social crawlers
+[x] Stage 7B: Performance Dashboard styling pass — ✅ DONE (March 28, 2026)
+    - KPI cards: resting shadow-sm, text-2xl value, tabular-nums
+    - Section titles: xs uppercase tracking-widest muted
+    - Sync button: ghost style
+    - Trend chart empty state: Sync now CTA button wired
+    - Table: zebra striping, tabular-nums on all numeric columns
+[ ] Admin dashboard (surface agent_activity_log)
+[ ] Brand brain pre-seeding script
+[ ] Server-side UUID auto-generation
 ```
 
 **Why Perfect MVP:**
@@ -189,11 +197,11 @@ Phase 1 — Context Intelligence Engine (Months 1–3)
 - Technical simplicity (shared Brain, no publishing)
 - Clear Phase 2 handoff (add Stage 4 generation)
 
-1. Agent count MVP: 3 or full 8?
-2. Mistake logging: Human-only or AI self-critique?
-3. Memory retention: Prune low-confidence? Time decay?
-4. Cross-client: Anonymized pattern sharing by industry?
-5. NeonDB: Per-client DB or RLS shared instance?
+**Open Questions (still active):**
+1. Mistake logging: Human-only or AI self-critique?
+2. Memory retention: Prune low-confidence? Time decay?
+3. Cross-client: Anonymized pattern sharing by industry?
+4. NeonDB: Per-client DB or RLS shared instance?
 
 ### Open Q2 Resolved: AI Self-Critique + Brain-First Protocol
 
@@ -215,7 +223,7 @@ Agents never start cold. Every action is preceded by a full Brain read.
 
 
 
-### Stage 2 — GEO Strategy Brief *(Gap: GEO-Native Optimization)*
+### Stage 2 — GEO Strategy Brief *(Gap: GEO-Native Optimization)* ✅ LIVE
 
 **Brain-First:** GEO Strategist Agent reads Mistakes + Patterns + Memories before every brief.
 
@@ -246,7 +254,7 @@ Agents never start cold. Every action is preceded by a full Brain read.
 **Output:** GEO Brief + Opportunity Score → feeds Stage 3
 
 
-### Stage 3 — Authenticity Enrichment *(Gap: E-E-A-T Signal Integration)*
+### Stage 3 — Authenticity Enrichment *(Gap: E-E-A-T Signal Integration)* ✅ LIVE
 
 **Brain-First:** Authenticity Enricher reads which SME injections previously converted vs. fell flat.
 
@@ -255,6 +263,7 @@ Agents never start cold. Every action is preceded by a full Brain read.
 - Proprietary data hooks (surveys, case studies, original research)
 - Author schema auto-generation
 - Customer power phrases from Third-Party Voice Crawler
+- Manual Input Fallback — targeted prompt cards with tooltips
 - **Reads from Brain:** Voice patterns that drove engagement
 - **Writes to Brain:** E-E-A-T patterns that passed compliance + converted
 
@@ -265,14 +274,13 @@ Agents never start cold. Every action is preceded by a full Brain read.
 
 **Brain-First:** Generator reads ALL Brain tables before producing a single word.
 
-**What shipped (March 26, 2026):**
+**What shipped:**
 - SSE streaming — per-section article generation with live progress panel
 - Per-section confidence badges (🟢🟡🔴) with reason text
 - E-E-A-T tags per section (key phrase, pain point, differentiation signals)
 - Hero image generation — Claude writes an editorial Flux prompt from title + topic, Flux generates async post-SSE, injected at article top
 - Brain Match score + citation count in meta bar
 - Per-brand `generated_content_{uuid}` table auto-provisioned on first run
-- `/api/test/image` debug endpoint for prompt tuning
 - Image prompt guardrails: no war rooms, no sci-fi control panels, macro/architectural editorial style
 
 **Generated Package:**
@@ -336,8 +344,7 @@ Every human edit is a signal. Consistent edits to a phrasing pattern → AI self
 
 **Output:** Compliance Report + Approved Content Package → feeds Stage 6
 
-]
-### Stage 6 — Publishing & Distribution *(Gap: Cross-Channel Orchestration)*
+### Stage 6 — Publishing & Distribution *(Gap: Cross-Channel Orchestration)* ✅ LIVE
 
 **Brain-First:** Publishing Agent reads UTM patterns, channel performance, and timing data before scheduling anything.
 
@@ -346,8 +353,6 @@ Every human edit is a signal. Consistent edits to a phrasing pattern → AI self
 #### Architecture: Native vs. Integrate vs. Export
 
 **Tier 1 — Native (always, non-negotiable)**
-
-These depend on the Brain and cannot live outside the platform:
 
 - **UTM Intelligence Engine**
   - Auto-generates UTMs tied to Brain attribution model
@@ -362,9 +367,7 @@ These depend on the Brain and cannot live outside the platform:
 - **Publishing Queue (Control Room)**
   - Single dashboard: Draft → Enriched → Approved → Scheduled → Live → Measured
   - Internal approval flow: Author → Editor → Approver (role hierarchy)
-  - Reviewer hierarchy maps to Brain confidence weighting:
-    - Senior approver edit = high-signal Mistake, weighted heavily
-    - Junior edit = standard Mistake signal
+  - Reviewer hierarchy maps to Brain confidence weighting
   - Phase 1: Internal client (Marketing → Leadership)
   - Phase 2/3: External client (Agency → Client) via white-label
 
@@ -372,31 +375,21 @@ These depend on the Brain and cannot live outside the platform:
 
 **Tier 2 — Deep Integrations (Phase 2)**
 
-We build the connector. They own the destination.
-
 Priority 1:
 - WordPress (REST API → Gutenberg blocks)
 - Webflow (CMS API → collection schema)
 - HubSpot (two-track — see below)
 - Shopify (product + blog)
 
-Priority 2:
-- Ghost, LinkedIn Articles, Mailchimp/Klaviyo/Marketo, Buffer
-
 **HubSpot Two-Track Architecture:**
 ```
 Track A: Campaign-level (Phase 2, no email required)
-→ Push content performance + GEO metrics + engagement
-→ as campaign activity in HubSpot
-→ Works for blog, social, video
-→ No contact data needed
+→ Push content performance + GEO metrics + engagement as campaign activity
+→ Works for blog, social, video. No contact data needed.
 
 Track B: Direct email campaigns (Phase 2/3)
 → Full contact + deal-level attribution
-→ Requires email address as delivery mechanism
-→ Mailchimp/Klaviyo/Marketo same bucket
 → Requires consent management + GDPR compliance layer
-→ Anonymous campaign data ≠ identified contact data
 → Two different integration architectures — do not collapse
 ```
 
@@ -404,97 +397,66 @@ Track B: Direct email campaigns (Phase 2/3)
 
 **Tier 3 — Smart Export (Phase 1)**
 
-JSON-first. Full Brain metadata intact on export.
-
 ```
-├── JSON (primary) — full Brain metadata: persona, GEO score,
-│     SME injections, confidence flags, agent provenance
-│     → Switching cost is visible: export to another tool = lose all metadata
+├── JSON (primary) — full Brain metadata intact
 ├── Markdown — universal fallback
 ├── HTML — paste-ready for any CMS
 └── PDF — compliance/legal review workflows
 ```
 
-*Google Docs, plain text, etc. = client converts from JSON themselves. Not our problem.*
-
 ---
 
 **Tier 4 — Lightweight Native Social (Phase 1)**
 
-One-click publish, not a social media manager:
-- LinkedIn + X OAuth → publish from Publishing Queue
-- Brain-derived optimal timing (from pattern data — when did similar content get most engagement?)
+- LinkedIn + X OAuth → publish from Publishing Queue ✅ LinkedIn LIVE
+- Brain-derived optimal timing (from pattern data)
 - No scheduling queue, no analytics dashboard, no audience management
-- Buffer/Hootsuite handle that — we stay in our lane but don't block all-in-one buyers
 
 ---
 
-#### Stage 6 Open Questions (Resolved)
-
-| Question | Decision |
-|----------|----------|
-| Export format | JSON-first. Client converts downstream. |
-| HubSpot depth | Two-track: campaign-level Phase 2, email/contact Phase 2-3 |
-| White-label | Phase 2-3. GTM brand-first, agency second. |
-| Social scheduling | Lightweight native (publish only). No Hootsuite rebuild. |
-| Approval flow | Internal first (Marketing → Leadership). Agency flow reuses same baseline. |
-
-**Reads from Brain:** UTM patterns, channel performance, timing data
-**Writes to Brain:** Publish log, human edits as Mistakes (weighted by reviewer role)
-
-**Output:** Published Content + Distribution Report → feeds Stage 7
-
----
-
-#### ✅ Stage 6 — Live Implementation (March 28, 2026)
+#### ✅ Stage 6 — Live Implementation
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Publishing Queue UI | ✅ LIVE | `/publishing-queue` — Draft→Approved→Published, preview modal, channel selector |
-| LinkedIn API publish | ✅ LIVE | `ugcPosts` endpoint, OAuth token per brand, article link card injected |
+| Publishing Queue UI | ✅ LIVE | `/publishing-queue` — Draft→Approved→Published, preview modal |
+| LinkedIn API publish | ✅ LIVE | `ugcPosts` endpoint, OAuth token per brand |
 | AI post copy | ✅ LIVE | Claude Haiku writes 3-4 para overview; ends with `Read more: [url]` |
-| LinkedIn image card | ✅ LIVE | Server-side OG meta injection before `express.static` — `og:image`, `og:title`, `article:author` |
+| LinkedIn image card | ✅ LIVE | Server-side OG meta injection — `og:image`, `og:title`, `article:author` |
 | Public article page | ✅ LIVE | `forgeintelligence.ai/articles/:brandSlug/:articleSlug` |
-| Editorial article design | ✅ LIVE | Full-bleed hero, 740px reading column, section accent bars, italic lede, responsive |
-| Hero image generation | ✅ LIVE | `buildImagePrompt()` — pulls `brand_name`, `tone_summary`, `industry`, `positioning`, `target_persona`, `visual_style`, `accent_color` from voice profile |
-| Auto image backfill | ✅ LIVE | `/ensure-image` endpoint — generates + saves hero if NULL, called on article page load |
-| Read time accuracy | ✅ LIVE | Reads `section.body` field at 200 wpm |
-| Brand byline | ✅ LIVE | Reads `brand_profiles.brand_name` column (not nested voice_profile JSON) |
-| OG meta — article route | ✅ LIVE | Dedicated `app.get('/articles/:brand/:slug')` runs before `express.static` |
-
-**Architecture note:** LinkedIn's crawler never executes JavaScript. The OG meta route MUST be a named Express route placed before `app.use(express.static('dist'))`. A catch-all after static is useless for crawlers.
+| Editorial article design | ✅ LIVE | Full-bleed hero, 740px reading column |
+| Hero image generation | ✅ LIVE | `buildImagePrompt()` — full brand voice profile |
+| Auto image backfill | ✅ LIVE | `/ensure-image` — generates + saves hero if NULL |
+| Read time accuracy | ✅ LIVE | Reads `section.body` at 200 wpm |
+| Brand byline | ✅ LIVE | Reads `brand_profiles.brand_name` column |
+| OG meta — article route | ✅ LIVE | Named Express route before `express.static` |
 
 **Next for Stage 6:**
-- Post scheduling (queue → auto-publish at time)
-- LinkedIn/X analytics pull-back into queue UI (impressions, clicks)
-- WordPress live publish (REST API connector)
-- Webflow live publish (CMS API connector)
-
-
-### Stage 7 — Performance Intelligence *(Gap: Revenue Attribution)*
-
-**Brain-First:** Performance Agent reads decay patterns, prior attribution models, and GEO citation history before scoring.
+- [ ] Post scheduling (queue → auto-publish at time)
+- [ ] LinkedIn/X analytics pull-back into queue UI
+- [ ] WordPress live publish (REST API connector)
+- [ ] Webflow live publish (CMS API connector)
 
 ---
+
+### Stage 7 — Performance Intelligence *(Gap: Revenue Attribution)* 🔲 NOT BUILT
+
+**Brain-First:** Performance Agent reads decay patterns, prior attribution models, and GEO citation history before scoring.
 
 #### What We Measure
 
 **Layer 1: Traditional SEO (GSC)**
-- Ranking velocity post-publish
-- Impressions → CTR → clicks
+- Ranking velocity post-publish, impressions → CTR → clicks
 - Query match to intended GEO topics
 - **Writes to Brain:** Ranking patterns by content type, length, schema
 
 **Layer 2: GEO Citation Tracking** *(unique differentiator)*
 - Is content cited in ChatGPT, Perplexity, Google AI Overviews, Gemini?
-- Which sections quoted verbatim?
-- Which competitor content cited instead?
-- **Writes to Brain:** GEO citation patterns — brief structures, entity density, schema combos that get cited
+- Which sections quoted verbatim? Which competitor cited instead?
+- **Writes to Brain:** GEO citation patterns
 
 **Layer 3: Engagement Signals**
 - Scroll depth, time on page vs. word count ratio
-- Social shares, saves, comments (platform-specific)
-- Video watch time (if video in package)
+- Social shares, saves, comments
 - **Writes to Brain:** Engagement patterns by persona, format, channel, topic
 
 **Layer 4: Revenue Attribution**
@@ -502,43 +464,24 @@ One-click publish, not a social media manager:
 Anonymous (always available):
 → UTM-tagged traffic → GA4 goal completions
 → Content → form fill → conversion event
-→ Pipeline influence (content viewed before deal closed)
+→ Pipeline influence
 
 Identified (CRM connected):
 → Contact touched content → deal progressed
 → Multi-touch attribution across content pieces
-→ LTV correlation — do customers who consumed X content churn less?
-→ Content-to-revenue: brief → persona → $X pipeline
+→ LTV correlation
 ```
 
 **Layer 5: Content Decay Monitoring**
 - Detects ranking/citation/engagement drop before it goes cold
-- Auto-queues refresh recommendation silently (no noise)
-- Full decay report available on request only (pull, not push)
-- **Writes to Brain:** Decay patterns by content type + topic category
-
----
+- Auto-queues refresh recommendation silently
+- **Writes to Brain:** Decay patterns by content type + topic
 
 #### The ROI Dashboard
 
-**View 1: Content Health**
-- Live content ranked by performance score
-- 🟢🟡🔴 decay status
-- "Needs refresh" queue with suggested updates
-
-**View 2: Pattern Library**
-- Top performing hooks, formats, lengths by channel
-- Best converting SME injections
-- GEO brief structures that got cited
-- Persona-to-content match scores
-
-**View 3: Revenue Impact**
-- Pipeline influenced (anonymous)
-- Deals closed where content was touchpoint (CRM)
-- Content ROI per asset (cost to generate vs. revenue attributed)
-- Projected ROI for content in queue
-
----
+**View 1: Content Health** — live content ranked by performance score, 🟢🟡🔴 decay status
+**View 2: Pattern Library** — top performing hooks, formats, lengths by channel
+**View 3: Revenue Impact** — pipeline influenced, deals closed, content ROI per asset
 
 #### Delivery Tiers
 
@@ -547,69 +490,48 @@ Identified (CRM connected):
 | Performance digest | Daily/Weekly | Daily/Weekly | — |
 | Live streaming DB | — | — | ✅ |
 | Medium-confidence patterns | ✅ (default) | ✅ | — |
-| Deep Pattern Analysis (full range) | — | ✅ | — |
-| Pre-cog score (runs silently for all) | Hidden | ✅ Pay-to-view | — |
+| Deep Pattern Analysis | — | ✅ | — |
+| Pre-cog score | Hidden | ✅ Pay-to-view | — |
 | Decay auto-monitoring | ✅ | ✅ | — |
-| Decay reporting | On request | On request | — |
 | Industry Benchmark Reports | — | Opt-in | ✅ |
 
-**Reads from Brain:** All tables
-**Writes to Brain:** Performance scores, decay flags, attribution data, engagement patterns
+---
 
-**Output:** Content ROI Dashboard + Pattern Library → feeds Stage 8
+## Stage 7B — Performance Dashboard Polish ✅ DONE (March 28, 2026)
+
+### What was fixed
+- [x] KPI cards → `shadow-sm` resting elevation, `text-2xl` value, `tabular-nums` on sub text
+- [x] KPI labels → `font-weight: 600`, `letter-spacing: 0.07em`
+- [x] Channel tabs → pill "Soon" badge already correct, active border-bottom state correct
+- [x] Sync button → ghost style (`transparent` bg, `color-primary` on hover)
+- [x] Section headers → `text-xs font-semibold uppercase tracking-widest text-muted`
+- [x] Trend chart empty state → "Sync now" CTA button wired (passes `handleSync` as `onSync` prop)
+- [x] Posts table → zebra striping (`nth-child(even)`), `tabular-nums` on date + numeric columns
+- [x] Brain cards + trend card + table → `shadow-sm` resting elevation
+- [x] Page header → `padding-bottom: space-2` breathing room
 
 ---
 
-## Stage 7B — Performance Dashboard Polish
-**Added:** 2026-03-28  
-**Priority:** High (visible to users)
-
-### What's broken
-The dashboard scaffolding is wired correctly (data fetches, sync, chart rendering) 
-but the UI hasn't been styled properly. It looks like raw functional scaffolding.
-
-### Fix checklist
-- [ ] KPI cards → `bg-surface` cards with `shadow-sm`, value at `text-2xl font-semibold tabular-nums`, label at `text-xs uppercase tracking-wide text-muted`
-- [ ] Channel tabs → pill bar, `bg-primary/10 text-primary` active state, "Soon" → proper `text-xs rounded-full` badge
-- [ ] Page header → proper spacing, Sync as ghost button with refresh icon
-- [ ] Section headers → `text-xs font-semibold uppercase tracking-widest text-muted`
-- [ ] Empty state (trend chart) → centered icon + message + "Sync now" CTA button
-- [ ] Posts table → `tabular-nums`, zebra surface alternation, hover row highlight
-
-### Blocked by
-Nothing — pure CSS/Tailwind work, no logic changes needed.
-
----
-
-### Stage 8 — The Feedback Loop *(Gap: Compounding Intelligence)*
+### Stage 8 — The Feedback Loop *(Gap: Compounding Intelligence)* 🔲 NOT BUILT
 
 **The Pattern Extractor Agent — runs on weekly cadence by default.**
-
----
 
 #### 4 Automated Actions
 
 **1. Pattern Promotion**
 ```
-IF performance_score > threshold
-AND sample_size > medium_confidence_minimum:
+IF performance_score > threshold AND sample_size > medium_confidence_minimum:
   → Extract: hook, format, length, persona, GEO structure, SME style
   → Write to Patterns table: success_rate + confidence_score
-  → Tag: channel, industry, content type
-  → Apply recency weighting (recent wins > old wins)
-  → Full confidence range always in Brain — medium threshold
-     is default surface. Deep Pattern Analysis unlocks full range.
+  → Apply recency weighting
 ```
 
 **2. Mistake Crystallization**
 ```
-IF content underperformed
-OR human edits > threshold
-OR compliance rejection:
+IF content underperformed OR human edits > threshold OR compliance rejection:
   → Write Mistake: type, root cause, agent responsible
   → Generate prevention guardrail
   → Auto-update agent prompt constraints
-  → Flag HIGH severity for human review
 ```
 
 **3. Persona Refinement**
@@ -617,7 +539,6 @@ OR compliance rejection:
 IF engagement deviates from persona assumption:
   → Update vocabulary preferences
   → Adjust pain point weighting
-  → Update objection patterns from conversion data
   → Flag persona drift if deviation > threshold
 ```
 
@@ -629,8 +550,6 @@ IF engagement deviates from persona assumption:
   → Refresh decay queue
 ```
 
----
-
 #### The Pre-Cog Score
 
 Runs **under the hood for all tiers**. Pay-to-view at Pro tier.
@@ -638,33 +557,18 @@ Runs **under the hood for all tiers**. Pay-to-view at Pro tier.
 ```
 BEFORE Stage 6 publishes:
   → Pattern Extractor scores the full content package
-  → Compares against all Brain Patterns
-  → Outputs:
-      - Predicted Ranking Velocity
-      - GEO Citation Probability
-      - Engagement Score
-      - Conversion Likelihood
-  → Standard users: score hidden, content silently improved
-  → Pro users: full Pre-cog dashboard visible
-      "Predicted top 5 ranking within 60 days"
-      "Low GEO citation probability — restructure H2s"
+  → Outputs: Predicted Ranking Velocity, GEO Citation Probability,
+             Engagement Score, Conversion Likelihood
+  → Standard: score hidden, content silently improved
+  → Pro: full Pre-cog dashboard visible
 ```
 
 *Free users feel the platform is better. They just don't know why. That's the upgrade hook.*
 
----
-
 #### Cross-Client Pattern Sharing
 
 **Default: OFF. Explicit opt-in required.**
-
-Value exchange framing:
-> "Share anonymized patterns with our industry benchmark pool
->  and unlock Industry Benchmark Reports for your vertical."
-
-Opt-in = gain, not concession. Enterprise and regulated industries stay off by default.
-
----
+Value exchange: share anonymized patterns → unlock Industry Benchmark Reports for your vertical.
 
 #### The Compounding Effect Over Time
 
@@ -673,14 +577,8 @@ Day 1:    Brain empty. Agents start from brand context only.
 Week 4:   10–15 patterns. Agents prefer proven structures.
 Month 3:  50+ patterns. 20+ guardrails. Human edit rate drops ~30%.
 Month 6:  Personas behavioral. Agents self-correct before human review.
-          ROI dashboard shows content-to-pipeline attribution.
-Month 12: Brain is a proprietary asset.
-          Switching = starting over.
-          Competitor cannot replicate output with same prompt.
-          This is the moat.
+Month 12: Brain is a proprietary asset. Switching = starting over.
 ```
-
----
 
 #### Stage 8 Open Questions (Resolved)
 
@@ -692,164 +590,88 @@ Month 12: Brain is a proprietary asset.
 | Decay monitoring | Auto-silent. Reporting on request only. |
 | Cross-client patterns | Opt-in. Default OFF. Industry Benchmark Reports as value exchange. |
 
-**Reads from Brain:** All tables
-**Writes to Brain:** Updated Patterns, Mistakes, Personas, Context Hub
-
-**Output:** Updated Context Hub + Performance Playbook → loops back to Stage 1
-
----
-
 ---
 
 ## GTM Strategy: The Sandbox Method
 
-**Brand Name:** Forge by Sandbox (forge-bysandbox.tech)
+**Brand Name:** Forge Intelligence (forgeintelligence.ai)
 **Core Promise:** "Your content works harder every time you publish."
 **Primary Target:** Frustrated Directors & Agency Owners tired of "AI slop."
 
 ### Phase 0 — Sandbox GTM (Dogfooding Launch)
 
-**Goal:** Use Forge to launch Forge. Test the entire funnel in a controlled environment, proving the "compounding intelligence" story in public.
+**Goal:** Use Forge to launch Forge.
 
 **The Frictionless Hook:**
 - Input: Just a URL. No forms, no onboarding calls, no uploading PDFs.
-- 7 minutes later: The Context Agent outputs a full Brand Intelligence Profile (Voice, 3 Personas, Competitive Gap Map).
-- CTA: "Generate first content package" ($29 trial or $99/mo standard).
+- 7 minutes later: Full Brand Intelligence Profile (Voice, 3 Personas, Competitive Gap Map)
+- CTA: "Generate first content package" ($29 trial or $99/mo standard)
 
 **The Magic Moment:**
-The user sees their brand understood better in 7 minutes than their last agency understood it in 3 months.
+User sees their brand understood better in 7 minutes than their last agency understood it in 3 months.
 
-**Landing Page Architecture (Generated by Stages 1-3):**
+**Landing Page Architecture:**
 - **Hero:** "Your content works harder every time you publish." / Single field: `Enter URL`
-- **Interrupt:** "You don’t have a volume problem. You have a compounding problem."
-- **3 Pillars:** Starts Smarter (Context Hub), Gets Smarter (Client Brain), Proves Revenue (ROI Dashboard).
+- **Interrupt:** "You don't have a volume problem. You have a compounding problem."
+- **3 Pillars:** Starts Smarter (Context Hub), Gets Smarter (Client Brain), Proves Revenue (ROI Dashboard)
 - **The Moat:** "After 90 days, your Client Brain is your biggest unfair advantage."
-- **GEO Bait:** Structured FAQ defining "Compounding content intelligence" to win AI search citations immediately.
+- **GEO Bait:** Structured FAQ defining "Compounding content intelligence"
 
 ### Sandbox-GTM Integration (The Differentiator)
 
-How Forge connects to the broader Sandbox Group ecosystem:
-- **Event Data = Content Intelligence:** Sandbox-GTM event registration and live experience data feeds directly into the Forge Client Brain.
-- **Why this matters:** What attendees say, do, and engage with at a live event becomes proprietary data that Forge uses to generate the post-event content cadence. 
+- **Event Data = Content Intelligence:** Sandbox-GTM event registration and live experience data feeds directly into the Forge Client Brain
 - **The Moat:** "We turn your live experiences into content intelligence." No standalone AI tool can replicate physical event data ingestion.
 
 ---
 
 ## MVP Build Roadmap
 
-### Phase 1 — Context Intelligence Engine *(Months 1–3)*
+### Phase 1 — Context Intelligence Engine *(Months 1–3)* ✅ COMPLETE
 > **Deliverable:** Brand Intelligence Profile + GEO/E-E-A-T enriched brief in <10 min from a URL
-> **Target:** SMB marketing teams, boutique agencies
-> **Pricing:** $99/mo SMB · $499/mo Agency
 
-**What ships:**
-- [ ] Client Brain: NeonDB/pgvector per-client instance
-- [ ] Brain-First protocol on all agents (read Mistakes → Patterns → Memories before acting)
-- [ ] Agent 1 — Context Agent (Stage 1)
-  - Brand Scraper & Auto-Populator
-  - Tone & Voice Calibration Engine
-  - Audience Persona Builder (manual + HubSpot import)
-  - Competitive Intelligence Snapshot (3–5 competitors)
-  - Knowledge Base Connector (past content, GSC)
-  - Third-Party Voice Crawler (G2, Glassdoor, Reddit, Trustpilot)
-- [x] Agent 2 — GEO Strategist (Stage 2) — ✅ LIVE
-  - [x] Topical Authority Mapper — 12 topics, citation probability scores
-  - [x] GEO Opportunity Scorer — per-platform scoring (ChatGPT/Perplexity/AI Overviews/Gemini), Quick Win detection
-  - [x] Entity & Schema Mapper
-  - [x] Brief Generator
-- [~] Agent 3 — Authenticity Enricher (Stage 3) — 🔄 BUILDING
-  - [x] SME Signal Scraper (Perplexity Sonar)
-  - [x] E-E-A-T Confidence Scorer + Gap Detector
-  - [x] Voice & Persona Injection Mapper
-  - [x] Enriched Brief Assembler
-  - [x] Manual Input Fallback — targeted prompt cards with tooltips
-  - [x] Author Schema Generator
-  - [x] `/authenticity-enricher` workspace UI
-  - SME Voice Repository
-  - E-E-A-T injection layer
-  - Author schema auto-generation
-  - Customer power phrase injection
-- [ ] Publishing Queue stub (Draft → Enriched status only)
-- [ ] JSON export with full Brain metadata
-- [ ] Demo dashboard: "Your Brand Intelligence Profile"
-
-**What does NOT ship in Phase 1:**
-- Generation (Stage 4)
-- Compliance gate (Stage 5)
-- Publishing integrations (Stage 6)
-- Performance tracking (Stage 7)
-- Feedback loop (Stage 8)
-
----
+- [x] Client Brain: NeonDB/pgvector
+- [x] Brain-First protocol on all agents
+- [x] Agent 1 — Context Agent (Stage 1) LIVE
+- [x] Agent 2 — GEO Strategist (Stage 2) LIVE
+- [x] Agent 3 — Authenticity Enricher (Stage 3) LIVE
+- [x] Stage 4 — Content Generator LIVE
+- [x] Stage 5 — Compliance Gate LIVE
+- [x] Stage 6 — Publishing Queue + LinkedIn + Public Article LIVE
+- [x] Stage 7B — Performance Dashboard polish DONE
+- [ ] Admin dashboard (agent activity log)
+- [ ] Brand brain pre-seeding script
+- [ ] Server-side UUID auto-generation
 
 ### Phase 2 — Generation + Governance *(Months 4–6)*
 > **Deliverable:** Full multimodal content package with human approval gate
-> **Target:** Growth-stage marketing teams, agencies
 > **Pricing:** $299/mo Pro · $799/mo Agency Pro
 
-**What ships:**
-- [ ] Stage 4 — Multimodal Generator
-  - Long-form article (GEO-structured, E-E-A-T enriched)
-  - Social variants (LinkedIn, X, Instagram, YouTube)
-  - Email sequence
-  - Video script + B-roll direction
-  - Podcast outline + graphic direction prompts
-  - 🟢🟡🔴 confidence scoring per section
-- [ ] Stage 5 — Compliance & Refinement Gate
-  - Mode 1: Auto-Ship
-  - Mode 2: Approve-to-Ship (default)
-  - Mode 3: Full Review
-  - Reviewer role hierarchy (Author → Editor → Approver)
-  - Mistakes loop: human edits → Brain guardrails
-- [ ] Stage 6 — Publishing (Phase 2 scope)
-  - UTM Intelligence Engine
-  - Publishing Queue (full status flow)
-  - Content Version Control
-  - WordPress + Webflow + HubSpot (Track A: campaign-level) integrations
-  - LinkedIn + X one-click OAuth publish
-  - Smart export: JSON (primary), Markdown, HTML, PDF
+- [ ] Post scheduling (queue → auto-publish at set time)
+- [ ] LinkedIn/X analytics pull-back into queue UI
+- [ ] WordPress + Webflow + HubSpot Track A integrations
 - [ ] Pre-cog score running silently (hidden, Standard tier)
 - [ ] White-label architecture: data model supports it, UI not yet built
 
----
-
 ### Phase 3 — Intelligence Loop *(Months 7–12)*
 > **Deliverable:** Closed-loop compounding content intelligence system
-> **Target:** Enterprise marketing teams, mid-market agencies
 > **Pricing:** $599/mo Enterprise · Custom agency
 
-**What ships:**
-- [ ] Stage 7 — Performance Intelligence
-  - GSC integration (ranking velocity, CTR, query match)
-  - GEO citation tracking (ChatGPT, Perplexity, AI Overviews, Gemini)
-  - Engagement layer (scroll depth, time on page, social signals)
-  - Revenue attribution Track A (anonymous UTM → GA4 → pipeline)
-  - Decay monitoring (auto-silent, reporting on request)
-  - ROI Dashboard: Content Health + Pattern Library + Revenue Impact
-- [ ] Stage 8 — Pattern Extractor Agent
-  - Pattern Promotion (medium confidence default)
-  - Mistake Crystallization + auto-guardrail generation
-  - Persona Refinement from behavioral data
-  - Weekly Context Hub auto-refresh
+- [ ] Stage 7 — Performance Intelligence (GSC, GEO citation tracking, engagement, decay, ROI dashboard)
+- [ ] Stage 8 — Pattern Extractor Agent (weekly cadence)
 - [ ] Pre-cog score dashboard (Pro pay-to-view unlock)
-- [ ] Daily/weekly digest delivery
-- [ ] Revenue attribution Track B: HubSpot email/contact (CRM connected)
+- [ ] Revenue attribution Track B: HubSpot email/contact
 - [ ] Deep Pattern Analysis add-on
-- [ ] Live streaming DB add-on
-
----
 
 ### Phase 4 — Scale & Expansion *(Year 2)*
-> **Target:** Enterprise, regulated industries, agency networks
 
-**What ships:**
-- [ ] White-label agency layer (UI + multi-client dashboard)
-- [ ] External client approval flow (Agency → Client portal)
-- [ ] Reader-level personalization via CDP integration
+- [ ] White-label agency layer
+- [ ] External client approval portal
+- [ ] Reader-level personalization via CDP
 - [ ] Native video + audio generation
-- [ ] Multi-brand kit management
-- [ ] Industry Benchmark Reports (opt-in cross-client, default OFF)
-- [ ] Marketo / Klaviyo / Mailchimp email campaign integrati---
+- [ ] Industry Benchmark Reports (opt-in, default OFF)
+- [ ] EU AI Act compliance layer
+
+---
 
 ## Tech Stack & Implementation
 
@@ -857,42 +679,36 @@ How Forge connects to the broader Sandbox Group ecosystem:
 
 | Agent/Task | Model | Reasoning |
 |------------|-------|-----------|
-| Context Agent (Stage 1) | Claude Sonnet 4.6 | Reasoning/planning: brand scraping, pattern extraction, persona structuring |
+| Context Agent (Stage 1) | Claude Sonnet 4.6 | Reasoning/planning: brand scraping, pattern extraction |
 | GEO Strategist (Stage 2) | Claude Sonnet 4.6 | Multi-step reasoning: competitive → structured brief |
-| Authenticity Enricher (Stage 3) | Gemini 2.5 Pro | Writing-adjacent: voice matching, natural E-E-A-T injections |
-| Multimodal Generator (Stage 4) | Gemini 2.5 Pro | Publishable copy generation (your proven experience) |
+| Authenticity Enricher (Stage 3) | Gemini 2.5 Pro | Voice matching, natural E-E-A-T injections |
+| Multimodal Generator (Stage 4) | Gemini 2.5 Pro | Publishable copy generation |
 | Compliance Agent (Stage 5) | Claude Sonnet 4.6 | Structured rule checking, fast + precise |
-| Pattern Extractor (Stage 8) | Claude Opus 4.6 | Complex reasoning: performance analysis, guardrail generation |
+| Pattern Extractor (Stage 8) | Claude Opus 4.6 | Complex reasoning: performance analysis, guardrail gen |
 | Pre-cog Scorer | Claude Opus 4.6 | Probabilistic reasoning across Brain data |
-| GTM Strategy layer | GPT 5.2 | Branding, tone, positioning (your workflow) |
+| GTM Strategy layer | GPT 5.2 | Branding, tone, positioning |
 
-**Routing Logic:** Task-matched, not one-model-fits-all. Cost + capability optimized.
-
----
+**SDK:** Anthropic SDK pinned to `^0.39.0`. Do NOT upgrade without testing.
 
 ### Media Generation
 
 | Task | Tool | Notes |
 |------|------|-------|
-| Blog/article hero images | Black Forest Labs Flux | Primary — replaces Stability |
-| Social graphics | Flux + brand kit overlay | Generated → brand colors/fonts applied |
-| Video scripts | Gemini 2.5 Pro → ElevenLabs narration | Script generation → audio production |
-| Audio/podcast | Gemini → ElevenLabs | Outline → voiced output |
+| Blog/article hero images | Black Forest Labs Flux | Primary |
+| Social graphics | Flux + brand kit overlay | — |
+| Video scripts | Gemini 2.5 Pro → ElevenLabs | Script → audio |
 
 **Stability AI:** Retired. Redundant with Flux.
-
----
 
 ### Infrastructure
 
 | Layer | Tool | Role |
-|-------|------|-----|
+|-------|------|------|
 | Client Brain | NeonDB + pgvector | Per-client DB, embeddings, RLS isolation |
 | Embeddings | VoyagerAI | Brain memory retrieval |
-| Hosting | Render | Agent API deployment |
-| Domain | Namecheap | — |
+| Hosting | Render | Agent API — auto-deploy from main |
 | Email | Resend | Notifications, digests, alerts |
-| Scheduled Jobs | EasyCron | Pattern Extractor, Brain refresh, decay monitoring, digests |
+| Scheduled Jobs | EasyCron | Pattern Extractor, Brain refresh, decay monitoring |
 | CRM | HubSpot | Track A attribution (Phase 2) |
 
 **EasyCron Job Schedule:**
@@ -903,29 +719,6 @@ Daily: Decay monitoring → silent refresh queue
 Daily/Weekly: Performance digest → compile + Resend
 ```
 
----
-
-### Agent Orchestration: Option B — Claude Native + Custom
-
-**Why Option B:**
-- Claude Sonnet/Opus doing heavy lifting → use Anthropic's native tool use
-- No framework debt (LangChain/LangGraph abstraction overhead)
-- Linear Phase 1 handoffs don't need complex coordination
-- Maximum control over Brain reads/writes
-- Scales to multi-agent without framework surprises
-
-**Phase 1 Flow (3 agents, linear):**
-```
-Context Agent → outputs Context Session → 
-GEO Strategist reads session → outputs GEO Brief → 
-Authenticity Enricher reads brief → outputs Enriched Brief
-```
-Each agent follows Brain-First protocol before acting.
-
-**Phase 3+ (full 8 agents):** Custom orchestration layer coordinates Brain access, but still Claude-native tool calls.
-
----
-
 ### Integration Priority Queue
 
 | Integration | Phase | Type | Notes |
@@ -934,26 +727,9 @@ Each agent follows Brain-First protocol before acting.
 | HubSpot Track A | 2 | Deep | Campaign-level attribution |
 | WordPress | 2 | Deep | REST API → Gutenberg |
 | Webflow | 2 | Deep | CMS API |
-| LinkedIn/X OAuth | 2 | Lightweight | One-click publish |
+| LinkedIn/X OAuth | 2 | Lightweight | One-click publish (LinkedIn ✅ LIVE) |
 | GA4 | 3 | Native | Anonymous attribution |
 | HubSpot Track B | 3 | Deep | Email/contact attribution |
-| Mailchimp/Klaviyo | 3 | Deep | Email campaigns |
-
----
-
-### Cost Model
-
-| Component | Per Client | Notes |
-|-----------|------------|-------|
-| NeonDB/pgvector | ~$20/mo | Scales with usage |
-| LLM calls | $0.50–$2/brief | Model routing keeps lean |
-| EasyCron | Negligible | — |
-| Resend | $0.10/1k emails | Digests + notifications |
-| **Total COGS** | ~$25/mo | $99/mo SMB → 75% margin |
-
-ons (Track B)
-- [ ] EU AI Act compliance layer (GDPR audit logs, consent management)
-- [ ] Predictive persona drift alerting
 
 ---
 
@@ -968,7 +744,6 @@ ons (Track B)
 | Enterprise | 3 | $599/mo | Full intelligence loop + ROI dashboard |
 | Add-ons | 3+ | TBD | Live DB, Deep Patterns, Benchmarks |
 | White-label | 4 | Custom | Agency network licensing |
-
 
 ---
 
@@ -989,13 +764,8 @@ ons (Track B)
 - **LinkedIn post:** https://www.linkedin.com/feed/update/urn:li:share:7443723401157829...
 - **Brand:** Sandbox GTM (ac6b7ff1-5e6c-4fe6-a3bb-441c2f969779)
 
-### Bugs found + fixed same session:
-- `generated_content` table not auto-created for new brands → fixed (UUID→TEXT + table pre-create)
-- `require('crypto')` in ES module context → fixed (top-level import)
-- LinkedIn OAuth token saved to `brand_profile_id = 'system'` instead of real brand → fixed (state param carries brandId)
-- LinkedIn article URL pointed to dead `/articles/{slug}` route → fixed (public article viewer built at `/articles/:brandSlug/:articleSlug`)
-- Publishing Queue missing per-channel live status + republish → fixed (Sync Status + Republish buttons)
-- Connected channels in Integrations page didn't show Connected state or expand → fixed (localStorage brand persistence + OAuth expand)
+### Stage 7B Polish — March 28, 2026:
+- Performance Dashboard fully styled per design system spec
+- Commits: `167e085` (CSS) + `7380d8a` (TSX)
 
-### Pipeline status: ✅ Stage 1–6 LIVE
-
+### Pipeline status: ✅ Stage 1–6 LIVE | Stage 7B ✅ | Stage 7–8 🔲 Next
