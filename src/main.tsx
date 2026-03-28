@@ -11,6 +11,7 @@ import CampaignGeneratorPage from './pages/CampaignGeneratorPage';
 import ComplianceGatePage from './pages/ComplianceGatePage';
 import IntegrationsPage from './pages/IntegrationsPage';
 import PublishingQueuePage from './pages/PublishingQueuePage';
+import PublicArticlePage from './pages/PublicArticlePage';
 import './index.css';
 
 createRoot(document.getElementById('root')!).render(
@@ -33,6 +34,9 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/app/compliance-gate" element={<AppProvider><ComplianceGatePage /></AppProvider>} />
         <Route path="/app/integrations" element={<AppProvider><IntegrationsPage /></AppProvider>} />
         <Route path="/app/publishing-queue" element={<AppProvider><PublishingQueuePage /></AppProvider>} />
+
+        {/* Public article viewer — no AppProvider needed */}
+        <Route path="/articles/:brandSlug/:articleSlug" element={<PublicArticlePage />} />
 
         {/* Legacy redirects — keep old paths working during transition */}
         <Route path="/context-hub/*" element={<Navigate to="/app/context-hub" replace />} />
