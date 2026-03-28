@@ -562,6 +562,141 @@ Output only the prompt.` }]
   }
 });
 
+
+// ── Auto-generate hero image if missing (called by article page on load) ──────
+app.post('/api/articles/:brandSlug/:articleSlug/ensure-image', async (req, res) => {
+  const { brandSlug, articleSlug } = req.params;
+  try {
+    const brandsRes = await pool.query('SELECT id, brand_url, profile_data FROM brand_profiles');
+    let matchedBrand = null;
+    for (const b of brandsRes.rows) {
+      const slug = (b.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+      const nameSlug = ((b.profile_data?.voice_profile?.brand_name) || '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+      if (slug.startsWith(brandSlug) || nameSlug.startsWith(brandSlug) || brandSlug.startsWith(slug.split('-')[0])) {
+        matchedBrand = b; break;
+      }
+    }
+    if (!matchedBrand) return res.status(404).json({ error: 'Brand not found' });
+
+    const safeId = matchedBrand.id.replace(/-/g, '_');
+    const tableName = `generated_content_${safeId}`;
+    const articlesRes = await pool.query(`SELECT * FROM ${tableName} ORDER BY created_at DESC`);
+    let article = null;
+    for (const a of articlesRes.rows) {
+      const tSlug = (a.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+      if (tSlug === articleSlug || articleSlug.startsWith(tSlug.slice(0, 40)) || tSlug.startsWith(articleSlug.slice(0, 40))) {
+        article = a; break;
+      }
+    }
+    if (!article) return res.status(404).json({ error: 'Article not found' });
+
+    // Already has image — just return it
+    if (article.hero_image_url) return res.json({ imageUrl: article.hero_image_url, generated: false });
+
+    // Generate image via fal.ai
+    const aj = article.article_json || {};
+    const sections = aj.sections || [];
+    const firstBody = (sections[0]?.body || sections[0]?.content || '').slice(0, 300);
+    const imgPromptRes = await anthropic.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 150,
+      messages: [{ role: 'user', content: `Write a Flux image generation prompt for a B2B editorial hero image for this article: "${article.title}". Context: ${firstBody}. Output only the prompt, no quotes, no preamble. Professional photography style, 16:9, no text in image.` }]
+    });
+    const fluxPrompt = imgPromptRes.content[0]?.type === 'text' ? imgPromptRes.content[0].text.trim() : `Professional B2B editorial hero image for article about ${article.title}`;
+
+    const falRes = await fetch('https://fal.run/fal-ai/flux/schnell', {
+      method: 'POST',
+      headers: { 'Authorization': `Key ${process.env.FAL_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: fluxPrompt, image_size: 'landscape_16_9', num_inference_steps: 4, num_images: 1 })
+    });
+    if (!falRes.ok) throw new Error(`fal.ai ${falRes.status}: ${await falRes.text()}`);
+    const falData = await falRes.json();
+    const imageUrl = falData?.images?.[0]?.url;
+    if (!imageUrl) throw new Error('No image URL returned');
+
+    await pool.query(`UPDATE ${tableName} SET hero_image_url = $1, hero_image_prompt = $2, updated_at = NOW() WHERE id = $3`,
+      [imageUrl, fluxPrompt, article.id]);
+
+    res.json({ imageUrl, generated: true });
+  } catch(e) {
+    console.error('[ENSURE-IMAGE]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
+// ── Article page — server-side OG meta injection (must be before express.static) ──
+app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
+  const { brandSlug, articleSlug } = req.params;
+  try {
+    const brandsRes = await pool.query('SELECT id, brand_url, profile_data FROM brand_profiles');
+    let matchedBrand = null;
+    for (const b of brandsRes.rows) {
+      const slug = (b.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+      const nameSlug = ((b.profile_data?.voice_profile?.brand_name) || '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+      if (slug.startsWith(brandSlug) || nameSlug.startsWith(brandSlug) || brandSlug.startsWith(slug.split('-')[0])) {
+        matchedBrand = b; break;
+      }
+    }
+
+    if (!matchedBrand) return res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+
+    const safeId = matchedBrand.id.replace(/-/g, '_');
+    const articlesRes = await pool.query(`SELECT * FROM generated_content_${safeId} ORDER BY created_at DESC`);
+    let article = null;
+    for (const a of articlesRes.rows) {
+      const tSlug = (a.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+      if (tSlug === articleSlug || articleSlug.startsWith(tSlug.slice(0, 40)) || tSlug.startsWith(articleSlug.slice(0, 40))) {
+        article = a; break;
+      }
+    }
+
+    if (!article) return res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+
+    const aj = article.article_json || {};
+    const title = (article.title || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const description = (aj.metaDescription || (aj.sections?.[0]?.body || aj.sections?.[0]?.content || '').slice(0, 200)).replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const imageUrl = article.hero_image_url || '';
+    const canonicalUrl = `https://forgeintelligence.ai/articles/${brandSlug}/${articleSlug}`;
+    const brandName = (matchedBrand.profile_data?.voice_profile?.brand_name || brandSlug).replace(/"/g, '&quot;');
+    const authorName = (matchedBrand.profile_data?.voice_profile?.author_name || brandName).replace(/"/g, '&quot;');
+    const wordCount = (aj.sections || []).reduce((acc, s) => acc + ((s.body || s.content || '').split(' ').length), 0);
+    const readMinutes = Math.max(1, Math.round(wordCount / 200));
+
+    const html = await fs.readFile(path.join(__dirname, 'dist', 'index.html'), 'utf8');
+    const ogTags = `
+  <title>${title} | ${brandName}</title>
+  <meta name="description" content="${description}" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="${brandName}" />
+  <meta property="og:title" content="${title}" />
+  <meta property="og:description" content="${description}" />
+  <meta property="og:url" content="${canonicalUrl}" />
+  ${imageUrl ? `<meta property="og:image" content="${imageUrl}" />
+  <meta property="og:image:secure_url" content="${imageUrl}" />
+  <meta property="og:image:width" content="1280" />
+  <meta property="og:image:height" content="720" />
+  <meta property="og:image:type" content="image/jpeg" />` : ''}
+  <meta property="article:author" content="${authorName}" />
+  <meta property="article:published_time" content="${new Date().toISOString()}" />
+  <meta name="author" content="${authorName}" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${title}" />
+  <meta name="twitter:description" content="${description}" />
+  ${imageUrl ? `<meta name="twitter:image" content="${imageUrl}" />` : ''}`;
+
+    const injected = html
+      .replace(/<title>[^<]*<\/title>/, '')
+      .replace('<head>', '<head>' + ogTags);
+
+    res.set('Cache-Control', 'no-cache');
+    return res.send(injected);
+  } catch(e) {
+    console.error('[OG-META]', e.message);
+    return res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  }
+});
+
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // ── Content fetch for preview ─────────────────────────────────────────────────
@@ -2942,81 +3077,7 @@ app.listen(PORT, '0.0.0.0', function () {
   console.log('Forge Intelligence running on port ' + PORT);
 });
 
-app.get('*', async function (req, res) {
-  // For article routes, inject OG meta tags for LinkedIn/social crawlers
-  if (req.path.startsWith('/articles/')) {
-    try {
-      const parts = req.path.replace('/articles/', '').split('/');
-      const brandSlug = parts[0];
-      const articleSlug = parts[1];
-
-      if (brandSlug && articleSlug) {
-        // Find brand
-        const brandsRes = await pool.query('SELECT id, brand_url, profile_data FROM brand_profiles');
-        let matchedBrand = null;
-        for (const b of brandsRes.rows) {
-          const slug = (b.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
-          const nameSlug = ((b.profile_data?.voice_profile?.brand_name) || '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
-          if (slug.startsWith(brandSlug) || nameSlug.startsWith(brandSlug) || brandSlug.includes(slug.split('-')[0])) {
-            matchedBrand = b; break;
-          }
-        }
-
-        if (matchedBrand) {
-          const safeId = matchedBrand.id.replace(/-/g, '_');
-          const articlesRes = await pool.query(`SELECT * FROM generated_content_${safeId} ORDER BY created_at DESC`);
-          let article = null;
-          for (const a of articlesRes.rows) {
-            const tSlug = (a.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 80);
-            if (tSlug === articleSlug || tSlug.startsWith(articleSlug) || articleSlug.startsWith(tSlug.slice(0, 30))) {
-              article = a; break;
-            }
-          }
-
-          if (article) {
-            const aj = article.article_json || {};
-            const description = (aj.metaDescription || (aj.sections?.[0]?.body || aj.sections?.[0]?.content || '').slice(0, 200)).replace(/"/g, '&quot;');
-            const imageUrl = article.hero_image_url || '';
-            const title = (article.title || '').replace(/"/g, '&quot;');
-            const canonicalUrl = `https://forgeintelligence.ai/articles/${brandSlug}/${articleSlug}`;
-            const wordCount = (aj.sections || []).reduce((acc, s) => acc + ((s.body || s.content || '').split(' ').length), 0);
-            const readMinutes = Math.max(1, Math.round(wordCount / 200));
-
-            const html = await fs.readFile(path.join(__dirname, 'dist', 'index.html'), 'utf8');
-            const brandName = matchedBrand.profile_data?.voice_profile?.brand_name || brandSlug;
-            const authorName = matchedBrand.profile_data?.voice_profile?.author_name || brandName;
-            const ogMeta = `
-  <title>${title} | ${brandName}</title>
-  <meta name="description" content="${description}" />
-  <meta property="og:type" content="article" />
-  <meta property="og:site_name" content="${brandName}" />
-  <meta property="og:title" content="${title}" />
-  <meta property="og:description" content="${description}" />
-  <meta property="og:url" content="${canonicalUrl}" />
-  ${imageUrl ? `<meta property="og:image" content="${imageUrl}" />
-  <meta property="og:image:secure_url" content="${imageUrl}" />
-  <meta property="og:image:width" content="1280" />
-  <meta property="og:image:height" content="720" />
-  <meta property="og:image:type" content="image/jpeg" />` : ''}
-  <meta property="article:author" content="${authorName}" />
-  <meta property="article:published_time" content="${new Date().toISOString()}" />
-  <meta name="author" content="${authorName}" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="${title}" />
-  <meta name="twitter:description" content="${description}" />
-  ${imageUrl ? `<meta name="twitter:image" content="${imageUrl}" />` : ''}`;
-            // Replace existing <title> and inject all OG tags after <head>
-            const injected = html
-              .replace(/<title>[^<]*<\/title>/, '')
-              .replace('<head>', '<head>' + ogMeta);
-            return res.send(injected);
-          }
-        }
-      }
-    } catch(e) {
-      console.error('[OG-META]', e.message);
-    }
-  }
-
+app.get('*', function (req, res) {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
+
