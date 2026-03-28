@@ -39,6 +39,7 @@ interface ArticleData {
   brandName?: string;
   brandUrl?: string;
   createdAt?: string;
+  metaDescription?: string;
 }
 
 export default function PublicArticlePage() {
@@ -64,7 +65,7 @@ export default function PublicArticlePage() {
   if (notFound || !article) return (
     <div className="pa-notfound">
       <div className="pa-notfound-inner">
-        <div className="pa-notfound-icon">📄</div>
+        <div className="pa-notfound-icon">⚡</div>
         <h1>Article not found</h1>
         <p>This article may have been moved or unpublished.</p>
         <a href="https://forgeintelligence.ai" className="pa-home-link">← Back to Forge Intelligence</a>
@@ -79,55 +80,95 @@ export default function PublicArticlePage() {
     }, 0) / 200
   ));
 
+  const publishDate = article.createdAt
+    ? new Date(article.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    : null;
+
+  const sections = article.sections || [];
+  const firstSection = sections[0];
+  const restSections = sections.slice(1);
+
   return (
     <div className="pa-page">
-      <header className="pa-header">
-        <a href="https://forgeintelligence.ai" className="pa-brand-link">
-          <span className="pa-brand-logo">⚡</span>
-          <span className="pa-brand-name">Forge Intelligence</span>
-        </a>
-      </header>
 
-      <main className="pa-main">
-        <article className="pa-article">
+      {/* ── Top nav bar ─── */}
+      <nav className="pa-nav">
+        <a href="https://forgeintelligence.ai" className="pa-nav-brand">
+          <span className="pa-nav-logo">⚡</span>
+          <span className="pa-nav-name">Forge Intelligence</span>
+        </a>
+        {article.category && <span className="pa-nav-category">{article.category}</span>}
+      </nav>
+
+      {/* ── Hero ─── */}
+      {article.heroImageUrl ? (
+        <div className="pa-hero-wrap">
+          <img src={article.heroImageUrl} alt={article.title} className="pa-hero-img" />
+          <div className="pa-hero-overlay" />
+          <div className="pa-hero-content">
+            {article.category && <div className="pa-eyebrow">{article.category}</div>}
+            <h1 className="pa-title pa-title-over-hero">{article.title}</h1>
+            <div className="pa-meta">
+              {article.brandName && <span className="pa-author">{article.brandName}</span>}
+              <span className="pa-dot">·</span>
+              <span className="pa-read-time">{readTime} min read</span>
+              {publishDate && <><span className="pa-dot">·</span><span className="pa-date">{publishDate}</span></>}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="pa-hero-text-only">
           {article.category && <div className="pa-eyebrow">{article.category}</div>}
           <h1 className="pa-title">{article.title}</h1>
-
           <div className="pa-meta">
             {article.brandName && <span className="pa-author">{article.brandName}</span>}
             <span className="pa-dot">·</span>
             <span className="pa-read-time">{readTime} min read</span>
-            {article.createdAt && (
-              <>
-                <span className="pa-dot">·</span>
-                <span className="pa-date">{new Date(article.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
-              </>
-            )}
+            {publishDate && <><span className="pa-dot">·</span><span className="pa-date">{publishDate}</span></>}
           </div>
+        </div>
+      )}
 
-          {article.heroImageUrl && (
-            <div className="pa-hero">
-              <img src={article.heroImageUrl} alt={article.title} />
+      {/* ── Article body ─── */}
+      <main className="pa-main">
+        <article className="pa-article">
+
+          {article.metaDescription && (
+            <p className="pa-lede">{article.metaDescription}</p>
+          )}
+
+          {/* First section body as lead — larger text */}
+          {firstSection && (
+            <div className="pa-section pa-section-lead">
+              {firstSection.heading && <h2 className="pa-section-heading">{firstSection.heading}</h2>}
+              <div className="pa-section-body pa-lead-body">
+                {renderBody((firstSection as any).body || firstSection.content || '')}
+              </div>
             </div>
           )}
 
-          <div className="pa-body">
-            {(article.sections || []).map((section, i) => (
-              <section key={i} className="pa-section">
-                {section.heading && <h2 className="pa-section-heading">{section.heading}</h2>}
-                <div className="pa-section-body">
-                  {renderBody((section as any).body || (section as any).content || '')}
-                </div>
-              </section>
-            ))}
-          </div>
+          {restSections.map((section, i) => (
+            <section key={i} className="pa-section">
+              {section.heading && <h2 className="pa-section-heading">{section.heading}</h2>}
+              <div className="pa-section-body">
+                {renderBody((section as any).body || section.content || '')}
+              </div>
+            </section>
+          ))}
 
           <footer className="pa-footer">
-            <div className="pa-footer-brand">
-              <span>Created with</span>
-              <a href="https://forgeintelligence.ai" className="pa-forge-link">⚡ Forge Intelligence</a>
+            <div className="pa-footer-divider" />
+            <div className="pa-footer-row">
+              <div className="pa-footer-meta">
+                {article.brandName && <span className="pa-footer-brand-name">{article.brandName}</span>}
+                <span className="pa-footer-powered">
+                  Published with <a href="https://forgeintelligence.ai" className="pa-forge-link">⚡ Forge Intelligence</a>
+                </span>
+              </div>
+              <a href="https://forgeintelligence.ai" className="pa-back-link">← More articles</a>
             </div>
           </footer>
+
         </article>
       </main>
     </div>
