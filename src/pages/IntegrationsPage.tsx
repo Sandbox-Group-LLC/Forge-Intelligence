@@ -212,7 +212,7 @@ export default function IntegrationsPage() {
   const handleSave = async (channelId: ChannelId) => {
     if (channelId === 'linkedin') {
       try {
-        const res = await fetch('/api/linkedin/auth');
+        const res = await fetch(`/api/linkedin/auth?brandProfileId=${selectedBrand}`);
         const { authUrl } = await res.json();
         window.location.href = authUrl;
       } catch {
@@ -355,7 +355,7 @@ export default function IntegrationsPage() {
                           onClick={async () => {
                             if (ch.id === 'linkedin') {
                               try {
-                                const res = await fetch('/api/linkedin/auth');
+                                const res = await fetch(`/api/linkedin/auth?brandProfileId=${selectedBrand}`);
                                 const { authUrl } = await res.json();
                                 window.location.href = authUrl;
                               } catch {
@@ -415,7 +415,7 @@ export default function IntegrationsPage() {
                           className="int-reauth-btn"
                           onClick={async () => {
                             try {
-                              const res = await fetch('/api/linkedin/auth');
+                              const res = await fetch(`/api/linkedin/auth?brandProfileId=${selectedBrand}`);
                               const { authUrl } = await res.json();
                               window.location.href = authUrl;
                             } catch {
