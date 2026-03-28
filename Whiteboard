@@ -922,3 +922,33 @@ ons (Track B)
 | Add-ons | 3+ | TBD | Live DB, Deep Patterns, Benchmarks |
 | White-label | 4 | Custom | Agency network licensing |
 
+
+---
+
+## 🏁 Production Milestone — March 28, 2026
+
+**First full end-to-end pipeline run completed in production.**
+
+### What fired:
+- Stage 1: Brain profile created (Sandbox GTM)
+- Stage 2: GEO Brief generated
+- Stage 3: Enriched Brief produced
+- Stage 4: Content Generator ran (97s, passed)
+- Stage 5: Compliance Gate passed
+- Stage 6: Published to LinkedIn + Live Article URL
+
+### Live outputs:
+- **Article:** https://forgeintelligence.ai/articles/sandbox-gtm-com/first-sales-hire-playbook-when-and-how-technical-founders-sh
+- **LinkedIn post:** https://www.linkedin.com/feed/update/urn:li:share:7443723401157829...
+- **Brand:** Sandbox GTM (ac6b7ff1-5e6c-4fe6-a3bb-441c2f969779)
+
+### Bugs found + fixed same session:
+- `generated_content` table not auto-created for new brands → fixed (UUID→TEXT + table pre-create)
+- `require('crypto')` in ES module context → fixed (top-level import)
+- LinkedIn OAuth token saved to `brand_profile_id = 'system'` instead of real brand → fixed (state param carries brandId)
+- LinkedIn article URL pointed to dead `/articles/{slug}` route → fixed (public article viewer built at `/articles/:brandSlug/:articleSlug`)
+- Publishing Queue missing per-channel live status + republish → fixed (Sync Status + Republish buttons)
+- Connected channels in Integrations page didn't show Connected state or expand → fixed (localStorage brand persistence + OAuth expand)
+
+### Pipeline status: ✅ Stage 1–6 LIVE
+
