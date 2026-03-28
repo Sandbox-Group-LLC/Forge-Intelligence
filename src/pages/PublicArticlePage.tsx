@@ -83,7 +83,27 @@ export default function PublicArticlePage() {
             {(article.sections || []).map((section, i) => (
               <section key={i} className="pa-section">
                 {section.heading && <h2 className="pa-section-heading">{section.heading}</h2>}
-                <p className="pa-section-body">{(section as any).body || (section as any).content || ''}</p>
+                <div className="pa-section-body">{
+                  ((section as any).body || (section as any).content || '')
+                    .replace(/\[NEEDS CITATION:[^\]]*\]/gi, '')
+                    .replace(/\[CITATION:[^\]]*\]/gi, '')
+                    .split(/
+
++/)
+                    .map((para: string, pi: number) => {
+                      const parts: React.ReactNode[] = [];
+                      const rx = /\*\*(.+?)\*\*|\*(.+?)\*/g;
+                      let last = 0, m: RegExpExecArray | null;
+                      while ((m = rx.exec(para)) !== null) {
+                        if (m.index > last) parts.push(para.slice(last, m.index));
+                        if (m[1]) parts.push(<strong key={m.index}>{m[1]}</strong>);
+                        else if (m[2]) parts.push(<em key={m.index}>{m[2]}</em>);
+                        last = m.index + m[0].length;
+                      }
+                      if (last < para.length) parts.push(para.slice(last));
+                      return <p key={pi} style={{marginBottom:'1rem'}}>{parts}</p>;
+                    })
+                }</div>
               </section>
             ))}
           </div>
