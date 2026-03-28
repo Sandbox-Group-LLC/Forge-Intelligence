@@ -560,6 +560,27 @@ Identified (CRM connected):
 
 ---
 
+## Stage 7B — Performance Dashboard Polish
+**Added:** 2026-03-28  
+**Priority:** High (visible to users)
+
+### What's broken
+The dashboard scaffolding is wired correctly (data fetches, sync, chart rendering) 
+but the UI hasn't been styled properly. It looks like raw functional scaffolding.
+
+### Fix checklist
+- [ ] KPI cards → `bg-surface` cards with `shadow-sm`, value at `text-2xl font-semibold tabular-nums`, label at `text-xs uppercase tracking-wide text-muted`
+- [ ] Channel tabs → pill bar, `bg-primary/10 text-primary` active state, "Soon" → proper `text-xs rounded-full` badge
+- [ ] Page header → proper spacing, Sync as ghost button with refresh icon
+- [ ] Section headers → `text-xs font-semibold uppercase tracking-widest text-muted`
+- [ ] Empty state (trend chart) → centered icon + message + "Sync now" CTA button
+- [ ] Posts table → `tabular-nums`, zebra surface alternation, hover row highlight
+
+### Blocked by
+Nothing — pure CSS/Tailwind work, no logic changes needed.
+
+---
+
 ### Stage 8 — The Feedback Loop *(Gap: Compounding Intelligence)*
 
 **The Pattern Extractor Agent — runs on weekly cadence by default.**
