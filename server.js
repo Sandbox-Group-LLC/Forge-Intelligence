@@ -2665,7 +2665,7 @@ app.post('/api/publishing/publish', async (req, res) => {
           const articleJson = article.article_json || {};
           const sections = articleJson.sections || [];
           const htmlContent = sections.map(s =>
-            `<h2>${s.heading}</h2><p>${s.content}</p>`
+            `${s.heading ? `<h2>${s.heading}</h2>` : ''}<p>${s.body || s.content || ''}</p>`
           ).join('\n');
 
           const authHeader = 'Basic ' + Buffer.from(`${creds.username}:${creds.appPassword}`).toString('base64');
@@ -2694,9 +2694,9 @@ app.post('/api/publishing/publish', async (req, res) => {
           const articleJson = article.article_json || {};
           const sections = articleJson.sections || [];
           const bodyHtml = sections.map(s =>
-            `<h2>${s.heading}</h2><p>${s.content}</p>`
+            `${s.heading ? `<h2>${s.heading}</h2>` : ''}<p>${s.body || s.content || ''}</p>`
           ).join('\n');
-          const excerpt = sections[0]?.content?.slice(0, 160) || '';
+          const excerpt = (sections[0]?.body || sections[0]?.content || '').slice(0, 160);
           const slug = (article.title || 'article').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 60);
 
           const wfRes = await fetch(`https://api.webflow.com/v2/collections/${collectionId}/items`, {
@@ -2738,7 +2738,8 @@ app.post('/api/publishing/publish', async (req, res) => {
           } else {
             const articleJson = article.article_json || {};
             const sections = articleJson.sections || [];
-            const excerpt = (sections[0]?.content || article.title || '').slice(0, 600);
+            const postCopyOverride = (req.body.postCopy || {})[channel];
+            const excerpt = (postCopyOverride || sections[0]?.body || sections[0]?.content || article.title || '').slice(0, 3000);
             const liBrandSlug = (brand.brand_url || brand.brand_name || 'brand').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().split('-').slice(0,3).join('-');
             const articleUrl = `https://forgeintelligence.ai/articles/${liBrandSlug}/${articleSlug}${utmString ? '?' + utmString : ''}`;
             const liRes = await fetch('https://api.linkedin.com/v2/ugcPosts', {
