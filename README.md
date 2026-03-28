@@ -1,6 +1,6 @@
 # Forge Intelligence — Master SSOT
 
-> **Last updated:** March 27, 2026 (4:18 PM PDT) | **Status:** Stage 6 In Progress — Integrations + Publishing Queue LIVE 🚧
+> **Last updated:** March 28, 2026 (8:13 AM PDT) | **Status:** Stage 6 In Progress — Integrations + Publishing Queue LIVE 🚧
 > **This README is the single source of truth for all AI sessions, dev work, and project decisions.**
 > When starting a new AI session, read this file top to bottom before touching anything.
 
@@ -496,6 +496,9 @@ Forge connects to the broader Sandbox Group ecosystem:
 ### Phase 2 — Generation + Governance (Months 4–6)
 
 | Stage 4 Content Generator | ✅ LIVE | `/content-generator` — SSE streaming, Brain-First, confidence scoring, per-brand `generated_content_{uuid}` table | (long-form + social + email + video + podcast)
+| Stage 5 Compliance Gate | ✅ LIVE | `/compliance-gate` — Auto-Ship, Approve-to-Ship, Full Review, Brain write-back | —
+| Stage 6 Integrations | ✅ LIVE | `/integrations` — per-brain channel connections, UTM templates, WordPress live | Webflow live, HubSpot attribution, X pending
+| Stage 6 Publishing Queue | ✅ LIVE | `/publishing-queue` — staged articles, multi-channel publish, schedule, UTM preview | —
 - Stage 5 — Compliance & Human Refinement Gate (3 modes)
 - Stage 6 — Publishing (UTM engine, queue, version control, WordPress/Webflow/HubSpot integrations)
 - Pre-cog score running silently (hidden Standard tier)
