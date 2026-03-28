@@ -389,6 +389,127 @@ app.get('/api/articles/:brandSlug/:articleSlug', async (req, res) => {
   }
 });
 
+
+// ── Sync publish status ───────────────────────────────────────────────────────
+// Checks live channel APIs and updates publish_log.live_status
+app.get('/api/publishing/sync/:queueItemId', async (req, res) => {
+  const { queueItemId } = req.params;
+  try {
+    const logRes = await pool.query(
+      'SELECT pl.*, pc.credentials FROM publish_log pl LEFT JOIN publishing_channels pc ON pc.brand_profile_id = pl.brand_profile_id AND pc.channel = pl.channel WHERE pl.queue_item_id = $1',
+      [queueItemId]
+    );
+    if (!logRes.rows.length) return res.json({ success: true, results: {} });
+
+    const results = {};
+    for (const row of logRes.rows) {
+      let liveStatus = row.live_status || 'published';
+      const creds = row.credentials || {};
+
+      try {
+        if (row.channel === 'linkedin') {
+          const postId = row.response_data?.postId;
+          const token = creds.accessToken || process.env.LINKEDIN_ACCESS_TOKEN;
+          if (postId && token) {
+            const encodedId = encodeURIComponent(postId);
+            const liRes = await fetch(`https://api.linkedin.com/v2/ugcPosts/${encodedId}`, {
+              headers: { 'Authorization': `Bearer ${token}`, 'X-Restli-Protocol-Version': '2.0.0' }
+            });
+            if (liRes.status === 404) liveStatus = 'deleted';
+            else if (liRes.status === 403) liveStatus = 'unknown'; // token expired
+            else if (liRes.ok) liveStatus = 'published';
+          }
+        } else if (row.channel === 'wordpress') {
+          const postId = row.response_data?.postId;
+          const wpUrl = creds.siteUrl?.replace(/\/+$/, '');
+          const authHeader = 'Basic ' + Buffer.from(`${creds.username}:${creds.appPassword}`).toString('base64');
+          if (postId && wpUrl) {
+            const wpRes = await fetch(`${wpUrl}/wp-json/wp/v2/posts/${postId}`, {
+              headers: { 'Authorization': authHeader }
+            });
+            if (wpRes.status === 404) liveStatus = 'deleted';
+            else if (wpRes.ok) {
+              const wpData = await wpRes.json();
+              liveStatus = wpData.status === 'publish' ? 'published' : wpData.status || 'unknown';
+            }
+          }
+        }
+      } catch (e) {
+        console.warn(`[SYNC] ${row.channel} check failed:`, e.message);
+        liveStatus = 'unknown';
+      }
+
+      await pool.query(
+        'UPDATE publish_log SET live_status = $1, last_synced_at = NOW(), synced_count = synced_count + 1 WHERE id = $2',
+        [liveStatus, row.id]
+      );
+      results[row.channel] = { liveStatus, publishedUrl: row.published_url, lastSynced: new Date().toISOString() };
+    }
+
+    res.json({ success: true, results });
+  } catch (err) {
+    console.error('[SYNC]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Republish to a specific channel ──────────────────────────────────────────
+app.post('/api/publishing/republish', async (req, res) => {
+  const { queueItemId, channel } = req.body;
+  if (!queueItemId || !channel) return res.status(400).json({ error: 'queueItemId and channel required' });
+  try {
+    // Re-use the main publish endpoint logic by delegating
+    const fakeReq = { body: { queueItemId, channels: [channel] } };
+    const fakeRes = {
+      _data: null,
+      _status: 200,
+      status(s) { this._status = s; return this; },
+      json(d) { this._data = d; }
+    };
+    // Find the publish handler and invoke it
+    // Simpler: just call the DB directly and re-run the publish logic inline
+    const queueRes = await pool.query('SELECT * FROM publishing_queue WHERE id = $1', [queueItemId]);
+    if (!queueRes.rows.length) return res.status(404).json({ error: 'Queue item not found' });
+    const item = queueRes.rows[0];
+
+    // Mark any previous log entry for this channel as 'republishing'
+    await pool.query(
+      "UPDATE publish_log SET live_status = 'republishing' WHERE queue_item_id = $1 AND channel = $2",
+      [queueItemId, channel]
+    );
+
+    // Forward to main publish route
+    const publishRes = await fetch(`http://localhost:${process.env.PORT || 3000}/api/publishing/publish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ queueItemId, channels: [channel] })
+    });
+    const publishData = await publishRes.json();
+
+    if (publishData.success) {
+      res.json({ success: true, result: publishData.results?.[channel] });
+    } else {
+      res.status(500).json({ error: publishData.error || 'Republish failed' });
+    }
+  } catch (err) {
+    console.error('[REPUBLISH]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Get publish log for a queue item ─────────────────────────────────────────
+app.get('/api/publishing/log/:queueItemId', async (req, res) => {
+  try {
+    const logRes = await pool.query(
+      'SELECT id, channel, status, live_status, published_url, error_message, attempted_at, last_synced_at FROM publish_log WHERE queue_item_id = $1 ORDER BY attempted_at DESC',
+      [req.params.queueItemId]
+    );
+    res.json({ success: true, log: logRes.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // ── Context Agent API ─────────────────────────────────────────────────────────
