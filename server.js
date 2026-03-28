@@ -1281,7 +1281,7 @@ app.post('/api/waitlist', async function (req, res) {
 
 app.get('/api/assets/:filename', async function (req, res) {
   try {
-    const response = await fetch('https://forge-os.ai/api/assets/' + req.params.filename);
+    const response = await fetch('https://forgeintelligence.ai/api/assets/' + req.params.filename);
     if (!response.ok) throw new Error('Not found');
     const buffer = await response.arrayBuffer();
     res.set('Content-Type', response.headers.get('content-type'));
