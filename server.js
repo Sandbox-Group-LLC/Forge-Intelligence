@@ -2307,6 +2307,57 @@ app.delete('/api/publishing/channels/:id', async (req, res) => {
 });
 
 // POST /api/publishing/publish — publish a queue item to selected channels
+
+// ── LinkedIn OAuth2 Flow ──────────────────────────────────────────────────────
+app.get('/api/linkedin/auth', (req, res) => {
+  const clientId = process.env.LINKEDIN_CLIENT_ID;
+  const redirectUri = encodeURIComponent('https://forgeintelligence.ai/auth/linkedin/callback');
+  const state = require('crypto').randomBytes(16).toString('hex');
+  const scopes = 'openid profile email w_member_social';
+  const url = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&state=${state}&scope=${encodeURIComponent(scopes)}`;
+  res.json({ authUrl: url, state });
+});
+
+app.get('/auth/linkedin/callback', async (req, res) => {
+  const { code, state, error } = req.query;
+  if (error) return res.redirect(`/app/integrations?linkedin_error=${error}`);
+  if (!code) return res.redirect('/app/integrations?linkedin_error=no_code');
+  try {
+    const clientId     = process.env.LINKEDIN_CLIENT_ID;
+    const clientSecret = process.env.LINKEDIN_CLIENT_SECRET;
+    const redirectUri  = 'https://forgeintelligence.ai/auth/linkedin/callback';
+    const tokenRes = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirectUri, client_id: clientId, client_secret: clientSecret })
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) throw new Error(tokenData.error_description || 'Token exchange failed');
+
+    // Get LinkedIn member profile (sub = member URN for posting)
+    const profileRes = await fetch('https://api.linkedin.com/v2/userinfo', {
+      headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+    });
+    const profile = await profileRes.json();
+    const authorUrn = `urn:li:person:${profile.sub}`;
+
+    // Store token in publishing_channels for this brand
+    // brand_profile_id passed via state param (or session) — for now store as system default
+    await pool.query(`
+      INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_connected, connected_at)
+      VALUES ('system', 'linkedin', $1, true, NOW())
+      ON CONFLICT (brand_profile_id, channel) DO UPDATE
+        SET credentials = $1, is_connected = true, connected_at = NOW()
+    `, [JSON.stringify({ accessToken: tokenData.access_token, expiresIn: tokenData.expires_in, authorUrn, name: profile.name })]);
+
+    res.redirect('/app/integrations?linkedin_connected=true');
+  } catch (err) {
+    console.error('LinkedIn callback error:', err);
+    res.redirect(`/app/integrations?linkedin_error=${encodeURIComponent(err.message)}`);
+  }
+});
+// ─────────────────────────────────────────────────────────────────────────────
+
 app.post('/api/publishing/publish', async (req, res) => {
   const { queueItemId, channels: selectedChannels } = req.body;
   if (!queueItemId) return res.status(400).json({ error: 'queueItemId required' });
@@ -2422,7 +2473,38 @@ app.post('/api/publishing/publish', async (req, res) => {
           results[channel] = { status: 'staged', message: 'HubSpot: credentials saved, live API wired in Stage 6.1', utmParams };
 
         } else if (channel === 'linkedin') {
-          results[channel] = { status: 'staged', message: 'LinkedIn: credentials saved, live API wired in Stage 6.1', utmParams };
+          // ── Real LinkedIn share via UGC Posts API ──
+          const liToken   = creds.accessToken || process.env.LINKEDIN_ACCESS_TOKEN;
+          const authorUrn = creds.authorUrn   || process.env.LINKEDIN_AUTHOR_URN;
+          if (!liToken || !authorUrn) {
+            results[channel] = { status: 'staged', message: 'LinkedIn not yet authorized — visit /app/integrations to connect', utmParams };
+          } else {
+            const articleJson = article.article_json || {};
+            const sections = articleJson.sections || [];
+            const excerpt = (sections[0]?.content || article.title || '').slice(0, 600);
+            const articleUrl = `https://forgeintelligence.ai/articles/${(article.title||'article').toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,50)}${utmString ? '?' + utmString : ''}`;
+            const liRes = await fetch('https://api.linkedin.com/v2/ugcPosts', {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${liToken}`, 'Content-Type': 'application/json', 'X-Restli-Protocol-Version': '2.0.0' },
+              body: JSON.stringify({
+                author: authorUrn,
+                lifecycleState: 'PUBLISHED',
+                specificContent: {
+                  'com.linkedin.ugc.ShareContent': {
+                    shareCommentary: { text: excerpt },
+                    shareMediaCategory: 'ARTICLE',
+                    media: [{ status: 'READY', originalUrl: articleUrl, title: { text: article.title || 'New Article' } }]
+                  }
+                },
+                visibility: { 'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC' }
+              })
+            });
+            const liData = await liRes.json();
+            if (!liRes.ok) throw new Error(liData.message || JSON.stringify(liData));
+            const postId = liData.id?.replace('urn:li:ugcPost:', '');
+            const postUrl = `https://www.linkedin.com/feed/update/${liData.id}/`;
+            results[channel] = { status: 'published', url: postUrl, postId: liData.id, utmParams };
+          }
 
         } else if (channel === 'x') {
           // ── Real X (Twitter) API v2 publish via OAuth 1.0a ──
