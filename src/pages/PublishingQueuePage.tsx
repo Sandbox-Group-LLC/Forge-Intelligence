@@ -87,6 +87,9 @@ export default function PublishingQueuePage() {
   const [filterBrand, setFilterBrand] = useState<string>('all');
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [publishLog, setPublishLog] = useState<Record<string, { channel: string; live_status: string; published_url?: string; last_synced_at?: string }[]>>({});
+  const [syncing, setSyncing] = useState<string | null>(null);
+  const [republishing, setRepublishing] = useState<string | null>(null); // "itemId:channel" 
 
   const loadQueue = useCallback(async () => {
     setLoading(true);
@@ -95,7 +98,6 @@ export default function PublishingQueuePage() {
       const d = await r.json();
       if (d.success) {
         setItems(d.items);
-        // Init selectedChannels for any new items
         setSelectedChannels(prev => {
           const next = { ...prev };
           for (const item of d.items) {
@@ -103,6 +105,16 @@ export default function PublishingQueuePage() {
           }
           return next;
         });
+        // Load publish logs for published items
+        for (const item of d.items) {
+          if (item.status === 'published' || item.status === 'partial') {
+            fetch(`/api/publishing/log/${item.id}`)
+              .then(r => r.json())
+              .then(ld => {
+                if (ld.success) setPublishLog(prev => ({ ...prev, [item.id]: ld.log }));
+              }).catch(() => {});
+          }
+        }
       }
     } finally {
       setLoading(false);
@@ -193,6 +205,49 @@ export default function PublishingQueuePage() {
   const handleRemove = async (itemId: string) => {
     await fetch(`/api/publishing/queue/${itemId}`, { method: 'DELETE' });
     loadQueue();
+  };
+
+  const handleSync = async (itemId: string) => {
+    setSyncing(itemId);
+    try {
+      const r = await fetch(`/api/publishing/sync/${itemId}`);
+      const d = await r.json();
+      if (d.success) {
+        // Refresh log
+        const ld = await fetch(`/api/publishing/log/${itemId}`).then(r => r.json());
+        if (ld.success) setPublishLog(prev => ({ ...prev, [itemId]: ld.log }));
+        setSuccessMsg('Status synced with live channels');
+        setTimeout(() => setSuccessMsg(''), 3000);
+      }
+    } finally {
+      setSyncing(null);
+    }
+  };
+
+  const handleRepublish = async (itemId: string, channel: string) => {
+    const key = `${itemId}:${channel}`;
+    setRepublishing(key);
+    setError('');
+    try {
+      const r = await fetch('/api/publishing/republish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ queueItemId: itemId, channel })
+      });
+      const d = await r.json();
+      if (d.success) {
+        setSuccessMsg(`Re-published to ${CHANNEL_LABELS[channel]?.label || channel} ✓`);
+        setTimeout(() => setSuccessMsg(''), 4000);
+        // Refresh log
+        const ld = await fetch(`/api/publishing/log/${itemId}`).then(r => r.json());
+        if (ld.success) setPublishLog(prev => ({ ...prev, [itemId]: ld.log }));
+        loadQueue();
+      } else {
+        setError(d.error || 'Republish failed');
+      }
+    } finally {
+      setRepublishing(null);
+    }
   };
 
   const openUtmPreview = async (item: QueueItem) => {
@@ -355,8 +410,8 @@ export default function PublishingQueuePage() {
                     )}
                   </div>
 
-                  {/* Publish actions */}
-                  {item.status !== 'published' && (
+                  {/* Publish actions — show for staged/failed AND for published to allow re-targeting new channels */}
+                  {(item.status !== 'published' || availChannels.some(ch => !results[ch])) && (
                     <div className="pq-item-actions">
                       <button
                         className="pq-publish-now-btn"
@@ -383,22 +438,54 @@ export default function PublishingQueuePage() {
                     </div>
                   )}
 
-                  {/* Publish results */}
+                  {/* Publish results with live status + sync + republish */}
                   {Object.keys(results).length > 0 && (
                     <div className="pq-results">
-                      {Object.entries(results).map(([ch, res]) => (
-                        <div key={ch} className={`pq-result-row result-${res.status}`}>
+                      <div className="pq-results-header">
+                        <span className="pq-results-label">Published to</span>
+                        <button
+                          className="pq-sync-btn"
+                          onClick={() => handleSync(item.id)}
+                          disabled={syncing === item.id}
+                          title="Check live status on each channel"
+                        >
+                          <RefreshCw /> {syncing === item.id ? 'Syncing...' : 'Sync Status'}
+                        </button>
+                      </div>
+                      {Object.entries(results).map(([ch, res]) => {
+                        const log = (publishLog[item.id] || []).find(l => l.channel === ch);
+                        const liveStatus = log?.live_status || res.status;
+                        const isDeleted = liveStatus === 'deleted';
+                        const isUnknown = liveStatus === 'unknown';
+                        const repKey = `${item.id}:${ch}`;
+                        return (
+                        <div key={ch} className={`pq-result-row result-${liveStatus}`}>
                           <span className="pq-result-channel">{CHANNEL_LABELS[ch]?.label || ch}</span>
-                          <span className="pq-result-status">{res.status}</span>
-                          {res.url && (
+                          <span className={`pq-result-status live-${liveStatus}`}>
+                            {isDeleted ? '🗑 Deleted' : isUnknown ? '⚠ Unknown' : '✓ Live'}
+                          </span>
+                          {res.url && !isDeleted && (
                             <a href={res.url} target="_blank" rel="noreferrer" className="pq-result-url">
-                              {res.url.slice(0, 50)}{res.url.length > 50 ? '...' : ''} <ExternalLink />
+                              View post <ExternalLink />
                             </a>
+                          )}
+                          {log?.last_synced_at && (
+                            <span className="pq-synced-at">synced {new Date(log.last_synced_at).toLocaleTimeString()}</span>
+                          )}
+                          {(isDeleted || isUnknown) && (
+                            <button
+                              className="pq-republish-btn"
+                              onClick={() => handleRepublish(item.id, ch)}
+                              disabled={republishing === repKey}
+                            >
+                              {republishing === repKey ? 'Republishing...' : '↺ Republish'}
+                            </button>
                           )}
                           {res.error && <span className="pq-result-error">{res.error}</span>}
                           {res.message && <span className="pq-result-msg">{res.message}</span>}
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
