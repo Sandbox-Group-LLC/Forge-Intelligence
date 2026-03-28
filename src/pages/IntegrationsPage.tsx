@@ -323,7 +323,10 @@ export default function IntegrationsPage() {
                         </button>
                         <button
                           className="int-edit-btn"
-                          onClick={() => setExpanded(isOpen ? null : ch.id)}
+                          onClick={() => {
+                            if (ch.id === 'linkedin') return; // LinkedIn uses OAuth, no expand needed
+                            setExpanded(isOpen ? null : ch.id);
+                          }}
                         >
                           {isOpen ? <ChevronUp /> : <ChevronDown />}
                         </button>
@@ -333,7 +336,19 @@ export default function IntegrationsPage() {
                         <button
                           className="int-connect-btn"
                           style={{ '--ch-color': ch.color } as React.CSSProperties}
-                          onClick={() => setExpanded(isOpen ? null : ch.id)}
+                          onClick={async () => {
+                            if (ch.id === 'linkedin') {
+                              try {
+                                const res = await fetch('/api/linkedin/auth');
+                                const { authUrl } = await res.json();
+                                window.location.href = authUrl;
+                              } catch {
+                                setError('Could not start LinkedIn authorization. Try again.');
+                              }
+                              return;
+                            }
+                            setExpanded(isOpen ? null : ch.id);
+                          }}
                         >
                           {isOpen ? 'Cancel' : 'Connect'}
                         </button>
