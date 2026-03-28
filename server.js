@@ -2058,42 +2058,6 @@ app.get('/api/test/image', async (req, res) => {
   }
 });
 
-    const fluxPrompt = imgPromptRes.content[0]?.type === 'text'
-      ? imgPromptRes.content[0].text.trim()
-      : `Professional B2B editorial photo, dark cinematic lighting`;
-
-    // Step 2: Fire Flux
-    const falRes = await fetch('https://fal.run/fal-ai/flux/schnell', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Key ${process.env.FAL_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        prompt: fluxPrompt,
-        image_size: 'landscape_16_9',
-        num_inference_steps: 28,
-        guidance_scale: 3.5,
-        num_images: 1,
-        enable_safety_checker: true,
-      })
-    });
-
-    if (!falRes.ok) {
-      const errText = await falRes.text();
-      return res.status(500).json({ success: false, error: `fal.ai ${falRes.status}: ${errText}` });
-    }
-
-    const falData = await falRes.json();
-    const imageUrl = falData?.images?.[0]?.url;
-    if (!imageUrl) return res.status(500).json({ success: false, error: 'No image URL returned' });
-
-    res.json({ success: true, image_url: imageUrl, prompt: fluxPrompt });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
 app.post('/api/campaign/create', async (req, res) => {
   const { brandProfileId, plan } = req.body;
   if (!brandProfileId || !plan) return res.status(400).json({ error: 'brandProfileId and plan required' });
