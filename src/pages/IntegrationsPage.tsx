@@ -79,13 +79,13 @@ const CHANNELS: ChannelDef[] = [
   {
     id: 'linkedin',
     label: 'LinkedIn',
-    description: 'Post article excerpts with UTM links to your company page. Live in Stage 6.1.',
+    description: 'Share articles to your LinkedIn profile via OAuth2. Click Connect to authorize Forge — no manual token needed.',
     color: '#0A66C2',
     logo: 'in',
-    liveStatus: 'staged',
+    liveStatus: 'live',
     credentialFields: [
-      { key: 'accessToken', label: 'OAuth Access Token', placeholder: 'AQV...', type: 'password' },
-      { key: 'organizationId', label: 'Organization URN', placeholder: 'urn:li:organization:12345' },
+      { key: 'accessToken', label: 'OAuth Access Token', placeholder: 'Auto-filled after OAuth', type: 'password' },
+      { key: 'authorUrn', label: 'Author URN', placeholder: 'Auto-filled after OAuth' },
     ],
   },
   {
@@ -170,6 +170,17 @@ export default function IntegrationsPage() {
   }, [selectedBrand]);
 
   const handleSave = async (channelId: ChannelId) => {
+    // LinkedIn uses OAuth2 — redirect instead of credential form
+    if (channelId === 'linkedin') {
+      try {
+        const res = await fetch('/api/linkedin/auth');
+        const { authUrl } = await res.json();
+        window.location.href = authUrl;
+      } catch (e) {
+        setError('Could not start LinkedIn authorization. Try again.');
+      }
+      return;
+    }
     if (!selectedBrand) { setError('Select a Brain first'); return; }
     setSaving(channelId);
     setError(''); setSuccess('');
