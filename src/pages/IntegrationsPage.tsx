@@ -169,6 +169,20 @@ export default function IntegrationsPage() {
       });
   }, [selectedBrand]);
 
+  // Handle LinkedIn OAuth callback params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('linkedin_connected') === 'true') {
+      setSuccess('LinkedIn connected successfully!');
+      window.history.replaceState({}, '', '/app/integrations');
+    }
+    if (params.get('linkedin_error')) {
+      setError(`LinkedIn authorization failed: ${decodeURIComponent(params.get('linkedin_error') || '')}`);
+      window.history.replaceState({}, '', '/app/integrations');
+    }
+  }, []);
+
+
   const handleSave = async (channelId: ChannelId) => {
     // LinkedIn uses OAuth2 — redirect instead of credential form
     if (channelId === 'linkedin') {
