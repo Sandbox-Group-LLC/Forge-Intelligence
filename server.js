@@ -334,6 +334,28 @@ async function initDB() {
       attempted_at TIMESTAMPTZ DEFAULT NOW()
     )`);
     console.log('NeonDB: Publishing tables ensured');
+
+    // ── Analytics table
+    await pool.query(`CREATE TABLE IF NOT EXISTS content_analytics (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      brand_profile_id TEXT NOT NULL,
+      content_id TEXT NOT NULL,
+      channel TEXT NOT NULL,
+      post_id TEXT,
+      impressions INTEGER DEFAULT 0,
+      clicks INTEGER DEFAULT 0,
+      reactions INTEGER DEFAULT 0,
+      comments INTEGER DEFAULT 0,
+      reposts INTEGER DEFAULT 0,
+      ctr FLOAT DEFAULT 0,
+      engagement_rate FLOAT DEFAULT 0,
+      raw_data JSONB DEFAULT '{}',
+      published_at TIMESTAMPTZ,
+      synced_at TIMESTAMPTZ DEFAULT NOW(),
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(content_id, channel)
+    )`);
+    console.log('NeonDB: content_analytics table ensured');
   } catch(e) { console.log('NeonDB: Brain tables note:', e.message); }
 
 
@@ -3001,6 +3023,220 @@ Output only the post text.` }]
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── Analytics API ─────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+// POST /api/analytics/sync/:brandProfileId — pull stats from channels, upsert into content_analytics
+app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
+  const { brandProfileId } = req.params;
+  const { channel = 'linkedin' } = req.body;
+  try {
+    const safeId = brandProfileId.replace(/-/g, '_');
+    const synced = [];
+    const errors = [];
+
+    if (channel === 'linkedin' || channel === 'all') {
+      // Get all LinkedIn published posts from publish_log
+      const logRes = await pool.query(
+        `SELECT pl.content_id, pl.response_data, pl.published_at,
+                ct.title
+         FROM publish_log pl
+         LEFT JOIN generated_content_${safeId} ct ON ct.id = pl.content_id
+         WHERE pl.brand_profile_id = $1 AND pl.channel = 'linkedin' AND pl.status = 'published'
+         ORDER BY pl.attempted_at DESC`,
+        [brandProfileId]
+      ).catch(() => ({ rows: [] }));
+
+      // Get LinkedIn credentials
+      const credRes = await pool.query(
+        `SELECT credentials FROM channel_credentials WHERE brand_profile_id = $1 AND channel = 'linkedin'`,
+        [brandProfileId]
+      ).catch(() => ({ rows: [] }));
+      const creds = credRes.rows[0]?.credentials || {};
+      const token = creds.accessToken || process.env.LINKEDIN_ACCESS_TOKEN;
+
+      for (const row of logRes.rows) {
+        try {
+          const postId = row.response_data?.postId || row.response_data?.post_id;
+          if (!postId) continue;
+
+          let impressions = 0, clicks = 0, reactions = 0, comments = 0, reposts = 0;
+          let rawData = {};
+
+          if (token) {
+            // Try LinkedIn Share Statistics API
+            const encodedPostId = encodeURIComponent(postId);
+            const statsRes = await fetch(
+              `https://api.linkedin.com/v2/shareStatistics?q=shares&shares[0]=${encodedPostId}&projection=(elements*(totalShareStatistics))`,
+              { headers: { 'Authorization': `Bearer ${token}`, 'X-Restli-Protocol-Version': '2.0.0', 'LinkedIn-Version': '202401' } }
+            );
+
+            if (statsRes.ok) {
+              const statsData = await statsRes.json();
+              const stats = statsData?.elements?.[0]?.totalShareStatistics || {};
+              impressions = stats.impressionCount || 0;
+              clicks = stats.clickCount || 0;
+              reactions = stats.likeCount || 0;
+              comments = stats.commentCount || 0;
+              reposts = stats.shareCount || 0;
+              rawData = stats;
+            } else {
+              // Fallback: try socialActions for engagement data
+              const actRes = await fetch(
+                `https://api.linkedin.com/v2/socialActions/${encodeURIComponent(postId)}?projection=(likesSummary,commentsSummary)`,
+                { headers: { 'Authorization': `Bearer ${token}`, 'X-Restli-Protocol-Version': '2.0.0' } }
+              );
+              if (actRes.ok) {
+                const actData = await actRes.json();
+                reactions = actData?.likesSummary?.totalLikes || 0;
+                comments = actData?.commentsSummary?.totalFirstLevelComments || 0;
+                rawData = actData;
+              }
+            }
+          }
+
+          const ctr = impressions > 0 ? parseFloat((clicks / impressions * 100).toFixed(2)) : 0;
+          const engagementRate = impressions > 0
+            ? parseFloat(((reactions + comments + reposts + clicks) / impressions * 100).toFixed(2))
+            : 0;
+
+          await pool.query(
+            `INSERT INTO content_analytics
+               (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
+             ON CONFLICT (content_id, channel) DO UPDATE SET
+               impressions=EXCLUDED.impressions, clicks=EXCLUDED.clicks,
+               reactions=EXCLUDED.reactions, comments=EXCLUDED.comments,
+               reposts=EXCLUDED.reposts, ctr=EXCLUDED.ctr,
+               engagement_rate=EXCLUDED.engagement_rate,
+               raw_data=EXCLUDED.raw_data, synced_at=NOW()`,
+            [brandProfileId, row.content_id, 'linkedin', postId,
+             impressions, clicks, reactions, comments, reposts, ctr, engagementRate,
+             JSON.stringify(rawData), row.published_at]
+          );
+          synced.push({ contentId: row.content_id, title: row.title, postId, impressions, clicks, reactions });
+        } catch(e) {
+          errors.push({ contentId: row.content_id, error: e.message });
+        }
+      }
+    }
+
+    res.json({ success: true, channel, synced: synced.length, errors: errors.length, data: synced, errs: errors });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /api/analytics/dashboard/:brandProfileId — aggregated dashboard stats
+app.get('/api/analytics/dashboard/:brandProfileId', async (req, res) => {
+  const { brandProfileId } = req.params;
+  const channel = req.query.channel || 'linkedin';
+  try {
+    const safeId = brandProfileId.replace(/-/g, '_');
+
+    // Totals
+    const totals = await pool.query(
+      `SELECT
+         COUNT(*) as total_posts,
+         COALESCE(SUM(impressions),0) as total_impressions,
+         COALESCE(SUM(clicks),0) as total_clicks,
+         COALESCE(SUM(reactions),0) as total_reactions,
+         COALESCE(SUM(comments),0) as total_comments,
+         COALESCE(SUM(reposts),0) as total_reposts,
+         COALESCE(AVG(NULLIF(ctr,0)),0) as avg_ctr,
+         COALESCE(AVG(NULLIF(engagement_rate,0)),0) as avg_engagement_rate,
+         MAX(synced_at) as last_synced
+       FROM content_analytics
+       WHERE brand_profile_id=$1 AND channel=$2`,
+      [brandProfileId, channel]
+    );
+
+    // Top 5 posts by impressions
+    const top = await pool.query(
+      `SELECT ca.content_id, ca.impressions, ca.clicks, ca.reactions,
+              ca.comments, ca.reposts, ca.ctr, ca.engagement_rate,
+              ca.published_at, ca.synced_at,
+              ct.title, ct.hero_image_url
+       FROM content_analytics ca
+       LEFT JOIN generated_content_${safeId} ct ON ct.id = ca.content_id
+       WHERE ca.brand_profile_id=$1 AND ca.channel=$2
+       ORDER BY ca.impressions DESC, ca.reactions DESC
+       LIMIT 5`,
+      [brandProfileId, channel]
+    ).catch(() => ({ rows: [] }));
+
+    // 30-day trend (daily impressions)
+    const trend = await pool.query(
+      `SELECT DATE_TRUNC('day', synced_at) as day,
+              SUM(impressions) as impressions,
+              SUM(clicks) as clicks,
+              SUM(reactions) as reactions
+       FROM content_analytics
+       WHERE brand_profile_id=$1 AND channel=$2
+         AND synced_at > NOW() - INTERVAL '30 days'
+       GROUP BY DATE_TRUNC('day', synced_at)
+       ORDER BY day ASC`,
+      [brandProfileId, channel]
+    ).catch(() => ({ rows: [] }));
+
+    // All posts for table
+    const posts = await pool.query(
+      `SELECT ca.content_id, ca.impressions, ca.clicks, ca.reactions,
+              ca.comments, ca.reposts, ca.ctr, ca.engagement_rate,
+              ca.published_at, ca.synced_at, ca.channel,
+              ct.title, ct.hero_image_url, ct.article_json
+       FROM content_analytics ca
+       LEFT JOIN generated_content_${safeId} ct ON ct.id = ca.content_id
+       WHERE ca.brand_profile_id=$1 AND ca.channel=$2
+       ORDER BY ca.impressions DESC, ca.synced_at DESC`,
+      [brandProfileId, channel]
+    ).catch(() => ({ rows: [] }));
+
+    const t = totals.rows[0];
+    res.json({
+      success: true,
+      channel,
+      totals: {
+        posts: parseInt(t.total_posts),
+        impressions: parseInt(t.total_impressions),
+        clicks: parseInt(t.total_clicks),
+        reactions: parseInt(t.total_reactions),
+        comments: parseInt(t.total_comments),
+        reposts: parseInt(t.total_reposts),
+        avgCtr: parseFloat(t.avg_ctr).toFixed(2),
+        avgEngagementRate: parseFloat(t.avg_engagement_rate).toFixed(2),
+        lastSynced: t.last_synced
+      },
+      trend: trend.rows.map(r => ({
+        day: r.day, impressions: parseInt(r.impressions),
+        clicks: parseInt(r.clicks), reactions: parseInt(r.reactions)
+      })),
+      topPosts: top.rows,
+      posts: posts.rows
+    });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /api/analytics/channels/:brandProfileId — which channels have analytics data
+app.get('/api/analytics/channels/:brandProfileId', async (req, res) => {
+  const { brandProfileId } = req.params;
+  try {
+    const result = await pool.query(
+      `SELECT channel, COUNT(*) as post_count, SUM(impressions) as impressions, MAX(synced_at) as last_synced
+       FROM content_analytics WHERE brand_profile_id=$1
+       GROUP BY channel`,
+      [brandProfileId]
+    );
+    res.json({ success: true, channels: result.rows });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 
 app.listen(PORT, '0.0.0.0', function () {
   console.log('Forge Intelligence running on port ' + PORT);
