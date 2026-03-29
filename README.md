@@ -1,6 +1,6 @@
 # Forge Intelligence — Master SSOT
 
-> **Last updated:** March 28, 2026 (3:07 PM PDT) | **Status:** Stage 6 LIVE — Publishing Queue + LinkedIn + Public Article Page ✅
+> **Last updated:** March 29, 2026 (11:59 PM PDT) | **Status:** Stage 6 LIVE — Full channel suite + Campaign Analytics + Mobile UI ✅
 > **This README is the single source of truth for all AI sessions, dev work, and project decisions.**
 > When starting a new AI session, read this file top to bottom before touching Always read the README.md first -- it is the SSOT.
 > Always read the current file and capture its SHA before writing - never write blind.
@@ -26,13 +26,17 @@
 
 ---
 
-## Current Build Status (as of March 29, 2026 — 12:43 AM PDT)
+## Current Build Status (as of March 29, 2026 — 11:59 PM PDT)
 
 ## Known Issues
 
 ### Performance Dashboard — Post Title Join
 **Status:** Minor  
 The posts table in Performance shows titles correctly from `publishing_queue`. The `generated_content_` table join was removed in favour of a simpler `publish_log + publishing_queue` join to avoid silent failures on missing columns. Hero image thumbnails not yet shown in the posts table for the Performance view.
+
+### Medium Integration
+**Status:** Legacy  
+Medium stopped issuing new API integration tokens in early 2025. The publish backend works for existing pre-2025 tokens. New clients cannot generate tokens. Channel is marked Legacy in the Integrations UI — visible and connectable for users with existing tokens, blocked for new signups.
 
 ### ✅ What Is Live Right Now
 
@@ -62,6 +66,14 @@ The posts table in Performance shows titles correctly from `publishing_queue`. T
 | Brand Byline | ✅ LIVE | Reads `brand_name` column from `brand_profiles` |
 | Hero Image Generation | ✅ LIVE | Flux via fal.ai — Generate Image button in Publishing Queue preview |
 | Performance Dashboard | ✅ LIVE | `/performance` — LinkedIn + X (Twitter) tabs live, KPI cards, 30-day trend, posts table |
+| Campaign Analytics | ✅ LIVE | Campaigns tab in Performance — cross-campaign KPIs, per-channel breakdown, article leaderboard |
+| Campaign → Publishing pipeline | ✅ LIVE | Campaign articles now mirror into `generated_content_{uuid}` + `publishing_queue` with `campaign_id` stamped |
+| UTM campaign slugs | ✅ LIVE | `utm_campaign` now resolves to readable campaign name slug instead of `forge-content` |
+| Facebook Page publishing | ✅ LIVE | Graph API v21.0 — Page feed publish with Haiku post copy |
+| Reddit publishing | ✅ LIVE | OAuth 1.0a script app — link post to company subreddit with token refresh |
+| Medium publishing | ✅ LEGACY | Integration token auth — backend live, new tokens unavailable since early 2025 |
+| Mobile sidebar | ✅ LIVE | Auto-collapses on mobile, icon rail always visible, drawer expands with backdrop overlay |
+| Mobile layout | ✅ LIVE | `app-main` offset by 64px on mobile, hamburger hidden (chevron is sole toggle) |
 | X Analytics Sync | ✅ LIVE | `public_metrics` from X API v2 — impressions, reactions, comments, reposts, clicks |
 | LinkedIn Analytics Sync | ✅ LIVE | `socialActions` for reactions/comments; `shareStatistics` upgrades automatically on MDP approval |
 | Publishing Queue Backfill | ✅ LIVE | Approved articles auto-staged on server start; `/api/publishing/backfill-queue` for on-demand |
@@ -79,6 +91,8 @@ The posts table in Performance shows titles correctly from `publishing_queue`. T
 - Admin dashboard (agent activity log UI)
 - Pre-seed / bulk brand brain seeding script
 - Multi-brand stress testing (second brand onboarded)
+- Reddit API access — developer portal locked down, investigating access path
+- Ghost CMS integration (identified as next channel priority after Reddit/Medium)
 
 ---
 
