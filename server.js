@@ -3741,17 +3741,23 @@ app.get('/api/analytics/dashboard/:brandProfileId', async (req, res) => {
       [brandProfileId, channel]
     );
 
-    // Top 5 posts by impressions
+    // Top 5 posts by impressions — DISTINCT on content_id, latest non-deleted publish_log entry
     const top = await pool.query(
-      `SELECT ca.content_id, ca.impressions, ca.clicks, ca.reactions,
+      `SELECT DISTINCT ON (ca.content_id)
+              ca.content_id, ca.impressions, ca.clicks, ca.reactions,
               ca.comments, ca.reposts, ca.ctr, ca.engagement_rate,
               ca.synced_at AS published_at, ca.synced_at,
               pl.published_url, pq.title
        FROM content_analytics ca
-       LEFT JOIN publish_log pl ON pl.content_id = ca.content_id AND pl.channel = ca.channel AND pl.status = 'published'
+       LEFT JOIN LATERAL (
+         SELECT published_url FROM publish_log
+         WHERE content_id = ca.content_id AND channel = ca.channel
+           AND status = 'published' AND (live_status IS NULL OR live_status != 'deleted')
+         ORDER BY attempted_at DESC LIMIT 1
+       ) pl ON true
        LEFT JOIN publishing_queue pq ON pq.content_id = ca.content_id
        WHERE ca.brand_profile_id=$1 AND ca.channel=$2
-       ORDER BY ca.impressions DESC, ca.reactions DESC
+       ORDER BY ca.content_id, ca.impressions DESC, ca.reactions DESC
        LIMIT 5`,
       [brandProfileId, channel]
     );
@@ -3770,17 +3776,23 @@ app.get('/api/analytics/dashboard/:brandProfileId', async (req, res) => {
       [brandProfileId, channel]
     ).catch(() => ({ rows: [] }));
 
-    // All posts for table — join publish_log for title/url, no generated_content join
+    // All posts for table — DISTINCT on content_id, latest non-deleted publish_log entry
     const posts = await pool.query(
-      `SELECT ca.content_id, ca.impressions, ca.clicks, ca.reactions,
+      `SELECT DISTINCT ON (ca.content_id)
+              ca.content_id, ca.impressions, ca.clicks, ca.reactions,
               ca.comments, ca.reposts, ca.ctr, ca.engagement_rate,
               ca.synced_at AS published_at, ca.synced_at, ca.channel,
               pl.published_url, pq.title
        FROM content_analytics ca
-       LEFT JOIN publish_log pl ON pl.content_id = ca.content_id AND pl.channel = ca.channel AND pl.status = 'published'
+       LEFT JOIN LATERAL (
+         SELECT published_url FROM publish_log
+         WHERE content_id = ca.content_id AND channel = ca.channel
+           AND status = 'published' AND (live_status IS NULL OR live_status != 'deleted')
+         ORDER BY attempted_at DESC LIMIT 1
+       ) pl ON true
        LEFT JOIN publishing_queue pq ON pq.content_id = ca.content_id
        WHERE ca.brand_profile_id=$1 AND ca.channel=$2
-       ORDER BY ca.impressions DESC, ca.synced_at DESC`,
+       ORDER BY ca.content_id, ca.impressions DESC, ca.synced_at DESC`,
       [brandProfileId, channel]
     );
 
