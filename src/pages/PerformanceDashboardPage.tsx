@@ -22,7 +22,7 @@ interface ChannelInfo { channel: string; post_count: number; impressions: number
 const CHANNELS = [
   { id: 'linkedin', label: 'LinkedIn', live: true },
   { id: 'wordpress', label: 'WordPress', live: false },
-  { id: 'x', label: 'X (Twitter)', live: false },
+  { id: 'x', label: 'X (Twitter)', live: true },
   { id: 'webflow', label: 'Webflow', live: false },
 ];
 
