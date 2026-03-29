@@ -111,7 +111,7 @@ const CHANNELS: ChannelDef[] = [
         { text: 'Log into your WordPress admin dashboard.' },
         { text: 'Go to Users → Profile (or any user you want to publish as).' },
         { text: 'Scroll down to Application Passwords. Enter a name like "Forge Intelligence" and click Add New.' },
-        { text: 'Copy the generated password — it will only be shown once.' },
+        { text: 'Copy the generated password -- it will only be shown once.' },
         { text: 'Paste your site URL, your WordPress username, and the application password above.' },
       ],
     },
@@ -164,7 +164,7 @@ const CHANNELS: ChannelDef[] = [
   {
     id: 'linkedin',
     label: 'LinkedIn',
-    description: 'Share articles to your LinkedIn profile via OAuth2. Click Connect to authorize Forge — no manual token needed.',
+    description: 'Share articles to your LinkedIn profile via OAuth2. Click Connect to authorize Forge -- no manual token needed.',
     color: '#0A66C2',
     logo: 'in',
     liveStatus: 'live',
@@ -201,7 +201,7 @@ const CHANNELS: ChannelDef[] = [
         { text: 'Under Keys and Tokens, find User Authentication Tokens.' },
         { text: 'If you don\'t see an Access Token, click Generate under "Access Token and Secret".' },
         { text: 'Make sure your app has Read and Write permissions (App Settings → User authentication settings).' },
-        { text: 'Copy the Access Token and Access Token Secret and paste them above. The API Key/Secret live in Forge — you don\'t need them.' },
+        { text: 'Copy the Access Token and Access Token Secret and paste them above. The API Key/Secret live in Forge -- you don\'t need them.' },
       ],
     },
   },
@@ -219,13 +219,13 @@ const CHANNELS: ChannelDef[] = [
     setupGuide: {
       title: 'How to get your Facebook Page Access Token',
       steps: [
-        { text: 'Step 1 — Create a Meta app (do this on desktop, not mobile — the developer portal is broken on mobile). Go directly to this URL:', url: 'https://developers.facebook.com/apps/create/' },
+        { text: 'Step 1 -- Create a Meta app (do this on desktop, not mobile -- the developer portal is broken on mobile). Go directly to this URL:', url: 'https://developers.facebook.com/apps/create/' },
         { text: 'Choose app type: "Business". Give it any name (e.g. "Forge Intelligence"). Click Create App.' },
-        { text: 'Step 2 — Add the Pages API product. Once inside your app, click "Add Product" in the left sidebar. Find "Facebook Login for Business" and click Set Up.' },
-        { text: 'Step 3 — Get a token. Go to Graph API Explorer (link below). Select your app from the top-right dropdown. Then select your Facebook Page (not your personal profile) from the second dropdown.', url: 'https://developers.facebook.com/tools/explorer/' },
-        { text: 'Step 4 — Set permissions. Click "Add a Permission" and add: pages_manage_posts and pages_read_engagement. Then click Generate Access Token and authorize.' },
-        { text: 'Step 5 — Make it long-lived. The token you just got expires in 1 hour. Go to the Access Token Debugger, paste it in, and click "Extend Access Token" at the bottom. Copy the new token — it lasts 60 days.', url: 'https://developers.facebook.com/tools/debug/accesstoken/' },
-        { text: 'Step 6 — Get your Page ID. Go to your Facebook Page, click About → scroll to "Page transparency" section. The Page ID is the number listed there. Paste the Page ID and the long-lived token into Forge above.' },
+        { text: 'Step 2 -- Add the Pages API product. Once inside your app, click "Add Product" in the left sidebar. Find "Facebook Login for Business" and click Set Up.' },
+        { text: 'Step 3 -- Get a token. Go to Graph API Explorer (link below). Select your app from the top-right dropdown. Then select your Facebook Page (not your personal profile) from the second dropdown.', url: 'https://developers.facebook.com/tools/explorer/' },
+        { text: 'Step 4 -- Set permissions. Click "Add a Permission" and add: pages_manage_posts and pages_read_engagement. Then click Generate Access Token and authorize.' },
+        { text: 'Step 5 -- Make it long-lived. The token you just got expires in 1 hour. Go to the Access Token Debugger, paste it in, and click "Extend Access Token" at the bottom. Copy the new token -- it lasts 60 days.', url: 'https://developers.facebook.com/tools/debug/accesstoken/' },
+        { text: 'Step 6 -- Get your Page ID. Go to your Facebook Page, click About → scroll to "Page transparency" section. The Page ID is the number listed there. Paste the Page ID and the long-lived token into Forge above.' },
       ],
     },
   },
@@ -269,9 +269,9 @@ const CHANNELS: ChannelDef[] = [
       steps: [
         { text: 'Go to your Medium settings page.', url: 'https://medium.com/me/settings/security' },
         { text: 'Scroll to "Integration tokens" at the bottom. Give it a name like "Forge Intelligence" and click Get integration token.' },
-        { text: 'Copy the token — it's a long string starting with a hex sequence. Paste it above.' },
-        { text: 'That's it. No OAuth, no app creation. Medium uses simple bearer tokens for API access.' },
-        { text: 'Note: Medium publishes as your personal account. Make sure you're logged into the account you want to publish from when you generate the token.' },
+        { text: 'Copy the long hex token shown and paste it into the field above.' },
+        { text: 'No OAuth or app creation needed. Medium uses simple bearer tokens for API access.' },
+        { text: 'Note: Medium publishes as your personal account. Log into the account you want to publish from before generating the token.' },
       ],
     },
   },
@@ -442,7 +442,7 @@ export default function IntegrationsPage() {
           <div>
             <div className="geo-eyebrow">Stage 6</div>
             <h1 className="geo-title">Integrations</h1>
-            <p className="geo-description">Connect publishing channels per Brain. Credentials are isolated per brand — no cross-tenant leakage.</p>
+            <p className="geo-description">Connect publishing channels per Brain. Credentials are isolated per brand -- no cross-tenant leakage.</p>
           </div>
         </div>
 
@@ -544,7 +544,7 @@ export default function IntegrationsPage() {
                 {/* Expanded panel */}
                 {isOpen && (
                   <div className="int-card-form">
-                    {/* Credential fields — hide for OAuth channels when already connected */}
+                    {/* Credential fields -- hide for OAuth channels when already connected */}
                     {!(ch.oauthFlow && connected) && (
                       <div className="int-form-section">
                         <div className="int-form-label">
@@ -572,13 +572,13 @@ export default function IntegrationsPage() {
                       </div>
                     )}
 
-                    {/* OAuth connected — show read-only status */}
+                    {/* OAuth connected -- show read-only status */}
                     {ch.oauthFlow && connected && (
                       <div className="int-form-section">
                         <div className="int-form-label">OAuth Status</div>
                         <div className="int-oauth-status">
                           <CheckCircle />
-                          <span>Authorized via OAuth2 · Token stored securely · Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '—'}</span>
+                          <span>Authorized via OAuth2 · Token stored securely · Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}</span>
                         </div>
                         <button
                           className="int-reauth-btn"
