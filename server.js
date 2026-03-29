@@ -3558,10 +3558,13 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
 
     // ── X (Twitter) analytics ──────────────────────────────────────────────
     if (channel === 'x' || channel === 'all') {
+      // Join publishing_queue to get tweetId from publish_results when response_data is null
       const xLogRes = await pool.query(
-        `SELECT pl.content_id, pl.response_data, pl.published_at, ct.title
+        `SELECT pl.content_id, pl.response_data, pl.published_at, ct.title,
+                pq.publish_results AS queue_results
          FROM publish_log pl
          LEFT JOIN generated_content_${safeId} ct ON ct.id = pl.content_id
+         LEFT JOIN publishing_queue pq ON pq.content_id = pl.content_id
          WHERE pl.brand_profile_id = $1 AND pl.channel = 'x' AND pl.status = 'published'
          ORDER BY pl.attempted_at DESC`,
         [brandProfileId]
@@ -3581,9 +3584,12 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
 
       for (const row of xLogRes.rows) {
         try {
-          const tweetId = row.response_data?.tweetId || row.response_data?.id;
+          // response_data may be null for posts published before column existed — fall back to queue publish_results
+          const rd = row.response_data || row.queue_results?.x || {};
+          const tweetId = rd.tweetId || rd.id;
           if (!tweetId || !xApiKey || !xAccessToken) {
             if (!xApiKey || !xAccessToken) errors.push({ contentId: row.content_id, error: 'no_x_credentials' });
+            else if (!tweetId) errors.push({ contentId: row.content_id, error: 'no_tweet_id' });
             continue;
           }
 
