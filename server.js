@@ -3027,7 +3027,7 @@ app.get('/api/publishing/queue', async (req, res) => {
 // PATCH /api/publishing/queue/:itemId
 app.patch('/api/publishing/queue/:itemId', async (req, res) => {
   const { itemId } = req.params;
-  const { channels, scheduledAt, status } = req.body;
+  const { channels, scheduledAt, status, publishResults } = req.body;
   try {
     const fields = [];
     const vals = [];
@@ -3035,6 +3035,11 @@ app.patch('/api/publishing/queue/:itemId', async (req, res) => {
     if (channels !== undefined) { fields.push(`channels = $${i++}`); vals.push(JSON.stringify(channels)); }
     if (scheduledAt !== undefined) { fields.push(`scheduled_at = $${i++}`); vals.push(scheduledAt || null); }
     if (status !== undefined) { fields.push(`status = $${i++}`); vals.push(status); }
+    if (publishResults !== undefined) {
+      // Merge into existing publish_results, not overwrite
+      fields.push(`publish_results = COALESCE(publish_results, '{}'::jsonb) || $${i++}::jsonb`);
+      vals.push(JSON.stringify(publishResults));
+    }
     fields.push(`updated_at = NOW()`);
     vals.push(itemId);
     await pool.query(`UPDATE publishing_queue SET ${fields.join(', ')} WHERE id = $${i}`, vals);
