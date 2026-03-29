@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { ViewType } from '../types';
 import './Sidebar.css';
@@ -54,6 +55,12 @@ const icons = {
       <path d="M9 20v2"/>
     </svg>
   ),
+  brain: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.46 2.5 2.5 0 0 1-1.077-4.56A3 3 0 0 1 3.83 9.85a3 3 0 0 1 .81-4.87A2.5 2.5 0 0 1 9.5 2Z"/>
+      <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.46 2.5 2.5 0 0 0 1.077-4.56A3 3 0 0 0 20.17 9.85a3 3 0 0 0-.81-4.87A2.5 2.5 0 0 0 14.5 2Z"/>
+    </svg>
+  ),
   chevronLeft: (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="m15 18-6-6 6-6"/>
@@ -62,6 +69,11 @@ const icons = {
   chevronRight: (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="m9 18 6-6-6-6"/>
+    </svg>
+  ),
+  chevronDown: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m6 9 6 6 6-6"/>
     </svg>
   ),
   zap: (
@@ -112,42 +124,104 @@ const icons = {
   )
 };
 
-interface NavItem {
+const BRAIN_VIEWS: ViewType[] = ['new-analysis', 'active-run', 'brand-profile', 'strategy', 'brain-history'];
+
+interface BrainNavItem {
   id: ViewType;
   label: string;
   icon: keyof typeof icons;
 }
 
-const navItems: NavItem[] = [
+const brainNavItems: BrainNavItem[] = [
   { id: 'new-analysis', label: 'New Analysis', icon: 'plusCircle' },
   { id: 'active-run', label: 'Active Run', icon: 'activity' },
   { id: 'brand-profile', label: 'Brand Profile', icon: 'layers' },
   { id: 'strategy', label: 'Strategy', icon: 'compass' },
   { id: 'brain-history', label: 'Brain History', icon: 'bookOpen' },
-  { id: 'geo-strategist', label: 'GEO Strategist', icon: 'zap' },
-  { id: 'authenticity-enricher', label: 'Authenticity Enricher', icon: 'shieldCheck' },
+];
+
+interface TopNavItem {
+  id: ViewType;
+  label: string;
+  icon: keyof typeof icons;
+  href?: string;
+}
+
+const topNavItems: TopNavItem[] = [
+  { id: 'geo-strategist', label: 'GEO Strategist', icon: 'zap', href: '/app/geo-strategist' },
+  { id: 'authenticity-enricher', label: 'Authenticity Enricher', icon: 'shieldCheck', href: '/app/authenticity-enricher' },
   { id: 'content-generator', label: 'Content Generator', icon: 'fileText' },
   { id: 'campaign-generator', label: 'Campaign Generator', icon: 'layers' },
   { id: 'compliance-gate', label: 'Compliance Gate', icon: 'shieldCheck' },
-  { id: 'integrations', label: 'Integrations', icon: 'plug' },
-  { id: 'publishing-queue', label: 'Publishing Queue', icon: 'sendCloud' },
-  { id: 'performance', label: 'Performance', icon: 'barChart2' }
+  { id: 'integrations', label: 'Integrations', icon: 'plug', href: '/app/integrations' },
+  { id: 'publishing-queue', label: 'Publishing Queue', icon: 'sendCloud', href: '/app/publishing-queue' },
+  { id: 'performance', label: 'Performance', icon: 'barChart2', href: '/app/performance' },
 ];
 
 export function Sidebar() {
   const { currentView, setCurrentView, sidebarCollapsed, setSidebarCollapsed, isProcessing, brandProfile } = useApp();
+  const [brainGroupOpen, setBrainGroupOpen] = useState(false);
 
-  const getItemStatus = (id: ViewType): 'active' | 'available' | 'disabled' => {
+  const isBrainViewActive = BRAIN_VIEWS.includes(currentView);
+
+  const getBrainItemStatus = (id: ViewType): 'active' | 'available' | 'disabled' => {
     if (id === currentView) return 'active';
     if (id === 'active-run' && !isProcessing) return 'disabled';
     if ((id === 'brand-profile' || id === 'strategy') && !brandProfile) return 'disabled';
-    if (id === 'geo-strategist') return window.location.pathname.startsWith('/geo-strategist') ? 'active' : 'available';
-    if (id === 'authenticity-enricher') return window.location.pathname.startsWith('/authenticity-enricher') ? 'active' : 'available';
     return 'available';
   };
 
+  const getTopItemStatus = (id: ViewType): 'active' | 'available' => {
+    const path = window.location.pathname;
+    if (id === 'geo-strategist') return path.startsWith('/app/geo-strategist') ? 'active' : 'available';
+    if (id === 'authenticity-enricher') return path.startsWith('/app/authenticity-enricher') ? 'active' : 'available';
+    if (id === 'integrations') return path.startsWith('/app/integrations') ? 'active' : 'available';
+    if (id === 'publishing-queue') return path.startsWith('/app/publishing-queue') ? 'active' : 'available';
+    if (id === 'performance') return path.startsWith('/app/performance') ? 'active' : 'available';
+    if (id === currentView) return 'active';
+    return 'available';
+  };
+
+  const handleBrainItemClick = (id: ViewType, status: string) => {
+    if (status === 'disabled') return;
+    const routeMap: Record<string, string> = {
+      'new-analysis': '/app/context-hub',
+      'active-run': '/app/context-hub?view=active-run',
+      'brand-profile': '/app/context-hub?view=brand-profile',
+      'strategy': '/app/context-hub?view=strategy',
+      'brain-history': '/app/context-hub?view=brain-history',
+    };
+    const targetPath = routeMap[id] || '/app/context-hub';
+    const currentPath = window.location.pathname;
+    if (currentPath !== targetPath.split('?')[0]) {
+      window.location.href = targetPath;
+    } else {
+      setCurrentView(id);
+    }
+  };
+
+  const handleTopItemClick = (item: TopNavItem, status: string) => {
+    if (item.href) {
+      window.location.href = item.href;
+      return;
+    }
+    if (status === 'disabled') return;
+    const routeMap: Record<string, string> = {
+      'content-generator': '/app/content-generator',
+      'campaign-generator': '/app/campaign-generator',
+      'compliance-gate': '/app/compliance-gate',
+    };
+    const targetPath = routeMap[item.id] || '/app/context-hub';
+    const currentPath = window.location.pathname;
+    if (currentPath !== targetPath.split('?')[0]) {
+      window.location.href = targetPath;
+    } else {
+      setCurrentView(item.id);
+    }
+  };
+
   return (
-    <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
+    <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}> 
       <div className="sidebar-header">
         <div className="sidebar-brand">
           {!sidebarCollapsed ? (
@@ -159,7 +233,7 @@ export function Sidebar() {
             <span className="sidebar-logo-mark">{icons.diamond}</span>
           )}
         </div>
-        <button 
+        <button
           className="sidebar-toggle"
           onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
           aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
@@ -169,66 +243,63 @@ export function Sidebar() {
       </div>
 
       <nav className="sidebar-nav">
-        {navItems.map(item => {
-          const status = getItemStatus(item.id);
-          if (item.id === 'geo-strategist') {
+        {/* Brain collapsible group */}
+        <button
+          className={`nav-item nav-group-header ${isBrainViewActive ? 'active' : 'available'}`}
+          onClick={() => {
+            if (sidebarCollapsed) {
+              setSidebarCollapsed(false);
+              setBrainGroupOpen(true);
+            } else {
+              setBrainGroupOpen(!brainGroupOpen);
+            }
+          }}
+          title={sidebarCollapsed ? 'Brain' : undefined}
+          aria-expanded={brainGroupOpen}
+        >
+          <span className="nav-icon">{icons.brain}</span>
+          {!sidebarCollapsed && (
+            <>
+              <span className="nav-label">Brain</span>
+              <span className={`nav-group-chevron ${brainGroupOpen ? 'open' : ''}`}> 
+                {icons.chevronDown}
+              </span>
+            </>
+          )}
+        </button>
+
+        {/* Brain sub-items */}
+        {!sidebarCollapsed && brainGroupOpen && (
+          <div className="nav-group-children">
+            {brainNavItems.map(item => {
+              const status = getBrainItemStatus(item.id);
+              return (
+                <button
+                  key={item.id}
+                  className={`nav-item nav-child-item ${status}`}
+                  onClick={() => handleBrainItemClick(item.id, status)}
+                  disabled={status === 'disabled'}
+                >
+                  <span className="nav-icon">{icons[item.icon]}</span>
+                  <span className="nav-label">{item.label}</span>
+                  {item.id === 'active-run' && isProcessing && (
+                    <span className="nav-badge pulse"></span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Top-level nav items */}
+        {topNavItems.map(item => {
+          const status = getTopItemStatus(item.id);
+          if (item.href) {
             return (
               <a
                 key={item.id}
-                href="/app/geo-strategist"
+                href={item.href}
                 className={`nav-item ${status}`}
-                title={sidebarCollapsed ? item.label : undefined}
-              >
-                <span className="nav-icon">{icons[item.icon]}</span>
-                {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
-              </a>
-            );
-          }
-          if (item.id === 'authenticity-enricher') {
-            return (
-              <a
-                key={item.id}
-                href="/app/authenticity-enricher"
-                className={`nav-item ${status}`}
-                title={sidebarCollapsed ? item.label : undefined}
-              >
-                <span className="nav-icon">{icons[item.icon]}</span>
-                {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
-              </a>
-            );
-          }
-          if (item.id === 'integrations') {
-            return (
-              <a
-                key={item.id}
-                href="/app/integrations"
-                className={`nav-item ${window.location.pathname.startsWith('/app/integrations') ? 'active' : 'available'}`}
-                title={sidebarCollapsed ? item.label : undefined}
-              >
-                <span className="nav-icon">{icons[item.icon]}</span>
-                {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
-              </a>
-            );
-          }
-          if (item.id === 'publishing-queue') {
-            return (
-              <a
-                key={item.id}
-                href="/app/publishing-queue"
-                className={`nav-item ${window.location.pathname.startsWith('/app/publishing-queue') ? 'active' : 'available'}`}
-                title={sidebarCollapsed ? item.label : undefined}
-              >
-                <span className="nav-icon">{icons[item.icon]}</span>
-                {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
-              </a>
-            );
-          }
-          if (item.id === 'performance') {
-            return (
-              <a
-                key={item.id}
-                href="/app/performance"
-                className={`nav-item ${window.location.pathname.startsWith('/app/performance') ? 'active' : 'available'}`}
                 title={sidebarCollapsed ? item.label : undefined}
               >
                 <span className="nav-icon">{icons[item.icon]}</span>
@@ -240,40 +311,12 @@ export function Sidebar() {
             <button
               key={item.id}
               className={`nav-item ${status}`}
-              onClick={() => {
-                if (status === 'disabled') return;
-                const routeMap: Record<string, string> = {
-                  'new-analysis': '/app/context-hub',
-                  'active-run': '/app/context-hub?view=active-run',
-                  'brand-profile': '/app/context-hub?view=brand-profile',
-                  'strategy': '/app/context-hub?view=strategy',
-                  'brain-history': '/app/context-hub?view=brain-history',
-                  'geo-strategist': '/app/geo-strategist',
-                  'authenticity-enricher': '/app/authenticity-enricher',
-                  'content-generator': '/app/content-generator',
-                  'campaign-generator': '/app/campaign-generator',
-                  'compliance-gate': '/app/compliance-gate',
-                  'integrations': '/app/integrations',
-                  'publishing-queue': '/app/publishing-queue',
-                };
-                const targetPath = routeMap[item.id] || '/app/context-hub';
-                const currentPath = window.location.pathname;
-                if (currentPath !== targetPath.split('?')[0]) {
-                  window.location.href = targetPath;
-                } else {
-                  setCurrentView(item.id);
-                }
-              }}
-              disabled={status === 'disabled'}
+              onClick={() => handleTopItemClick(item, status)}
               title={sidebarCollapsed ? item.label : undefined}
             >
               <span className="nav-icon">{icons[item.icon]}</span>
               {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
-              {item.id === 'active-run' && isProcessing && (
-                <span className="nav-badge pulse"></span>
-              )}
             </button>
-            
           );
         })}
       </nav>
