@@ -98,8 +98,9 @@ const icons = {
   ),
   plug: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/>
-      <path d="M18 8H6a2 2 0 0 0-2 2v3a6 6 0 0 0 12 0v-3a2 2 0 0 0-2-2z"/>
+      <path d="M7 16.5A3.5 3.5 0 0 0 10.5 20H14a3.5 3.5 0 0 0 3.5-3.5V14h-11v2.5Z"/>
+      <path d="M17.5 14V10A3.5 3.5 0 0 0 14 6.5h-3.5A3.5 3.5 0 0 0 7 10v4"/>
+      <path d="M10 6.5V4"/><path d="M14 6.5V4"/>
     </svg>
   ),
   sendCloud: (
