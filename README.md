@@ -20,24 +20,13 @@
 
 ---
 
-## Current Build Status (as of March 26, 2026 — 9:59 PM PDT)
+## Current Build Status (as of March 29, 2026 — 12:43 AM PDT)
 
 ## Known Issues
 
-### Performance Dashboard — Styling Pass Needed
-**Status:** In progress  
-**File:** `src/pages/PerformanceDashboardPage.tsx`
-
-The Performance dashboard is functional but visually rough. Identified issues:
-- KPI cards have no surface elevation — flat on background with no depth
-- KPI labels are all-caps raw text with no typographic hierarchy
-- Channel tab bar lacks proper active/inactive states; "Soon" badges are unstyled text
-- Page header has no breathing room; Sync button is unstyled
-- Section headers ("30-Day Impressions", "Top Posts") use inconsistent weight/size
-- Empty state for the trend chart is a floating icon with no context or CTA
-- No `tabular-nums` on numeric values
-
-**Fix:** Full styling pass on `PerformanceDashboardPage.tsx` — KPI cards need elevated surface treatment, tab bar needs pill-style active states, all labels need proper type hierarchy using existing Tailwind tokens.
+### Performance Dashboard — Post Title Join
+**Status:** Minor  
+The posts table in Performance shows titles correctly from `publishing_queue`. The `generated_content_` table join was removed in favour of a simpler `publish_log + publishing_queue` join to avoid silent failures on missing columns. Hero image thumbnails not yet shown in the posts table for the Performance view.
 
 ### ✅ What Is Live Right Now
 
@@ -60,18 +49,26 @@ The Performance dashboard is functional but visually rough. Identified issues:
 | Stage 5 Compliance Gate | ✅ LIVE | Three-mode review (Auto/Approve/Full), human edit loop → Brain Mistakes |
 | Publishing Queue UI | ✅ LIVE | `/publishing-queue` — Draft→Approved→Published flow, preview modal |
 | LinkedIn Publishing | ✅ LIVE | API publish via `ugcPosts`; AI-generated post copy (Claude Haiku); `Read more:` link |
+| X (Twitter) Publishing | ✅ LIVE | OAuth 1.0a, X API v2, `public_metrics`, tweet URL uses authenticated handle |
 | Public Article Page | ✅ LIVE | `forgeintelligence.ai/articles/:brandSlug/:articleSlug` — editorial dark layout |
 | OG Meta Injection | ✅ LIVE | Server-side `og:image`, `og:title`, `og:description`, `article:author` for social crawlers |
 | Article Read Time | ✅ LIVE | Accurate word count from `section.body`, 200 wpm |
 | Brand Byline | ✅ LIVE | Reads `brand_name` column from `brand_profiles` |
+| Hero Image Generation | ✅ LIVE | Flux via fal.ai — Generate Image button in Publishing Queue preview |
+| Performance Dashboard | ✅ LIVE | `/performance` — LinkedIn + X (Twitter) tabs live, KPI cards, 30-day trend, posts table |
+| X Analytics Sync | ✅ LIVE | `public_metrics` from X API v2 — impressions, reactions, comments, reposts, clicks |
+| LinkedIn Analytics Sync | ✅ LIVE | `socialActions` for reactions/comments; `shareStatistics` upgrades automatically on MDP approval |
+| Publishing Queue Backfill | ✅ LIVE | Approved articles auto-staged on server start; `/api/publishing/backfill-queue` for on-demand |
+| Sync-to-Staged on Delete | ✅ LIVE | Queue item resets to staged when post deleted on X or LinkedIn |
+| BASE_DOMAIN env var | ✅ LIVE | Article URLs in posts use `BASE_DOMAIN` — dev points to `dev.forgeintelligence.ai` |
 
 ### 🔲 What Is NOT Built Yet
 
 - Post scheduling (queue → auto-publish at set time)
-- LinkedIn/X analytics pull-back (impressions, clicks into queue UI)
+- LinkedIn impressions/clicks (requires Marketing Developer Platform approval — applied)
 - WordPress live API publish
 - Webflow live API publish
-- Stage 7 — Performance Intelligence
+- Stage 7 — Performance Intelligence (content_analytics is the data layer — UI is live, data flows)
 - Stage 8 — Pattern Extractor / Feedback Loop
 - Admin dashboard (agent activity log UI)
 - Pre-seed / bulk brand brain seeding script
@@ -595,12 +592,17 @@ The project board tracks all active issues against this roadmap. When picking up
 | Item | Priority | Notes |
 |------|----------|-------|
 | Server-side UUID auto-gen | Medium | `clientId` currently must be sent as valid UUID from client |
-| `third_party_signals` often null | Low | G2/Reddit scraping not deeply implemented yet — Claude reasoning fills what it can |
+| `third_party_signals` often null | Low | G2/Reddit scraping not deeply implemented yet |
+| LinkedIn impressions | Medium | Requires MDP approval — `socialActions` gives reactions/comments now |
 | `brandProfileId` was returning "unknown" | ✅ Fixed | Now returns real UUID from NeonDB |
-| Anthropic SDK tool-calling TS errors | ✅ Fixed | Removed tool-calling pattern, using direct prompts. SDK pinned to `^0.39.0` |
-| `TextBlock` citations field TS error | ✅ Fixed | Using `Anthropic.TextBlock` type directly |
-| `mistakes` table not found | ✅ Fixed | Schema run against correct DB |
-| UUID type error on `test-client-001` | ✅ Fixed | Must use valid UUID |
+| Anthropic SDK tool-calling TS errors | ✅ Fixed | Removed tool-calling pattern. SDK pinned to `^0.39.0` |
+| publishing_queue articles not showing | ✅ Fixed | Missing UNIQUE on content_id + ON CONFLICT clause |
+| Hero image columns missing | ✅ Fixed | Migration adds `hero_image_url` + `hero_image_prompt` on startup |
+| publish_log missing columns | ✅ Fixed | `live_status`, `last_synced_at`, `synced_count`, `published_at` added via migration |
+| X analytics synced: 0 | ✅ Fixed | `publish_log.published_at` doesn't exist — aliased `attempted_at` |
+| Brand slug collision (sandbox-xm vs sandbox-gtm) | ✅ Fixed | Exact match first in brand lookup |
+| Article URL hardcoded to prod | ✅ Fixed | All URLs now use `BASE_DOMAIN` env var |
+| X deleted tweet detection | ✅ Fixed | X API v2 returns 200+errors[] not 404 — handled |
 
 ---
 
