@@ -833,6 +833,9 @@ app.get('/api/publishing/sync/:queueItemId', async (req, res) => {
         } else if (row.channel === 'reddit') {
           // Reddit link posts — no lightweight status endpoint without heavy OAuth; preserve existing status
           liveStatus = row.live_status || 'published';
+        } else if (row.channel === 'medium') {
+          // Medium posts don't have a status API — once published they stay published
+          liveStatus = row.live_status || 'published';
         }
       } catch (e) {
         console.warn(`[SYNC] ${row.channel} check failed:`, e.message);
@@ -3596,6 +3599,53 @@ Output only the post text.` }]
 
           const rdPostUrl = rdData?.json?.data?.url || `https://www.reddit.com/r/${subreddit.replace(/^r\//, '')}`;
           results[channel] = { status: 'published', url: rdPostUrl, postId: rdData?.json?.data?.id, utmParams };
+
+        } else if (channel === 'medium') {
+          // ── Medium API publish ──
+          const { integrationToken } = chConfig.credentials || {};
+          if (!integrationToken) throw new Error('Medium integration token is required');
+
+          // Get the authenticated user's Medium ID
+          const meRes = await fetch('https://api.medium.com/v1/me', {
+            headers: { 'Authorization': `Bearer ${integrationToken}`, 'Content-Type': 'application/json' }
+          });
+          if (!meRes.ok) throw new Error('Medium token invalid or expired');
+          const meData = await meRes.json();
+          const authorId = meData.data?.id;
+          if (!authorId) throw new Error('Could not retrieve Medium author ID');
+
+          const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
+          const utmUrl = articleUrl + '?' + new URLSearchParams({ ...utmCtx, utm_source: 'medium', utm_medium: 'social' }).toString();
+
+          // Build HTML content from article sections
+          const articleJson = article.article_json || {};
+          const sections = articleJson.sections || [];
+          const htmlBody = sections.map(s =>
+            `<h2>${s.heading || ''}</h2><p>${(s.body || '').replace(/
+/g, '</p><p>')}</p>`
+          ).join('
+');
+
+          const canonicalNote = `<p><em>Originally published at <a href="${utmUrl}">${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}</a></em></p>`;
+
+          const medRes = await fetch(`https://api.medium.com/v1/users/${authorId}/posts`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${integrationToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: article.title,
+              contentFormat: 'html',
+              content: `<h1>${article.title}</h1>
+${htmlBody}
+${canonicalNote}`,
+              canonicalUrl: utmUrl,
+              publishStatus: 'public',
+              notifyFollowers: true,
+            })
+          });
+          const medData = await medRes.json();
+          if (!medRes.ok || medData.errors) throw new Error(medData.errors?.[0]?.message || 'Medium publish failed');
+
+          results[channel] = { status: 'published', url: medData.data?.url, postId: medData.data?.id, utmParams };
 
         } else {
           results[channel] = { status: 'error', error: `Unknown channel: ${channel}` };
