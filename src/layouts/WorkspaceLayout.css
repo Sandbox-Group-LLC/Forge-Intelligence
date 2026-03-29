@@ -44,6 +44,11 @@
 }
 
 @media (max-width: 768px) {
+  /* Offset content by the width of the collapsed icon rail */
+  .app-main {
+    padding-left: 64px;
+  }
+
   .view-container {
     padding: 20px 16px;
   }
