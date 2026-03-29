@@ -694,7 +694,17 @@ app.get('/api/debug/publish-log/:brandProfileId', async (req, res) => {
        FROM publish_log WHERE brand_profile_id = $1 ORDER BY attempted_at DESC LIMIT 20`,
       [req.params.brandProfileId]
     );
-    res.json({ count: result.rows.length, rows: result.rows });
+    res.json({
+      count: result.rows.length,
+      rows: result.rows,
+      env: {
+        X_API_KEY: !!process.env.X_API_KEY,
+        X_API_SECRET: !!process.env.X_API_SECRET,
+        X_ACCESS_TOKEN: !!process.env.X_ACCESS_TOKEN,
+        X_ACCESS_SECRET: !!process.env.X_ACCESS_SECRET,
+        ANTHROPIC_API_KEY: !!process.env.ANTHROPIC_API_KEY,
+      }
+    });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -707,7 +717,17 @@ app.get('/api/debug/publish-log/:brandProfileId', async (req, res) => {
        FROM publish_log WHERE brand_profile_id = $1 ORDER BY attempted_at DESC LIMIT 20`,
       [req.params.brandProfileId]
     );
-    res.json({ count: result.rows.length, rows: result.rows });
+    res.json({
+      count: result.rows.length,
+      rows: result.rows,
+      env: {
+        X_API_KEY: !!process.env.X_API_KEY,
+        X_API_SECRET: !!process.env.X_API_SECRET,
+        X_ACCESS_TOKEN: !!process.env.X_ACCESS_TOKEN,
+        X_ACCESS_SECRET: !!process.env.X_ACCESS_SECRET,
+        ANTHROPIC_API_KEY: !!process.env.ANTHROPIC_API_KEY,
+      }
+    });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -720,7 +740,17 @@ app.get('/api/debug/publish-log/:brandProfileId', async (req, res) => {
        FROM publish_log WHERE brand_profile_id = $1 ORDER BY attempted_at DESC LIMIT 20`,
       [req.params.brandProfileId]
     );
-    res.json({ count: result.rows.length, rows: result.rows });
+    res.json({
+      count: result.rows.length,
+      rows: result.rows,
+      env: {
+        X_API_KEY: !!process.env.X_API_KEY,
+        X_API_SECRET: !!process.env.X_API_SECRET,
+        X_ACCESS_TOKEN: !!process.env.X_ACCESS_TOKEN,
+        X_ACCESS_SECRET: !!process.env.X_ACCESS_SECRET,
+        ANTHROPIC_API_KEY: !!process.env.ANTHROPIC_API_KEY,
+      }
+    });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
