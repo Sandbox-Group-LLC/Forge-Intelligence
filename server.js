@@ -3460,8 +3460,15 @@ Output only the post text.` }]
     const anyError = targets.some(ch => results[ch]?.status === 'error');
     const newStatus = allPublished ? 'published' : anyError ? 'partial' : 'staged';
 
+    // Merge new results into existing publish_results — preserves prior channel results
     await pool.query(
-      `UPDATE publishing_queue SET status = $1, channels = $2, publish_results = $3, published_at = $4, updated_at = NOW() WHERE id = $5`,
+      `UPDATE publishing_queue SET
+         status = $1,
+         channels = $2,
+         publish_results = COALESCE(publish_results, '{}'::jsonb) || $3::jsonb,
+         published_at = COALESCE($4, published_at),
+         updated_at = NOW()
+       WHERE id = $5`,
       [newStatus, JSON.stringify(targets), JSON.stringify(results), allPublished ? new Date() : null, queueItemId]
     );
 
