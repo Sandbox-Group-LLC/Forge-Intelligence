@@ -18,13 +18,34 @@ interface DashboardData {
   totals: AnalyticsTotals; trend: TrendPoint[]; posts: PostRow[]; topPosts: PostRow[];
 }
 interface ChannelInfo { channel: string; post_count: number; impressions: number; last_synced: string; }
+interface CampaignChannelBreakdown {
+  channel: string; impressions: number; clicks: number; reactions: number; reposts: number; article_count: number;
+}
+interface CampaignTopArticle {
+  content_id: string; title: string; impressions: number; clicks: number; reactions: number; channel: string; published_url?: string;
+}
+interface CampaignRow {
+  campaign_id: string; campaign_name: string; topic_cluster: string; campaign_created_at: string;
+  article_count: number; channel_count: number;
+  total_impressions: number; total_clicks: number; total_reactions: number;
+  total_comments: number; total_reposts: number;
+  avg_ctr: number; avg_engagement_rate: number; last_synced: string | null;
+  channels: CampaignChannelBreakdown[];
+  top_articles: CampaignTopArticle[];
+}
 
 const CHANNELS = [
   { id: 'linkedin', label: 'LinkedIn', live: true },
   { id: 'wordpress', label: 'WordPress', live: false },
   { id: 'x', label: 'X (Twitter)', live: true },
   { id: 'webflow', label: 'Webflow', live: false },
+  { id: 'campaigns', label: 'Campaigns', live: true },
 ];
+
+const CHANNEL_COLORS: Record<string, string> = {
+  linkedin: '#0A66C2', x: '#000000', facebook: '#1877F2',
+  reddit: '#FF4500', wordpress: '#3858E9', webflow: '#4353FF',
+};
 
 function fmt(n: number): string {
   if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
@@ -135,6 +156,9 @@ export default function PerformanceDashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [channelInfo, setChannelInfo] = useState<ChannelInfo[]>([]);
   const [loading, setLoading] = useState(false);
+  const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
+  const [campaignsLoading, setCampaignsLoading] = useState(false);
+  const [expandedCampaign, setExpandedCampaign] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
   const [error, setError] = useState('');
@@ -149,8 +173,23 @@ export default function PerformanceDashboardPage() {
       }).catch(() => {});
   }, []);
 
-  const loadDashboard = useCallback(async () => {
+  const loadCampaigns = useCallback(async () => {
     if (!brandProfileId) return;
+    setCampaignsLoading(true);
+    try {
+      const res = await fetch(`/api/analytics/campaigns/${brandProfileId}`);
+      const d = await res.json();
+      if (d.success) setCampaigns(d.campaigns || []);
+    } catch { /* non-fatal */ }
+    setCampaignsLoading(false);
+  }, [brandProfileId]);
+
+  useEffect(() => {
+    if (activeChannel === 'campaigns') loadCampaigns();
+  }, [activeChannel, loadCampaigns]);
+
+  const loadDashboard = useCallback(async () => {
+    if (!brandProfileId || activeChannel === 'campaigns') return;
     setLoading(true); setError('');
     try {
       const [dashRes, chanRes] = await Promise.all([
@@ -252,7 +291,7 @@ export default function PerformanceDashboardPage() {
         ) : (
           <>
             {/* ── KPI Cards ── */}
-            <div className="perf-kpis">
+            {activeChannel !== 'campaigns' && <div className="perf-kpis">
               {[
                 { label: 'Impressions', value: fmt(data?.totals?.impressions || 0), sub: 'Total views', icon: 'eye', spark: true },
                 { label: 'Link Clicks', value: fmt(data?.totals?.clicks || 0), sub: `${data?.totals?.avgCtr || '0'}% avg CTR`, icon: 'click', spark: false },
@@ -273,8 +312,10 @@ export default function PerformanceDashboardPage() {
               ))}
             </div>
 
+            </div>}
+
             {/* ── 30-Day Trend ── */}
-            <div className="perf-section">
+            {activeChannel !== 'campaigns' && <div className="perf-section">
               <div className="perf-section-header">
                 <h2 className="perf-section-title">30-Day Impressions</h2>
                 {(data?.trend?.length ?? 0) > 0 && (
@@ -284,10 +325,10 @@ export default function PerformanceDashboardPage() {
               <div className="perf-trend-card">
                 <TrendChart data={data?.trend || []} onSync={handleSync} />
               </div>
-            </div>
+            </div>}
 
             {/* ── Posts Table ── */}
-            <div className="perf-section">
+            {activeChannel !== 'campaigns' && <div className="perf-section">
               <div className="perf-section-header">
                 <h2 className="perf-section-title">Published Posts</h2>
                 <span className="perf-section-meta">{data?.posts?.length || 0} tracked</span>
@@ -340,8 +381,18 @@ export default function PerformanceDashboardPage() {
               )}
             </div>
 
-            {/* ── Brain Signals ── */}
-            {(data?.topPosts?.length ?? 0) > 0 && (
+            {/* ── Campaigns Tab ── */}
+            {activeChannel === 'campaigns' && (
+              <CampaignsView
+                campaigns={campaigns}
+                loading={campaignsLoading}
+                expanded={expandedCampaign}
+                setExpanded={setExpandedCampaign}
+              />
+            )}
+
+          {/* ── Brain Signals ── */}
+            {activeChannel !== 'campaigns' && (data?.topPosts?.length ?? 0) > 0 && (
               <div className="perf-section">
                 <div className="perf-section-header">
                   <h2 className="perf-section-title">Brain Signals</h2>
@@ -386,6 +437,217 @@ export default function PerformanceDashboardPage() {
     </AppShell>
   );
 }
+
+// ── Campaigns View ─────────────────────────────────────────────────────────────
+function CampaignsView({
+  campaigns, loading, expanded, setExpanded
+}: {
+  campaigns: CampaignRow[];
+  loading: boolean;
+  expanded: string | null;
+  setExpanded: (id: string | null) => void;
+}) {
+  if (loading) return (
+    <div className="perf-skeleton-wrap">
+      {[1,2,3].map(i => <div key={i} className="perf-skeleton-card" style={{ height: 160 }} />)}
+    </div>
+  );
+
+  if (!campaigns.length) return (
+    <div className="perf-empty">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <path d="M3 3h18v4H3z"/><path d="M3 10h18v4H3z"/><path d="M3 17h18v4H3z"/>
+      </svg>
+      <p>No campaign analytics yet. Generate a campaign, publish all 8 articles, then sync.</p>
+    </div>
+  );
+
+  // Summary KPIs across all campaigns
+  const totalImpressions = campaigns.reduce((s, c) => s + Number(c.total_impressions), 0);
+  const totalClicks      = campaigns.reduce((s, c) => s + Number(c.total_clicks), 0);
+  const totalReactions   = campaigns.reduce((s, c) => s + Number(c.total_reactions), 0);
+  const bestCampaign     = [...campaigns].sort((a, b) => Number(b.total_impressions) - Number(a.total_impressions))[0];
+  const avgCtr           = totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100).toFixed(2) : '0';
+  const avgEng           = campaigns.length
+    ? (campaigns.reduce((s, c) => s + Number(c.avg_engagement_rate), 0) / campaigns.length).toFixed(2)
+    : '0';
+
+  return (
+    <div className="camp-analytics-wrap">
+      {/* Cross-campaign summary KPIs */}
+      <div className="perf-kpis">
+        {[
+          {
+            label: 'Total Campaign Reach',
+            value: fmt(totalImpressions),
+            sub: `Across ${campaigns.length} campaign${campaigns.length !== 1 ? 's' : ''}`,
+            icon: 'eye',
+          },
+          {
+            label: 'Total Link Clicks',
+            value: fmt(totalClicks),
+            sub: `${avgCtr}% blended CTR`,
+            icon: 'click',
+          },
+          {
+            label: 'Total Reactions',
+            value: fmt(totalReactions),
+            sub: `${avgEng}% avg engagement`,
+            icon: 'heart',
+          },
+          {
+            label: 'Top Campaign',
+            value: bestCampaign ? fmt(Number(bestCampaign.total_impressions)) : '—',
+            sub: bestCampaign ? bestCampaign.campaign_name : 'No data yet',
+            icon: 'trend',
+          },
+        ].map(kpi => (
+          <div key={kpi.label} className="perf-kpi-card">
+            <div className="perf-kpi-top">
+              <span className="perf-kpi-label">{kpi.label}</span>
+              <KpiIcon type={kpi.icon} />
+            </div>
+            <div className="perf-kpi-value">{kpi.value}</div>
+            <div className="perf-kpi-sub">{kpi.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Per-campaign cards */}
+      <div className="camp-cards">
+        {campaigns.map(c => {
+          const isOpen = expanded === c.campaign_id;
+          const bestChannel = [...(c.channels || [])].sort((a, b) => Number(b.impressions) - Number(a.impressions))[0];
+          const topArticle  = c.top_articles?.[0];
+          const publishProgress = c.article_count; // articles with analytics data = published + synced
+          const ctr = Number(c.avg_ctr);
+          const eng = Number(c.avg_engagement_rate);
+
+          return (
+            <div key={c.campaign_id} className={`camp-analytics-card ${isOpen ? 'open' : ''}`}>
+              {/* Card header — always visible */}
+              <button
+                className="camp-analytics-header"
+                onClick={() => setExpanded(isOpen ? null : c.campaign_id)}
+              >
+                <div className="camp-analytics-header-left">
+                  <div className="camp-analytics-name">{c.campaign_name}</div>
+                  <div className="camp-analytics-cluster">{c.topic_cluster}</div>
+                </div>
+                <div className="camp-analytics-header-right">
+                  <div className="camp-analytics-pills">
+                    <span className="camp-analytics-pill impressions">
+                      {fmt(Number(c.total_impressions))} reach
+                    </span>
+                    <span className="camp-analytics-pill clicks">
+                      {fmt(Number(c.total_clicks))} clicks
+                    </span>
+                    <span className="camp-analytics-pill articles">
+                      {publishProgress} article{publishProgress !== 1 ? 's' : ''} tracked
+                    </span>
+                  </div>
+                  <svg
+                    width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2"
+                    className={`camp-analytics-chevron ${isOpen ? 'open' : ''}`}
+                  >
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                </div>
+              </button>
+
+              {/* Expanded detail */}
+              {isOpen && (
+                <div className="camp-analytics-body">
+                  {/* 4 meaningful KPIs for this campaign */}
+                  <div className="camp-analytics-kpi-row">
+                    <div className="camp-analytics-kpi">
+                      <span className="camp-analytics-kpi-label">Total Impressions</span>
+                      <span className="camp-analytics-kpi-value">{fmt(Number(c.total_impressions))}</span>
+                      <span className="camp-analytics-kpi-sub">across {c.channel_count} channel{c.channel_count !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div className="camp-analytics-kpi">
+                      <span className="camp-analytics-kpi-label">Avg CTR</span>
+                      <span className="camp-analytics-kpi-value">{ctr > 0 ? `${ctr}%` : '—'}</span>
+                      <span className="camp-analytics-kpi-sub">{fmt(Number(c.total_clicks))} total clicks</span>
+                    </div>
+                    <div className="camp-analytics-kpi">
+                      <span className="camp-analytics-kpi-label">Engagement Rate</span>
+                      <span className="camp-analytics-kpi-value">{eng > 0 ? `${eng}%` : '—'}</span>
+                      <span className="camp-analytics-kpi-sub">{fmt(Number(c.total_reactions))} reactions</span>
+                    </div>
+                    <div className="camp-analytics-kpi">
+                      <span className="camp-analytics-kpi-label">Best Channel</span>
+                      <span className="camp-analytics-kpi-value" style={{ color: CHANNEL_COLORS[bestChannel?.channel] || 'var(--color-accent)', fontSize: '1rem' }}>
+                        {bestChannel ? bestChannel.channel.charAt(0).toUpperCase() + bestChannel.channel.slice(1) : '—'}
+                      </span>
+                      <span className="camp-analytics-kpi-sub">
+                        {bestChannel ? `${fmt(Number(bestChannel.impressions))} impressions` : 'No data'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Channel breakdown bar chart */}
+                  {c.channels.length > 0 && (
+                    <div className="camp-channel-breakdown">
+                      <div className="camp-breakdown-label">Channel breakdown</div>
+                      {[...c.channels]
+                        .sort((a, b) => Number(b.impressions) - Number(a.impressions))
+                        .map(ch => {
+                          const maxImpr = Math.max(...c.channels.map(x => Number(x.impressions)), 1);
+                          const pct = Math.round((Number(ch.impressions) / maxImpr) * 100);
+                          const color = CHANNEL_COLORS[ch.channel] || 'var(--color-accent)';
+                          return (
+                            <div key={ch.channel} className="camp-breakdown-row">
+                              <span className="camp-breakdown-ch">{ch.channel}</span>
+                              <div className="camp-breakdown-bar-wrap">
+                                <div className="camp-breakdown-bar" style={{ width: `${pct}%`, background: color }} />
+                              </div>
+                              <span className="camp-breakdown-val">{fmt(Number(ch.impressions))}</span>
+                              <span className="camp-breakdown-clicks">{fmt(Number(ch.clicks))} clicks</span>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+
+                  {/* Top articles leaderboard */}
+                  {c.top_articles.length > 0 && (
+                    <div className="camp-top-articles">
+                      <div className="camp-breakdown-label">Top articles in this campaign</div>
+                      {c.top_articles.map((a, i) => (
+                        <div key={a.content_id} className="camp-top-article-row">
+                          <span className="camp-top-rank">#{i + 1}</span>
+                          <span className="camp-top-title">
+                            {a.published_url
+                              ? <a href={a.published_url} target="_blank" rel="noopener noreferrer" className="camp-top-link">{a.title || 'Untitled'}</a>
+                              : (a.title || 'Untitled')
+                            }
+                          </span>
+                          <span className="camp-top-ch" style={{ color: CHANNEL_COLORS[a.channel] || 'var(--color-text-muted)' }}>
+                            {a.channel}
+                          </span>
+                          <span className="camp-top-impr">{fmt(Number(a.impressions))} impr.</span>
+                          <span className="camp-top-clicks">{fmt(Number(a.clicks))} clicks</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="camp-analytics-footer">
+                    Campaign started {new Date(c.campaign_created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    {c.last_synced && <> · Last synced {timeAgo(c.last_synced)}</>}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 
 function KpiIcon({ type }: { type: string }) {
   const icons: Record<string, JSX.Element> = {
