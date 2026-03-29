@@ -85,6 +85,8 @@ const CHANNEL_LABELS: Record<string, { label: string; color: string }> = {
   hubspot:   { label: 'HubSpot',   color: '#FF7A59' },
   linkedin:  { label: 'LinkedIn',  color: '#0A66C2' },
   x:         { label: 'X',         color: '#000000' },
+  facebook:  { label: 'Facebook',   color: '#1877F2' },
+  reddit:    { label: 'Reddit',     color: '#FF4500' },
 };
 const ALL_CHANNELS = Object.keys(CHANNEL_LABELS);
 
