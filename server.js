@@ -815,28 +815,7 @@ app.get('/api/context-hub/brains/:id', async (req, res) => {
   }
 });
 
-);
-    res.json({ success: true, profiles });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-);
-    res.json({ success: true, profiles });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-);
-    res.json({ success: true, profiles });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// ── GET /api/brand-profiles/list — list all brand profiles (used by Performance Dashboard) ──
+// -- GET /api/brand-profiles/list
 app.get('/api/brand-profiles/list', async (req, res) => {
   try {
     const result = await pool.query(
