@@ -2986,7 +2986,18 @@ Output only the post text.` }]
           const xData = await xRes.json();
           if (!xRes.ok) throw new Error(xData.detail || xData.title || JSON.stringify(xData));
           const tweetId = xData.data?.id;
-          const tweetUrl2 = `https://x.com/makemysandbox/status/${tweetId}`;
+          // Look up authenticated user's handle to build the correct tweet URL
+          let twitterHandle = 'i';
+          try {
+            const meRes = await fetch('https://api.twitter.com/2/users/me', {
+              headers: { 'Authorization': authHeader }
+            });
+            if (meRes.ok) {
+              const meData = await meRes.json();
+              twitterHandle = meData.data?.username || 'i';
+            }
+          } catch(e) { /* fall back to /i/status/ path */ }
+          const tweetUrl2 = `https://x.com/${twitterHandle}/status/${tweetId}`;
           results[channel] = { status: 'published', url: tweetUrl2, tweetId, utmParams };
 
         } else {
@@ -3153,6 +3164,106 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
              JSON.stringify(rawData), row.published_at]
           );
           synced.push({ contentId: row.content_id, title: row.title, postId, reactions, comments, reposts, impressions, dataSource });
+        } catch(e) {
+          errors.push({ contentId: row.content_id, error: e.message });
+        }
+      }
+    }
+
+    // ── X (Twitter) analytics ──────────────────────────────────────────────
+    if (channel === 'x' || channel === 'all') {
+      const xLogRes = await pool.query(
+        `SELECT pl.content_id, pl.response_data, pl.published_at, ct.title
+         FROM publish_log pl
+         LEFT JOIN generated_content_${safeId} ct ON ct.id = pl.content_id
+         WHERE pl.brand_profile_id = $1 AND pl.channel = 'x' AND pl.status = 'published'
+         ORDER BY pl.attempted_at DESC`,
+        [brandProfileId]
+      ).catch(() => ({ rows: [] }));
+
+      const xCredRes = await pool.query(
+        `SELECT credentials FROM publishing_channels
+         WHERE brand_profile_id = $1 AND channel = 'x' AND is_active = true
+         LIMIT 1`,
+        [brandProfileId]
+      ).catch(() => ({ rows: [] }));
+      const xCreds = xCredRes.rows[0]?.credentials || {};
+      const xApiKey       = xCreds.apiKey       || process.env.X_API_KEY;
+      const xApiSecret    = xCreds.apiSecret    || process.env.X_API_SECRET;
+      const xAccessToken  = xCreds.accessToken  || process.env.X_ACCESS_TOKEN;
+      const xAccessSecret = xCreds.accessSecret || process.env.X_ACCESS_SECRET;
+
+      for (const row of xLogRes.rows) {
+        try {
+          const tweetId = row.response_data?.tweetId || row.response_data?.id;
+          if (!tweetId || !xApiKey || !xAccessToken) {
+            if (!xApiKey || !xAccessToken) errors.push({ contentId: row.content_id, error: 'no_x_credentials' });
+            continue;
+          }
+
+          // Build OAuth 1.0a header for GET request
+          const endpoint = `https://api.twitter.com/2/tweets/${tweetId}`;
+          const oauthParams = {
+            oauth_consumer_key: xApiKey,
+            oauth_nonce: randomBytes(16).toString('hex'),
+            oauth_signature_method: 'HMAC-SHA1',
+            oauth_timestamp: String(Math.floor(Date.now() / 1000)),
+            oauth_token: xAccessToken,
+            oauth_version: '1.0',
+          };
+          const queryString = 'tweet.fields=public_metrics,created_at,author_id';
+          const paramStr = Object.entries({ ...oauthParams, ...Object.fromEntries(new URLSearchParams(queryString)) })
+            .sort(([a],[b]) => a.localeCompare(b))
+            .map(([k,v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+          const baseStr = `GET&${encodeURIComponent(endpoint)}&${encodeURIComponent(paramStr)}`;
+          const sigKey = `${encodeURIComponent(xApiSecret)}&${encodeURIComponent(xAccessSecret)}`;
+          oauthParams['oauth_signature'] = createHmac('sha1', sigKey).update(baseStr).digest('base64');
+          const authHeader = 'OAuth ' + Object.entries(oauthParams).sort(([a],[b]) => a.localeCompare(b))
+            .map(([k,v]) => `${encodeURIComponent(k)}="${encodeURIComponent(v)}"`).join(', ');
+
+          const tweetRes = await fetch(`${endpoint}?${queryString}`, {
+            headers: { 'Authorization': authHeader }
+          });
+
+          let impressions = 0, clicks = 0, reactions = 0, comments = 0, reposts = 0;
+          let rawData = {};
+
+          if (tweetRes.ok) {
+            const tweetData = await tweetRes.json();
+            const metrics = tweetData.data?.public_metrics || {};
+            // X public_metrics: impression_count, like_count, reply_count, retweet_count, quote_count, bookmark_count, url_link_clicks
+            impressions = metrics.impression_count  || 0;
+            reactions   = metrics.like_count        || 0;
+            comments    = metrics.reply_count       || 0;
+            reposts     = (metrics.retweet_count || 0) + (metrics.quote_count || 0);
+            clicks      = metrics.url_link_clicks   || metrics.user_profile_clicks || 0;
+            rawData     = metrics;
+          } else {
+            const errBody = await tweetRes.json().catch(() => ({}));
+            errors.push({ contentId: row.content_id, error: errBody?.detail || errBody?.title || `HTTP ${tweetRes.status}` });
+            continue;
+          }
+
+          const ctr = impressions > 0 ? parseFloat((clicks / impressions * 100).toFixed(2)) : 0;
+          const engagementRate = impressions > 0
+            ? parseFloat(((reactions + comments + reposts + clicks) / impressions * 100).toFixed(2))
+            : 0;
+
+          await pool.query(
+            `INSERT INTO content_analytics
+               (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
+             ON CONFLICT (content_id, channel) DO UPDATE SET
+               impressions=EXCLUDED.impressions, clicks=EXCLUDED.clicks,
+               reactions=EXCLUDED.reactions, comments=EXCLUDED.comments,
+               reposts=EXCLUDED.reposts, ctr=EXCLUDED.ctr,
+               engagement_rate=EXCLUDED.engagement_rate,
+               raw_data=EXCLUDED.raw_data, synced_at=NOW()`,
+            [brandProfileId, row.content_id, 'x', tweetId,
+             impressions, clicks, reactions, comments, reposts, ctr, engagementRate,
+             JSON.stringify(rawData), row.published_at]
+          );
+          synced.push({ contentId: row.content_id, title: row.title, tweetId, impressions, reactions, comments, reposts, clicks });
         } catch(e) {
           errors.push({ contentId: row.content_id, error: e.message });
         }
