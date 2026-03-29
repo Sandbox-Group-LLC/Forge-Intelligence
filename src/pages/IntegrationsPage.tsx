@@ -93,10 +93,10 @@ const CHANNELS: ChannelDef[] = [
   {
     id: 'x',
     label: 'X (Twitter)',
-    description: 'Post excerpts with UTM-tagged links via X API v2. Live in Stage 6.1.',
+    description: 'Post excerpts with UTM-tagged links via X API v2. Enter your API credentials below.',
     color: '#000000',
     logo: '𝕏',
-    liveStatus: 'staged',
+    liveStatus: 'live',
     credentialFields: [
       { key: 'apiKey', label: 'API Key', placeholder: '...', type: 'password' },
       { key: 'apiSecret', label: 'API Secret', placeholder: '...', type: 'password' },
