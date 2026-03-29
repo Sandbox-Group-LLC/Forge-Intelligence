@@ -3558,17 +3558,16 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
 
     // ── X (Twitter) analytics ──────────────────────────────────────────────
     if (channel === 'x' || channel === 'all') {
-      // Join publishing_queue to get tweetId from publish_results when response_data is null
+      // Simple query — no table joins that could fail if generated_content table missing
       const xLogRes = await pool.query(
-        `SELECT pl.content_id, pl.response_data, pl.published_at, ct.title,
-                pq.publish_results AS queue_results
+        `SELECT pl.content_id, pl.response_data, pl.published_at, pl.published_url,
+                pq.publish_results AS queue_results, pq.title
          FROM publish_log pl
-         LEFT JOIN generated_content_${safeId} ct ON ct.id = pl.content_id
          LEFT JOIN publishing_queue pq ON pq.content_id = pl.content_id
          WHERE pl.brand_profile_id = $1 AND pl.channel = 'x' AND pl.status = 'published'
          ORDER BY pl.attempted_at DESC`,
         [brandProfileId]
-      ).catch(() => ({ rows: [] }));
+      );
 
       const xCredRes = await pool.query(
         `SELECT credentials FROM publishing_channels
