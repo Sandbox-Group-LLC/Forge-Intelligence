@@ -78,7 +78,7 @@ function SetupGuide({ guide }: { guide: SetupGuide }) {
 }
 
 // ── Channel definitions ───────────────────────────────────────────────────────
-type ChannelId = 'wordpress' | 'webflow' | 'hubspot' | 'linkedin' | 'x';
+type ChannelId = 'wordpress' | 'webflow' | 'hubspot' | 'linkedin' | 'x' | 'facebook' | 'reddit';
 
 interface ChannelDef {
   id: ChannelId;
@@ -205,6 +205,53 @@ const CHANNELS: ChannelDef[] = [
       ],
     },
   },
+  {
+    id: 'facebook',
+    label: 'Facebook',
+    description: 'Publish articles to your company Facebook Page via Graph API. Requires a Page Access Token.',
+    color: '#1877F2',
+    logo: 'f',
+    liveStatus: 'live',
+    credentialFields: [
+      { key: 'pageId', label: 'Page ID', placeholder: '123456789012345' },
+      { key: 'pageAccessToken', label: 'Page Access Token', placeholder: 'EAABsbCS...', type: 'password' },
+    ],
+    setupGuide: {
+      title: 'Facebook Page Access Token',
+      steps: [
+        { text: 'Go to Meta for Developers and open your app.', url: 'https://developers.facebook.com/apps' },
+        { text: 'Under Products, add or open Facebook Login. In Graph API Explorer, select your app and your Page from the dropdown.', url: 'https://developers.facebook.com/tools/explorer' },
+        { text: 'Request these permissions: pages_manage_posts, pages_read_engagement, pages_show_list.' },
+        { text: 'Click Generate Access Token, authorize, and copy the Page Access Token shown.' },
+        { text: 'Your Page ID is visible in your Facebook Page URL or in Page Settings → About.' },
+      ],
+    },
+  },
+  {
+    id: 'reddit',
+    label: 'Reddit',
+    description: 'Post article links to your company-owned subreddit via Reddit API. Requires OAuth credentials.',
+    color: '#FF4500',
+    logo: 'r/',
+    liveStatus: 'live',
+    credentialFields: [
+      { key: 'subreddit', label: 'Subreddit', placeholder: 'r/YourBrand' },
+      { key: 'accessToken', label: 'Access Token', placeholder: 'eyJ...', type: 'password' },
+      { key: 'refreshToken', label: 'Refresh Token', placeholder: 'eyJ...', type: 'password' },
+      { key: 'clientId', label: 'App Client ID', placeholder: 'abc123XYZ' },
+      { key: 'clientSecret', label: 'App Client Secret', placeholder: 'secretXYZ...', type: 'password' },
+    ],
+    setupGuide: {
+      title: 'Reddit OAuth App',
+      steps: [
+        { text: 'Go to Reddit App Preferences and click "Create another app".', url: 'https://www.reddit.com/prefs/apps' },
+        { text: 'Select "script" as the app type. Set redirect URI to http://localhost:8080.' },
+        { text: 'Copy the Client ID (below the app name) and Client Secret.' },
+        { text: 'Use a Reddit OAuth tool or CURL to exchange your credentials for an access token and refresh token with scopes: submit, identity.' },
+        { text: 'Paste the subreddit name (e.g. r/YourBrand), access token, refresh token, client ID, and secret above.' },
+      ],
+    },
+  },
 ];
 
 const DEFAULT_UTM: Record<ChannelId, Record<string, string>> = {
@@ -212,7 +259,9 @@ const DEFAULT_UTM: Record<ChannelId, Record<string, string>> = {
   webflow:   { utm_source: 'forge', utm_medium: 'organic', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   hubspot:   { utm_source: 'hubspot', utm_medium: 'attribution', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   linkedin:  { utm_source: 'linkedin', utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
-  x:         { utm_source: 'x', utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
+  x:         { utm_source: 'x',        utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
+  facebook:  { utm_source: 'facebook',   utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
+  reddit:    { utm_source: 'reddit',     utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
 };
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -233,11 +282,11 @@ export default function IntegrationsPage() {
   const [brands, setBrands] = useState<Brain[]>([]);
   const [selectedBrand, setSelectedBrand] = useState('');
   const [savedChannels, setSavedChannels] = useState<Record<ChannelId, SavedChannel | null>>({
-    wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null
+    wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null, facebook: null, reddit: null
   });
   const [expanded, setExpanded] = useState<ChannelId | null>(null);
   const [credentials, setCredentials] = useState<Record<ChannelId, Record<string, string>>>({
-    wordpress: {}, webflow: {}, hubspot: {}, linkedin: {}, x: {}
+    wordpress: {}, webflow: {}, hubspot: {}, linkedin: {}, x: {}, facebook: {}, reddit: {}
   });
   const [utmTemplates, setUtmTemplates] = useState<Record<ChannelId, Record<string, string>>>(DEFAULT_UTM);
   const [saving, setSaving] = useState<ChannelId | null>(null);
