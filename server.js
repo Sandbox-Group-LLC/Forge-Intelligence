@@ -532,6 +532,8 @@ async function initDB() {
     )`);
     console.log('NeonDB: Publishing tables ensured');
 
+    // Migration: add missing columns to content_analytics
+    await pool.query(`ALTER TABLE content_analytics ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ`).catch(() => {});
     // Migration: add missing columns to publish_log
     await pool.query(`ALTER TABLE publish_log ADD COLUMN IF NOT EXISTS live_status VARCHAR(20) DEFAULT 'published'`).catch(() => {});
     await pool.query(`ALTER TABLE publish_log ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ`).catch(() => {});
@@ -546,6 +548,8 @@ async function initDB() {
     // Backfill published_at from attempted_at where null
     await pool.query(`UPDATE publish_log SET published_at = attempted_at WHERE published_at IS NULL`).catch(() => {});
 
+    // Migration: add missing columns to content_analytics
+    await pool.query(`ALTER TABLE content_analytics ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ`).catch(() => {});
     // Migration: add missing columns to publish_log
     await pool.query(`ALTER TABLE publish_log ADD COLUMN IF NOT EXISTS live_status VARCHAR(20) DEFAULT 'published'`).catch(() => {});
     await pool.query(`ALTER TABLE publish_log ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ`).catch(() => {});
@@ -560,6 +564,8 @@ async function initDB() {
     // Backfill published_at from attempted_at where null
     await pool.query(`UPDATE publish_log SET published_at = attempted_at WHERE published_at IS NULL`).catch(() => {});
 
+    // Migration: add missing columns to content_analytics
+    await pool.query(`ALTER TABLE content_analytics ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ`).catch(() => {});
     // Migration: add missing columns to publish_log
     await pool.query(`ALTER TABLE publish_log ADD COLUMN IF NOT EXISTS live_status VARCHAR(20) DEFAULT 'published'`).catch(() => {});
     await pool.query(`ALTER TABLE publish_log ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ`).catch(() => {});
@@ -3720,15 +3726,16 @@ app.get('/api/analytics/dashboard/:brandProfileId', async (req, res) => {
     const top = await pool.query(
       `SELECT ca.content_id, ca.impressions, ca.clicks, ca.reactions,
               ca.comments, ca.reposts, ca.ctr, ca.engagement_rate,
-              ca.published_at, ca.synced_at,
-              ct.title, ct.hero_image_url
+              ca.synced_at AS published_at, ca.synced_at,
+              pl.published_url, pq.title
        FROM content_analytics ca
-       LEFT JOIN generated_content_${safeId} ct ON ct.id = ca.content_id
+       LEFT JOIN publish_log pl ON pl.content_id = ca.content_id AND pl.channel = ca.channel AND pl.status = 'published'
+       LEFT JOIN publishing_queue pq ON pq.content_id = ca.content_id
        WHERE ca.brand_profile_id=$1 AND ca.channel=$2
        ORDER BY ca.impressions DESC, ca.reactions DESC
        LIMIT 5`,
       [brandProfileId, channel]
-    ).catch(() => ({ rows: [] }));
+    );
 
     // 30-day trend (daily impressions)
     const trend = await pool.query(
@@ -3744,18 +3751,19 @@ app.get('/api/analytics/dashboard/:brandProfileId', async (req, res) => {
       [brandProfileId, channel]
     ).catch(() => ({ rows: [] }));
 
-    // All posts for table
+    // All posts for table — join publish_log for title/url, no generated_content join
     const posts = await pool.query(
       `SELECT ca.content_id, ca.impressions, ca.clicks, ca.reactions,
               ca.comments, ca.reposts, ca.ctr, ca.engagement_rate,
-              ca.published_at, ca.synced_at, ca.channel,
-              ct.title, ct.hero_image_url, ct.article_json
+              ca.synced_at AS published_at, ca.synced_at, ca.channel,
+              pl.published_url, pq.title
        FROM content_analytics ca
-       LEFT JOIN generated_content_${safeId} ct ON ct.id = ca.content_id
+       LEFT JOIN publish_log pl ON pl.content_id = ca.content_id AND pl.channel = ca.channel AND pl.status = 'published'
+       LEFT JOIN publishing_queue pq ON pq.content_id = ca.content_id
        WHERE ca.brand_profile_id=$1 AND ca.channel=$2
        ORDER BY ca.impressions DESC, ca.synced_at DESC`,
       [brandProfileId, channel]
-    ).catch(() => ({ rows: [] }));
+    );
 
     const t = totals.rows[0];
     res.json({
