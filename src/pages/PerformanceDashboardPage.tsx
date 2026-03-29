@@ -377,7 +377,7 @@ export default function PerformanceDashboardPage() {
                   </table>
                 </div>
               )}
-            </div>
+            </div>}
 
             {/* ── Campaigns Tab ── */}
             {activeChannel === 'campaigns' && (
