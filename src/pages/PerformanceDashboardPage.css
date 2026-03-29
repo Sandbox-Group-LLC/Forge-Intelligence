@@ -560,3 +560,292 @@
   .perf-kpis        { grid-template-columns: 1fr 1fr; }
   .perf-kpi-value   { font-size: 1.25rem; }
 }
+
+/* ── Campaigns Tab ──────────────────────────────────────────────────────── */
+.camp-analytics-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.camp-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.camp-analytics-card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition-normal);
+}
+
+.camp-analytics-card.open {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent), var(--shadow-md);
+}
+
+.camp-analytics-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition-normal);
+}
+
+.camp-analytics-header:hover {
+  background: var(--color-bg-elevated);
+}
+
+.camp-analytics-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.camp-analytics-name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.camp-analytics-cluster {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.camp-analytics-header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.camp-analytics-pills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.camp-analytics-pill {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+
+.camp-analytics-pill.impressions {
+  background: rgba(53, 99, 255, 0.12);
+  color: var(--color-accent);
+}
+
+.camp-analytics-pill.clicks {
+  background: rgba(20, 184, 166, 0.12);
+  color: var(--color-success);
+}
+
+.camp-analytics-pill.articles {
+  background: var(--color-bg-elevated);
+  color: var(--color-text-secondary);
+}
+
+.camp-analytics-chevron {
+  color: var(--color-text-muted);
+  transition: transform var(--transition-normal);
+  flex-shrink: 0;
+}
+
+.camp-analytics-chevron.open {
+  transform: rotate(180deg);
+}
+
+/* Expanded body */
+.camp-analytics-body {
+  padding: 0 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  border-top: 1px solid var(--color-border-subtle);
+  animation: fadeIn 0.2s ease;
+}
+
+.camp-analytics-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  padding-top: 20px;
+}
+
+.camp-analytics-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.camp-analytics-kpi-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--color-text-secondary);
+}
+
+.camp-analytics-kpi-value {
+  font-size: 1.375rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.camp-analytics-kpi-sub {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Channel breakdown */
+.camp-channel-breakdown,
+.camp-top-articles {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.camp-breakdown-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--color-text-secondary);
+}
+
+.camp-breakdown-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 60px 70px;
+  align-items: center;
+  gap: 12px;
+}
+
+.camp-breakdown-ch {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.camp-breakdown-bar-wrap {
+  height: 6px;
+  background: var(--color-bg-hover);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.camp-breakdown-bar {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  min-width: 2px;
+}
+
+.camp-breakdown-val {
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
+  font-weight: 500;
+  text-align: right;
+}
+
+.camp-breakdown-clicks {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Top articles */
+.camp-top-article-row {
+  display: grid;
+  grid-template-columns: 28px 1fr 80px 90px 80px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.camp-top-article-row:last-child { border-bottom: none; }
+
+.camp-top-rank {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
+.camp-top-title {
+  font-size: 0.8125rem;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.camp-top-link {
+  color: var(--color-text-primary);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+.camp-top-link:hover { color: var(--color-accent); text-decoration: underline; }
+
+.camp-top-ch {
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.camp-top-impr,
+.camp-top-clicks {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+  text-align: right;
+}
+
+.camp-analytics-footer {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .camp-analytics-kpi-row { grid-template-columns: repeat(2, 1fr); }
+  .camp-breakdown-row { grid-template-columns: 80px 1fr 55px; }
+  .camp-breakdown-clicks { display: none; }
+  .camp-top-article-row { grid-template-columns: 28px 1fr 70px 80px; }
+  .camp-top-clicks { display: none; }
+}
+
+@media (max-width: 768px) {
+  .camp-analytics-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .camp-analytics-header-right { width: 100%; justify-content: space-between; }
+  .camp-analytics-kpi-row { grid-template-columns: 1fr 1fr; }
+  .camp-breakdown-row { grid-template-columns: 70px 1fr 55px; }
+  .camp-top-article-row { grid-template-columns: 24px 1fr 80px; }
+  .camp-top-ch { display: none; }
+}
