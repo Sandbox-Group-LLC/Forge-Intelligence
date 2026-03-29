@@ -362,6 +362,19 @@ async function initDB() {
     if (gcTables.rows.length > 0) console.log(`[MIGRATION] hero_image columns ensured on ${gcTables.rows.length} generated_content table(s)`);
   } catch(e) { console.log('[MIGRATION] hero_image cols note:', e.message); }
 
+  // Migration: ensure hero_image_url + hero_image_prompt exist on all generated_content_* tables
+  try {
+    const gcTables = await pool.query(`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name LIKE 'generated_content_%'
+    `);
+    for (const row of gcTables.rows) {
+      await pool.query(`ALTER TABLE ${row.table_name} ADD COLUMN IF NOT EXISTS hero_image_url TEXT`).catch(() => {});
+      await pool.query(`ALTER TABLE ${row.table_name} ADD COLUMN IF NOT EXISTS hero_image_prompt TEXT`).catch(() => {});
+    }
+    if (gcTables.rows.length > 0) console.log(`[MIGRATION] hero_image columns ensured on ${gcTables.rows.length} generated_content table(s)`);
+  } catch(e) { console.log('[MIGRATION] hero_image cols note:', e.message); }
+
     // Backfill: stage any approved articles that aren't in the queue yet
     try {
       const bpRows = await pool.query(`SELECT id FROM brand_profiles WHERE is_active = true`);
@@ -401,6 +414,19 @@ async function initDB() {
     if (gcTables.rows.length > 0) console.log(`[MIGRATION] hero_image columns ensured on ${gcTables.rows.length} generated_content table(s)`);
   } catch(e) { console.log('[MIGRATION] hero_image cols note:', e.message); }
 
+  // Migration: ensure hero_image_url + hero_image_prompt exist on all generated_content_* tables
+  try {
+    const gcTables = await pool.query(`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name LIKE 'generated_content_%'
+    `);
+    for (const row of gcTables.rows) {
+      await pool.query(`ALTER TABLE ${row.table_name} ADD COLUMN IF NOT EXISTS hero_image_url TEXT`).catch(() => {});
+      await pool.query(`ALTER TABLE ${row.table_name} ADD COLUMN IF NOT EXISTS hero_image_prompt TEXT`).catch(() => {});
+    }
+    if (gcTables.rows.length > 0) console.log(`[MIGRATION] hero_image columns ensured on ${gcTables.rows.length} generated_content table(s)`);
+  } catch(e) { console.log('[MIGRATION] hero_image cols note:', e.message); }
+
     // Backfill: stage any approved articles that aren't in the queue yet
     try {
       const bpRows = await pool.query(`SELECT id FROM brand_profiles WHERE is_active = true`);
@@ -426,6 +452,19 @@ async function initDB() {
         if (approved.rows.length > 0) console.log(`[BACKFILL] Staged ${approved.rows.length} approved article(s) for brand ${bp.id}`);
       }
     } catch(e) { console.log('[BACKFILL] Note:', e.message); }
+
+  // Migration: ensure hero_image_url + hero_image_prompt exist on all generated_content_* tables
+  try {
+    const gcTables = await pool.query(`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name LIKE 'generated_content_%'
+    `);
+    for (const row of gcTables.rows) {
+      await pool.query(`ALTER TABLE ${row.table_name} ADD COLUMN IF NOT EXISTS hero_image_url TEXT`).catch(() => {});
+      await pool.query(`ALTER TABLE ${row.table_name} ADD COLUMN IF NOT EXISTS hero_image_prompt TEXT`).catch(() => {});
+    }
+    if (gcTables.rows.length > 0) console.log(`[MIGRATION] hero_image columns ensured on ${gcTables.rows.length} generated_content table(s)`);
+  } catch(e) { console.log('[MIGRATION] hero_image cols note:', e.message); }
 
   // Migration: ensure hero_image_url + hero_image_prompt exist on all generated_content_* tables
   try {
