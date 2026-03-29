@@ -3122,7 +3122,8 @@ app.get('/auth/linkedin/callback', async (req, res) => {
   try {
     const clientId     = process.env.LINKEDIN_CLIENT_ID;
     const clientSecret = process.env.LINKEDIN_CLIENT_SECRET;
-    const redirectUri  = 'https://forgeintelligence.ai/auth/linkedin/callback';
+    const liCallbackDomain = process.env.BASE_DOMAIN || 'forgeintelligence.ai';
+    const redirectUri  = `https://${liCallbackDomain}/auth/linkedin/callback`;
     const tokenRes = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
