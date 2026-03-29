@@ -536,16 +536,25 @@ async function initDB() {
     await pool.query(`ALTER TABLE publish_log ADD COLUMN IF NOT EXISTS live_status VARCHAR(20) DEFAULT 'published'`).catch(() => {});
     await pool.query(`ALTER TABLE publish_log ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ`).catch(() => {});
     await pool.query(`ALTER TABLE publish_log ADD COLUMN IF NOT EXISTS synced_count INTEGER DEFAULT 0`).catch(() => {});
+    await pool.query(`ALTER TABLE publish_log ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ`).catch(() => {});
+    // Backfill published_at from attempted_at where null
+    await pool.query(`UPDATE publish_log SET published_at = attempted_at WHERE published_at IS NULL`).catch(() => {});
 
     // Migration: add missing columns to publish_log
     await pool.query(`ALTER TABLE publish_log ADD COLUMN IF NOT EXISTS live_status VARCHAR(20) DEFAULT 'published'`).catch(() => {});
     await pool.query(`ALTER TABLE publish_log ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ`).catch(() => {});
     await pool.query(`ALTER TABLE publish_log ADD COLUMN IF NOT EXISTS synced_count INTEGER DEFAULT 0`).catch(() => {});
+    await pool.query(`ALTER TABLE publish_log ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ`).catch(() => {});
+    // Backfill published_at from attempted_at where null
+    await pool.query(`UPDATE publish_log SET published_at = attempted_at WHERE published_at IS NULL`).catch(() => {});
 
     // Migration: add missing columns to publish_log
     await pool.query(`ALTER TABLE publish_log ADD COLUMN IF NOT EXISTS live_status VARCHAR(20) DEFAULT 'published'`).catch(() => {});
     await pool.query(`ALTER TABLE publish_log ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ`).catch(() => {});
     await pool.query(`ALTER TABLE publish_log ADD COLUMN IF NOT EXISTS synced_count INTEGER DEFAULT 0`).catch(() => {});
+    await pool.query(`ALTER TABLE publish_log ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ`).catch(() => {});
+    // Backfill published_at from attempted_at where null
+    await pool.query(`UPDATE publish_log SET published_at = attempted_at WHERE published_at IS NULL`).catch(() => {});
 
     // ── Analytics table
     await pool.query(`CREATE TABLE IF NOT EXISTS content_analytics (
@@ -3523,7 +3532,7 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
     if (channel === 'linkedin' || channel === 'all') {
       // Get all LinkedIn published posts from publish_log
       const logRes = await pool.query(
-        `SELECT pl.content_id, pl.response_data, pl.published_at,
+        `SELECT pl.content_id, pl.response_data, pl.attempted_at AS published_at,
                 ct.title
          FROM publish_log pl
          LEFT JOIN generated_content_${safeId} ct ON ct.id = pl.content_id
@@ -3628,7 +3637,7 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
     // ── X (Twitter) analytics ──────────────────────────────────────────────
     if (channel === 'x' || channel === 'all') {
       const xLogRes = await pool.query(
-        `SELECT content_id, response_data, published_at, published_url
+        `SELECT content_id, response_data, attempted_at AS published_at, published_url
          FROM publish_log
          WHERE brand_profile_id = $1 AND channel = 'x' AND status = 'published'
          ORDER BY attempted_at DESC`,
