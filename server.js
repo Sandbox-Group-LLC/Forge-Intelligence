@@ -849,6 +849,23 @@ app.get('/api/brand-profiles/list', async (req, res) => {
   }
 });
 
+// ── GET /api/brand-profiles/list — list all brand profiles (used by Performance Dashboard) ──
+app.get('/api/brand-profiles/list', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, brand_url, brand_name, profile_data FROM brand_profiles WHERE is_active = true ORDER BY updated_at DESC`
+    );
+    const profiles = result.rows.map(r => ({
+      id: r.id,
+      brandUrl: r.brand_url,
+      brandName: r.brand_name || r.profile_data?.voice_profile?.brand_name || r.brand_url,
+    }));
+    res.json({ success: true, profiles });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.get('/api/context-hub/history/:encodedUrl', async (req, res) => {
   try {
     const brandUrl = decodeURIComponent(req.params.encodedUrl);
