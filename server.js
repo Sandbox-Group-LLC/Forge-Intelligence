@@ -415,6 +415,11 @@ async function initDB() {
     )`);
     console.log('NeonDB: Publishing tables ensured');
 
+    // Migration: add missing columns to publish_log
+    await pool.query(`ALTER TABLE publish_log ADD COLUMN IF NOT EXISTS live_status VARCHAR(20) DEFAULT 'published'`).catch(() => {});
+    await pool.query(`ALTER TABLE publish_log ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ`).catch(() => {});
+    await pool.query(`ALTER TABLE publish_log ADD COLUMN IF NOT EXISTS synced_count INTEGER DEFAULT 0`).catch(() => {});
+
     // ── Analytics table
     await pool.query(`CREATE TABLE IF NOT EXISTS content_analytics (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
