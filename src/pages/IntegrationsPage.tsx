@@ -78,7 +78,7 @@ function SetupGuide({ guide }: { guide: SetupGuide }) {
 }
 
 // ── Channel definitions ───────────────────────────────────────────────────────
-type ChannelId = 'wordpress' | 'webflow' | 'hubspot' | 'linkedin' | 'x' | 'facebook' | 'reddit';
+type ChannelId = 'wordpress' | 'webflow' | 'hubspot' | 'linkedin' | 'x' | 'facebook' | 'reddit' | 'medium';
 
 interface ChannelDef {
   id: ChannelId;
@@ -254,6 +254,27 @@ const CHANNELS: ChannelDef[] = [
       ],
     },
   },
+  {
+    id: 'medium',
+    label: 'Medium',
+    description: 'Publish articles to Medium as public posts with canonical URL back to your site. One integration token, no OAuth.',
+    color: '#000000',
+    logo: 'M',
+    liveStatus: 'live',
+    credentialFields: [
+      { key: 'integrationToken', label: 'Integration Token', placeholder: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', type: 'password' },
+    ],
+    setupGuide: {
+      title: 'Medium Integration Token',
+      steps: [
+        { text: 'Go to your Medium settings page.', url: 'https://medium.com/me/settings/security' },
+        { text: 'Scroll to "Integration tokens" at the bottom. Give it a name like "Forge Intelligence" and click Get integration token.' },
+        { text: 'Copy the token — it's a long string starting with a hex sequence. Paste it above.' },
+        { text: 'That's it. No OAuth, no app creation. Medium uses simple bearer tokens for API access.' },
+        { text: 'Note: Medium publishes as your personal account. Make sure you're logged into the account you want to publish from when you generate the token.' },
+      ],
+    },
+  },
 ];
 
 const DEFAULT_UTM: Record<ChannelId, Record<string, string>> = {
@@ -264,6 +285,7 @@ const DEFAULT_UTM: Record<ChannelId, Record<string, string>> = {
   x:         { utm_source: 'x',        utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   facebook:  { utm_source: 'facebook',   utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   reddit:    { utm_source: 'reddit',     utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
+  medium:    { utm_source: 'medium',     utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
 };
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -284,11 +306,11 @@ export default function IntegrationsPage() {
   const [brands, setBrands] = useState<Brain[]>([]);
   const [selectedBrand, setSelectedBrand] = useState('');
   const [savedChannels, setSavedChannels] = useState<Record<ChannelId, SavedChannel | null>>({
-    wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null, facebook: null, reddit: null
+    wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null, facebook: null, reddit: null, medium: null
   });
   const [expanded, setExpanded] = useState<ChannelId | null>(null);
   const [credentials, setCredentials] = useState<Record<ChannelId, Record<string, string>>>({
-    wordpress: {}, webflow: {}, hubspot: {}, linkedin: {}, x: {}, facebook: {}, reddit: {}
+    wordpress: {}, webflow: {}, hubspot: {}, linkedin: {}, x: {}, facebook: {}, reddit: {}, medium: {}
   });
   const [utmTemplates, setUtmTemplates] = useState<Record<ChannelId, Record<string, string>>>(DEFAULT_UTM);
   const [saving, setSaving] = useState<ChannelId | null>(null);
@@ -318,7 +340,7 @@ export default function IntegrationsPage() {
       .then(d => {
         if (d.success) {
           const map: Record<ChannelId, SavedChannel | null> = {
-            wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null, facebook: null, reddit: null
+            wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null, facebook: null, reddit: null, medium: null
           };
           for (const ch of d.channels) map[ch.channel as ChannelId] = ch;
           setSavedChannels(map);
