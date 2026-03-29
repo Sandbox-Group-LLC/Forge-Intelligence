@@ -588,6 +588,39 @@ app.get('/api/publishing/sync/:queueItemId', async (req, res) => {
               liveStatus = wpData.status === 'publish' ? 'published' : wpData.status || 'unknown';
             }
           }
+        } else if (row.channel === 'x') {
+          // Check X tweet status via v2 API with OAuth 1.0a
+          const tweetId = row.response_data?.tweetId || row.response_data?.id;
+          const xApiKey    = creds.apiKey    || process.env.X_API_KEY;
+          const xApiSecret = creds.apiSecret || process.env.X_API_SECRET;
+          const xAccessToken  = creds.accessToken  || process.env.X_ACCESS_TOKEN;
+          const xAccessSecret = creds.accessSecret || process.env.X_ACCESS_SECRET;
+
+          if (tweetId && xApiKey && xAccessToken) {
+            const endpoint = `https://api.twitter.com/2/tweets/${tweetId}`;
+            const oauthParams = {
+              oauth_consumer_key: xApiKey,
+              oauth_nonce: randomBytes(16).toString('hex'),
+              oauth_signature_method: 'HMAC-SHA1',
+              oauth_timestamp: String(Math.floor(Date.now() / 1000)),
+              oauth_token: xAccessToken,
+              oauth_version: '1.0',
+            };
+            const paramStr = Object.entries(oauthParams)
+              .sort(([a],[b]) => a.localeCompare(b))
+              .map(([k,v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+            const baseStr = `GET&${encodeURIComponent(endpoint)}&${encodeURIComponent(paramStr)}`;
+            const sigKey = `${encodeURIComponent(xApiSecret)}&${encodeURIComponent(xAccessSecret)}`;
+            oauthParams['oauth_signature'] = createHmac('sha1', sigKey).update(baseStr).digest('base64');
+            const authHeader = 'OAuth ' + Object.entries(oauthParams)
+              .sort(([a],[b]) => a.localeCompare(b))
+              .map(([k,v]) => `${encodeURIComponent(k)}="${encodeURIComponent(v)}"`).join(', ');
+
+            const xRes = await fetch(endpoint, { headers: { 'Authorization': authHeader } });
+            if (xRes.status === 404) liveStatus = 'deleted';
+            else if (xRes.ok) liveStatus = 'published';
+            else if (xRes.status === 401 || xRes.status === 403) liveStatus = 'unknown';
+          }
         }
       } catch (e) {
         console.warn(`[SYNC] ${row.channel} check failed:`, e.message);
@@ -598,6 +631,16 @@ app.get('/api/publishing/sync/:queueItemId', async (req, res) => {
         'UPDATE publish_log SET live_status = $1, last_synced_at = NOW(), synced_count = synced_count + 1 WHERE id = $2',
         [liveStatus, row.id]
       );
+
+      // If post was deleted, reset the queue item back to staged so it can be republished
+      if (liveStatus === 'deleted') {
+        await pool.query(
+          `UPDATE publishing_queue SET status = 'staged', updated_at = NOW()
+           WHERE id = $1 AND status = 'published'`,
+          [queueItemId]
+        ).catch(() => {});
+      }
+
       results[row.channel] = { liveStatus, publishedUrl: row.published_url, lastSynced: new Date().toISOString() };
     }
 
