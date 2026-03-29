@@ -3607,6 +3607,7 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
         `SELECT content_id, response_data, attempted_at AS published_at, published_url
          FROM publish_log
          WHERE brand_profile_id = $1 AND channel = 'x' AND status = 'published'
+           AND (live_status IS NULL OR live_status != 'deleted')
          ORDER BY attempted_at DESC`,
         [brandProfileId]
       );
@@ -3688,9 +3689,13 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
                (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
              ON CONFLICT (content_id, channel) DO UPDATE SET
-               impressions=EXCLUDED.impressions, clicks=EXCLUDED.clicks,
-               reactions=EXCLUDED.reactions, comments=EXCLUDED.comments,
-               reposts=EXCLUDED.reposts, ctr=EXCLUDED.ctr,
+               post_id=EXCLUDED.post_id,
+               impressions=GREATEST(content_analytics.impressions, EXCLUDED.impressions),
+               clicks=GREATEST(content_analytics.clicks, EXCLUDED.clicks),
+               reactions=GREATEST(content_analytics.reactions, EXCLUDED.reactions),
+               comments=GREATEST(content_analytics.comments, EXCLUDED.comments),
+               reposts=GREATEST(content_analytics.reposts, EXCLUDED.reposts),
+               ctr=EXCLUDED.ctr,
                engagement_rate=EXCLUDED.engagement_rate,
                raw_data=EXCLUDED.raw_data, synced_at=NOW()`,
             [brandProfileId, row.content_id, 'x', tweetId,
