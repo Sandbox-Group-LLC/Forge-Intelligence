@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AppShell } from '../layouts/AppShell';
 import './IntegrationsPage.css';
 
@@ -23,6 +23,59 @@ const ChevronUp = () => (
     <polyline points="18 15 12 9 6 15"/>
   </svg>
 );
+const HelpIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+  </svg>
+);
+const ExternalLink = () => (
+  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+  </svg>
+);
+
+// ── Setup Guide Tooltip ──────────────────────────────────────────────────────
+interface SetupStep { text: string; url?: string; code?: string; }
+interface SetupGuide { title: string; steps: SetupStep[]; }
+
+function SetupGuide({ guide }: { guide: SetupGuide }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    if (open) document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div className="int-guide-wrap" ref={ref}>
+      <button className="int-guide-btn" onClick={() => setOpen(o => !o)} title="Setup guide">
+        <HelpIcon /> How to get these
+      </button>
+      {open && (
+        <div className="int-guide-tooltip">
+          <div className="int-guide-title">{guide.title}</div>
+          <ol className="int-guide-steps">
+            {guide.steps.map((step, i) => (
+              <li key={i} className="int-guide-step">
+                <span>{step.text}</span>
+                {step.url && (
+                  <a href={step.url} target="_blank" rel="noopener noreferrer" className="int-guide-link">
+                    Open <ExternalLink />
+                  </a>
+                )}
+                {step.code && <code className="int-guide-code">{step.code}</code>}
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Channel definitions ───────────────────────────────────────────────────────
 type ChannelId = 'wordpress' | 'webflow' | 'hubspot' | 'linkedin' | 'x';
@@ -36,6 +89,7 @@ interface ChannelDef {
   credentialFields: { key: string; label: string; placeholder: string; type?: string }[];
   liveStatus: 'live' | 'staged';
   oauthFlow?: boolean;
+  setupGuide: SetupGuide;
 }
 
 const CHANNELS: ChannelDef[] = [
@@ -51,6 +105,16 @@ const CHANNELS: ChannelDef[] = [
       { key: 'username', label: 'Username', placeholder: 'admin' },
       { key: 'appPassword', label: 'Application Password', placeholder: 'xxxx xxxx xxxx xxxx', type: 'password' },
     ],
+    setupGuide: {
+      title: 'WordPress Application Password',
+      steps: [
+        { text: 'Log into your WordPress admin dashboard.' },
+        { text: 'Go to Users → Profile (or any user you want to publish as).' },
+        { text: 'Scroll down to Application Passwords. Enter a name like "Forge Intelligence" and click Add New.' },
+        { text: 'Copy the generated password — it will only be shown once.' },
+        { text: 'Paste your site URL, your WordPress username, and the application password above.' },
+      ],
+    },
   },
   {
     id: 'webflow',
@@ -64,6 +128,16 @@ const CHANNELS: ChannelDef[] = [
       { key: 'siteId', label: 'Site ID', placeholder: '5f4d...' },
       { key: 'collectionId', label: 'Collection ID', placeholder: 'Blog Posts collection ID' },
     ],
+    setupGuide: {
+      title: 'Webflow API Token',
+      steps: [
+        { text: 'Go to your Webflow dashboard and open your site settings.', url: 'https://webflow.com/dashboard' },
+        { text: 'Navigate to Integrations → API Access → Generate API Token.' },
+        { text: 'Copy the token and paste it above.' },
+        { text: 'Find your Site ID: Settings → General → Site ID.' },
+        { text: 'Find your Collection ID: CMS → Collections → click your blog collection → the ID is in the URL.' },
+      ],
+    },
   },
   {
     id: 'hubspot',
@@ -76,6 +150,16 @@ const CHANNELS: ChannelDef[] = [
       { key: 'accessToken', label: 'Private App Token', placeholder: 'pat-na2-...', type: 'password' },
       { key: 'portalId', label: 'Portal ID', placeholder: '244954048' },
     ],
+    setupGuide: {
+      title: 'HubSpot Private App Token',
+      steps: [
+        { text: 'In HubSpot, go to Settings → Integrations → Private Apps.', url: 'https://app.hubspot.com/private-apps' },
+        { text: 'Click Create a private app. Give it a name like "Forge Intelligence".' },
+        { text: 'Under Scopes, enable: crm.objects.contacts.read, crm.objects.companies.read, timeline.write.' },
+        { text: 'Click Create app. Copy the access token (starts with pat-na2-).' },
+        { text: 'Your Portal ID is the number in your HubSpot URL: app.hubspot.com/contacts/XXXXXXXX.' },
+      ],
+    },
   },
   {
     id: 'linkedin',
@@ -89,20 +173,37 @@ const CHANNELS: ChannelDef[] = [
       { key: 'accessToken', label: 'OAuth Access Token', placeholder: 'Auto-filled after OAuth', type: 'password' },
       { key: 'authorUrn', label: 'Author URN', placeholder: 'Auto-filled after OAuth' },
     ],
+    setupGuide: {
+      title: 'LinkedIn OAuth',
+      steps: [
+        { text: 'Click Connect above. You\'ll be redirected to LinkedIn to authorize Forge Intelligence.' },
+        { text: 'Sign in with the LinkedIn account you want to publish from.' },
+        { text: 'Click Allow to grant posting permissions.' },
+        { text: 'You\'ll be redirected back automatically. No tokens to copy.' },
+      ],
+    },
   },
   {
     id: 'x',
     label: 'X (Twitter)',
-    description: 'Post excerpts with UTM-tagged links via X API v2. Enter your API credentials below.',
+    description: 'Post articles with UTM links via X API v2. Tracks impressions, reactions, and link clicks.',
     color: '#000000',
     logo: '𝕏',
     liveStatus: 'live',
     credentialFields: [
-      { key: 'apiKey', label: 'API Key', placeholder: '...', type: 'password' },
-      { key: 'apiSecret', label: 'API Secret', placeholder: '...', type: 'password' },
-      { key: 'accessToken', label: 'Access Token', placeholder: '...', type: 'password' },
-      { key: 'accessSecret', label: 'Access Token Secret', placeholder: '...', type: 'password' },
+      { key: 'accessToken', label: 'Access Token', placeholder: '2001461745...-...', type: 'password' },
+      { key: 'accessSecret', label: 'Access Token Secret', placeholder: 'abc123...', type: 'password' },
     ],
+    setupGuide: {
+      title: 'X (Twitter) Access Token',
+      steps: [
+        { text: 'Go to the X Developer Portal and open your app.', url: 'https://developer.x.com/en/portal/projects-and-apps' },
+        { text: 'Under Keys and Tokens, find User Authentication Tokens.' },
+        { text: 'If you don\'t see an Access Token, click Generate under "Access Token and Secret".' },
+        { text: 'Make sure your app has Read and Write permissions (App Settings → User authentication settings).' },
+        { text: 'Copy the Access Token and Access Token Secret and paste them above. The API Key/Secret live in Forge — you don\'t need them.' },
+      ],
+    },
   },
 ];
 
@@ -144,12 +245,10 @@ export default function IntegrationsPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // Load brands
   useEffect(() => {
     fetch('/api/context-hub/brains').then(r => r.json()).then(d => {
       if (d.success) {
         setBrands(d.data || []);
-        // Restore last-used brand from localStorage
         const stored = localStorage.getItem(LS_BRAND_KEY);
         if (stored && d.data?.some((b: Brain) => b.id === stored)) {
           setSelectedBrand(stored);
@@ -158,12 +257,10 @@ export default function IntegrationsPage() {
     });
   }, []);
 
-  // Persist selectedBrand to localStorage
   useEffect(() => {
     if (selectedBrand) localStorage.setItem(LS_BRAND_KEY, selectedBrand);
   }, [selectedBrand]);
 
-  // Load saved channels when brand changes
   const loadChannels = (brandId: string) => {
     fetch(`/api/publishing/channels/${brandId}`)
       .then(r => r.json())
@@ -189,14 +286,12 @@ export default function IntegrationsPage() {
     if (selectedBrand) loadChannels(selectedBrand);
   }, [selectedBrand]);
 
-  // Handle LinkedIn OAuth callback
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('linkedin_connected') === 'true') {
       setSuccess('LinkedIn connected successfully!');
       setExpanded('linkedin');
       window.history.replaceState({}, '', '/app/integrations');
-      // Reload channels after short delay to let DB settle
       const brand = localStorage.getItem(LS_BRAND_KEY);
       if (brand) {
         setSelectedBrand(brand);
@@ -380,7 +475,8 @@ export default function IntegrationsPage() {
                     {!(ch.oauthFlow && connected) && (
                       <div className="int-form-section">
                         <div className="int-form-label">
-                          {connected ? 'Credentials' : 'Credentials'}
+                          Credentials
+                          <SetupGuide guide={ch.setupGuide} />
                         </div>
                         <div className="int-fields">
                           {ch.credentialFields.map(f => (
