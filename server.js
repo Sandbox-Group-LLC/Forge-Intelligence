@@ -3646,7 +3646,8 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
             oauth_token: xAccessToken,
             oauth_version: '1.0',
           };
-          const queryString = 'tweet.fields=public_metrics,created_at,author_id';
+          // Request public + non_public metrics — non_public gives url_link_clicks (user auth required, own posts only, last 30 days)
+          const queryString = 'tweet.fields=public_metrics,non_public_metrics,created_at,author_id';
           const paramStr = Object.entries({ ...oauthParams, ...Object.fromEntries(new URLSearchParams(queryString)) })
             .sort(([a],[b]) => a.localeCompare(b))
             .map(([k,v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
@@ -3665,14 +3666,15 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
 
           if (tweetRes.ok) {
             const tweetData = await tweetRes.json();
-            const metrics = tweetData.data?.public_metrics || {};
-            // X public_metrics: impression_count, like_count, reply_count, retweet_count, quote_count, bookmark_count, url_link_clicks
-            impressions = metrics.impression_count  || 0;
-            reactions   = metrics.like_count        || 0;
-            comments    = metrics.reply_count       || 0;
-            reposts     = (metrics.retweet_count || 0) + (metrics.quote_count || 0);
-            clicks      = metrics.url_link_clicks   || metrics.user_profile_clicks || 0;
-            rawData     = metrics;
+            const pub  = tweetData.data?.public_metrics     || {};
+            const priv = tweetData.data?.non_public_metrics || {};
+            impressions = pub.impression_count || 0;
+            reactions   = pub.like_count       || 0;
+            comments    = pub.reply_count      || 0;
+            reposts     = (pub.retweet_count || 0) + (pub.quote_count || 0);
+            // url_link_clicks lives in non_public_metrics — falls back gracefully if unavailable
+            clicks      = priv.url_link_clicks || priv.user_profile_clicks || 0;
+            rawData     = { public_metrics: pub, non_public_metrics: priv };
           } else {
             const errBody = await tweetRes.json().catch(() => ({}));
             errors.push({ contentId: row.content_id, error: errBody?.detail || errBody?.title || `HTTP ${tweetRes.status}` });
