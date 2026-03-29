@@ -613,6 +613,9 @@ async function initDB() {
       UNIQUE(content_id, channel)
     )`);
     console.log('NeonDB: content_analytics table ensured');
+    // Campaign analytics migrations
+    await pool.query(`ALTER TABLE content_analytics ADD COLUMN IF NOT EXISTS campaign_id UUID`).catch(() => {});
+    await pool.query(`ALTER TABLE publishing_queue ADD COLUMN IF NOT EXISTS campaign_id UUID`).catch(() => {});
   } catch(e) { console.log('NeonDB: Brain tables note:', e.message); }
 
 
@@ -2120,6 +2123,9 @@ async function ensureGeneratedContentTable(brandProfileId) {
   await pool.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS compliance_status TEXT DEFAULT 'pending'`).catch(() => {});
   await pool.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS compliance_report JSONB`).catch(() => {});
   await pool.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ`).catch(() => {});
+  // Campaign tracking — links articles generated via campaign generator back to their campaign
+  await pool.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS campaign_id UUID`).catch(() => {});
+  await pool.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS campaign_article_index INTEGER`).catch(() => {});
   return tableName;
 }
 
@@ -2690,6 +2696,40 @@ Return ONLY valid JSON matching the content generator output format.`;
         [JSON.stringify(parsed), articleRow.id]
       );
 
+      // ── Mirror into generated_content_{uuid} so article flows through publishing pipeline ──
+      // This is what connects campaign articles to publishing_queue, UTM tracking, and analytics.
+      try {
+        const contentTableName = await ensureGeneratedContentTable(campaign.brand_profile_id);
+        const insertedContent = await pool.query(
+          `INSERT INTO ${contentTableName}
+            (brand_profile_id, title, article_json, overall_confidence, status, campaign_id, campaign_article_index, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, 'draft', $5, $6, NOW(), NOW())
+           ON CONFLICT DO NOTHING
+           RETURNING id`,
+          [
+            campaign.brand_profile_id,
+            parsed.title || angle.title,
+            JSON.stringify(parsed),
+            parsed.overallConfidence || angle.estimated_confidence || 75,
+            campaign.id,
+            angle.index
+          ]
+        );
+        const contentId = insertedContent.rows[0]?.id;
+
+        // Stage into publishing_queue with campaign_id so UTM builder can read it
+        if (contentId) {
+          await pool.query(
+            `INSERT INTO publishing_queue (brand_profile_id, content_id, title, status, campaign_id, created_at, updated_at)
+             VALUES ($1, $2, $3, 'staged', $4, NOW(), NOW())
+             ON CONFLICT (content_id) DO NOTHING`,
+            [campaign.brand_profile_id, contentId, parsed.title || angle.title, campaign.id]
+          );
+        }
+      } catch (mirrorErr) {
+        console.warn('[CAMPAIGN] Mirror to generated_content failed (non-fatal):', mirrorErr.message);
+      }
+
       send('article_done', { index: angle.index, article: parsed });
 
       // Fire image generation async — emits image_done when ready, never blocks article loop
@@ -3244,7 +3284,18 @@ app.post('/api/publishing/publish', async (req, res) => {
       const chConfig = channelMap[channel];
       if (!chConfig) { results[channel] = { status: 'error', error: 'Channel not connected' }; continue; }
 
-      const utmCtx = { channel, brandSlug, articleSlug, campaignSlug: article.campaign_id || 'forge-content' };
+      // campaign_id is a UUID — derive a readable slug from the queue item's campaign_id
+      // Fall back to the campaigns table name if we have it, otherwise use the UUID prefix
+      let campaignSlug = 'forge-content';
+      if (item.campaign_id) {
+        try {
+          const campRow = await pool.query('SELECT name FROM campaigns WHERE id = $1', [item.campaign_id]);
+          campaignSlug = campRow.rows[0]?.name
+            ? campRow.rows[0].name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 50)
+            : item.campaign_id.split('-')[0];
+        } catch { campaignSlug = item.campaign_id.split('-')[0]; }
+      }
+      const utmCtx = { channel, brandSlug, articleSlug, campaignSlug };
       const utmParams = resolveUtmParams(chConfig.utm_template || {}, utmCtx);
       const utmString = buildUtmString(utmParams);
       const creds = chConfig.credentials || {};
@@ -3622,9 +3673,9 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
       // Get all LinkedIn published posts from publish_log
       const logRes = await pool.query(
         `SELECT pl.content_id, pl.response_data, pl.attempted_at AS published_at,
-                ct.title
+                ct.title, ct.campaign_id
          FROM publish_log pl
-         LEFT JOIN generated_content_${safeId} ct ON ct.id = pl.content_id
+         LEFT JOIN generated_content_${safeId} ct ON ct.id::text = pl.content_id
          WHERE pl.brand_profile_id = $1 AND pl.channel = 'linkedin' AND pl.status = 'published'
          ORDER BY pl.attempted_at DESC`,
         [brandProfileId]
@@ -3704,17 +3755,18 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
 
           await pool.query(
             `INSERT INTO content_analytics
-               (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
+               (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at, campaign_id)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),$14)
              ON CONFLICT (content_id, channel) DO UPDATE SET
                impressions=EXCLUDED.impressions, clicks=EXCLUDED.clicks,
                reactions=EXCLUDED.reactions, comments=EXCLUDED.comments,
                reposts=EXCLUDED.reposts, ctr=EXCLUDED.ctr,
                engagement_rate=EXCLUDED.engagement_rate,
-               raw_data=EXCLUDED.raw_data, synced_at=NOW()`,
+               raw_data=EXCLUDED.raw_data, synced_at=NOW(),
+               campaign_id=COALESCE(EXCLUDED.campaign_id, content_analytics.campaign_id)`,
             [brandProfileId, row.content_id, 'linkedin', postId,
              impressions, clicks, reactions, comments, reposts, ctr, engagementRate,
-             JSON.stringify(rawData), row.published_at]
+             JSON.stringify(rawData), row.published_at, row.campaign_id || null]
           );
           synced.push({ contentId: row.content_id, title: row.title, postId, reactions, comments, reposts, impressions, dataSource });
         } catch(e) {
@@ -3726,11 +3778,13 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
     // ── X (Twitter) analytics ──────────────────────────────────────────────
     if (channel === 'x' || channel === 'all') {
       const xLogRes = await pool.query(
-        `SELECT content_id, response_data, attempted_at AS published_at, published_url
-         FROM publish_log
-         WHERE brand_profile_id = $1 AND channel = 'x' AND status = 'published'
-           AND (live_status IS NULL OR live_status != 'deleted')
-         ORDER BY attempted_at DESC`,
+        `SELECT pl.content_id, pl.response_data, pl.attempted_at AS published_at,
+                pl.published_url, ct.campaign_id
+         FROM publish_log pl
+         LEFT JOIN generated_content_${safeId} ct ON ct.id::text = pl.content_id
+         WHERE pl.brand_profile_id = $1 AND pl.channel = 'x' AND pl.status = 'published'
+           AND (pl.live_status IS NULL OR pl.live_status != 'deleted')
+         ORDER BY pl.attempted_at DESC`,
         [brandProfileId]
       );
 
@@ -3810,8 +3864,8 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
 
           await pool.query(
             `INSERT INTO content_analytics
-               (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
+               (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at, campaign_id)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),$14)
              ON CONFLICT (content_id, channel) DO UPDATE SET
                post_id=EXCLUDED.post_id,
                impressions=GREATEST(content_analytics.impressions, EXCLUDED.impressions),
@@ -3821,10 +3875,11 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
                reposts=GREATEST(content_analytics.reposts, EXCLUDED.reposts),
                ctr=EXCLUDED.ctr,
                engagement_rate=EXCLUDED.engagement_rate,
-               raw_data=EXCLUDED.raw_data, synced_at=NOW()`,
+               raw_data=EXCLUDED.raw_data, synced_at=NOW(),
+               campaign_id=COALESCE(EXCLUDED.campaign_id, content_analytics.campaign_id)`,
             [brandProfileId, row.content_id, 'x', tweetId,
              impressions, clicks, reactions, comments, reposts, ctr, engagementRate,
-             JSON.stringify(rawData), row.published_at]
+             JSON.stringify(rawData), row.published_at, row.campaign_id || null]
           );
           synced.push({ contentId: row.content_id, title: row.title, tweetId, impressions, reactions, comments, reposts, clicks });
         } catch(e) {
@@ -3961,6 +4016,112 @@ app.get('/api/analytics/channels/:brandProfileId', async (req, res) => {
   }
 });
 
+
+// ── Campaign-level analytics ──────────────────────────────────────────────────
+// GET /api/analytics/campaigns/:brandProfileId
+// Returns per-campaign aggregated metrics across all channels.
+app.get('/api/analytics/campaigns/:brandProfileId', async (req, res) => {
+  const { brandProfileId } = req.params;
+  try {
+    // Aggregate content_analytics by campaign, join campaigns table for name/topic
+    const result = await pool.query(
+      `SELECT
+         ca.campaign_id,
+         c.name              AS campaign_name,
+         c.topic_cluster,
+         c.created_at        AS campaign_created_at,
+         COUNT(DISTINCT ca.content_id)              AS article_count,
+         COUNT(DISTINCT ca.channel)                 AS channel_count,
+         SUM(ca.impressions)                        AS total_impressions,
+         SUM(ca.clicks)                             AS total_clicks,
+         SUM(ca.reactions)                          AS total_reactions,
+         SUM(ca.comments)                           AS total_comments,
+         SUM(ca.reposts)                            AS total_reposts,
+         CASE WHEN SUM(ca.impressions) > 0
+              THEN ROUND((SUM(ca.clicks)::numeric / SUM(ca.impressions) * 100), 2)
+              ELSE 0 END                            AS avg_ctr,
+         CASE WHEN SUM(ca.impressions) > 0
+              THEN ROUND(((SUM(ca.reactions)+SUM(ca.comments)+SUM(ca.reposts)+SUM(ca.clicks))::numeric
+                          / SUM(ca.impressions) * 100), 2)
+              ELSE 0 END                            AS avg_engagement_rate,
+         MAX(ca.synced_at)                          AS last_synced
+       FROM content_analytics ca
+       LEFT JOIN campaigns c ON c.id = ca.campaign_id
+       WHERE ca.brand_profile_id = $1
+         AND ca.campaign_id IS NOT NULL
+       GROUP BY ca.campaign_id, c.name, c.topic_cluster, c.created_at
+       ORDER BY total_impressions DESC`,
+      [brandProfileId]
+    );
+
+    // Per-campaign breakdown by channel (for channel comparison within a campaign)
+    const breakdown = await pool.query(
+      `SELECT
+         campaign_id,
+         channel,
+         COUNT(DISTINCT content_id)  AS article_count,
+         SUM(impressions)            AS impressions,
+         SUM(clicks)                 AS clicks,
+         SUM(reactions)              AS reactions,
+         SUM(reposts)                AS reposts
+       FROM content_analytics
+       WHERE brand_profile_id = $1 AND campaign_id IS NOT NULL
+       GROUP BY campaign_id, channel
+       ORDER BY campaign_id, impressions DESC`,
+      [brandProfileId]
+    );
+
+    // Per-campaign article leaderboard (top article per campaign by impressions)
+    const safeId = brandProfileId.replace(/-/g, '_');
+    const leaderboard = await pool.query(
+      `SELECT
+         ca.campaign_id,
+         ca.content_id,
+         ca.channel,
+         ca.impressions,
+         ca.clicks,
+         ca.reactions,
+         pq.title,
+         pl.published_url
+       FROM content_analytics ca
+       LEFT JOIN publishing_queue pq ON pq.content_id = ca.content_id::text
+       LEFT JOIN LATERAL (
+         SELECT published_url FROM publish_log
+         WHERE content_id = ca.content_id::text AND status = 'published'
+           AND (live_status IS NULL OR live_status != 'deleted')
+         ORDER BY attempted_at DESC LIMIT 1
+       ) pl ON true
+       WHERE ca.brand_profile_id = $1 AND ca.campaign_id IS NOT NULL
+       ORDER BY ca.campaign_id, ca.impressions DESC`,
+      [brandProfileId]
+    ).catch(() => ({ rows: [] }));
+
+    // Group breakdown and leaderboard by campaign_id for easy frontend consumption
+    const breakdownByCampaign = {};
+    for (const row of breakdown.rows) {
+      const id = row.campaign_id;
+      if (!breakdownByCampaign[id]) breakdownByCampaign[id] = [];
+      breakdownByCampaign[id].push(row);
+    }
+    const leaderboardByCampaign = {};
+    for (const row of leaderboard.rows) {
+      const id = row.campaign_id;
+      if (!leaderboardByCampaign[id]) leaderboardByCampaign[id] = [];
+      if (leaderboardByCampaign[id].length < 3) leaderboardByCampaign[id].push(row); // top 3 per campaign
+    }
+
+    const campaigns = result.rows.map(r => ({
+      ...r,
+      channels: breakdownByCampaign[r.campaign_id] || [],
+      top_articles: leaderboardByCampaign[r.campaign_id] || [],
+    }));
+
+    res.json({ success: true, campaigns });
+  } catch(e) {
+    console.error('[ANALYTICS/CAMPAIGNS]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
 
 app.listen(PORT, '0.0.0.0', function () {
   console.log('Forge Intelligence running on port ' + PORT);
