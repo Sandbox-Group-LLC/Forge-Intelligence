@@ -3597,14 +3597,11 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
 
     // ── X (Twitter) analytics ──────────────────────────────────────────────
     if (channel === 'x' || channel === 'all') {
-      // Simple query — no table joins that could fail if generated_content table missing
       const xLogRes = await pool.query(
-        `SELECT pl.content_id, pl.response_data, pl.published_at, pl.published_url,
-                pq.publish_results AS queue_results, pq.title
-         FROM publish_log pl
-         LEFT JOIN publishing_queue pq ON pq.content_id = pl.content_id
-         WHERE pl.brand_profile_id = $1 AND pl.channel = 'x' AND pl.status = 'published'
-         ORDER BY pl.attempted_at DESC`,
+        `SELECT content_id, response_data, published_at, published_url
+         FROM publish_log
+         WHERE brand_profile_id = $1 AND channel = 'x' AND status = 'published'
+         ORDER BY attempted_at DESC`,
         [brandProfileId]
       );
 
