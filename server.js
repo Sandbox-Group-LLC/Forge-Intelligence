@@ -3144,10 +3144,10 @@ app.get('/auth/linkedin/callback', async (req, res) => {
     const brandProfileId = stateDecoded.includes('|') ? stateDecoded.split('|')[0] : 'system';
 
     await pool.query(`
-      INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_connected, connected_at)
+      INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active, updated_at)
       VALUES ($1, 'linkedin', $2, true, NOW())
       ON CONFLICT (brand_profile_id, channel) DO UPDATE
-        SET credentials = $2, is_connected = true, connected_at = NOW()
+        SET credentials = $2, is_active = true, updated_at = NOW()
     `, [brandProfileId, JSON.stringify({ accessToken: tokenData.access_token, expiresIn: tokenData.expires_in, authorUrn, name: profile.name })]);
 
     res.redirect('/app/integrations?linkedin_connected=true');
