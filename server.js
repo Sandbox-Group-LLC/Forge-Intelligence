@@ -799,7 +799,8 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
     const title = (article.title || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
     const description = (aj.metaDescription || (aj.sections?.[0]?.body || aj.sections?.[0]?.content || '').slice(0, 200)).replace(/"/g, '&quot;').replace(/</g, '&lt;');
     const imageUrl = article.hero_image_url || '';
-    const canonicalUrl = `https://forgeintelligence.ai/articles/${brandSlug}/${articleSlug}`;
+    const artBaseDomain = process.env.BASE_DOMAIN || 'forgeintelligence.ai';
+    const canonicalUrl = `https://${artBaseDomain}/articles/${brandSlug}/${articleSlug}`;
     const brandName = (matchedBrand.brand_name || matchedBrand.profile_data?.voice_profile?.brand_name || brandSlug).replace(/"/g, '&quot;');
     const authorName = (matchedBrand.profile_data?.voice_profile?.author_name || brandName).replace(/"/g, '&quot;');
     const wordCount = (aj.sections || []).reduce((acc, s) => acc + ((s.body || s.content || '').split(' ').length), 0);
@@ -3064,7 +3065,8 @@ app.post('/api/publishing/publish', async (req, res) => {
             const sections = articleJson.sections || [];
             const postCopyOverride = (req.body.postCopy || {})[channel];
             const liBrandSlug = (brand.brand_url || brand.brand_name || 'brand').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().split('-').slice(0,3).join('-');
-            const articleUrl = `https://forgeintelligence.ai/articles/${liBrandSlug}/${articleSlug}${utmString ? '?' + utmString : ''}`;
+            const liBaseDomain = process.env.BASE_DOMAIN || 'forgeintelligence.ai';
+            const articleUrl = `https://${liBaseDomain}/articles/${liBrandSlug}/${articleSlug}${utmString ? '?' + utmString : ''}`;
 
             // Generate or use provided post copy
             let postText = postCopyOverride;
@@ -3134,8 +3136,11 @@ Output only the post text.` }]
 
           const articleJson = article.article_json || {};
           const sections = articleJson.sections || [];
-          const excerpt = (sections[0]?.content || article.title || '').slice(0, 200);
-          const articleUrl = `https://forgeintelligence.ai/articles/${(article.title||'article').toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,50)}`;
+          const excerpt = (sections[0]?.content || sections[0]?.body || article.title || '').slice(0, 200);
+          const xBrandSlug = (brand.brand_url || brand.brand_name || 'brand').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().split('-').slice(0, 3).join('-');
+          const xArticleSlug = (article.title || 'article').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/, '').slice(0, 80);
+          const xBaseDomain = process.env.BASE_DOMAIN || 'forgeintelligence.ai';
+          const articleUrl = `https://${xBaseDomain}/articles/${xBrandSlug}/${xArticleSlug}`;
           const tweetText = `${excerpt}... ${articleUrl}${utmString ? '?' + utmString : ''}`.slice(0, 280);
 
           // Build OAuth 1.0a signature
