@@ -517,19 +517,27 @@ app.get('/api/articles/:brandSlug/:articleSlug', async (req, res) => {
     // Find brand by matching slug of brand_url or brand_name
     const brandsRes = await pool.query('SELECT id, brand_url, brand_name, profile_data FROM brand_profiles');
     let matchedBrand = null;
+    // Exact match first, then prefix match — avoids false positives like sandbox-xm vs sandbox-gtm
     for (const b of brandsRes.rows) {
       const slug = (b.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
-      const nameSlug = (b.profile_data?.voice_profile?.brand_name || '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
-      if (slug.startsWith(brandSlug) || nameSlug.startsWith(brandSlug) || brandSlug.includes(slug.split('-')[0])) {
-        matchedBrand = b;
-        break;
+      if (slug === brandSlug) { matchedBrand = b; break; }
+    }
+    if (!matchedBrand) {
+      for (const b of brandsRes.rows) {
+        const slug = (b.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+        const nameSlug = (b.profile_data?.voice_profile?.brand_name || '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+        const nameSlug2 = (b.brand_name || '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+        if (slug.startsWith(brandSlug) || brandSlug.startsWith(slug) ||
+            nameSlug.startsWith(brandSlug) || nameSlug2.startsWith(brandSlug)) {
+          matchedBrand = b; break;
+        }
       }
     }
     if (!matchedBrand) return res.status(404).json({ error: 'Brand not found' });
 
     const safeId = matchedBrand.id.replace(/-/g, '_');
     const tableName = `generated_content_${safeId}`;
-    const articlesRes = await pool.query(`SELECT * FROM ${tableName} WHERE status != 'deleted' ORDER BY created_at DESC`);
+    const articlesRes = await pool.query(`SELECT * FROM ${tableName} ORDER BY created_at DESC`);
 
     // Find article by matching title slug
     let matchedArticle = null;
@@ -841,11 +849,20 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
   try {
     const brandsRes = await pool.query('SELECT id, brand_url, brand_name, profile_data FROM brand_profiles');
     let matchedBrand = null;
+    // Exact match first, then prefix — avoids false positives between similar brand slugs
     for (const b of brandsRes.rows) {
       const slug = (b.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
-      const nameSlug = ((b.profile_data?.voice_profile?.brand_name) || '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
-      if (slug.startsWith(brandSlug) || nameSlug.startsWith(brandSlug) || brandSlug.startsWith(slug.split('-')[0])) {
-        matchedBrand = b; break;
+      if (slug === brandSlug) { matchedBrand = b; break; }
+    }
+    if (!matchedBrand) {
+      for (const b of brandsRes.rows) {
+        const slug = (b.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+        const nameSlug = ((b.profile_data?.voice_profile?.brand_name) || '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+        const nameSlug2 = (b.brand_name || '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+        if (slug.startsWith(brandSlug) || brandSlug.startsWith(slug) ||
+            nameSlug.startsWith(brandSlug) || nameSlug2.startsWith(brandSlug)) {
+          matchedBrand = b; break;
+        }
       }
     }
 
