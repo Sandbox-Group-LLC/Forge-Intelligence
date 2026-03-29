@@ -310,8 +310,6 @@ export default function PerformanceDashboardPage() {
                   )}
                 </div>
               ))}
-            </div>
-
             </div>}
 
             {/* ── 30-Day Trend ── */}
