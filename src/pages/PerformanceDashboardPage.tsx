@@ -516,7 +516,6 @@ function CampaignsView({
         {campaigns.map(c => {
           const isOpen = expanded === c.campaign_id;
           const bestChannel = [...(c.channels || [])].sort((a, b) => Number(b.impressions) - Number(a.impressions))[0];
-          const topArticle  = c.top_articles?.[0];
           const publishProgress = c.article_count; // articles with analytics data = published + synced
           const ctr = Number(c.avg_ctr);
           const eng = Number(c.avg_engagement_rate);
