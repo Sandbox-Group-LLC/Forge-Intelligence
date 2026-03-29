@@ -310,7 +310,7 @@ async function initDB() {
     await pool.query(`CREATE TABLE IF NOT EXISTS publishing_queue (
       id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
       brand_profile_id TEXT NOT NULL,
-      content_id TEXT NOT NULL,
+      content_id TEXT NOT NULL UNIQUE,
       title TEXT,
       channels JSONB NOT NULL DEFAULT '[]',
       status VARCHAR(30) DEFAULT 'staged',
@@ -320,6 +320,8 @@ async function initDB() {
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )`);
+    // Ensure unique constraint exists on pre-existing tables (migration guard)
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS publishing_queue_content_id_uidx ON publishing_queue(content_id)`).catch(() => {});
     await pool.query(`CREATE TABLE IF NOT EXISTS publish_log (
       id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
       queue_item_id TEXT NOT NULL,
@@ -2536,7 +2538,10 @@ app.post('/api/compliance/approve', async (req, res) => {
       pool.query(
         `INSERT INTO publishing_queue (brand_profile_id, content_id, title, status, created_at, updated_at)
          VALUES ($1, $2, $3, 'staged', NOW(), NOW())
-         ON CONFLICT DO NOTHING`,
+         ON CONFLICT (content_id) DO UPDATE SET
+           title = EXCLUDED.title,
+           updated_at = NOW()
+         WHERE publishing_queue.status = 'staged'`,
         [brandProfileId, contentId, articleTitle]
       ).catch(e => console.error('[QUEUE] Auto-stage error:', e.message));
     }
