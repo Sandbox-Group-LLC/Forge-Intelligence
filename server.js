@@ -3584,12 +3584,13 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
 
       for (const row of xLogRes.rows) {
         try {
-          // response_data may be null for posts published before column existed — fall back to queue publish_results
+          // Extract tweetId — from response_data, queue publish_results, or parse from published_url
           const rd = row.response_data || row.queue_results?.x || {};
-          const tweetId = rd.tweetId || rd.id;
+          const tweetId = rd.tweetId || rd.id
+            || (row.published_url?.match(/\/status\/(\d+)/)?.[1]);
           if (!tweetId || !xApiKey || !xAccessToken) {
             if (!xApiKey || !xAccessToken) errors.push({ contentId: row.content_id, error: 'no_x_credentials' });
-            else if (!tweetId) errors.push({ contentId: row.content_id, error: 'no_tweet_id' });
+            else if (!tweetId) errors.push({ contentId: row.content_id, error: 'no_tweet_id_in:' + row.published_url });
             continue;
           }
 
