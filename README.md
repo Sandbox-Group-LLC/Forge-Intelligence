@@ -2,7 +2,13 @@
 
 > **Last updated:** March 28, 2026 (3:07 PM PDT) | **Status:** Stage 6 LIVE — Publishing Queue + LinkedIn + Public Article Page ✅
 > **This README is the single source of truth for all AI sessions, dev work, and project decisions.**
-> When starting a new AI session, read this file top to bottom before touching anything.
+> When starting a new AI session, read this file top to bottom before touching Always read the README.md first -- it is the SSOT.
+> Always read the current file and capture its SHA before writing - never write blind.
+> Always commit with a descriptive message using conventional commits (feat:, fix:, refactor:, style:).
+> Never give the user code to run themselves - make the commit directly.
+> Render auto-deploys on every push to main - no manual deploy step DO NOT narrate or ask Brian to confirm changes.
+> URL pattern: frontend routes match product names (e.g. /context-hub, /geo-strategist), API routes follow / api/{product-slug}/
+> DO NOT narrate or ask Brian to commit changes.
 
 ---
 
