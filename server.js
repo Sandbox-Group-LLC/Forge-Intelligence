@@ -632,9 +632,19 @@ app.get('/api/publishing/sync/:queueItemId', async (req, res) => {
               .map(([k,v]) => `${encodeURIComponent(k)}="${encodeURIComponent(v)}"`).join(', ');
 
             const xRes = await fetch(endpoint, { headers: { 'Authorization': authHeader } });
-            if (xRes.status === 404) liveStatus = 'deleted';
-            else if (xRes.ok) liveStatus = 'published';
-            else if (xRes.status === 401 || xRes.status === 403) liveStatus = 'unknown';
+            if (xRes.status === 404) {
+              liveStatus = 'deleted';
+            } else if (xRes.status === 401 || xRes.status === 403) {
+              liveStatus = 'unknown';
+            } else if (xRes.ok) {
+              const xBody = await xRes.json();
+              // X API v2 returns 200 with errors[] for deleted/not-found tweets
+              const notFound = xBody.errors?.some(e =>
+                e.type?.includes('resource-not-found') ||
+                e.detail?.toLowerCase().includes('could not find tweet')
+              );
+              liveStatus = notFound ? 'deleted' : (xBody.data ? 'published' : 'deleted');
+            }
           }
         }
       } catch (e) {
