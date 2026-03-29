@@ -87,6 +87,7 @@ const CHANNEL_LABELS: Record<string, { label: string; color: string }> = {
   x:         { label: 'X',         color: '#000000' },
   facebook:  { label: 'Facebook',   color: '#1877F2' },
   reddit:    { label: 'Reddit',     color: '#FF4500' },
+  medium:    { label: 'Medium',     color: '#000000' },
 };
 const ALL_CHANNELS = Object.keys(CHANNEL_LABELS);
 
