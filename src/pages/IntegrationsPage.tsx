@@ -87,7 +87,7 @@ interface ChannelDef {
   color: string;
   logo: string;
   credentialFields: { key: string; label: string; placeholder: string; type?: string }[];
-  liveStatus: 'live' | 'staged';
+  liveStatus: 'live' | 'staged' | 'legacy';
   oauthFlow?: boolean;
   setupGuide: SetupGuide;
 }
@@ -257,10 +257,10 @@ const CHANNELS: ChannelDef[] = [
   {
     id: 'medium',
     label: 'Medium',
-    description: 'Publish articles to Medium as public posts with canonical URL back to your site. One integration token, no OAuth.',
+    description: 'Medium stopped issuing new API tokens in early 2025. Existing tokens still work -- if you have a pre-2025 token you can connect it here. New tokens are no longer available.',
     color: '#000000',
     logo: 'M',
-    liveStatus: 'live',
+    liveStatus: 'legacy',
     credentialFields: [
       { key: 'integrationToken', label: 'Integration Token', placeholder: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', type: 'password' },
     ],
@@ -487,6 +487,9 @@ export default function IntegrationsPage() {
                         {ch.liveStatus === 'staged' && (
                           <span className="int-coming-badge">Stage 6.1</span>
                         )}
+                        {ch.liveStatus === 'legacy' && (
+                          <span className="int-legacy-badge">Legacy</span>
+                        )}
                       </div>
                       <div className="int-card-desc">{ch.description}</div>
                     </div>
@@ -517,25 +520,34 @@ export default function IntegrationsPage() {
                       </div>
                     ) : (
                       selectedBrand && (
-                        <button
-                          className="int-connect-btn"
-                          style={{ '--ch-color': ch.color } as React.CSSProperties}
-                          onClick={async () => {
-                            if (ch.id === 'linkedin') {
-                              try {
-                                const res = await fetch(`/api/linkedin/auth?brandProfileId=${selectedBrand}`);
-                                const { authUrl } = await res.json();
-                                window.location.href = authUrl;
-                              } catch {
-                                setError('Could not start LinkedIn authorization. Try again.');
+                        ch.liveStatus === 'legacy' ? (
+                          <button
+                            className="int-connect-btn int-connect-legacy"
+                            onClick={() => setExpanded(isOpen ? null : ch.id)}
+                          >
+                            {isOpen ? 'Cancel' : 'Connect existing token'}
+                          </button>
+                        ) : (
+                          <button
+                            className="int-connect-btn"
+                            style={{ '--ch-color': ch.color } as React.CSSProperties}
+                            onClick={async () => {
+                              if (ch.id === 'linkedin') {
+                                try {
+                                  const res = await fetch(`/api/linkedin/auth?brandProfileId=${selectedBrand}`);
+                                  const { authUrl } = await res.json();
+                                  window.location.href = authUrl;
+                                } catch {
+                                  setError('Could not start LinkedIn authorization. Try again.');
+                                }
+                                return;
                               }
-                              return;
-                            }
-                            setExpanded(isOpen ? null : ch.id);
-                          }}
-                        >
-                          {isOpen ? 'Cancel' : 'Connect'}
-                        </button>
+                              setExpanded(isOpen ? null : ch.id);
+                            }}
+                          >
+                            {isOpen ? 'Cancel' : 'Connect'}
+                          </button>
+                        )
                       )
                     )}
                   </div>
