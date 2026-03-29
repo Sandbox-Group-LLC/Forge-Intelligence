@@ -3621,10 +3621,8 @@ Output only the post text.` }]
           const articleJson = article.article_json || {};
           const sections = articleJson.sections || [];
           const htmlBody = sections.map(s =>
-            `<h2>${s.heading || ''}</h2><p>${(s.body || '').replace(/
-/g, '</p><p>')}</p>`
-          ).join('
-');
+            `<h2>${s.heading || ''}</h2><p>${(s.body || '').split('\n').join('</p><p>')}</p>`
+          ).join('\n');
 
           const canonicalNote = `<p><em>Originally published at <a href="${utmUrl}">${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}</a></em></p>`;
 
