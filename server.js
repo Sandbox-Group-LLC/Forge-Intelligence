@@ -3066,9 +3066,12 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
         [brandProfileId]
       ).catch(() => ({ rows: [] }));
 
-      // Get LinkedIn credentials
+      // Get LinkedIn credentials from publishing_channels (primary) or channel_credentials (legacy)
       const credRes = await pool.query(
-        `SELECT credentials FROM channel_credentials WHERE brand_profile_id = $1 AND channel = 'linkedin'`,
+        `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'linkedin' AND is_active = true
+         UNION ALL
+         SELECT credentials FROM channel_credentials WHERE brand_profile_id = $1 AND channel = 'linkedin'
+         LIMIT 1`,
         [brandProfileId]
       ).catch(() => ({ rows: [] }));
       const creds = credRes.rows[0]?.credentials || {};
@@ -3076,47 +3079,63 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
 
       for (const row of logRes.rows) {
         try {
-          const postId = row.response_data?.postId || row.response_data?.post_id;
-          if (!postId) continue;
+          const postId = row.response_data?.postId || row.response_data?.post_id || row.response_data?.id;
+          if (!postId || !token) {
+            if (!token) errors.push({ contentId: row.content_id, error: 'no_linkedin_token' });
+            continue;
+          }
 
           let impressions = 0, clicks = 0, reactions = 0, comments = 0, reposts = 0;
           let rawData = {};
+          let dataSource = 'none';
 
-          if (token) {
-            // Try LinkedIn Share Statistics API
+          // Step 1: Always try socialActions first — available with w_member_social (no MDP needed)
+          // Returns likes + comments for both personal and org posts
+          try {
+            const actRes = await fetch(
+              `https://api.linkedin.com/v2/socialActions/${encodeURIComponent(postId)}?projection=(likesSummary,commentsSummary,shareSummary)`,
+              { headers: { 'Authorization': `Bearer ${token}`, 'X-Restli-Protocol-Version': '2.0.0' } }
+            );
+            if (actRes.ok) {
+              const actData = await actRes.json();
+              reactions = actData?.likesSummary?.totalLikes || 0;
+              comments  = actData?.commentsSummary?.totalFirstLevelComments || 0;
+              reposts   = actData?.shareSummary?.totalShares || 0;
+              rawData   = { ...rawData, socialActions: actData };
+              dataSource = 'socialActions';
+            }
+          } catch(e) { /* socialActions unavailable — continue */ }
+
+          // Step 2: Try shareStatistics — requires LinkedIn Marketing Developer Platform approval
+          // Will return impressions + clicks once MDP is granted; silently skipped until then
+          try {
             const encodedPostId = encodeURIComponent(postId);
             const statsRes = await fetch(
               `https://api.linkedin.com/v2/shareStatistics?q=shares&shares[0]=${encodedPostId}&projection=(elements*(totalShareStatistics))`,
               { headers: { 'Authorization': `Bearer ${token}`, 'X-Restli-Protocol-Version': '2.0.0', 'LinkedIn-Version': '202401' } }
             );
-
             if (statsRes.ok) {
               const statsData = await statsRes.json();
               const stats = statsData?.elements?.[0]?.totalShareStatistics || {};
-              impressions = stats.impressionCount || 0;
-              clicks = stats.clickCount || 0;
-              reactions = stats.likeCount || 0;
-              comments = stats.commentCount || 0;
-              reposts = stats.shareCount || 0;
-              rawData = stats;
-            } else {
-              // Fallback: try socialActions for engagement data
-              const actRes = await fetch(
-                `https://api.linkedin.com/v2/socialActions/${encodeURIComponent(postId)}?projection=(likesSummary,commentsSummary)`,
-                { headers: { 'Authorization': `Bearer ${token}`, 'X-Restli-Protocol-Version': '2.0.0' } }
-              );
-              if (actRes.ok) {
-                const actData = await actRes.json();
-                reactions = actData?.likesSummary?.totalLikes || 0;
-                comments = actData?.commentsSummary?.totalFirstLevelComments || 0;
-                rawData = actData;
+              // Only use if MDP data is actually present (non-zero impressions)
+              if (stats.impressionCount > 0) {
+                impressions = stats.impressionCount || 0;
+                clicks      = stats.clickCount     || 0;
+                // Use MDP reactions if higher (more accurate than socialActions)
+                reactions   = Math.max(reactions, stats.likeCount  || 0);
+                comments    = Math.max(comments,  stats.commentCount || 0);
+                reposts     = Math.max(reposts,   stats.shareCount  || 0);
+                rawData     = { ...rawData, shareStatistics: stats };
+                dataSource  = 'shareStatistics';
               }
             }
-          }
+          } catch(e) { /* MDP not yet approved — expected */ }
 
+          // Engagement rate: use impressions if available, else use total engagements as proxy
+          const totalEngagement = reactions + comments + reposts + clicks;
           const ctr = impressions > 0 ? parseFloat((clicks / impressions * 100).toFixed(2)) : 0;
           const engagementRate = impressions > 0
-            ? parseFloat(((reactions + comments + reposts + clicks) / impressions * 100).toFixed(2))
+            ? parseFloat((totalEngagement / impressions * 100).toFixed(2))
             : 0;
 
           await pool.query(
@@ -3133,7 +3152,7 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
              impressions, clicks, reactions, comments, reposts, ctr, engagementRate,
              JSON.stringify(rawData), row.published_at]
           );
-          synced.push({ contentId: row.content_id, title: row.title, postId, impressions, clicks, reactions });
+          synced.push({ contentId: row.content_id, title: row.title, postId, reactions, comments, reposts, impressions, dataSource });
         } catch(e) {
           errors.push({ contentId: row.content_id, error: e.message });
         }
