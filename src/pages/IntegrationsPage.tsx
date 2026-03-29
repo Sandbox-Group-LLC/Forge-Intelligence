@@ -316,7 +316,7 @@ export default function IntegrationsPage() {
       .then(d => {
         if (d.success) {
           const map: Record<ChannelId, SavedChannel | null> = {
-            wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null
+            wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null, facebook: null, reddit: null
           };
           for (const ch of d.channels) map[ch.channel as ChannelId] = ch;
           setSavedChannels(map);
