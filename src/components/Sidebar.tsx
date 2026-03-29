@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { ViewType } from '../types';
 import './Sidebar.css';
@@ -161,6 +161,34 @@ const topNavItems: TopNavItem[] = [
 export function Sidebar() {
   const { currentView, setCurrentView, sidebarCollapsed, setSidebarCollapsed, isProcessing, brandProfile } = useApp();
   const [brainGroupOpen, setBrainGroupOpen] = useState(false);
+  const [mobileExpanded, setMobileExpanded] = useState(false);
+
+  // Auto-collapse on mobile at mount
+  useEffect(() => {
+    if (window.innerWidth <= 768) {
+      setSidebarCollapsed(true);
+    }
+  }, []);
+
+  // Track mobile expanded state (collapsed=false on mobile = drawer open)
+  const isMobile = () => window.innerWidth <= 768;
+
+  const handleToggle = () => {
+    if (isMobile()) {
+      const next = !mobileExpanded;
+      setMobileExpanded(next);
+      setSidebarCollapsed(!next);
+    } else {
+      setSidebarCollapsed(!sidebarCollapsed);
+    }
+  };
+
+  const closeMobileDrawer = () => {
+    if (isMobile()) {
+      setMobileExpanded(false);
+      setSidebarCollapsed(true);
+    }
+  };
 
   const isBrainViewActive = BRAIN_VIEWS.includes(currentView);
 
@@ -221,7 +249,12 @@ export function Sidebar() {
   };
 
   return (
-    <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}> 
+    <>
+      {/* Mobile backdrop */}
+      {mobileExpanded && (
+        <div className="sidebar-backdrop" onClick={closeMobileDrawer} aria-hidden="true" />
+      )}
+      <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}> 
       <div className="sidebar-header">
         <div className="sidebar-brand">
           {!sidebarCollapsed ? (
@@ -235,7 +268,7 @@ export function Sidebar() {
         </div>
         <button
           className="sidebar-toggle"
-          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          onClick={handleToggle}
           aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {sidebarCollapsed ? icons.chevronRight : icons.chevronLeft}
@@ -301,6 +334,7 @@ export function Sidebar() {
                 href={item.href}
                 className={`nav-item ${status}`}
                 title={sidebarCollapsed ? item.label : undefined}
+                onClick={closeMobileDrawer}
               >
                 <span className="nav-icon">{icons[item.icon]}</span>
                 {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
@@ -331,5 +365,6 @@ export function Sidebar() {
         )}
       </div>
     </aside>
+    </>
   );
 }
