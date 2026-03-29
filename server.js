@@ -698,6 +698,19 @@ app.get('/api/debug/publish-log/:brandProfileId', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Debug: inspect publish_log for a brand ───────────────────────────────────
+app.get('/api/debug/publish-log/:brandProfileId', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, channel, status, live_status, published_url, brand_profile_id,
+              content_id, response_data, attempted_at
+       FROM publish_log WHERE brand_profile_id = $1 ORDER BY attempted_at DESC LIMIT 20`,
+      [req.params.brandProfileId]
+    );
+    res.json({ count: result.rows.length, rows: result.rows });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Sync publish status ───────────────────────────────────────────────────────
 // Checks live channel APIs and updates publish_log.live_status
 app.get('/api/publishing/sync/:queueItemId', async (req, res) => {
