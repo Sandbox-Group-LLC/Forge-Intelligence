@@ -348,6 +348,32 @@ async function initDB() {
         if (approved.rows.length > 0) console.log(`[BACKFILL] Staged ${approved.rows.length} approved article(s) for brand ${bp.id}`);
       }
     } catch(e) { console.log('[BACKFILL] Note:', e.message); }
+
+    // Backfill: stage any approved articles that aren't in the queue yet
+    try {
+      const bpRows = await pool.query(`SELECT id FROM brand_profiles WHERE is_active = true`);
+      for (const bp of bpRows.rows) {
+        const safeId = bp.id.replace(/-/g, '_');
+        const tableName = `generated_content_${safeId}`;
+        const tableExists = await pool.query(
+          `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name=$1`,
+          [tableName]
+        );
+        if (!tableExists.rows.length) continue;
+        const approved = await pool.query(
+          `SELECT id, title FROM ${tableName} WHERE compliance_status = 'approved'`
+        ).catch(() => ({ rows: [] }));
+        for (const art of approved.rows) {
+          await pool.query(
+            `INSERT INTO publishing_queue (brand_profile_id, content_id, title, status, created_at, updated_at)
+             VALUES ($1, $2, $3, 'staged', NOW(), NOW())
+             ON CONFLICT (content_id) DO NOTHING`,
+            [bp.id, art.id, art.title || 'Untitled']
+          ).catch(() => {});
+        }
+        if (approved.rows.length > 0) console.log(`[BACKFILL] Staged ${approved.rows.length} approved article(s) for brand ${bp.id}`);
+      }
+    } catch(e) { console.log('[BACKFILL] Note:', e.message); }
     await pool.query(`CREATE TABLE IF NOT EXISTS publish_log (
       id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
       queue_item_id TEXT NOT NULL,
@@ -2614,6 +2640,38 @@ app.get('/api/publishing/queue/:brandProfileId', async (req, res) => {
 });
 
 // GET /api/publishing/queue (all brands — for global queue view)
+// POST /api/publishing/backfill-queue — manually stage all approved articles not yet in the queue
+app.post('/api/publishing/backfill-queue', async (req, res) => {
+  try {
+    const bpRows = await pool.query(`SELECT id FROM brand_profiles WHERE is_active = true`);
+    let totalStaged = 0;
+    for (const bp of bpRows.rows) {
+      const safeId = bp.id.replace(/-/g, '_');
+      const tableName = `generated_content_${safeId}`;
+      const tableExists = await pool.query(
+        `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name=$1`,
+        [tableName]
+      );
+      if (!tableExists.rows.length) continue;
+      const approved = await pool.query(
+        `SELECT id, title FROM ${tableName} WHERE compliance_status = 'approved'`
+      ).catch(() => ({ rows: [] }));
+      for (const art of approved.rows) {
+        const r = await pool.query(
+          `INSERT INTO publishing_queue (brand_profile_id, content_id, title, status, created_at, updated_at)
+           VALUES ($1, $2, $3, 'staged', NOW(), NOW())
+           ON CONFLICT (content_id) DO NOTHING`,
+          [bp.id, art.id, art.title || 'Untitled']
+        ).catch(() => ({ rowCount: 0 }));
+        if (r.rowCount > 0) totalStaged++;
+      }
+    }
+    res.json({ success: true, staged: totalStaged });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // POST /api/publishing/backfill-queue — manually stage all approved articles not yet in the queue
 app.post('/api/publishing/backfill-queue', async (req, res) => {
   try {
