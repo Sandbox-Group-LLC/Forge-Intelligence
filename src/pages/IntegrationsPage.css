@@ -94,6 +94,28 @@
   gap: 8px;
   margin-bottom: 3px;
 }
+.int-legacy-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  background: rgba(245, 185, 66, 0.12);
+  color: var(--color-warning, #F5B942);
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+}
+
+.int-connect-legacy {
+  background: transparent !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text-muted) !important;
+  font-size: 12px;
+}
+
+.int-connect-legacy:hover {
+  border-color: var(--color-warning, #F5B942) !important;
+  color: var(--color-warning, #F5B942) !important;
+}
+
 .int-coming-badge {
   font-size: 10px;
   font-weight: 600;
