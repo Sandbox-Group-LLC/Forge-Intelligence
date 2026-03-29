@@ -1,5 +1,5 @@
 # AI Content Platform — Working Doc
-> Last updated: March 28, 2026 (4:54 PM PDT) | Status: Stage 6 LIVE — Publishing Queue + LinkedIn + Public Article Page ✅ | Stage 7B Polish ✅ | Active Whiteboard
+> Last updated: March 29, 2026 (11:59 PM PDT) | Status: Stage 6 LIVE — Full channel suite + Campaign Analytics + Mobile UI ✅ | Active Whiteboard
 
 ---
 
@@ -420,6 +420,10 @@ Track B: Direct email campaigns (Phase 2/3)
 |---------|--------|-------|
 | Publishing Queue UI | ✅ LIVE | `/publishing-queue` — Draft→Approved→Published, preview modal |
 | LinkedIn API publish | ✅ LIVE | `ugcPosts` endpoint, OAuth token per brand |
+| X (Twitter) publish | ✅ LIVE | OAuth 1.0a, X API v2, tweet URL uses authenticated handle |
+| Facebook Page publish | ✅ LIVE | Graph API v21.0 — `/{pageId}/feed`, Haiku post copy, Page Access Token |
+| Reddit publish | ✅ LIVE | OAuth script app — link post to company subreddit, token refresh on 401 |
+| Medium publish | ✅ LEGACY | Integration token auth — backend live, new tokens unavailable from Medium since early 2025 |
 | AI post copy | ✅ LIVE | Claude Haiku writes 3-4 para overview; ends with `Read more: [url]` |
 | LinkedIn image card | ✅ LIVE | Server-side OG meta injection — `og:image`, `og:title`, `article:author` |
 | Public article page | ✅ LIVE | `forgeintelligence.ai/articles/:brandSlug/:articleSlug` |
@@ -429,12 +433,15 @@ Track B: Direct email campaigns (Phase 2/3)
 | Read time accuracy | ✅ LIVE | Reads `section.body` at 200 wpm |
 | Brand byline | ✅ LIVE | Reads `brand_profiles.brand_name` column |
 | OG meta — article route | ✅ LIVE | Named Express route before `express.static` |
+| Campaign → publish pipeline | ✅ LIVE | Campaign articles mirror into `generated_content_{uuid}` + `publishing_queue` with `campaign_id` |
+| UTM campaign slugs | ✅ LIVE | `utm_campaign` resolves to readable campaign name from `campaigns` table |
 
 **Next for Stage 6:**
 - [ ] Post scheduling (queue → auto-publish at time)
-- [ ] LinkedIn/X analytics pull-back into queue UI
 - [ ] WordPress live publish (REST API connector)
 - [ ] Webflow live publish (CMS API connector)
+- [ ] Ghost CMS publish (identified as next channel addition)
+- [ ] Reddit — pending developer portal access resolution
 
 ---
 
@@ -497,18 +504,24 @@ Identified (CRM connected):
 
 ---
 
-## Stage 7B — Performance Dashboard Polish ✅ DONE (March 28, 2026)
+## Stage 7B — Performance Dashboard ✅ DONE + Extended (March 29, 2026)
 
-### What was fixed
+### March 28 polish
 - [x] KPI cards → `shadow-sm` resting elevation, `text-2xl` value, `tabular-nums` on sub text
 - [x] KPI labels → `font-weight: 600`, `letter-spacing: 0.07em`
-- [x] Channel tabs → pill "Soon" badge already correct, active border-bottom state correct
-- [x] Sync button → ghost style (`transparent` bg, `color-primary` on hover)
-- [x] Section headers → `text-xs font-semibold uppercase tracking-widest text-muted`
-- [x] Trend chart empty state → "Sync now" CTA button wired (passes `handleSync` as `onSync` prop)
-- [x] Posts table → zebra striping (`nth-child(even)`), `tabular-nums` on date + numeric columns
-- [x] Brain cards + trend card + table → `shadow-sm` resting elevation
-- [x] Page header → `padding-bottom: space-2` breathing room
+- [x] Sync button → ghost style
+- [x] Trend chart empty state → Sync now CTA wired
+- [x] Posts table → zebra striping, tabular-nums
+
+### March 29 — Campaign Analytics tab added
+- [x] New Campaigns tab in Performance dashboard
+- [x] Cross-campaign summary KPIs: total reach, total clicks + blended CTR, total reactions + avg engagement, top campaign
+- [x] Per-campaign expandable cards: 4 KPIs (impressions, CTR, engagement rate, best channel)
+- [x] Channel breakdown bar chart — proportional, brand-colored per channel
+- [x] Article leaderboard — top 3 articles per campaign by impressions, linked to live URL
+- [x] `GET /api/analytics/campaigns/:brandProfileId` endpoint — aggregates `content_analytics GROUP BY campaign_id`
+- [x] `campaign_id` column added to `generated_content_{uuid}`, `publishing_queue`, `content_analytics`
+- [x] Analytics sync (LinkedIn + X) now carries `campaign_id` into `content_analytics` upserts
 
 ---
 
@@ -727,7 +740,11 @@ Daily/Weekly: Performance digest → compile + Resend
 | HubSpot Track A | 2 | Deep | Campaign-level attribution |
 | WordPress | 2 | Deep | REST API → Gutenberg |
 | Webflow | 2 | Deep | CMS API |
-| LinkedIn/X OAuth | 2 | Lightweight | One-click publish (LinkedIn ✅ LIVE) |
+| LinkedIn/X OAuth | 2 | Lightweight | One-click publish ✅ LIVE |
+| Facebook Page API | 1 | Lightweight | Company Page publish ✅ LIVE |
+| Reddit API | 1 | Lightweight | Company subreddit ✅ LIVE (pending dev portal access) |
+| Medium | 1 | Lightweight | ✅ LEGACY — new tokens unavailable from Medium since early 2025 |
+| Ghost CMS | 2 | Deep | Identified as next channel addition |
 | GA4 | 3 | Native | Anonymous attribution |
 | HubSpot Track B | 3 | Deep | Email/contact attribution |
 
@@ -768,4 +785,13 @@ Daily/Weekly: Performance digest → compile + Resend
 - Performance Dashboard fully styled per design system spec
 - Commits: `167e085` (CSS) + `7380d8a` (TSX)
 
-### Pipeline status: ✅ Stage 1–6 LIVE | Stage 7B ✅ | Stage 7–8 🔲 Next
+### Pipeline status: ✅ Stage 1–6 LIVE | Stage 7B ✅ | Campaign Analytics ✅ | Stage 7–8 🔲 Next
+
+## Mobile UI Update — March 29, 2026
+
+- [x] Sidebar auto-collapses on mobile viewport (`window.innerWidth <= 768`)
+- [x] Icon rail (64px) always visible on mobile — never hidden
+- [x] Drawer expands to 240px over content with semi-transparent backdrop
+- [x] Tapping backdrop closes drawer
+- [x] Hamburger in TopBar hidden on mobile — sidebar chevron is sole toggle
+- [x] `app-main` offset 64px left on mobile to clear fixed icon rail
