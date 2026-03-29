@@ -3104,7 +3104,8 @@ app.delete('/api/publishing/channels/:id', async (req, res) => {
 // ── LinkedIn OAuth2 Flow ──────────────────────────────────────────────────────
 app.get('/api/linkedin/auth', (req, res) => {
   const clientId = process.env.LINKEDIN_CLIENT_ID;
-  const redirectUri = encodeURIComponent('https://forgeintelligence.ai/auth/linkedin/callback');
+  const liBaseDomain = process.env.BASE_DOMAIN || 'forgeintelligence.ai';
+  const redirectUri = encodeURIComponent(`https://${liBaseDomain}/auth/linkedin/callback`);
   const brandProfileId = req.query.brandProfileId || 'system';
   const nonce = randomBytes(16).toString('hex');
   // Embed brandProfileId in state so callback knows which brand to save to
