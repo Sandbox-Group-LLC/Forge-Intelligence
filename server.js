@@ -349,31 +349,18 @@ async function initDB() {
       }
     } catch(e) { console.log('[BACKFILL] Note:', e.message); }
 
-    // Backfill: stage any approved articles that aren't in the queue yet
-    try {
-      const bpRows = await pool.query(`SELECT id FROM brand_profiles WHERE is_active = true`);
-      for (const bp of bpRows.rows) {
-        const safeId = bp.id.replace(/-/g, '_');
-        const tableName = `generated_content_${safeId}`;
-        const tableExists = await pool.query(
-          `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name=$1`,
-          [tableName]
-        );
-        if (!tableExists.rows.length) continue;
-        const approved = await pool.query(
-          `SELECT id, title FROM ${tableName} WHERE compliance_status = 'approved'`
-        ).catch(() => ({ rows: [] }));
-        for (const art of approved.rows) {
-          await pool.query(
-            `INSERT INTO publishing_queue (brand_profile_id, content_id, title, status, created_at, updated_at)
-             VALUES ($1, $2, $3, 'staged', NOW(), NOW())
-             ON CONFLICT (content_id) DO NOTHING`,
-            [bp.id, art.id, art.title || 'Untitled']
-          ).catch(() => {});
-        }
-        if (approved.rows.length > 0) console.log(`[BACKFILL] Staged ${approved.rows.length} approved article(s) for brand ${bp.id}`);
-      }
-    } catch(e) { console.log('[BACKFILL] Note:', e.message); }
+  // Migration: ensure hero_image_url + hero_image_prompt exist on all generated_content_* tables
+  try {
+    const gcTables = await pool.query(`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name LIKE 'generated_content_%'
+    `);
+    for (const row of gcTables.rows) {
+      await pool.query(`ALTER TABLE ${row.table_name} ADD COLUMN IF NOT EXISTS hero_image_url TEXT`).catch(() => {});
+      await pool.query(`ALTER TABLE ${row.table_name} ADD COLUMN IF NOT EXISTS hero_image_prompt TEXT`).catch(() => {});
+    }
+    if (gcTables.rows.length > 0) console.log(`[MIGRATION] hero_image columns ensured on ${gcTables.rows.length} generated_content table(s)`);
+  } catch(e) { console.log('[MIGRATION] hero_image cols note:', e.message); }
 
     // Backfill: stage any approved articles that aren't in the queue yet
     try {
@@ -400,6 +387,58 @@ async function initDB() {
         if (approved.rows.length > 0) console.log(`[BACKFILL] Staged ${approved.rows.length} approved article(s) for brand ${bp.id}`);
       }
     } catch(e) { console.log('[BACKFILL] Note:', e.message); }
+
+  // Migration: ensure hero_image_url + hero_image_prompt exist on all generated_content_* tables
+  try {
+    const gcTables = await pool.query(`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name LIKE 'generated_content_%'
+    `);
+    for (const row of gcTables.rows) {
+      await pool.query(`ALTER TABLE ${row.table_name} ADD COLUMN IF NOT EXISTS hero_image_url TEXT`).catch(() => {});
+      await pool.query(`ALTER TABLE ${row.table_name} ADD COLUMN IF NOT EXISTS hero_image_prompt TEXT`).catch(() => {});
+    }
+    if (gcTables.rows.length > 0) console.log(`[MIGRATION] hero_image columns ensured on ${gcTables.rows.length} generated_content table(s)`);
+  } catch(e) { console.log('[MIGRATION] hero_image cols note:', e.message); }
+
+    // Backfill: stage any approved articles that aren't in the queue yet
+    try {
+      const bpRows = await pool.query(`SELECT id FROM brand_profiles WHERE is_active = true`);
+      for (const bp of bpRows.rows) {
+        const safeId = bp.id.replace(/-/g, '_');
+        const tableName = `generated_content_${safeId}`;
+        const tableExists = await pool.query(
+          `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name=$1`,
+          [tableName]
+        );
+        if (!tableExists.rows.length) continue;
+        const approved = await pool.query(
+          `SELECT id, title FROM ${tableName} WHERE compliance_status = 'approved'`
+        ).catch(() => ({ rows: [] }));
+        for (const art of approved.rows) {
+          await pool.query(
+            `INSERT INTO publishing_queue (brand_profile_id, content_id, title, status, created_at, updated_at)
+             VALUES ($1, $2, $3, 'staged', NOW(), NOW())
+             ON CONFLICT (content_id) DO NOTHING`,
+            [bp.id, art.id, art.title || 'Untitled']
+          ).catch(() => {});
+        }
+        if (approved.rows.length > 0) console.log(`[BACKFILL] Staged ${approved.rows.length} approved article(s) for brand ${bp.id}`);
+      }
+    } catch(e) { console.log('[BACKFILL] Note:', e.message); }
+
+  // Migration: ensure hero_image_url + hero_image_prompt exist on all generated_content_* tables
+  try {
+    const gcTables = await pool.query(`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name LIKE 'generated_content_%'
+    `);
+    for (const row of gcTables.rows) {
+      await pool.query(`ALTER TABLE ${row.table_name} ADD COLUMN IF NOT EXISTS hero_image_url TEXT`).catch(() => {});
+      await pool.query(`ALTER TABLE ${row.table_name} ADD COLUMN IF NOT EXISTS hero_image_prompt TEXT`).catch(() => {});
+    }
+    if (gcTables.rows.length > 0) console.log(`[MIGRATION] hero_image columns ensured on ${gcTables.rows.length} generated_content table(s)`);
+  } catch(e) { console.log('[MIGRATION] hero_image cols note:', e.message); }
     await pool.query(`CREATE TABLE IF NOT EXISTS publish_log (
       id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
       queue_item_id TEXT NOT NULL,
