@@ -836,6 +836,29 @@ app.get('/api/publishing/sync/:queueItemId', async (req, res) => {
         } else if (row.channel === 'medium') {
           // Medium posts don't have a status API — once published they stay published
           liveStatus = row.live_status || 'published';
+        } else if (row.channel === 'ghost') {
+          // Check Ghost post still exists via Admin API
+          const { adminUrl, adminApiKey } = creds;
+          const postId = row.response_data?.postId;
+          if (postId && adminUrl && adminApiKey) {
+            try {
+              const [keyId, keySecret] = adminApiKey.split(':');
+              const now = Math.floor(Date.now() / 1000);
+              const h = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT', kid: keyId })).toString('base64url');
+              const p = Buffer.from(JSON.stringify({ iat: now, exp: now + 300, aud: '/admin/' })).toString('base64url');
+              const { createHmac } = await import('node:crypto');
+              const sig = createHmac('sha256', Buffer.from(keySecret, 'hex')).update(`${h}.${p}`).digest('base64url');
+              const jwt = `${h}.${p}.${sig}`;
+              const chkRes = await fetch(`${adminUrl.replace(/\/+$/, '')}/ghost/api/admin/posts/${postId}/`, {
+                headers: { 'Authorization': `Ghost ${jwt}`, 'Accept-Version': 'v5.0' }
+              });
+              if (chkRes.status === 404) liveStatus = 'deleted';
+              else if (chkRes.ok) {
+                const chkData = await chkRes.json();
+                liveStatus = chkData.posts?.[0]?.status === 'published' ? 'published' : 'unpublished';
+              }
+            } catch { liveStatus = row.live_status || 'published'; }
+          }
         }
       } catch (e) {
         console.warn(`[SYNC] ${row.channel} check failed:`, e.message);
@@ -3644,6 +3667,147 @@ ${canonicalNote}`,
           if (!medRes.ok || medData.errors) throw new Error(medData.errors?.[0]?.message || 'Medium publish failed');
 
           results[channel] = { status: 'published', url: medData.data?.url, postId: medData.data?.id, utmParams };
+
+        } else if (channel === 'ghost') {
+          // ── Ghost Admin API publish ──
+          // Ghost uses JWT auth derived from the Admin API key (format: id:secret)
+          const { adminUrl, adminApiKey } = chConfig.credentials || {};
+          if (!adminUrl || !adminApiKey) throw new Error('Ghost Admin URL and Admin API Key are required');
+
+          const [keyId, keySecret] = adminApiKey.split(':');
+          if (!keyId || !keySecret) throw new Error('Admin API Key must be in format id:secret — copy it directly from Ghost Admin');
+
+          // Build JWT — Ghost uses HS256 with the hex secret decoded to bytes
+          const now = Math.floor(Date.now() / 1000);
+          const header  = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT', kid: keyId })).toString('base64url');
+          const payload = Buffer.from(JSON.stringify({ iat: now, exp: now + 300, aud: '/admin/' })).toString('base64url');
+          const { createHmac } = await import('node:crypto');
+          const secretBytes = Buffer.from(keySecret, 'hex');
+          const sig = createHmac('sha256', secretBytes)
+            .update(`${header}.${payload}`)
+            .digest('base64url');
+          const jwt = `${header}.${payload}.${sig}`;
+
+          const ghostBase = adminUrl.replace(/\/+$/, '');
+          const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
+          const utmUrl = articleUrl + '?' + new URLSearchParams({ ...utmCtx, utm_source: 'ghost', utm_medium: 'blog' }).toString();
+
+          // Build Mobiledoc from article sections — Ghost native format
+          const articleJson = article.article_json || {};
+          const sections = articleJson.sections || [];
+          const mobiledocCards = sections.map(s => [
+            'html',
+            { html: `<h2>${s.heading || ''}</h2>${(s.body || '').split('\n').map(p => p ? `<p>${p}</p>` : '').join('')}` }
+          ]);
+          const canonicalCard = ['html', {
+            html: `<p><em>Originally published at <a href="${utmUrl}">${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}</a></em></p>`
+          }];
+          mobiledocCards.push(canonicalCard);
+
+          const mobiledoc = JSON.stringify({
+            version: '0.3.1',
+            markups: [],
+            atoms: [],
+            cards: mobiledocCards,
+            sections: mobiledocCards.map((_, i) => [10, i])
+          });
+
+          const ghostRes = await fetch(`${ghostBase}/ghost/api/admin/posts/`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Ghost ${jwt}`,
+              'Content-Type': 'application/json',
+              'Accept-Version': 'v5.0'
+            },
+            body: JSON.stringify({
+              posts: [{
+                title: article.title,
+                mobiledoc,
+                status: 'published',
+                canonical_url: utmUrl,
+                meta_title: article.title,
+                meta_description: articleJson.metaDescription || '',
+              }]
+            })
+          });
+
+          const ghostData = await ghostRes.json();
+          if (!ghostRes.ok || ghostData.errors) {
+            throw new Error(ghostData.errors?.[0]?.message || `Ghost API error ${ghostRes.status}`);
+          }
+
+          const post = ghostData.posts?.[0];
+          results[channel] = { status: 'published', url: post?.url, postId: post?.id, utmParams };
+
+        } else if (channel === 'ghost') {
+          // ── Ghost Admin API publish ──
+          // Ghost uses JWT auth derived from the Admin API key (format: id:secret)
+          const { adminUrl, adminApiKey } = chConfig.credentials || {};
+          if (!adminUrl || !adminApiKey) throw new Error('Ghost Admin URL and Admin API Key are required');
+
+          const [keyId, keySecret] = adminApiKey.split(':');
+          if (!keyId || !keySecret) throw new Error('Admin API Key must be in format id:secret — copy it directly from Ghost Admin');
+
+          // Build JWT — Ghost uses HS256 with the hex secret decoded to bytes
+          const now = Math.floor(Date.now() / 1000);
+          const jwtHeader  = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT', kid: keyId })).toString('base64url');
+          const jwtPayload = Buffer.from(JSON.stringify({ iat: now, exp: now + 300, aud: '/admin/' })).toString('base64url');
+          const { createHmac } = await import('node:crypto');
+          const secretBytes = Buffer.from(keySecret, 'hex');
+          const jwtSig = createHmac('sha256', secretBytes)
+            .update(`${jwtHeader}.${jwtPayload}`)
+            .digest('base64url');
+          const ghostJwt = `${jwtHeader}.${jwtPayload}.${jwtSig}`;
+
+          const ghostBase = adminUrl.replace(/\/+$/, '');
+          const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
+          const utmUrl = articleUrl + '?' + new URLSearchParams({ ...utmCtx, utm_source: 'ghost', utm_medium: 'blog' }).toString();
+
+          // Build Mobiledoc from article sections
+          const articleJson = article.article_json || {};
+          const sections = articleJson.sections || [];
+          const mdCards = sections.map(s => [
+            'html',
+            { html: `<h2>${s.heading || ''}</h2>${(s.body || '').split('\n').filter(Boolean).map(p => `<p>${p}</p>`).join('')}` }
+          ]);
+          mdCards.push(['html', {
+            html: `<p><em>Originally published at <a href="${utmUrl}">${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}</a></em></p>`
+          }]);
+
+          const mobiledoc = JSON.stringify({
+            version: '0.3.1',
+            markups: [],
+            atoms: [],
+            cards: mdCards,
+            sections: mdCards.map((_, i) => [10, i])
+          });
+
+          const ghostRes = await fetch(`${ghostBase}/ghost/api/admin/posts/`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Ghost ${ghostJwt}`,
+              'Content-Type': 'application/json',
+              'Accept-Version': 'v5.0'
+            },
+            body: JSON.stringify({
+              posts: [{
+                title: article.title,
+                mobiledoc,
+                status: 'published',
+                canonical_url: utmUrl,
+                meta_title: article.title,
+                meta_description: (articleJson.metaDescription || '').slice(0, 300),
+              }]
+            })
+          });
+
+          const ghostData = await ghostRes.json();
+          if (!ghostRes.ok || ghostData.errors) {
+            throw new Error(ghostData.errors?.[0]?.message || `Ghost API error ${ghostRes.status}`);
+          }
+
+          const ghostPost = ghostData.posts?.[0];
+          results[channel] = { status: 'published', url: ghostPost?.url, postId: ghostPost?.id, utmParams };
 
         } else {
           results[channel] = { status: 'error', error: `Unknown channel: ${channel}` };
