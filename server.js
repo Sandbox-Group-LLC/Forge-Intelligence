@@ -4519,38 +4519,6 @@ app.get('/api/analytics/campaigns/:brandProfileId', async (req, res) => {
   }
 });
 
-// DELETE /api/campaigns/:campaignId — wipe campaign + all associated data
-app.delete('/api/campaigns/:campaignId', async (req, res) => {
-  const { campaignId } = req.params;
-  const { adminPassword } = req.body;
-  if (adminPassword !== process.env.ADMIN_PASSWORD) return res.status(401).json({ error: 'Unauthorized' });
-  try {
-    // Get brand_profile_id before deleting
-    const campRes = await pool.query('SELECT brand_profile_id FROM campaigns WHERE id = $1', [campaignId]);
-    if (!campRes.rows.length) return res.status(404).json({ error: 'Campaign not found' });
-    const brandId = campRes.rows[0].brand_profile_id;
-    const safeId = brandId.replace(/-/g, '_');
-
-    // Delete publishing_queue rows
-    const pq = await pool.query('DELETE FROM publishing_queue WHERE campaign_id = $1', [campaignId]);
-
-    // Delete generated_content rows
-    const gc = await pool.query(
-      `DELETE FROM generated_content_${safeId} WHERE campaign_id = $1`, [campaignId]
-    ).catch(() => ({ rowCount: 0 }));
-
-    // Delete campaign_articles (cascade from campaigns but explicit for safety)
-    await pool.query('DELETE FROM campaign_articles WHERE campaign_id = $1', [campaignId]);
-
-    // Delete the campaign itself
-    await pool.query('DELETE FROM campaigns WHERE id = $1', [campaignId]);
-
-    res.json({ success: true, deleted: { publishingQueue: pq.rowCount, generatedContent: gc.rowCount, campaign: campaignId } });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
 app.listen(PORT, '0.0.0.0', function () {
   console.log('Forge Intelligence running on port ' + PORT);
 });
