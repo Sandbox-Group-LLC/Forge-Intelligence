@@ -3027,11 +3027,76 @@ function buildUtmString(params) {
 app.get('/api/publishing/queue/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
   try {
+    // Base queue items
     const result = await pool.query(
-      `SELECT * FROM publishing_queue WHERE brand_profile_id = $1 ORDER BY created_at DESC`,
+      `SELECT pq.*,
+              c.name        AS campaign_name,
+              c.topic_cluster AS campaign_topic,
+              c.status      AS campaign_status
+       FROM publishing_queue pq
+       LEFT JOIN campaigns c ON c.id = pq.campaign_id
+       WHERE pq.brand_profile_id = $1
+       ORDER BY pq.campaign_id NULLS LAST, pq.created_at ASC`,
       [brandProfileId]
     );
-    res.json({ success: true, items: result.rows });
+
+    const items = result.rows;
+
+    // For campaign articles, enrich with week/publish_day/angle from generated_content + campaign_articles
+    const safeId = brandProfileId.replace(/-/g, '_');
+    const campaignItemIds = items
+      .filter(i => i.campaign_id && i.content_id)
+      .map(i => i.content_id);
+
+    let angleMap = {};
+    if (campaignItemIds.length > 0) {
+      // Get campaign_article_index from generated_content
+      const gcRes = await pool.query(
+        `SELECT id::text, campaign_article_index FROM generated_content_${safeId}
+         WHERE id::text = ANY($1) AND campaign_article_index IS NOT NULL`,
+        [campaignItemIds]
+      ).catch(() => ({ rows: [] }));
+
+      // Build a map of content_id -> article_index
+      const indexMap = {};
+      for (const row of gcRes.rows) indexMap[row.id] = row.campaign_article_index;
+
+      // For each campaign, get angle_profiles from campaign_articles
+      const campaignIds = [...new Set(items.filter(i => i.campaign_id).map(i => i.campaign_id))];
+      for (const campId of campaignIds) {
+        const caRes = await pool.query(
+          `SELECT article_index, angle_profile, week_number FROM campaign_articles WHERE campaign_id = $1`,
+          [campId]
+        ).catch(() => ({ rows: [] }));
+        for (const ca of caRes.rows) {
+          angleMap[`${campId}:${ca.article_index}`] = {
+            week_number: ca.week_number,
+            angle: ca.angle_profile
+          };
+        }
+      }
+
+      // Attach angle data to each item
+      for (const item of items) {
+        if (item.campaign_id && item.content_id) {
+          const idx = indexMap[item.content_id];
+          if (idx !== undefined) {
+            const key = `${item.campaign_id}:${idx}`;
+            const meta = angleMap[key];
+            if (meta) {
+              item.campaign_article_index = idx;
+              item.week_number = meta.week_number;
+              item.publish_day = meta.angle?.publish_day || null;
+              item.content_type = meta.angle?.content_type || null;
+              item.funnel_position = meta.angle?.funnel_position || null;
+              item.primary_persona = meta.angle?.primary_persona || null;
+            }
+          }
+        }
+      }
+    }
+
+    res.json({ success: true, items });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
