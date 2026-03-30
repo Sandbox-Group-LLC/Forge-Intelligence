@@ -3782,6 +3782,49 @@ ${canonicalNote}`,
             sections: mdCards.map((_, i) => [10, i])
           });
 
+          // ── Upload hero image to Ghost media storage (if available) ──
+          // Ghost requires images to be hosted on its own storage before they can
+          // be used as feature_image or image cards — we fetch from our CDN and upload.
+          let ghostFeatureImageUrl = null;
+          const heroImageUrl = article.hero_image_url;
+          if (heroImageUrl) {
+            try {
+              const imgRes = await fetch(heroImageUrl);
+              if (imgRes.ok) {
+                const imgBuffer = await imgRes.arrayBuffer();
+                const imgBytes = Buffer.from(imgBuffer);
+                const imgExt = heroImageUrl.split('.').pop()?.split('?')[0] || 'jpg';
+                const mimeMap = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif' };
+                const mimeType = mimeMap[imgExt.toLowerCase()] || 'image/jpeg';
+
+                // Ghost image upload uses multipart/form-data
+                const boundary = '----ForgeImageBoundary' + Date.now();
+                const filename = `forge-hero-${Date.now()}.${imgExt}`;
+                const body = Buffer.concat([
+                  Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${mimeType}\r\n\r\n`),
+                  imgBytes,
+                  Buffer.from(`\r\n--${boundary}--\r\n`)
+                ]);
+
+                const uploadRes = await fetch(`${ghostBase}/ghost/api/admin/images/upload/`, {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Ghost ${ghostJwt}`,
+                    'Content-Type': `multipart/form-data; boundary=${boundary}`,
+                    'Accept-Version': 'v5.0'
+                  },
+                  body
+                });
+                if (uploadRes.ok) {
+                  const uploadData = await uploadRes.json();
+                  ghostFeatureImageUrl = uploadData.images?.[0]?.url || null;
+                }
+              }
+            } catch (imgErr) {
+              console.warn('[GHOST] Hero image upload failed (non-fatal):', imgErr.message);
+            }
+          }
+
           const ghostRes = await fetch(`${ghostBase}/ghost/api/admin/posts/`, {
             method: 'POST',
             headers: {
@@ -3797,6 +3840,7 @@ ${canonicalNote}`,
                 canonical_url: utmUrl,
                 meta_title: article.title,
                 meta_description: (articleJson.metaDescription || '').slice(0, 300),
+                ...(ghostFeatureImageUrl && { feature_image: ghostFeatureImageUrl }),
               }]
             })
           });
