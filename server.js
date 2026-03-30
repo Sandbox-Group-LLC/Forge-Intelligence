@@ -3270,10 +3270,18 @@ app.post('/api/publishing/unpublish', async (req, res) => {
       }
     }
 
-    // Update publish_log status to deleted
+    // Update publish_log status — if user explicitly requested delete, mark deleted
+    // regardless of whether the API call succeeded (expired token etc.)
+    // This prevents sync from seeing 'published' and re-checking a post we've intentionally removed
+    const finalStatus = deleteFromChannel ? 'deleted' : (channelResult.deleted ? 'deleted' : 'published');
     await pool.query(
-      'UPDATE publish_log SET live_status = $1, last_synced_at = NOW() WHERE queue_item_id = $2 AND channel = $3',
-      [channelResult.deleted ? 'deleted' : 'published', queueItemId, channel]
+      `UPDATE publish_log SET live_status = $1, last_synced_at = NOW()
+       WHERE id = (
+         SELECT id FROM publish_log
+         WHERE queue_item_id = $2 AND channel = $3
+         ORDER BY attempted_at DESC LIMIT 1
+       )`,
+      [finalStatus, queueItemId, channel]
     );
 
     // Recompute queue status from remaining live publish_log entries
