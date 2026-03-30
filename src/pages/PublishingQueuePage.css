@@ -612,3 +612,122 @@
   transition: all 0.15s;
 }
 .pq-cancel-btn:hover { border-color: rgba(255,255,255,0.25); color: rgba(255,255,255,0.75); }
+
+/* ── Delete / Unpublish Modal ──────────────────────────────────────────────── */
+.pq-delete-modal {
+  max-width: 440px;
+}
+
+.pq-delete-article-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  padding: 12px 16px;
+  background: var(--color-bg-elevated);
+  border-radius: var(--radius-md);
+  margin-bottom: 16px;
+  line-height: 1.4;
+}
+
+.pq-delete-desc {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.pq-delete-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.pq-delete-option-btn {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  cursor: pointer;
+  text-align: left;
+  transition: all var(--transition-normal);
+  width: 100%;
+}
+
+.pq-delete-option-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.pq-delete-option-btn.full {
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.pq-delete-option-btn.full:hover:not(:disabled) {
+  border-color: #EF4444;
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.pq-delete-option-btn.forge-only {
+  border-color: var(--color-border);
+}
+
+.pq-delete-option-btn.forge-only:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  background: var(--color-accent-muted);
+}
+
+.pq-delete-option-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pq-delete-option-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.pq-delete-option-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 2px;
+}
+
+.pq-delete-option-sub {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.pq-delete-loading {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: 8px 0;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.pq-delete-cancel {
+  width: 100%;
+  padding: 10px;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+}
+
+.pq-delete-cancel:hover:not(:disabled) {
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+}
+
+.pq-delete-cancel:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
