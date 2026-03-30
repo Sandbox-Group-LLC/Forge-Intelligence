@@ -84,11 +84,11 @@ const CHANNEL_LABELS: Record<string, { label: string; color: string }> = {
   webflow:   { label: 'Webflow',   color: '#4353FF' },
   hubspot:   { label: 'HubSpot',   color: '#FF7A59' },
   linkedin:  { label: 'LinkedIn',  color: '#0A66C2' },
-  x:         { label: 'X',         color: '#000000' },
+  x:         { label: 'X',         color: '#E7E9EA' },
   facebook:  { label: 'Facebook',   color: '#1877F2' },
   reddit:    { label: 'Reddit',     color: '#FF4500' },
-  medium:    { label: 'Medium',     color: '#000000' },
-  ghost:     { label: 'Ghost',      color: '#15171A' },
+  medium:    { label: 'Medium',     color: '#A8A8A8' },
+  ghost:     { label: 'Ghost',      color: '#738A94' },
 };
 const ALL_CHANNELS = Object.keys(CHANNEL_LABELS);
 
