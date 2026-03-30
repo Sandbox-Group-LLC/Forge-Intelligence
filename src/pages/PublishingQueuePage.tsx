@@ -250,8 +250,15 @@ export default function PublishingQueuePage() {
 
 
   const openDeleteModal = (item: QueueItem) => {
+    // Deduplicate by channel — keep only the most recent live entry per channel
+    const seen = new Set<string>();
     const publishedChannels = (publishLog[item.id] || [])
       .filter(l => l.live_status === 'published' || l.live_status === 'unknown')
+      .filter(l => {
+        if (seen.has(l.channel)) return false;
+        seen.add(l.channel);
+        return true;
+      })
       .map(l => l.channel);
     setDeleteModal({ item, publishedChannels });
     // Default: all live channels selected for deletion
