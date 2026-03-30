@@ -148,15 +148,32 @@ interface TopNavItem {
   href?: string;
 }
 
+// Route map — single source of truth for all nav paths
+const NAV_ROUTES: Partial<Record<ViewType, string>> = {
+  'geo-strategist':       '/app/geo-strategist',
+  'authenticity-enricher':'/app/authenticity-enricher',
+  'content-generator':    '/app/content-generator',
+  'campaign-generator':   '/app/campaign-generator',
+  'compliance-gate':      '/app/compliance-gate',
+  'integrations':         '/app/integrations',
+  'publishing-queue':     '/app/publishing-queue',
+  'performance':          '/app/performance',
+  'new-analysis':         '/app/context-hub',
+  'active-run':           '/app/context-hub',
+  'brand-profile':        '/app/context-hub',
+  'strategy':             '/app/context-hub',
+  'brain-history':        '/app/context-hub',
+};
+
 const topNavItems: TopNavItem[] = [
-  { id: 'geo-strategist', label: 'GEO Strategist', icon: 'zap', href: '/app/geo-strategist' },
-  { id: 'authenticity-enricher', label: 'Authenticity Enricher', icon: 'shieldCheck', href: '/app/authenticity-enricher' },
-  { id: 'content-generator', label: 'Content Generator', icon: 'fileText' },
-  { id: 'campaign-generator', label: 'Campaign Generator', icon: 'layers' },
-  { id: 'compliance-gate', label: 'Compliance Gate', icon: 'shieldCheck' },
-  { id: 'integrations', label: 'Integrations', icon: 'plug', href: '/app/integrations' },
-  { id: 'publishing-queue', label: 'Publishing Queue', icon: 'sendCloud', href: '/app/publishing-queue' },
-  { id: 'performance', label: 'Performance', icon: 'barChart2', href: '/app/performance' },
+  { id: 'geo-strategist',        label: 'GEO Strategist',        icon: 'zap',        href: '/app/geo-strategist' },
+  { id: 'authenticity-enricher', label: 'Authenticity Enricher', icon: 'shieldCheck',href: '/app/authenticity-enricher' },
+  { id: 'content-generator',     label: 'Content Generator',     icon: 'fileText',   href: '/app/content-generator' },
+  { id: 'campaign-generator',    label: 'Campaign Generator',    icon: 'layers',     href: '/app/campaign-generator' },
+  { id: 'compliance-gate',       label: 'Compliance Gate',       icon: 'shieldCheck',href: '/app/compliance-gate' },
+  { id: 'integrations',          label: 'Integrations',          icon: 'plug',       href: '/app/integrations' },
+  { id: 'publishing-queue',      label: 'Publishing Queue',      icon: 'sendCloud',  href: '/app/publishing-queue' },
+  { id: 'performance',           label: 'Performance',           icon: 'barChart2',  href: '/app/performance' },
 ];
 
 export function Sidebar() {
@@ -191,7 +208,8 @@ export function Sidebar() {
     }
   };
 
-  const isBrainViewActive = BRAIN_VIEWS.includes(currentView);
+  const path = window.location.pathname;
+  const isBrainViewActive = path.startsWith('/app/context-hub');
 
   const getBrainItemStatus = (id: ViewType): 'active' | 'available' | 'disabled' => {
     if (id === currentView) return 'active';
@@ -201,17 +219,11 @@ export function Sidebar() {
   };
 
   const getTopItemStatus = (id: ViewType): 'active' | 'available' => {
-    const path = window.location.pathname;
-    if (id === 'geo-strategist') return path.startsWith('/app/geo-strategist') ? 'active' : 'available';
-    if (id === 'authenticity-enricher') return path.startsWith('/app/authenticity-enricher') ? 'active' : 'available';
-    if (id === 'content-generator') return path.startsWith('/app/content-generator') ? 'active' : 'available';
-    if (id === 'campaign-generator') return path.startsWith('/app/campaign-generator') ? 'active' : 'available';
-    if (id === 'compliance-gate') return path.startsWith('/app/compliance-gate') ? 'active' : 'available';
-    if (id === 'integrations') return path.startsWith('/app/integrations') ? 'active' : 'available';
-    if (id === 'publishing-queue') return path.startsWith('/app/publishing-queue') ? 'active' : 'available';
-    if (id === 'performance') return path.startsWith('/app/performance') ? 'active' : 'available';
-    if (id === currentView) return 'active';
-    return 'available';
+    const route = NAV_ROUTES[id];
+    // Each item is active only if its exact route matches the current path
+    // Brain sub-items all share /app/context-hub — handled separately via isBrainViewActive
+    if (!route || route === '/app/context-hub') return 'available';
+    return path.startsWith(route) ? 'active' : 'available';
   };
 
   const handleBrainItemClick = (id: ViewType, status: string) => {
@@ -232,23 +244,10 @@ export function Sidebar() {
     }
   };
 
-  const handleTopItemClick = (item: TopNavItem, status: string) => {
+  const handleTopItemClick = (item: TopNavItem) => {
     if (item.href) {
+      closeMobileDrawer();
       window.location.href = item.href;
-      return;
-    }
-    if (status === 'disabled') return;
-    const routeMap: Record<string, string> = {
-      'content-generator': '/app/content-generator',
-      'campaign-generator': '/app/campaign-generator',
-      'compliance-gate': '/app/compliance-gate',
-    };
-    const targetPath = routeMap[item.id] || '/app/context-hub';
-    const currentPath = window.location.pathname;
-    if (currentPath !== targetPath.split('?')[0]) {
-      window.location.href = targetPath;
-    } else {
-      setCurrentView(item.id);
     }
   };
 
@@ -328,33 +327,20 @@ export function Sidebar() {
           </div>
         )}
 
-        {/* Top-level nav items */}
+        {/* Top-level nav items — all use href for clean URL-based navigation */}
         {topNavItems.map(item => {
           const status = getTopItemStatus(item.id);
-          if (item.href) {
-            return (
-              <a
-                key={item.id}
-                href={item.href}
-                className={`nav-item ${status}`}
-                title={sidebarCollapsed ? item.label : undefined}
-                onClick={closeMobileDrawer}
-              >
-                <span className="nav-icon">{icons[item.icon]}</span>
-                {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
-              </a>
-            );
-          }
           return (
-            <button
+            <a
               key={item.id}
+              href={item.href}
               className={`nav-item ${status}`}
-              onClick={() => handleTopItemClick(item, status)}
               title={sidebarCollapsed ? item.label : undefined}
+              onClick={closeMobileDrawer}
             >
               <span className="nav-icon">{icons[item.icon]}</span>
               {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
-            </button>
+            </a>
           );
         })}
       </nav>
