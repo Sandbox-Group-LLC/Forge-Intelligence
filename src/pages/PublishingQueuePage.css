@@ -208,9 +208,9 @@
 }
 .pq-chip:hover { border-color: var(--chip-color, var(--color-accent)); color: var(--chip-color, var(--color-accent)); }
 .pq-chip.selected {
-  background: color-mix(in srgb, var(--chip-color, var(--color-accent)) 12%, transparent);
-  border-color: var(--chip-color, var(--color-accent));
-  color: var(--chip-color, var(--color-accent));
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.85);
+  color: #ffffff;
   font-weight: 600;
 }
 .pq-chip.published {
