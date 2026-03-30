@@ -151,9 +151,10 @@ export default function PublishingQueuePage() {
           }
           return next;
         });
-        // Load publish logs for published items
+        // Load publish logs for all items — item.status is unreliable after partial unpublish
+        // publish log is the only accurate source of per-channel live state
         for (const item of d.items) {
-          if (item.status === 'published' || item.status === 'partial') {
+          if (item.publish_results && Object.keys(item.publish_results).length > 0) {
             fetch(`/api/publishing/log/${item.id}`)
               .then(r => r.json())
               .then(ld => {
