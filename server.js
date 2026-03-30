@@ -3783,41 +3783,55 @@ ${canonicalNote}`,
           });
 
           // ── Upload hero image to Ghost media storage (if available) ──
-          // Ghost requires images to be hosted on its own storage before they can
-          // be used as feature_image or image cards — we fetch from our CDN and upload.
+          // Ghost requires images hosted in its own storage for feature_image.
+          // We fetch from fal.ai CDN and upload via Ghost Admin image upload API.
           let ghostFeatureImageUrl = null;
           const heroImageUrl = article.hero_image_url;
           if (heroImageUrl) {
             try {
               const imgRes = await fetch(heroImageUrl);
               if (imgRes.ok) {
-                const imgBuffer = await imgRes.arrayBuffer();
-                const imgBytes = Buffer.from(imgBuffer);
-                const imgExt = heroImageUrl.split('.').pop()?.split('?')[0] || 'jpg';
-                const mimeMap = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif' };
-                const mimeType = mimeMap[imgExt.toLowerCase()] || 'image/jpeg';
+                // Detect mime type from Content-Type header — more reliable than URL extension
+                // fal.ai URLs often have no clean extension
+                const contentType = imgRes.headers.get('content-type') || 'image/webp';
+                const mimeToExt = { 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
+                const imgExt = mimeToExt[contentType.split(';')[0].trim()] || 'jpg';
+                const mimeType = contentType.split(';')[0].trim();
 
-                // Ghost image upload uses multipart/form-data
-                const boundary = '----ForgeImageBoundary' + Date.now();
+                const imgBuffer = await imgRes.arrayBuffer();
+                const imgBytes = new Uint8Array(imgBuffer);
                 const filename = `forge-hero-${Date.now()}.${imgExt}`;
-                const body = Buffer.concat([
-                  Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${mimeType}\r\n\r\n`),
-                  imgBytes,
-                  Buffer.from(`\r\n--${boundary}--\r\n`)
-                ]);
+
+                // Build multipart/form-data manually — Node fetch needs Uint8Array body
+                const boundary = 'ForgeGhostBoundary' + Date.now();
+                const header = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${mimeType}\r\n\r\n`;
+                const footer = `\r\n--${boundary}--\r\n`;
+                const headerBytes = new TextEncoder().encode(header);
+                const footerBytes = new TextEncoder().encode(footer);
+                const multipart = new Uint8Array(headerBytes.length + imgBytes.length + footerBytes.length);
+                multipart.set(headerBytes, 0);
+                multipart.set(imgBytes, headerBytes.length);
+                multipart.set(footerBytes, headerBytes.length + imgBytes.length);
 
                 const uploadRes = await fetch(`${ghostBase}/ghost/api/admin/images/upload/`, {
                   method: 'POST',
                   headers: {
                     'Authorization': `Ghost ${ghostJwt}`,
                     'Content-Type': `multipart/form-data; boundary=${boundary}`,
+                    'Content-Length': String(multipart.length),
                     'Accept-Version': 'v5.0'
                   },
-                  body
+                  body: multipart
                 });
+
+                const uploadText = await uploadRes.text();
+                console.log('[GHOST] Image upload status:', uploadRes.status, uploadText.slice(0, 200));
+
                 if (uploadRes.ok) {
-                  const uploadData = await uploadRes.json();
-                  ghostFeatureImageUrl = uploadData.images?.[0]?.url || null;
+                  const uploadData = JSON.parse(uploadText);
+                  // Ghost v5 returns { images: [{ url, ref }] }
+                  ghostFeatureImageUrl = uploadData?.images?.[0]?.url || null;
+                  console.log('[GHOST] Feature image URL:', ghostFeatureImageUrl);
                 }
               }
             } catch (imgErr) {
