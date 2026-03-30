@@ -134,6 +134,7 @@ export default function PublishingQueuePage() {
   const [syncing, setSyncing] = useState<string | null>(null);
   const [republishing, setRepublishing] = useState<string | null>(null); // "itemId:channel"
   const [deleteModal, setDeleteModal] = useState<{ item: QueueItem; publishedChannels: string[] } | null>(null);
+  const [deleteChannelSelection, setDeleteChannelSelection] = useState<Record<string, boolean>>({});
   const [deleting, setDeleting] = useState(false);
 
   const loadQueue = useCallback(async () => {
@@ -253,16 +254,23 @@ export default function PublishingQueuePage() {
       .filter(l => l.live_status === 'published' || l.live_status === 'unknown')
       .map(l => l.channel);
     setDeleteModal({ item, publishedChannels });
+    // Default: all live channels selected for deletion
+    const sel: Record<string, boolean> = {};
+    publishedChannels.forEach(ch => { sel[ch] = true; });
+    setDeleteChannelSelection(sel);
   };
 
-  const handleUnpublish = async (deleteFromChannel: boolean) => {
+  const handleUnpublish = async (removeFromQueue: boolean) => {
     if (!deleteModal) return;
     setDeleting(true);
-    const { item, publishedChannels } = deleteModal;
+    const { item } = deleteModal;
+    // Only unpublish channels the user has checked
+    const channelsToDelete = Object.entries(deleteChannelSelection)
+      .filter(([, checked]) => checked)
+      .map(([ch]) => ch);
     try {
-      if (publishedChannels.length > 0 && deleteFromChannel) {
-        // Unpublish from each live channel
-        await Promise.all(publishedChannels.map(channel =>
+      if (channelsToDelete.length > 0) {
+        await Promise.all(channelsToDelete.map(channel =>
           fetch('/api/publishing/unpublish', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -270,8 +278,9 @@ export default function PublishingQueuePage() {
           })
         ));
       }
-      // Always remove from Forge queue
-      await fetch(`/api/publishing/queue/${item.id}`, { method: 'DELETE' });
+      if (removeFromQueue) {
+        await fetch(`/api/publishing/queue/${item.id}`, { method: 'DELETE' });
+      }
       setDeleteModal(null);
       loadQueue();
     } catch {
@@ -790,16 +799,32 @@ export default function PublishingQueuePage() {
             <button className="pq-modal-close" onClick={() => !deleting && setDeleteModal(null)}>✕</button>
           </div>
 
-          <div className="pq-delete-article-title">
-            {deleteModal.item.title}
-          </div>
+          <div className="pq-delete-article-title">{deleteModal.item.title}</div>
 
           {deleteModal.publishedChannels.length > 0 ? (
             <>
-              <p className="pq-delete-desc">
-                This article is live on <strong>{deleteModal.publishedChannels.join(', ')}</strong>. How would you like to remove it?
-              </p>
-              <div className="pq-delete-options">
+              <p className="pq-delete-desc">Select which live channels to unpublish from, then choose what to do in Forge.</p>
+
+              {/* Per-channel checkboxes */}
+              <div className="pq-delete-channel-list">
+                {deleteModal.publishedChannels.map(ch => (
+                  <label key={ch} className="pq-delete-channel-row">
+                    <input
+                      type="checkbox"
+                      className="pq-delete-checkbox"
+                      checked={!!deleteChannelSelection[ch]}
+                      disabled={deleting}
+                      onChange={e => setDeleteChannelSelection(prev => ({ ...prev, [ch]: e.target.checked }))}
+                    />
+                    <span className="pq-delete-channel-name" style={{ color: CHANNEL_LABELS[ch]?.color || 'inherit' }}>
+                      {CHANNEL_LABELS[ch]?.label || ch}
+                    </span>
+                    <span className="pq-delete-channel-status">Live</span>
+                  </label>
+                ))}
+              </div>
+
+              <div className="pq-delete-actions">
                 <button
                   className="pq-delete-option-btn full"
                   onClick={() => handleUnpublish(true)}
@@ -807,8 +832,16 @@ export default function PublishingQueuePage() {
                 >
                   <span className="pq-delete-option-icon">🗑</span>
                   <div>
-                    <div className="pq-delete-option-label">Delete from {deleteModal.publishedChannels.join(' + ')} and Forge</div>
-                    <div className="pq-delete-option-sub">Removes the live post{deleteModal.publishedChannels.length > 1 ? 's' : ''} and clears from your queue</div>
+                    <div className="pq-delete-option-label">
+                      {Object.values(deleteChannelSelection).some(Boolean)
+                        ? `Unpublish selected + remove from Forge`
+                        : 'Remove from Forge only'}
+                    </div>
+                    <div className="pq-delete-option-sub">
+                      {Object.values(deleteChannelSelection).some(Boolean)
+                        ? 'Deletes checked live posts and clears from queue'
+                        : 'All live posts stay up — only clears from queue'}
+                    </div>
                   </div>
                 </button>
                 <button
@@ -818,21 +851,27 @@ export default function PublishingQueuePage() {
                 >
                   <span className="pq-delete-option-icon">📋</span>
                   <div>
-                    <div className="pq-delete-option-label">Remove from Forge only</div>
-                    <div className="pq-delete-option-sub">Live post{deleteModal.publishedChannels.length > 1 ? 's stay' : ' stays'} up — just clears from your queue</div>
+                    <div className="pq-delete-option-label">
+                      {Object.values(deleteChannelSelection).some(Boolean)
+                        ? 'Unpublish selected — keep in Forge'
+                        : 'No action'}
+                    </div>
+                    <div className="pq-delete-option-sub">
+                      {Object.values(deleteChannelSelection).some(Boolean)
+                        ? 'Removes checked live posts but keeps article in queue as staged'
+                        : 'Uncheck channels above to unpublish without removing from Forge'}
+                    </div>
                   </div>
                 </button>
               </div>
             </>
           ) : (
             <>
-              <p className="pq-delete-desc">
-                This article has not been published to any channels yet. Remove it from your queue?
-              </p>
-              <div className="pq-delete-options">
+              <p className="pq-delete-desc">This article has not been published to any channels yet.</p>
+              <div className="pq-delete-actions">
                 <button
                   className="pq-delete-option-btn full"
-                  onClick={() => handleUnpublish(false)}
+                  onClick={() => handleUnpublish(true)}
                   disabled={deleting}
                 >
                   <span className="pq-delete-option-icon">🗑</span>
