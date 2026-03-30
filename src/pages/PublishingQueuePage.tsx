@@ -132,7 +132,9 @@ export default function PublishingQueuePage() {
   const [contentPreview, setContentPreview] = useState<{ item: QueueItem; article: any; postCopy: Record<string, string> } | null>(null);
   const [publishLog, setPublishLog] = useState<Record<string, { channel: string; live_status: string; published_url?: string; last_synced_at?: string }[]>>({});
   const [syncing, setSyncing] = useState<string | null>(null);
-  const [republishing, setRepublishing] = useState<string | null>(null); // "itemId:channel" 
+  const [republishing, setRepublishing] = useState<string | null>(null); // "itemId:channel"
+  const [deleteModal, setDeleteModal] = useState<{ item: QueueItem; publishedChannels: string[] } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const loadQueue = useCallback(async () => {
     setLoading(true);
@@ -248,6 +250,39 @@ export default function PublishingQueuePage() {
   const handleRemove = async (itemId: string) => {
     await fetch(`/api/publishing/queue/${itemId}`, { method: 'DELETE' });
     loadQueue();
+  };
+
+  const openDeleteModal = (item: QueueItem) => {
+    const publishedChannels = (publishLog[item.id] || [])
+      .filter(l => l.live_status === 'published' || l.live_status === 'unknown')
+      .map(l => l.channel);
+    setDeleteModal({ item, publishedChannels });
+  };
+
+  const handleUnpublish = async (deleteFromChannel: boolean) => {
+    if (!deleteModal) return;
+    setDeleting(true);
+    const { item, publishedChannels } = deleteModal;
+    try {
+      if (publishedChannels.length > 0 && deleteFromChannel) {
+        // Unpublish from each live channel
+        await Promise.all(publishedChannels.map(channel =>
+          fetch('/api/publishing/unpublish', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ queueItemId: item.id, channel, deleteFromChannel: true, removeFromQueue: false })
+          })
+        ));
+      }
+      // Always remove from Forge queue
+      await fetch(`/api/publishing/queue/${item.id}`, { method: 'DELETE' });
+      setDeleteModal(null);
+      loadQueue();
+    } catch {
+      setError('Delete failed — try again');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleSync = async (itemId: string) => {
@@ -453,7 +488,7 @@ export default function PublishingQueuePage() {
                       <button className="pq-icon-btn" title="UTM Preview" onClick={() => openUtmPreview(item)}>
                         <Link2 />
                       </button>
-                      <button className="pq-icon-btn danger" title="Remove from queue" onClick={() => handleRemove(item.id)}>
+                      <button className="pq-icon-btn danger" title="Remove from queue" onClick={() => openDeleteModal(item)}>
                         <Trash />
                       </button>
                     </div>
@@ -748,5 +783,78 @@ export default function PublishingQueuePage() {
       })()}
 
     </AppShell>
+
+    {/* ── Delete / Unpublish Modal ── */}
+    {deleteModal && (
+      <div className="pq-modal-overlay" onClick={() => !deleting && setDeleteModal(null)}>
+        <div className="pq-modal pq-delete-modal" onClick={e => e.stopPropagation()}>
+          <div className="pq-modal-header">
+            <h3 className="pq-modal-title">Remove article</h3>
+            <button className="pq-modal-close" onClick={() => !deleting && setDeleteModal(null)}>✕</button>
+          </div>
+
+          <div className="pq-delete-article-title">
+            {deleteModal.item.title}
+          </div>
+
+          {deleteModal.publishedChannels.length > 0 ? (
+            <>
+              <p className="pq-delete-desc">
+                This article is live on <strong>{deleteModal.publishedChannels.join(', ')}</strong>. How would you like to remove it?
+              </p>
+              <div className="pq-delete-options">
+                <button
+                  className="pq-delete-option-btn full"
+                  onClick={() => handleUnpublish(true)}
+                  disabled={deleting}
+                >
+                  <span className="pq-delete-option-icon">🗑</span>
+                  <div>
+                    <div className="pq-delete-option-label">Delete from {deleteModal.publishedChannels.join(' + ')} and Forge</div>
+                    <div className="pq-delete-option-sub">Removes the live post{deleteModal.publishedChannels.length > 1 ? 's' : ''} and clears from your queue</div>
+                  </div>
+                </button>
+                <button
+                  className="pq-delete-option-btn forge-only"
+                  onClick={() => handleUnpublish(false)}
+                  disabled={deleting}
+                >
+                  <span className="pq-delete-option-icon">📋</span>
+                  <div>
+                    <div className="pq-delete-option-label">Remove from Forge only</div>
+                    <div className="pq-delete-option-sub">Live post{deleteModal.publishedChannels.length > 1 ? 's stay' : ' stays'} up — just clears from your queue</div>
+                  </div>
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="pq-delete-desc">
+                This article has not been published to any channels yet. Remove it from your queue?
+              </p>
+              <div className="pq-delete-options">
+                <button
+                  className="pq-delete-option-btn full"
+                  onClick={() => handleUnpublish(false)}
+                  disabled={deleting}
+                >
+                  <span className="pq-delete-option-icon">🗑</span>
+                  <div>
+                    <div className="pq-delete-option-label">Remove from queue</div>
+                    <div className="pq-delete-option-sub">Clears the article from Forge</div>
+                  </div>
+                </button>
+              </div>
+            </>
+          )}
+
+          {deleting && <div className="pq-delete-loading">Working…</div>}
+
+          <button className="pq-delete-cancel" onClick={() => !deleting && setDeleteModal(null)} disabled={deleting}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    )}
   );
 }
