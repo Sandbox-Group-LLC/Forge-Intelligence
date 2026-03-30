@@ -1138,7 +1138,7 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
     const wordCount = (aj.sections || []).reduce((acc, s) => acc + ((s.body || s.content || '').split(' ').length), 0);
     const readMinutes = Math.max(1, Math.round(wordCount / 200));
 
-    const html = await fs.readFile(path.join(__dirname, 'dist', 'index.html'), 'utf8');
+    const html = await fs.promises.readFile(path.join(__dirname, 'dist', 'index.html'), 'utf8');
     const ogTags = `
   <title>${title} | ${brandName}</title>
   <meta name="description" content="${description}" />
@@ -3639,7 +3639,7 @@ app.post('/api/publishing/publish', async (req, res) => {
         : defaultUtmTemplate;
       const utmParams = resolveUtmParams(utmTemplate, utmCtx);
       const utmString = buildUtmString(utmParams);
-      console.log('[UTM]', channel, '| template:', JSON.stringify(utmTemplate), '| resolved:', JSON.stringify(utmParams), '| string:', utmString);
+
       const creds = chConfig.credentials || {};
 
       try {
