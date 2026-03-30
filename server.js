@@ -3567,6 +3567,45 @@ app.post('/api/publishing/publish', async (req, res) => {
     const targets = selectedChannels || item.channels || [];
     const results = {};
 
+    // ── Ensure hero image exists before publishing ────────────────────────────
+    // Campaign generator doesn't pre-generate images — create one now if missing
+    if (!article.hero_image_url) {
+      try {
+        const aj = article.article_json || {};
+        const sections = aj.sections || [];
+        const firstBody = (sections[0]?.body || sections[0]?.content || '').slice(0, 300);
+        const imgPromptRes = await anthropic.messages.create({
+          model: 'claude-haiku-4-5',
+          max_tokens: 150,
+          messages: [{ role: 'user', content: `Write a Flux image generation prompt for a B2B editorial hero image for this article: "${article.title}". Context: ${firstBody}. Output only the prompt, no quotes, no preamble. Professional photography style, 16:9, no text in image.` }]
+        });
+        const fluxPrompt = imgPromptRes.content[0]?.type === 'text'
+          ? imgPromptRes.content[0].text.trim()
+          : `Professional B2B editorial hero image for: ${article.title}`;
+
+        const falRes = await fetch('https://fal.run/fal-ai/flux/schnell', {
+          method: 'POST',
+          headers: { 'Authorization': `Key ${process.env.FAL_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: fluxPrompt, image_size: 'landscape_16_9', num_inference_steps: 4, num_images: 1 })
+        });
+        if (falRes.ok) {
+          const falData = await falRes.json();
+          const imageUrl = falData?.images?.[0]?.url;
+          if (imageUrl) {
+            await pool.query(
+              `UPDATE ${contentTable} SET hero_image_url = $1, hero_image_prompt = $2, updated_at = NOW() WHERE id = $3`,
+              [imageUrl, fluxPrompt, article.id]
+            );
+            article.hero_image_url = imageUrl;
+            console.log(`[PUBLISH] Generated hero image for "${article.title}"`);
+          }
+        }
+      } catch (imgErr) {
+        console.warn('[PUBLISH] Hero image generation failed, continuing without:', imgErr.message);
+        // Non-fatal — publish continues without image
+      }
+    }
+
     for (const channel of targets) {
       const chConfig = channelMap[channel];
       if (!chConfig) { results[channel] = { status: 'error', error: 'Channel not connected' }; continue; }
