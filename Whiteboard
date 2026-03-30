@@ -1,5 +1,5 @@
 # AI Content Platform — Working Doc
-> Last updated: March 29, 2026 (11:59 PM PDT) | Status: Stage 6 LIVE — Full channel suite + Campaign Analytics + Mobile UI ✅ | Active Whiteboard
+> Last updated: March 30, 2026 (6:00 AM PDT) | Status: Stage 6 LIVE — Ghost + Reverse Publish + Queue Polish + Sidebar ✅ | Active Whiteboard
 
 ---
 
@@ -785,7 +785,17 @@ Daily/Weekly: Performance digest → compile + Resend
 - Performance Dashboard fully styled per design system spec
 - Commits: `167e085` (CSS) + `7380d8a` (TSX)
 
-### Pipeline status: ✅ Stage 1–6 LIVE | Stage 7B ✅ | Campaign Analytics ✅ | Stage 7–8 🔲 Next
+### Pipeline status: ✅ Stage 1–6 LIVE | Stage 7B ✅ | Campaign Analytics ✅ | Ghost ✅ | Reverse Publish ✅ | Stage 7–8 🔲 Next
+
+## March 30, 2026 Session — Publishing Queue + Ghost + Sidebar
+
+**What shipped:**
+- Ghost CMS full publish pipeline — JWT auth, HTML content, hero image, canonical URL, live sync, reverse delete
+- Reverse publish — `POST /api/publishing/unpublish` with per-channel targeting. Confirmed working for LinkedIn, X, Ghost, WordPress, Facebook
+- Publishing Queue redesign — status filter tabs removed (confusing at scale), per-channel delete checkboxes, chip colors now read from publish log live_status as single source of truth
+- Publish log queries use `DISTINCT ON (channel)` throughout — no stale duplicate rows causing incorrect status display
+- Sidebar active state fully rewritten — URL-based only via `NAV_ROUTES` map, all items render as `<a>` tags, Brain group highlights only on /app/context-hub
+- Medium marked Legacy in Integrations UI — new tokens unavailable from Medium since early 2025
 
 ## Mobile UI Update — March 29, 2026
 
