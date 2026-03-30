@@ -249,24 +249,6 @@ export default function PublishingQueuePage() {
   };
 
 
-  // Derive effective status from publish log live statuses
-  // item.status resets to 'staged' after unpublish — this gives the true picture
-  const getEffectiveStatus = (item: QueueItem): string => {
-    const log = publishLog[item.id] || [];
-    if (log.length === 0) return item.status;
-    // Deduplicate by channel — keep most recent entry per channel
-    const seen = new Set<string>();
-    const deduped = log.filter(l => { if (seen.has(l.channel)) return false; seen.add(l.channel); return true; });
-    if (deduped.length === 0) return item.status;
-    const anyConfirmedLive = deduped.some(l => l.live_status === 'published');
-    const anyDeleted = deduped.some(l => l.live_status === 'deleted');
-    const anyUnknown = deduped.some(l => l.live_status === 'unknown');
-    const allGone = deduped.every(l => l.live_status === 'deleted' || l.live_status === 'unknown');
-    if (allGone && !anyConfirmedLive) return 'staged';
-    if (anyConfirmedLive && (anyDeleted || anyUnknown)) return 'partial';
-    if (anyConfirmedLive) return 'published';
-    return item.status;
-  };
 
   const openDeleteModal = (item: QueueItem) => {
     // Deduplicate by channel — keep only the most recent live entry per channel
