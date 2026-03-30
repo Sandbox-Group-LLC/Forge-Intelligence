@@ -612,16 +612,19 @@ export default function PublishingQueuePage() {
                         <Send /> {isPublishing ? 'Publishing...' : 'Publish Now'}
                       </button>
                       <div className="pq-schedule-group">
-                        <input
-                          type="datetime-local"
-                          className="pq-datetime-input"
-                          value={scheduleDate[item.id] || ''}
-                          onChange={e => setScheduleDate(prev => ({ ...prev, [item.id]: e.target.value }))}
-                        />
+                        <div className="pq-datetime-wrap">
+                          <input
+                            type="datetime-local"
+                            className="pq-datetime-input"
+                            value={scheduleDate[item.id] || ''}
+                            onChange={e => setScheduleDate(prev => ({ ...prev, [item.id]: e.target.value }))}
+                          />
+                          <span className="pq-datetime-tz">{Intl.DateTimeFormat().resolvedOptions().timeZone}</span>
+                        </div>
                         <button
                           className="pq-schedule-btn"
                           onClick={() => handleSchedule(item)}
-                          disabled={isScheduling || !scheduleDate[item.id] || sel.length === 0}
+                          disabled={isScheduling || !scheduleDate[item.id]}
                         >
                           <Clock /> {isScheduling ? 'Scheduling...' : 'Schedule'}
                         </button>
@@ -797,16 +800,19 @@ return (
                         <Send /> {isPublishing ? 'Publishing...' : 'Publish Now'}
                       </button>
                       <div className="pq-schedule-group">
-                        <input
-                          type="datetime-local"
-                          className="pq-datetime-input"
-                          value={scheduleDate[item.id] || ''}
-                          onChange={e => setScheduleDate(prev => ({ ...prev, [item.id]: e.target.value }))}
-                        />
+                        <div className="pq-datetime-wrap">
+                          <input
+                            type="datetime-local"
+                            className="pq-datetime-input"
+                            value={scheduleDate[item.id] || ''}
+                            onChange={e => setScheduleDate(prev => ({ ...prev, [item.id]: e.target.value }))}
+                          />
+                          <span className="pq-datetime-tz">{Intl.DateTimeFormat().resolvedOptions().timeZone}</span>
+                        </div>
                         <button
                           className="pq-schedule-btn"
                           onClick={() => handleSchedule(item)}
-                          disabled={isScheduling || !scheduleDate[item.id] || sel.length === 0}
+                          disabled={isScheduling || !scheduleDate[item.id]}
                         >
                           <Clock /> {isScheduling ? 'Scheduling...' : 'Schedule'}
                         </button>
