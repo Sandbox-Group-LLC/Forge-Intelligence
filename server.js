@@ -3701,7 +3701,9 @@ ${canonicalNote}`,
           const canonicalNote = `<p><em>Originally published at <a href="${utmUrl}">${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}</a></em></p>`;
           const htmlContent = `${htmlBody}\n\n${canonicalNote}`;
 
-          console.log('[GHOST] Publishing with feature_image:', ghostFeatureImageUrl || '(none) — hero_image_url was:', article.hero_image_url || '(null)');
+          // feature_image: Ghost v5 accepts external URLs directly
+          const ghostFeatureImageUrl = article.hero_image_url || null;
+          console.log('[GHOST] feature_image:', ghostFeatureImageUrl || '(none)', '| hero_image_url:', article.hero_image_url || '(null)');
 
           const ghostRes = await fetch(`${ghostBase}/ghost/api/admin/posts/?source=html`, {
             method: 'POST',
@@ -3714,85 +3716,6 @@ ${canonicalNote}`,
               posts: [{
                 title: article.title,
                 html: htmlContent,
-                status: 'published',
-                canonical_url: utmUrl,
-                meta_title: article.title,
-                meta_description: (articleJson.metaDescription || '').slice(0, 300),
-                ...(ghostFeatureImageUrl && { feature_image: ghostFeatureImageUrl }),
-              }]
-            })
-          });
-
-          const ghostData = await ghostRes.json();
-          if (!ghostRes.ok || ghostData.errors) {
-            throw new Error(ghostData.errors?.[0]?.message || `Ghost API error ${ghostRes.status}`);
-          }
-
-          const post = ghostData.posts?.[0];
-          results[channel] = { status: 'published', url: post?.url, postId: post?.id, utmParams };
-
-        } else if (channel === 'ghost') {
-          // ── Ghost Admin API publish ──
-          // Ghost uses JWT auth derived from the Admin API key (format: id:secret)
-          const { adminUrl, adminApiKey } = chConfig.credentials || {};
-          if (!adminUrl || !adminApiKey) throw new Error('Ghost Admin URL and Admin API Key are required');
-
-          const [keyId, keySecret] = adminApiKey.split(':');
-          if (!keyId || !keySecret) throw new Error('Admin API Key must be in format id:secret — copy it directly from Ghost Admin');
-
-          // Build JWT — Ghost uses HS256 with the hex secret decoded to bytes
-          const now = Math.floor(Date.now() / 1000);
-          const jwtHeader  = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT', kid: keyId })).toString('base64url');
-          const jwtPayload = Buffer.from(JSON.stringify({ iat: now, exp: now + 300, aud: '/admin/' })).toString('base64url');
-          const { createHmac } = await import('node:crypto');
-          const secretBytes = Buffer.from(keySecret, 'hex');
-          const jwtSig = createHmac('sha256', secretBytes)
-            .update(`${jwtHeader}.${jwtPayload}`)
-            .digest('base64url');
-          const ghostJwt = `${jwtHeader}.${jwtPayload}.${jwtSig}`;
-
-          const ghostBase = adminUrl.replace(/\/+$/, '');
-          const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
-          const utmUrl = articleUrl + '?' + new URLSearchParams({ ...utmCtx, utm_source: 'ghost', utm_medium: 'blog' }).toString();
-
-          // Build Mobiledoc from article sections
-          const articleJson = article.article_json || {};
-          const sections = articleJson.sections || [];
-          const mdCards = sections.map(s => [
-            'html',
-            { html: `<h2>${s.heading || ''}</h2>${(s.body || '').split('\n').filter(Boolean).map(p => `<p>${p}</p>`).join('')}` }
-          ]);
-          mdCards.push(['html', {
-            html: `<p><em>Originally published at <a href="${utmUrl}">${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}</a></em></p>`
-          }]);
-
-          const mobiledoc = JSON.stringify({
-            version: '0.3.1',
-            markups: [],
-            atoms: [],
-            cards: mdCards,
-            sections: mdCards.map((_, i) => [10, i])
-          });
-
-          // ── Hero image — Ghost v5 accepts external URLs for feature_image directly ──
-          // No upload to Ghost storage needed. Pass the fal.ai CDN URL straight through.
-          // Ghost will proxy/cache it on first render.
-          const ghostFeatureImageUrl = article.hero_image_url || null;
-          if (ghostFeatureImageUrl) {
-            console.log('[GHOST] Using hero image URL as feature_image:', ghostFeatureImageUrl);
-          }
-
-          const ghostRes = await fetch(`${ghostBase}/ghost/api/admin/posts/`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Ghost ${ghostJwt}`,
-              'Content-Type': 'application/json',
-              'Accept-Version': 'v5.0'
-            },
-            body: JSON.stringify({
-              posts: [{
-                title: article.title,
-                mobiledoc,
                 status: 'published',
                 canonical_url: utmUrl,
                 meta_title: article.title,
