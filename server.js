@@ -4458,6 +4458,89 @@ app.listen(PORT, '0.0.0.0', function () {
   console.log('Forge Intelligence running on port ' + PORT);
 });
 
+// ── Scheduled publish runner ──────────────────────────────────────────────────
+// Polls every 60 seconds for queue items due to be published.
+// Fires the same publish logic as the manual "Publish Now" button.
+async function runScheduledPublishes() {
+  try {
+    const due = await pool.query(
+      `SELECT * FROM publishing_queue
+       WHERE status = 'scheduled'
+         AND scheduled_at IS NOT NULL
+         AND scheduled_at <= NOW()
+       ORDER BY scheduled_at ASC
+       LIMIT 10`
+    );
+    if (!due.rows.length) return;
+
+    console.log(`[SCHEDULER] ${due.rows.length} item(s) due for publish`);
+
+    for (const item of due.rows) {
+      try {
+        // Mark as publishing so concurrent ticks don't double-fire
+        await pool.query(
+          `UPDATE publishing_queue SET status = 'publishing', updated_at = NOW() WHERE id = $1 AND status = 'scheduled'`,
+          [item.id]
+        );
+
+        // Load channel connections
+        const channelsRes = await pool.query(
+          'SELECT * FROM publishing_channels WHERE brand_profile_id = $1',
+          [item.brand_profile_id]
+        );
+        const channelMap = {};
+        for (const ch of channelsRes.rows) channelMap[ch.channel] = ch;
+
+        const targets = item.channels || [];
+        if (!targets.length) {
+          await pool.query(
+            `UPDATE publishing_queue SET status = 'failed', updated_at = NOW() WHERE id = $1`,
+            [item.id]
+          );
+          console.warn('[SCHEDULER] No channels set on item', item.id);
+          continue;
+        }
+
+        // Use the existing publish endpoint internally via a fetch to itself
+        // This reuses all the channel logic (LinkedIn, X, Ghost, etc.) without duplicating it
+        const baseUrl = process.env.BASE_URL || `http://localhost:${PORT}`;
+        const publishRes = await fetch(`${baseUrl}/api/publishing/publish`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ queueItemId: item.id, channels: targets })
+        });
+        const publishData = await publishRes.json();
+
+        if (publishData.success) {
+          console.log(`[SCHEDULER] Published item ${item.id} to ${targets.join(', ')} — status: ${publishData.status}`);
+        } else {
+          console.error(`[SCHEDULER] Publish failed for item ${item.id}:`, publishData.error);
+          await pool.query(
+            `UPDATE publishing_queue SET status = 'failed', updated_at = NOW() WHERE id = $1`,
+            [item.id]
+          );
+        }
+      } catch (itemErr) {
+        console.error(`[SCHEDULER] Error processing item ${item.id}:`, itemErr.message);
+        await pool.query(
+          `UPDATE publishing_queue SET status = 'failed', updated_at = NOW() WHERE id = $1`,
+          [item.id]
+        ).catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.error('[SCHEDULER] Poll error:', err.message);
+  }
+}
+
+// Start scheduler — runs 30s after boot then every 60s
+setTimeout(() => {
+  runScheduledPublishes();
+  setInterval(runScheduledPublishes, 60 * 1000);
+}, 30 * 1000);
+
+console.log('[SCHEDULER] Scheduled publish runner active — polling every 60s');
+
 app.get('*', function (req, res) {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
