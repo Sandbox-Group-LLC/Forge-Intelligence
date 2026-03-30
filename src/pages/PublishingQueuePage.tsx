@@ -249,6 +249,25 @@ export default function PublishingQueuePage() {
   };
 
 
+  // Derive effective status from publish log live statuses
+  // item.status resets to 'staged' after unpublish — this gives the true picture
+  const getEffectiveStatus = (item: QueueItem): string => {
+    const log = publishLog[item.id] || [];
+    if (log.length === 0) return item.status;
+    const liveEntries = log.filter((l, i, arr) => {
+      // Deduplicate by channel — keep most recent
+      return arr.findIndex(x => x.channel === l.channel) === i;
+    });
+    if (liveEntries.length === 0) return item.status;
+    const anyLive = liveEntries.some(l => l.live_status === 'published');
+    const anyDeleted = liveEntries.some(l => l.live_status === 'deleted');
+    const allDeleted = liveEntries.every(l => l.live_status === 'deleted' || l.live_status === 'unknown');
+    if (allDeleted) return 'staged';
+    if (anyLive && anyDeleted) return 'partial';
+    if (anyLive) return 'published';
+    return item.status;
+  };
+
   const openDeleteModal = (item: QueueItem) => {
     // Deduplicate by channel — keep only the most recent live entry per channel
     const seen = new Set<string>();
@@ -393,14 +412,14 @@ export default function PublishingQueuePage() {
 
   // Filter logic
   const filteredItems = items.filter(item => {
-    if (filterStatus !== 'all' && item.status !== filterStatus) return false;
+    if (filterStatus !== 'all' && getEffectiveStatus(item) !== filterStatus) return false;
     if (filterBrand !== 'all' && item.brand_profile_id !== filterBrand) return false;
     return true;
   });
 
   const statusCounts = {
     all: items.length,
-    staged: items.filter(i => i.status === 'staged').length,
+    staged: items.filter(i => getEffectiveStatus(i) === 'staged').length,
     scheduled: items.filter(i => i.status === 'scheduled').length,
     published: items.filter(i => i.status === 'published').length,
     partial: items.filter(i => i.status === 'partial').length,
@@ -492,8 +511,8 @@ export default function PublishingQueuePage() {
                       </div>
                     </div>
                     <div className="pq-item-actions-top">
-                      <span className={`pq-status-pill status-${item.status}`}>
-                        {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+                      <span className={`pq-status-pill status-${getEffectiveStatus(item)}`}>
+                        {getEffectiveStatus(item).charAt(0).toUpperCase() + getEffectiveStatus(item).slice(1)}
                       </span>
                       <button className="pq-icon-btn" title="Preview & Edit Post" onClick={() => openContentPreview(item)}>
                         <Eye />
@@ -521,7 +540,7 @@ export default function PublishingQueuePage() {
                           return (
                             <button
                               key={ch}
-                              className={`pq-chip ${isSelected ? 'selected' : ''} ${result?.status === 'published' ? 'published' : ''}`}
+                              className={`pq-chip ${isSelected ? 'selected' : ''} ${result?.status === 'published' && (publishLog[item.id] || []).find(l => l.channel === ch)?.live_status === 'published' ? 'published' : ''}`}
                               style={{ '--chip-color': def?.color } as React.CSSProperties}
                               onClick={() => toggleChannel(item.id, ch)}
                               title={result ? `${result.status}${result.url ? ': ' + result.url : result.error ? ': ' + result.error : ''}` : ''}
