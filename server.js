@@ -3622,7 +3622,17 @@ app.post('/api/publishing/publish', async (req, res) => {
         } catch { campaignSlug = item.campaign_id.split('-')[0]; }
       }
       const utmCtx = { channel, brandSlug, articleSlug, campaignSlug };
-      const utmParams = resolveUtmParams(chConfig.utm_template || {}, utmCtx);
+      // Default UTM template if channel has none configured
+      const defaultUtmTemplate = {
+        utm_source: '{channel}',
+        utm_medium: 'social',
+        utm_campaign: '{campaign_slug}',
+        utm_content: '{article_slug}'
+      };
+      const utmTemplate = (chConfig.utm_template && Object.keys(chConfig.utm_template).length > 0)
+        ? chConfig.utm_template
+        : defaultUtmTemplate;
+      const utmParams = resolveUtmParams(utmTemplate, utmCtx);
       const utmString = buildUtmString(utmParams);
       const creds = chConfig.credentials || {};
 
@@ -3989,7 +3999,10 @@ ${canonicalNote}`,
 
           const ghostBase = adminUrl.replace(/\/+$/, '');
           const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
-          const utmUrl = articleUrl + '?' + new URLSearchParams({ ...utmCtx, utm_source: 'ghost', utm_medium: 'blog' }).toString();
+          // Use resolved utmParams (utm_source, utm_medium, utm_campaign, utm_content) not raw utmCtx tokens
+          const utmUrl = utmParams && Object.keys(utmParams).length > 0
+            ? articleUrl + '?' + buildUtmString(utmParams)
+            : articleUrl;
 
           // Build HTML from article sections — Ghost v5 accepts HTML via ?source=html
           const articleJson = article.article_json || {};
