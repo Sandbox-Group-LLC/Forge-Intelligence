@@ -3686,7 +3686,7 @@ ${canonicalNote}`,
           const sig = createHmac('sha256', secretBytes)
             .update(`${header}.${payload}`)
             .digest('base64url');
-          const jwt = `${header}.${payload}.${sig}`;
+          const ghostJwt = `${header}.${payload}.${sig}`;
 
           const ghostBase = adminUrl.replace(/\/+$/, '');
           const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
