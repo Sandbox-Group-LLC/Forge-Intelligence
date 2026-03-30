@@ -227,6 +227,15 @@
 }
 .pq-chip-link:hover { opacity: 1; }
 
+.pq-chip.published-deleted {
+  background: transparent;
+  border-color: var(--color-border);
+  color: var(--color-text-muted);
+  opacity: 0.5;
+  cursor: default;
+  text-decoration: line-through;
+}
+
 /* Publish actions */
 .pq-item-actions {
   display: flex;
