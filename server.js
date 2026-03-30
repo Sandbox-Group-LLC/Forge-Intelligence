@@ -3553,8 +3553,8 @@ app.post('/api/publishing/publish', async (req, res) => {
     // Load brand profile
     const brandRes = await pool.query('SELECT * FROM brand_profiles WHERE id = $1', [item.brand_profile_id]);
     const brand = brandRes.rows[0] || {};
-    const brandSlug = (brand.brand_url || 'brand').replace(/[^a-z0-9]/gi, '-').toLowerCase();
-    const articleSlug = (article.title || 'article').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 60);
+    const brandSlug = (brand.brand_url || 'brand').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
+    const articleSlug = (article.title || 'article').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
     // Load channel connections for this brand
     const channelsRes = await pool.query(
@@ -3719,9 +3719,8 @@ app.post('/api/publishing/publish', async (req, res) => {
             const articleJson = article.article_json || {};
             const sections = articleJson.sections || [];
             const postCopyOverride = (req.body.postCopy || {})[channel];
-            const liBrandSlug = (brand.brand_url || brand.brand_name || 'brand').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().split('-').slice(0,3).join('-');
             const liBaseDomain = process.env.BASE_DOMAIN || 'forgeintelligence.ai';
-            const articleUrl = `https://${liBaseDomain}/articles/${liBrandSlug}/${articleSlug}${utmString ? '?' + utmString : ''}`;
+            const articleUrl = `https://${liBaseDomain}/articles/${brandSlug}/${articleSlug}${utmString ? '?' + utmString : ''}`;
 
             // Generate or use provided post copy
             let postText = postCopyOverride;
@@ -3792,10 +3791,8 @@ Output only the post text.` }]
           const articleJson = article.article_json || {};
           const sections = articleJson.sections || [];
           const excerpt = (sections[0]?.content || sections[0]?.body || article.title || '').slice(0, 200);
-          const xBrandSlug = (brand.brand_url || brand.brand_name || 'brand').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().split('-').slice(0, 3).join('-');
-          const xArticleSlug = (article.title || 'article').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/, '').slice(0, 80);
           const xBaseDomain = process.env.BASE_DOMAIN || 'forgeintelligence.ai';
-          const articleUrl = `https://${xBaseDomain}/articles/${xBrandSlug}/${xArticleSlug}`;
+          const articleUrl = `https://${xBaseDomain}/articles/${brandSlug}/${articleSlug}`;
           const tweetText = `${excerpt}... ${articleUrl}${utmString ? '?' + utmString : ''}`.slice(0, 280);
 
           // Build OAuth 1.0a signature
