@@ -254,14 +254,14 @@ export default function PublishingQueuePage() {
   const getEffectiveStatus = (item: QueueItem): string => {
     const log = publishLog[item.id] || [];
     if (log.length === 0) return item.status;
-    const liveEntries = log.filter((l, i, arr) => {
-      // Deduplicate by channel — keep most recent
-      return arr.findIndex(x => x.channel === l.channel) === i;
-    });
-    if (liveEntries.length === 0) return item.status;
-    const anyLive = liveEntries.some(l => l.live_status === 'published');
-    const anyDeleted = liveEntries.some(l => l.live_status === 'deleted');
-    const allDeleted = liveEntries.every(l => l.live_status === 'deleted' || l.live_status === 'unknown');
+    // Deduplicate by channel — keep most recent entry per channel
+    const seen = new Set<string>();
+    const deduped = log.filter(l => { if (seen.has(l.channel)) return false; seen.add(l.channel); return true; });
+    if (deduped.length === 0) return item.status;
+    // 'deleted' = confirmed gone. 'published'/'unknown' = treat as live
+    const anyLive = deduped.some(l => l.live_status === 'published' || l.live_status === 'unknown');
+    const anyDeleted = deduped.some(l => l.live_status === 'deleted');
+    const allDeleted = deduped.every(l => l.live_status === 'deleted');
     if (allDeleted) return 'staged';
     if (anyLive && anyDeleted) return 'partial';
     if (anyLive) return 'published';
@@ -421,8 +421,8 @@ export default function PublishingQueuePage() {
     all: items.length,
     staged: items.filter(i => getEffectiveStatus(i) === 'staged').length,
     scheduled: items.filter(i => i.status === 'scheduled').length,
-    published: items.filter(i => i.status === 'published').length,
-    partial: items.filter(i => i.status === 'partial').length,
+    published: items.filter(i => getEffectiveStatus(i) === 'published').length,
+    partial: items.filter(i => getEffectiveStatus(i) === 'partial').length,
     failed: items.filter(i => i.status === 'failed').length,
   };
 
@@ -511,9 +511,7 @@ export default function PublishingQueuePage() {
                       </div>
                     </div>
                     <div className="pq-item-actions-top">
-                      <span className={`pq-status-pill status-${getEffectiveStatus(item)}`}>
-                        {getEffectiveStatus(item).charAt(0).toUpperCase() + getEffectiveStatus(item).slice(1)}
-                      </span>
+
                       <button className="pq-icon-btn" title="Preview & Edit Post" onClick={() => openContentPreview(item)}>
                         <Eye />
                       </button>
@@ -540,7 +538,14 @@ export default function PublishingQueuePage() {
                           return (
                             <button
                               key={ch}
-                              className={`pq-chip ${isSelected ? 'selected' : ''} ${result?.status === 'published' && (publishLog[item.id] || []).find(l => l.channel === ch)?.live_status === 'published' ? 'published' : ''}`}
+                              className={`pq-chip ${isSelected ? 'selected' : ''} ${(() => {
+                                const logEntry = (publishLog[item.id] || []).find(l => l.channel === ch);
+                                if (!result || result.status !== 'published') return '';
+                                if (!logEntry) return 'published';
+                                if (logEntry.live_status === 'published') return 'published';
+                                if (logEntry.live_status === 'deleted') return 'published-deleted';
+                                return 'published'; // unknown = treat as live
+                              })()}`}
                               style={{ '--chip-color': def?.color } as React.CSSProperties}
                               onClick={() => toggleChannel(item.id, ch)}
                               title={result ? `${result.status}${result.url ? ': ' + result.url : result.error ? ': ' + result.error : ''}` : ''}
@@ -607,7 +612,9 @@ export default function PublishingQueuePage() {
                       </div>
                       {Object.entries(results).map(([ch, res]) => {
                         const log = (publishLog[item.id] || []).find(l => l.channel === ch);
-                        const liveStatus = log?.live_status || res.status;
+                        // Prefer publish log live_status (most accurate) over publish result status
+                        // If log says deleted, show deleted regardless of publish_results JSONB
+                        const liveStatus = log?.live_status ?? (res.status === 'published' ? 'published' : res.status);
                         const isDeleted = liveStatus === 'deleted';
                         const isUnknown = liveStatus === 'unknown';
                         const repKey = `${item.id}:${ch}`;
