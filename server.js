@@ -749,6 +749,16 @@ app.get('/api/publishing/sync/:queueItemId', async (req, res) => {
       let liveStatus = row.live_status || 'published';
       const creds = row.credentials || {};
 
+      // If we already know it's deleted (set by unpublish endpoint), don't re-check
+      if (liveStatus === 'deleted') {
+        await pool.query(
+          'UPDATE publish_log SET last_synced_at = NOW(), synced_count = synced_count + 1 WHERE id = $1',
+          [row.id]
+        );
+        results[row.channel] = { channel: row.channel, liveStatus: 'deleted' };
+        continue;
+      }
+
       try {
         if (row.channel === 'linkedin') {
           const postId = row.response_data?.postId;
