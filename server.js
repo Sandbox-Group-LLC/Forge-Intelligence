@@ -3629,11 +3629,17 @@ app.post('/api/publishing/publish', async (req, res) => {
         utm_campaign: '{campaign_slug}',
         utm_content: '{article_slug}'
       };
-      const utmTemplate = (chConfig.utm_template && Object.keys(chConfig.utm_template).length > 0)
-        ? chConfig.utm_template
+      // utm_template may come back as a string from DB — parse if needed
+      let rawTemplate = chConfig.utm_template;
+      if (typeof rawTemplate === 'string') {
+        try { rawTemplate = JSON.parse(rawTemplate); } catch { rawTemplate = {}; }
+      }
+      const utmTemplate = (rawTemplate && Object.keys(rawTemplate).length > 0)
+        ? rawTemplate
         : defaultUtmTemplate;
       const utmParams = resolveUtmParams(utmTemplate, utmCtx);
       const utmString = buildUtmString(utmParams);
+      console.log('[UTM]', channel, '| template:', JSON.stringify(utmTemplate), '| resolved:', JSON.stringify(utmParams), '| string:', utmString);
       const creds = chConfig.credentials || {};
 
       try {
