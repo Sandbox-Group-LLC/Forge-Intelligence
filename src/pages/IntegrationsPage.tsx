@@ -78,7 +78,7 @@ function SetupGuide({ guide }: { guide: SetupGuide }) {
 }
 
 // ── Channel definitions ───────────────────────────────────────────────────────
-type ChannelId = 'wordpress' | 'webflow' | 'hubspot' | 'linkedin' | 'x' | 'facebook' | 'reddit' | 'medium';
+type ChannelId = 'wordpress' | 'webflow' | 'hubspot' | 'linkedin' | 'x' | 'facebook' | 'reddit' | 'medium' | 'ghost';
 
 interface ChannelDef {
   id: ChannelId;
@@ -275,6 +275,28 @@ const CHANNELS: ChannelDef[] = [
       ],
     },
   },
+  {
+    id: 'ghost',
+    label: 'Ghost',
+    description: 'Publish full articles to your Ghost site via Admin API. No OAuth — just an Admin API key from your Ghost integration settings.',
+    color: '#15171A',
+    logo: '👻',
+    liveStatus: 'live',
+    credentialFields: [
+      { key: 'adminUrl', label: 'Admin URL', placeholder: 'https://yourblog.ghost.io' },
+      { key: 'adminApiKey', label: 'Admin API Key', placeholder: 'id:secret (64-char hex)', type: 'password' },
+    ],
+    setupGuide: {
+      title: 'Ghost Admin API Key',
+      steps: [
+        { text: 'Go to your Ghost Admin panel and navigate to Settings.', url: 'https://ghost.org/help/' },
+        { text: 'Click Integrations in the left sidebar, then click Add custom integration at the bottom.' },
+        { text: 'Name it anything (e.g. Forge Intelligence) and click Create.' },
+        { text: 'Copy the Admin API Key shown — it looks like a long hex string with a colon in the middle (id:secret format).' },
+        { text: 'Your Admin URL is the root of your Ghost site, e.g. https://yourblog.ghost.io. Paste both above.' },
+      ],
+    },
+  },
 ];
 
 const DEFAULT_UTM: Record<ChannelId, Record<string, string>> = {
@@ -286,6 +308,7 @@ const DEFAULT_UTM: Record<ChannelId, Record<string, string>> = {
   facebook:  { utm_source: 'facebook',   utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   reddit:    { utm_source: 'reddit',     utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   medium:    { utm_source: 'medium',     utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
+  ghost:     { utm_source: 'ghost',      utm_medium: 'blog',   utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
 };
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -306,11 +329,11 @@ export default function IntegrationsPage() {
   const [brands, setBrands] = useState<Brain[]>([]);
   const [selectedBrand, setSelectedBrand] = useState('');
   const [savedChannels, setSavedChannels] = useState<Record<ChannelId, SavedChannel | null>>({
-    wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null, facebook: null, reddit: null, medium: null
+    wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null, facebook: null, reddit: null, medium: null, ghost: null
   });
   const [expanded, setExpanded] = useState<ChannelId | null>(null);
   const [credentials, setCredentials] = useState<Record<ChannelId, Record<string, string>>>({
-    wordpress: {}, webflow: {}, hubspot: {}, linkedin: {}, x: {}, facebook: {}, reddit: {}, medium: {}
+    wordpress: {}, webflow: {}, hubspot: {}, linkedin: {}, x: {}, facebook: {}, reddit: {}, medium: {}, ghost: {}
   });
   const [utmTemplates, setUtmTemplates] = useState<Record<ChannelId, Record<string, string>>>(DEFAULT_UTM);
   const [saving, setSaving] = useState<ChannelId | null>(null);
@@ -340,7 +363,7 @@ export default function IntegrationsPage() {
       .then(d => {
         if (d.success) {
           const map: Record<ChannelId, SavedChannel | null> = {
-            wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null, facebook: null, reddit: null, medium: null
+            wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null, facebook: null, reddit: null, medium: null, ghost: null
           };
           for (const ch of d.channels) map[ch.channel as ChannelId] = ch;
           setSavedChannels(map);
