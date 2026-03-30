@@ -399,6 +399,7 @@ export default function PublishingQueuePage() {
     item.brand_name || brands.find(b => b.id === item.brand_profile_id)?.brandName || item.brand_url || '—';
 
   return (
+    <>
     <AppShell pageTitle="Publishing Queue">
       <div className="pq-page">
         {/* Header */}
@@ -856,5 +857,6 @@ export default function PublishingQueuePage() {
         </div>
       </div>
     )}
+    </>
   );
 }
