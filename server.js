@@ -3692,41 +3692,33 @@ ${canonicalNote}`,
           const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
           const utmUrl = articleUrl + '?' + new URLSearchParams({ ...utmCtx, utm_source: 'ghost', utm_medium: 'blog' }).toString();
 
-          // Build Mobiledoc from article sections — Ghost native format
+          // Build HTML from article sections — Ghost v5 accepts HTML via ?source=html
           const articleJson = article.article_json || {};
           const sections = articleJson.sections || [];
-          const mobiledocCards = sections.map(s => [
-            'html',
-            { html: `<h2>${s.heading || ''}</h2>${(s.body || '').split('\n').map(p => p ? `<p>${p}</p>` : '').join('')}` }
-          ]);
-          const canonicalCard = ['html', {
-            html: `<p><em>Originally published at <a href="${utmUrl}">${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}</a></em></p>`
-          }];
-          mobiledocCards.push(canonicalCard);
+          const htmlBody = sections.map(s =>
+            `<h2>${s.heading || ''}</h2>\n${(s.body || '').split('\n').filter(Boolean).map(p => `<p>${p}</p>`).join('\n')}`
+          ).join('\n\n');
+          const canonicalNote = `<p><em>Originally published at <a href="${utmUrl}">${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}</a></em></p>`;
+          const htmlContent = `${htmlBody}\n\n${canonicalNote}`;
 
-          const mobiledoc = JSON.stringify({
-            version: '0.3.1',
-            markups: [],
-            atoms: [],
-            cards: mobiledocCards,
-            sections: mobiledocCards.map((_, i) => [10, i])
-          });
+          console.log('[GHOST] Publishing with feature_image:', ghostFeatureImageUrl || '(none) — hero_image_url was:', article.hero_image_url || '(null)');
 
-          const ghostRes = await fetch(`${ghostBase}/ghost/api/admin/posts/`, {
+          const ghostRes = await fetch(`${ghostBase}/ghost/api/admin/posts/?source=html`, {
             method: 'POST',
             headers: {
-              'Authorization': `Ghost ${jwt}`,
+              'Authorization': `Ghost ${ghostJwt}`,
               'Content-Type': 'application/json',
               'Accept-Version': 'v5.0'
             },
             body: JSON.stringify({
               posts: [{
                 title: article.title,
-                mobiledoc,
+                html: htmlContent,
                 status: 'published',
                 canonical_url: utmUrl,
                 meta_title: article.title,
-                meta_description: articleJson.metaDescription || '',
+                meta_description: (articleJson.metaDescription || '').slice(0, 300),
+                ...(ghostFeatureImageUrl && { feature_image: ghostFeatureImageUrl }),
               }]
             })
           });
