@@ -3796,10 +3796,12 @@ Output only the post text.` }]
 
           const articleJson = article.article_json || {};
           const sections = articleJson.sections || [];
-          const excerpt = (sections[0]?.content || sections[0]?.body || article.title || '').slice(0, 200);
           const xBaseDomain = process.env.BASE_DOMAIN || 'forgeintelligence.ai';
           const articleUrl = `https://${xBaseDomain}/articles/${brandSlug}/${articleSlug}`;
-          const tweetText = `${excerpt}... ${articleUrl}${utmString ? '?' + utmString : ''}`.slice(0, 280);
+          const fullTweetUrl = `${articleUrl}${utmString ? '?' + utmString : ''}`;
+          // Twitter counts any URL as 23 chars regardless of length — never slice the URL
+          const excerpt = (sections[0]?.content || sections[0]?.body || article.title || '').slice(0, 250);
+          const tweetText = `${excerpt}...\n\n${fullTweetUrl}`;
 
           // Build OAuth 1.0a signature
           const tweetUrl = 'https://api.twitter.com/2/tweets';
