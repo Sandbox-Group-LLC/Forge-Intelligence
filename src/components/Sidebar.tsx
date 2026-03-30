@@ -204,6 +204,9 @@ export function Sidebar() {
     const path = window.location.pathname;
     if (id === 'geo-strategist') return path.startsWith('/app/geo-strategist') ? 'active' : 'available';
     if (id === 'authenticity-enricher') return path.startsWith('/app/authenticity-enricher') ? 'active' : 'available';
+    if (id === 'content-generator') return path.startsWith('/app/content-generator') ? 'active' : 'available';
+    if (id === 'campaign-generator') return path.startsWith('/app/campaign-generator') ? 'active' : 'available';
+    if (id === 'compliance-gate') return path.startsWith('/app/compliance-gate') ? 'active' : 'available';
     if (id === 'integrations') return path.startsWith('/app/integrations') ? 'active' : 'available';
     if (id === 'publishing-queue') return path.startsWith('/app/publishing-queue') ? 'active' : 'available';
     if (id === 'performance') return path.startsWith('/app/performance') ? 'active' : 'available';
