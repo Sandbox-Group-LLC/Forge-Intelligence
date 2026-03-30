@@ -499,7 +499,7 @@ export default function PublishingQueuePage() {
                 <div key={campId} className="pq-campaign-group">
                   <div className="pq-campaign-group-header">
                     <div className="pq-campaign-group-left">
-                      <span className="pq-campaign-badge">Campaign</span>
+                      <span className="pq-campaign-badge">Campaign · {campId.slice(0, 8).toUpperCase()}</span>
                       <div>
                         <div className="pq-campaign-group-name">{group.name}</div>
                         <div className="pq-campaign-group-topic">{group.topic}</div>
