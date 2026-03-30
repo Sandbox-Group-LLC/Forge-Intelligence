@@ -615,14 +615,26 @@
 
 /* ── Delete / Unpublish Modal ──────────────────────────────────────────────── */
 .pq-delete-modal {
-  max-width: 440px;
+  max-width: 460px;
+  padding: 0;
+}
+
+.pq-delete-modal > * {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+
+.pq-delete-modal .pq-modal-header {
+  padding: 18px 20px 14px;
 }
 
 .pq-delete-article-title {
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
   font-weight: 600;
   color: var(--color-text-primary);
-  padding: 12px 16px;
+  padding: 0 20px 14px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  margin-bottom: 0;
   background: var(--color-bg-elevated);
   border-radius: var(--radius-md);
   margin-bottom: 16px;
@@ -632,8 +644,9 @@
 .pq-delete-desc {
   font-size: 0.875rem;
   color: var(--color-text-secondary);
-  margin-bottom: 16px;
+  margin: 14px 0 12px;
   line-height: 1.5;
+  padding: 0 20px;
 }
 
 .pq-delete-options {
@@ -706,12 +719,13 @@
   font-size: 0.8125rem;
   color: var(--color-text-muted);
   text-align: center;
-  padding: 8px 0;
+  padding: 8px 20px;
   animation: pulse 1s ease-in-out infinite;
 }
 
 .pq-delete-cancel {
-  width: 100%;
+  width: calc(100% - 40px);
+  margin: 0 20px 20px;
   padding: 10px;
   background: transparent;
   border: 1px solid var(--color-border);
@@ -736,10 +750,10 @@
 .pq-delete-channel-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-bottom: 16px;
-  padding: 12px;
-  background: var(--color-bg-elevated);
+  gap: 2px;
+  margin: 0 20px 16px;
+  padding: 8px 12px;
+  background: var(--color-bg-card);
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
 }
@@ -749,8 +763,10 @@
   align-items: center;
   gap: 12px;
   cursor: pointer;
-  padding: 4px 0;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--color-border-subtle);
 }
+.pq-delete-channel-row:last-child { border-bottom: none; }
 
 .pq-delete-checkbox {
   width: 16px;
@@ -779,6 +795,6 @@
 .pq-delete-actions {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-bottom: 16px;
+  gap: 8px;
+  margin: 0 20px 16px;
 }
