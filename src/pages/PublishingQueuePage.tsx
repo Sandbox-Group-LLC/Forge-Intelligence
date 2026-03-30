@@ -540,11 +540,11 @@ export default function PublishingQueuePage() {
                               key={ch}
                               className={`pq-chip ${isSelected ? 'selected' : ''} ${(() => {
                                 const logEntry = (publishLog[item.id] || []).find(l => l.channel === ch);
-                                if (!result || result.status !== 'published') return '';
-                                if (!logEntry) return 'published';
+                                if (!logEntry) return result?.status === 'published' ? 'published' : '';
                                 if (logEntry.live_status === 'published') return 'published';
                                 if (logEntry.live_status === 'deleted') return 'published-deleted';
-                                return 'published'; // unknown = treat as live
+                                if (logEntry.live_status === 'unknown') return 'published-deleted';
+                                return result?.status === 'published' ? 'published' : '';
                               })()}`}
                               style={{ '--chip-color': def?.color } as React.CSSProperties}
                               onClick={() => toggleChannel(item.id, ch)}
@@ -624,7 +624,7 @@ export default function PublishingQueuePage() {
                           <span className={`pq-result-status live-${liveStatus}`}>
                             {isDeleted ? '🗑 Deleted' : isUnknown ? '⚠ Unknown' : '✓ Live'}
                           </span>
-                          {res.url && !isDeleted && (
+                          {res.url && !isDeleted && !isUnknown && (
                             <a href={res.url} target="_blank" rel="noreferrer" className="pq-result-url">
                               View post <ExternalLink />
                             </a>
