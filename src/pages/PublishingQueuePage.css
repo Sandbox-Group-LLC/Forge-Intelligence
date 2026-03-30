@@ -957,3 +957,17 @@
   .pq-campaign-group-header { flex-direction: column; align-items: flex-start; gap: 8px; }
   .pq-campaign-meta-row { flex-wrap: wrap; }
 }
+
+/* ── Schedule datetime + timezone ─────────────────────────────────────────── */
+.pq-datetime-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pq-datetime-tz {
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+  padding-left: 4px;
+  font-variant-numeric: tabular-nums;
+}
