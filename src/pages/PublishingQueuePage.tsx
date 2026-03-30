@@ -106,6 +106,15 @@ interface QueueItem {
   created_at: string;
   brand_name?: string;
   brand_url?: string;
+  campaign_id?: string | null;
+  campaign_name?: string | null;
+  campaign_topic?: string | null;
+  campaign_article_index?: number | null;
+  week_number?: number | null;
+  publish_day?: string | null;
+  content_type?: string | null;
+  funnel_position?: string | null;
+  primary_persona?: string | null;
 }
 
 interface ConnectedChannel { channel: string; }
@@ -398,6 +407,23 @@ export default function PublishingQueuePage() {
     return true;
   });
 
+  // Split into campaign groups and standalone
+  const campaignGroups: Record<string, { name: string; topic: string; items: QueueItem[] }> = {};
+  const standaloneItems: QueueItem[] = [];
+  for (const item of filteredItems) {
+    if (item.campaign_id && item.campaign_name) {
+      if (!campaignGroups[item.campaign_id]) {
+        campaignGroups[item.campaign_id] = { name: item.campaign_name, topic: item.campaign_topic || '', items: [] };
+      }
+      campaignGroups[item.campaign_id].items.push(item);
+    } else {
+      standaloneItems.push(item);
+    }
+  }
+  for (const g of Object.values(campaignGroups)) {
+    g.items.sort((a, b) => (a.week_number || 0) - (b.week_number || 0) || (a.campaign_article_index || 0) - (b.campaign_article_index || 0));
+  }
+
 
 
   const brandName = (item: QueueItem) =>
@@ -436,7 +462,7 @@ export default function PublishingQueuePage() {
         {error && <div className="geo-error">{error}</div>}
         {successMsg && <div className="int-success">{successMsg}</div>}
 
-        {/* Queue table */}
+        {/* Queue — campaign groups + standalone */}
         {loading ? (
           <div className="pq-empty">Loading queue...</div>
         ) : filteredItems.length === 0 ? (
@@ -447,15 +473,42 @@ export default function PublishingQueuePage() {
           </div>
         ) : (
           <div className="pq-list">
-            {filteredItems.map(item => {
-              const availChannels = connectedChannels[item.brand_profile_id] || [];
-              const sel = selectedChannels[item.id] || [];
-              const isPublishing = publishing === item.id;
-              const isScheduling = scheduling === item.id;
-              const results = item.publish_results || {};
+
+            {/* Campaign groups */}
+            {Object.entries(campaignGroups).map(([campId, group]) => {
+              const publishedCount = group.items.filter(i => i.publish_results && Object.keys(i.publish_results).length > 0).length;
+              return (
+                <div key={campId} className="pq-campaign-group">
+                  <div className="pq-campaign-group-header">
+                    <div className="pq-campaign-group-left">
+                      <span className="pq-campaign-badge">Campaign</span>
+                      <div>
+                        <div className="pq-campaign-group-name">{group.name}</div>
+                        <div className="pq-campaign-group-topic">{group.topic}</div>
+                      </div>
+                    </div>
+                    <span className="pq-campaign-group-stats">{publishedCount}/{group.items.length} published</span>
+                  </div>
+                  {[1,2,3,4].filter(w => group.items.some(i => i.week_number === w)).map(week => (
+                    <div key={week} className="pq-campaign-week">
+                      <div className="pq-campaign-week-label">Week {week}</div>
+                      <div className="pq-campaign-week-items">
+                        {group.items.filter(i => i.week_number === week).map(item => {
+                          const availChannels = connectedChannels[item.brand_profile_id] || [];
+                          const sel = selectedChannels[item.id] || [];
+                          const isPublishing = publishing === item.id;
+                          const isScheduling = scheduling === item.id;
+                          const results = item.publish_results || {};
 
               return (
                 <div key={item.id} className={`pq-item status-${item.status}`}>
+                  {item.week_number != null && (
+                    <div className="pq-campaign-meta-row">
+                      <span className="pq-campaign-meta-week">Wk {item.week_number}{item.publish_day ? ` · ${item.publish_day}` : ''}</span>
+                      {item.content_type && <span className="pq-campaign-meta-type">{item.content_type}</span>}
+                      {item.funnel_position && <span className={`pq-campaign-meta-funnel funnel-${(item.funnel_position||'').toLowerCase()}`}>{item.funnel_position}</span>}
+                    </div>
+                  )}
                   {/* Row top: title + meta + status */}
                   <div className="pq-item-top">
                     <div className="pq-item-meta">
@@ -612,7 +665,195 @@ export default function PublishingQueuePage() {
                   )}
                 </div>
               );
-            })}
+                        })} {/* week items */}
+                      </div>
+                    </div>
+                  ))} {/* weeks */}
+                </div>
+              );
+            })} {/* campaign groups */}
+
+            {/* Standalone articles */}
+            {standaloneItems.length > 0 && (
+              <>
+                {Object.keys(campaignGroups).length > 0 && (
+                  <div className="pq-standalone-label">Standalone Articles</div>
+                )}
+                {standaloneItems.map(item => {
+                  const availChannels = connectedChannels[item.brand_profile_id] || [];
+                  const sel = selectedChannels[item.id] || [];
+                  const isPublishing = publishing === item.id;
+                  const isScheduling = scheduling === item.id;
+                  const results = item.publish_results || {};
+return (
+                <div key={item.id} className={`pq-item status-${item.status}`}>
+                  {item.week_number != null && (
+                    <div className="pq-campaign-meta-row">
+                      <span className="pq-campaign-meta-week">Wk {item.week_number}{item.publish_day ? ` · ${item.publish_day}` : ''}</span>
+                      {item.content_type && <span className="pq-campaign-meta-type">{item.content_type}</span>}
+                      {item.funnel_position && <span className={`pq-campaign-meta-funnel funnel-${(item.funnel_position||'').toLowerCase()}`}>{item.funnel_position}</span>}
+                    </div>
+                  )}
+                  {/* Row top: title + meta + status */}
+                  <div className="pq-item-top">
+                    <div className="pq-item-meta">
+                      <div className="pq-item-title">{item.title || 'Untitled Article'}</div>
+                      <div className="pq-item-sub">
+                        <span className="pq-brand-tag">{brandName(item)}</span>
+                        <span className="pq-dot">·</span>
+                        <span className="pq-date">Staged {new Date(item.created_at).toLocaleDateString()}</span>
+                        {item.scheduled_at && (
+                          <>
+                            <span className="pq-dot">·</span>
+                            <span className="pq-scheduled-tag"><Clock /> {new Date(item.scheduled_at).toLocaleString()}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <div className="pq-item-actions-top">
+
+                      <button className="pq-icon-btn" title="Preview & Edit Post" onClick={() => openContentPreview(item)}>
+                        <Eye />
+                      </button>
+                      <button className="pq-icon-btn" title="UTM Preview" onClick={() => openUtmPreview(item)}>
+                        <Link2 />
+                      </button>
+                      <button className="pq-icon-btn danger" title="Remove from queue" onClick={() => openDeleteModal(item)}>
+                        <Trash />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Channel selector */}
+                  <div className="pq-channel-row">
+                    <span className="pq-channel-label">Publish to:</span>
+                    <div className="pq-channel-chips">
+                      {availChannels.length === 0 ? (
+                        <span className="pq-no-channels">No channels connected — set up in Integrations</span>
+                      ) : (
+                        availChannels.map(ch => {
+                          const def = CHANNEL_LABELS[ch];
+                          const isSelected = sel.includes(ch);
+                          const result = results[ch];
+                          return (
+                            <button
+                              key={ch}
+                              className={`pq-chip ${isSelected ? 'selected' : ''} ${(() => {
+                                const logEntry = (publishLog[item.id] || []).find(l => l.channel === ch);
+                                if (!logEntry) return result?.status === 'published' ? 'published' : '';
+                                if (logEntry.live_status === 'published') return 'published';
+                                if (logEntry.live_status === 'deleted') return 'published-deleted';
+                                if (logEntry.live_status === 'unknown') return 'published-deleted';
+                                return result?.status === 'published' ? 'published' : '';
+                              })()}`}
+                              style={{ '--chip-color': def?.color } as React.CSSProperties}
+                              onClick={() => toggleChannel(item.id, ch)}
+                              title={result ? `${result.status}${result.url ? ': ' + result.url : result.error ? ': ' + result.error : ''}` : ''}
+                            >
+                              {def?.label || ch}
+                              {result?.status === 'published' && result.url && (
+                                <a href={result.url} target="_blank" rel="noreferrer" className="pq-chip-link" onClick={e => e.stopPropagation()}>
+                                  <ExternalLink />
+                                </a>
+                              )}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                    {ALL_CHANNELS.filter(ch => !availChannels.includes(ch)).length > 0 && availChannels.length > 0 && (
+                      <span className="pq-unconnected-hint">
+                        {ALL_CHANNELS.filter(ch => !availChannels.includes(ch)).map(ch => CHANNEL_LABELS[ch]?.label).join(', ')} not connected
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Publish actions — show for staged/failed AND for published to allow re-targeting new channels */}
+                  {(item.status !== 'published' || availChannels.some(ch => !results[ch])) && (
+                    <div className="pq-item-actions">
+                      <button
+                        className="pq-publish-now-btn"
+                        onClick={() => handlePublishNow(item)}
+                        disabled={isPublishing || sel.length === 0}
+                      >
+                        <Send /> {isPublishing ? 'Publishing...' : 'Publish Now'}
+                      </button>
+                      <div className="pq-schedule-group">
+                        <input
+                          type="datetime-local"
+                          className="pq-datetime-input"
+                          value={scheduleDate[item.id] || ''}
+                          onChange={e => setScheduleDate(prev => ({ ...prev, [item.id]: e.target.value }))}
+                        />
+                        <button
+                          className="pq-schedule-btn"
+                          onClick={() => handleSchedule(item)}
+                          disabled={isScheduling || !scheduleDate[item.id] || sel.length === 0}
+                        >
+                          <Clock /> {isScheduling ? 'Scheduling...' : 'Schedule'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Publish results with live status + sync + republish */}
+                  {Object.keys(results).length > 0 && (
+                    <div className="pq-results">
+                      <div className="pq-results-header">
+                        <span className="pq-results-label">Published to</span>
+                        <button
+                          className="pq-sync-btn"
+                          onClick={() => handleSync(item.id)}
+                          disabled={syncing === item.id}
+                          title="Check live status on each channel"
+                        >
+                          <RefreshCw /> {syncing === item.id ? 'Syncing...' : 'Sync Status'}
+                        </button>
+                      </div>
+                      {Object.entries(results).map(([ch, res]) => {
+                        const log = (publishLog[item.id] || []).find(l => l.channel === ch);
+                        // Prefer publish log live_status (most accurate) over publish result status
+                        // If log says deleted, show deleted regardless of publish_results JSONB
+                        const liveStatus = log?.live_status ?? (res.status === 'published' ? 'published' : res.status);
+                        const isDeleted = liveStatus === 'deleted';
+                        const isUnknown = liveStatus === 'unknown';
+                        const repKey = `${item.id}:${ch}`;
+                        return (
+                        <div key={ch} className={`pq-result-row result-${liveStatus}`}>
+                          <span className="pq-result-channel">{CHANNEL_LABELS[ch]?.label || ch}</span>
+                          <span className={`pq-result-status live-${liveStatus}`}>
+                            {isDeleted ? '🗑 Deleted' : isUnknown ? '⚠ Unknown' : '✓ Live'}
+                          </span>
+                          {res.url && !isDeleted && !isUnknown && (
+                            <a href={res.url} target="_blank" rel="noreferrer" className="pq-result-url">
+                              View post <ExternalLink />
+                            </a>
+                          )}
+                          {log?.last_synced_at && (
+                            <span className="pq-synced-at">synced {new Date(log.last_synced_at).toLocaleTimeString()}</span>
+                          )}
+                          {(isDeleted || isUnknown) && (
+                            <button
+                              className="pq-republish-btn"
+                              onClick={() => handleRepublish(item.id, ch)}
+                              disabled={republishing === repKey}
+                            >
+                              {republishing === repKey ? 'Republishing...' : '↺ Republish'}
+                            </button>
+                          )}
+                          {res.error && <span className="pq-result-error">{res.error}</span>}
+                          {res.message && <span className="pq-result-msg">{res.message}</span>}
+                        </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+
+                })} {/* standalone items */}
+              </>
+            )}
           </div>
         )}
       </div>
