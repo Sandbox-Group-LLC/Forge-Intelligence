@@ -258,13 +258,13 @@ export default function PublishingQueuePage() {
     const seen = new Set<string>();
     const deduped = log.filter(l => { if (seen.has(l.channel)) return false; seen.add(l.channel); return true; });
     if (deduped.length === 0) return item.status;
-    // 'deleted' = confirmed gone. 'published'/'unknown' = treat as live
-    const anyLive = deduped.some(l => l.live_status === 'published' || l.live_status === 'unknown');
+    const anyConfirmedLive = deduped.some(l => l.live_status === 'published');
     const anyDeleted = deduped.some(l => l.live_status === 'deleted');
-    const allDeleted = deduped.every(l => l.live_status === 'deleted');
-    if (allDeleted) return 'staged';
-    if (anyLive && anyDeleted) return 'partial';
-    if (anyLive) return 'published';
+    const anyUnknown = deduped.some(l => l.live_status === 'unknown');
+    const allGone = deduped.every(l => l.live_status === 'deleted' || l.live_status === 'unknown');
+    if (allGone && !anyConfirmedLive) return 'staged';
+    if (anyConfirmedLive && (anyDeleted || anyUnknown)) return 'partial';
+    if (anyConfirmedLive) return 'published';
     return item.status;
   };
 
