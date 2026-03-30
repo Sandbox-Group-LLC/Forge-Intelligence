@@ -2733,7 +2733,7 @@ Return ONLY valid JSON matching the content generator output format.`;
       let fullText = '';
       const stream = await anthropic.messages.stream({
         model: 'claude-sonnet-4-5',
-        max_tokens: 8096,
+        max_tokens: 16000,
         system: cgSystemPrompt,
         messages: [{ role: 'user', content: userPrompt }]
       });
@@ -2747,8 +2747,10 @@ Return ONLY valid JSON matching the content generator output format.`;
 
       let parsed;
       try {
-        const jsonMatch = fullText.match(/\{[\s\S]*\}/);
-        parsed = JSON.parse(jsonMatch ? jsonMatch[0] : fullText);
+        // Use extractJSON which handles token-truncated responses by closing open structures
+        const recovered = extractJSON(fullText, 'object');
+        if (!recovered) throw new Error('No valid JSON found in response');
+        parsed = JSON.parse(recovered);
       } catch (e) {
         await pool.query(
           `UPDATE campaign_articles SET status = 'failed', updated_at = NOW() WHERE id = $1`,
