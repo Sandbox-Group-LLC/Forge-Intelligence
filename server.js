@@ -3129,13 +3129,150 @@ app.patch('/api/publishing/queue/:itemId', async (req, res) => {
   }
 });
 
-// DELETE /api/publishing/queue/:itemId
+// DELETE /api/publishing/queue/:itemId — removes from Forge queue only
 app.delete('/api/publishing/queue/:itemId', async (req, res) => {
   const { itemId } = req.params;
   try {
     await pool.query('DELETE FROM publishing_queue WHERE id = $1', [itemId]);
     res.json({ success: true });
   } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/publishing/unpublish — delete from live channel + optionally remove from queue
+app.post('/api/publishing/unpublish', async (req, res) => {
+  const { queueItemId, channel, deleteFromChannel = true, removeFromQueue = false } = req.body;
+  if (!queueItemId || !channel) return res.status(400).json({ error: 'queueItemId and channel required' });
+
+  try {
+    // Load publish log entry for this channel
+    const logRes = await pool.query(
+      'SELECT pl.*, pc.credentials FROM publish_log pl LEFT JOIN publishing_channels pc ON pc.brand_profile_id = pl.brand_profile_id AND pc.channel = pl.channel WHERE pl.queue_item_id = $1 AND pl.channel = $2 ORDER BY pl.attempted_at DESC LIMIT 1',
+      [queueItemId, channel]
+    );
+    if (!logRes.rows.length) return res.status(404).json({ error: 'No publish log entry found for this channel' });
+    const row = logRes.rows[0];
+    const creds = row.credentials || {};
+    let channelResult = { deleted: false, message: 'Not attempted' };
+
+    if (deleteFromChannel) {
+      try {
+        if (channel === 'linkedin') {
+          const postId = row.response_data?.postId || row.published_url?.split('/').pop();
+          const token = creds.accessToken || process.env.LINKEDIN_ACCESS_TOKEN;
+          if (!postId || !token) throw new Error('Missing LinkedIn post ID or token');
+          const encodedId = encodeURIComponent(postId);
+          const delRes = await fetch(`https://api.linkedin.com/v2/ugcPosts/${encodedId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}`, 'X-Restli-Protocol-Version': '2.0.0' }
+          });
+          if (!delRes.ok && delRes.status !== 404) throw new Error(`LinkedIn delete failed: ${delRes.status}`);
+          channelResult = { deleted: true, message: 'Deleted from LinkedIn' };
+
+        } else if (channel === 'x') {
+          const tweetId = row.response_data?.tweetId
+            || (row.published_url?.match(/\/status\/(\d+)/)?.[1]);
+          const { accessToken, accessSecret } = creds;
+          const apiKey    = creds.apiKey    || process.env.X_API_KEY;
+          const apiSecret = creds.apiSecret || process.env.X_API_SECRET;
+          if (!tweetId) throw new Error('No tweet ID found');
+          if (!apiKey || !apiSecret || !accessToken || !accessSecret) throw new Error('Missing X credentials');
+
+          // OAuth 1.0a signature for DELETE
+          const oauthParams = {
+            oauth_consumer_key: apiKey,
+            oauth_nonce: Math.random().toString(36).slice(2),
+            oauth_signature_method: 'HMAC-SHA1',
+            oauth_timestamp: String(Math.floor(Date.now() / 1000)),
+            oauth_token: accessToken,
+            oauth_version: '1.0'
+          };
+          const tweetUrl = `https://api.twitter.com/2/tweets/${tweetId}`;
+          const paramStr = Object.keys(oauthParams).sort()
+            .map(k => `${encodeURIComponent(k)}=${encodeURIComponent(oauthParams[k])}`).join('&');
+          const baseStr = `DELETE&${encodeURIComponent(tweetUrl)}&${encodeURIComponent(paramStr)}`;
+          const sigKey = `${encodeURIComponent(apiSecret)}&${encodeURIComponent(accessSecret)}`;
+          oauthParams['oauth_signature'] = createHmac('sha1', sigKey).update(baseStr).digest('base64');
+          const authHeader = 'OAuth ' + Object.keys(oauthParams).sort()
+            .map(k => `${encodeURIComponent(k)}="${encodeURIComponent(oauthParams[k])}"`).join(', ');
+
+          const xDelRes = await fetch(tweetUrl, {
+            method: 'DELETE',
+            headers: { 'Authorization': authHeader }
+          });
+          if (!xDelRes.ok && xDelRes.status !== 404) throw new Error(`X delete failed: ${xDelRes.status}`);
+          channelResult = { deleted: true, message: 'Deleted from X' };
+
+        } else if (channel === 'ghost') {
+          const postId = row.response_data?.postId;
+          const { adminUrl, adminApiKey } = creds;
+          if (!postId || !adminUrl || !adminApiKey) throw new Error('Missing Ghost post ID or credentials');
+          const [keyId, keySecret] = adminApiKey.split(':');
+          const now = Math.floor(Date.now() / 1000);
+          const h = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT', kid: keyId })).toString('base64url');
+          const p = Buffer.from(JSON.stringify({ iat: now, exp: now + 300, aud: '/admin/' })).toString('base64url');
+          const sig = createHmac('sha256', Buffer.from(keySecret, 'hex')).update(`${h}.${p}`).digest('base64url');
+          const jwt = `${h}.${p}.${sig}`;
+          const ghostBase = adminUrl.replace(/\/+$/, '');
+          const delRes = await fetch(`${ghostBase}/ghost/api/admin/posts/${postId}/`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Ghost ${jwt}`, 'Accept-Version': 'v5.0' }
+          });
+          if (!delRes.ok && delRes.status !== 404) throw new Error(`Ghost delete failed: ${delRes.status}`);
+          channelResult = { deleted: true, message: 'Deleted from Ghost' };
+
+        } else if (channel === 'wordpress') {
+          const postId = row.response_data?.postId;
+          const { siteUrl, username, appPassword } = creds;
+          if (!postId || !siteUrl) throw new Error('Missing WordPress post ID or credentials');
+          const wpUrl = siteUrl.replace(/\/+$/, '');
+          const basicAuth = Buffer.from(`${username}:${appPassword}`).toString('base64');
+          const delRes = await fetch(`${wpUrl}/wp-json/wp/v2/posts/${postId}?force=true`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Basic ${basicAuth}` }
+          });
+          if (!delRes.ok && delRes.status !== 404) throw new Error(`WordPress delete failed: ${delRes.status}`);
+          channelResult = { deleted: true, message: 'Deleted from WordPress' };
+
+        } else if (channel === 'facebook') {
+          const postId = row.response_data?.postId;
+          const { pageAccessToken } = creds;
+          if (!postId || !pageAccessToken) throw new Error('Missing Facebook post ID or token');
+          const delRes = await fetch(`https://graph.facebook.com/v21.0/${postId}?access_token=${pageAccessToken}`, {
+            method: 'DELETE'
+          });
+          if (!delRes.ok && delRes.status !== 404) throw new Error(`Facebook delete failed: ${delRes.status}`);
+          channelResult = { deleted: true, message: 'Deleted from Facebook' };
+
+        } else {
+          channelResult = { deleted: false, message: `Channel ${channel} does not support remote delete` };
+        }
+      } catch (delErr) {
+        channelResult = { deleted: false, message: delErr.message };
+      }
+    }
+
+    // Update publish_log status to deleted
+    await pool.query(
+      'UPDATE publish_log SET live_status = $1, last_synced_at = NOW() WHERE queue_item_id = $2 AND channel = $3',
+      [channelResult.deleted ? 'deleted' : 'published', queueItemId, channel]
+    );
+
+    // Reset queue status to staged so it can be republished
+    await pool.query(
+      `UPDATE publishing_queue SET status = 'staged', updated_at = NOW() WHERE id = $1`,
+      [queueItemId]
+    ).catch(() => {});
+
+    // If remove from queue entirely
+    if (removeFromQueue) {
+      await pool.query('DELETE FROM publishing_queue WHERE id = $1', [queueItemId]);
+    }
+
+    res.json({ success: true, channel, ...channelResult });
+  } catch (err) {
+    console.error('[UNPUBLISH]', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });
