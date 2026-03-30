@@ -291,6 +291,31 @@ async function initDB() {
       id TEXT PRIMARY KEY, raw_content TEXT, metadata JSONB,
       performance_outcome JSONB, created_at TIMESTAMPTZ DEFAULT NOW()
     )`);
+    // Per-brand brain tables (brand_profile_id scoped — used by campaign generator and agents)
+    await pool.query(`CREATE TABLE IF NOT EXISTS brain_patterns (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      brand_profile_id TEXT NOT NULL,
+      pattern_type VARCHAR(100),
+      description TEXT,
+      confidence_score FLOAT DEFAULT 0,
+      success_rate FLOAT DEFAULT 0,
+      tags JSONB DEFAULT '[]',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS brain_mistakes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      brand_profile_id TEXT NOT NULL,
+      mistake_type VARCHAR(100),
+      description TEXT,
+      human_feedback TEXT,
+      guardrail_created TEXT,
+      severity VARCHAR(20) DEFAULT 'low',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS brain_patterns_brand_idx ON brain_patterns(brand_profile_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS brain_mistakes_brand_idx ON brain_mistakes(brand_profile_id)`);
     console.log('NeonDB: Brain tables (patterns, mistakes, memories) ensured');
 
     // Publishing tables
