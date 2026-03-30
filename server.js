@@ -3782,61 +3782,12 @@ ${canonicalNote}`,
             sections: mdCards.map((_, i) => [10, i])
           });
 
-          // ── Upload hero image to Ghost media storage (if available) ──
-          // Ghost requires images hosted in its own storage for feature_image.
-          // We fetch from fal.ai CDN and upload via Ghost Admin image upload API.
-          let ghostFeatureImageUrl = null;
-          const heroImageUrl = article.hero_image_url;
-          if (heroImageUrl) {
-            try {
-              const imgRes = await fetch(heroImageUrl);
-              if (imgRes.ok) {
-                // Detect mime type from Content-Type header — more reliable than URL extension
-                // fal.ai URLs often have no clean extension
-                const contentType = imgRes.headers.get('content-type') || 'image/webp';
-                const mimeToExt = { 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
-                const imgExt = mimeToExt[contentType.split(';')[0].trim()] || 'jpg';
-                const mimeType = contentType.split(';')[0].trim();
-
-                const imgBuffer = await imgRes.arrayBuffer();
-                const imgBytes = new Uint8Array(imgBuffer);
-                const filename = `forge-hero-${Date.now()}.${imgExt}`;
-
-                // Build multipart/form-data manually — Node fetch needs Uint8Array body
-                const boundary = 'ForgeGhostBoundary' + Date.now();
-                const header = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${mimeType}\r\n\r\n`;
-                const footer = `\r\n--${boundary}--\r\n`;
-                const headerBytes = new TextEncoder().encode(header);
-                const footerBytes = new TextEncoder().encode(footer);
-                const multipart = new Uint8Array(headerBytes.length + imgBytes.length + footerBytes.length);
-                multipart.set(headerBytes, 0);
-                multipart.set(imgBytes, headerBytes.length);
-                multipart.set(footerBytes, headerBytes.length + imgBytes.length);
-
-                const uploadRes = await fetch(`${ghostBase}/ghost/api/admin/images/upload/`, {
-                  method: 'POST',
-                  headers: {
-                    'Authorization': `Ghost ${ghostJwt}`,
-                    'Content-Type': `multipart/form-data; boundary=${boundary}`,
-                    'Content-Length': String(multipart.length),
-                    'Accept-Version': 'v5.0'
-                  },
-                  body: multipart
-                });
-
-                const uploadText = await uploadRes.text();
-                console.log('[GHOST] Image upload status:', uploadRes.status, uploadText.slice(0, 200));
-
-                if (uploadRes.ok) {
-                  const uploadData = JSON.parse(uploadText);
-                  // Ghost v5 returns { images: [{ url, ref }] }
-                  ghostFeatureImageUrl = uploadData?.images?.[0]?.url || null;
-                  console.log('[GHOST] Feature image URL:', ghostFeatureImageUrl);
-                }
-              }
-            } catch (imgErr) {
-              console.warn('[GHOST] Hero image upload failed (non-fatal):', imgErr.message);
-            }
+          // ── Hero image — Ghost v5 accepts external URLs for feature_image directly ──
+          // No upload to Ghost storage needed. Pass the fal.ai CDN URL straight through.
+          // Ghost will proxy/cache it on first render.
+          const ghostFeatureImageUrl = article.hero_image_url || null;
+          if (ghostFeatureImageUrl) {
+            console.log('[GHOST] Using hero image URL as feature_image:', ghostFeatureImageUrl);
           }
 
           const ghostRes = await fetch(`${ghostBase}/ghost/api/admin/posts/`, {
