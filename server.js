@@ -3681,7 +3681,6 @@ ${canonicalNote}`,
           const now = Math.floor(Date.now() / 1000);
           const header  = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT', kid: keyId })).toString('base64url');
           const payload = Buffer.from(JSON.stringify({ iat: now, exp: now + 300, aud: '/admin/' })).toString('base64url');
-          const { createHmac } = await import('node:crypto');
           const secretBytes = Buffer.from(keySecret, 'hex');
           const sig = createHmac('sha256', secretBytes)
             .update(`${header}.${payload}`)
