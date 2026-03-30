@@ -247,10 +247,6 @@ export default function PublishingQueuePage() {
     }
   };
 
-  const handleRemove = async (itemId: string) => {
-    await fetch(`/api/publishing/queue/${itemId}`, { method: 'DELETE' });
-    loadQueue();
-  };
 
   const openDeleteModal = (item: QueueItem) => {
     const publishedChannels = (publishLog[item.id] || [])
