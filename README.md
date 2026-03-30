@@ -1,6 +1,6 @@
 # Forge Intelligence — Master SSOT
 
-> **Last updated:** March 29, 2026 (11:59 PM PDT) | **Status:** Stage 6 LIVE — Full channel suite + Campaign Analytics + Mobile UI ✅
+> **Last updated:** March 30, 2026 (6:00 AM PDT) | **Status:** Stage 6 LIVE — Full channel suite + Ghost + Reverse Publish + Publishing Queue polish ✅
 > **This README is the single source of truth for all AI sessions, dev work, and project decisions.**
 > When starting a new AI session, read this file top to bottom before touching Always read the README.md first -- it is the SSOT.
 > Always read the current file and capture its SHA before writing - never write blind.
@@ -26,13 +26,17 @@
 
 ---
 
-## Current Build Status (as of March 29, 2026 — 11:59 PM PDT)
+## Current Build Status (as of March 30, 2026 — 6:00 AM PDT)
 
 ## Known Issues
 
 ### Performance Dashboard — Post Title Join
 **Status:** Minor  
 The posts table in Performance shows titles correctly from `publishing_queue`. The `generated_content_` table join was removed in favour of a simpler `publish_log + publishing_queue` join to avoid silent failures on missing columns. Hero image thumbnails not yet shown in the posts table for the Performance view.
+
+### Ghost Analytics Sync
+**Status:** Pending
+Ghost publish is live. Analytics sync (impressions, reactions) not yet wired into `content_analytics`. Ghost Admin API has stats endpoints but requires additional implementation.
 
 ### Medium Integration
 **Status:** Legacy  
@@ -74,6 +78,10 @@ Medium stopped issuing new API integration tokens in early 2025. The publish bac
 | Medium publishing | ✅ LEGACY | Integration token auth — backend live, new tokens unavailable since early 2025 |
 | Mobile sidebar | ✅ LIVE | Auto-collapses on mobile, icon rail always visible, drawer expands with backdrop overlay |
 | Mobile layout | ✅ LIVE | `app-main` offset by 64px on mobile, hamburger hidden (chevron is sole toggle) |
+| Ghost CMS publishing | ✅ LIVE | JWT auth, HTML via `?source=html`, hero image as `feature_image`, canonical URL, live sync |
+| Reverse publish | ✅ LIVE | Per-channel unpublish modal — delete from LinkedIn/X/Ghost/WordPress/Facebook + Forge or Forge only |
+| Publishing Queue polish | ✅ LIVE | Status filter tabs removed, per-channel checkboxes in delete modal, chip colors accurate, DISTINCT ON dedup |
+| Sidebar active state | ✅ LIVE | Fully URL-based, NAV_ROUTES single source of truth, all items render as `<a>` tags |
 | X Analytics Sync | ✅ LIVE | `public_metrics` from X API v2 — impressions, reactions, comments, reposts, clicks |
 | LinkedIn Analytics Sync | ✅ LIVE | `socialActions` for reactions/comments; `shareStatistics` upgrades automatically on MDP approval |
 | Publishing Queue Backfill | ✅ LIVE | Approved articles auto-staged on server start; `/api/publishing/backfill-queue` for on-demand |
@@ -92,7 +100,9 @@ Medium stopped issuing new API integration tokens in early 2025. The publish bac
 - Pre-seed / bulk brand brain seeding script
 - Multi-brand stress testing (second brand onboarded)
 - Reddit API access — developer portal locked down, investigating access path
-- Ghost CMS integration (identified as next channel priority after Reddit/Medium)
+- Ghost analytics sync (pull view/reaction counts into Performance tab)
+- Facebook and Reddit analytics sync (pull engagement into Performance tab)
+- Ghost CMS integration — publish ✅ LIVE, analytics pending
 
 ---
 
