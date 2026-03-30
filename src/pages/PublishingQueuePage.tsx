@@ -148,27 +148,48 @@ export default function PublishingQueuePage() {
   const loadQueue = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch('/api/publishing/queue');
-      const d = await r.json();
-      if (d.success) {
-        setItems(d.items);
-        setSelectedChannels(prev => {
-          const next = { ...prev };
-          for (const item of d.items) {
-            if (!next[item.id]) next[item.id] = item.channels || [];
-          }
-          return next;
-        });
-        // Load publish logs for all items — item.status is unreliable after partial unpublish
-        // publish log is the only accurate source of per-channel live state
-        for (const item of d.items) {
-          if (item.publish_results && Object.keys(item.publish_results).length > 0) {
-            fetch(`/api/publishing/log/${item.id}`)
-              .then(r => r.json())
-              .then(ld => {
-                if (ld.success) setPublishLog(prev => ({ ...prev, [item.id]: ld.log }));
-              }).catch(() => {});
-          }
+      // Fetch brands first, then load each brand's enriched queue
+      const brandsRes = await fetch('/api/context-hub/brains').then(r => r.json());
+      const brandList = brandsRes.success ? (brandsRes.data || []) : [];
+      if (brandList.length > 0) setBrands(brandList);
+
+      // Use brand-scoped endpoints so campaign enrichment (week, publish_day, etc.) is included
+      const allItems: QueueItem[] = [];
+      const brandIds = brandList.map((b: any) => b.id);
+
+      // If no brands yet, fall back to global endpoint
+      if (brandIds.length === 0) {
+        const r = await fetch('/api/publishing/queue');
+        const d = await r.json();
+        if (d.success) allItems.push(...d.items);
+      } else {
+        const results = await Promise.all(
+          brandIds.map((id: string) =>
+            fetch(`/api/publishing/queue/${id}`).then(r => r.json()).catch(() => ({ success: false, items: [] }))
+          )
+        );
+        for (const d of results) {
+          if (d.success) allItems.push(...d.items);
+        }
+      }
+
+      setItems(allItems);
+      setSelectedChannels(prev => {
+        const next = { ...prev };
+        for (const item of allItems) {
+          if (!next[item.id]) next[item.id] = item.channels || [];
+        }
+        return next;
+      });
+
+      // Load publish logs for items that have been published to at least one channel
+      for (const item of allItems) {
+        if (item.publish_results && Object.keys(item.publish_results).length > 0) {
+          fetch(`/api/publishing/log/${item.id}`)
+            .then(r => r.json())
+            .then(ld => {
+              if (ld.success) setPublishLog(prev => ({ ...prev, [item.id]: ld.log }));
+            }).catch(() => {});
         }
       }
     } finally {
@@ -177,10 +198,7 @@ export default function PublishingQueuePage() {
   }, []);
 
   useEffect(() => {
-    loadQueue();
-    fetch('/api/context-hub/brains').then(r => r.json()).then(d => {
-      if (d.success) setBrands(d.data || []);
-    });
+    loadQueue(); // brands loaded inside loadQueue via brand-scoped queue endpoints
   }, [loadQueue]);
 
   // Load connected channels per brand
