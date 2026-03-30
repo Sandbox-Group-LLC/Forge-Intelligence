@@ -3259,10 +3259,17 @@ app.post('/api/publishing/unpublish', async (req, res) => {
       [channelResult.deleted ? 'deleted' : 'published', queueItemId, channel]
     );
 
-    // Reset queue status to staged so it can be republished
-    await pool.query(
-      `UPDATE publishing_queue SET status = 'staged', updated_at = NOW() WHERE id = $1`,
+    // Recompute queue status from remaining live publish_log entries
+    // Don't blindly set 'staged' — if other channels are still live, it's 'partial'
+    const remainingLog = await pool.query(
+      `SELECT live_status FROM publish_log WHERE queue_item_id = $1 AND (live_status IS NULL OR live_status != 'deleted')`,
       [queueItemId]
+    ).catch(() => ({ rows: [] }));
+    const anyStillLive = remainingLog.rows.some(r => !r.live_status || r.live_status === 'published');
+    const recomputedStatus = anyStillLive ? 'partial' : 'staged';
+    await pool.query(
+      `UPDATE publishing_queue SET status = $1, updated_at = NOW() WHERE id = $2`,
+      [recomputedStatus, queueItemId]
     ).catch(() => {});
 
     // If remove from queue entirely
