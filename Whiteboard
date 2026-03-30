@@ -1,5 +1,5 @@
 # AI Content Platform — Working Doc
-> Last updated: March 30, 2026 (6:00 AM PDT) | Status: Stage 6 LIVE — Ghost + Reverse Publish + Queue Polish + Sidebar ✅ | Active Whiteboard
+> Last updated: March 30, 2026 (2:00 PM PDT) | Status: Stage 6 LIVE — Scheduling + Campaign Queue + UTMs + OG Meta ✅ | Active Whiteboard
 
 ---
 
@@ -785,7 +785,29 @@ Daily/Weekly: Performance digest → compile + Resend
 - Performance Dashboard fully styled per design system spec
 - Commits: `167e085` (CSS) + `7380d8a` (TSX)
 
-### Pipeline status: ✅ Stage 1–6 LIVE | Stage 7B ✅ | Campaign Analytics ✅ | Ghost ✅ | Reverse Publish ✅ | Stage 7–8 🔲 Next
+### Pipeline status: ✅ Stage 1–6 LIVE | Stage 7B ✅ | Campaign Analytics ✅ | Ghost ✅ | Scheduling ✅ | UTMs ✅ | Stage 7–8 🔲 Next
+
+## March 30, 2026 Afternoon Session — Scheduling + Campaign Queue + UTMs
+
+**What shipped:**
+- **Post scheduling** — `setInterval` scheduler polls every 60s for due items, fires publish endpoint internally, marks `publishing` before firing to prevent double-fire. Tested end-to-end with live articles publishing at scheduled time.
+- **Campaign grouping in Publishing Queue** — articles grouped by campaign → week lanes. Queue endpoint enriched with `week_number`, `publish_day`, `content_type`, `funnel_position` via JOIN to `campaign_articles`. Brand-scoped endpoint used by UI (global endpoint lacked enrichment).
+- **Campaign badge** — shows `CAMPAIGN · {short_id}` in queue header.
+- **UTM injection** — fixed Ghost UTM (was using `utmCtx` tokens not resolved params), added default template fallback for channels with no template configured, X tweet URL never sliced (Twitter t.co counts URL as 23 chars), LinkedIn full UTM URL confirmed working.
+- **Hero image auto-generation** — if article missing `hero_image_url` at publish time, generates via Haiku prompt + fal.ai Flux before any channel fires. Non-fatal — publishes without image if generation fails.
+- **OG meta fix** — `fs.readFile` with `await` was failing silently on Node.js ESM (needs `fs.promises.readFile`). Article pages now render full OG tags + Twitter cards + hero image for social crawlers (Twitterbot, LinkedInBot confirmed crawling correct URLs).
+- **brain_patterns / brain_mistakes tables** — added to `initDB`. Campaign generator was querying these but they never existed, causing 7/8 article failures.
+- **Campaign delete** — temp admin endpoint added, used to wipe dud campaign, then removed.
+- **Chip selected state** — always renders bright white regardless of channel color.
+- **Schedule button** — no longer requires channel selection, date alone is sufficient.
+- **Timezone display** — shows `America/Los_Angeles` (browser local) under datetime input.
+
+**Verified end-to-end:**
+- 6/8 campaign articles published to Ghost + X + LinkedIn with hero images
+- UTMs confirmed on LinkedIn: `?utm_source=linkedin&utm_medium=social&utm_campaign=neuroscience-event-design-authority-builder&utm_content=...`
+- UTMs confirmed on X: `?utm_medium=social&utm_source=x&utm_content=...&utm_campaign=...`
+- Scheduler fired on time, Render logs showed `[SCHEDULER] Published item...`
+- `1/8 published` counter updated in campaign group header
 
 ## March 30, 2026 Session — Publishing Queue + Ghost + Sidebar
 
