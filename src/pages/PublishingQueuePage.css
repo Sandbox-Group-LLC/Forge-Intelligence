@@ -807,3 +807,153 @@
   gap: 8px;
   margin: 0 20px 16px;
 }
+
+/* ── Campaign grouping in Publishing Queue ─────────────────────────────────── */
+
+.pq-campaign-group {
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-bottom: 24px;
+  box-shadow: 0 0 0 1px rgba(53, 99, 255, 0.08), var(--shadow-sm);
+}
+
+.pq-campaign-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  background: linear-gradient(90deg, rgba(53, 99, 255, 0.08), rgba(53, 99, 255, 0.03));
+  border-bottom: 1px solid rgba(53, 99, 255, 0.15);
+  gap: 12px;
+}
+
+.pq-campaign-group-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.pq-campaign-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(53, 99, 255, 0.15);
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.pq-campaign-group-name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pq-campaign-group-topic {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.pq-campaign-group-stats {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Week lanes */
+.pq-campaign-week {
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.pq-campaign-week:last-child {
+  border-bottom: none;
+}
+
+.pq-campaign-week-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+  padding: 8px 20px 4px;
+  background: rgba(255,255,255,0.02);
+}
+
+.pq-campaign-week-items {
+  padding: 0;
+}
+
+/* Campaign meta row on each article card */
+.pq-campaign-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px 0;
+}
+
+.pq-campaign-meta-week {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.pq-campaign-meta-type {
+  font-size: 0.7rem;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--color-bg-elevated);
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.pq-campaign-meta-funnel {
+  font-size: 0.7rem;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.funnel-tofu  { background: rgba(59, 130, 246, 0.12); color: #3B82F6; }
+.funnel-mofu  { background: rgba(139, 92, 246, 0.12); color: #8B5CF6; }
+.funnel-bofu  { background: rgba(16, 185, 129, 0.12); color: #10B981; }
+
+/* Items inside campaign group — remove outer border since group provides it */
+.pq-campaign-week-items .pq-item {
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  border-bottom: 1px solid var(--color-border-subtle);
+  box-shadow: none;
+}
+
+.pq-campaign-week-items .pq-item:last-child {
+  border-bottom: none;
+}
+
+/* Standalone section divider */
+.pq-standalone-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+  padding: 8px 4px 12px;
+  margin-top: 8px;
+}
+
+@media (max-width: 768px) {
+  .pq-campaign-group-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .pq-campaign-meta-row { flex-wrap: wrap; }
+}
