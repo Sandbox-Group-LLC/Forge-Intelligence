@@ -125,7 +125,6 @@ export default function PublishingQueuePage() {
   const [scheduleDate, setScheduleDate] = useState<Record<string, string>>({});
   const [selectedChannels, setSelectedChannels] = useState<Record<string, string[]>>({});
   const [utmPreview, setUtmPreview] = useState<UtmPreview | null>(null);
-  const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterBrand, setFilterBrand] = useState<string>('all');
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -413,19 +412,11 @@ export default function PublishingQueuePage() {
 
   // Filter logic
   const filteredItems = items.filter(item => {
-    if (filterStatus !== 'all' && getEffectiveStatus(item) !== filterStatus) return false;
     if (filterBrand !== 'all' && item.brand_profile_id !== filterBrand) return false;
     return true;
   });
 
-  const statusCounts = {
-    all: items.length,
-    staged: items.filter(i => getEffectiveStatus(i) === 'staged').length,
-    scheduled: items.filter(i => i.status === 'scheduled').length,
-    published: items.filter(i => getEffectiveStatus(i) === 'published').length,
-    partial: items.filter(i => getEffectiveStatus(i) === 'partial').length,
-    failed: items.filter(i => i.status === 'failed').length,
-  };
+
 
   const brandName = (item: QueueItem) =>
     item.brand_name || brands.find(b => b.id === item.brand_profile_id)?.brandName || item.brand_url || '—';
@@ -446,20 +437,8 @@ export default function PublishingQueuePage() {
           </button>
         </div>
 
-        {/* Status filter tabs */}
-        <div className="pq-filter-bar">
-          <div className="pq-tabs">
-            {(['all', 'staged', 'scheduled', 'published', 'partial', 'failed'] as const).map(s => (
-              <button
-                key={s}
-                className={`pq-tab ${filterStatus === s ? 'active' : ''}`}
-                onClick={() => setFilterStatus(s)}
-              >
-                {s.charAt(0).toUpperCase() + s.slice(1)}
-                {statusCounts[s] > 0 && <span className="pq-tab-count">{statusCounts[s]}</span>}
-              </button>
-            ))}
-          </div>
+        {/* Brand filter */}
+        {brands.length > 1 && (
           <select
             className="geo-select pq-brand-filter"
             value={filterBrand}
@@ -470,7 +449,7 @@ export default function PublishingQueuePage() {
               <option key={b.id} value={b.id}>{b.brandName || b.brandUrl}</option>
             ))}
           </select>
-        </div>
+        )}
 
         {error && <div className="geo-error">{error}</div>}
         {successMsg && <div className="int-success">{successMsg}</div>}
