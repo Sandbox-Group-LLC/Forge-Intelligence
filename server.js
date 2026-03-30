@@ -738,8 +738,13 @@ app.get('/api/articles/:brandSlug/:articleSlug', async (req, res) => {
 app.get('/api/publishing/sync/:queueItemId', async (req, res) => {
   const { queueItemId } = req.params;
   try {
+    // Only process the most recent log entry per channel — older entries are historical
     const logRes = await pool.query(
-      'SELECT pl.*, pc.credentials FROM publish_log pl LEFT JOIN publishing_channels pc ON pc.brand_profile_id = pl.brand_profile_id AND pc.channel = pl.channel WHERE pl.queue_item_id = $1',
+      `SELECT DISTINCT ON (pl.channel) pl.*, pc.credentials
+       FROM publish_log pl
+       LEFT JOIN publishing_channels pc ON pc.brand_profile_id = pl.brand_profile_id AND pc.channel = pl.channel
+       WHERE pl.queue_item_id = $1
+       ORDER BY pl.channel, pl.attempted_at DESC`,
       [queueItemId]
     );
     if (!logRes.rows.length) return res.json({ success: true, results: {} });
@@ -947,7 +952,9 @@ app.post('/api/publishing/republish', async (req, res) => {
 app.get('/api/publishing/log/:queueItemId', async (req, res) => {
   try {
     const logRes = await pool.query(
-      'SELECT id, channel, status, live_status, published_url, error_message, attempted_at, last_synced_at FROM publish_log WHERE queue_item_id = $1 ORDER BY attempted_at DESC',
+      `SELECT DISTINCT ON (channel) id, channel, status, live_status, published_url, error_message, attempted_at, last_synced_at
+       FROM publish_log WHERE queue_item_id = $1
+       ORDER BY channel, attempted_at DESC`,
       [req.params.queueItemId]
     );
     res.json({ success: true, log: logRes.rows });
