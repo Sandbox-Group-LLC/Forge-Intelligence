@@ -1,6 +1,6 @@
 # Forge Intelligence — Master SSOT
 
-> **Last updated:** March 30, 2026 (6:00 AM PDT) | **Status:** Stage 6 LIVE — Full channel suite + Ghost + Reverse Publish + Publishing Queue polish ✅
+> **Last updated:** March 30, 2026 (2:00 PM PDT) | **Status:** Stage 6 LIVE — Scheduling ✅ | Campaign Queue ✅ | UTM injection ✅ | OG meta ✅
 > **This README is the single source of truth for all AI sessions, dev work, and project decisions.**
 > When starting a new AI session, read this file top to bottom before touching Always read the README.md first -- it is the SSOT.
 > Always read the current file and capture its SHA before writing - never write blind.
@@ -26,7 +26,7 @@
 
 ---
 
-## Current Build Status (as of March 30, 2026 — 6:00 AM PDT)
+## Current Build Status (as of March 30, 2026 — 2:00 PM PDT)
 
 ## Known Issues
 
@@ -82,6 +82,12 @@ Medium stopped issuing new API integration tokens in early 2025. The publish bac
 | Reverse publish | ✅ LIVE | Per-channel unpublish modal — delete from LinkedIn/X/Ghost/WordPress/Facebook + Forge or Forge only |
 | Publishing Queue polish | ✅ LIVE | Status filter tabs removed, per-channel checkboxes in delete modal, chip colors accurate, DISTINCT ON dedup |
 | Sidebar active state | ✅ LIVE | Fully URL-based, NAV_ROUTES single source of truth, all items render as `<a>` tags |
+| Post scheduling | ✅ LIVE | `datetime-local` input + server-side scheduler polls every 60s, fires `publish` endpoint internally, marks `publishing` to prevent double-fire |
+| Campaign queue grouping | ✅ LIVE | Campaign articles grouped by campaign → week lanes (Wk 1–4), meta row shows `Wk · Day | Type | Funnel`, standalone articles below |
+| UTM injection | ✅ LIVE | All channels get UTMs at publish time. Default template fallback for unconfigured channels. LinkedIn full URL + params. X URL never truncated (Twitter counts URLs as 23 chars) |
+| Hero image auto-generation | ✅ LIVE | If article has no `hero_image_url` at publish time, generates via Haiku + fal.ai Flux before channel loop fires |
+| Article OG meta | ✅ LIVE | `fs.promises.readFile` fix — article landing pages now render full OG tags, Twitter cards, hero image for social crawlers |
+| brain_patterns / brain_mistakes tables | ✅ LIVE | Created in `initDB` — campaign generator was querying these but they never existed |
 | X Analytics Sync | ✅ LIVE | `public_metrics` from X API v2 — impressions, reactions, comments, reposts, clicks |
 | LinkedIn Analytics Sync | ✅ LIVE | `socialActions` for reactions/comments; `shareStatistics` upgrades automatically on MDP approval |
 | Publishing Queue Backfill | ✅ LIVE | Approved articles auto-staged on server start; `/api/publishing/backfill-queue` for on-demand |
