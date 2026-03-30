@@ -125,8 +125,6 @@ const icons = {
   )
 };
 
-const BRAIN_VIEWS: ViewType[] = ['new-analysis', 'active-run', 'brand-profile', 'strategy', 'brain-history'];
-
 interface BrainNavItem {
   id: ViewType;
   label: string;
@@ -241,13 +239,6 @@ export function Sidebar() {
       window.location.href = targetPath;
     } else {
       setCurrentView(id);
-    }
-  };
-
-  const handleTopItemClick = (item: TopNavItem) => {
-    if (item.href) {
-      closeMobileDrawer();
-      window.location.href = item.href;
     }
   };
 
