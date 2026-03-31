@@ -4259,7 +4259,7 @@ function buildGhostJWT(apiKey) {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT', kid: keyId })).toString('base64url');
   const payload = Buffer.from(JSON.stringify({ iat: now, exp: now + 300, aud: '/admin/' })).toString('base64url');
   const sigInput = `${header}.${payload}`;
-  const sig = require('crypto').createHmac('sha256', secretBytes).update(sigInput).digest('base64url');
+  const sig = createHmac('sha256', secretBytes).update(sigInput).digest('base64url');
   return `${sigInput}.${sig}`;
 }
 
