@@ -146,7 +146,7 @@ export default function PublishingQueuePage() {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [contentPreview, setContentPreview] = useState<{ item: QueueItem; article: any; postCopy: Record<string, string> } | null>(null);
-  const [exportModal, setExportModal] = useState<{ item: QueueItem; article: any } | null>(null);
+  const [exportModal, setExportModal] = useState<{ item: QueueItem; article: any; brandSettingsData?: any } | null>(null);
   const [brandSettings, setBrandSettings] = useState<Record<string, { article_base_url?: string; settings?: { siteTemplate?: any } }>>({});
   const [exportTab, setExportTab] = useState<'html' | 'markdown' | 'json' | 'link'>('html');
   const [copied, setCopied] = useState<string>('');
@@ -390,18 +390,17 @@ export default function PublishingQueuePage() {
     const settingsData = await settingsRes.json();
     const article = artData.success ? artData.article : null;
     if (settingsData.success) {
-      // Store full settings object including siteTemplate from scraper
       setBrandSettings(prev => ({ ...prev, [item.brand_profile_id]: { ...settingsData.settings, settings: settingsData.settings.settings } }));
     }
     setExportTab('html');
     setCopied('');
-    setExportModal({ item, article });
+    setExportModal({ item, article, brandSettingsData: settingsData.success ? settingsData.settings : null });
   };
 
-  const buildExportUrl = (item: QueueItem, article: any) => {
+  const buildExportUrl = (item: QueueItem, article: any, settingsOverride?: any) => {
     const brandSlug = (article?.brand_url || item.brand_url || 'brand').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
     const articleSlug = (item.title || 'article').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-    const settings = brandSettings[item.brand_profile_id];
+    const settings = settingsOverride || brandSettings[item.brand_profile_id];
     const articleBaseUrl = settings?.article_base_url?.trim()
       ? settings.article_base_url.replace(/\/+$/, '')
       : `https://${window.location.hostname}/articles/${brandSlug}`;
@@ -432,7 +431,7 @@ export default function PublishingQueuePage() {
     const brandName = item.brand_name || brands.find(b => b.id === item.brand_profile_id)?.brandName || item.brand_url || '';
 
     // Use scraped site template class names if available, otherwise generic
-    const tmpl = brandSettings[item.brand_profile_id]?.settings?.siteTemplate?.article;
+    const tmpl = exportModal?.brandSettingsData?.settings?.siteTemplate?.article || brandSettings[item.brand_profile_id]?.settings?.siteTemplate?.article;
     const safeAttr = (v: string) => (v || '').replace(/["'<>]/g, '');
     const C = {
       nav:          safeAttr(tmpl?.nav?.class || 'navbar'),
@@ -1325,7 +1324,7 @@ return (
     {/* ── Smart Export Modal ── */}
     {exportModal && (() => {
       const { item, article } = exportModal;
-      const exportUrl = buildExportUrl(item, article);
+      const exportUrl = buildExportUrl(item, article, exportModal.brandSettingsData);
       const campaignSlug = item.campaign_name
         ? item.campaign_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 50)
         : 'forge-content';
