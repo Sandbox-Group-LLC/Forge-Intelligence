@@ -118,21 +118,20 @@ export default function BrandSettingsPage() {
           <div className="bs-empty">No brands found. Run a Brain analysis first to create a brand profile.</div>
         ) : (
           <div className="bs-layout">
-            {/* Brand selector — left rail if multiple brands */}
+            {/* Brand selector dropdown */}
             {brands.length > 1 && (
-              <div className="bs-brand-rail">
-                {brands.map(b => (
-                  <button
-                    key={b.id}
-                    className={`bs-brand-btn ${selected === b.id ? 'active' : ''}`}
-                    onClick={() => setSelected(b.id)}
-                  >
-                    <span className="bs-brand-initial">
-                      {(b.brand_name || b.brand_url || '?')[0].toUpperCase()}
-                    </span>
-                    <span className="bs-brand-name">{b.brand_name || b.brand_url}</span>
-                  </button>
-                ))}
+              <div className="bs-brand-dropdown-wrap">
+                <select
+                  className="geo-select bs-brand-dropdown"
+                  value={selected}
+                  onChange={e => setSelected(e.target.value)}
+                >
+                  {brands.map(b => (
+                    <option key={b.id} value={b.id}>
+                      {b.brand_name || b.brand_url}
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
 
