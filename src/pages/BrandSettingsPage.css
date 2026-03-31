@@ -4,6 +4,10 @@
   gap: 0;
 }
 
+.bs-page .geo-header {
+  margin-bottom: 32px;
+}
+
 .bs-loading,
 .bs-empty {
   color: var(--color-text-muted);
