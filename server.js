@@ -4504,50 +4504,74 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
         errors.push({ channel: 'ghost', error: 'GHOST credentials not configured' });
       } else {
         const safeId = brandProfileId.replace(/-/g, '_');
-        const logRes = await pool.query(
-          `SELECT pl.content_id, pl.response_data, pl.attempted_at AS published_at, ct.title
-           FROM publish_log pl
-           LEFT JOIN generated_content_${safeId} ct ON ct.id::text = pl.content_id
-           WHERE pl.brand_profile_id = $1 AND pl.channel = 'ghost' AND pl.live_status = 'live'
-           ORDER BY pl.attempted_at DESC`,
-          [brandProfileId]
-        ).catch(() => ({ rows: [] }));
+        // Fetch all published posts directly from Ghost Admin API
+        const jwt = buildGhostJWT(ghostApiKey);
+        const ghostListRes = await fetch(
+          `${ghostApiUrl}/ghost/api/admin/posts/?limit=all&filter=status:published&fields=id,title,slug,published_at,reading_time&include=count.clicks,count.positive_feedback,count.negative_feedback`,
+          { headers: { 'Authorization': `Ghost ${jwt}`, 'Accept-Version': 'v5.0' } }
+        );
+        if (!ghostListRes.ok) {
+          errors.push({ channel: 'ghost', error: `ghost_list_api_${ghostListRes.status}` });
+        } else {
+          const ghostListData = await ghostListRes.json();
+          const ghostPosts = ghostListData.posts || [];
 
-        for (const row of logRes.rows) {
-          try {
-            const ghostPostId = row.response_data?.ghostPostId || row.response_data?.id;
-            if (!ghostPostId) { errors.push({ contentId: row.content_id, error: 'no_ghost_post_id' }); continue; }
+          // Build title->content_id map from publishing_queue
+          const queueRes = await pool.query(
+            `SELECT content_id, title FROM publishing_queue WHERE brand_profile_id = $1`,
+            [brandProfileId]
+          ).catch(() => ({ rows: [] }));
+          const titleMap = {};
+          for (const r of queueRes.rows) {
+            if (r.title) titleMap[r.title.toLowerCase().trim()] = r.content_id;
+          }
 
-            const jwt = buildGhostJWT(ghostApiKey);
-            const apiRes = await fetch(
-              `${ghostApiUrl}/ghost/api/admin/posts/${ghostPostId}/?include=count.clicks,count.positive_feedback,count.negative_feedback`,
-              { headers: { 'Authorization': `Ghost ${jwt}`, 'Accept-Version': 'v5.0' } }
-            );
-            if (!apiRes.ok) { errors.push({ contentId: row.content_id, error: `ghost_api_${apiRes.status}` }); continue; }
+          // Also check publish_log for ghostPostId matches
+          const logRes = await pool.query(
+            `SELECT pl.content_id, pl.response_data, pl.attempted_at AS published_at
+             FROM publish_log pl
+             WHERE pl.brand_profile_id = $1 AND pl.channel = 'ghost'
+             ORDER BY pl.attempted_at DESC`,
+            [brandProfileId]
+          ).catch(() => ({ rows: [] }));
+          const postIdMap = {};
+          for (const r of logRes.rows) {
+            const gid = r.response_data?.ghostPostId || r.response_data?.id;
+            if (gid) postIdMap[gid] = r.content_id;
+          }
 
-            const apiData = await apiRes.json();
-            const post = apiData.posts?.[0] || apiData.post || apiData;
-            const count = post.count || {};
-            const clicks           = count.clicks || 0;
-            const positiveFeedback = count.positive_feedback || 0;
-            const negativeFeedback = count.negative_feedback || 0;
-            const readingTime      = post.reading_time || 0;
-            const publishedAt      = post.published_at || row.published_at;
+          for (const post of ghostPosts) {
+            try {
+              const count = post.count || {};
+              const clicks           = count.clicks || 0;
+              const positiveFeedback = count.positive_feedback || 0;
+              const negativeFeedback = count.negative_feedback || 0;
+              const readingTime      = post.reading_time || 0;
+              const publishedAt      = post.published_at;
 
-            await pool.query(
-              `INSERT INTO content_analytics
-                (brand_profile_id, content_id, channel, post_id, clicks, positive_feedback, negative_feedback,
-                 reading_time, impressions, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at)
-               VALUES ($1,$2,'ghost',$3,$4,$5,$6,$7,0,0,0,0,0,0,$8,$9,NOW())
-               ON CONFLICT (brand_profile_id, content_id, channel)
-               DO UPDATE SET clicks=$4, positive_feedback=$5, negative_feedback=$6,
-                 reading_time=$7, raw_data=$8, published_at=$9, synced_at=NOW()`,
-              [brandProfileId, row.content_id, ghostPostId, clicks, positiveFeedback,
-               negativeFeedback, readingTime, JSON.stringify({ count }), publishedAt]
-            );
-            synced.push({ contentId: row.content_id, channel: 'ghost', clicks, positiveFeedback, negativeFeedback, readingTime });
-          } catch(e) {
-            errors.push({ contentId: row.content_id, channel: 'ghost', error: e.message });
+              // Match Ghost post to a content_id — try postIdMap first, then title match
+              let contentId = postIdMap[post.id]
+                || titleMap[post.title?.toLowerCase().trim()]
+                || null;
+
+              // If no match, use Ghost post ID as synthetic content_id so we still record it
+              if (!contentId) contentId = `ghost_${post.id}`;
+
+              await pool.query(
+                `INSERT INTO content_analytics
+                  (brand_profile_id, content_id, channel, post_id, clicks, positive_feedback, negative_feedback,
+                   reading_time, impressions, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at)
+                 VALUES ($1,$2,'ghost',$3,$4,$5,$6,$7,0,0,0,0,0,0,$8,$9,NOW())
+                 ON CONFLICT (brand_profile_id, content_id, channel)
+                 DO UPDATE SET clicks=$4, positive_feedback=$5, negative_feedback=$6,
+                   reading_time=$7, raw_data=$8, published_at=$9, synced_at=NOW()`,
+                [brandProfileId, contentId, post.id, clicks, positiveFeedback,
+                 negativeFeedback, readingTime, JSON.stringify({ count, ghost_title: post.title }), publishedAt]
+              );
+              synced.push({ contentId, ghostPostId: post.id, title: post.title, clicks, positiveFeedback, negativeFeedback, readingTime });
+            } catch(e) {
+              errors.push({ ghostPostId: post.id, channel: 'ghost', error: e.message });
+            }
           }
         }
       }
