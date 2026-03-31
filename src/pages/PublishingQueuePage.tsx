@@ -431,7 +431,18 @@ export default function PublishingQueuePage() {
     const brandName = item.brand_name || brands.find(b => b.id === item.brand_profile_id)?.brandName || item.brand_url || '';
 
     // Use scraped site template class names if available, otherwise generic
-    const tmpl = exportModal?.brandSettingsData?.settings?.siteTemplate?.article || brandSettings[item.brand_profile_id]?.settings?.siteTemplate?.article;
+    const rawTmpl = exportModal?.brandSettingsData?.settings?.siteTemplate?.article
+      || brandSettings[item.brand_profile_id]?.settings?.siteTemplate?.article;
+    const catalogSrc = exportModal?.brandSettingsData?.settings?.siteTemplate?.catalog?.sourceUrl
+      || brandSettings[item.brand_profile_id]?.settings?.siteTemplate?.catalog?.sourceUrl;
+    // Ensure backLink.href uses the catalog source URL if scraped value is just '/'
+    const tmpl = rawTmpl ? {
+      ...rawTmpl,
+      backLink: {
+        ...(rawTmpl.backLink || {}),
+        href: (rawTmpl.backLink?.href && rawTmpl.backLink.href !== '/') ? rawTmpl.backLink.href : (catalogSrc || rawTmpl.backLink?.href || '/'),
+      }
+    } : rawTmpl;
     const safeAttr = (v: string) => (v || '').replace(/["'<>]/g, '');
     const C = {
       nav:          safeAttr(tmpl?.nav?.class || 'navbar'),
