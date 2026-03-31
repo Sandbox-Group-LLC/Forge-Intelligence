@@ -373,8 +373,8 @@ export default function PerformanceDashboardPage() {
                           {activeChannel === 'ghost' ? (<>
                             <td className="num">{fmt(post.clicks)}</td>
                             <td className="num">{post.reading_time ? `${post.reading_time} min` : '—'}</td>
-                            <td className="num">{fmt(post.positive_feedback)}</td>
-                            <td className="num">{fmt(post.negative_feedback)}</td>
+                            <td className="num">{fmt(post.positive_feedback ?? 0)}</td>
+                            <td className="num">{fmt(post.negative_feedback ?? 0)}</td>
                           </>) : (<>
                             <td className="num">{fmt(post.impressions)}</td>
                             <td className="num">{fmt(post.clicks)}</td>
