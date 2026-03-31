@@ -147,6 +147,7 @@ export default function PublishingQueuePage() {
   const [successMsg, setSuccessMsg] = useState('');
   const [contentPreview, setContentPreview] = useState<{ item: QueueItem; article: any; postCopy: Record<string, string> } | null>(null);
   const [exportModal, setExportModal] = useState<{ item: QueueItem; article: any } | null>(null);
+  const [brandSettings, setBrandSettings] = useState<Record<string, { article_base_url?: string }>>({});
   const [exportTab, setExportTab] = useState<'html' | 'markdown' | 'json' | 'link'>('html');
   const [copied, setCopied] = useState<string>('');
   const [publishLog, setPublishLog] = useState<Record<string, { channel: string; live_status: string; published_url?: string; last_synced_at?: string }[]>>({});
@@ -381,9 +382,16 @@ export default function PublishingQueuePage() {
 
   const openExportModal = async (item: QueueItem) => {
     const safeId = item.brand_profile_id.replace(/-/g, '_');
-    const artRes = await fetch(`/api/content/${safeId}/${item.content_id}`);
+    const [artRes, settingsRes] = await Promise.all([
+      fetch(`/api/content/${safeId}/${item.content_id}`),
+      fetch(`/api/brand-settings/${item.brand_profile_id}`)
+    ]);
     const artData = await artRes.json();
+    const settingsData = await settingsRes.json();
     const article = artData.success ? artData.article : null;
+    if (settingsData.success) {
+      setBrandSettings(prev => ({ ...prev, [item.brand_profile_id]: settingsData.settings }));
+    }
     setExportTab('html');
     setCopied('');
     setExportModal({ item, article });
@@ -392,8 +400,11 @@ export default function PublishingQueuePage() {
   const buildExportUrl = (item: QueueItem, article: any) => {
     const brandSlug = (article?.brand_url || item.brand_url || 'brand').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
     const articleSlug = (item.title || 'article').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-    const base = `https://${window.location.hostname}/articles/${brandSlug}/${articleSlug}`;
-    return base;
+    const settings = brandSettings[item.brand_profile_id];
+    const articleBaseUrl = settings?.article_base_url?.trim()
+      ? settings.article_base_url.replace(/\/+$/, '')
+      : `https://${window.location.hostname}/articles/${brandSlug}`;
+    return `${articleBaseUrl}/${articleSlug}`;
   };
 
   const buildMarkdown = (article: any, item: QueueItem) => {
