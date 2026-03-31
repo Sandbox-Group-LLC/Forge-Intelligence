@@ -433,19 +433,20 @@ export default function PublishingQueuePage() {
 
     // Use scraped site template class names if available, otherwise generic
     const tmpl = brandSettings[item.brand_profile_id]?.settings?.siteTemplate?.article;
+    const safeAttr = (v: string) => (v || '').replace(/["'<>]/g, '');
     const C = {
-      nav:          tmpl?.nav?.class || 'navbar',
-      heroSection:  tmpl?.hero?.sectionClass || 'article-hero',
-      eyebrow:      tmpl?.hero?.eyebrowClass || 'article-hero-eyebrow',
-      meta:         tmpl?.hero?.metaClass || 'article-meta',
-      imageWrap:    tmpl?.hero?.imageWrapClass || 'article-hero-image',
-      bodySection:  tmpl?.body?.sectionClass || 'article-body-section',
-      body:         tmpl?.body?.bodyClass || 'article-body',
-      backClass:    tmpl?.backLink?.class || 'article-back',
-      backText:     tmpl?.backLink?.text || 'Back',
-      backHref:     tmpl?.backLink?.href || '/',
-      cta:          tmpl?.cta?.class || 'article-cta-section',
-      footer:       tmpl?.footer?.class || 'site-footer',
+      nav:          safeAttr(tmpl?.nav?.class || 'navbar'),
+      heroSection:  safeAttr(tmpl?.hero?.sectionClass || 'article-hero'),
+      eyebrow:      safeAttr(tmpl?.hero?.eyebrowClass || 'article-hero-eyebrow'),
+      meta:         safeAttr(tmpl?.hero?.metaClass || 'article-meta'),
+      imageWrap:    safeAttr(tmpl?.hero?.imageWrapClass || 'article-hero-image'),
+      bodySection:  safeAttr(tmpl?.body?.sectionClass || 'article-body-section'),
+      body:         safeAttr(tmpl?.body?.bodyClass || 'article-body'),
+      backClass:    safeAttr(tmpl?.backLink?.class || 'article-back'),
+      backText:     (tmpl?.backLink?.text || 'Back to Articles').replace(/[<>]/g, ''),
+      backHref:     safeAttr(tmpl?.backLink?.href || '/'),
+      cta:          safeAttr(tmpl?.cta?.class || 'article-cta-section'),
+      footer:       safeAttr(tmpl?.footer?.class || 'site-footer'),
     };
     const navHtml = tmpl?.nav?.linksHtml || '';
 
