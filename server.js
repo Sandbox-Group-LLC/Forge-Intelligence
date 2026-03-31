@@ -1380,12 +1380,10 @@ ANALYTICS SUMMARY:
 - Average CTR: ${avgCtr.toFixed(2)}%
 
 TOP PERFORMING (highest impressions/engagement):
-${topPosts.map(p => `- "${p.title || 'Untitled'}" | Channel: ${p.channel} | Impressions: ${p.impressions || 0} | Clicks: ${p.clicks || 0} | CTR: ${p.ctr || 0}% | Reactions: ${p.reactions || 0} | Reading time: ${p.reading_time || 0}min`).join('
-')}
+${topPosts.map(p => `- "${p.title || 'Untitled'}" | Channel: ${p.channel} | Impressions: ${p.impressions || 0} | Clicks: ${p.clicks || 0} | CTR: ${p.ctr || 0}% | Reactions: ${p.reactions || 0} | Reading time: ${p.reading_time || 0}min`).join('\n')}
 
 UNDERPERFORMING (lowest engagement):
-${bottomPosts.map(p => `- "${p.title || 'Untitled'}" | Channel: ${p.channel} | Impressions: ${p.impressions || 0} | Clicks: ${p.clicks || 0} | CTR: ${p.ctr || 0}%`).join('
-')}
+${bottomPosts.map(p => `- "${p.title || 'Untitled'}" | Channel: ${p.channel} | Impressions: ${p.impressions || 0} | Clicks: ${p.clicks || 0} | CTR: ${p.ctr || 0}%`).join('\n')}
 
 Return ONLY a JSON object with this exact structure:
 {
