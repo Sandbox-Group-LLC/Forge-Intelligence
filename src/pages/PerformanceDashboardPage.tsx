@@ -36,14 +36,15 @@ interface CampaignRow {
 
 const CHANNELS = [
   { id: 'linkedin', label: 'LinkedIn', live: true },
-  { id: 'wordpress', label: 'WordPress', live: false },
   { id: 'x', label: 'X (Twitter)', live: true },
+  { id: 'ghost', label: 'Ghost', live: true },
+  { id: 'wordpress', label: 'WordPress', live: false },
   { id: 'webflow', label: 'Webflow', live: false },
   { id: 'campaigns', label: 'Campaigns', live: true },
 ];
 
 const CHANNEL_COLORS: Record<string, string> = {
-  linkedin: '#0A66C2', x: '#000000', facebook: '#1877F2',
+  linkedin: '#0A66C2', x: '#000000', ghost: '#FF1A75', facebook: '#1877F2',
   reddit: '#FF4500', wordpress: '#3858E9', webflow: '#4353FF',
 };
 
@@ -343,11 +344,18 @@ export default function PerformanceDashboardPage() {
                     <thead>
                       <tr>
                         <th>Article</th>
-                        <th className="num">Impressions</th>
-                        <th className="num">Clicks</th>
-                        <th className="num">CTR</th>
-                        <th className="num">Reactions</th>
-                        <th className="num">Engagement</th>
+                        {activeChannel === 'ghost' ? (<>
+                          <th className="num">Clicks</th>
+                          <th className="num">Read Time</th>
+                          <th className="num">👍 Feedback</th>
+                          <th className="num">👎 Feedback</th>
+                        </>) : (<>
+                          <th className="num">Impressions</th>
+                          <th className="num">Clicks</th>
+                          <th className="num">CTR</th>
+                          <th className="num">Reactions</th>
+                          <th className="num">Engagement</th>
+                        </>)}
                         <th>Published</th>
                         <th className="bar-col">Relative reach</th>
                       </tr>
@@ -361,11 +369,18 @@ export default function PerformanceDashboardPage() {
                             )}
                             <span className="perf-post-title">{post.title || 'Untitled'}</span>
                           </td>
-                          <td className="num">{fmt(post.impressions)}</td>
-                          <td className="num">{fmt(post.clicks)}</td>
-                          <td className="num">{post.ctr ? `${post.ctr}%` : '—'}</td>
-                          <td className="num">{fmt(post.reactions)}</td>
-                          <td className="num">{post.engagement_rate ? `${post.engagement_rate}%` : '—'}</td>
+                          {activeChannel === 'ghost' ? (<>
+                            <td className="num">{fmt(post.clicks)}</td>
+                            <td className="num">{post.reading_time ? `${post.reading_time} min` : '—'}</td>
+                            <td className="num">{fmt(post.positive_feedback)}</td>
+                            <td className="num">{fmt(post.negative_feedback)}</td>
+                          </>) : (<>
+                            <td className="num">{fmt(post.impressions)}</td>
+                            <td className="num">{fmt(post.clicks)}</td>
+                            <td className="num">{post.ctr ? `${post.ctr}%` : '—'}</td>
+                            <td className="num">{fmt(post.reactions)}</td>
+                            <td className="num">{post.engagement_rate ? `${post.engagement_rate}%` : '—'}</td>
+                          </>)}
                           <td className="perf-date">{post.published_at ? new Date(post.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}</td>
                           <td className="bar-col">
                             <div className="perf-bar-bg">
