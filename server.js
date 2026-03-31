@@ -3845,7 +3845,7 @@ app.get('/auth/linkedin/callback', async (req, res) => {
 
 // GET /api/gsc/auth — initiate OAuth flow
 app.get('/api/gsc/auth', (req, res) => {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientId = process.env.GSC_CLIENT_ID;
   if (!clientId) return res.status(500).json({ error: 'GOOGLE_CLIENT_ID not configured' });
   const brandProfileId = req.query.brandProfileId || 'system';
   const nonce = randomBytes(16).toString('hex');
@@ -3863,8 +3863,8 @@ app.get('/auth/gsc/callback', async (req, res) => {
   if (error) return res.redirect(`/app/integrations?gsc_error=${error}`);
   if (!code) return res.redirect('/app/integrations?gsc_error=no_code');
   try {
-    const clientId     = process.env.GOOGLE_CLIENT_ID;
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    const clientId     = process.env.GSC_CLIENT_ID;
+    const clientSecret = process.env.GSC_CLIENT_SECRET;
     const baseDomain   = process.env.BASE_DOMAIN || 'forgeintelligence.ai';
     const redirectUri  = `https://dev.${baseDomain}/auth/gsc/callback`;
 
@@ -3916,8 +3916,8 @@ async function refreshGSCToken(refreshToken) {
     body: new URLSearchParams({
       grant_type: 'refresh_token',
       refresh_token: refreshToken,
-      client_id: process.env.GOOGLE_CLIENT_ID,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET
+      client_id: process.env.GSC_CLIENT_ID,
+      client_secret: process.env.GSC_CLIENT_SECRET
     })
   });
   const data = await tokenRes.json();
