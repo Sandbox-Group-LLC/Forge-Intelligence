@@ -1,6 +1,6 @@
 # Forge Intelligence — Master SSOT
 
-> **Last updated:** March 30, 2026 (end of session) | **Status:** Stage 6 LIVE — Smart Export ✅ | Brand Settings ✅ | Site Template Scraper ✅ | BYO Domain ✅
+> **Last updated:** March 31, 2026 (end of session) | **Status:** Stage 7 COMPLETE — Ghost Analytics ✅ | Performance Dashboard ✅ | Smart Export ✅ | BYO Domain ✅
 > **This README is the single source of truth for all AI sessions, dev work, and project decisions.**
 > When starting a new AI session, read this file top to bottom before touching Always read the README.md first -- it is the SSOT.
 > Always read the current file and capture its SHA before writing - never write blind.
@@ -84,6 +84,8 @@ Medium stopped issuing new API integration tokens in early 2025. The publish bac
 | Smart Export | ✅ LIVE | Publishing Queue download icon — HTML (site-template-aware), Markdown, JSON, UTM Link export per article |
 | Smart Export HTML | ✅ LIVE | Uses scraped class names, strips `[NEEDS CITATION]`/`[SME Hook]` annotations, converts `**bold**` → `<strong>`, correct OG meta + canonical |
 | Performance Dashboard | ✅ LIVE | `/performance` — Stage 7 eyebrow, geo-header pattern, KPI cards, 30-day trend, campaigns tab |
+| Ghost Analytics Sync | ✅ LIVE | `POST /api/analytics/sync` with `channel=ghost` — queries Ghost Admin API directly, matches posts by title, stores clicks/reading_time/feedback in `content_analytics` |
+| Ghost Performance Tab | ✅ LIVE | Ghost tab in Performance Dashboard — clicks, reading time, positive/negative feedback per post |
 | TopBar page titles | ✅ LIVE | Path-based title resolution via `startsWith` — all pages show correct titles |
 | Ghost CMS publishing | ✅ LIVE | JWT auth, HTML via `?source=html`, hero image as `feature_image`, canonical URL, live sync |
 | Reverse publish | ✅ LIVE | Per-channel unpublish modal — delete from LinkedIn/X/Ghost/WordPress/Facebook + Forge or Forge only |
@@ -115,6 +117,9 @@ Medium stopped issuing new API integration tokens in early 2025. The publish bac
 - Reddit API access — developer portal locked down, investigating access path
 - Ghost analytics sync (pull view/reaction counts into Performance tab)
 - Site template scraper: catalog sourceUrl sometimes not persisting — re-scrape with both URLs if back link shows `/` in Smart Export HTML
+- Reddit dev portal access still blocked
+- Multi-brand stress test (#35) pending
+- NEON_DATABASE_URL: correct endpoint is ep-odd-waterfall-akyrdo6x (restored branch) — do not revert to ep-cool-firefly
 - Facebook and Reddit analytics sync (pull engagement into Performance tab)
 - Ghost CMS integration — publish ✅ LIVE, analytics pending
 
