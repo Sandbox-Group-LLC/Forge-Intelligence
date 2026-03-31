@@ -1234,6 +1234,89 @@ app.get('/api/context-hub/brains/:id', async (req, res) => {
   }
 });
 
+// POST /api/brand-settings/:brandProfileId/scrape-template
+app.post('/api/brand-settings/:brandProfileId/scrape-template', async (req, res) => {
+  const { brandProfileId } = req.params;
+  const { articleUrl, catalogUrl } = req.body;
+  if (!articleUrl) return res.status(400).json({ error: 'articleUrl required' });
+  try {
+    const scrape = async (url, type) => {
+      const r = await fetch(url, { headers: { 'User-Agent': 'ForgeIntelligence/1.0' } });
+      if (!r.ok) throw new Error(`Failed to fetch ${url}: ${r.status}`);
+      const html = await r.text();
+      const cls = (pattern) => html.match(pattern)?.[1] || null;
+
+      if (type === 'article') {
+        return {
+          type: 'article',
+          scrapedAt: new Date().toISOString(),
+          sourceUrl: url,
+          nav: {
+            class: cls(/<nav[^>]*class="([^"]+)"/) || 'navbar',
+            linksHtml: (html.match(/<ul[^>]*class="[^"]*nav[^"]*"[^>]*>([\s\S]*?)<\/ul>/) || [])[0]?.slice(0, 800) || '',
+          },
+          hero: {
+            sectionClass: cls(/<section[^>]*class="([^"]*(?:hero|article-hero)[^"]*)"/) || 'article-hero',
+            eyebrowClass: cls(/class="([^"]*eyebrow[^"]*)"/) || 'article-hero-eyebrow',
+            metaClass: cls(/class="([^"]*(?:article-meta|byline)[^"]*)"/) || 'article-meta',
+            imageWrapClass: cls(/class="([^"]*(?:hero-image|article-hero-image)[^"]*)"/) || 'article-hero-image',
+          },
+          body: {
+            sectionClass: cls(/<section[^>]*class="([^"]*(?:body-section|article-body-section)[^"]*)"/) || 'article-body-section',
+            bodyClass: cls(/class="([^"]*(?:article-body|post-body|content-body)[^"]*)"[^>]*>/) || 'article-body',
+          },
+          backLink: {
+            class: cls(/class="([^"]*(?:article-back|back-link)[^"]*)"/) || 'article-back',
+            text: (html.match(/class="[^"]*(?:article-back|back-link)[^"]*"[^>]*>([^<]+)</) || [])[1]?.trim() || 'Back',
+            href: catalogUrl || '/',
+          },
+          cta: {
+            class: cls(/class="([^"]*(?:article-cta|cta-section)[^"]*)"/) || 'article-cta-section',
+          },
+          footer: {
+            class: cls(/<footer[^>]*class="([^"]+)"/) || 'site-footer',
+          },
+        };
+      }
+
+      if (type === 'catalog') {
+        return {
+          type: 'catalog',
+          scrapedAt: new Date().toISOString(),
+          sourceUrl: url,
+          grid: { class: cls(/class="([^"]*(?:articles-grid|posts-grid|cards-grid|article-grid)[^"]*)"/) || 'articles-grid' },
+          card: {
+            class: cls(/class="([^"]*(?:article-card|post-card)[^"]*)"[^>]*>/) || 'article-card',
+            imageClass: cls(/class="([^"]*(?:article-card-image|card-image)[^"]*)"/) || 'article-card-image',
+            bodyClass: cls(/class="([^"]*(?:article-card-body|card-body)[^"]*)"/) || 'article-card-body',
+          },
+          meta: {
+            categoryClass: cls(/class="([^"]*(?:article-category|post-category|card-category)[^"]*)"/) || 'article-category',
+            readMoreClass: cls(/class="([^"]*(?:article-read-more|read-more)[^"]*)"/) || 'article-read-more',
+          },
+        };
+      }
+    };
+
+    const articleTemplate = await scrape(articleUrl, 'article');
+    const catalogTemplate = catalogUrl ? await scrape(catalogUrl, 'catalog') : null;
+
+    const existing = await pool.query('SELECT settings FROM brand_profiles WHERE id = $1', [brandProfileId]);
+    const currentSettings = existing.rows[0]?.settings || {};
+    const newSettings = { ...currentSettings, siteTemplate: { article: articleTemplate, catalog: catalogTemplate, lastScrapedAt: new Date().toISOString() } };
+
+    await pool.query(
+      'UPDATE brand_profiles SET settings = $1, updated_at = NOW() WHERE id = $2',
+      [JSON.stringify(newSettings), brandProfileId]
+    );
+
+    res.json({ success: true, template: newSettings.siteTemplate });
+  } catch (err) {
+    console.error('[SCRAPE-TEMPLATE]', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // -- GET /api/brand-profiles/list
 // GET /api/brand-settings/:brandProfileId
 app.get('/api/brand-settings/:brandProfileId', async (req, res) => {
