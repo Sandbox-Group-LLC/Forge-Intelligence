@@ -429,7 +429,7 @@ export default function PublishingQueuePage() {
     const hero = article?.hero_image_url || '';
     const wordCount = sections.reduce((acc: number, s: any) => acc + ((s.body || s.content || '').split(' ').length), 0);
     const readMin = Math.max(1, Math.round(wordCount / 200));
-    const brandName = article?.brand_name || item.brand_name || '';
+    const brandName = item.brand_name || brands.find(b => b.id === item.brand_profile_id)?.brandName || item.brand_url || '';
 
     // Use scraped site template class names if available, otherwise generic
     const tmpl = brandSettings[item.brand_profile_id]?.settings?.siteTemplate?.article;
@@ -449,9 +449,13 @@ export default function PublishingQueuePage() {
     };
     const navHtml = tmpl?.nav?.linksHtml || '';
 
+    const stripAnnotations = (text: string) =>
+      text.replace(/\[NEEDS CITATION[^\]]*\]/g, '').replace(/\[SME Hook[^\]]*\]/g, '').replace(/\[NEEDS CLIENT[^\]]*\]/g, '').trim();
+
     const bodyHtml = sections.map((s: any) => {
       const heading = s.heading ? `    <h2>${s.heading}</h2>` : '';
-      const paras = (s.body || s.content || '').split('\n').filter(Boolean).map((p: string) => `    <p>${p}</p>`).join('\n');
+      const rawBody = stripAnnotations(s.body || s.content || '');
+      const paras = rawBody.split('\n').filter(Boolean).map((p: string) => `    <p>${p}</p>`).join('\n');
       return [heading, paras].filter(Boolean).join('\n');
     }).join('\n\n');
 
