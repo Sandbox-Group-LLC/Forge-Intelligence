@@ -1322,6 +1322,133 @@ app.post('/api/brand-settings/:brandProfileId/scrape-template', async (req, res)
   }
 });
 
+// GET /api/analytics/patterns/:brandProfileId
+app.get('/api/analytics/patterns/:brandProfileId', async (req, res) => {
+  const { brandProfileId } = req.params;
+  try {
+    const [pRes, mRes] = await Promise.all([
+      pool.query(
+        'SELECT id, pattern_type, description, confidence_score, success_rate, tags, created_at FROM brain_patterns WHERE brand_profile_id = $1 ORDER BY confidence_score DESC, created_at DESC',
+        [brandProfileId]
+      ),
+      pool.query(
+        'SELECT id, mistake_type, description, human_feedback, guardrail_created, severity, created_at FROM brain_mistakes WHERE brand_profile_id = $1 ORDER BY severity DESC, created_at DESC',
+        [brandProfileId]
+      )
+    ]);
+    res.json({ success: true, patterns: pRes.rows, mistakes: mRes.rows });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/analytics/extract-patterns/:brandProfileId
+// Analyzes content_analytics + publishing_queue to extract Brain Patterns and Mistakes
+app.post('/api/analytics/extract-patterns/:brandProfileId', async (req, res) => {
+  const { brandProfileId } = req.params;
+  try {
+    const safeId = brandProfileId.replace(/-/g, '_');
+
+    // Fetch analytics data
+    const analyticsRes = await pool.query(
+      `SELECT ca.content_id, ca.channel, ca.impressions, ca.clicks, ca.reactions,
+              ca.ctr, ca.engagement_rate, ca.reading_time, ca.positive_feedback,
+              ca.negative_feedback, ca.published_at,
+              pq.title
+       FROM content_analytics ca
+       LEFT JOIN publishing_queue pq ON pq.content_id = ca.content_id
+       WHERE ca.brand_profile_id = $1
+       ORDER BY ca.impressions DESC, ca.clicks DESC`,
+      [brandProfileId]
+    ).catch(() => ({ rows: [] }));
+
+    if (analyticsRes.rows.length === 0) {
+      return res.json({ success: true, patternsWritten: 0, mistakesWritten: 0, patterns: [], mistakes: [], message: 'No analytics data to extract from' });
+    }
+
+    // Build summary for Claude
+    const topPosts = analyticsRes.rows.slice(0, 10);
+    const bottomPosts = analyticsRes.rows.slice(-5);
+    const avgImpressions = analyticsRes.rows.reduce((a, r) => a + (r.impressions || 0), 0) / analyticsRes.rows.length;
+    const avgCtr = analyticsRes.rows.reduce((a, r) => a + (r.ctr || 0), 0) / analyticsRes.rows.length;
+
+    const prompt = `You are a content intelligence analyst. Analyze this performance data and extract actionable patterns and mistakes.
+
+ANALYTICS SUMMARY:
+- Total articles tracked: ${analyticsRes.rows.length}
+- Average impressions: ${Math.round(avgImpressions)}
+- Average CTR: ${avgCtr.toFixed(2)}%
+
+TOP PERFORMING (highest impressions/engagement):
+${topPosts.map(p => `- "${p.title || 'Untitled'}" | Channel: ${p.channel} | Impressions: ${p.impressions || 0} | Clicks: ${p.clicks || 0} | CTR: ${p.ctr || 0}% | Reactions: ${p.reactions || 0} | Reading time: ${p.reading_time || 0}min`).join('
+')}
+
+UNDERPERFORMING (lowest engagement):
+${bottomPosts.map(p => `- "${p.title || 'Untitled'}" | Channel: ${p.channel} | Impressions: ${p.impressions || 0} | Clicks: ${p.clicks || 0} | CTR: ${p.ctr || 0}%`).join('
+')}
+
+Return ONLY a JSON object with this exact structure:
+{
+  "patterns": [
+    { "pattern_type": "short label", "description": "1-2 sentence actionable insight about what's working", "confidence_score": 0.0-1.0, "tags": ["tag1"] }
+  ],
+  "mistakes": [
+    { "mistake_type": "short label", "description": "1-2 sentence insight about what to avoid", "severity": "high|medium|low" }
+  ]
+}
+
+Extract 3-6 patterns and 2-4 mistakes. Be specific and actionable. Focus on content type, topic, channel, format, timing patterns.`;
+
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 1500, messages: [{ role: 'user', content: prompt }] })
+    });
+
+    const aiData = await aiRes.json();
+    const rawText = aiData.content?.[0]?.text || '{}';
+    let extracted = { patterns: [], mistakes: [] };
+    try {
+      const clean = rawText.replace(/```json|```/g, '').trim();
+      extracted = JSON.parse(clean);
+    } catch(e) { console.error('[EXTRACT-PATTERNS] JSON parse error:', e.message); }
+
+    // Write patterns to brain_patterns
+    let patternsWritten = 0;
+    for (const p of (extracted.patterns || [])) {
+      await pool.query(
+        `INSERT INTO brain_patterns (brand_profile_id, pattern_type, description, confidence_score, tags)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT DO NOTHING`,
+        [brandProfileId, p.pattern_type || 'general', p.description || '', p.confidence_score || 0.5, JSON.stringify(p.tags || [])]
+      ).catch(() => {});
+      patternsWritten++;
+    }
+
+    // Write mistakes to brain_mistakes
+    let mistakesWritten = 0;
+    for (const m of (extracted.mistakes || [])) {
+      await pool.query(
+        `INSERT INTO brain_mistakes (brand_profile_id, mistake_type, description, severity)
+         VALUES ($1, $2, $3, $4)`,
+        [brandProfileId, m.mistake_type || 'general', m.description || '', m.severity || 'low']
+      ).catch(() => {});
+      mistakesWritten++;
+    }
+
+    // Return fresh patterns and mistakes
+    const [pRes, mRes] = await Promise.all([
+      pool.query('SELECT * FROM brain_patterns WHERE brand_profile_id = $1 ORDER BY confidence_score DESC', [brandProfileId]),
+      pool.query('SELECT * FROM brain_mistakes WHERE brand_profile_id = $1 ORDER BY severity DESC, created_at DESC', [brandProfileId])
+    ]);
+
+    res.json({ success: true, patternsWritten, mistakesWritten, patterns: pRes.rows, mistakes: mRes.rows });
+  } catch(e) {
+    console.error('[EXTRACT-PATTERNS]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // -- GET /api/brand-profiles/list
 // GET /api/brand-settings/:brandProfileId
 app.get('/api/brand-settings/:brandProfileId', async (req, res) => {
