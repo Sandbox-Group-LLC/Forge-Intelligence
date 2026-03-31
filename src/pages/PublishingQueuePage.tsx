@@ -147,6 +147,7 @@ export default function PublishingQueuePage() {
   const [successMsg, setSuccessMsg] = useState('');
   const [contentPreview, setContentPreview] = useState<{ item: QueueItem; article: any; postCopy: Record<string, string> } | null>(null);
   const [exportModal, setExportModal] = useState<{ item: QueueItem; article: any; brandSettingsData?: any } | null>(null);
+  const [customUtmBase, setCustomUtmBase] = useState<string>('');
   const [brandSettings, setBrandSettings] = useState<Record<string, { article_base_url?: string; settings?: { siteTemplate?: any } }>>({});
   const [exportTab, setExportTab] = useState<'html' | 'markdown' | 'json' | 'link'>('html');
   const [copied, setCopied] = useState<string>('');
@@ -394,6 +395,7 @@ export default function PublishingQueuePage() {
     }
     setExportTab('html');
     setCopied('');
+    setCustomUtmBase('');
     setExportModal({ item, article, brandSettingsData: settingsData.success ? settingsData.settings : null });
   };
 
@@ -1354,11 +1356,12 @@ return (
         { key: 'json',     label: 'JSON' },
         { key: 'link',     label: 'UTM Link' },
       ];
+      const customUtmUrl = (customUtmBase.trim() ? customUtmBase.trim().replace(/[?#].*$/, '') : exportUrl) + `?utm_source=export&utm_medium=byo&utm_campaign=${campaignSlug}&utm_content=${contentSlug}`;
       const exportContent = {
         html:     buildHTML(article, item),
         markdown: buildMarkdown(article, item),
         json:     buildJSON(article, item),
-        link:     utmUrl,
+        link:     customUtmUrl,
       }[exportTab];
 
       return (
@@ -1387,9 +1390,16 @@ return (
             {exportTab === 'link' ? (
               <div className="pq-export-link-wrap">
                 <p className="pq-export-link-desc">
-                  Pre-built UTM URL using your configured Article Base URL. Drop into any CMS, email, or social post.
+                  Paste your live article URL below to append UTM tracking params — or use the default Forge URL.
                 </p>
-                <div className="pq-export-link-box">{utmUrl}</div>
+                <input
+                  className="pq-utm-custom-input"
+                  placeholder={`${exportUrl} (default)`}
+                  value={customUtmBase}
+                  onChange={e => setCustomUtmBase(e.target.value)}
+                />
+                <div className="pq-utm-built-label">UTM URL</div>
+                <div className="pq-export-link-box">{(customUtmBase.trim() ? customUtmBase.trim().replace(/[?#].*$/, '') : exportUrl) + `?utm_source=export&utm_medium=byo&utm_campaign=${campaignSlug}&utm_content=${contentSlug}`}</div>
               </div>
             ) : (
               <div className="pq-export-code-wrap">
