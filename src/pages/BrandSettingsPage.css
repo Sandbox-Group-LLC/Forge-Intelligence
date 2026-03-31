@@ -1,7 +1,7 @@
 .bs-page {
-  max-width: 860px;
-  margin: 0 auto;
-  padding: 0 24px 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
 .bs-loading,
