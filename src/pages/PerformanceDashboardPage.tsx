@@ -161,6 +161,10 @@ export default function PerformanceDashboardPage() {
   const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
   const [campaignsLoading, setCampaignsLoading] = useState(false);
   const [expandedCampaign, setExpandedCampaign] = useState<string | null>(null);
+  const [patterns, setPatterns] = useState<any[]>([]);
+  const [mistakes, setMistakes] = useState<any[]>([]);
+  const [extracting, setExtracting] = useState(false);
+  const [extractResult, setExtractResult] = useState<string>('');
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
   const [error, setError] = useState('');
@@ -188,6 +192,12 @@ export default function PerformanceDashboardPage() {
 
   useEffect(() => {
     if (activeChannel === 'campaigns') loadCampaigns();
+    if (brandProfileId) {
+      fetch(`/api/analytics/patterns/${brandProfileId}`)
+        .then(r => r.json())
+        .then(d => { if (d.success) { setPatterns(d.patterns || []); setMistakes(d.mistakes || []); } })
+        .catch(() => {});
+    }
   }, [activeChannel, loadCampaigns]);
 
   const loadDashboard = useCallback(async () => {
@@ -207,6 +217,28 @@ export default function PerformanceDashboardPage() {
   }, [brandProfileId, activeChannel]);
 
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
+
+  const handleExtract = async () => {
+    if (!brandProfileId) return;
+    setExtracting(true);
+    setExtractResult('');
+    try {
+      const r = await fetch(`/api/analytics/extract-patterns/${brandProfileId}`, { method: 'POST' });
+      const d = await r.json();
+      if (d.success) {
+        setPatterns(d.patterns || []);
+        setMistakes(d.mistakes || []);
+        setExtractResult(`✓ Extracted ${d.patternsWritten || 0} patterns, ${d.mistakesWritten || 0} mistakes`);
+        setTimeout(() => setExtractResult(''), 5000);
+      } else {
+        setExtractResult(`Error: ${d.error}`);
+      }
+    } catch(e) {
+      setExtractResult('Network error');
+    } finally {
+      setExtracting(false);
+    }
+  };
 
   const handleSync = async () => {
     if (!brandProfileId || syncing) return;
@@ -406,46 +438,75 @@ export default function PerformanceDashboardPage() {
               />
             )}
 
-          {/* ── Brain Signals ── */}
-            {activeChannel !== 'campaigns' && (data?.topPosts?.length ?? 0) > 0 && (
-              <div className="perf-section">
-                <div className="perf-section-header">
-                  <h2 className="perf-section-title">Brain Signals</h2>
-                  <span className="perf-brain-badge">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                    Feeding Stage 8
-                  </span>
+          {/* ── Pattern Dashboard ── */}
+            <div className="perf-section perf-pattern-section">
+              <div className="perf-section-header">
+                <div>
+                  <h2 className="perf-section-title">Pattern Dashboard</h2>
+                  <p className="perf-section-sub">Extracted from analytics data — feeds Stage 8 Pattern Extractor.</p>
                 </div>
-                <div className="perf-brain-grid">
-                  <div className="perf-brain-card">
-                    <span className="perf-brain-label">Top performing content</span>
-                    {data?.topPosts?.slice(0, 3).map((p, i) => (
-                      <div key={i} className="perf-brain-row">
-                        <span className="perf-brain-rank">#{i + 1}</span>
-                        <span className="perf-brain-post-title">{p.title || 'Untitled'}</span>
-                        <span className="perf-brain-stat">{fmt(p.impressions)} impr.</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="perf-brain-card">
-                    <span className="perf-brain-label">Patterns being extracted</span>
-                    <div className="perf-brain-pattern">
-                      <span className="perf-pattern-dot primary" />
-                      <span>High-impression posts will write Brain Patterns</span>
-                    </div>
-                    <div className="perf-brain-pattern">
-                      <span className="perf-pattern-dot amber" />
-                      <span>Low-CTR posts will flag for tone review</span>
-                    </div>
-                    <div className="perf-brain-pattern">
-                      <span className="perf-pattern-dot teal" />
-                      <span>Stage 8 Pattern Extractor reads this data</span>
-                    </div>
-                    <div className="perf-brain-note">Stage 8 automation coming — patterns will self-update</div>
-                  </div>
+                <div className="perf-pattern-actions">
+                  {extractResult && <span className="perf-extract-result">{extractResult}</span>}
+                  <button
+                    className={`perf-extract-btn ${extracting ? 'extracting' : ''}`}
+                    onClick={handleExtract}
+                    disabled={extracting || !brandProfileId}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={extracting ? 'spin' : ''}>
+                      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/>
+                      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M16 8h5V3"/>
+                    </svg>
+                    {extracting ? 'Extracting...' : 'Run Extraction'}
+                  </button>
                 </div>
               </div>
-            )}
+
+              <div className="perf-pattern-grid">
+                {/* Patterns */}
+                <div className="perf-pattern-col">
+                  <div className="perf-pattern-col-header">
+                    <span className="perf-pattern-dot primary" />
+                    <span>What's Working</span>
+                    <span className="perf-pattern-count">{patterns.length}</span>
+                  </div>
+                  {patterns.length === 0 ? (
+                    <div className="perf-pattern-empty">No patterns yet — run extraction after syncing analytics.</div>
+                  ) : patterns.map((p, i) => (
+                    <div key={i} className="perf-pattern-item">
+                      <div className="perf-pattern-type">{p.pattern_type}</div>
+                      <div className="perf-pattern-desc">{p.description}</div>
+                      {p.confidence_score > 0 && (
+                        <div className="perf-pattern-meta">
+                          <span className="perf-confidence-bar">
+                            <span className="perf-confidence-fill" style={{ width: `${Math.min(p.confidence_score * 100, 100)}%` }} />
+                          </span>
+                          <span className="perf-confidence-label">{Math.round(p.confidence_score * 100)}% confidence</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Mistakes */}
+                <div className="perf-pattern-col">
+                  <div className="perf-pattern-col-header">
+                    <span className="perf-pattern-dot amber" />
+                    <span>What to Avoid</span>
+                    <span className="perf-pattern-count">{mistakes.length}</span>
+                  </div>
+                  {mistakes.length === 0 ? (
+                    <div className="perf-pattern-empty">No mistakes logged yet — run extraction or flag content in Compliance Gate.</div>
+                  ) : mistakes.map((m, i) => (
+                    <div key={i} className={`perf-pattern-item perf-mistake-item perf-severity-${m.severity || 'low'}`}>
+                      <div className="perf-pattern-type">{m.mistake_type}</div>
+                      <div className="perf-pattern-desc">{m.description}</div>
+                      {m.human_feedback && <div className="perf-mistake-feedback">"{m.human_feedback}"</div>}
+                      <div className="perf-severity-tag">{m.severity || 'low'}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </>
         )}
       </div>
