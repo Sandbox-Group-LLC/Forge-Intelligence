@@ -3841,6 +3841,211 @@ app.get('/auth/linkedin/callback', async (req, res) => {
 });
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── Google Search Console OAuth ──────────────────────────────────────────────
+
+// GET /api/gsc/auth — initiate OAuth flow
+app.get('/api/gsc/auth', (req, res) => {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  if (!clientId) return res.status(500).json({ error: 'GOOGLE_CLIENT_ID not configured' });
+  const brandProfileId = req.query.brandProfileId || 'system';
+  const nonce = randomBytes(16).toString('hex');
+  const state = `${brandProfileId}|${nonce}`;
+  const baseDomain = process.env.BASE_DOMAIN || 'forgeintelligence.ai';
+  const redirectUri = encodeURIComponent(`https://dev.${baseDomain}/auth/gsc/callback`);
+  const scope = encodeURIComponent('https://www.googleapis.com/auth/webmasters.readonly');
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}&state=${encodeURIComponent(state)}&access_type=offline&prompt=consent`;
+  res.json({ authUrl: url });
+});
+
+// GET /auth/gsc/callback — handle OAuth callback, exchange code for tokens
+app.get('/auth/gsc/callback', async (req, res) => {
+  const { code, state, error } = req.query;
+  if (error) return res.redirect(`/app/integrations?gsc_error=${error}`);
+  if (!code) return res.redirect('/app/integrations?gsc_error=no_code');
+  try {
+    const clientId     = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    const baseDomain   = process.env.BASE_DOMAIN || 'forgeintelligence.ai';
+    const redirectUri  = `https://dev.${baseDomain}/auth/gsc/callback`;
+
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirectUri, client_id: clientId, client_secret: clientSecret })
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) throw new Error(tokenData.error_description || 'Token exchange failed');
+
+    // Fetch list of verified GSC properties for this user
+    const sitesRes = await fetch('https://www.googleapis.com/webmasters/v3/sites', {
+      headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+    });
+    const sitesData = await sitesRes.json();
+    const sites = (sitesData.siteEntry || []).map(s => s.siteUrl);
+
+    const stateDecoded = decodeURIComponent(state || '');
+    const brandProfileId = stateDecoded.includes('|') ? stateDecoded.split('|')[0] : 'system';
+
+    // Store tokens + verified sites in publishing_channels
+    await pool.query(`
+      INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active, updated_at)
+      VALUES ($1, 'gsc', $2, true, NOW())
+      ON CONFLICT (brand_profile_id, channel) DO UPDATE
+        SET credentials = $2, is_active = true, updated_at = NOW()
+    `, [brandProfileId, JSON.stringify({
+      accessToken:  tokenData.access_token,
+      refreshToken: tokenData.refresh_token,
+      expiresIn:    tokenData.expires_in,
+      tokenType:    tokenData.token_type,
+      verifiedSites: sites,
+      connectedAt:  new Date().toISOString()
+    })]);
+
+    res.redirect(`/app/integrations?gsc_connected=true`);
+  } catch(err) {
+    console.error('[GSC callback]', err.message);
+    res.redirect(`/app/integrations?gsc_error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+// Helper: refresh GSC access token using refresh token
+async function refreshGSCToken(refreshToken) {
+  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET
+    })
+  });
+  const data = await tokenRes.json();
+  if (!data.access_token) throw new Error('GSC token refresh failed');
+  return data.access_token;
+}
+
+// POST /api/analytics/sync-gsc/:brandProfileId — pull GSC data for brand's domain
+app.post('/api/analytics/sync-gsc/:brandProfileId', async (req, res) => {
+  const { brandProfileId } = req.params;
+  const { days = 28 } = req.body;
+  try {
+    // Get GSC credentials
+    const credRes = await pool.query(
+      'SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = $2 AND is_active = true LIMIT 1',
+      [brandProfileId, 'gsc']
+    );
+    if (!credRes.rows.length) return res.status(400).json({ error: 'GSC not connected for this brand' });
+    let creds = credRes.rows[0].credentials;
+
+    // Get brand domain from brand_profiles
+    const brandRes = await pool.query('SELECT brand_url, article_base_url FROM brand_profiles WHERE id = $1', [brandProfileId]);
+    const brand = brandRes.rows[0];
+    if (!brand) return res.status(404).json({ error: 'Brand not found' });
+
+    // Determine which GSC property to query
+    const brandDomain = (brand.article_base_url || brand.brand_url || '').replace(/https?:\/\//, '').replace(/\/.*/, '');
+    const verifiedSites = creds.verifiedSites || [];
+    const siteUrl = verifiedSites.find(s => s.includes(brandDomain))
+      || verifiedSites.find(s => s.includes('sc-domain:'))
+      || verifiedSites[0];
+
+    if (!siteUrl) return res.status(400).json({ error: `No verified GSC property found for ${brandDomain}. Verify site ownership in Google Search Console first.` });
+
+    // Refresh token if needed
+    let accessToken = creds.accessToken;
+    try {
+      // Try a test call — if it fails, refresh
+      const testRes = await fetch(`https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      if (testRes.status === 401 && creds.refreshToken) {
+        accessToken = await refreshGSCToken(creds.refreshToken);
+        // Update stored token
+        await pool.query(
+          'UPDATE publishing_channels SET credentials = credentials || $1 WHERE brand_profile_id = $2 AND channel = $3',
+          [JSON.stringify({ accessToken }), brandProfileId, 'gsc']
+        );
+      }
+    } catch(e) { console.log('[GSC] Token test error:', e.message); }
+
+    // Date range
+    const endDate = new Date().toISOString().split('T')[0];
+    const startDate = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
+
+    // Query GSC Search Analytics — by page, last N days
+    const gscRes = await fetch(
+      `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
+      {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          startDate, endDate,
+          dimensions: ['page'],
+          rowLimit: 500,
+          dataState: 'all'
+        })
+      }
+    );
+    const gscData = await gscRes.json();
+    if (gscData.error) throw new Error(gscData.error.message);
+
+    const rows = gscData.rows || [];
+    let synced = 0;
+
+    // Match GSC pages to content_analytics by URL or publishing_queue by title slug
+    for (const row of rows) {
+      const pageUrl = row.keys[0];
+      const clicks = Math.round(row.clicks || 0);
+      const impressions = Math.round(row.impressions || 0);
+      const ctr = parseFloat((row.ctr * 100).toFixed(2));
+      const position = parseFloat((row.position || 0).toFixed(1));
+
+      // Try to find matching content_id from publishing_queue by URL slug match
+      const urlSlug = pageUrl.replace(/\/$/, '').split('/').pop()?.replace(/\.html$/, '') || '';
+      const queueRes = await pool.query(
+        `SELECT content_id FROM publishing_queue WHERE brand_profile_id = $1 AND LOWER(REPLACE(REPLACE(title, ' ', '-'), ',', '')) LIKE $2 LIMIT 1`,
+        [brandProfileId, `%${urlSlug.slice(0, 20)}%`]
+      ).catch(() => ({ rows: [] }));
+
+      const contentId = queueRes.rows[0]?.content_id || `gsc_${Buffer.from(pageUrl).toString('base64').slice(0, 16)}`;
+
+      await pool.query(
+        `INSERT INTO content_analytics
+          (brand_profile_id, content_id, channel, post_id, impressions, clicks, ctr, engagement_rate,
+           reactions, comments, reposts, raw_data, published_at, synced_at)
+         VALUES ($1,$2,'gsc',$3,$4,$5,$6,$7,0,0,0,$8,NOW(),NOW())
+         ON CONFLICT (brand_profile_id, content_id, channel)
+         DO UPDATE SET impressions=$4, clicks=$5, ctr=$6, engagement_rate=$7,
+           raw_data=$8, synced_at=NOW()`,
+        [brandProfileId, contentId, pageUrl, impressions, clicks, ctr, position,
+         JSON.stringify({ pageUrl, clicks, impressions, ctr, position, startDate, endDate, siteUrl })]
+      );
+      synced++;
+    }
+
+    res.json({ success: true, synced, siteUrl, dateRange: { startDate, endDate }, totalRows: rows.length });
+  } catch(err) {
+    console.error('[GSC-SYNC]', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/gsc/status/:brandProfileId — check connection status + verified sites
+app.get('/api/gsc/status/:brandProfileId', async (req, res) => {
+  try {
+    const r = await pool.query(
+      'SELECT credentials, updated_at FROM publishing_channels WHERE brand_profile_id = $1 AND channel = $2 AND is_active = true',
+      [req.params.brandProfileId, 'gsc']
+    );
+    if (!r.rows.length) return res.json({ connected: false });
+    const creds = r.rows[0].credentials;
+    res.json({ connected: true, verifiedSites: creds.verifiedSites || [], connectedAt: creds.connectedAt, updatedAt: r.rows[0].updated_at });
+  } catch(e) {
+    res.status(500).json({ connected: false, error: e.message });
+  }
+});
+
 // ── Generate LinkedIn post copy preview ───────────────────────────────────────
 app.post('/api/publishing/generate-post-copy', async (req, res) => {
   const { title, headings, readMinutes, articleUrl } = req.body;
