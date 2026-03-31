@@ -1267,7 +1267,7 @@ app.post('/api/brand-settings/:brandProfileId/scrape-template', async (req, res)
           },
           backLink: {
             class: cls(/class="([^"]*(?:article-back|back-link)[^"]*)"/) || 'article-back',
-            text: (html.match(/class="[^"]*(?:article-back|back-link)[^"]*"[^>]*>([^<]+)</) || [])[1]?.trim() || 'Back',
+            text: (html.match(/class="[^"]*(?:article-back|back-link)[^"]*"[^>]*>([^<]+)</) || [])[1]?.trim() || 'Back to Articles',
             href: catalogUrl || '/',
           },
           cta: {
