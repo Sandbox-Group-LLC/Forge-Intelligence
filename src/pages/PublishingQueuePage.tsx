@@ -147,7 +147,7 @@ export default function PublishingQueuePage() {
   const [successMsg, setSuccessMsg] = useState('');
   const [contentPreview, setContentPreview] = useState<{ item: QueueItem; article: any; postCopy: Record<string, string> } | null>(null);
   const [exportModal, setExportModal] = useState<{ item: QueueItem; article: any } | null>(null);
-  const [brandSettings, setBrandSettings] = useState<Record<string, { article_base_url?: string }>>({});
+  const [brandSettings, setBrandSettings] = useState<Record<string, { article_base_url?: string; settings?: { siteTemplate?: any } }>>({});
   const [exportTab, setExportTab] = useState<'html' | 'markdown' | 'json' | 'link'>('html');
   const [copied, setCopied] = useState<string>('');
   const [publishLog, setPublishLog] = useState<Record<string, { channel: string; live_status: string; published_url?: string; last_synced_at?: string }[]>>({});
