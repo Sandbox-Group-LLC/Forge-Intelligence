@@ -1,6 +1,6 @@
 # Forge Intelligence — Master SSOT
 
-> **Last updated:** March 31, 2026 (end of session) | **Status:** Stage 8 LIVE — Pattern Extractor ✅ | Feedback Loop CLOSED ✅ | Brain→Generate→Publish→Analytics→Extract→Brain
+> **Last updated:** March 31, 2026 (end of session) | **Status:** Stage 8 COMPLETE — Full feedback loop live. All three agents read brain_patterns/brain_mistakes. Brain→Generate→Publish→Sync→Extract→Brain.
 > **This README is the single source of truth for all AI sessions, dev work, and project decisions.**
 > When starting a new AI session, read this file top to bottom before touching Always read the README.md first -- it is the SSOT.
 > Always read the current file and capture its SHA before writing - never write blind.
@@ -89,6 +89,7 @@ Medium stopped issuing new API integration tokens in early 2025. The publish bac
 | Pattern Dashboard | ✅ LIVE | Performance Dashboard bottom section — What's Working + What to Avoid columns, confidence bars, severity tags |
 | Pattern Extractor Agent | ✅ LIVE | `POST /api/analytics/extract-patterns/:brandId` — Claude Haiku analyzes content_analytics, writes to brain_patterns + brain_mistakes |
 | Feedback Loop | ✅ LIVE | Brain → Generate → Publish → Analytics Sync → Pattern Extraction → brain_patterns/brain_mistakes → Content Generator |
+| Agent Pattern Awareness | ✅ LIVE | All three agents read brain_patterns + brain_mistakes by brand_profile_id — Content Generator treats patterns as hard constraints, Context Hub injects prior patterns into brand analysis, Campaign Generator already wired |
 | TopBar page titles | ✅ LIVE | Path-based title resolution via `startsWith` — all pages show correct titles |
 | Ghost CMS publishing | ✅ LIVE | JWT auth, HTML via `?source=html`, hero image as `feature_image`, canonical URL, live sync |
 | Reverse publish | ✅ LIVE | Per-channel unpublish modal — delete from LinkedIn/X/Ghost/WordPress/Facebook + Forge or Forge only |
