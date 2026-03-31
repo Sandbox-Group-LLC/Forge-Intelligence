@@ -291,3 +291,106 @@
   color: var(--color-text-muted, #64748B);
   margin-top: 12px;
 }
+
+/* ── Topic Preflight Advisory ───────────────────────────────────────────────── */
+.geo-input {
+  padding: 10px 14px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  font-size: 0.875rem;
+  transition: border-color var(--transition-fast);
+}
+.geo-input:focus { outline: none; border-color: var(--color-accent); }
+.geo-input::placeholder { color: var(--color-text-muted); }
+
+.cg-preflight-checking {
+  font-size: 0.775rem;
+  color: var(--color-text-muted);
+  padding: 6px 0;
+  font-style: italic;
+}
+
+.cg-preflight {
+  margin-top: 8px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  animation: fadeIn 0.2s ease;
+}
+
+.cg-preflight-strong {
+  background: rgba(16, 185, 129, 0.06);
+  border-color: rgba(16, 185, 129, 0.25);
+}
+.cg-preflight-caution {
+  background: rgba(245, 158, 11, 0.06);
+  border-color: rgba(245, 158, 11, 0.25);
+}
+.cg-preflight-weak {
+  background: rgba(239, 68, 68, 0.06);
+  border-color: rgba(239, 68, 68, 0.25);
+}
+
+.cg-preflight-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cg-preflight-icon {
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+.cg-preflight-strong .cg-preflight-icon { color: #10B981; }
+.cg-preflight-caution .cg-preflight-icon { color: #F59E0B; }
+.cg-preflight-weak .cg-preflight-icon { color: #EF4444; }
+
+.cg-preflight-confidence {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.cg-preflight-reason {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.cg-preflight-reframe {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.cg-preflight-reframe-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+
+.cg-preflight-reframe-text {
+  font-size: 0.8125rem;
+  color: var(--color-accent);
+  cursor: pointer;
+  line-height: 1.4;
+  font-weight: 500;
+}
+.cg-preflight-reframe-text:hover { text-decoration: underline; }
+
+.cg-preflight-use-hint {
+  font-size: 0.7rem;
+  opacity: 0.6;
+  font-weight: 400;
+}
