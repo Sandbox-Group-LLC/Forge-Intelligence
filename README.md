@@ -1,6 +1,6 @@
 # Forge Intelligence — Master SSOT
 
-> **Last updated:** March 31, 2026 (end of session) | **Status:** Stage 8 COMPLETE — Full feedback loop live. All three agents read brain_patterns/brain_mistakes. Brain→Generate→Publish→Sync→Extract→Brain.
+> **Last updated:** March 31, 2026 | **Status:** Stage 8 COMPLETE + Topic Pre-flight ✅ | End-to-end publishing pipeline proven on sandbox-xm.com ✅
 > **This README is the single source of truth for all AI sessions, dev work, and project decisions.**
 > When starting a new AI session, read this file top to bottom before touching Always read the README.md first -- it is the SSOT.
 > Always read the current file and capture its SHA before writing - never write blind.
@@ -90,6 +90,8 @@ Medium stopped issuing new API integration tokens in early 2025. The publish bac
 | Pattern Extractor Agent | ✅ LIVE | `POST /api/analytics/extract-patterns/:brandId` — Claude Haiku analyzes content_analytics, writes to brain_patterns + brain_mistakes |
 | Feedback Loop | ✅ LIVE | Brain → Generate → Publish → Analytics Sync → Pattern Extraction → brain_patterns/brain_mistakes → Content Generator |
 | Agent Pattern Awareness | ✅ LIVE | All three agents read brain_patterns + brain_mistakes by brand_profile_id — Content Generator treats patterns as hard constraints, Context Hub injects prior patterns into brand analysis, Campaign Generator already wired |
+| Topic Pre-flight Check | ✅ LIVE | `POST /api/content/topic-check` — Claude Haiku evaluates user topic against brain_patterns/mistakes, returns strong/caution/weak signal, reason, and tappable reframe suggestion before generation |
+| Topic Prompt Field | ✅ LIVE | Optional topic direction on Content Generator and Campaign Generator — injects as hard directive into generation prompt while brain shapes voice/format |
 | TopBar page titles | ✅ LIVE | Path-based title resolution via `startsWith` — all pages show correct titles |
 | Ghost CMS publishing | ✅ LIVE | JWT auth, HTML via `?source=html`, hero image as `feature_image`, canonical URL, live sync |
 | Reverse publish | ✅ LIVE | Per-channel unpublish modal — delete from LinkedIn/X/Ghost/WordPress/Facebook + Forge or Forge only |
@@ -122,6 +124,16 @@ Medium stopped issuing new API integration tokens in early 2025. The publish bac
 - Ghost analytics sync (pull view/reaction counts into Performance tab)
 - Site template scraper: catalog sourceUrl sometimes not persisting — re-scrape with both URLs if back link shows `/` in Smart Export HTML
 - Reddit dev portal access still blocked
+
+### Proven Publishing Workflow — Sandbox-XM
+End-to-end pipeline validated March 31, 2026:
+1. **Brand Settings → Site Template** — paste article URL + catalog URL, hit Scrape. Forge extracts DOM class names from live site.
+2. **Content Generator** — select brain, enter topic direction, generate. 88% confidence article in one run.
+3. **Smart Export → HTML tab** — downloads article HTML using scraped site class names. Zero styling guesswork.
+4. **Replit agent** — receives the HTML file, writes it to the site. On-brand, no iteration needed.
+5. **Result** — https://sandbox-xm.forge-os.ai/articles/ai-in-event-tech.html — pixel-perfect to existing articles.
+
+This workflow scales to any number of articles without touching code. Applicable to Sandbox-GTM and any future brand with a self-hosted site.
 - Multi-brand stress test (#35) pending
 - NEON_DATABASE_URL: correct endpoint is ep-odd-waterfall-akyrdo6x (restored branch) — do not revert to ep-cool-firefly
 - Facebook and Reddit analytics sync (pull engagement into Performance tab)
