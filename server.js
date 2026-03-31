@@ -1322,6 +1322,57 @@ app.post('/api/brand-settings/:brandProfileId/scrape-template', async (req, res)
   }
 });
 
+// POST /api/content/topic-check — pre-flight check topic against brain_patterns/mistakes
+app.post('/api/content/topic-check', async (req, res) => {
+  const { brandProfileId, topic } = req.body;
+  if (!brandProfileId || !topic) return res.status(400).json({ error: 'brandProfileId and topic required' });
+  try {
+    const [pRes, mRes] = await Promise.all([
+      pool.query('SELECT pattern_type, description, confidence_score FROM brain_patterns WHERE brand_profile_id = $1 ORDER BY confidence_score DESC LIMIT 8', [brandProfileId]),
+      pool.query('SELECT mistake_type, description, severity FROM brain_mistakes WHERE brand_profile_id = $1 ORDER BY severity DESC LIMIT 5', [brandProfileId])
+    ]);
+
+    const patterns = pRes.rows;
+    const mistakes = mRes.rows;
+
+    // If no brain data yet return neutral
+    if (!patterns.length && !mistakes.length) {
+      return res.json({ success: true, signal: 'strong', confidence: 'No prior data', reason: 'No performance patterns have been extracted yet for this brand. Generate and publish content, then run Pattern Extraction to unlock topic intelligence.', reframe: null });
+    }
+
+    const prompt = `You are a content strategy advisor for a B2B brand. A user wants to write about this topic:
+"${topic}"
+
+Here is what has worked for this brand (brain patterns):
+${patterns.map(p => `- [${p.pattern_type}] ${p.description} (${Math.round((p.confidence_score||0)*100)}% confidence)`).join('\n') || 'None yet'}
+
+Here is what has underperformed (brain mistakes):
+${mistakes.map(m => `- [${m.severity} severity] ${m.mistake_type}: ${m.description}`).join('\n') || 'None yet'}
+
+Evaluate the user's topic against this brand's performance data and return ONLY a JSON object:
+{
+  "signal": "strong" | "caution" | "weak",
+  "confidence": "one short phrase like '92% alignment' or 'Low confidence'",
+  "reason": "2-3 sentences explaining why this topic will or won't perform based on the brain data",
+  "reframe": "If signal is caution or weak, suggest a better angle on the same general theme that aligns with brain patterns. If strong, return null."
+}`;
+
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 400, messages: [{ role: 'user', content: prompt }] })
+    });
+    const aiData = await aiRes.json();
+    const raw = aiData.content?.[0]?.text || '{}';
+    const clean = raw.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(clean);
+    res.json({ success: true, ...parsed });
+  } catch(e) {
+    console.error('[TOPIC-CHECK]', e.message);
+    res.json({ success: true, signal: 'strong', confidence: 'Check unavailable', reason: 'Could not evaluate topic against brain data right now. Proceed with generation.', reframe: null });
+  }
+});
+
 // GET /api/analytics/patterns/:brandProfileId
 app.get('/api/analytics/patterns/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
@@ -2482,7 +2533,7 @@ async function ensureGeneratedContentTable(brandProfileId) {
 }
 
 app.get('/api/content-generator/generate', async (req, res) => {
-  const { brandProfileId, enrichedBriefId, force } = req.query;
+  const { brandProfileId, enrichedBriefId, force, topicPrompt } = req.query;
   if (!brandProfileId) return res.status(400).json({ success: false, error: 'brandProfileId required' });
 
   // SSE headers
@@ -2542,7 +2593,7 @@ app.get('/api/content-generator/generate', async (req, res) => {
       return s.length > maxChars ? s.substring(0, maxChars) + '\n...[truncated for token budget]' : s;
     };
     const userPrompt = `Generate a long-form article using the following Brand Intelligence context.
-
+${topicPrompt ? `\nUSER TOPIC DIRECTION (write the article around this specific topic/angle — this overrides the enriched brief's default topic selection):\n"${topicPrompt}"\n` : ''}
 BRAND PROFILE:
 ${trimTo(profileData, 6000)}
 
@@ -2723,7 +2774,7 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
 
 // POST /api/campaign/plan — generate 8 angle profiles
 app.post('/api/campaign/plan', async (req, res) => {
-  const { brandProfileId } = req.body;
+  const { brandProfileId, topicPrompt } = req.body;
   if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
 
   try {
@@ -2759,7 +2810,7 @@ app.post('/api/campaign/plan', async (req, res) => {
     );
 
     const userPrompt = `Generate 8 campaign angle profiles for the following brand brain.
-
+${topicPrompt ? `\nUSER TOPIC DIRECTION: The user wants this campaign focused on: "${topicPrompt}". Build all 8 article angles around this theme. The brain patterns below should inform HOW you approach this topic, not WHETHER you cover it.\n` : ''}
 BRAND PROFILE:
 ${trimTo(profileData, 4000)}
 
