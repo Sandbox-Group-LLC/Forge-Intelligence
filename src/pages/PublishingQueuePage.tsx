@@ -390,7 +390,8 @@ export default function PublishingQueuePage() {
     const settingsData = await settingsRes.json();
     const article = artData.success ? artData.article : null;
     if (settingsData.success) {
-      setBrandSettings(prev => ({ ...prev, [item.brand_profile_id]: settingsData.settings }));
+      // Store full settings object including siteTemplate from scraper
+      setBrandSettings(prev => ({ ...prev, [item.brand_profile_id]: { ...settingsData.settings, settings: settingsData.settings.settings } }));
     }
     setExportTab('html');
     setCopied('');
@@ -423,30 +424,75 @@ export default function PublishingQueuePage() {
   const buildHTML = (article: any, item: QueueItem) => {
     const sections = article?.article_json?.sections || [];
     const canonical = buildExportUrl(item, article);
-    const meta = article?.article_json?.metaDescription || '';
+    const meta = (article?.article_json?.metaDescription || '').replace(/"/g, '&quot;');
+    const title = (item.title || '').replace(/"/g, '&quot;');
     const hero = article?.hero_image_url || '';
-    const body = sections.map((s: any) =>
-      `${s.heading ? `  <h2>${s.heading}</h2>` : ''}\n  <p>${(s.body || s.content || '').replace(/\n/g, '</p>\n  <p>')}</p>`
-    ).join('\n\n');
+    const wordCount = sections.reduce((acc: number, s: any) => acc + ((s.body || s.content || '').split(' ').length), 0);
+    const readMin = Math.max(1, Math.round(wordCount / 200));
+    const brandName = article?.brand_name || item.brand_name || '';
+
+    // Use scraped site template class names if available, otherwise generic
+    const tmpl = brandSettings[item.brand_profile_id]?.settings?.siteTemplate?.article;
+    const C = {
+      nav:          tmpl?.nav?.class || 'navbar',
+      heroSection:  tmpl?.hero?.sectionClass || 'article-hero',
+      eyebrow:      tmpl?.hero?.eyebrowClass || 'article-hero-eyebrow',
+      meta:         tmpl?.hero?.metaClass || 'article-meta',
+      imageWrap:    tmpl?.hero?.imageWrapClass || 'article-hero-image',
+      bodySection:  tmpl?.body?.sectionClass || 'article-body-section',
+      body:         tmpl?.body?.bodyClass || 'article-body',
+      backClass:    tmpl?.backLink?.class || 'article-back',
+      backText:     tmpl?.backLink?.text || 'Back',
+      backHref:     tmpl?.backLink?.href || '/',
+      cta:          tmpl?.cta?.class || 'article-cta-section',
+      footer:       tmpl?.footer?.class || 'site-footer',
+    };
+    const navHtml = tmpl?.nav?.linksHtml || '';
+
+    const bodyHtml = sections.map((s: any) => {
+      const heading = s.heading ? `    <h2>${s.heading}</h2>` : '';
+      const paras = (s.body || s.content || '').split('\n').filter(Boolean).map((p: string) => `    <p>${p}</p>`).join('\n');
+      return [heading, paras].filter(Boolean).join('\n');
+    }).join('\n\n');
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${item.title}</title>
+  <title>${title}</title>
   <meta name="description" content="${meta}" />
-  <meta property="og:title" content="${item.title}" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="${title}" />
   <meta property="og:description" content="${meta}" />
   <meta property="og:url" content="${canonical}" />
   ${hero ? `<meta property="og:image" content="${hero}" />` : ''}
   <link rel="canonical" href="${canonical}" />
 </head>
 <body>
-  <article>
+
+  <nav class="${C.nav}">
+    ${navHtml || `<!-- paste your site nav here -->`}
+  </nav>
+
+  <section class="${C.heroSection}">
+    <span class="${C.eyebrow}">${article?.article_json?.category || 'Thought Leadership'}</span>
     <h1>${item.title}</h1>
-    ${hero ? `<img src="${hero}" alt="${item.title}" style="width:100%;max-width:1200px;height:auto;" />` : ''}
-${body}
-  </article>
+    <p class="${C.meta}">By ${brandName}${readMin ? ` &mdash; ${readMin} min read` : ''}</p>
+    ${hero ? `<div class="${C.imageWrap}"><img src="${hero}" alt="${title}" /></div>` : ''}
+  </section>
+
+  <section class="${C.bodySection}">
+    <div class="${C.body}">
+      <a href="${C.backHref}" class="${C.backClass}">${C.backText}</a>
+${bodyHtml}
+    </div>
+  </section>
+
+  <footer class="${C.footer}">
+    <!-- paste your site footer here -->
+  </footer>
+
 </body>
 </html>`;
   };
