@@ -1,6 +1,6 @@
 # Forge Intelligence — Master SSOT
 
-> **Last updated:** March 30, 2026 (2:00 PM PDT) | **Status:** Stage 6 LIVE — Scheduling ✅ | Campaign Queue ✅ | UTM injection ✅ | OG meta ✅
+> **Last updated:** March 30, 2026 (end of session) | **Status:** Stage 6 LIVE — Smart Export ✅ | Brand Settings ✅ | Site Template Scraper ✅ | BYO Domain ✅
 > **This README is the single source of truth for all AI sessions, dev work, and project decisions.**
 > When starting a new AI session, read this file top to bottom before touching Always read the README.md first -- it is the SSOT.
 > Always read the current file and capture its SHA before writing - never write blind.
@@ -78,6 +78,13 @@ Medium stopped issuing new API integration tokens in early 2025. The publish bac
 | Medium publishing | ✅ LEGACY | Integration token auth — backend live, new tokens unavailable since early 2025 |
 | Mobile sidebar | ✅ LIVE | Auto-collapses on mobile, icon rail always visible, drawer expands with backdrop overlay |
 | Mobile layout | ✅ LIVE | `app-main` offset by 64px on mobile, hamburger hidden (chevron is sole toggle) |
+| Brand Settings | ✅ LIVE | `/brand-settings` — per-brand identity, BYO article base URL, logo URL, billing stub, danger zone |
+| BYO Domain (article_base_url) | ✅ LIVE | Per-brand `article_base_url` on `brand_profiles` — all publish routes, UTM links, canonical URLs use configured domain |
+| Site Template Scraper | ✅ LIVE | `POST /api/brand-settings/:id/scrape-template` — scrapes article + catalog page DOM class names, stores in `brand_profiles.settings.siteTemplate` |
+| Smart Export | ✅ LIVE | Publishing Queue download icon — HTML (site-template-aware), Markdown, JSON, UTM Link export per article |
+| Smart Export HTML | ✅ LIVE | Uses scraped class names, strips `[NEEDS CITATION]`/`[SME Hook]` annotations, converts `**bold**` → `<strong>`, correct OG meta + canonical |
+| Performance Dashboard | ✅ LIVE | `/performance` — Stage 7 eyebrow, geo-header pattern, KPI cards, 30-day trend, campaigns tab |
+| TopBar page titles | ✅ LIVE | Path-based title resolution via `startsWith` — all pages show correct titles |
 | Ghost CMS publishing | ✅ LIVE | JWT auth, HTML via `?source=html`, hero image as `feature_image`, canonical URL, live sync |
 | Reverse publish | ✅ LIVE | Per-channel unpublish modal — delete from LinkedIn/X/Ghost/WordPress/Facebook + Forge or Forge only |
 | Publishing Queue polish | ✅ LIVE | Status filter tabs removed, per-channel checkboxes in delete modal, chip colors accurate, DISTINCT ON dedup |
@@ -107,6 +114,7 @@ Medium stopped issuing new API integration tokens in early 2025. The publish bac
 - Multi-brand stress testing (second brand onboarded)
 - Reddit API access — developer portal locked down, investigating access path
 - Ghost analytics sync (pull view/reaction counts into Performance tab)
+- Site template scraper: catalog sourceUrl sometimes not persisting — re-scrape with both URLs if back link shows `/` in Smart Export HTML
 - Facebook and Reddit analytics sync (pull engagement into Performance tab)
 - Ghost CMS integration — publish ✅ LIVE, analytics pending
 
