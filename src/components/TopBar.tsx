@@ -41,9 +41,16 @@ const viewTitles: Record<string, string> = {
 };
 
 const pathTitles: Record<string, string> = {
-  '/geo-strategist': 'GEO Strategist',
-  '/authenticity-enricher': 'Authenticity Enricher',
-  '/content-generator': 'Content Generator',
+  '/app/geo-strategist':         'GEO Strategist',
+  '/app/authenticity-enricher':  'Authenticity Enricher',
+  '/app/content-generator':      'Content Generator',
+  '/app/campaign-generator':     'Campaign Generator',
+  '/app/compliance-gate':        'Compliance Gate',
+  '/app/integrations':           'Integrations',
+  '/app/publishing-queue':       'Publishing Queue',
+  '/app/performance':            'Performance Dashboard',
+  '/app/brand-settings':         'Brand Settings',
+  '/app/context-hub':            'New Analysis',
 };
 
 export function TopBar() {
@@ -59,7 +66,7 @@ export function TopBar() {
         >
           {icons.menu}
         </button>
-        <h1 className="topbar-title">{pathTitles[window.location.pathname] || viewTitles[currentView] || 'Forge Intelligence'}</h1>
+        <h1 className="topbar-title">{Object.entries(pathTitles).find(([k]) => window.location.pathname.startsWith(k))?.[1] || viewTitles[currentView] || 'Forge Intelligence'}</h1>
         {brandProfile && currentView === 'brand-profile' && (
           <span className="topbar-subtitle">
             {brandProfile.brandName} · v{brandProfile.version}
