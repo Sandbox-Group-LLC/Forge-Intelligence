@@ -1253,7 +1253,6 @@ return (
         </div>
       </div>
     )}
-    </>
 
     {/* ── Smart Export Modal ── */}
     {exportModal && (() => {
@@ -1324,5 +1323,6 @@ return (
         </div>
       );
     })()}
+    </>
   );
 }
