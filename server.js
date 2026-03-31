@@ -1263,7 +1263,7 @@ app.post('/api/brand-settings/:brandProfileId/scrape-template', async (req, res)
           },
           body: {
             sectionClass: cls(/<section[^>]*class="([^"]*(?:body-section|article-body-section)[^"]*)"/) || 'article-body-section',
-            bodyClass: (html.match(/class="((?:article-body|post-body|content-body)(?:[^-][^"]*)?)"[^>]*>/) || [])[1] || 'article-body',
+            bodyClass: (html.match(/class="((?:article-body|post-body|content-body)(?:[^"-]*)?)"/) || [])[1] || 'article-body',
           },
           backLink: {
             class: cls(/class="([^"]*(?:article-back|back-link)[^"]*)"/) || 'article-back',
