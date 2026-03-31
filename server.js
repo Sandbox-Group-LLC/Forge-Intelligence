@@ -565,6 +565,7 @@ async function initDB() {
 
     // Migration: add missing columns to content_analytics
     await pool.query(`ALTER TABLE content_analytics ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ`).catch(() => {});
+    await pool.query(`ALTER TABLE publishing_queue ADD COLUMN IF NOT EXISTS hero_image_url TEXT`).catch(() => {});
     await pool.query(`ALTER TABLE content_analytics ADD COLUMN IF NOT EXISTS reading_time INTEGER DEFAULT 0`).catch(() => {});
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_ca_unique ON content_analytics(brand_profile_id, content_id, channel)`).catch(() => {});
     await pool.query(`ALTER TABLE content_analytics ADD COLUMN IF NOT EXISTS positive_feedback INTEGER DEFAULT 0`).catch(() => {});
@@ -4614,7 +4615,7 @@ app.get('/api/analytics/dashboard/:brandProfileId', async (req, res) => {
               ca.comments, ca.reposts, ca.ctr, ca.engagement_rate,
               ca.reading_time, ca.positive_feedback, ca.negative_feedback,
               ca.synced_at AS published_at, ca.synced_at,
-              pl.published_url, pq.title, pq.hero_image_url
+              pl.published_url, pq.title
        FROM content_analytics ca
        LEFT JOIN LATERAL (
          SELECT published_url FROM publish_log
@@ -4650,7 +4651,7 @@ app.get('/api/analytics/dashboard/:brandProfileId', async (req, res) => {
               ca.comments, ca.reposts, ca.ctr, ca.engagement_rate,
               ca.reading_time, ca.positive_feedback, ca.negative_feedback,
               ca.synced_at AS published_at, ca.synced_at, ca.channel,
-              pl.published_url, pq.title, pq.hero_image_url
+              pl.published_url, pq.title
        FROM content_analytics ca
        LEFT JOIN LATERAL (
          SELECT published_url FROM publish_log
