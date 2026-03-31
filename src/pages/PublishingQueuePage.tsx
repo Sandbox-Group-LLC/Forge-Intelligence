@@ -454,7 +454,7 @@ export default function PublishingQueuePage() {
       body:         safeAttr(tmpl?.body?.bodyClass || 'article-body'),
       backClass:    safeAttr(tmpl?.backLink?.class || 'article-back'),
       backText:     (tmpl?.backLink?.text || 'Back to Articles').replace(/[<>]/g, ''),
-      backHref:     safeAttr(tmpl?.backLink?.href || '/'),
+      backHref:     safeAttr((tmpl?.backLink?.href && tmpl.backLink.href !== '/') ? tmpl.backLink.href : (catalogSrc || '/')),
       cta:          safeAttr(tmpl?.cta?.class || 'article-cta-section'),
       footer:       safeAttr(tmpl?.footer?.class || 'site-footer'),
     };
