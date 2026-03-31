@@ -13,6 +13,7 @@ interface PostRow {
   content_id: string; title: string; impressions: number; clicks: number;
   reactions: number; comments: number; reposts: number; ctr: number;
   engagement_rate: number; published_at: string; hero_image_url?: string; channel: string;
+  reading_time?: number; positive_feedback?: number; negative_feedback?: number;
 }
 interface DashboardData {
   totals: AnalyticsTotals; trend: TrendPoint[]; posts: PostRow[]; topPosts: PostRow[];
