@@ -199,22 +199,25 @@ function ContentGeneratorContent() {
       </div>
 
       {!isRunning && !article && (
-        <div className="geo-input-bar">
-          <div className="geo-select-wrap" style={{ flex: 1 }}>
-            <select className="geo-select" value={selectedBrainId} onChange={e => setSelectedBrainId(e.target.value)}>
-              <option value="">Select a Brain...</option>
-              {brains.map(b => <option key={b.id} value={b.id}>{b.brandName} — {b.brandUrl}</option>)}
-            </select>
-          </div>
-          {briefs.length > 0 && (
-            <div className="geo-select-wrap" style={{ flex: 1 }}>
-              <select className="geo-select" value={selectedBriefId} onChange={e => setSelectedBriefId(e.target.value)}>
-                <option value="">Latest Enriched Brief (default)</option>
-                {briefs.map(b => <option key={b.id} value={b.id}>{b.brandName} — {new Date(b.createdAt).toLocaleDateString()} (confidence: {b.confidenceScore})</option>)}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div className="geo-input-bar">
+            <div className="geo-select-wrap" style={{ flex: 1, minWidth: '220px' }}>
+              <select className="geo-select" value={selectedBrainId} onChange={e => setSelectedBrainId(e.target.value)}>
+                <option value="">Select a Brain...</option>
+                {brains.map(b => <option key={b.id} value={b.id}>{b.brandName} — {b.brandUrl}</option>)}
               </select>
             </div>
-          )}
-          <div style={{ width: '100%' }}>
+            {briefs.length > 0 && (
+              <div className="geo-select-wrap" style={{ flex: 1, minWidth: '220px' }}>
+                <select className="geo-select" value={selectedBriefId} onChange={e => setSelectedBriefId(e.target.value)}>
+                  <option value="">Latest Enriched Brief (default)</option>
+                  {briefs.map(b => <option key={b.id} value={b.id}>{b.brandName} — {new Date(b.createdAt).toLocaleDateString()} (confidence: {b.confidenceScore})</option>)}
+                </select>
+              </div>
+            )}
+          </div>
+          <div className="geo-input-bar">
+          <div style={{ flex: 1 }}>
             <input
               className="geo-input"
               placeholder="Optional: direct the topic — e.g. 'Why neuroscience matters for event ROI'"
@@ -247,6 +250,7 @@ function ContentGeneratorContent() {
           <button className="geo-run-btn" onClick={runGeneration} disabled={!selectedBrainId}>
             <FileText size={14} /> Generate Article
           </button>
+          </div>
         </div>
       )}
 
