@@ -1610,9 +1610,34 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
     const audienceSection = audienceNotes ? `\nAdditional audience context: ${audienceNotes}` : '';
     const strategicSection = strategicNotes ? `\nAdditional strategic context: ${strategicNotes}` : '';
 
+    // ── Inject Stage 8 patterns from prior runs if this brand has been analyzed before ──
+    let patternSection = '';
+    let mistakeSection = '';
+    try {
+      const existingBrand = await pool.query(
+        'SELECT id FROM brand_profiles WHERE brand_url = $1 ORDER BY version DESC LIMIT 1',
+        [brandUrl]
+      );
+      if (existingBrand.rows.length) {
+        const existingId = existingBrand.rows[0].id;
+        const [priorPatterns, priorMistakes] = await Promise.all([
+          pool.query('SELECT pattern_type, description, confidence_score FROM brain_patterns WHERE brand_profile_id = $1 ORDER BY confidence_score DESC LIMIT 5', [existingId]),
+          pool.query('SELECT mistake_type, description, severity FROM brain_mistakes WHERE brand_profile_id = $1 ORDER BY severity DESC LIMIT 3', [existingId])
+        ]);
+        if (priorPatterns.rows.length) {
+          patternSection = '\n\nPRIOR PERFORMANCE PATTERNS (from published content analytics — reinforce these in your analysis):\n' +
+            priorPatterns.rows.map(p => `- [${p.pattern_type}] ${p.description} (${Math.round((p.confidence_score||0)*100)}% confidence)`).join('\n');
+        }
+        if (priorMistakes.rows.length) {
+          mistakeSection = '\n\nCONTENT MISTAKES TO AVOID (from underperforming published content):\n' +
+            priorMistakes.rows.map(m => `- [${m.severity?.toUpperCase()} severity] ${m.mistake_type}: ${m.description}`).join('\n');
+        }
+      }
+    } catch(e) { console.log('[Context Hub] No prior patterns:', e.message); }
+
     const prompt = `You are the Forge Intelligence Context Agent — Stage 1 of an 8-stage Brand Intelligence platform.
 
-Analyze the brand at: ${brandUrl}${competitorSection}${icpSection}${marketSection}${audienceSection}${strategicSection}
+Analyze the brand at: ${brandUrl}${competitorSection}${icpSection}${marketSection}${audienceSection}${strategicSection}${patternSection}${mistakeSection}
 
 Return ONLY valid JSON (no markdown, no explanation):
 {
@@ -2475,8 +2500,8 @@ app.get('/api/content-generator/generate', async (req, res) => {
     // ── Brain-First: load all context ────────────────────────────────────────
     const [profileRes, patternsRes, mistakesRes] = await Promise.all([
       pool.query('SELECT * FROM brand_profiles WHERE id = $1', [brandProfileId]),
-      pool.query('SELECT pattern_type, success_rate, tags FROM patterns ORDER BY success_rate DESC LIMIT 10').catch(() => ({ rows: [] })),
-      pool.query('SELECT mistake_type, human_feedback FROM mistakes ORDER BY created_at DESC LIMIT 10').catch(() => ({ rows: [] }))
+      pool.query('SELECT pattern_type, description, confidence_score, tags FROM brain_patterns WHERE brand_profile_id = $1 ORDER BY confidence_score DESC LIMIT 8', [brandProfileId]).catch(() => ({ rows: [] })),
+      pool.query('SELECT mistake_type, description, severity FROM brain_mistakes WHERE brand_profile_id = $1 ORDER BY severity DESC, created_at DESC LIMIT 5', [brandProfileId]).catch(() => ({ rows: [] }))
     ]);
 
     if (!profileRes.rows.length) {
@@ -2527,11 +2552,13 @@ ${geoBrief ? trimTo(geoBrief, 4000) : 'Not available — infer topical strategy 
 ENRICHED BRIEF:
 ${enrichedBrief ? trimTo(enrichedBrief, 6000) : 'Not available — use brand profile voice and personas.'}
 
-BRAIN PATTERNS (what worked):
-${trimTo(patternsRes.rows, 2000)}
+BRAIN PATTERNS — WHAT WORKS FOR THIS BRAND (extracted from real published content analytics):
+${patternsRes.rows.length > 0 ? trimTo(patternsRes.rows, 2000) : 'No patterns extracted yet — generate strong content to seed future patterns.'}
 
-BRAIN MISTAKES (what to avoid):
-${trimTo(mistakesRes.rows, 2000)}
+BRAIN MISTAKES — WHAT TO AVOID FOR THIS BRAND (extracted from underperforming published content):
+${mistakesRes.rows.length > 0 ? trimTo(mistakesRes.rows, 1500) : 'No mistakes logged yet.'}
+
+CRITICAL: If brain patterns are present, your article MUST reinforce the proven angles and avoid the logged mistakes. These are real signals from published content performance — treat them as hard constraints on tone, angle, and format.
 
 Return ONLY valid JSON matching the specified output format. No markdown, no code fences, no commentary.`;
 
