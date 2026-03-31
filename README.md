@@ -1,6 +1,6 @@
 # Forge Intelligence — Master SSOT
 
-> **Last updated:** March 31, 2026 (end of session) | **Status:** Stage 7 COMPLETE — Ghost Analytics ✅ | Performance Dashboard ✅ | Smart Export ✅ | BYO Domain ✅
+> **Last updated:** March 31, 2026 (end of session) | **Status:** Stage 8 LIVE — Pattern Extractor ✅ | Feedback Loop CLOSED ✅ | Brain→Generate→Publish→Analytics→Extract→Brain
 > **This README is the single source of truth for all AI sessions, dev work, and project decisions.**
 > When starting a new AI session, read this file top to bottom before touching Always read the README.md first -- it is the SSOT.
 > Always read the current file and capture its SHA before writing - never write blind.
@@ -86,6 +86,9 @@ Medium stopped issuing new API integration tokens in early 2025. The publish bac
 | Performance Dashboard | ✅ LIVE | `/performance` — Stage 7 eyebrow, geo-header pattern, KPI cards, 30-day trend, campaigns tab |
 | Ghost Analytics Sync | ✅ LIVE | `POST /api/analytics/sync` with `channel=ghost` — queries Ghost Admin API directly, matches posts by title, stores clicks/reading_time/feedback in `content_analytics` |
 | Ghost Performance Tab | ✅ LIVE | Ghost tab in Performance Dashboard — clicks, reading time, positive/negative feedback per post |
+| Pattern Dashboard | ✅ LIVE | Performance Dashboard bottom section — What's Working + What to Avoid columns, confidence bars, severity tags |
+| Pattern Extractor Agent | ✅ LIVE | `POST /api/analytics/extract-patterns/:brandId` — Claude Haiku analyzes content_analytics, writes to brain_patterns + brain_mistakes |
+| Feedback Loop | ✅ LIVE | Brain → Generate → Publish → Analytics Sync → Pattern Extraction → brain_patterns/brain_mistakes → Content Generator |
 | TopBar page titles | ✅ LIVE | Path-based title resolution via `startsWith` — all pages show correct titles |
 | Ghost CMS publishing | ✅ LIVE | JWT auth, HTML via `?source=html`, hero image as `feature_image`, canonical URL, live sync |
 | Reverse publish | ✅ LIVE | Per-channel unpublish modal — delete from LinkedIn/X/Ghost/WordPress/Facebook + Forge or Forge only |
