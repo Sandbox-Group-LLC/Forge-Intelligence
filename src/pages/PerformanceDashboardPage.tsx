@@ -234,7 +234,7 @@ export default function PerformanceDashboardPage() {
         {/* ── Header ── */}
         <div className="geo-header">
           <div>
-            <div className="geo-eyebrow">Stage 6</div>
+            <div className="geo-eyebrow">Stage 7</div>
             <h1 className="geo-title">Performance Dashboard</h1>
             <p className="geo-description">Content analytics across all channels and campaigns.</p>
           </div>
