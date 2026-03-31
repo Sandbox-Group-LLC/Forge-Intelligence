@@ -1269,7 +1269,11 @@ return (
     {exportModal && (() => {
       const { item, article } = exportModal;
       const exportUrl = buildExportUrl(item, article);
-      const utmUrl = `${exportUrl}?utm_source=export&utm_medium=byo&utm_campaign=${item.campaign_id ? 'campaign' : 'standalone'}&utm_content=${(item.title||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,60)}`;
+      const campaignSlug = item.campaign_name
+        ? item.campaign_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 50)
+        : 'forge-content';
+      const contentSlug = (item.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 60);
+      const utmUrl = `${exportUrl}?utm_source=export&utm_medium=byo&utm_campaign=${campaignSlug}&utm_content=${contentSlug}`;
       const tabs: { key: 'html'|'markdown'|'json'|'link'; label: string }[] = [
         { key: 'html',     label: 'HTML' },
         { key: 'markdown', label: 'Markdown' },
