@@ -454,7 +454,14 @@ export default function PublishingQueuePage() {
       body:         safeAttr(tmpl?.body?.bodyClass || 'article-body'),
       backClass:    safeAttr(tmpl?.backLink?.class || 'article-back'),
       backText:     (tmpl?.backLink?.text || 'Back to Articles').replace(/[<>]/g, ''),
-      backHref:     safeAttr((tmpl?.backLink?.href && tmpl.backLink.href !== '/') ? tmpl.backLink.href : (catalogSrc || '/')),
+      backHref:     (() => {
+        const stored = tmpl?.backLink?.href;
+        if (stored && stored !== '/') return safeAttr(stored);
+        if (catalogSrc) return safeAttr(catalogSrc);
+        // Fall back to article_base_url (the articles index page)
+        const baseUrl = exportModal?.brandSettingsData?.article_base_url || brandSettings[item.brand_profile_id]?.article_base_url;
+        return safeAttr(baseUrl || '/');
+      })(),
       cta:          safeAttr(tmpl?.cta?.class || 'article-cta-section'),
       footer:       safeAttr(tmpl?.footer?.class || 'site-footer'),
     };
