@@ -565,6 +565,10 @@ async function initDB() {
 
     // Migration: add missing columns to content_analytics
     await pool.query(`ALTER TABLE content_analytics ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ`).catch(() => {});
+    await pool.query(`ALTER TABLE content_analytics ADD COLUMN IF NOT EXISTS reading_time INTEGER DEFAULT 0`).catch(() => {});
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_ca_unique ON content_analytics(brand_profile_id, content_id, channel)`).catch(() => {});
+    await pool.query(`ALTER TABLE content_analytics ADD COLUMN IF NOT EXISTS positive_feedback INTEGER DEFAULT 0`).catch(() => {});
+    await pool.query(`ALTER TABLE content_analytics ADD COLUMN IF NOT EXISTS negative_feedback INTEGER DEFAULT 0`).catch(() => {});
     // Migration: add missing columns to content_analytics
     await pool.query(`ALTER TABLE content_analytics ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ`).catch(() => {});
     // Migration: add missing columns to content_analytics
@@ -4247,6 +4251,18 @@ ${canonicalNote}`,
 // ══════════════════════════════════════════════════════════════════════════════
 
 // POST /api/analytics/sync/:brandProfileId — pull stats from channels, upsert into content_analytics
+// Ghost Admin JWT builder
+function buildGhostJWT(apiKey) {
+  const [keyId, secret] = apiKey.split(':');
+  const secretBytes = Buffer.from(secret, 'hex');
+  const now = Math.floor(Date.now() / 1000);
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT', kid: keyId })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({ iat: now, exp: now + 300, aud: '/admin/' })).toString('base64url');
+  const sigInput = `${header}.${payload}`;
+  const sig = require('crypto').createHmac('sha256', secretBytes).update(sigInput).digest('base64url');
+  return `${sigInput}.${sig}`;
+}
+
 app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
   const { channel = 'linkedin' } = req.body;
@@ -4470,6 +4486,63 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
           synced.push({ contentId: row.content_id, title: row.title, tweetId, impressions, reactions, comments, reposts, clicks });
         } catch(e) {
           errors.push({ contentId: row.content_id, error: e.message });
+        }
+      }
+    }
+
+    // Ghost sync
+    if (channel === 'ghost' || channel === 'all') {
+      const ghostApiKey = process.env.GHOST_ADMIN_API_KEY;
+      const ghostApiUrl = process.env.GHOST_API_URL;
+      if (!ghostApiKey || !ghostApiUrl) {
+        errors.push({ channel: 'ghost', error: 'GHOST credentials not configured' });
+      } else {
+        const safeId = brandProfileId.replace(/-/g, '_');
+        const logRes = await pool.query(
+          `SELECT pl.content_id, pl.response_data, pl.attempted_at AS published_at, ct.title
+           FROM publish_log pl
+           LEFT JOIN generated_content_${safeId} ct ON ct.id::text = pl.content_id
+           WHERE pl.brand_profile_id = $1 AND pl.channel = 'ghost' AND pl.live_status = 'live'
+           ORDER BY pl.attempted_at DESC`,
+          [brandProfileId]
+        ).catch(() => ({ rows: [] }));
+
+        for (const row of logRes.rows) {
+          try {
+            const ghostPostId = row.response_data?.ghostPostId || row.response_data?.id;
+            if (!ghostPostId) { errors.push({ contentId: row.content_id, error: 'no_ghost_post_id' }); continue; }
+
+            const jwt = buildGhostJWT(ghostApiKey);
+            const apiRes = await fetch(
+              `${ghostApiUrl}/ghost/api/admin/posts/${ghostPostId}/?include=count.clicks,count.positive_feedback,count.negative_feedback`,
+              { headers: { 'Authorization': `Ghost ${jwt}`, 'Accept-Version': 'v5.0' } }
+            );
+            if (!apiRes.ok) { errors.push({ contentId: row.content_id, error: `ghost_api_${apiRes.status}` }); continue; }
+
+            const apiData = await apiRes.json();
+            const post = apiData.posts?.[0] || apiData.post || apiData;
+            const count = post.count || {};
+            const clicks           = count.clicks || 0;
+            const positiveFeedback = count.positive_feedback || 0;
+            const negativeFeedback = count.negative_feedback || 0;
+            const readingTime      = post.reading_time || 0;
+            const publishedAt      = post.published_at || row.published_at;
+
+            await pool.query(
+              `INSERT INTO content_analytics
+                (brand_profile_id, content_id, channel, post_id, clicks, positive_feedback, negative_feedback,
+                 reading_time, impressions, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at)
+               VALUES ($1,$2,'ghost',$3,$4,$5,$6,$7,0,0,0,0,0,0,$8,$9,NOW())
+               ON CONFLICT (brand_profile_id, content_id, channel)
+               DO UPDATE SET clicks=$4, positive_feedback=$5, negative_feedback=$6,
+                 reading_time=$7, raw_data=$8, published_at=$9, synced_at=NOW()`,
+              [brandProfileId, row.content_id, ghostPostId, clicks, positiveFeedback,
+               negativeFeedback, readingTime, JSON.stringify({ count }), publishedAt]
+            );
+            synced.push({ contentId: row.content_id, channel: 'ghost', clicks, positiveFeedback, negativeFeedback, readingTime });
+          } catch(e) {
+            errors.push({ contentId: row.content_id, channel: 'ghost', error: e.message });
+          }
         }
       }
     }
