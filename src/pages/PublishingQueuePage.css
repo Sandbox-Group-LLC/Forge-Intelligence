@@ -978,3 +978,119 @@
   padding-left: 4px;
   font-variant-numeric: tabular-nums;
 }
+
+/* ── Smart Export Modal ─────────────────────────────────────────────────────── */
+.pq-export-modal {
+  max-width: 680px;
+  width: 100%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.pq-export-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-elevated);
+}
+
+.pq-export-tab {
+  padding: 10px 16px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  margin-bottom: -1px;
+}
+
+.pq-export-tab:hover { color: var(--color-text-primary); }
+.pq-export-tab.active {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+  font-weight: 600;
+}
+
+.pq-export-code-wrap {
+  flex: 1;
+  overflow: auto;
+  padding: 16px 20px;
+  background: var(--color-bg-base);
+}
+
+.pq-export-code {
+  margin: 0;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.7rem;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.pq-export-link-wrap {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pq-export-link-desc {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.pq-export-link-box {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.7rem;
+  padding: 14px 16px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-accent);
+  word-break: break-all;
+  line-height: 1.6;
+}
+
+.pq-export-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-top: 1px solid var(--color-border-subtle);
+  gap: 12px;
+  background: var(--color-bg-elevated);
+}
+
+.pq-export-base-url {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  font-family: monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.pq-export-copy-btn {
+  padding: 8px 20px;
+  background: var(--color-accent);
+  border: none;
+  border-radius: var(--radius-md);
+  color: #fff;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all var(--transition-normal);
+  min-width: 80px;
+}
+
+.pq-export-copy-btn:hover { opacity: 0.88; }
