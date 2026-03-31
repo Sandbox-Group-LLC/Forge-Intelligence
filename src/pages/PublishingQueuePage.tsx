@@ -39,6 +39,14 @@ const ExternalLink = () => (
     <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
   </svg>
 );
+const Download = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+    <polyline points="7 10 12 15 17 10"/>
+    <line x1="12" y1="15" x2="12" y2="3"/>
+  </svg>
+);
+
 const Eye = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
@@ -138,6 +146,9 @@ export default function PublishingQueuePage() {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [contentPreview, setContentPreview] = useState<{ item: QueueItem; article: any; postCopy: Record<string, string> } | null>(null);
+  const [exportModal, setExportModal] = useState<{ item: QueueItem; article: any } | null>(null);
+  const [exportTab, setExportTab] = useState<'html' | 'markdown' | 'json' | 'link'>('html');
+  const [copied, setCopied] = useState<string>('');
   const [publishLog, setPublishLog] = useState<Record<string, { channel: string; live_status: string; published_url?: string; last_synced_at?: string }[]>>({});
   const [syncing, setSyncing] = useState<string | null>(null);
   const [republishing, setRepublishing] = useState<string | null>(null); // "itemId:channel"
@@ -368,6 +379,90 @@ export default function PublishingQueuePage() {
     }
   };
 
+  const openExportModal = async (item: QueueItem) => {
+    const safeId = item.brand_profile_id.replace(/-/g, '_');
+    const artRes = await fetch(`/api/content/${safeId}/${item.content_id}`);
+    const artData = await artRes.json();
+    const article = artData.success ? artData.article : null;
+    setExportTab('html');
+    setCopied('');
+    setExportModal({ item, article });
+  };
+
+  const buildExportUrl = (item: QueueItem, article: any) => {
+    const brandSlug = (article?.brand_url || item.brand_url || 'brand').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
+    const articleSlug = (item.title || 'article').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    const base = `https://${window.location.hostname}/articles/${brandSlug}/${articleSlug}`;
+    return base;
+  };
+
+  const buildMarkdown = (article: any, item: QueueItem) => {
+    const sections = article?.article_json?.sections || [];
+    const lines: string[] = [`# ${item.title || 'Untitled'}`, ''];
+    if (article?.article_json?.metaDescription) {
+      lines.push(`> ${article.article_json.metaDescription}`, '');
+    }
+    for (const s of sections) {
+      if (s.heading) lines.push(`## ${s.heading}`, '');
+      if (s.body || s.content) lines.push(s.body || s.content, '');
+    }
+    return lines.join('\n');
+  };
+
+  const buildHTML = (article: any, item: QueueItem) => {
+    const sections = article?.article_json?.sections || [];
+    const canonical = buildExportUrl(item, article);
+    const meta = article?.article_json?.metaDescription || '';
+    const hero = article?.hero_image_url || '';
+    const body = sections.map((s: any) =>
+      `${s.heading ? `  <h2>${s.heading}</h2>` : ''}\n  <p>${(s.body || s.content || '').replace(/\n/g, '</p>\n  <p>')}</p>`
+    ).join('\n\n');
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${item.title}</title>
+  <meta name="description" content="${meta}" />
+  <meta property="og:title" content="${item.title}" />
+  <meta property="og:description" content="${meta}" />
+  <meta property="og:url" content="${canonical}" />
+  ${hero ? `<meta property="og:image" content="${hero}" />` : ''}
+  <link rel="canonical" href="${canonical}" />
+</head>
+<body>
+  <article>
+    <h1>${item.title}</h1>
+    ${hero ? `<img src="${hero}" alt="${item.title}" style="width:100%;max-width:1200px;height:auto;" />` : ''}
+${body}
+  </article>
+</body>
+</html>`;
+  };
+
+  const buildJSON = (article: any, item: QueueItem) => {
+    const sections = article?.article_json?.sections || [];
+    return JSON.stringify({
+      title: item.title,
+      metaDescription: article?.article_json?.metaDescription || '',
+      heroImageUrl: article?.hero_image_url || '',
+      canonicalUrl: buildExportUrl(item, article),
+      sections: sections.map((s: any) => ({
+        heading: s.heading || '',
+        body: s.body || s.content || '',
+        confidence: s.confidence || null,
+      })),
+      exportedAt: new Date().toISOString(),
+    }, null, 2);
+  };
+
+  const handleCopy = (text: string, key: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(key);
+      setTimeout(() => setCopied(''), 2500);
+    });
+  };
+
   const openUtmPreview = async (item: QueueItem) => {
     // Fetch UTM templates for this brand's connected channels
     const r = await fetch(`/api/publishing/channels/${item.brand_profile_id}`);
@@ -545,6 +640,9 @@ export default function PublishingQueuePage() {
                     </div>
                     <div className="pq-item-actions-top">
 
+                      <button className="pq-icon-btn" title="Smart Export" onClick={() => openExportModal(item)}>
+                        <Download />
+                      </button>
                       <button className="pq-icon-btn" title="Preview & Edit Post" onClick={() => openContentPreview(item)}>
                         <Eye />
                       </button>
@@ -733,6 +831,9 @@ return (
                     </div>
                     <div className="pq-item-actions-top">
 
+                      <button className="pq-icon-btn" title="Smart Export" onClick={() => openExportModal(item)}>
+                        <Download />
+                      </button>
                       <button className="pq-icon-btn" title="Preview & Edit Post" onClick={() => openContentPreview(item)}>
                         <Eye />
                       </button>
@@ -1153,5 +1254,75 @@ return (
       </div>
     )}
     </>
+
+    {/* ── Smart Export Modal ── */}
+    {exportModal && (() => {
+      const { item, article } = exportModal;
+      const exportUrl = buildExportUrl(item, article);
+      const utmUrl = `${exportUrl}?utm_source=export&utm_medium=byo&utm_campaign=${item.campaign_id ? 'campaign' : 'standalone'}&utm_content=${(item.title||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,60)}`;
+      const tabs: { key: 'html'|'markdown'|'json'|'link'; label: string }[] = [
+        { key: 'html',     label: 'HTML' },
+        { key: 'markdown', label: 'Markdown' },
+        { key: 'json',     label: 'JSON' },
+        { key: 'link',     label: 'UTM Link' },
+      ];
+      const exportContent = {
+        html:     buildHTML(article, item),
+        markdown: buildMarkdown(article, item),
+        json:     buildJSON(article, item),
+        link:     utmUrl,
+      }[exportTab];
+
+      return (
+        <div className="pq-modal-overlay" onClick={() => setExportModal(null)}>
+          <div className="pq-modal pq-export-modal" onClick={e => e.stopPropagation()}>
+            <div className="pq-modal-header">
+              <div>
+                <div className="pq-modal-title">Smart Export</div>
+                <div className="pq-modal-sub">{item.title}</div>
+              </div>
+              <button className="pq-modal-close" onClick={() => setExportModal(null)}><X /></button>
+            </div>
+
+            <div className="pq-export-tabs">
+              {tabs.map(t => (
+                <button
+                  key={t.key}
+                  className={`pq-export-tab ${exportTab === t.key ? 'active' : ''}`}
+                  onClick={() => { setExportTab(t.key); setCopied(''); }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {exportTab === 'link' ? (
+              <div className="pq-export-link-wrap">
+                <p className="pq-export-link-desc">
+                  Pre-built UTM URL using your configured Article Base URL. Drop into any CMS, email, or social post.
+                </p>
+                <div className="pq-export-link-box">{utmUrl}</div>
+              </div>
+            ) : (
+              <div className="pq-export-code-wrap">
+                <pre className="pq-export-code"><code>{exportContent}</code></pre>
+              </div>
+            )}
+
+            <div className="pq-export-footer">
+              <span className="pq-export-base-url">
+                Base: {exportUrl}
+              </span>
+              <button
+                className="pq-export-copy-btn"
+                onClick={() => handleCopy(exportContent, exportTab)}
+              >
+                {copied === exportTab ? '✓ Copied' : 'Copy'}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    })()}
   );
 }
