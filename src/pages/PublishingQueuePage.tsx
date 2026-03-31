@@ -450,7 +450,13 @@ export default function PublishingQueuePage() {
     const navHtml = tmpl?.nav?.linksHtml || '';
 
     const stripAnnotations = (text: string) =>
-      text.replace(/\[NEEDS CITATION[^\]]*\]/g, '').replace(/\[SME Hook[^\]]*\]/g, '').replace(/\[NEEDS CLIENT[^\]]*\]/g, '').trim();
+      text
+        .replace(/\[NEEDS CITATION[^\]]*\]/g, '')
+        .replace(/\[SME Hook[^\]]*\]/g, '')
+        .replace(/\[NEEDS CLIENT[^\]]*\]/g, '')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+        .trim();
 
     const bodyHtml = sections.map((s: any) => {
       const heading = s.heading ? `    <h2>${s.heading}</h2>` : '';
