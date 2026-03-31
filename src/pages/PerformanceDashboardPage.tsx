@@ -232,10 +232,11 @@ export default function PerformanceDashboardPage() {
     <AppShell>
       <div className="perf-page">
         {/* ── Header ── */}
-        <div className="perf-header">
-          <div className="perf-header-left">
-            <h1 className="perf-title">Performance</h1>
-            <p className="perf-subtitle">Content analytics across all channels</p>
+        <div className="geo-header">
+          <div>
+            <div className="geo-eyebrow">Stage 6</div>
+            <h1 className="geo-title">Performance Dashboard</h1>
+            <p className="geo-description">Content analytics across all channels and campaigns.</p>
           </div>
           <div className="perf-header-right">
             {brands.length > 1 && (
