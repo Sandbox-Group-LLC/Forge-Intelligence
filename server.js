@@ -226,6 +226,9 @@ async function initDB() {
       { name: 'brand_profile_id', def: "TEXT NOT NULL DEFAULT ''" },
       { name: 'geo_brief_id',     def: 'TEXT' },
       { name: 'brand_url',        def: "TEXT NOT NULL DEFAULT ''" },
+      { name: 'article_base_url', def: "TEXT DEFAULT ''" },
+      { name: 'logo_url',         def: "TEXT DEFAULT ''" },
+      { name: 'settings',         def: "JSONB NOT NULL DEFAULT '{}'" },
       { name: 'brand_name',       def: "TEXT NOT NULL DEFAULT ''" },
       { name: 'version',          def: 'INTEGER NOT NULL DEFAULT 1' },
       { name: 'confidence_score', def: 'INTEGER DEFAULT 0' },
@@ -1229,6 +1232,46 @@ app.get('/api/context-hub/brains/:id', async (req, res) => {
 });
 
 // -- GET /api/brand-profiles/list
+// GET /api/brand-settings/:brandProfileId
+app.get('/api/brand-settings/:brandProfileId', async (req, res) => {
+  const { brandProfileId } = req.params;
+  try {
+    const r = await pool.query(
+      'SELECT id, brand_name, brand_url, article_base_url, logo_url, settings, created_at, updated_at FROM brand_profiles WHERE id = $1',
+      [brandProfileId]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'Brand not found' });
+    res.json({ success: true, settings: r.rows[0] });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PATCH /api/brand-settings/:brandProfileId
+app.patch('/api/brand-settings/:brandProfileId', async (req, res) => {
+  const { brandProfileId } = req.params;
+  const { brandName, articleBaseUrl, logoUrl, settings } = req.body;
+  try {
+    const fields = [];
+    const vals = [];
+    let i = 1;
+    if (brandName      !== undefined) { fields.push(`brand_name = $${i++}`);        vals.push(brandName); }
+    if (articleBaseUrl !== undefined) { fields.push(`article_base_url = $${i++}`);  vals.push(articleBaseUrl); }
+    if (logoUrl        !== undefined) { fields.push(`logo_url = $${i++}`);           vals.push(logoUrl); }
+    if (settings       !== undefined) { fields.push(`settings = $${i++}`);           vals.push(JSON.stringify(settings)); }
+    if (!fields.length) return res.status(400).json({ error: 'Nothing to update' });
+    fields.push(`updated_at = NOW()`);
+    vals.push(brandProfileId);
+    await pool.query(
+      `UPDATE brand_profiles SET ${fields.join(', ')} WHERE id = $${i}`,
+      vals
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.get('/api/brand-profiles/list', async (req, res) => {
   try {
     const result = await pool.query(
@@ -3555,6 +3598,12 @@ app.post('/api/publishing/publish', async (req, res) => {
     const brand = brandRes.rows[0] || {};
     const brandSlug = (brand.brand_url || 'brand').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
     const articleSlug = (article.title || 'article').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    // Use BYO domain if configured, otherwise default to Forge article URL
+    const articleBaseDomain = process.env.BASE_DOMAIN || 'forgeintelligence.ai';
+    const articleBaseUrl = brand.article_base_url
+      ? brand.article_base_url.replace(/\/+$/, '')
+      : `https://${articleBaseDomain}/articles/${brandSlug}`;
+    const forgeArticleUrl = `${articleBaseUrl}/${articleSlug}`;
 
     // Load channel connections for this brand
     const channelsRes = await pool.query(
@@ -3725,8 +3774,7 @@ app.post('/api/publishing/publish', async (req, res) => {
             const articleJson = article.article_json || {};
             const sections = articleJson.sections || [];
             const postCopyOverride = (req.body.postCopy || {})[channel];
-            const liBaseDomain = process.env.BASE_DOMAIN || 'forgeintelligence.ai';
-            const articleUrl = `https://${liBaseDomain}/articles/${brandSlug}/${articleSlug}${utmString ? '?' + utmString : ''}`;
+            const articleUrl = `${forgeArticleUrl}${utmString ? '?' + utmString : ''}`;
 
             // Generate or use provided post copy
             let postText = postCopyOverride;
@@ -3796,8 +3844,7 @@ Output only the post text.` }]
 
           const articleJson = article.article_json || {};
           const sections = articleJson.sections || [];
-          const xBaseDomain = process.env.BASE_DOMAIN || 'forgeintelligence.ai';
-          const articleUrl = `https://${xBaseDomain}/articles/${brandSlug}/${articleSlug}`;
+          const articleUrl = forgeArticleUrl;
           const fullTweetUrl = `${articleUrl}${utmString ? '?' + utmString : ''}`;
           // Twitter counts any URL as 23 chars regardless of length — never slice the URL
           const excerpt = (sections[0]?.content || sections[0]?.body || article.title || '').slice(0, 250);
@@ -4003,7 +4050,7 @@ ${canonicalNote}`,
           const ghostJwt = `${header}.${payload}.${sig}`;
 
           const ghostBase = adminUrl.replace(/\/+$/, '');
-          const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
+          const articleUrl = forgeArticleUrl;
           // Use resolved utmParams (utm_source, utm_medium, utm_campaign, utm_content) not raw utmCtx tokens
           const utmUrl = utmParams && Object.keys(utmParams).length > 0
             ? articleUrl + '?' + buildUtmString(utmParams)
