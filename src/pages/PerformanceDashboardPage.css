@@ -1015,3 +1015,77 @@
 
 .perf-severity-high .perf-severity-tag { background: rgba(239,68,68,0.1); color: #EF4444; }
 .perf-severity-medium .perf-severity-tag { background: rgba(245,158,11,0.1); color: #F59E0B; }
+
+/* ── GSC Panel ──────────────────────────────────────────────────────────────── */
+.perf-gsc-panel { padding: 8px 0; }
+
+.perf-gsc-connect {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 48px 24px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  text-align: center;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.perf-gsc-icon { opacity: 0.9; }
+
+.perf-gsc-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.perf-gsc-desc {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+  margin: 0;
+  max-width: 380px;
+}
+
+.perf-gsc-btn {
+  padding: 10px 28px;
+  background: #4285F4;
+  border: none;
+  border-radius: var(--radius-md);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--transition-normal);
+}
+.perf-gsc-btn:hover:not(:disabled) { opacity: 0.88; }
+.perf-gsc-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.perf-gsc-connected { padding: 0; }
+
+.perf-gsc-connected-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.perf-gsc-connected-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-success);
+}
+
+.perf-gsc-sites {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  font-family: monospace;
+  flex: 1;
+}
