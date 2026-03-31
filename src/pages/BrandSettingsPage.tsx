@@ -28,7 +28,16 @@ export default function BrandSettingsPage() {
   const loadBrands = useCallback(async () => {
     try {
       const r = await fetch('/api/context-hub/brains').then(r => r.json());
-      const list = r.success ? (r.data || []) : [];
+      const raw = r.success ? (r.data || []) : [];
+      // Normalize camelCase API response to snake_case interface
+      const list = raw.map((b: any) => ({
+        id: b.id,
+        brand_name: b.brandName || b.brand_name || '',
+        brand_url:  b.brandUrl  || b.brand_url  || '',
+        article_base_url: b.article_base_url || '',
+        logo_url: b.logo_url || '',
+        settings: b.settings || {},
+      }));
       setBrands(list);
       if (list.length > 0 && !selected) setSelected(list[0].id);
     } finally {
