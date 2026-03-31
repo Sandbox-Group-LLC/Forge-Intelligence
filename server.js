@@ -3850,8 +3850,7 @@ app.get('/api/gsc/auth', (req, res) => {
   const brandProfileId = req.query.brandProfileId || 'system';
   const nonce = randomBytes(16).toString('hex');
   const state = `${brandProfileId}|${nonce}`;
-  const baseDomain = process.env.BASE_DOMAIN || 'forgeintelligence.ai';
-  const redirectUri = encodeURIComponent(`https://dev.${baseDomain}/auth/gsc/callback`);
+  const redirectUri = encodeURIComponent(process.env.GSC_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/gsc/callback');
   const scope = encodeURIComponent('https://www.googleapis.com/auth/webmasters.readonly');
   const url = `https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}&state=${encodeURIComponent(state)}&access_type=offline&prompt=consent`;
   res.json({ authUrl: url });
@@ -3865,8 +3864,7 @@ app.get('/auth/gsc/callback', async (req, res) => {
   try {
     const clientId     = process.env.GSC_CLIENT_ID;
     const clientSecret = process.env.GSC_CLIENT_SECRET;
-    const baseDomain   = process.env.BASE_DOMAIN || 'forgeintelligence.ai';
-    const redirectUri  = `https://dev.${baseDomain}/auth/gsc/callback`;
+    const redirectUri  = process.env.GSC_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/gsc/callback';
 
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
