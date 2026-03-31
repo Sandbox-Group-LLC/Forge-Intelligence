@@ -1349,7 +1349,6 @@ return (
         ? item.campaign_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 50)
         : 'forge-content';
       const contentSlug = (item.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 60);
-      const utmUrl = `${exportUrl}?utm_source=export&utm_medium=byo&utm_campaign=${campaignSlug}&utm_content=${contentSlug}`;
       const tabs: { key: 'html'|'markdown'|'json'|'link'; label: string }[] = [
         { key: 'html',     label: 'HTML' },
         { key: 'markdown', label: 'Markdown' },
