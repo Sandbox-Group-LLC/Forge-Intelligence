@@ -18,6 +18,11 @@ export default function BrandSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [scraping, setScraping] = useState(false);
+  const [scrapeSuccess, setScrapeSuccess] = useState(false);
+  const [scrapeError, setScrapeError] = useState('');
+  const [articleTemplateUrl, setArticleTemplateUrl] = useState('');
+  const [catalogTemplateUrl, setCatalogTemplateUrl] = useState('');
   const [error, setError] = useState('');
 
   const loadBrands = useCallback(async () => {
@@ -39,6 +44,31 @@ export default function BrandSettingsPage() {
       .then(r => r.json())
       .then(d => { if (d.success) setForm(d.settings); });
   }, [selected]);
+
+  const handleScrape = async () => {
+    if (!selected || !articleTemplateUrl) return;
+    setScraping(true);
+    setScrapeError('');
+    setScrapeSuccess(false);
+    try {
+      const r = await fetch(`/api/brand-settings/${selected}/scrape-template`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ articleUrl: articleTemplateUrl, catalogUrl: catalogTemplateUrl || undefined })
+      });
+      const d = await r.json();
+      if (d.success) {
+        setScrapeSuccess(true);
+        setTimeout(() => setScrapeSuccess(false), 4000);
+      } else {
+        setScrapeError(d.error || 'Scrape failed');
+      }
+    } catch {
+      setScrapeError('Network error — check the URLs and try again');
+    } finally {
+      setScraping(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!selected) return;
@@ -172,6 +202,47 @@ export default function BrandSettingsPage() {
                       {(form.article_base_url || `https://dev.forgeintelligence.ai/articles/${activeBrand?.brand_url?.replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase() || 'your-brand'}`)
                         .replace(/\/+$/, '')}/your-article-title
                     </code>
+                  </div>
+                </div>
+              </section>
+
+              {/* Site Template Scraper */}
+              <section className="bs-section">
+                <div className="bs-section-header">
+                  <h2 className="bs-section-title">Site Template</h2>
+                  <p className="bs-section-sub">Paste a sample article URL and your catalog page URL. Forge will scrape the DOM structure so Smart Export HTML matches your site exactly.</p>
+                </div>
+                <div className="bs-fields">
+                  <div className="bs-field">
+                    <label className="bs-label">Sample Article URL <span className="bs-optional">required</span></label>
+                    <input
+                      className="bs-input"
+                      value={articleTemplateUrl}
+                      onChange={e => setArticleTemplateUrl(e.target.value)}
+                      placeholder="https://yoursite.com/articles/any-article.html"
+                    />
+                    <span className="bs-field-hint">Any published article on your site. Forge extracts class names and DOM structure only — no styling is copied.</span>
+                  </div>
+                  <div className="bs-field">
+                    <label className="bs-label">Article Catalog URL <span className="bs-optional">optional</span></label>
+                    <input
+                      className="bs-input"
+                      value={catalogTemplateUrl}
+                      onChange={e => setCatalogTemplateUrl(e.target.value)}
+                      placeholder="https://yoursite.com/articles"
+                    />
+                    <span className="bs-field-hint">The page listing all your articles. Used to generate drop-in card HTML for Smart Export.</span>
+                  </div>
+                  <div className="bs-scrape-row">
+                    {scrapeError && <span className="bs-error">{scrapeError}</span>}
+                    {scrapeSuccess && <span className="bs-saved">✓ Template scraped — Smart Export HTML will now match your site structure</span>}
+                    <button
+                      className="bs-scrape-btn"
+                      onClick={handleScrape}
+                      disabled={scraping || !articleTemplateUrl}
+                    >
+                      {scraping ? 'Scraping...' : '⟳ Scrape Template'}
+                    </button>
                   </div>
                 </div>
               </section>
