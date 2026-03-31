@@ -1344,7 +1344,7 @@ app.patch('/api/brand-settings/:brandProfileId', async (req, res) => {
     if (brandName      !== undefined) { fields.push(`brand_name = $${i++}`);        vals.push(brandName); }
     if (articleBaseUrl !== undefined) { fields.push(`article_base_url = $${i++}`);  vals.push(articleBaseUrl); }
     if (logoUrl        !== undefined) { fields.push(`logo_url = $${i++}`);           vals.push(logoUrl); }
-    if (settings       !== undefined) { fields.push(`settings = $${i++}`);           vals.push(JSON.stringify(settings)); }
+    if (settings       !== undefined) { fields.push(`settings = COALESCE(settings, '{}'::jsonb) || $${i++}::jsonb`); vals.push(JSON.stringify(settings)); }
     if (!fields.length) return res.status(400).json({ error: 'Nothing to update' });
     fields.push(`updated_at = NOW()`);
     vals.push(brandProfileId);
