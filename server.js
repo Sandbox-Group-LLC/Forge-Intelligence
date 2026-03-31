@@ -4492,8 +4492,14 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
 
     // Ghost sync
     if (channel === 'ghost' || channel === 'all') {
-      const ghostApiKey = process.env.GHOST_ADMIN_API_KEY;
-      const ghostApiUrl = process.env.GHOST_API_URL;
+      // Prefer per-brand credentials from publishing_channels, fall back to env vars
+      const ghostCredRes = await pool.query(
+        `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'ghost' AND is_active = true LIMIT 1`,
+        [brandProfileId]
+      ).catch(() => ({ rows: [] }));
+      const ghostCreds  = ghostCredRes.rows[0]?.credentials || {};
+      const ghostApiKey = ghostCreds.adminApiKey || process.env.GHOST_ADMIN_API_KEY;
+      const ghostApiUrl = (ghostCreds.adminUrl || process.env.GHOST_API_URL || '').replace(/\/+$/, '');
       if (!ghostApiKey || !ghostApiUrl) {
         errors.push({ channel: 'ghost', error: 'GHOST credentials not configured' });
       } else {
@@ -4582,8 +4588,9 @@ app.get('/api/analytics/dashboard/:brandProfileId', async (req, res) => {
       `SELECT DISTINCT ON (ca.content_id)
               ca.content_id, ca.impressions, ca.clicks, ca.reactions,
               ca.comments, ca.reposts, ca.ctr, ca.engagement_rate,
+              ca.reading_time, ca.positive_feedback, ca.negative_feedback,
               ca.synced_at AS published_at, ca.synced_at,
-              pl.published_url, pq.title
+              pl.published_url, pq.title, pq.hero_image_url
        FROM content_analytics ca
        LEFT JOIN LATERAL (
          SELECT published_url FROM publish_log
@@ -4617,8 +4624,9 @@ app.get('/api/analytics/dashboard/:brandProfileId', async (req, res) => {
       `SELECT DISTINCT ON (ca.content_id)
               ca.content_id, ca.impressions, ca.clicks, ca.reactions,
               ca.comments, ca.reposts, ca.ctr, ca.engagement_rate,
+              ca.reading_time, ca.positive_feedback, ca.negative_feedback,
               ca.synced_at AS published_at, ca.synced_at, ca.channel,
-              pl.published_url, pq.title
+              pl.published_url, pq.title, pq.hero_image_url
        FROM content_analytics ca
        LEFT JOIN LATERAL (
          SELECT published_url FROM publish_log
