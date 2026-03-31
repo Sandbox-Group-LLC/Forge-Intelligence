@@ -13,6 +13,7 @@ import IntegrationsPage from './pages/IntegrationsPage';
 import PublishingQueuePage from './pages/PublishingQueuePage';
 import PublicArticlePage from './pages/PublicArticlePage';
 import PerformanceDashboardPage from './pages/PerformanceDashboardPage';
+import BrandSettingsPage from './pages/BrandSettingsPage';
 import './index.css';
 
 createRoot(document.getElementById('root')!).render(
@@ -36,6 +37,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/app/integrations" element={<AppProvider><IntegrationsPage /></AppProvider>} />
         <Route path="/app/publishing-queue" element={<AppProvider><PublishingQueuePage /></AppProvider>} />
         <Route path="/app/performance" element={<AppProvider><PerformanceDashboardPage /></AppProvider>} />
+        <Route path="/app/brand-settings" element={<AppProvider><BrandSettingsPage /></AppProvider>} />
 
         {/* Public article viewer — no AppProvider needed */}
         <Route path="/articles/:brandSlug/:articleSlug" element={<PublicArticlePage />} />
