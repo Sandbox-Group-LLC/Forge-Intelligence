@@ -129,14 +129,17 @@ async function initDB() {
     const cols = colResult.rows.map(r => r.column_name);
 
     const required = [
-      { name: 'brand_url',    def: "TEXT NOT NULL DEFAULT ''" },
-      { name: 'brand_name',   def: "TEXT NOT NULL DEFAULT ''" },
-      { name: 'version',      def: 'INTEGER NOT NULL DEFAULT 1' },
-      { name: 'is_active',    def: 'BOOLEAN NOT NULL DEFAULT true' },
-      { name: 'cache_status', def: "TEXT NOT NULL DEFAULT 'fresh'" },
-      { name: 'profile_data', def: "JSONB NOT NULL DEFAULT '{}'::jsonb" },
-      { name: 'created_at',   def: 'TIMESTAMPTZ NOT NULL DEFAULT NOW()' },
-      { name: 'updated_at',   def: 'TIMESTAMPTZ NOT NULL DEFAULT NOW()' },
+      { name: 'brand_url',        def: "TEXT NOT NULL DEFAULT ''" },
+      { name: 'brand_name',       def: "TEXT NOT NULL DEFAULT ''" },
+      { name: 'version',          def: 'INTEGER NOT NULL DEFAULT 1' },
+      { name: 'is_active',        def: 'BOOLEAN NOT NULL DEFAULT true' },
+      { name: 'cache_status',     def: "TEXT NOT NULL DEFAULT 'fresh'" },
+      { name: 'profile_data',     def: "JSONB NOT NULL DEFAULT '{}'::jsonb" },
+      { name: 'article_base_url', def: "TEXT DEFAULT ''" },
+      { name: 'logo_url',         def: "TEXT DEFAULT ''" },
+      { name: 'settings',         def: "JSONB NOT NULL DEFAULT '{}'" },
+      { name: 'created_at',       def: 'TIMESTAMPTZ NOT NULL DEFAULT NOW()' },
+      { name: 'updated_at',       def: 'TIMESTAMPTZ NOT NULL DEFAULT NOW()' },
     ];
     for (const col of required) {
       if (!cols.includes(col.name)) {
