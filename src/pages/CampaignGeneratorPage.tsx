@@ -86,6 +86,8 @@ function CampaignGeneratorContent() {
   const [selectedBrainId, setSelectedBrainId] = useState('');
   const [step, setStep] = useState<'setup' | 'plan' | 'generating' | 'complete'>('setup');
   const [isPlanning, setIsPlanning] = useState(false);
+  const [topicPrompt, setTopicPrompt] = useState('');
+  const [preflight, setPreflight] = useState<{ status: string; signal?: string; confidence?: string; reframe?: string; reason?: string }>({ status: 'idle' });
   const [plan, setPlan] = useState<{ campaign_name: string; topic_cluster: string; articles: AngleProfile[] } | null>(null);
   const [articleStatuses, setArticleStatuses] = useState<ArticleStatus[]>([]);
   const [activeArticle, setActiveArticle] = useState<any | null>(null);
@@ -99,13 +101,28 @@ function CampaignGeneratorContent() {
 
   const selectedBrain = brains.find(b => b.id === selectedBrainId);
 
+  const checkTopic = async () => {
+    if (!selectedBrainId || !topicPrompt.trim()) { setPreflight({ status: 'idle' }); return; }
+    setPreflight({ status: 'checking' });
+    try {
+      const r = await fetch('/api/content/topic-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brandProfileId: selectedBrainId, topic: topicPrompt })
+      });
+      const d = await r.json();
+      if (d.success) setPreflight({ status: 'done', ...d });
+      else setPreflight({ status: 'idle' });
+    } catch { setPreflight({ status: 'idle' }); }
+  };
+
   const handlePlan = async () => {
     if (!selectedBrainId) return;
     setIsPlanning(true); setError('');
     try {
       const res = await fetch('/api/campaign/plan', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brandProfileId: selectedBrainId }),
+        body: JSON.stringify({ brandProfileId: selectedBrainId, topicPrompt: topicPrompt.trim() || undefined }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
@@ -209,6 +226,36 @@ function CampaignGeneratorContent() {
                 <span className="camp-stat-label">{l}</span>
               </div>
             ))}
+          </div>
+          <div style={{ width: '100%' }}>
+            <input
+              className="geo-input"
+              placeholder="Optional: direct the campaign topic — e.g. 'Competitive intelligence for sales teams'"
+              value={topicPrompt}
+              onChange={e => { setTopicPrompt(e.target.value); setPreflight({ status: 'idle' }); }}
+              onBlur={checkTopic}
+              style={{ width: '100%', boxSizing: 'border-box', marginBottom: '8px' }}
+            />
+            {preflight.status === 'checking' && (
+              <div className="cg-preflight-checking">Brain checking topic alignment...</div>
+            )}
+            {preflight.status === 'done' && (
+              <div className={`cg-preflight cg-preflight-${preflight.signal}`}>
+                <div className="cg-preflight-header">
+                  <span className="cg-preflight-icon">{preflight.signal === 'strong' ? '✓' : preflight.signal === 'caution' ? '⚠' : '✕'}</span>
+                  <span className="cg-preflight-confidence">{preflight.confidence}</span>
+                </div>
+                <p className="cg-preflight-reason">{preflight.reason}</p>
+                {preflight.reframe && (
+                  <div className="cg-preflight-reframe">
+                    <span className="cg-preflight-reframe-label">Brain suggests instead:</span>
+                    <span className="cg-preflight-reframe-text" onClick={() => { setTopicPrompt(preflight.reframe || ''); setPreflight({ status: 'idle' }); }}>
+                      {preflight.reframe} <span className="cg-preflight-use-hint">tap to use</span>
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <button className="camp-plan-btn" onClick={handlePlan} disabled={isPlanning || !selectedBrainId}>
             {isPlanning ? <><span className="camp-spinner" />Planning angles...</> : <><Zap size={16} />Plan Campaign</>}
