@@ -331,3 +331,13 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* ── Brand dropdown ─────────────────────────────────────────────────────────── */
+.bs-brand-dropdown-wrap {
+  margin-bottom: 24px;
+}
+
+.bs-brand-dropdown {
+  width: 100%;
+  max-width: 320px;
+}
