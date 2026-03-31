@@ -91,6 +91,8 @@ function ContentGeneratorContent() {
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'article' | 'meta' | 'schema'>('article');
   const streamRef = useRef<EventSource | null>(null);
+  const [topicPrompt, setTopicPrompt] = useState('');
+  const [preflight, setPreflight] = useState<{ status: string; signal?: string; confidence?: string; reframe?: string; reason?: string }>({ status: 'idle' });
 
   useEffect(() => {
     fetch('/api/context-hub/brains').then(r => r.json()).then(d => { if (d.success) setBrains(d.data); });
@@ -103,6 +105,21 @@ function ContentGeneratorContent() {
       .then(d => { if (d.success) setBriefs(d.data); });
   }, [selectedBrainId]);
 
+  const checkTopic = async () => {
+    if (!selectedBrainId || !topicPrompt.trim()) { setPreflight({ status: 'idle' }); return; }
+    setPreflight({ status: 'checking' });
+    try {
+      const r = await fetch('/api/content/topic-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brandProfileId: selectedBrainId, topic: topicPrompt })
+      });
+      const d = await r.json();
+      if (d.success) setPreflight({ status: 'done', ...d });
+      else setPreflight({ status: 'idle' });
+    } catch { setPreflight({ status: 'idle' }); }
+  };
+
   const runGeneration = () => {
     if (!selectedBrainId) return;
     setIsRunning(true);
@@ -113,7 +130,7 @@ function ContentGeneratorContent() {
     setError('');
 
     const es = new EventSource(
-      `/api/content-generator/generate?brandProfileId=${selectedBrainId}${selectedBriefId ? `&enrichedBriefId=${selectedBriefId}` : ''}`
+      `/api/content-generator/generate?brandProfileId=${selectedBrainId}${selectedBriefId ? `&enrichedBriefId=${selectedBriefId}` : ''}${topicPrompt.trim() ? `&topicPrompt=${encodeURIComponent(topicPrompt.trim())}` : ''}`
     );
     streamRef.current = es;
 
@@ -197,6 +214,36 @@ function ContentGeneratorContent() {
               </select>
             </div>
           )}
+          <div style={{ width: '100%' }}>
+            <input
+              className="geo-input"
+              placeholder="Optional: direct the topic — e.g. 'Why neuroscience matters for event ROI'"
+              value={topicPrompt}
+              onChange={e => { setTopicPrompt(e.target.value); setPreflight({ status: 'idle' }); }}
+              onBlur={checkTopic}
+              style={{ width: '100%', boxSizing: 'border-box' }}
+            />
+            {preflight.status === 'checking' && (
+              <div className="cg-preflight-checking">Brain checking topic alignment...</div>
+            )}
+            {preflight.status === 'done' && (
+              <div className={`cg-preflight cg-preflight-${preflight.signal}`}>
+                <div className="cg-preflight-header">
+                  <span className="cg-preflight-icon">{preflight.signal === 'strong' ? '✓' : preflight.signal === 'caution' ? '⚠' : '✕'}</span>
+                  <span className="cg-preflight-confidence">{preflight.confidence}</span>
+                </div>
+                <p className="cg-preflight-reason">{preflight.reason}</p>
+                {preflight.reframe && (
+                  <div className="cg-preflight-reframe">
+                    <span className="cg-preflight-reframe-label">Brain suggests instead:</span>
+                    <span className="cg-preflight-reframe-text" onClick={() => { setTopicPrompt(preflight.reframe || ''); setPreflight({ status: 'idle' }); }}>
+                      {preflight.reframe} <span className="cg-preflight-use-hint">tap to use</span>
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           <button className="geo-run-btn" onClick={runGeneration} disabled={!selectedBrainId}>
             <FileText size={14} /> Generate Article
           </button>
