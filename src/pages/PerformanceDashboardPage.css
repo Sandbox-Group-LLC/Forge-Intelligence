@@ -1089,3 +1089,142 @@
   font-family: monospace;
   flex: 1;
 }
+
+/* ── Decay Monitoring ───────────────────────────────────────────────────────── */
+.perf-decay-section { margin-top: 8px; }
+
+.perf-decay-indicator {
+  display: inline-block;
+  width: 8px; height: 8px;
+  background: #EF4444;
+  border-radius: 50%;
+  margin-right: 8px;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.perf-decay-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px; height: 20px;
+  background: #EF4444;
+  color: #fff;
+  border-radius: 50%;
+  font-size: 0.7rem;
+  font-weight: 700;
+  margin-left: 8px;
+}
+
+.perf-decay-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.perf-decay-card {
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-elevated);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.perf-decay-high {
+  border-color: rgba(239,68,68,0.3);
+  background: rgba(239,68,68,0.04);
+}
+
+.perf-decay-medium {
+  border-color: rgba(245,158,11,0.3);
+  background: rgba(245,158,11,0.04);
+}
+
+.perf-decay-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.perf-decay-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  flex: 1;
+}
+
+.perf-decay-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.perf-decay-channel {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  padding: 2px 6px;
+  background: var(--color-bg-card);
+  border-radius: 3px;
+}
+
+.perf-decay-pct {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #EF4444;
+}
+
+.perf-decay-medium .perf-decay-pct { color: #F59E0B; }
+
+.perf-decay-stats {
+  display: flex;
+  gap: 16px;
+  font-size: 0.775rem;
+  color: var(--color-text-muted);
+}
+
+.perf-decay-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 6px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.perf-decay-recommend {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+  flex: 1;
+}
+
+.perf-decay-resolve {
+  padding: 5px 12px;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.perf-decay-resolve:hover {
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
