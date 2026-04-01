@@ -3814,8 +3814,7 @@ app.delete('/api/publishing/channels/:id', async (req, res) => {
 // ── LinkedIn OAuth2 Flow ──────────────────────────────────────────────────────
 app.get('/api/linkedin/auth', (req, res) => {
   const clientId = process.env.LINKEDIN_CLIENT_ID;
-  const liBaseDomain = process.env.BASE_DOMAIN || 'forgeintelligence.ai';
-  const redirectUri = encodeURIComponent(`https://${liBaseDomain}/auth/linkedin/callback`);
+  const redirectUri = encodeURIComponent(process.env.LINKEDIN_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/linkedin/callback');
   const brandProfileId = req.query.brandProfileId || 'system';
   const nonce = randomBytes(16).toString('hex');
   // Embed brandProfileId in state so callback knows which brand to save to
@@ -3832,8 +3831,7 @@ app.get('/auth/linkedin/callback', async (req, res) => {
   try {
     const clientId     = process.env.LINKEDIN_CLIENT_ID;
     const clientSecret = process.env.LINKEDIN_CLIENT_SECRET;
-    const liCallbackDomain = process.env.BASE_DOMAIN || 'forgeintelligence.ai';
-    const redirectUri  = `https://${liCallbackDomain}/auth/linkedin/callback`;
+    const redirectUri  = process.env.LINKEDIN_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/linkedin/callback';
     const tokenRes = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
