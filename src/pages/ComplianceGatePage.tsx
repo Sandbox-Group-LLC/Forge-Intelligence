@@ -312,12 +312,16 @@ export default function ComplianceGatePage() {
                     )}
 
                     {isEditing ? (
-                      <textarea
-                        className="comp-section-edit"
-                        value={editVal}
-                        onChange={e => setEditedSections(p => ({ ...p, [idx]: e.target.value }))}
-                        rows={8}
-                      />
+                      <div className="comp-edit-wrap">
+                        <div className="comp-edit-label">✏️ Edit section copy below — your changes replace this section before publishing</div>
+                        <textarea
+                          className="comp-section-edit"
+                          value={editVal}
+                          onChange={e => setEditedSections(p => ({ ...p, [idx]: e.target.value }))}
+                          placeholder="Edit the section text here. Address the flagged issue above, then submit below to approve and stage for publishing."
+                          rows={8}
+                        />
+                      </div>
                     ) : (
                       <p className="comp-section-body">{section.content}</p>
                     )}
