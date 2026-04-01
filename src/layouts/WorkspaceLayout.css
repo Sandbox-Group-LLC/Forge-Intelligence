@@ -21,7 +21,6 @@
   overflow-x: hidden;
   background: transparent;
   position: relative;
-  padding-bottom: 64px;
 }
 
 .view-container {
@@ -55,8 +54,11 @@
   }
 }
 
-/* ── Universal bottom breathing room ───────────────────────────────────────── */
-/* padding-bottom on overflow-y:auto collapses in some browsers — use margin on content instead */
-.app-content > * {
-  margin-bottom: 64px;
+/* ── Bottom breathing room — pseudo-element is the only reliable method in overflow containers ── */
+.app-content::after {
+  content: '';
+  display: block;
+  height: 64px;
+  width: 100%;
+  flex-shrink: 0;
 }
