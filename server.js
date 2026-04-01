@@ -135,8 +135,9 @@ async function initDB() {
       { name: 'is_active',        def: 'BOOLEAN NOT NULL DEFAULT true' },
       { name: 'cache_status',     def: "TEXT NOT NULL DEFAULT 'fresh'" },
       { name: 'profile_data',     def: "JSONB NOT NULL DEFAULT '{}'::jsonb" },
-      { name: 'article_base_url', def: "TEXT DEFAULT ''" },
-      { name: 'logo_url',         def: "TEXT DEFAULT ''" },
+      { name: 'article_base_url',    def: "TEXT DEFAULT ''" },
+      { name: 'article_url_suffix', def: "TEXT DEFAULT ''" },
+      { name: 'logo_url',           def: "TEXT DEFAULT ''" },
       { name: 'settings',         def: "JSONB NOT NULL DEFAULT '{}'" },
       { name: 'created_at',       def: 'TIMESTAMPTZ NOT NULL DEFAULT NOW()' },
       { name: 'updated_at',       def: 'TIMESTAMPTZ NOT NULL DEFAULT NOW()' },
@@ -229,8 +230,9 @@ async function initDB() {
       { name: 'brand_profile_id', def: "TEXT NOT NULL DEFAULT ''" },
       { name: 'geo_brief_id',     def: 'TEXT' },
       { name: 'brand_url',        def: "TEXT NOT NULL DEFAULT ''" },
-      { name: 'article_base_url', def: "TEXT DEFAULT ''" },
-      { name: 'logo_url',         def: "TEXT DEFAULT ''" },
+      { name: 'article_base_url',    def: "TEXT DEFAULT ''" },
+      { name: 'article_url_suffix', def: "TEXT DEFAULT ''" },
+      { name: 'logo_url',           def: "TEXT DEFAULT ''" },
       { name: 'settings',         def: "JSONB NOT NULL DEFAULT '{}'" },
       { name: 'brand_name',       def: "TEXT NOT NULL DEFAULT ''" },
       { name: 'version',          def: 'INTEGER NOT NULL DEFAULT 1' },
@@ -1504,7 +1506,7 @@ app.get('/api/brand-settings/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
   try {
     const r = await pool.query(
-      'SELECT id, brand_name, brand_url, article_base_url, logo_url, settings, created_at, updated_at FROM brand_profiles WHERE id = $1',
+      'SELECT id, brand_name, brand_url, article_base_url, article_url_suffix, logo_url, settings, created_at, updated_at FROM brand_profiles WHERE id = $1',
       [brandProfileId]
     );
     if (!r.rows.length) return res.status(404).json({ error: 'Brand not found' });
@@ -1517,13 +1519,14 @@ app.get('/api/brand-settings/:brandProfileId', async (req, res) => {
 // PATCH /api/brand-settings/:brandProfileId
 app.patch('/api/brand-settings/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
-  const { brandName, articleBaseUrl, logoUrl, settings } = req.body;
+  const { brandName, articleBaseUrl, articleUrlSuffix, logoUrl, settings } = req.body;
   try {
     const fields = [];
     const vals = [];
     let i = 1;
     if (brandName      !== undefined) { fields.push(`brand_name = $${i++}`);        vals.push(brandName); }
-    if (articleBaseUrl !== undefined) { fields.push(`article_base_url = $${i++}`);  vals.push(articleBaseUrl); }
+    if (articleBaseUrl    !== undefined) { fields.push(`article_base_url = $${i++}`);    vals.push(articleBaseUrl); }
+    if (articleUrlSuffix !== undefined) { fields.push(`article_url_suffix = $${i++}`); vals.push(articleUrlSuffix); }
     if (logoUrl        !== undefined) { fields.push(`logo_url = $${i++}`);           vals.push(logoUrl); }
     if (settings       !== undefined) { fields.push(`settings = COALESCE(settings, '{}'::jsonb) || $${i++}::jsonb`); vals.push(JSON.stringify(settings)); }
     if (!fields.length) return res.status(400).json({ error: 'Nothing to update' });
@@ -4100,7 +4103,8 @@ app.post('/api/publishing/publish', async (req, res) => {
     const articleBaseUrl = brand.article_base_url
       ? brand.article_base_url.replace(/\/+$/, '')
       : `https://${articleBaseDomain}/articles/${brandSlug}`;
-    const forgeArticleUrl = `${articleBaseUrl}/${articleSlug}`;
+    const articleUrlSuffix = (brand.article_url_suffix || '').trim();
+    const forgeArticleUrl = `${articleBaseUrl}/${articleSlug}${articleUrlSuffix}`;
 
     // Load channel connections for this brand
     const channelsRes = await pool.query(
