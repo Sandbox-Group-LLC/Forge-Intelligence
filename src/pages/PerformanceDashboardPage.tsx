@@ -337,7 +337,7 @@ export default function PerformanceDashboardPage() {
               >
                 {ch.label}
                 {!ch.live && <span className="perf-soon-badge">Soon</span>}
-                {ch.live && hasData && <span className="perf-data-dot" />}
+                {ch.live && (hasData || (ch.id === 'gsc' && gscStatus?.connected)) && <span className="perf-data-dot" />}
               </button>
             );
           })}
