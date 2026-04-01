@@ -3313,20 +3313,25 @@ app.post('/api/compliance/approve', async (req, res) => {
     if (editedSections && Array.isArray(editedSections)) {
       editedSections.forEach(edit => {
         if (articleJson.sections && articleJson.sections[edit.sectionIndex]) {
-          const orig = articleJson.sections[edit.sectionIndex].content;
+          const section = articleJson.sections[edit.sectionIndex];
+          const orig = section.body || section.content || '';
           if (orig !== edit.content) {
-            // Write to brain mistakes table
+            // Write to brain_mistakes (brand-scoped)
             pool.query(
-              `INSERT INTO mistakes (id, mistake_type, human_feedback, guardrail_created, severity, created_at)
-               VALUES (gen_random_uuid()::text, $1, $2, $3, $4, NOW())`,
+              `INSERT INTO brain_mistakes (brand_profile_id, mistake_type, description, human_feedback, severity)
+               VALUES ($1, 'human_edit', $2, $3, 'medium')`,
               [
-                'human_edit',
-                `Section "${articleJson.sections[edit.sectionIndex].heading}": original phrase edited by human reviewer`,
-                `Avoid phrasing: "${orig.substring(0, 200)}..." — prefer: "${edit.content.substring(0, 200)}..."`,
-                'yellow'
+                brandProfileId,
+                `Section "${section.heading || 'untitled'}": human reviewer edited content`,
+                `Avoid: "${orig.substring(0, 200)}" — prefer: "${edit.content.substring(0, 200)}"`
               ]
             ).catch(e => console.error('[COMPLIANCE] Mistake write error:', e.message));
-            articleJson.sections[edit.sectionIndex].content = edit.content;
+            // Update whichever field exists
+            if (section.body !== undefined) {
+              articleJson.sections[edit.sectionIndex].body = edit.content;
+            } else {
+              articleJson.sections[edit.sectionIndex].content = edit.content;
+            }
           }
         }
       });
