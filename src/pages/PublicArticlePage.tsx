@@ -108,9 +108,8 @@ export default function PublicArticlePage() {
       <nav className="pa-nav">
         <a href="https://forgeintelligence.ai" className="pa-nav-brand">
           <span className="pa-nav-logo">
-            <svg width="18" height="18" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="16" y="1.5" width="20" height="20" rx="3" transform="rotate(45 16 1.5)" fill="#3563FF"/>
-              <rect x="16" y="5.5" width="13" height="13" rx="2" transform="rotate(45 16 5.5)" fill="#0A0F1E" opacity="0.4"/>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3563FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2.7 10.3a2.41 2.41 0 0 0 0 3.41l7.59 7.59a2.41 2.41 0 0 0 3.41 0l7.59-7.59a2.41 2.41 0 0 0 0-3.41l-7.59-7.59a2.41 2.41 0 0 0-3.41 0Z"/>
             </svg>
           </span>
           <span className="pa-nav-name">Forge Intelligence</span>
@@ -181,7 +180,7 @@ export default function PublicArticlePage() {
                 {article.brandName && <span className="pa-footer-brand-name">{article.brandName}</span>}
                 <span className="pa-footer-powered">
                   Published with <a href="https://forgeintelligence.ai" className="pa-forge-link">
-                    <svg width="12" height="12" viewBox="0 0 32 32" fill="none" style={{display:'inline',verticalAlign:'middle',marginRight:'4px'}}><rect x="16" y="1.5" width="20" height="20" rx="3" transform="rotate(45 16 1.5)" fill="#3563FF"/></svg>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#3563FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{display:'inline',verticalAlign:'middle',marginRight:'4px'}}><path d="M2.7 10.3a2.41 2.41 0 0 0 0 3.41l7.59 7.59a2.41 2.41 0 0 0 3.41 0l7.59-7.59a2.41 2.41 0 0 0 0-3.41l-7.59-7.59a2.41 2.41 0 0 0-3.41 0Z"/></svg>
                     Forge Intelligence
                   </a>
                 </span>
