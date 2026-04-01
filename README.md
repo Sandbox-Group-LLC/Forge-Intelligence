@@ -1,6 +1,6 @@
 # Forge Intelligence — Master SSOT
 
-> **Last updated:** March 31, 2026 (evening) | **Status:** Stage 8 COMPLETE | GSC OAuth built ✅ | Article URL Suffix ✅ | Regenerate Image ✅ | UTM Custom URL ✅
+> **Last updated:** March 31, 2026 (end of day) | **Status:** Stage 8 COMPLETE | GEO Citation Tracker ✅ | Decay Monitoring ✅ | Full feedback loop closed across all agents
 > **This README is the single source of truth for all AI sessions, dev work, and project decisions.**
 > When starting a new AI session, read this file top to bottom before touching Always read the README.md first -- it is the SSOT.
 > Always read the current file and capture its SHA before writing - never write blind.
@@ -92,6 +92,17 @@ Medium stopped issuing new API integration tokens in early 2025. The publish bac
 | Agent Pattern Awareness | ✅ LIVE | All three agents read brain_patterns + brain_mistakes by brand_profile_id — Content Generator treats patterns as hard constraints, Context Hub injects prior patterns into brand analysis, Campaign Generator already wired |
 | Topic Pre-flight Check | ✅ LIVE | `POST /api/content/topic-check` — Claude Haiku evaluates user topic against brain_patterns/mistakes, returns strong/caution/weak signal, reason, and tappable reframe suggestion before generation |
 | Topic Prompt Field | ✅ LIVE | Optional topic direction on Content Generator and Campaign Generator — injects as hard directive into generation prompt while brain shapes voice/format |
+| GSC OAuth | ✅ LIVE | Per-brand Google Search Console OAuth — `/api/gsc/auth`, `/auth/gsc/callback`, stores refresh token, GSC tab in Performance Dashboard with Clicks/Impressions/CTR/Position KPIs |
+| Article URL Suffix | ✅ LIVE | Per-brand `article_url_suffix` in Brand Settings — `.html` for static sites, blank for clean URLs. Flows through publish routes, Smart Export, UTM links |
+| UTM Custom URL | ✅ LIVE | Smart Export UTM Link tab — paste live article URL to override Forge base URL, UTM params appended automatically, suffix-aware |
+| Regenerate Image | ✅ LIVE | Hover over hero image in Publishing Queue content preview — overlay button calls fal.ai Flux for new image, swaps in place without closing modal |
+| Brand Settings Dropdown | ✅ LIVE | Multi-brand selector dropdown in Brand Settings replacing left rail buttons |
+| Decay Monitoring Agent | ✅ LIVE | `decay_alerts` table, `runDecayMonitoring()` runs every 6h — flags 50%+ engagement drop from peak after 14+ days, Haiku generates recommended action, writes to `brain_mistakes`, Decay Alerts section in Performance Dashboard |
+| GEO Citation Tracker | ✅ LIVE | `geo_citations` table, `POST /api/geo/track/:brandId` queries Perplexity + ChatGPT with article topics, detects brand citations, identifies cited sections, writes citation patterns to `brain_patterns`, GEO tab in Performance Dashboard |
+| Compliance Gate Fixes | ✅ LIVE | Edit textarea now pre-populated with `section.body` (was empty), Accept Suggestion button replaces flagged text in one click, approve writes to brand-scoped `brain_mistakes` |
+| Full Review Mode | ⏸ SHELVED | Enterprise team workflow — commented out, re-enable when multi-person approval flow is needed |
+| Article Page Diamond Logo | ✅ LIVE | Public article nav uses stroke-only diamond SVG matching sidebar icon, with pulse animation |
+| Forge Intelligence Content Space | ✅ LIVE | `dev.forgeintelligence.ai/articles/forgeintelligence-ai/` — owned GEO surface, 2 articles published, sitemap at `/sitemap.xml`, submitted to GSC |
 | GSC OAuth | ✅ LIVE | `/api/gsc/auth` + `/auth/gsc/callback` — per-brand Google Search Console OAuth, stores refresh token in publishing_channels, GSC tab in Performance Dashboard |
 | GSC Sync | ✅ LIVE | `POST /api/analytics/sync-gsc/:brandId` — pulls clicks/impressions/CTR/position by page for last 28 days, matches to content_analytics |
 | Article URL Suffix | ✅ LIVE | Per-brand `article_url_suffix` in Brand Settings — append `.html` for static sites, blank for clean URLs. Flows through publish routes, Smart Export, UTM links |
@@ -129,6 +140,16 @@ Medium stopped issuing new API integration tokens in early 2025. The publish bac
 - Ghost analytics sync (pull view/reaction counts into Performance tab)
 - Site template scraper: catalog sourceUrl sometimes not persisting — re-scrape with both URLs if back link shows `/` in Smart Export HTML
 - Reddit dev portal access still blocked
+- GEO citation data will populate once Perplexity/ChatGPT index forgeintelligence.ai articles (48-72h lag)
+- GSC data for sandbox-xm.com pending Google indexing
+
+### GEO Content Strategy — Forge Intelligence
+Published articles at `dev.forgeintelligence.ai/articles/forgeintelligence-ai/`:
+1. AI-Powered Analyst Relations: Multi-Agent Orchestration for Enterprise AR Programs
+2. Multi-Agent Content Orchestration: The 8-Stage Pipeline Replacing Content Team Bottlenecks
+
+Sitemap: `https://dev.forgeintelligence.ai/sitemap.xml` — submitted to GSC.
+Strategy: publish Forge Intelligence articles through the full pipeline to build GEO citation surface on own domain. Topics: multi-agent content orchestration, B2B content intelligence, GEO vs SEO, brand voice AI.
 
 ### Proven Publishing Workflow — Sandbox-XM
 End-to-end pipeline validated March 31, 2026:
