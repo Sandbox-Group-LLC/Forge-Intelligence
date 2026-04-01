@@ -40,6 +40,7 @@ const CHANNELS = [
   { id: 'x', label: 'X (Twitter)', live: true },
   { id: 'ghost', label: 'Ghost', live: true },
   { id: 'gsc',   label: 'GSC',   live: true },
+  { id: 'geo',   label: 'GEO',   live: true },
   { id: 'wordpress', label: 'WordPress', live: false },
   { id: 'webflow', label: 'Webflow', live: false },
   { id: 'campaigns', label: 'Campaigns', live: true },
@@ -168,6 +169,9 @@ export default function PerformanceDashboardPage() {
   const [decayAlerts, setDecayAlerts] = useState<any[]>([]);
   const [decayLoaded, setDecayLoaded] = useState(false);
   const [gscSyncing, setGscSyncing] = useState(false);
+  const [geoCitations, setGeoCitations] = useState<any[]>([]);
+  const [geoTracking, setGeoTracking] = useState(false);
+  const [geoLoaded, setGeoLoaded] = useState(false);
   const [gscStatus, setGscStatus] = useState<{ connected: boolean; verifiedSites?: string[] } | null>(null);
   const [extractResult, setExtractResult] = useState<string>('');
   const [syncing, setSyncing] = useState(false);
@@ -197,6 +201,12 @@ export default function PerformanceDashboardPage() {
 
   useEffect(() => {
     if (activeChannel === 'campaigns') loadCampaigns();
+    if (activeChannel === 'geo' && brandProfileId) {
+      fetch(`/api/geo/citations/${brandProfileId}`)
+        .then(r => r.json())
+        .then(d => { if (d.success) { setGeoCitations(d.citations || []); setGeoLoaded(true); } })
+        .catch(() => setGeoLoaded(true));
+    }
     if (activeChannel === 'gsc' && brandProfileId) {
       fetch(`/api/gsc/status/${brandProfileId}`).then(r => r.json()).then(d => setGscStatus(d)).catch(() => {});
     }
@@ -229,6 +239,19 @@ export default function PerformanceDashboardPage() {
   }, [brandProfileId, activeChannel]);
 
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
+
+  const handleGeoTrack = async () => {
+    if (!brandProfileId) return;
+    setGeoTracking(true);
+    try {
+      const r = await fetch(`/api/geo/track/${brandProfileId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+      const d = await r.json();
+      if (d.success) {
+        const c = await fetch(`/api/geo/citations/${brandProfileId}`).then(r => r.json());
+        if (c.success) setGeoCitations(c.citations || []);
+      }
+    } finally { setGeoTracking(false); }
+  };
 
   const handleGscSync = async () => {
     if (!brandProfileId) return;
@@ -349,7 +372,7 @@ export default function PerformanceDashboardPage() {
               >
                 {ch.label}
                 {!ch.live && <span className="perf-soon-badge">Soon</span>}
-                {ch.live && (hasData || (ch.id === 'gsc' && gscStatus?.connected)) && <span className="perf-data-dot" />}
+                {ch.live && (hasData || (ch.id === 'gsc' && gscStatus?.connected) || (ch.id === 'geo' && geoCitations.some(c => c.citations > 0))) && <span className="perf-data-dot" />}
               </button>
             );
           })}
@@ -467,6 +490,87 @@ export default function PerformanceDashboardPage() {
             </div>}
 
             {/* ── Campaigns Tab ── */}
+            {activeChannel === 'geo' && (
+              <div className="perf-geo-panel">
+                <div className="perf-geo-header">
+                  <div>
+                    <h2 className="perf-section-title">GEO Citation Tracker</h2>
+                    <p className="perf-section-sub">Track when your content is cited by ChatGPT, Perplexity, and other AI engines. Results write to Brain patterns.</p>
+                  </div>
+                  <button className="perf-sync-btn perf-geo-track-btn" onClick={handleGeoTrack} disabled={geoTracking || !brandProfileId}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={geoTracking ? 'spin' : ''}>
+                      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
+                      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
+                    </svg>
+                    {geoTracking ? 'Tracking...' : 'Run Citation Check'}
+                  </button>
+                </div>
+
+                {geoTracking && (
+                  <div className="perf-geo-scanning">
+                    <div className="perf-geo-scan-dot" />
+                    <span>Querying AI engines — Perplexity, ChatGPT... this takes ~30 seconds</span>
+                  </div>
+                )}
+
+                {geoLoaded && geoCitations.length === 0 && !geoTracking && (
+                  <div className="perf-empty" style={{ marginTop: '24px' }}>
+                    <p>No citation data yet. Hit Run Citation Check to query AI engines for your published articles.</p>
+                  </div>
+                )}
+
+                {geoCitations.length > 0 && (
+                  <div className="perf-geo-results">
+                    {/* Summary KPIs */}
+                    <div className="perf-kpis" style={{ marginTop: '16px' }}>
+                      {[
+                        { label: 'Total Checks', value: geoCitations.reduce((a,c) => a + c.totalChecks, 0).toString(), sub: 'Queries across all engines' },
+                        { label: 'Citations Found', value: geoCitations.reduce((a,c) => a + c.citations, 0).toString(), sub: 'Times your content was cited' },
+                        { label: 'Citation Rate', value: `${Math.round(geoCitations.reduce((a,c) => a + c.citations,0) / Math.max(1, geoCitations.reduce((a,c) => a + c.totalChecks,0)) * 100)}%`, sub: 'Across all engines' },
+                        { label: 'Articles Cited', value: [...new Set(geoCitations.filter(c => c.citations > 0).map(c => c.content_id))].length.toString(), sub: 'Unique articles referenced' },
+                      ].map(kpi => (
+                        <div key={kpi.label} className="perf-kpi-card">
+                          <div className="perf-kpi-top"><span className="perf-kpi-label">{kpi.label}</span></div>
+                          <div className="perf-kpi-value">{kpi.value}</div>
+                          <div className="perf-kpi-sub">{kpi.sub}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Citation table */}
+                    <div className="perf-section" style={{ marginTop: '24px' }}>
+                      <div className="perf-table-wrap">
+                        <table className="perf-table">
+                          <thead><tr>
+                            <th>Article</th>
+                            <th>Engine</th>
+                            <th className="num">Checks</th>
+                            <th className="num">Citations</th>
+                            <th>Cited Section</th>
+                          </tr></thead>
+                          <tbody>
+                            {geoCitations.map((c, i) => (
+                              <tr key={i} className={c.citations > 0 ? 'perf-geo-cited-row' : ''}>
+                                <td className="perf-title-cell"><span className="perf-post-title">{c.title}</span></td>
+                                <td><span className={`perf-geo-engine perf-geo-engine-${c.engine}`}>{c.engine}</span></td>
+                                <td className="num">{c.totalChecks}</td>
+                                <td className="num">
+                                  {c.citations > 0
+                                    ? <span className="perf-geo-cited">✓ {c.citations}</span>
+                                    : <span className="perf-geo-notcited">—</span>}
+                                </td>
+                                <td className="perf-geo-section">{c.citedSections?.[0] || '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {activeChannel === 'gsc' && (
               <div className="perf-gsc-panel">
                 {!gscStatus?.connected ? (
