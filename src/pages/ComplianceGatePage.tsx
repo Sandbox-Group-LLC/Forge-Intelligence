@@ -53,7 +53,7 @@ interface ComplianceReport {
 const MODES: { id: ReviewMode; label: string; sub: string; icon: string; color: string }[] = [
   { id: 'auto-ship', label: 'Auto-Ship', sub: 'AI self-critique passes → publishes automatically. Human notified only.', icon: '⚡', color: '#14B8A6' },
   { id: 'approve-to-ship', label: 'Approve-to-Ship', sub: 'Review yellows & reds. One-click approve on greens. Standard workflow.', icon: '✓', color: '#3563FF' },
-  { id: 'full-review', label: 'Full Review', sub: 'Every section routes to named approver. Full audit log written to Brain.', icon: '🔒', color: '#F5B942' },
+  // { id: 'full-review', label: 'Full Review', sub: 'Every section routes to named approver. Full audit log written to Brain.', icon: '🔒', color: '#F5B942' }, // Enterprise — re-enable when team workflow is needed
 ];
 
 const tierColor = (tier: string) => tier === 'green' ? '#22C55E' : tier === 'yellow' ? '#F5B942' : '#EF4444';
