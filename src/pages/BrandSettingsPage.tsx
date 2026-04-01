@@ -7,6 +7,7 @@ interface BrandSettings {
   brand_name: string;
   brand_url: string;
   article_base_url: string;
+  article_url_suffix: string;
   logo_url: string;
   settings: Record<string, any>;
 }
@@ -90,6 +91,7 @@ export default function BrandSettingsPage() {
         body: JSON.stringify({
           brandName: form.brand_name,
           articleBaseUrl: form.article_base_url,
+          articleUrlSuffix: form.article_url_suffix,
           logoUrl: form.logo_url,
         })
       });
@@ -204,11 +206,23 @@ export default function BrandSettingsPage() {
                       Set this to your own domain and Forge will build all article URLs, UTM links, and canonical tags using it.
                     </span>
                   </div>
+                  <div className="bs-field">
+                    <label className="bs-label">Article URL Suffix <span className="bs-optional">optional</span></label>
+                    <input
+                      className="bs-input"
+                      value={form.article_url_suffix || ''}
+                      onChange={e => set('article_url_suffix', e.target.value)}
+                      placeholder=".html"
+                      style={{ maxWidth: '160px' }}
+                    />
+                    <span className="bs-field-hint">Append to every article URL — use <code>.html</code> for static sites. Leave blank for clean URLs (Ghost, WordPress, Webflow).</span>
+                  </div>
+
                   <div className="bs-url-preview">
                     <span className="bs-url-preview-label">Article URL preview</span>
                     <code className="bs-url-preview-value">
                       {(form.article_base_url || `https://dev.forgeintelligence.ai/articles/${activeBrand?.brand_url?.replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase() || 'your-brand'}`)
-                        .replace(/\/+$/, '')}/your-article-title
+                        .replace(/\/+$/, '')}/your-article-title{form.article_url_suffix || ''}
                     </code>
                   </div>
                 </div>
