@@ -1,6 +1,7 @@
 /* PerformanceDashboardPage.css — tokens mapped to actual index.css vars */
 
 .perf-page {
+  padding-bottom: 64px;
   display: flex;
   flex-direction: column;
   gap: 40px;
