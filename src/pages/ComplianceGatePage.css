@@ -364,3 +364,26 @@
 }
 .comp-spinner    { width: 16px; height: 16px; }
 .comp-spinner-sm { width: 12px; height: 12px; }
+
+/* ── Edit label ─────────────────────────────────────────────────────────────── */
+.comp-edit-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.comp-edit-label {
+  font-size: 0.775rem;
+  font-weight: 600;
+  color: var(--color-accent);
+  padding: 6px 10px;
+  background: var(--color-accent-muted);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  border: 1px solid rgba(53,99,255,0.2);
+  border-bottom: none;
+}
+
+.comp-edit-wrap .comp-section-edit {
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  margin-top: 0;
+}
