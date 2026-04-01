@@ -1228,3 +1228,76 @@
   border-color: var(--color-success);
   color: var(--color-success);
 }
+
+/* ── GEO Citation Tracker ───────────────────────────────────────────────────── */
+.perf-geo-panel { padding: 8px 0; }
+
+.perf-geo-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.perf-geo-track-btn {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  background: rgba(53,99,255,0.12);
+  border: 1px solid rgba(53,99,255,0.3);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+.perf-geo-track-btn:hover:not(:disabled) {
+  background: rgba(53,99,255,0.2);
+}
+
+.perf-geo-scanning {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.perf-geo-scan-dot {
+  width: 8px; height: 8px;
+  background: var(--color-accent);
+  border-radius: 50%;
+  animation: pulse 1s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.perf-geo-engine {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.perf-geo-engine-perplexity { background: rgba(34,197,94,0.12); color: #22C55E; }
+.perf-geo-engine-chatgpt    { background: rgba(16,185,129,0.12); color: #10B981; }
+.perf-geo-engine-gemini     { background: rgba(251,191,36,0.12); color: #FBBF24; }
+
+.perf-geo-cited-row td { background: rgba(53,99,255,0.04); }
+
+.perf-geo-cited {
+  color: #10B981;
+  font-weight: 700;
+}
+
+.perf-geo-notcited {
+  color: var(--color-text-muted);
+}
+
+.perf-geo-section {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
