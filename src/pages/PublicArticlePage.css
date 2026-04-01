@@ -27,7 +27,16 @@
   text-decoration: none;
   color: #fff;
 }
-.pa-nav-logo { font-size: 18px; }
+.pa-nav-logo {
+  display: flex;
+  align-items: center;
+  animation: diamondPulse 3s ease-in-out infinite;
+}
+
+@keyframes diamondPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.75; transform: scale(0.92); }
+}
 .pa-nav-name {
   font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
   font-size: 15px;
