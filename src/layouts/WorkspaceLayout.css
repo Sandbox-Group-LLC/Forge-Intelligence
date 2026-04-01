@@ -54,3 +54,9 @@
     padding: 20px 16px 80px;
   }
 }
+
+/* ── Universal bottom breathing room ───────────────────────────────────────── */
+/* padding-bottom on overflow-y:auto collapses in some browsers — use margin on content instead */
+.app-content > * {
+  margin-bottom: 64px;
+}
