@@ -1132,7 +1132,26 @@ return (
                 {/* Left: article preview */}
                 <div className="pq-preview-article">
                   {heroImageUrl ? (
-                    <img src={heroImageUrl} alt={item.title} className="pq-preview-hero" />
+                    <div className="pq-preview-hero-wrap">
+                      <img src={heroImageUrl} alt={item.title} className="pq-preview-hero" />
+                      <button
+                        className="pq-regen-image-overlay-btn"
+                        onClick={async () => {
+                          const r = await fetch(`/api/content/regenerate-image/${item.content_id}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ brandProfileId: item.brand_profile_id })
+                          });
+                          const d = await r.json();
+                          if (d.imageUrl) {
+                            setContentPreview(prev => prev ? {
+                              ...prev,
+                              article: { ...prev.article, hero_image_url: d.imageUrl }
+                            } : null);
+                          }
+                        }}
+                      >↺ Regenerate Image</button>
+                    </div>
                   ) : (
                     <div className="pq-preview-no-image">
                       <span>No hero image generated</span>
