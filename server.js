@@ -323,6 +323,23 @@ async function initDB() {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )`);
     await pool.query(`CREATE INDEX IF NOT EXISTS brain_patterns_brand_idx ON brain_patterns(brand_profile_id)`);
+    // GEO Citations table
+    await pool.query(`CREATE TABLE IF NOT EXISTS geo_citations (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      brand_profile_id TEXT NOT NULL,
+      content_id TEXT NOT NULL,
+      engine TEXT NOT NULL,
+      query TEXT NOT NULL,
+      is_cited BOOLEAN DEFAULT false,
+      cited_url TEXT,
+      cited_section TEXT,
+      response_snippet TEXT,
+      raw_citations JSONB DEFAULT '[]',
+      checked_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(brand_profile_id, content_id, engine, query)
+    )`).catch(() => {});
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_geo_citations_brand ON geo_citations(brand_profile_id, is_cited)`).catch(() => {});
+
     // Decay monitoring table
     await pool.query(`CREATE TABLE IF NOT EXISTS decay_alerts (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -5325,6 +5342,212 @@ async function runScheduledPublishes() {
     console.error('[SCHEDULER] Poll error:', err.message);
   }
 }
+
+
+// ── GEO Citation Tracker ──────────────────────────────────────────────────────
+
+// DB table for citations
+// Created in initDB — added below to migration
+
+// POST /api/geo/track/:brandProfileId — run citation check across AI engines
+app.post('/api/geo/track/:brandProfileId', async (req, res) => {
+  const { brandProfileId } = req.params;
+  const { contentId } = req.body; // optional — check specific article, else all recent
+
+  try {
+    const brandRes = await pool.query('SELECT * FROM brand_profiles WHERE id = $1', [brandProfileId]);
+    if (!brandRes.rows.length) return res.status(404).json({ error: 'Brand not found' });
+    const brand = brandRes.rows[0];
+    const brandDomain = (brand.article_base_url || brand.brand_url || '').replace(/https?:\/\//, '').replace(/\/.*/, '');
+    const brandName = brand.brand_name || brand.brand_url;
+
+    // Get articles to check
+    const safeId = brandProfileId.replace(/-/g, '_');
+    const artQuery = contentId
+      ? `SELECT id, title, article_json FROM generated_content_${safeId} WHERE id = $1`
+      : `SELECT id, title, article_json FROM generated_content_${safeId} ORDER BY created_at DESC LIMIT 10`;
+    const artParams = contentId ? [contentId] : [];
+    const articlesRes = await pool.query(artQuery, artParams).catch(() => ({ rows: [] }));
+
+    const results = [];
+
+    for (const article of articlesRes.rows) {
+      const sections = article.article_json?.sections || [];
+      const title = article.title || 'Untitled';
+
+      // Build probe questions from article title + section headings
+      const headings = sections.map(s => s.heading).filter(Boolean).slice(0, 4);
+      const probeQuestions = [
+        title,
+        ...headings.map(h => `${h} for ${brandName}`),
+        `What is ${brandName}?`,
+        `${brandName} ${title.split(':')[0]}`
+      ].slice(0, 5);
+
+      for (const question of probeQuestions) {
+        // ── Perplexity Sonar ──────────────────────────────────────────────────
+        try {
+          if (process.env.PERPLEXITY_API_KEY) {
+            const pRes = await fetch('https://api.perplexity.ai/chat/completions', {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: 'sonar',
+                messages: [{ role: 'user', content: question }],
+                max_tokens: 400
+              })
+            });
+            const pData = await pRes.json();
+            const pText = pData.choices?.[0]?.message?.content || '';
+            const citations = pData.citations || [];
+
+            const isCited = citations.some(c => c.includes(brandDomain)) ||
+              pText.toLowerCase().includes(brandDomain.toLowerCase());
+
+            // Find which section was likely quoted
+            let citedSection = null;
+            if (isCited) {
+              for (const s of sections) {
+                const body = (s.body || s.content || '').toLowerCase();
+                const words = pText.toLowerCase().split(' ');
+                const matches = words.filter(w => w.length > 6 && body.includes(w)).length;
+                if (matches > 3) { citedSection = s.heading; break; }
+              }
+            }
+
+            await pool.query(
+              `INSERT INTO geo_citations
+                (brand_profile_id, content_id, engine, query, is_cited, cited_url, cited_section, response_snippet, raw_citations, checked_at)
+               VALUES ($1,$2,'perplexity',$3,$4,$5,$6,$7,$8,NOW())
+               ON CONFLICT (brand_profile_id, content_id, engine, query)
+               DO UPDATE SET is_cited=$4, cited_url=$5, cited_section=$6, response_snippet=$7, raw_citations=$8, checked_at=NOW()`,
+              [brandProfileId, article.id, question, isCited,
+               citations.find(c => c.includes(brandDomain)) || null,
+               citedSection,
+               pText.slice(0, 300),
+               JSON.stringify(citations)]
+            ).catch(() => {});
+
+            results.push({ engine: 'perplexity', question, isCited, citedSection });
+          }
+        } catch(e) { console.error('[GEO-PERPLEXITY]', e.message); }
+
+        // ── OpenAI GPT-4o with web search ────────────────────────────────────
+        try {
+          if (process.env.OPENAI_API_KEY) {
+            const oRes = await fetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: 'gpt-4o-search-preview',
+                messages: [{ role: 'user', content: question }],
+                max_tokens: 400
+              })
+            });
+            const oData = await oRes.json();
+            const oText = oData.choices?.[0]?.message?.content || '';
+            const annotations = oData.choices?.[0]?.message?.annotations || [];
+            const urlCitations = annotations.filter(a => a.type === 'url_citation').map(a => a.url_citation?.url || '');
+
+            const isCited = urlCitations.some(u => u.includes(brandDomain)) ||
+              oText.toLowerCase().includes(brandDomain.toLowerCase());
+
+            let citedSection = null;
+            if (isCited) {
+              for (const s of sections) {
+                const body = (s.body || s.content || '').toLowerCase();
+                const words = oText.toLowerCase().split(' ');
+                const matches = words.filter(w => w.length > 6 && body.includes(w)).length;
+                if (matches > 3) { citedSection = s.heading; break; }
+              }
+            }
+
+            await pool.query(
+              `INSERT INTO geo_citations
+                (brand_profile_id, content_id, engine, query, is_cited, cited_url, cited_section, response_snippet, raw_citations, checked_at)
+               VALUES ($1,$2,'chatgpt',$3,$4,$5,$6,$7,$8,NOW())
+               ON CONFLICT (brand_profile_id, content_id, engine, query)
+               DO UPDATE SET is_cited=$4, cited_url=$5, cited_section=$6, response_snippet=$7, raw_citations=$8, checked_at=NOW()`,
+              [brandProfileId, article.id, question, isCited,
+               urlCitations.find(u => u.includes(brandDomain)) || null,
+               citedSection,
+               oText.slice(0, 300),
+               JSON.stringify(urlCitations)]
+            ).catch(() => {});
+
+            results.push({ engine: 'chatgpt', question, isCited, citedSection });
+          }
+        } catch(e) { console.error('[GEO-OPENAI]', e.message); }
+
+        // Rate limit — don't hammer APIs
+        await new Promise(r => setTimeout(r, 500));
+      }
+
+      // Write citation patterns to brain
+      const citedCount = results.filter(r => r.isCited).length;
+      if (citedCount > 0) {
+        const citedSections = [...new Set(results.filter(r => r.citedSection).map(r => r.citedSection))];
+        await pool.query(
+          `INSERT INTO brain_patterns (brand_profile_id, pattern_type, description, confidence_score, tags)
+           VALUES ($1, 'geo_citation', $2, $3, $4)
+           ON CONFLICT DO NOTHING`,
+          [brandProfileId,
+           `"${title}" cited by AI engines${citedSections.length ? ` — sections: ${citedSections.join(', ')}` : ''}`,
+           Math.min(1, citedCount / (probeQuestions.length * 2)),
+           JSON.stringify(['geo', 'citation', 'ai-visibility'])]
+        ).catch(() => {});
+      }
+    }
+
+    const citedTotal = results.filter(r => r.isCited).length;
+    res.json({ success: true, checked: results.length, cited: citedTotal, results });
+  } catch(e) {
+    console.error('[GEO-TRACK]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /api/geo/citations/:brandProfileId — get all citation results
+app.get('/api/geo/citations/:brandProfileId', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT gc.*, pq.title as queue_title
+       FROM geo_citations gc
+       LEFT JOIN publishing_queue pq ON pq.content_id = gc.content_id
+       WHERE gc.brand_profile_id = $1
+       ORDER BY gc.checked_at DESC`,
+      [req.params.brandProfileId]
+    );
+
+    // Aggregate by content_id + engine
+    const summary = {};
+    for (const row of r.rows) {
+      const key = `${row.content_id}__${row.engine}`;
+      if (!summary[key]) {
+        summary[key] = {
+          content_id: row.content_id,
+          title: row.queue_title || row.content_id,
+          engine: row.engine,
+          totalChecks: 0,
+          citations: 0,
+          citedSections: [],
+          lastChecked: row.checked_at,
+          citedUrls: []
+        };
+      }
+      summary[key].totalChecks++;
+      if (row.is_cited) {
+        summary[key].citations++;
+        if (row.cited_section) summary[key].citedSections.push(row.cited_section);
+        if (row.cited_url) summary[key].citedUrls.push(row.cited_url);
+      }
+    }
+
+    res.json({ success: true, citations: Object.values(summary), raw: r.rows });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
 
 // ── Decay Monitoring Agent ───────────────────────────────────────────────────
 async function runDecayMonitoring() {
