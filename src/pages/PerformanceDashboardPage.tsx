@@ -387,7 +387,7 @@ export default function PerformanceDashboardPage() {
         ) : (
           <>
             {/* ── KPI Cards ── */}
-            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && <div className="perf-kpis">
+            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && activeChannel !== 'geo' && <div className="perf-kpis">
               {[
                 { label: 'Impressions', value: fmt(data?.totals?.impressions || 0), sub: 'Total views', icon: 'eye', spark: true },
                 { label: 'Link Clicks', value: fmt(data?.totals?.clicks || 0), sub: `${data?.totals?.avgCtr || '0'}% avg CTR`, icon: 'click', spark: false },
@@ -409,7 +409,7 @@ export default function PerformanceDashboardPage() {
             </div>}
 
             {/* ── 30-Day Trend ── */}
-            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && <div className="perf-section">
+            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && activeChannel !== 'geo' && <div className="perf-section">
               <div className="perf-section-header">
                 <h2 className="perf-section-title">30-Day Impressions</h2>
                 {(data?.trend?.length ?? 0) > 0 && (
@@ -422,7 +422,7 @@ export default function PerformanceDashboardPage() {
             </div>}
 
             {/* ── Posts Table ── */}
-            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && <div className="perf-section">
+            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && activeChannel !== 'geo' && <div className="perf-section">
               <div className="perf-section-header">
                 <h2 className="perf-section-title">Published Posts</h2>
                 <span className="perf-section-meta">{data?.posts?.length || 0} tracked</span>
