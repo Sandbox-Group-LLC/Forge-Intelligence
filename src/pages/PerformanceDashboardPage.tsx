@@ -165,6 +165,8 @@ export default function PerformanceDashboardPage() {
   const [patterns, setPatterns] = useState<any[]>([]);
   const [mistakes, setMistakes] = useState<any[]>([]);
   const [extracting, setExtracting] = useState(false);
+  const [decayAlerts, setDecayAlerts] = useState<any[]>([]);
+  const [decayLoaded, setDecayLoaded] = useState(false);
   const [gscSyncing, setGscSyncing] = useState(false);
   const [gscStatus, setGscStatus] = useState<{ connected: boolean; verifiedSites?: string[] } | null>(null);
   const [extractResult, setExtractResult] = useState<string>('');
@@ -199,6 +201,10 @@ export default function PerformanceDashboardPage() {
       fetch(`/api/gsc/status/${brandProfileId}`).then(r => r.json()).then(d => setGscStatus(d)).catch(() => {});
     }
     if (brandProfileId) {
+      fetch(`/api/analytics/decay/${brandProfileId}`)
+        .then(r => r.json())
+        .then(d => { if (d.success) { setDecayAlerts(d.alerts || []); setDecayLoaded(true); } })
+        .catch(() => {});
       fetch(`/api/analytics/patterns/${brandProfileId}`)
         .then(r => r.json())
         .then(d => { if (d.success) { setPatterns(d.patterns || []); setMistakes(d.mistakes || []); } })
@@ -242,6 +248,12 @@ export default function PerformanceDashboardPage() {
     const r = await fetch(`/api/gsc/auth?brandProfileId=${brandProfileId}`);
     const d = await r.json();
     if (d.authUrl) window.location.href = d.authUrl;
+  };
+
+  const resolveDecay = async (contentId: string) => {
+    if (!brandProfileId) return;
+    await fetch(`/api/analytics/decay/${brandProfileId}/resolve/${contentId}`, { method: 'POST' });
+    setDecayAlerts(prev => prev.filter(a => a.content_id !== contentId));
   };
 
   const handleExtract = async () => {
@@ -549,6 +561,45 @@ export default function PerformanceDashboardPage() {
                 expanded={expandedCampaign}
                 setExpanded={setExpandedCampaign}
               />
+            )}
+
+          {/* ── Decay Monitoring ── */}
+            {decayLoaded && decayAlerts.length > 0 && (
+              <div className="perf-section perf-decay-section">
+                <div className="perf-section-header">
+                  <div>
+                    <h2 className="perf-section-title">
+                      <span className="perf-decay-indicator" />
+                      Decay Alerts
+                      <span className="perf-decay-count">{decayAlerts.length}</span>
+                    </h2>
+                    <p className="perf-section-sub">Content with 50%+ engagement drop from peak — agent runs every 6 hours.</p>
+                  </div>
+                </div>
+                <div className="perf-decay-list">
+                  {decayAlerts.map(alert => (
+                    <div key={alert.id} className={`perf-decay-card perf-decay-${alert.decay_score >= 0.8 ? 'high' : 'medium'}`}>
+                      <div className="perf-decay-header">
+                        <div className="perf-decay-title">{alert.title}</div>
+                        <div className="perf-decay-meta">
+                          <span className="perf-decay-channel">{alert.channel}</span>
+                          <span className="perf-decay-pct">↓{Math.round(alert.decay_score * 100)}% from peak</span>
+                        </div>
+                      </div>
+                      <div className="perf-decay-stats">
+                        <span>Peak: {alert.peak_impressions} impr / {alert.peak_clicks} clicks</span>
+                        <span>Now: {alert.current_impressions} impr / {alert.current_clicks} clicks</span>
+                      </div>
+                      <div className="perf-decay-action">
+                        <span className="perf-decay-recommend">⚡ {alert.recommended_action}</span>
+                        <button className="perf-decay-resolve" onClick={() => resolveDecay(alert.content_id)}>
+                          Mark resolved
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
 
           {/* ── Pattern Dashboard ── */}
