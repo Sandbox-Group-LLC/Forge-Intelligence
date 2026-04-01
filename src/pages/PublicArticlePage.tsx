@@ -107,7 +107,12 @@ export default function PublicArticlePage() {
       {/* ── Top nav bar ─── */}
       <nav className="pa-nav">
         <a href="https://forgeintelligence.ai" className="pa-nav-brand">
-          <span className="pa-nav-logo">⚡</span>
+          <span className="pa-nav-logo">
+            <svg width="18" height="18" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="16" y="1.5" width="20" height="20" rx="3" transform="rotate(45 16 1.5)" fill="#3563FF"/>
+              <rect x="16" y="5.5" width="13" height="13" rx="2" transform="rotate(45 16 5.5)" fill="#0A0F1E" opacity="0.4"/>
+            </svg>
+          </span>
           <span className="pa-nav-name">Forge Intelligence</span>
         </a>
         {article.category && <span className="pa-nav-category">{article.category}</span>}
@@ -175,7 +180,10 @@ export default function PublicArticlePage() {
               <div className="pa-footer-meta">
                 {article.brandName && <span className="pa-footer-brand-name">{article.brandName}</span>}
                 <span className="pa-footer-powered">
-                  Published with <a href="https://forgeintelligence.ai" className="pa-forge-link">⚡ Forge Intelligence</a>
+                  Published with <a href="https://forgeintelligence.ai" className="pa-forge-link">
+                    <svg width="12" height="12" viewBox="0 0 32 32" fill="none" style={{display:'inline',verticalAlign:'middle',marginRight:'4px'}}><rect x="16" y="1.5" width="20" height="20" rx="3" transform="rotate(45 16 1.5)" fill="#3563FF"/></svg>
+                    Forge Intelligence
+                  </a>
                 </span>
               </div>
               <a href="https://forgeintelligence.ai" className="pa-back-link">← More articles</a>
