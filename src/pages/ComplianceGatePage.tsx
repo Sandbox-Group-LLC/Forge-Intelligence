@@ -7,7 +7,8 @@ type ComplianceStatus = 'pending' | 'reviewed' | 'approved' | 'rejected';
 
 interface ArticleSection {
   heading: string;
-  content: string;
+  content?: string;
+  body?: string;
   confidenceTier: 'green' | 'yellow' | 'red';
   confidence: number;
   confidenceReason: string;
