@@ -352,7 +352,7 @@ export default function PerformanceDashboardPage() {
         ) : (
           <>
             {/* ── KPI Cards ── */}
-            {activeChannel !== 'campaigns' && <div className="perf-kpis">
+            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && <div className="perf-kpis">
               {[
                 { label: 'Impressions', value: fmt(data?.totals?.impressions || 0), sub: 'Total views', icon: 'eye', spark: true },
                 { label: 'Link Clicks', value: fmt(data?.totals?.clicks || 0), sub: `${data?.totals?.avgCtr || '0'}% avg CTR`, icon: 'click', spark: false },
@@ -374,7 +374,7 @@ export default function PerformanceDashboardPage() {
             </div>}
 
             {/* ── 30-Day Trend ── */}
-            {activeChannel !== 'campaigns' && <div className="perf-section">
+            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && <div className="perf-section">
               <div className="perf-section-header">
                 <h2 className="perf-section-title">30-Day Impressions</h2>
                 {(data?.trend?.length ?? 0) > 0 && (
@@ -387,7 +387,7 @@ export default function PerformanceDashboardPage() {
             </div>}
 
             {/* ── Posts Table ── */}
-            {activeChannel !== 'campaigns' && <div className="perf-section">
+            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && <div className="perf-section">
               <div className="perf-section-header">
                 <h2 className="perf-section-title">Published Posts</h2>
                 <span className="perf-section-meta">{data?.posts?.length || 0} tracked</span>
@@ -473,7 +473,7 @@ export default function PerformanceDashboardPage() {
                     <div className="perf-gsc-connected-header">
                       <span className="perf-gsc-connected-label">✓ Connected</span>
                       {gscStatus.verifiedSites && gscStatus.verifiedSites.length > 0 && (
-                        <span className="perf-gsc-sites">{gscStatus.verifiedSites.join(', ')}</span>
+                        <span className="perf-gsc-sites">{gscStatus.verifiedSites.slice(0,3).join(', ')}{gscStatus.verifiedSites.length > 3 ? ` +${gscStatus.verifiedSites.length - 3} more` : ''}</span>
                       )}
                       <button className="perf-sync-btn" onClick={handleGscSync} disabled={gscSyncing || !brandProfileId}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={gscSyncing ? 'spin' : ''}>
@@ -483,6 +483,60 @@ export default function PerformanceDashboardPage() {
                         {gscSyncing ? 'Syncing...' : 'Sync GSC'}
                       </button>
                     </div>
+
+                    {/* GSC KPI cards */}
+                    <div className="perf-kpis" style={{ marginTop: '16px' }}>
+                      {[
+                        { label: 'Total Clicks', value: fmt(data?.totals?.clicks || 0), sub: 'Organic search clicks', icon: 'click' },
+                        { label: 'Impressions', value: fmt(data?.totals?.impressions || 0), sub: 'Search result appearances', icon: 'eye' },
+                        { label: 'Avg CTR', value: `${data?.totals?.avgCtr || '0'}%`, sub: 'Click-through rate', icon: 'trend' },
+                        { label: 'Avg Position', value: data?.totals?.avgEngagementRate || '—', sub: 'Search ranking position', icon: 'trend' },
+                      ].map(kpi => (
+                        <div key={kpi.label} className="perf-kpi-card">
+                          <div className="perf-kpi-top"><span className="perf-kpi-label">{kpi.label}</span><KpiIcon type={kpi.icon} /></div>
+                          <div className="perf-kpi-value">{kpi.value}</div>
+                          <div className="perf-kpi-sub">{kpi.sub}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* GSC pages table */}
+                    {(data?.posts?.length ?? 0) > 0 && (
+                      <div className="perf-section" style={{ marginTop: '24px' }}>
+                        <div className="perf-section-header"><h2 className="perf-section-title">Pages</h2></div>
+                        <div className="perf-table-wrap">
+                          <table className="perf-table">
+                            <thead><tr>
+                              <th>Page</th>
+                              <th className="num">Clicks</th>
+                              <th className="num">Impressions</th>
+                              <th className="num">CTR</th>
+                              <th className="num">Position</th>
+                            </tr></thead>
+                            <tbody>
+                              {data.posts.map((post, i) => (
+                                <tr key={i}>
+                                  <td className="perf-title-cell"><span className="perf-post-title">{post.title || (post as any).raw_data?.pageUrl || 'Unknown'}</span></td>
+                                  <td className="num">{fmt(post.clicks)}</td>
+                                  <td className="num">{fmt(post.impressions)}</td>
+                                  <td className="num">{post.ctr ? `${post.ctr}%` : '—'}</td>
+                                  <td className="num">{post.engagement_rate ? `#${post.engagement_rate}` : '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {(data?.posts?.length ?? 0) === 0 && (
+                      <div className="perf-empty" style={{ marginTop: '24px' }}>
+                        <p>No GSC data yet. Hit Sync GSC to pull organic search performance for your domain.</p>
+                        <button className="perf-sync-btn" style={{ marginTop: '12px' }} onClick={handleGscSync} disabled={gscSyncing}>
+                          {gscSyncing ? 'Syncing...' : '↺ Sync now'}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
