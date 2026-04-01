@@ -275,7 +275,7 @@ export default function ComplianceGatePage() {
               {selectedArticle.article_json?.sections?.map((section, idx) => {
                 const flag = report?.flags?.find(f => f.sectionIndex === idx);
                 const isEditing = section.confidenceTier !== 'green' || mode === 'full-review';
-                const editVal = editedSections[idx] ?? section.content;
+                const editVal = editedSections[idx] ?? (section.body || section.content || '');
 
                 return (
                   <div key={idx} className={`comp-section tier-${section.confidenceTier}`}>
@@ -323,7 +323,7 @@ export default function ComplianceGatePage() {
                         />
                       </div>
                     ) : (
-                      <p className="comp-section-body">{section.content}</p>
+                      <p className="comp-section-body">{section.body || section.content}</p>
                     )}
                   </div>
                 );
