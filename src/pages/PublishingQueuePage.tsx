@@ -148,7 +148,7 @@ export default function PublishingQueuePage() {
   const [contentPreview, setContentPreview] = useState<{ item: QueueItem; article: any; postCopy: Record<string, string> } | null>(null);
   const [exportModal, setExportModal] = useState<{ item: QueueItem; article: any; brandSettingsData?: any } | null>(null);
   const [customUtmBase, setCustomUtmBase] = useState<string>('');
-  const [brandSettings, setBrandSettings] = useState<Record<string, { article_base_url?: string; settings?: { siteTemplate?: any } }>>({});
+  const [brandSettings, setBrandSettings] = useState<Record<string, { article_base_url?: string; article_url_suffix?: string; settings?: { siteTemplate?: any } }>>({});
   const [exportTab, setExportTab] = useState<'html' | 'markdown' | 'json' | 'link'>('html');
   const [copied, setCopied] = useState<string>('');
   const [publishLog, setPublishLog] = useState<Record<string, { channel: string; live_status: string; published_url?: string; last_synced_at?: string }[]>>({});
@@ -406,7 +406,8 @@ export default function PublishingQueuePage() {
     const articleBaseUrl = settings?.article_base_url?.trim()
       ? settings.article_base_url.replace(/\/+$/, '')
       : `https://${window.location.hostname}/articles/${brandSlug}`;
-    return `${articleBaseUrl}/${articleSlug}`;
+    const suffix = (settings?.article_url_suffix || settingsOverride?.article_url_suffix || '').trim();
+    return `${articleBaseUrl}/${articleSlug}${suffix}`;
   };
 
   const buildMarkdown = (article: any, item: QueueItem) => {
