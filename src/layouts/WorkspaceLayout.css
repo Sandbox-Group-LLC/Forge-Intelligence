@@ -53,12 +53,3 @@
     padding: 20px 16px 80px;
   }
 }
-
-/* ── Bottom breathing room — pseudo-element is the only reliable method in overflow containers ── */
-.app-content::after {
-  content: '';
-  display: block;
-  height: 64px;
-  width: 100%;
-  flex-shrink: 0;
-}
