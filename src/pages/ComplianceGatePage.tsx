@@ -313,21 +313,7 @@ export default function ComplianceGatePage() {
                             <div className="comp-flag-suggestion">💡 {flag.suggestion}</div>
                             <button
                               className="comp-accept-suggestion-btn"
-                              onClick={() => {
-                                const current = editedSections[idx] ?? (section.body || section.content || '');
-                                // Try to find and replace the flagged excerpt in the section body
-                                const flaggedExcerpt = flag.reason?.match(/"([^"]+)"/)?.[1] || flag.reason?.match(/'([^']+)'/)?.[1];
-                                let updated = current;
-                                if (flaggedExcerpt && current.includes(flaggedExcerpt)) {
-                                  updated = current.replace(flaggedExcerpt, flag.suggestion);
-                                } else {
-                                  // No exact match — append suggestion as replacement note
-                                  updated = current + '
-
-[Suggested replacement: ' + flag.suggestion + ']';
-                                }
-                                setEditedSections(p => ({ ...p, [idx]: updated }));
-                              }}
+                              onClick={() => acceptSuggestion(idx, editedSections[idx] ?? (section.body || section.content || ''), flag.reason || '', flag.suggestion || '')}
                             >
                               ✓ Accept Suggestion
                             </button>
