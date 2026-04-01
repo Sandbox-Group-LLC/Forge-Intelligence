@@ -514,7 +514,7 @@ export default function PerformanceDashboardPage() {
                               <th className="num">Position</th>
                             </tr></thead>
                             <tbody>
-                              {data.posts.map((post, i) => (
+                              {(data?.posts || []).map((post, i) => (
                                 <tr key={i}>
                                   <td className="perf-title-cell"><span className="perf-post-title">{post.title || (post as any).raw_data?.pageUrl || 'Unknown'}</span></td>
                                   <td className="num">{fmt(post.clicks)}</td>
