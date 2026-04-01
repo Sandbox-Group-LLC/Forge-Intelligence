@@ -323,6 +323,25 @@ async function initDB() {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )`);
     await pool.query(`CREATE INDEX IF NOT EXISTS brain_patterns_brand_idx ON brain_patterns(brand_profile_id)`);
+    // Decay monitoring table
+    await pool.query(`CREATE TABLE IF NOT EXISTS decay_alerts (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      brand_profile_id TEXT NOT NULL,
+      content_id TEXT NOT NULL,
+      channel TEXT NOT NULL,
+      title TEXT,
+      peak_impressions INTEGER DEFAULT 0,
+      peak_clicks INTEGER DEFAULT 0,
+      current_impressions INTEGER DEFAULT 0,
+      current_clicks INTEGER DEFAULT 0,
+      decay_score FLOAT DEFAULT 0,
+      status TEXT DEFAULT 'active',
+      recommended_action TEXT,
+      detected_at TIMESTAMPTZ DEFAULT NOW(),
+      resolved_at TIMESTAMPTZ,
+      UNIQUE(content_id, channel)
+    )`).catch(() => {});
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_decay_brand ON decay_alerts(brand_profile_id, status)`).catch(() => {});
     await pool.query(`CREATE INDEX IF NOT EXISTS brain_mistakes_brand_idx ON brain_mistakes(brand_profile_id)`);
     console.log('NeonDB: Brain tables (patterns, mistakes, memories) ensured');
 
@@ -5304,13 +5323,137 @@ async function runScheduledPublishes() {
   }
 }
 
+// ── Decay Monitoring Agent ───────────────────────────────────────────────────
+async function runDecayMonitoring() {
+  try {
+    // Get all brands
+    const brandsRes = await pool.query('SELECT id FROM brand_profiles WHERE is_active = true');
+    for (const brand of brandsRes.rows) {
+      const brandProfileId = brand.id;
+      try {
+        // Get all articles with analytics, published 14+ days ago, with at least 1 impression
+        const articlesRes = await pool.query(
+          `SELECT ca.content_id, ca.channel, ca.impressions, ca.clicks, ca.reactions,
+                  ca.synced_at, ca.published_at, pq.title
+           FROM content_analytics ca
+           LEFT JOIN publishing_queue pq ON pq.content_id = ca.content_id
+           WHERE ca.brand_profile_id = $1
+             AND ca.published_at < NOW() - INTERVAL '14 days'
+             AND (ca.impressions > 0 OR ca.clicks > 0)
+           ORDER BY ca.content_id, ca.channel`,
+          [brandProfileId]
+        ).catch(() => ({ rows: [] }));
+
+        for (const row of articlesRes.rows) {
+          // Get historical peak for this article/channel
+          const peakRes = await pool.query(
+            `SELECT MAX(impressions) as peak_imp, MAX(clicks) as peak_clicks
+             FROM content_analytics
+             WHERE content_id = $1 AND channel = $2`,
+            [row.content_id, row.channel]
+          ).catch(() => ({ rows: [{}] }));
+
+          const peakImpressions = parseInt(peakRes.rows[0]?.peak_imp || 0);
+          const peakClicks = parseInt(peakRes.rows[0]?.peak_clicks || 0);
+          const currentImpressions = row.impressions || 0;
+          const currentClicks = row.clicks || 0;
+
+          // Calculate decay score (0 = no decay, 1 = full decay)
+          const impDecay = peakImpressions > 0 ? 1 - (currentImpressions / peakImpressions) : 0;
+          const clickDecay = peakClicks > 0 ? 1 - (currentClicks / peakClicks) : 0;
+          const decayScore = Math.max(impDecay, clickDecay);
+
+          // Flag if decay > 50% and article is older than 14 days
+          if (decayScore >= 0.5) {
+            // Generate recommended action via Haiku
+            let recommendedAction = 'Refresh and republish — engagement has dropped significantly.';
+            try {
+              const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+                body: JSON.stringify({
+                  model: 'claude-haiku-4-5-20251001',
+                  max_tokens: 120,
+                  messages: [{ role: 'user', content: `Article "${row.title || 'Untitled'}" on ${row.channel} has decayed ${Math.round(decayScore * 100)}% from peak engagement. In one sentence, recommend the best action: refresh content, change headline, republish on different channel, or add internal links. Be specific and actionable.` }]
+                })
+              });
+              const aiData = await aiRes.json();
+              if (aiData.content?.[0]?.text) recommendedAction = aiData.content[0].text.trim();
+            } catch(e) { /* use default */ }
+
+            // Upsert decay alert
+            await pool.query(
+              `INSERT INTO decay_alerts
+                (brand_profile_id, content_id, channel, title, peak_impressions, peak_clicks,
+                 current_impressions, current_clicks, decay_score, status, recommended_action, detected_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'active',$10,NOW())
+               ON CONFLICT (content_id, channel) DO UPDATE SET
+                 current_impressions=$7, current_clicks=$8, decay_score=$9,
+                 recommended_action=$10, detected_at=NOW(), status='active'`,
+              [brandProfileId, row.content_id, row.channel, row.title || 'Untitled',
+               peakImpressions, peakClicks, currentImpressions, currentClicks,
+               decayScore, recommendedAction]
+            ).catch(() => {});
+
+            // Write to brain_mistakes so pattern extractor learns
+            await pool.query(
+              `INSERT INTO brain_mistakes (brand_profile_id, mistake_type, description, severity)
+               VALUES ($1, 'content_decay', $2, $3)
+               ON CONFLICT DO NOTHING`,
+              [brandProfileId,
+               `"${row.title || 'Untitled'}" decayed ${Math.round(decayScore * 100)}% on ${row.channel} after 14 days`,
+               decayScore >= 0.8 ? 'high' : 'medium']
+            ).catch(() => {});
+          } else {
+            // Mark as resolved if previously flagged
+            await pool.query(
+              `UPDATE decay_alerts SET status='resolved', resolved_at=NOW()
+               WHERE content_id=$1 AND channel=$2 AND status='active'`,
+              [row.content_id, row.channel]
+            ).catch(() => {});
+          }
+        }
+        console.log(`[DECAY] Checked ${articlesRes.rows.length} articles for ${brandProfileId}`);
+      } catch(e) { console.error('[DECAY] Brand error:', e.message); }
+    }
+  } catch(e) { console.error('[DECAY] Run error:', e.message); }
+}
+
+// GET /api/analytics/decay/:brandProfileId
+app.get('/api/analytics/decay/:brandProfileId', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT * FROM decay_alerts WHERE brand_profile_id = $1 AND status = 'active'
+       ORDER BY decay_score DESC`,
+      [req.params.brandProfileId]
+    );
+    res.json({ success: true, alerts: r.rows });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// POST /api/analytics/decay/:brandProfileId/resolve/:contentId
+app.post('/api/analytics/decay/:brandProfileId/resolve/:contentId', async (req, res) => {
+  try {
+    await pool.query(
+      `UPDATE decay_alerts SET status='resolved', resolved_at=NOW()
+       WHERE brand_profile_id=$1 AND content_id=$2`,
+      [req.params.brandProfileId, req.params.contentId]
+    );
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
 // Start scheduler — runs 30s after boot then every 60s
 setTimeout(() => {
   runScheduledPublishes();
   setInterval(runScheduledPublishes, 60 * 1000);
+  // Decay monitoring runs every 6 hours
+  runDecayMonitoring();
+  setInterval(runDecayMonitoring, 6 * 60 * 60 * 1000);
 }, 30 * 1000);
 
 console.log('[SCHEDULER] Scheduled publish runner active — polling every 60s');
+console.log('[SCHEDULER] Decay monitoring active — running every 6 hours');
 
 app.get('*', function (req, res) {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
