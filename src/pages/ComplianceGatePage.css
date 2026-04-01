@@ -387,3 +387,36 @@
   border-radius: 0 0 var(--radius-md) var(--radius-md);
   margin-top: 0;
 }
+
+/* ── Accept Suggestion button ───────────────────────────────────────────────── */
+.comp-flag-suggestion-wrap {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.comp-flag-suggestion-wrap .comp-flag-suggestion {
+  margin-top: 0;
+  flex: 1;
+}
+
+.comp-accept-suggestion-btn {
+  padding: 5px 12px;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: var(--radius-md);
+  color: #10B981;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+}
+
+.comp-accept-suggestion-btn:hover {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: #10B981;
+}
