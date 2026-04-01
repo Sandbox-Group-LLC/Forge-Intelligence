@@ -126,6 +126,19 @@ export default function ComplianceGatePage() {
     }
   };
 
+  const acceptSuggestion = (idx: number, sectionBody: string, reason: string, suggestion: string) => {
+    const doubleQuoteMatch = reason.match(/"([^"]+)"/);
+    const singleQuoteMatch = reason.match(/'([^']+)'/);
+    const flaggedExcerpt = (doubleQuoteMatch && doubleQuoteMatch[1]) || (singleQuoteMatch && singleQuoteMatch[1]) || '';
+    let updated = sectionBody;
+    if (flaggedExcerpt && sectionBody.includes(flaggedExcerpt)) {
+      updated = sectionBody.replace(flaggedExcerpt, suggestion);
+    } else {
+      updated = sectionBody + '\n\n[Suggested replacement: ' + suggestion + ']';
+    }
+    setEditedSections(p => ({ ...p, [idx]: updated }));
+  };
+
   const submitApproval = async (article: Article) => {
     setSubmitLoading(true);
     try {
