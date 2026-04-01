@@ -514,27 +514,46 @@ export default function PerformanceDashboardPage() {
                 )}
 
                 {geoLoaded && geoCitations.length === 0 && !geoTracking && (
-                  <div className="perf-empty" style={{ marginTop: '24px' }}>
-                    <p>No citation data yet. Hit Run Citation Check to query AI engines for your published articles.</p>
+                  <div className="perf-geo-empty">
+                    <div className="perf-geo-empty-icon">◈</div>
+                    <p className="perf-geo-empty-title">No citation data yet</p>
+                    <p className="perf-geo-empty-sub">Hit Run Citation Check above — Forge will query Perplexity and ChatGPT with your article topics and tell you if your content is being cited by AI engines.</p>
                   </div>
                 )}
 
-                {geoCitations.length > 0 && (
+                {geoCitations.length > 0 && (() => {
+                  const totalCited = geoCitations.reduce((a,c) => a + c.citations, 0);
+                  const totalChecks = geoCitations.reduce((a,c) => a + c.totalChecks, 0);
+                  const visibilityScore = Math.round(totalCited / Math.max(1, totalChecks) * 100);
+                  const enginesWithCitations = [...new Set(geoCitations.filter(c => c.citations > 0).map(c => c.engine))];
+                  const articlesCited = [...new Set(geoCitations.filter(c => c.citations > 0).map(c => c.content_id))].length;
+                  const allSections = geoCitations.flatMap(c => c.citedSections || []);
+                  const topSection = allSections.length > 0
+                    ? Object.entries(allSections.reduce((a: Record<string,number>, s) => { a[s] = (a[s]||0)+1; return a; }, {})).sort((a,b) => b[1]-a[1])[0][0]
+                    : null;
+                  return (
                   <div className="perf-geo-results">
-                    {/* Summary KPIs */}
                     <div className="perf-kpis" style={{ marginTop: '16px' }}>
-                      {[
-                        { label: 'Total Checks', value: geoCitations.reduce((a,c) => a + c.totalChecks, 0).toString(), sub: 'Queries across all engines' },
-                        { label: 'Citations Found', value: geoCitations.reduce((a,c) => a + c.citations, 0).toString(), sub: 'Times your content was cited' },
-                        { label: 'Citation Rate', value: `${Math.round(geoCitations.reduce((a,c) => a + c.citations,0) / Math.max(1, geoCitations.reduce((a,c) => a + c.totalChecks,0)) * 100)}%`, sub: 'Across all engines' },
-                        { label: 'Articles Cited', value: [...new Set(geoCitations.filter(c => c.citations > 0).map(c => c.content_id))].length.toString(), sub: 'Unique articles referenced' },
-                      ].map(kpi => (
-                        <div key={kpi.label} className="perf-kpi-card">
-                          <div className="perf-kpi-top"><span className="perf-kpi-label">{kpi.label}</span></div>
-                          <div className="perf-kpi-value">{kpi.value}</div>
-                          <div className="perf-kpi-sub">{kpi.sub}</div>
-                        </div>
-                      ))}
+                      <div className="perf-kpi-card">
+                        <div className="perf-kpi-top"><span className="perf-kpi-label">AI Visibility</span></div>
+                        <div className="perf-kpi-value" style={{ color: visibilityScore > 20 ? '#10B981' : visibilityScore > 5 ? '#F59E0B' : 'inherit' }}>{visibilityScore}%</div>
+                        <div className="perf-kpi-sub">Of topic queries where you appeared</div>
+                      </div>
+                      <div className="perf-kpi-card">
+                        <div className="perf-kpi-top"><span className="perf-kpi-label">Engines Citing You</span></div>
+                        <div className="perf-kpi-value">{enginesWithCitations.length > 0 ? enginesWithCitations.join(', ') : '—'}</div>
+                        <div className="perf-kpi-sub">{enginesWithCitations.length === 0 ? 'Not yet cited' : 'Active citation sources'}</div>
+                      </div>
+                      <div className="perf-kpi-card">
+                        <div className="perf-kpi-top"><span className="perf-kpi-label">Articles Referenced</span></div>
+                        <div className="perf-kpi-value">{articlesCited} <span style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>/ {[...new Set(geoCitations.map(c => c.content_id))].length}</span></div>
+                        <div className="perf-kpi-sub">Of your published articles</div>
+                      </div>
+                      <div className="perf-kpi-card">
+                        <div className="perf-kpi-top"><span className="perf-kpi-label">Top Cited Section</span></div>
+                        <div className="perf-kpi-value" style={{ fontSize: topSection && topSection.length > 12 ? '0.9rem' : '1.5rem' }}>{topSection || '—'}</div>
+                        <div className="perf-kpi-sub">{topSection ? 'Most quoted section' : 'Run check to discover'}</div>
+                      </div>
                     </div>
 
                     {/* Citation table */}
@@ -567,7 +586,8 @@ export default function PerformanceDashboardPage() {
                       </div>
                     </div>
                   </div>
-                )}
+                  );
+                })()}
               </div>
             )}
 
