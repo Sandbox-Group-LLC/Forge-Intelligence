@@ -24,7 +24,7 @@
 }
 
 .view-container {
-  padding: 48px 40px;
+  padding: 48px 40px 64px;
   max-width: 1200px;
   margin: 0 auto;
   position: relative;
@@ -50,6 +50,6 @@
   }
 
   .view-container {
-    padding: 20px 16px;
+    padding: 20px 16px 48px;
   }
 }
