@@ -1,6 +1,6 @@
 # Forge Intelligence — Master SSOT
 
-> **Last updated:** March 31, 2026 | **Status:** Stage 8 COMPLETE + Topic Pre-flight ✅ | End-to-end publishing pipeline proven on sandbox-xm.com ✅
+> **Last updated:** March 31, 2026 (evening) | **Status:** Stage 8 COMPLETE | GSC OAuth built ✅ | Article URL Suffix ✅ | Regenerate Image ✅ | UTM Custom URL ✅
 > **This README is the single source of truth for all AI sessions, dev work, and project decisions.**
 > When starting a new AI session, read this file top to bottom before touching Always read the README.md first -- it is the SSOT.
 > Always read the current file and capture its SHA before writing - never write blind.
@@ -92,6 +92,11 @@ Medium stopped issuing new API integration tokens in early 2025. The publish bac
 | Agent Pattern Awareness | ✅ LIVE | All three agents read brain_patterns + brain_mistakes by brand_profile_id — Content Generator treats patterns as hard constraints, Context Hub injects prior patterns into brand analysis, Campaign Generator already wired |
 | Topic Pre-flight Check | ✅ LIVE | `POST /api/content/topic-check` — Claude Haiku evaluates user topic against brain_patterns/mistakes, returns strong/caution/weak signal, reason, and tappable reframe suggestion before generation |
 | Topic Prompt Field | ✅ LIVE | Optional topic direction on Content Generator and Campaign Generator — injects as hard directive into generation prompt while brain shapes voice/format |
+| GSC OAuth | ✅ LIVE | `/api/gsc/auth` + `/auth/gsc/callback` — per-brand Google Search Console OAuth, stores refresh token in publishing_channels, GSC tab in Performance Dashboard |
+| GSC Sync | ✅ LIVE | `POST /api/analytics/sync-gsc/:brandId` — pulls clicks/impressions/CTR/position by page for last 28 days, matches to content_analytics |
+| Article URL Suffix | ✅ LIVE | Per-brand `article_url_suffix` in Brand Settings — append `.html` for static sites, blank for clean URLs. Flows through publish routes, Smart Export, UTM links |
+| Regenerate Image | ✅ LIVE | Hover over hero image in Publishing Queue content preview — overlay button calls fal.ai Flux for a new image, swaps in place |
+| UTM Custom URL | ✅ LIVE | Smart Export UTM Link tab — paste live article URL to override Forge base URL, UTM params appended automatically |
 | TopBar page titles | ✅ LIVE | Path-based title resolution via `startsWith` — all pages show correct titles |
 | Ghost CMS publishing | ✅ LIVE | JWT auth, HTML via `?source=html`, hero image as `feature_image`, canonical URL, live sync |
 | Reverse publish | ✅ LIVE | Per-channel unpublish modal — delete from LinkedIn/X/Ghost/WordPress/Facebook + Forge or Forge only |
