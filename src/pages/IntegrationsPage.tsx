@@ -89,6 +89,7 @@ interface ChannelDef {
   credentialFields: { key: string; label: string; placeholder: string; type?: string }[];
   liveStatus: 'live' | 'staged' | 'legacy';
   oauthFlow?: boolean;
+  pipedreamApp?: string;
   setupGuide: SetupGuide;
 }
 
@@ -165,6 +166,7 @@ const CHANNELS: ChannelDef[] = [
     id: 'linkedin',
     label: 'LinkedIn',
     description: 'Share articles to your LinkedIn profile via OAuth2. Click Connect to authorize Forge -- no manual token needed.',
+    pipedreamApp: 'linkedin',
     color: '#0A66C2',
     logo: 'in',
     liveStatus: 'live',
@@ -400,13 +402,38 @@ export default function IntegrationsPage() {
   }, []);
 
   const handleSave = async (channelId: ChannelId) => {
-    if (channelId === 'linkedin') {
+    const channel = CHANNELS.find(c => c.id === channelId);
+    if (channel?.pipedreamApp) {
+      if (!selectedBrand) { setError('Select a Brain first'); return; }
       try {
-        const res = await fetch(`/api/linkedin/auth?brandProfileId=${selectedBrand}`);
-        const { authUrl } = await res.json();
-        window.location.href = authUrl;
-      } catch {
-        setError('Could not start LinkedIn authorization. Try again.');
+        // Get short-lived token from our server
+        const tokenRes = await fetch('/api/pipedream/token', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ brandProfileId: selectedBrand })
+        });
+        const { token } = await tokenRes.json();
+        if (!token) throw new Error('Could not get connect token');
+
+        // Get project config
+        const cfgRes = await fetch('/api/pipedream/config');
+        const { projectId, environment } = await cfgRes.json();
+
+        // Open Pipedream Connect popup
+        const pd = createClient({ token, projectId, environment });
+        const account = await pd.connectAccount({ app: channel.pipedreamApp });
+        if (account?.id) {
+          await fetch('/api/pipedream/account', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ brandProfileId: selectedBrand, channel: channelId, accountId: account.id, appSlug: channel.pipedreamApp })
+          });
+          setSuccess(`${channel.label} connected via Pipedream ✓`);
+          loadChannels(selectedBrand);
+          setTimeout(() => setSuccess(''), 4000);
+        }
+      } catch(e: any) {
+        if (e?.message !== 'User closed the connect dialog') {
+          setError(`Could not connect ${channel.label}. Try again.`);
+        }
       }
       return;
     }
