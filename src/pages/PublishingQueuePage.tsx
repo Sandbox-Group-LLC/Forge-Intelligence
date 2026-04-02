@@ -162,8 +162,24 @@ export default function PublishingQueuePage() {
   const [republishing, setRepublishing] = useState<string | null>(null); // "itemId:channel"
   const [deleteModal, setDeleteModal] = useState<{ item: QueueItem; publishedChannels: string[] } | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
+  const [editingTitleVal, setEditingTitleVal] = useState('');
   const [deleteChannelSelection, setDeleteChannelSelection] = useState<Record<string, boolean>>({});
   const [deleting, setDeleting] = useState(false);
+
+  const saveTitle = async (item: QueueItem) => {
+    if (!editingTitleVal.trim() || editingTitleVal === item.title) {
+      setEditingTitleId(null); return;
+    }
+    try {
+      await fetch(`/api/publishing/queue/${item.id}/title`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: editingTitleVal.trim() })
+      });
+      setItems(prev => prev.map(i => i.id === item.id ? { ...i, title: editingTitleVal.trim() } : i));
+    } finally { setEditingTitleId(null); }
+  };
 
   const archiveItem = async (item: QueueItem) => {
     try {
@@ -736,7 +752,25 @@ ${bodyHtml}
                   {/* Row top: title + meta + status */}
                   <div className="pq-item-top">
                     <div className="pq-item-meta">
-                      <div className="pq-item-title">{item.title || 'Untitled Article'}</div>
+                      {editingTitleId === item.id ? (
+                        <input
+                          className="pq-title-edit-input"
+                          value={editingTitleVal}
+                          onChange={e => setEditingTitleVal(e.target.value)}
+                          onBlur={() => saveTitle(item)}
+                          onKeyDown={e => { if (e.key === 'Enter') saveTitle(item); if (e.key === 'Escape') setEditingTitleId(null); }}
+                          autoFocus
+                        />
+                      ) : (
+                        <div
+                          className="pq-item-title pq-item-title-editable"
+                          title="Click to edit title"
+                          onClick={() => { setEditingTitleId(item.id); setEditingTitleVal(item.title || ''); }}
+                        >
+                          {item.title || 'Untitled Article'}
+                          <span className="pq-title-edit-hint">✎</span>
+                        </div>
+                      )}
                       <div className="pq-item-sub">
                         <span className="pq-brand-tag">{brandName(item)}</span>
                         <span className="pq-dot">·</span>
@@ -754,6 +788,17 @@ ${bodyHtml}
                       <button className="pq-icon-btn" title="Smart Export" onClick={() => openExportModal(item)}>
                         <Download />
                       </button>
+                      {(() => {
+                        const bSlug = (item.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
+                        const aSlug = (item.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+                        return (
+                          <a className="pq-icon-btn" title="Preview live article" href={`/articles/${bSlug}/${aSlug}`} target="_blank" rel="noopener noreferrer">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+                            </svg>
+                          </a>
+                        );
+                      })()}
                       <button className="pq-icon-btn" title="Preview & Edit Post" onClick={() => openContentPreview(item)}>
                         <Eye />
                       </button>
@@ -930,7 +975,25 @@ return (
                   {/* Row top: title + meta + status */}
                   <div className="pq-item-top">
                     <div className="pq-item-meta">
-                      <div className="pq-item-title">{item.title || 'Untitled Article'}</div>
+                      {editingTitleId === item.id ? (
+                        <input
+                          className="pq-title-edit-input"
+                          value={editingTitleVal}
+                          onChange={e => setEditingTitleVal(e.target.value)}
+                          onBlur={() => saveTitle(item)}
+                          onKeyDown={e => { if (e.key === 'Enter') saveTitle(item); if (e.key === 'Escape') setEditingTitleId(null); }}
+                          autoFocus
+                        />
+                      ) : (
+                        <div
+                          className="pq-item-title pq-item-title-editable"
+                          title="Click to edit title"
+                          onClick={() => { setEditingTitleId(item.id); setEditingTitleVal(item.title || ''); }}
+                        >
+                          {item.title || 'Untitled Article'}
+                          <span className="pq-title-edit-hint">✎</span>
+                        </div>
+                      )}
                       <div className="pq-item-sub">
                         <span className="pq-brand-tag">{brandName(item)}</span>
                         <span className="pq-dot">·</span>
