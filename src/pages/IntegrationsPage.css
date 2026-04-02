@@ -706,3 +706,29 @@
   font-family: monospace;
   color: var(--color-text-secondary);
 }
+
+/* ── Pipedream Connect status ────────────────────────────────────────────────── */
+.int-pipedream-status {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  background: rgba(53,99,255,0.05);
+  border: 1px solid rgba(53,99,255,0.15);
+  border-radius: var(--radius-md);
+}
+
+.int-pipedream-badge {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-accent);
+}
+
+.int-pipedream-sub {
+  font-size: 0.775rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
