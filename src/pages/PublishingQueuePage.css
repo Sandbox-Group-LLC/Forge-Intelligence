@@ -1186,3 +1186,36 @@
   opacity: 0.6;
   border-style: dashed;
 }
+
+/* ── Inline title editing ───────────────────────────────────────────────────── */
+.pq-item-title-editable {
+  cursor: text;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pq-item-title-editable:hover .pq-title-edit-hint {
+  opacity: 1;
+}
+
+.pq-title-edit-hint {
+  font-size: 0.75rem;
+  opacity: 0;
+  color: var(--color-text-muted);
+  transition: opacity var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.pq-title-edit-input {
+  width: 100%;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(53,99,255,0.15);
+}
