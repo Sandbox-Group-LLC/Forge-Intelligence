@@ -418,26 +418,41 @@ export default function IntegrationsPage() {
         const { token } = await tokenRes.json();
         if (!token) throw new Error('Could not get connect token');
 
-        // Open Pipedream Connect popup — pass token directly to connectAccount
-        const { createFrontendClient } = await import('@pipedream/sdk/browser');
-        const pd = createFrontendClient({ externalUserId: selectedBrand, tokenCallback: async () => token });
-        await pd.connectAccount({
-          token,
-          app: channel.pipedreamApp,
-          onSuccess: async (res: any) => {
-            await fetch('/api/pipedream/account', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ brandProfileId: selectedBrand, channel: channelId, accountId: res.id, appSlug: channel.pipedreamApp })
-            });
-            setSuccess(`${channel.label} connected via Pipedream ✓`);
-            loadChannels(selectedBrand);
-            setTimeout(() => setSuccess(''), 4000);
-          },
-          onError: (err: any) => {
-            console.error('[Pipedream Connect Error]', err);
-            const msg = err?.message || err?.error || err?.error_message || JSON.stringify(err) || 'Unknown error';
-            setError(`Could not connect ${channel.label}: ${msg}`);
-          }
+        // Open Pipedream Connect iframe directly — bypass SDK token resolution issues
+        const iframeUrl = `https://pipedream.com/_static/connect.html?token=${encodeURIComponent(token)}&app=${encodeURIComponent(channel.pipedreamApp || '')}`;
+
+        await new Promise<void>((resolve, reject) => {
+          const iframe = document.createElement('iframe');
+          iframe.src = iframeUrl;
+          iframe.style.cssText = 'position:fixed;inset:0;z-index:2147483647;border:0;display:block;width:100%;height:100%';
+          document.body.appendChild(iframe);
+
+          const onMessage = async (e: MessageEvent) => {
+            if (!e.data?.type) return;
+            if (e.data.type === 'success') {
+              window.removeEventListener('message', onMessage);
+              iframe.remove();
+              const accountId = e.data.authProvisionId;
+              await fetch('/api/pipedream/account', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ brandProfileId: selectedBrand, channel: channelId, accountId, appSlug: channel.pipedreamApp })
+              });
+              setSuccess(`${channel.label} connected via Pipedream ✓`);
+              loadChannels(selectedBrand);
+              setTimeout(() => setSuccess(''), 4000);
+              resolve();
+            } else if (e.data.type === 'error') {
+              window.removeEventListener('message', onMessage);
+              iframe.remove();
+              setError(`Could not connect ${channel.label}: ${e.data.error || 'Unknown error'}`);
+              resolve();
+            } else if (e.data.type === 'close') {
+              window.removeEventListener('message', onMessage);
+              iframe.remove();
+              resolve();
+            }
+          };
+          window.addEventListener('message', onMessage);
         });
       } catch(e: any) {
         console.error('[Pipedream Connect Catch]', e);
