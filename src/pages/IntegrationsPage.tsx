@@ -418,13 +418,14 @@ export default function IntegrationsPage() {
         const { token } = await tokenRes.json();
         if (!token) throw new Error('Could not get connect token');
 
-        // Open Pipedream Connect popup
+        // Get project config and open Pipedream Connect popup
+        const cfg = await fetch('/api/pipedream/config').then(r => r.json());
         const { createFrontendClient } = await import('@pipedream/sdk/browser');
         const pd = createFrontendClient({
           tokenCallback: async () => token,
           externalUserId: selectedBrand,
-          projectId: await fetch('/api/pipedream/config').then(r => r.json()).then(d => d.projectId),
-          projectEnvironment: await fetch('/api/pipedream/config').then(r => r.json()).then(d => d.environment)
+          projectId: cfg.projectId,
+          projectEnvironment: cfg.environment
         });
         await pd.connectAccount({
           app: channel.pipedreamApp,
