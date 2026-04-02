@@ -420,7 +420,7 @@ export default function IntegrationsPage() {
 
         // Open Pipedream Connect popup — pass token directly to connectAccount
         const { createFrontendClient } = await import('@pipedream/sdk/browser');
-        const pd = createFrontendClient({ externalUserId: selectedBrand });
+        const pd = createFrontendClient({ externalUserId: selectedBrand, tokenCallback: async () => token });
         await pd.connectAccount({
           token,
           app: channel.pipedreamApp,
