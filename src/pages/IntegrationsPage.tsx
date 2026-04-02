@@ -420,17 +420,22 @@ export default function IntegrationsPage() {
 
         // Open Pipedream Connect popup
         const { createFrontendClient } = await import('@pipedream/sdk/browser');
-        const pd = createFrontendClient({ token, projectId, environment });
-        const account = await pd.connectAccount({ app: channel.pipedreamApp });
-        if (account?.id) {
-          await fetch('/api/pipedream/account', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ brandProfileId: selectedBrand, channel: channelId, accountId: account.id, appSlug: channel.pipedreamApp })
-          });
-          setSuccess(`${channel.label} connected via Pipedream ✓`);
-          loadChannels(selectedBrand);
-          setTimeout(() => setSuccess(''), 4000);
-        }
+        const pd = createFrontendClient({ token, externalUserId: selectedBrand });
+        await pd.connectAccount({
+          app: channel.pipedreamApp,
+          onSuccess: async (res: any) => {
+            await fetch('/api/pipedream/account', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ brandProfileId: selectedBrand, channel: channelId, accountId: res.id, appSlug: channel.pipedreamApp })
+            });
+            setSuccess(`${channel.label} connected via Pipedream ✓`);
+            loadChannels(selectedBrand);
+            setTimeout(() => setSuccess(''), 4000);
+          },
+          onError: (err: any) => {
+            setError(`Could not connect ${channel.label}: ${err?.message || 'Unknown error'}`);
+          }
+        });
       } catch(e: any) {
         if (e?.message !== 'User closed the connect dialog') {
           setError(`Could not connect ${channel.label}. Try again.`);
