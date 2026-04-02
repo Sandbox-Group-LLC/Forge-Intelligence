@@ -120,6 +120,7 @@ const CHANNELS: ChannelDef[] = [
   {
     id: 'webflow',
     label: 'Webflow',
+    pipedreamApp: 'webflow',
     description: 'Create CMS items via Webflow Data API. Live publish in Stage 6.1.',
     color: '#4353FF',
     logo: 'WF',
@@ -143,6 +144,7 @@ const CHANNELS: ChannelDef[] = [
   {
     id: 'hubspot',
     label: 'HubSpot',
+    pipedreamApp: 'hubspot',
     description: 'Contact tracking + campaign attribution. Connects published article UTMs to HubSpot contacts.',
     color: '#FF7A59',
     logo: 'HS',
@@ -188,6 +190,7 @@ const CHANNELS: ChannelDef[] = [
   {
     id: 'x',
     label: 'X (Twitter)',
+    pipedreamApp: 'twitter_v2',
     description: 'Post articles with UTM links via X API v2. Tracks impressions, reactions, and link clicks.',
     color: '#000000',
     logo: '𝕏',
@@ -210,6 +213,7 @@ const CHANNELS: ChannelDef[] = [
   {
     id: 'facebook',
     label: 'Facebook',
+    pipedreamApp: 'facebook_pages',
     description: 'Publish articles to your company Facebook Page via Graph API. Requires a Page Access Token.',
     color: '#1877F2',
     logo: 'f',
@@ -233,6 +237,7 @@ const CHANNELS: ChannelDef[] = [
   {
     id: 'reddit',
     label: 'Reddit',
+    pipedreamApp: 'reddit',
     description: 'Post article links to your company-owned subreddit via Reddit API. Requires OAuth credentials.',
     color: '#FF4500',
     logo: 'r/',
@@ -585,21 +590,9 @@ export default function IntegrationsPage() {
                           <button
                             className="int-connect-btn"
                             style={{ '--ch-color': ch.color } as React.CSSProperties}
-                            onClick={async () => {
-                              if (ch.id === 'linkedin') {
-                                try {
-                                  const res = await fetch(`/api/linkedin/auth?brandProfileId=${selectedBrand}`);
-                                  const { authUrl } = await res.json();
-                                  window.location.href = authUrl;
-                                } catch {
-                                  setError('Could not start LinkedIn authorization. Try again.');
-                                }
-                                return;
-                              }
-                              setExpanded(isOpen ? null : ch.id);
-                            }}
+                            onClick={() => ch.pipedreamApp ? handleSave(ch.id) : setExpanded(isOpen ? null : ch.id)}
                           >
-                            {isOpen ? 'Cancel' : 'Connect'}
+                            {ch.pipedreamApp ? 'Connect' : (isOpen ? 'Cancel' : 'Connect')}
                           </button>
                         )
                       )
@@ -610,8 +603,22 @@ export default function IntegrationsPage() {
                 {/* Expanded panel */}
                 {isOpen && (
                   <div className="int-card-form">
-                    {/* Credential fields -- hide for OAuth channels when already connected */}
-                    {!(ch.oauthFlow && connected) && (
+                    {/* Pipedream-connected channels: no credential fields, just UTM + reconnect */}
+                    {ch.pipedreamApp && connected && (
+                      <div className="int-form-section">
+                        <div className="int-pipedream-status">
+                          <div className="int-pipedream-badge">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                            Connected via Pipedream
+                          </div>
+                          <span className="int-pipedream-sub">OAuth managed by Pipedream · Token auto-refreshes · Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}</span>
+                          <button className="int-reauth-btn" onClick={() => handleSave(ch.id)}>Reconnect</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Manual credential fields for non-Pipedream channels */}
+                    {!ch.pipedreamApp && (
                       <div className="int-form-section">
                         <div className="int-form-label">
                           Credentials
@@ -635,31 +642,6 @@ export default function IntegrationsPage() {
                             </div>
                           ))}
                         </div>
-                      </div>
-                    )}
-
-                    {/* OAuth connected -- show read-only status */}
-                    {ch.oauthFlow && connected && (
-                      <div className="int-form-section">
-                        <div className="int-form-label">OAuth Status</div>
-                        <div className="int-oauth-status">
-                          <CheckCircle />
-                          <span>Authorized via OAuth2 · Token stored securely · Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}</span>
-                        </div>
-                        <button
-                          className="int-reauth-btn"
-                          onClick={async () => {
-                            try {
-                              const res = await fetch(`/api/linkedin/auth?brandProfileId=${selectedBrand}`);
-                              const { authUrl } = await res.json();
-                              window.location.href = authUrl;
-                            } catch {
-                              setError('Could not start re-authorization.');
-                            }
-                          }}
-                        >
-                          Re-authorize
-                        </button>
                       </div>
                     )}
 
@@ -687,7 +669,7 @@ export default function IntegrationsPage() {
 
                     <div className="int-form-footer">
                       <button className="int-cancel-btn" onClick={() => setExpanded(null)}>Close</button>
-                      {!ch.oauthFlow && (
+                      {!ch.pipedreamApp && (
                         <button
                           className="int-save-btn"
                           onClick={() => handleSave(ch.id)}
@@ -696,31 +678,21 @@ export default function IntegrationsPage() {
                           {saving === ch.id ? 'Saving...' : connected ? 'Update Connection' : `Connect ${ch.label}`}
                         </button>
                       )}
-                      {ch.oauthFlow && connected && (
+                      {connected && (
                         <button
                           className="int-save-btn"
+                          style={{ background: 'var(--color-bg-elevated)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
                           onClick={async () => {
                             if (!selectedBrand) return;
                             setSaving(ch.id);
                             try {
                               const r = await fetch('/api/publishing/channels', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                  brandProfileId: selectedBrand,
-                                  channel: ch.id,
-                                  credentials: {},
-                                  utmTemplate: utmTemplates[ch.id],
-                                })
+                                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ brandProfileId: selectedBrand, channel: ch.id, credentials: ch.pipedreamApp ? savedChannels[ch.id] : credentials[ch.id], utmTemplate: utmTemplates[ch.id] })
                               });
                               const d = await r.json();
-                              if (d.success) {
-                                setSuccess('UTM template saved');
-                                setTimeout(() => setSuccess(''), 3000);
-                              }
-                            } finally {
-                              setSaving(null);
-                            }
+                              if (d.success) { setSuccess('UTM template saved'); setTimeout(() => setSuccess(''), 3000); }
+                            } finally { setSaving(null); }
                           }}
                           disabled={saving === ch.id}
                         >
