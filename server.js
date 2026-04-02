@@ -5406,9 +5406,14 @@ app.post('/api/pipedream/token', async (req, res) => {
     });
     const authData = await authRes.json();
     if (!authData.access_token) throw new Error('Pipedream auth failed');
+    const environment = process.env.PIPEDREAM_PROJECT_ENVIRONMENT || 'development';
     const tokenRes = await fetch(`https://api.pipedream.com/v1/connect/${projectId}/tokens`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${authData.access_token}`, 'Content-Type': 'application/json' },
+      headers: {
+        'Authorization': `Bearer ${authData.access_token}`,
+        'Content-Type': 'application/json',
+        'x-pd-environment': environment
+      },
       body: JSON.stringify({ external_user_id: brandProfileId, allowed_origins: ['https://dev.forgeintelligence.ai', 'https://forgeintelligence.ai', 'http://localhost:5173'] })
     });
     const tokenData = await tokenRes.json();
