@@ -902,3 +902,93 @@ The agency story is not "we added multi-brand support." The agency story is:
 > "You run Forge for your clients the way we run Forge for ours. Every brand gets its own brain. Every brain learns from every publish. Your clients get smarter content over time — and you get the credit."
 
 The dev environment running Sandbox-XM, Sandbox-GTM, and Forge Intelligence simultaneously **is the agency demo**. That's the thing to show on sales calls.
+
+
+---
+
+## Architectural Decision — Pipedream Connect (OAuth Layer Migration)
+
+> **Decision date:** April 1, 2026  
+> **Status:** APPROVED — migrate to Pipedream Connect for all channel OAuth in production  
+> **Replaces:** Custom per-channel OAuth (LinkedIn, X, GSC, Facebook, Reddit, Ghost)
+
+### The Problem We're Solving
+
+Every channel integration in the current dev build required:
+1. Creating a developer app on that platform
+2. Getting approved (LinkedIn MDP took weeks, Reddit portal locked, Google sensitive scope review = 1+ month)
+3. Manually configuring redirect URIs per environment
+4. Writing and maintaining token refresh logic per channel
+5. Storing credentials in `publishing_channels` table manually
+
+This is not Forge's core product. Intelligence is. Every hour spent in OAuth hell is an hour not spent on Pre-cog scores, GEO Citation, and Brain compounding.
+
+### What Pipedream Connect Does
+
+- Manages the full OAuth flow for 2,700+ apps using Pipedream's pre-approved client IDs
+- Handles token storage, refresh, and rotation automatically
+- Provides a frontend SDK for embedded auth (popup or redirect)
+- Provides a proxy API so you make authenticated requests without ever touching tokens directly
+- Has already cleared sensitive scope reviews with Google, LinkedIn, Meta, Reddit, etc.
+
+Real-world signal: A developer blocked for a month on Google sensitive scope OAuth was unblocked in 10 minutes using Pipedream Connect.
+
+### Migration Plan
+
+**Phase 1 — New connections use Pipedream Connect**
+All new channel connections in the Integrations page go through Pipedream Connect SDK instead of our custom OAuth flows. Existing connections in `publishing_channels` continue to work during transition.
+
+**Phase 2 — Remove custom OAuth endpoints**
+Once Pipedream Connect is stable in production, remove:
+- `/api/linkedin/auth` + `/auth/linkedin/callback`
+- `/api/gsc/auth` + `/auth/gsc/callback`
+- Custom X OAuth 1.0a flow
+- Facebook Graph API OAuth flow
+- Reddit OAuth flow
+
+**Phase 3 — Expand channel coverage**
+With Pipedream handling auth, adding new channels (HubSpot, Salesforce, Notion, Slack, email) becomes hours not weeks. Each new channel = call Pipedream's proxy with authenticated token.
+
+### What Stays the Same
+
+The actual publishing logic stays exactly as-is. When publishing to LinkedIn, we still call the LinkedIn API with the same payload. The only change is where the access token comes from:
+
+```
+BEFORE: pool.query('SELECT credentials FROM publishing_channels WHERE...')
+AFTER:  pipedream.getToken(userId, 'linkedin')
+```
+
+The `publishing_channels` table can be repurposed to store Pipedream account IDs per brand per channel instead of raw credentials. Tokens never touch our DB.
+
+### What This Unlocks
+
+| Channel | Current Status | With Pipedream Connect |
+|---------|---------------|----------------------|
+| LinkedIn | Live but no impressions (MDP blocked) | Full analytics scope available |
+| GSC | Live, complex setup | One-click connect |
+| Google Analytics | Not built | Available immediately |
+| Reddit | Portal locked | Available immediately |
+| Facebook | Live but token refresh fragile | Managed automatically |
+| HubSpot | Not built | Available immediately |
+| Notion | Not built | Available immediately |
+| Slack | Not built | Available immediately |
+| Gmail (digest delivery) | Not built | Available immediately |
+
+### Implementation Notes
+
+- Pipedream Connect has a frontend React SDK (`@pipedream/connect-react`)
+- Backend needs a `PIPEDREAM_CLIENT_ID`, `PIPEDREAM_CLIENT_SECRET`, and `PIPEDREAM_PROJECT_ID`
+- Generate a short-lived connect token server-side, pass to frontend SDK
+- Frontend SDK opens a popup/modal for the OAuth flow
+- On success, Pipedream returns an `account_id` — store this in `publishing_channels` instead of raw tokens
+- All subsequent API calls go through Pipedream's proxy: `pd.makeRequest(accountId, { url, method, data })`
+
+### Cost Consideration
+
+Pipedream Connect is priced per connected account per month. At the agency tier with multiple brands and multiple channels per brand this is a real line item — evaluate pricing at pipedream.com/pricing before production launch and factor into the $499/mo Agency tier margin calculation.
+
+### Issues to Create
+
+- `feat: Pipedream Connect integration — replace custom OAuth with managed auth SDK`
+- `feat: Integrations page redesign — Pipedream Connect embedded auth flow`
+- `feat: publishing_channels migration — store Pipedream account_id instead of raw credentials`
