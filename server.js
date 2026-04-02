@@ -1411,6 +1411,32 @@ Evaluate the user's topic against this brand's performance data and return ONLY 
   }
 });
 
+// POST /api/publishing/queue/:id/archive
+app.post('/api/publishing/queue/:id/archive', async (req, res) => {
+  try {
+    await pool.query(
+      `UPDATE publishing_queue SET status = 'archived', updated_at = NOW() WHERE id = $1`,
+      [req.params.id]
+    );
+    res.json({ success: true });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/publishing/queue/:id/unarchive
+app.post('/api/publishing/queue/:id/unarchive', async (req, res) => {
+  try {
+    await pool.query(
+      `UPDATE publishing_queue SET status = 'staged', updated_at = NOW() WHERE id = $1`,
+      [req.params.id]
+    );
+    res.json({ success: true });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // GET /api/analytics/patterns/:brandProfileId
 app.get('/api/analytics/patterns/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
