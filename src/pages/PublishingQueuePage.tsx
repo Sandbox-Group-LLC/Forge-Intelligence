@@ -13,6 +13,12 @@ const Clock = () => (
     <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
   </svg>
 );
+const Archive = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>
+  </svg>
+);
+
 const Trash = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
@@ -155,8 +161,16 @@ export default function PublishingQueuePage() {
   const [syncing, setSyncing] = useState<string | null>(null);
   const [republishing, setRepublishing] = useState<string | null>(null); // "itemId:channel"
   const [deleteModal, setDeleteModal] = useState<{ item: QueueItem; publishedChannels: string[] } | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const [deleteChannelSelection, setDeleteChannelSelection] = useState<Record<string, boolean>>({});
   const [deleting, setDeleting] = useState(false);
+
+  const archiveItem = async (item: QueueItem) => {
+    try {
+      await fetch(`/api/publishing/queue/${item.id}/archive`, { method: 'POST' });
+      loadQueue();
+    } catch(e) { console.error('Archive failed', e); }
+  };
 
   const loadQueue = useCallback(async () => {
     setLoading(true);
@@ -603,9 +617,11 @@ ${bodyHtml}
   };
 
   // Filter logic
+  const archivedItems = items.filter(i => i.status === 'archived');
   const filteredItems = items.filter(item => {
     if (filterBrand !== 'all' && item.brand_profile_id !== filterBrand) return false;
-    return true;
+    if (showArchived) return item.status === 'archived';
+    return item.status !== 'archived';
   });
 
   // Split into campaign groups and standalone
@@ -661,6 +677,13 @@ ${bodyHtml}
         )}
 
         {error && <div className="geo-error">{error}</div>}
+      {archivedItems.length > 0 && (
+        <div className="pq-archive-toggle-wrap">
+          <button className="pq-archive-toggle" onClick={() => setShowArchived(p => !p)}>
+            <Archive /> {showArchived ? 'Hide Archived' : `Show Archived (${archivedItems.length})`}
+          </button>
+        </div>
+      )}
         {successMsg && <div className="int-success">{successMsg}</div>}
 
         {/* Queue — campaign groups + standalone */}
@@ -736,6 +759,9 @@ ${bodyHtml}
                       </button>
                       <button className="pq-icon-btn" title="UTM Preview" onClick={() => openUtmPreview(item)}>
                         <Link2 />
+                      </button>
+                      <button className="pq-icon-btn" title="Archive" onClick={() => archiveItem(item)}>
+                        <Archive />
                       </button>
                       <button className="pq-icon-btn danger" title="Remove from queue" onClick={() => openDeleteModal(item)}>
                         <Trash />
@@ -927,6 +953,9 @@ return (
                       </button>
                       <button className="pq-icon-btn" title="UTM Preview" onClick={() => openUtmPreview(item)}>
                         <Link2 />
+                      </button>
+                      <button className="pq-icon-btn" title="Archive" onClick={() => archiveItem(item)}>
+                        <Archive />
                       </button>
                       <button className="pq-icon-btn danger" title="Remove from queue" onClick={() => openDeleteModal(item)}>
                         <Trash />
