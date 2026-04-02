@@ -421,7 +421,7 @@ export default function IntegrationsPage() {
         // Open Pipedream Connect iframe directly — bypass SDK token resolution issues
         const iframeUrl = `https://pipedream.com/_static/connect.html?token=${encodeURIComponent(token)}&app=${encodeURIComponent(channel.pipedreamApp || '')}`;
 
-        await new Promise<void>((resolve, reject) => {
+        await new Promise<void>((resolve) => {
           const iframe = document.createElement('iframe');
           iframe.src = iframeUrl;
           iframe.style.cssText = 'position:fixed;inset:0;z-index:2147483647;border:0;display:block;width:100%;height:100%';
