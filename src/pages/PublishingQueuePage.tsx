@@ -113,7 +113,7 @@ interface QueueItem {
   content_id: string;
   title: string;
   channels: string[];
-  status: 'staged' | 'scheduled' | 'publishing' | 'published' | 'partial' | 'failed';
+  status: 'staged' | 'scheduled' | 'publishing' | 'published' | 'partial' | 'failed' | 'archived';
   scheduled_at: string | null;
   published_at: string | null;
   publish_results: Record<string, { status: string; url?: string; error?: string; message?: string }>;
