@@ -5388,6 +5388,57 @@ async function runScheduledPublishes() {
 }
 
 
+
+// ── Pipedream Connect ─────────────────────────────────────────────────────────
+
+// POST /api/pipedream/token
+app.post('/api/pipedream/token', async (req, res) => {
+  const { brandProfileId } = req.body;
+  if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
+  try {
+    const clientId = process.env.PIPEDREAM_CLIENT_ID;
+    const clientSecret = process.env.PIPEDREAM_CLIENT_SECRET;
+    const projectId = process.env.PIPEDREAM_PROJECT_ID;
+    if (!clientId || !clientSecret || !projectId) return res.status(500).json({ error: 'Pipedream not configured' });
+    const authRes = await fetch('https://api.pipedream.com/v1/oauth/token', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ grant_type: 'client_credentials', client_id: clientId, client_secret: clientSecret })
+    });
+    const authData = await authRes.json();
+    if (!authData.access_token) throw new Error('Pipedream auth failed');
+    const tokenRes = await fetch(`https://api.pipedream.com/v1/connect/${projectId}/tokens`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${authData.access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ external_user_id: brandProfileId, allowed_origins: ['https://dev.forgeintelligence.ai', 'https://forgeintelligence.ai', 'http://localhost:5173'] })
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenData.token) throw new Error(JSON.stringify(tokenData));
+    res.json({ token: tokenData.token, expiresAt: tokenData.expires_at });
+  } catch(e) { console.error('[PD-TOKEN]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/pipedream/account — store account_id after user connects via Pipedream
+app.post('/api/pipedream/account', async (req, res) => {
+  const { brandProfileId, channel, accountId, appSlug } = req.body;
+  if (!brandProfileId || !channel || !accountId) return res.status(400).json({ error: 'missing fields' });
+  try {
+    await pool.query(`
+      INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active, updated_at)
+      VALUES ($1, $2, $3, true, NOW())
+      ON CONFLICT (brand_profile_id, channel) DO UPDATE SET credentials = $3, is_active = true, updated_at = NOW()
+    `, [brandProfileId, channel, JSON.stringify({ pipedream_account_id: accountId, app_slug: appSlug, connected_via: 'pipedream_connect' })]);
+    res.json({ success: true });
+  } catch(e) { console.error('[PD-ACCOUNT]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/pipedream/config — send project config to frontend SDK
+app.get('/api/pipedream/config', (req, res) => {
+  res.json({
+    projectId: process.env.PIPEDREAM_PROJECT_ID,
+    environment: process.env.PIPEDREAM_PROJECT_ENVIRONMENT || 'development'
+  });
+});
+
 // ── GEO Citation Tracker ──────────────────────────────────────────────────────
 
 // DB table for citations
