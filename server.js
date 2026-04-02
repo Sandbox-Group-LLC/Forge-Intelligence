@@ -1411,6 +1411,21 @@ Evaluate the user's topic against this brand's performance data and return ONLY 
   }
 });
 
+// PATCH /api/publishing/queue/:id/title — inline title edit
+app.patch('/api/publishing/queue/:id/title', async (req, res) => {
+  const { title } = req.body;
+  if (!title?.trim()) return res.status(400).json({ error: 'title required' });
+  try {
+    await pool.query(
+      `UPDATE publishing_queue SET title = $1, updated_at = NOW() WHERE id = $2`,
+      [title.trim(), req.params.id]
+    );
+    res.json({ success: true });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // POST /api/publishing/queue/:id/archive
 app.post('/api/publishing/queue/:id/archive', async (req, res) => {
   try {
