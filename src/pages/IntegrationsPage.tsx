@@ -439,12 +439,15 @@ export default function IntegrationsPage() {
             setTimeout(() => setSuccess(''), 4000);
           },
           onError: (err: any) => {
-            setError(`Could not connect ${channel.label}: ${err?.message || 'Unknown error'}`);
+            console.error('[Pipedream Connect Error]', err);
+            const msg = err?.message || err?.error || err?.error_message || JSON.stringify(err) || 'Unknown error';
+            setError(`Could not connect ${channel.label}: ${msg}`);
           }
         });
       } catch(e: any) {
+        console.error('[Pipedream Connect Catch]', e);
         if (e?.message !== 'User closed the connect dialog') {
-          setError(`Could not connect ${channel.label}. Try again.`);
+          setError(`Could not connect ${channel.label}: ${e?.message || JSON.stringify(e)}`);
         }
       }
       return;
