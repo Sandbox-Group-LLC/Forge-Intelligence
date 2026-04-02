@@ -789,7 +789,8 @@ ${bodyHtml}
                         <Download />
                       </button>
                       {(() => {
-                        const bSlug = (item.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
+                        const brandUrl = item.brand_url || brands.find(b => b.id === item.brand_profile_id)?.brandUrl || '';
+                        const bSlug = brandUrl.replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
                         const aSlug = (item.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
                         return (
                           <a className="pq-icon-btn" title="Preview live article" href={`/articles/${bSlug}/${aSlug}`} target="_blank" rel="noopener noreferrer">
