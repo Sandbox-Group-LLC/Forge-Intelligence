@@ -419,6 +419,7 @@ export default function IntegrationsPage() {
         const { projectId, environment } = await cfgRes.json();
 
         // Open Pipedream Connect popup
+        const { createFrontendClient } = await import('@pipedream/sdk/browser');
         const pd = createFrontendClient({ token, projectId, environment });
         const account = await pd.connectAccount({ app: channel.pipedreamApp });
         if (account?.id) {
