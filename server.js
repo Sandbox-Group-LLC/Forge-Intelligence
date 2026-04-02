@@ -3454,9 +3454,12 @@ app.get('/api/publishing/queue/:brandProfileId', async (req, res) => {
       `SELECT pq.*,
               c.name        AS campaign_name,
               c.topic_cluster AS campaign_topic,
-              c.status      AS campaign_status
+              c.status      AS campaign_status,
+              bp.brand_url  AS brand_url,
+              bp.brand_name AS brand_name
        FROM publishing_queue pq
        LEFT JOIN campaigns c ON c.id = pq.campaign_id
+       LEFT JOIN brand_profiles bp ON bp.id = pq.brand_profile_id
        WHERE pq.brand_profile_id = $1
        ORDER BY pq.campaign_id NULLS LAST, pq.created_at ASC`,
       [brandProfileId]
