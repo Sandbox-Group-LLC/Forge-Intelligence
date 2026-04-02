@@ -190,7 +190,6 @@ const CHANNELS: ChannelDef[] = [
   {
     id: 'x',
     label: 'X (Twitter)',
-    pipedreamApp: 'twitter_v2',
     description: 'Post articles with UTM links via X API v2. Tracks impressions, reactions, and link clicks.',
     color: '#000000',
     logo: '𝕏',
@@ -423,7 +422,9 @@ export default function IntegrationsPage() {
         const { createFrontendClient } = await import('@pipedream/sdk/browser');
         const pd = createFrontendClient({
           tokenCallback: async () => token,
-          externalUserId: selectedBrand
+          externalUserId: selectedBrand,
+          projectId: await fetch('/api/pipedream/config').then(r => r.json()).then(d => d.projectId),
+          projectEnvironment: await fetch('/api/pipedream/config').then(r => r.json()).then(d => d.environment)
         });
         await pd.connectAccount({
           app: channel.pipedreamApp,
