@@ -1,5 +1,5 @@
 # AI Content Platform — Working Doc
-> Last updated: March 30, 2026 (2:00 PM PDT) | Status: Stage 6 LIVE — Scheduling + Campaign Queue + UTMs + OG Meta ✅ | Active Whiteboard
+> Last updated: April 1, 2026 | Status: Stage 8 COMPLETE ✅ | Agency Multi-Brand section added | Active Whiteboard
 
 ---
 
@@ -827,3 +827,78 @@ Daily/Weekly: Performance digest → compile + Resend
 - [x] Tapping backdrop closes drawer
 - [x] Hamburger in TopBar hidden on mobile — sidebar chevron is sole toggle
 - [x] `app-main` offset 64px left on mobile to clear fixed icon rail
+
+
+---
+
+## Agency Multi-Brand Mode — Preserve for Production
+
+> This section documents patterns discovered in dev while running multiple brands through Forge simultaneously. These UX patterns must be preserved and formalized for the Agency tier ($499/mo). Do not remove or collapse these features during the production recast.
+
+### What We Discovered in Dev
+
+Running Sandbox-XM, Sandbox-GTM, and Forge Intelligence as simultaneous brands in a single Forge instance revealed a natural agency workflow that works today without any additional build:
+
+**1. Brand Selector Dropdowns (everywhere)**
+Every agent page — Content Generator, Campaign Generator, Performance Dashboard, Brand Settings — has a brand selector dropdown. In production single-brand mode this gets hidden or pre-selected. For agency users this IS the workflow. The dropdown stays visible and prominent. Agency users think in brands, not in articles.
+
+**2. Brand-scoped Brain Data**
+All `brain_patterns`, `brain_mistakes`, `brain_citations`, `decay_alerts`, `content_analytics`, and `geo_citations` are already scoped by `brand_profile_id`. Each brand learns independently. An agency customer managing 5 clients gets 5 independent learning loops with zero cross-contamination. This is the core value prop — no additional build required.
+
+**3. Brand Settings per Brand**
+`article_base_url`, `article_url_suffix`, `logo_url`, `article_template`, `catalog_template` are all per-brand. An agency can configure sandbox-xm.com with `.html` suffix and Ghost blog with clean URLs in the same instance. Works today.
+
+**4. Publishing Channels per Brand**
+`publishing_channels` table is keyed by `brand_profile_id`. Each brand has its own LinkedIn, X, Ghost, GSC credentials. An agency user connects each client's channels independently without any credential bleeding.
+
+**5. Performance Dashboard per Brand**
+The brand dropdown in Performance filters all KPIs, trends, and pattern data to that brand. Agency users can do a weekly check-in per client in <5 minutes by switching the dropdown.
+
+**6. Campaign Generator per Brand**
+Campaigns are brand-scoped. An agency running 3 client campaigns simultaneously sees each in isolation. The campaign group UI in Publishing Queue visually separates them by brand tag.
+
+### What Needs to Change for Agency Tier
+
+These things currently feel like "dev workarounds" but should be first-class agency features:
+
+**1. Global Brand Context Indicator (TopBar)**
+Every page should show "Currently working in: [Brand Name]" in the TopBar when multiple brands exist. Right now you have to remember which brain you selected. This is the #1 agency UX gap.
+
+**2. Brand Switcher in TopBar**
+A quick-switch dropdown in the TopBar itself — not buried in Brand Settings — so agency users can flip between client contexts without navigating away.
+
+**3. Agency Dashboard (new page)**
+A bird's-eye view across all brands:
+- Articles generated this week per brand
+- Pending compliance reviews per brand
+- Decay alerts across all brands
+- Citation check status per brand
+- "Jump to brand" quick links
+One screen that tells an account manager what needs attention across their whole book.
+
+**4. Client-Level Access Control (Phase 2)**
+Today everything is one login. Agency tier needs:
+- Agency admin sees all brands
+- Client login sees only their brand
+- Read-only client view for approval workflows
+This is Phase 2 — Clerk auth + org-slug scoping already planned.
+
+**5. Brand Duplication**
+"Clone this brand's settings to a new brand" — saves setup time when onboarding clients in similar industries.
+
+### Production Recast Rules for Agency Features
+
+When stripping the product down for the SMB single-brand launch:
+- **DO NOT remove** brand selector dropdowns — hide them via CSS when only 1 brand exists, show them when >1 brand exists (already partially implemented)
+- **DO NOT remove** brand-scoped tables — they are the multi-tenancy foundation
+- **DO NOT remove** per-brand publishing channels — even SMB customers may have multiple channels per brand
+- **DO preserve** the Performance Dashboard brand dropdown — even single-brand users may want historical brand comparisons after a rebrand
+- **DO preserve** the Brand Settings per-brand architecture — this is what makes the agency tier possible without a rebuild
+
+### Agency Tier Positioning
+
+The agency story is not "we added multi-brand support." The agency story is:
+
+> "You run Forge for your clients the way we run Forge for ours. Every brand gets its own brain. Every brain learns from every publish. Your clients get smarter content over time — and you get the credit."
+
+The dev environment running Sandbox-XM, Sandbox-GTM, and Forge Intelligence simultaneously **is the agency demo**. That's the thing to show on sales calls.
