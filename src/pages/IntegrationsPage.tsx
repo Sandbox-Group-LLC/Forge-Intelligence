@@ -418,21 +418,11 @@ export default function IntegrationsPage() {
         const { token } = await tokenRes.json();
         if (!token) throw new Error('Could not get connect token');
 
-        // Open Pipedream Connect popup
+        // Open Pipedream Connect popup — pass token directly to connectAccount
         const { createFrontendClient } = await import('@pipedream/sdk/browser');
-        const pd = createFrontendClient({
-          token,
-          externalUserId: selectedBrand,
-          tokenCallback: async () => {
-            const res = await fetch('/api/pipedream/token', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ brandProfileId: selectedBrand })
-            });
-            const data = await res.json();
-            return data.token;
-          }
-        });
+        const pd = createFrontendClient({ externalUserId: selectedBrand });
         await pd.connectAccount({
+          token,
           app: channel.pipedreamApp,
           onSuccess: async (res: any) => {
             await fetch('/api/pipedream/account', {
