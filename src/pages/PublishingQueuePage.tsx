@@ -161,6 +161,7 @@ export default function PublishingQueuePage() {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [contentPreview, setContentPreview] = useState<{ item: QueueItem; article: any; postCopy: Record<string, string> } | null>(null);
+  const [editingField, setEditingField] = useState<string | null>(null);
   const [exportModal, setExportModal] = useState<{ item: QueueItem; article: any; brandSettingsData?: any } | null>(null);
   const [customUtmBase, setCustomUtmBase] = useState<string>('');
   const [brandSettings, setBrandSettings] = useState<Record<string, { article_base_url?: string; article_url_suffix?: string; settings?: { siteTemplate?: any } }>>({});
@@ -614,6 +615,41 @@ ${bodyHtml}
       for (const ch of d.channels) channelMap[ch.channel] = ch.utm_template || {};
     }
     setUtmPreview({ item, channels: channelMap });
+  };
+
+  const saveArticleEdit = async (field: string, value: string, sectionIndex?: number) => {
+    if (!contentPreview) return;
+    const { item, article } = contentPreview;
+    let updatedArticle = { ...article };
+
+    if (field === 'title') {
+      updatedArticle.title = value;
+      // Also update queue item title
+      await fetch(`/api/publishing/queue/${item.id}/title`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: value })
+      });
+    } else if (field === 'metaDescription') {
+      updatedArticle.article_json = { ...updatedArticle.article_json, metaDescription: value };
+    } else if (field === 'sectionHeading' && sectionIndex !== undefined) {
+      const sections = [...(updatedArticle.article_json?.sections || [])];
+      sections[sectionIndex] = { ...sections[sectionIndex], heading: value };
+      updatedArticle.article_json = { ...updatedArticle.article_json, sections };
+    } else if (field === 'sectionBody' && sectionIndex !== undefined) {
+      const sections = [...(updatedArticle.article_json?.sections || [])];
+      sections[sectionIndex] = { ...sections[sectionIndex], body: value, content: value };
+      updatedArticle.article_json = { ...updatedArticle.article_json, sections };
+    }
+
+    // Persist to DB
+    const safeId = item.brand_profile_id.replace(/-/g, '_');
+    await fetch(`/api/content/${safeId}/${item.content_id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ article_json: updatedArticle.article_json, title: updatedArticle.title })
+    }).catch(() => {});
+
+    setContentPreview(prev => prev ? { ...prev, article: updatedArticle } : null);
+    setEditingField(null);
   };
 
   const openContentPreview = async (item: QueueItem) => {
@@ -1316,15 +1352,72 @@ return (
                       >↺ Generate Image</button>
                     </div>
                   )}
-                  <h1 className="pq-preview-title">{article?.title || item.title}</h1>
-                  {article?.article_json?.metaDescription && (
-                    <p className="pq-preview-meta-desc">{article.article_json.metaDescription}</p>
+                  {editingField === 'title' ? (
+                    <textarea
+                      className="pq-edit-inline pq-edit-title"
+                      defaultValue={article?.title || item.title}
+                      autoFocus
+                      rows={2}
+                      onBlur={e => saveArticleEdit('title', e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); saveArticleEdit('title', (e.target as HTMLTextAreaElement).value); } if (e.key === 'Escape') setEditingField(null); }}
+                    />
+                  ) : (
+                    <h1 className="pq-preview-title pq-editable" onClick={() => setEditingField('title')} title="Click to edit">
+                      {article?.title || item.title}
+                      <span className="pq-edit-hint">✎</span>
+                    </h1>
+                  )}
+                  {article?.article_json?.metaDescription !== undefined && (
+                    editingField === 'metaDescription' ? (
+                      <textarea
+                        className="pq-edit-inline pq-edit-meta"
+                        defaultValue={article.article_json.metaDescription}
+                        autoFocus
+                        rows={3}
+                        onBlur={e => saveArticleEdit('metaDescription', e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Escape') setEditingField(null); }}
+                      />
+                    ) : (
+                      <p className="pq-preview-meta-desc pq-editable" onClick={() => setEditingField('metaDescription')} title="Click to edit">
+                        {article.article_json.metaDescription}
+                        <span className="pq-edit-hint">✎</span>
+                      </p>
+                    )
                   )}
                   <div className="pq-preview-sections">
                     {sections.map((s: any, i: number) => (
                       <div key={i} className="pq-preview-section">
-                        {s.heading && <h2 className="pq-preview-heading">{s.heading}</h2>}
-                        <>{renderMarkdown(s.body || s.content || '')}</>
+                        {s.heading && (
+                          editingField === `heading-${i}` ? (
+                            <textarea
+                              className="pq-edit-inline pq-edit-heading"
+                              defaultValue={s.heading}
+                              autoFocus
+                              rows={2}
+                              onBlur={e => saveArticleEdit('sectionHeading', e.target.value, i)}
+                              onKeyDown={e => { if (e.key === 'Escape') setEditingField(null); }}
+                            />
+                          ) : (
+                            <h2 className="pq-preview-heading pq-editable" onClick={() => setEditingField(`heading-${i}`)} title="Click to edit">
+                              {s.heading}<span className="pq-edit-hint">✎</span>
+                            </h2>
+                          )
+                        )}
+                        {editingField === `body-${i}` ? (
+                          <textarea
+                            className="pq-edit-inline pq-edit-body"
+                            defaultValue={s.body || s.content || ''}
+                            autoFocus
+                            rows={8}
+                            onBlur={e => saveArticleEdit('sectionBody', e.target.value, i)}
+                            onKeyDown={e => { if (e.key === 'Escape') setEditingField(null); }}
+                          />
+                        ) : (
+                          <div className="pq-editable pq-editable-body" onClick={() => setEditingField(`body-${i}`)} title="Click to edit">
+                            <>{renderMarkdown(s.body || s.content || '')}</>
+                            <span className="pq-edit-hint pq-edit-hint-body">✎ Edit</span>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
