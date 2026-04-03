@@ -326,9 +326,10 @@ export default function PublishingQueuePage() {
         .then(r => r.json())
         .then(d => {
           if (d.success) {
+            const PUBLISH_ONLY = ['wordpress','webflow','hubspot','linkedin','x','facebook','reddit','medium','ghost'];
             setConnectedChannels(prev => ({
               ...prev,
-              [bid]: d.channels.map((c: ConnectedChannel) => c.channel)
+              [bid]: d.channels.map((c: ConnectedChannel) => c.channel).filter((ch: string) => PUBLISH_ONLY.includes(ch))
             }));
           }
         });
