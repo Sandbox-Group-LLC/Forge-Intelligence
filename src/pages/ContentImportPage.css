@@ -1,0 +1,273 @@
+/* ── Content Import Page ─────────────────────────────────────────────────── */
+.ci-page {
+  padding: 24px 24px 80px;
+  max-width: 740px;
+}
+
+.ci-form-card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 28px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.ci-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ci-label {
+  font-size: 0.775rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-secondary);
+}
+
+.ci-input {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  font-size: 0.9rem;
+  padding: 10px 14px;
+  outline: none;
+  font-family: inherit;
+  transition: border-color var(--transition-fast);
+}
+
+.ci-input:focus { border-color: var(--color-accent); }
+.ci-input::placeholder { color: var(--color-text-muted); }
+
+.ci-textarea {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  font-size: 0.875rem;
+  padding: 12px 14px;
+  outline: none;
+  font-family: inherit;
+  resize: vertical;
+  line-height: 1.6;
+  transition: border-color var(--transition-fast);
+}
+
+.ci-textarea:focus { border-color: var(--color-accent); }
+.ci-textarea::placeholder { color: var(--color-text-muted); }
+
+.ci-mode-toggle {
+  display: flex;
+  gap: 8px;
+}
+
+.ci-mode-btn {
+  flex: 1;
+  padding: 10px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-family: inherit;
+}
+
+.ci-mode-btn:hover { border-color: var(--color-accent); color: var(--color-text-primary); }
+.ci-mode-btn.active { background: rgba(53,99,255,0.12); border-color: var(--color-accent); color: var(--color-accent); font-weight: 700; }
+
+.ci-disclaimer {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  background: rgba(245,185,66,0.07);
+  border: 1px solid rgba(245,185,66,0.2);
+  border-radius: var(--radius-md);
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.ci-import-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 13px;
+  background: var(--color-accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: opacity var(--transition-fast);
+}
+
+.ci-import-btn:disabled { opacity: 0.45; cursor: default; }
+.ci-import-btn:hover:not(:disabled) { opacity: 0.88; }
+
+.ci-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: ci-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes ci-spin { to { transform: rotate(360deg); } }
+
+/* Results */
+.ci-result {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.ci-verdict-banner {
+  border-radius: var(--radius-lg);
+  padding: 24px 28px;
+  border: 1px solid;
+  display: flex;
+  gap: 28px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.ci-verdict-banner.strong { background: rgba(16,185,129,0.07); border-color: rgba(16,185,129,0.25); }
+.ci-verdict-banner.moderate { background: rgba(245,158,11,0.07); border-color: rgba(245,158,11,0.25); }
+.ci-verdict-banner.weak { background: rgba(239,68,68,0.07); border-color: rgba(239,68,68,0.25); }
+
+.ci-verdict-scores {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-shrink: 0;
+}
+
+.ci-score-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.ci-score-val {
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.ci-score-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--color-text-muted);
+}
+
+.ci-score-divider {
+  width: 1px;
+  height: 36px;
+  background: var(--color-border);
+}
+
+.ci-verdict-text { flex: 1; }
+
+.ci-verdict-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-bottom: 8px;
+}
+
+.ci-verdict-copy {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+  font-style: italic;
+}
+
+/* Flags + suggestions */
+.ci-section {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ci-section-title {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.ci-flags { display: flex; flex-direction: column; gap: 8px; }
+
+.ci-flag {
+  font-size: 0.8375rem;
+  color: #F59E0B;
+  line-height: 1.5;
+  padding: 8px 12px;
+  background: rgba(245,158,11,0.07);
+  border-radius: 6px;
+  border-left: 3px solid #F59E0B;
+}
+
+.ci-suggestions { display: flex; flex-direction: column; gap: 8px; }
+
+.ci-suggestion {
+  font-size: 0.8375rem;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  padding: 8px 12px;
+  background: rgba(53,99,255,0.06);
+  border-radius: 6px;
+  border-left: 3px solid var(--color-accent);
+}
+
+/* Actions */
+.ci-result-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ci-action-btn {
+  padding: 11px 20px;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  text-align: center;
+  transition: opacity var(--transition-fast);
+  border: none;
+  font-family: inherit;
+}
+
+.ci-action-btn:hover { opacity: 0.85; }
+.ci-action-btn.primary { background: var(--color-accent); color: #fff; }
+.ci-action-btn.secondary { background: var(--color-bg-card); color: var(--color-text-secondary); border: 1px solid var(--color-border); }
+.ci-action-btn.ghost { background: transparent; color: var(--color-text-muted); border: 1px solid var(--color-border); }
+
+.ci-result-note {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  text-align: center;
+}
