@@ -1,6 +1,5 @@
 # Forge Intelligence — Master SSOT
 
-> **Last updated:** April 3, 2026 | **Status:** Stage 8 COMPLETE + X Publishing Live ✅ | OAuth 1.0a fixed | Chip color system | Reset & Retry flow | GSC exorcised | Reddit: Coming Soon (never) 🪦
 > **This README is the single source of truth for all AI sessions, dev work, and project decisions.**
 > When starting a new AI session, read this file top to bottom before touching Always read the README.md first -- it is the SSOT.
 > Always read the current file and capture its SHA before writing - never write blind.
@@ -74,7 +73,6 @@ Medium stopped issuing new API integration tokens in early 2025. The publish bac
 | Campaign → Publishing pipeline | ✅ LIVE | Campaign articles now mirror into `generated_content_{uuid}` + `publishing_queue` with `campaign_id` stamped |
 | UTM campaign slugs | ✅ LIVE | `utm_campaign` now resolves to readable campaign name slug instead of `forge-content` |
 | Facebook Page publishing | ✅ LIVE | Graph API v21.0 — Page feed publish with Haiku post copy |
-| Reddit publishing | ✅ LIVE | OAuth 1.0a script app — link post to company subreddit with token refresh |
 | Medium publishing | ✅ LEGACY | Integration token auth — backend live, new tokens unavailable since early 2025 |
 | Mobile sidebar | ✅ LIVE | Auto-collapses on mobile, icon rail always visible, drawer expands with backdrop overlay |
 | Mobile layout | ✅ LIVE | `app-main` offset by 64px on mobile, hamburger hidden (chevron is sole toggle) |
@@ -116,7 +114,6 @@ Medium stopped issuing new API integration tokens in early 2025. The publish bac
 | External Review Workflow | ✅ LIVE | "Send for Review" share icon on queue cards — generates signed token URL (`/review/[token]`), copies to clipboard. Reviewer sees full article + comment + Approve/Request Changes. No login. Review badge on queue card after VP actions. First verdict: "Slay." ✅ |
 | Inline Article Editing | ✅ LIVE | Content preview modal — click title, meta description, section headings, or body text to edit in place. Saves to DB on blur. No round-trip through Compliance Gate for tweaks. |
 | Content Library | ✅ LIVE | `/app/content-library` — card grid of all generated content, search, status tabs, hero thumbnails, confidence scores, performance stats, preview modal. Brand filter top-level (agency/removable for SMB). |
-| Pipedream Connect OAuth | ✅ LIVE | All channel OAuth replaced with Pipedream managed auth — LinkedIn, Facebook, Reddit, HubSpot, Webflow connect via popup in <60s. X stays manual (X asked Pipedream to remove it). Ghost + WordPress stay key-based. |
 | Content Library | ✅ LIVE | `/app/content-library` — card grid of all generated content across all brands, search, status tabs (All/Published/Staged/Draft), hero thumbnails, confidence scores, performance stats, preview modal with live links. Brand filter top-level for agency mode, removable for single-brand production. |
 | Inline Article Editing | ✅ LIVE | Content preview modal in Publishing Queue — click title, meta description, section headings, or body text to edit in place. Saves to DB on blur. No round-trip through Compliance Gate for headline tweaks. |
 | External Review Workflow | ✅ LIVE | "Send for Review" button on queue cards — generates signed token URL (`/review/[token]`), copies to clipboard. Reviewer sees full article render + comment field + Approve / Request Changes buttons. No login required. Review status badge (green/amber/grey) shows on queue card after VP actions. |
@@ -156,7 +153,6 @@ Medium stopped issuing new API integration tokens in early 2025. The publish bac
 - Agency Dashboard — bird's-eye view across all brands (backlog)
 - Brand Switcher in TopBar — quick-switch for agency users (backlog)
 - GEO citation data pending Perplexity/ChatGPT indexing forgeintelligence.ai articles
-- Reddit — Coming Soon (never)
 
 ### GEO Content Strategy — Forge Intelligence
 Published articles at `dev.forgeintelligence.ai/articles/forgeintelligence-ai/`:
@@ -177,7 +173,6 @@ End-to-end pipeline validated March 31, 2026:
 This workflow scales to any number of articles without touching code. Applicable to Sandbox-GTM and any future brand with a self-hosted site.
 - Multi-brand stress test (#35) pending
 - NEON_DATABASE_URL: correct endpoint is ep-odd-waterfall-akyrdo6x (restored branch) — do not revert to ep-cool-firefly
-- Facebook and Reddit analytics sync (pull engagement into Performance tab)
 - Ghost CMS integration — publish ✅ LIVE, analytics pending
 
 ---
@@ -698,7 +693,6 @@ The project board tracks all active issues against this roadmap. When picking up
 | Item | Priority | Notes |
 |------|----------|-------|
 | Server-side UUID auto-gen | Medium | `clientId` currently must be sent as valid UUID from client |
-| `third_party_signals` often null | Low | G2/Reddit scraping not deeply implemented yet |
 | LinkedIn impressions | Medium | Requires MDP approval — `socialActions` gives reactions/comments now |
 | `brandProfileId` was returning "unknown" | ✅ Fixed | Now returns real UUID from NeonDB |
 | Anthropic SDK tool-calling TS errors | ✅ Fixed | Removed tool-calling pattern. SDK pinned to `^0.39.0` |
