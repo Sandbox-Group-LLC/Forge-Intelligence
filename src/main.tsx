@@ -15,6 +15,7 @@ import PublicArticlePage from './pages/PublicArticlePage';
 import PerformanceDashboardPage from './pages/PerformanceDashboardPage';
 import BrandSettingsPage from './pages/BrandSettingsPage';
 import ContentLibraryPage from './pages/ContentLibraryPage';
+import ReviewPage from './pages/ReviewPage';
 import './index.css';
 
 createRoot(document.getElementById('root')!).render(
@@ -43,6 +44,9 @@ createRoot(document.getElementById('root')!).render(
 
         {/* Public article viewer — no AppProvider needed */}
         <Route path="/articles/:brandSlug/:articleSlug" element={<PublicArticlePage />} />
+
+        {/* External review page — no AppProvider, no auth */}
+        <Route path="/review/:token" element={<ReviewPage />} />
 
         {/* Legacy redirects — keep old paths working during transition */}
         <Route path="/context-hub/*" element={<Navigate to="/app/context-hub" replace />} />
