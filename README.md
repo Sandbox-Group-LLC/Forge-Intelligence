@@ -1,6 +1,6 @@
 # Forge Intelligence — Master SSOT
 
-> **Last updated:** March 31, 2026 (end of day) | **Status:** Stage 8 COMPLETE | GEO Citation Tracker ✅ | Decay Monitoring ✅ | Full feedback loop closed across all agents
+> **Last updated:** April 2, 2026 (end of day) | **Status:** Stage 8 COMPLETE + Production Polish Sprint ✅ | Pipedream Connect OAuth ✅ | Content Library ✅ | Inline Article Editing ✅ | External Review Workflow ✅
 > **This README is the single source of truth for all AI sessions, dev work, and project decisions.**
 > When starting a new AI session, read this file top to bottom before touching Always read the README.md first -- it is the SSOT.
 > Always read the current file and capture its SHA before writing - never write blind.
@@ -103,6 +103,13 @@ Medium stopped issuing new API integration tokens in early 2025. The publish bac
 | Full Review Mode | ⏸ SHELVED | Enterprise team workflow — commented out, re-enable when multi-person approval flow is needed |
 | Article Page Diamond Logo | ✅ LIVE | Public article nav uses stroke-only diamond SVG matching sidebar icon, with pulse animation |
 | Forge Intelligence Content Space | ✅ LIVE | `dev.forgeintelligence.ai/articles/forgeintelligence-ai/` — owned GEO surface, 2 articles published, sitemap at `/sitemap.xml`, submitted to GSC |
+| Pipedream Connect OAuth | ✅ LIVE | All channel OAuth replaced with Pipedream managed auth — LinkedIn, Facebook, Reddit, HubSpot, Webflow connect via popup in <60s. X stays manual (X asked Pipedream to remove it). Ghost + WordPress stay key-based. |
+| Content Library | ✅ LIVE | `/app/content-library` — card grid of all generated content across all brands, search, status tabs (All/Published/Staged/Draft), hero thumbnails, confidence scores, performance stats, preview modal with live links. Brand filter top-level for agency mode, removable for single-brand production. |
+| Inline Article Editing | ✅ LIVE | Content preview modal in Publishing Queue — click title, meta description, section headings, or body text to edit in place. Saves to DB on blur. No round-trip through Compliance Gate for headline tweaks. |
+| External Review Workflow | ✅ LIVE | "Send for Review" button on queue cards — generates signed token URL (`/review/[token]`), copies to clipboard. Reviewer sees full article render + comment field + Approve / Request Changes buttons. No login required. Review status badge (green/amber/grey) shows on queue card after VP actions. |
+| Queue Card Inline Title Edit | ✅ LIVE | Click article title on any queue card to edit inline — Enter or blur saves via PATCH endpoint. Pencil hint on hover. |
+| Live Article Preview Link | ✅ LIVE | External link icon on queue cards — opens `/articles/:brandSlug/:articleSlug` in new tab. Brand slug resolved from queue join. |
+| Publishing Queue Archive | ✅ LIVE | Archive button on queue cards, Show Archived toggle, archived articles hidden by default. |
 | GSC OAuth | ✅ LIVE | `/api/gsc/auth` + `/auth/gsc/callback` — per-brand Google Search Console OAuth, stores refresh token in publishing_channels, GSC tab in Performance Dashboard |
 | GSC Sync | ✅ LIVE | `POST /api/analytics/sync-gsc/:brandId` — pulls clicks/impressions/CTR/position by page for last 28 days, matches to content_analytics |
 | Article URL Suffix | ✅ LIVE | Per-brand `article_url_suffix` in Brand Settings — append `.html` for static sites, blank for clean URLs. Flows through publish routes, Smart Export, UTM links |
@@ -127,21 +134,17 @@ Medium stopped issuing new API integration tokens in early 2025. The publish bac
 
 ### 🔲 What Is NOT Built Yet
 
-- Post scheduling (queue → auto-publish at set time)
-- LinkedIn impressions/clicks (requires Marketing Developer Platform approval — applied)
+- LinkedIn impressions/clicks (requires Marketing Developer Platform approval — applied; Pipedream Connect may unlock this)
 - WordPress live API publish
-- Webflow live API publish
-- Stage 7 — Performance Intelligence (content_analytics is the data layer — UI is live, data flows)
-- Stage 8 — Pattern Extractor / Feedback Loop
+- Webflow live API publish (Pipedream Connect wired, publish logic pending)
 - Admin dashboard (agent activity log UI)
 - Pre-seed / bulk brand brain seeding script
-- Multi-brand stress testing (second brand onboarded)
-- Reddit API access — developer portal locked down, investigating access path
-- Ghost analytics sync (pull view/reaction counts into Performance tab)
-- Site template scraper: catalog sourceUrl sometimes not persisting — re-scrape with both URLs if back link shows `/` in Smart Export HTML
-- Reddit dev portal access still blocked
-- GEO citation data will populate once Perplexity/ChatGPT index forgeintelligence.ai articles (48-72h lag)
-- GSC data for sandbox-xm.com pending Google indexing
+- Pre-cog Score Dashboard (#18 — Voyage AI embeddings, pgvector)
+- Agency Dashboard — bird's-eye view across all brands (backlog)
+- Brand Switcher in TopBar — quick-switch for agency users (backlog)
+- Content Brief / Topic Queue — park ideas before full pipeline (backlog)
+- Campaign-level scheduling — set cadence for all articles in a campaign at once (backlog)
+- GEO citation data pending Perplexity/ChatGPT indexing forgeintelligence.ai articles
 
 ### GEO Content Strategy — Forge Intelligence
 Published articles at `dev.forgeintelligence.ai/articles/forgeintelligence-ai/`:
