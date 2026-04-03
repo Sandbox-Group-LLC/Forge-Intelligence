@@ -5611,9 +5611,7 @@ app.post('/api/content/import', async (req, res) => {
           .replace(/&amp;/g, '&')
           .replace(/&lt;/g, '<')
           .replace(/&gt;/g, '>')
-          .replace(/\s{3,}/g, '
-
-')
+          .replace(/\s{3,}/g, '\n\n')
           .trim()
           .slice(0, 12000);
 
