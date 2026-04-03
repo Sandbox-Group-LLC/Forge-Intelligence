@@ -280,7 +280,7 @@
 /* Publish actions */
 .pq-item-actions {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   flex-wrap: wrap;
   padding-top: 4px;
@@ -303,7 +303,7 @@
 .pq-publish-now-btn:hover { background: var(--color-accent-hover); }
 .pq-publish-now-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.pq-schedule-group { display: flex; align-items: center; gap: 8px; }
+.pq-schedule-group { display: flex; align-items: flex-start; gap: 8px; }
 .pq-datetime-input {
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border-input);
