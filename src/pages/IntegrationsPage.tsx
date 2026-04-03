@@ -654,9 +654,8 @@ export default function IntegrationsPage() {
                                 className="int-field-input"
                                 type={connected ? 'password' : (f.type || 'text')}
                                 placeholder={connected ? '••••••••••••' : f.placeholder}
-                                value={connected ? '' : (credentials[ch.id][f.key] || '')}
-                                readOnly={connected}
-                                onChange={connected ? undefined : e => setCredentials(prev => ({
+                                value={credentials[ch.id][f.key] !== undefined ? credentials[ch.id][f.key] : (connected ? (savedChannels[ch.id] as any)?.credentials?.[f.key] || '' : '')}
+                                onChange={e => setCredentials(prev => ({
                                   ...prev,
                                   [ch.id]: { ...prev[ch.id], [f.key]: e.target.value }
                                 }))}
