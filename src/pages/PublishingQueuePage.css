@@ -1219,3 +1219,32 @@
   outline: none;
   box-shadow: 0 0 0 3px rgba(53,99,255,0.15);
 }
+
+/* ── Review workflow ──────────────────────────────────────────────────────── */
+.pq-review-toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: rgba(53,99,255,0.1);
+  border: 1px solid rgba(53,99,255,0.25);
+  border-radius: var(--radius-md);
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  flex-wrap: wrap;
+  animation: pq-toast-in 0.2s ease;
+}
+
+@keyframes pq-toast-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.pq-review-link {
+  color: var(--color-accent);
+  font-weight: 600;
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.pq-review-link:hover { text-decoration: underline; }
