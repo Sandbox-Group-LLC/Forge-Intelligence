@@ -1416,6 +1416,31 @@ Evaluate the user's topic against this brand's performance data and return ONLY 
   }
 });
 
+
+// PATCH /api/content/:brandSafeId/:contentId — inline article edit from preview modal
+app.patch('/api/content/:brandSafeId/:contentId', async (req, res) => {
+  const { brandSafeId, contentId } = req.params;
+  const { article_json, title } = req.body;
+  const tableName = `generated_content_${brandSafeId}`;
+  try {
+    const updates = [];
+    const params = [];
+    let pi = 1;
+    if (title !== undefined) { updates.push(`title = $${pi++}`); params.push(title); }
+    if (article_json !== undefined) { updates.push(`article_json = $${pi++}`); params.push(JSON.stringify(article_json)); }
+    if (!updates.length) return res.json({ success: true });
+    updates.push(`updated_at = NOW()`);
+    params.push(contentId);
+    await pool.query(
+      `UPDATE ${tableName} SET ${updates.join(', ')} WHERE id = $${pi}`,
+      params
+    );
+    res.json({ success: true });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // PATCH /api/publishing/queue/:id/title — inline title edit
 app.patch('/api/publishing/queue/:id/title', async (req, res) => {
   const { title } = req.body;
