@@ -92,6 +92,16 @@ function ContentGeneratorContent() {
   const [activeTab, setActiveTab] = useState<'article' | 'meta' | 'schema'>('article');
   const streamRef = useRef<EventSource | null>(null);
   const [topicPrompt, setTopicPrompt] = useState('');
+  const [ideaDrawerOpen, setIdeaDrawerOpen] = useState(false);
+  const [ideas, setIdeas] = useState<{id:string;topic:string;note:string|null;status:string;created_at:string}[]>([]);
+  const [newIdea, setNewIdea] = useState('');
+  const [newIdeaNote, setNewIdeaNote] = useState('');
+  const [savingIdea, setSavingIdea] = useState(false);
+  const [ideaDrawerOpen, setIdeaDrawerOpen] = useState(false);
+  const [ideas, setIdeas] = useState<{id:string;topic:string;note:string|null;status:string;created_at:string}[]>([]);
+  const [newIdea, setNewIdea] = useState('');
+  const [newIdeaNote, setNewIdeaNote] = useState('');
+  const [savingIdea, setSavingIdea] = useState(false);
   const [preflight, setPreflight] = useState<{ status: string; signal?: string; confidence?: string; reframe?: string; reason?: string }>({ status: 'idle' });
 
   useEffect(() => {
@@ -220,7 +230,7 @@ function ContentGeneratorContent() {
           <div style={{ flex: 1 }}>
             <input
               className="geo-input"
-              placeholder="Optional: direct the topic — e.g. 'Why neuroscience matters for event ROI'"
+              className="cg-topic-input" className="cg-topic-input" placeholder="Optional: direct the topic — e.g. 'Why neuroscience matters for event ROI'"
               value={topicPrompt}
               onChange={e => { setTopicPrompt(e.target.value); setPreflight({ status: 'idle' }); }}
               onBlur={checkTopic}
@@ -356,6 +366,65 @@ function ContentGeneratorContent() {
           </div>
         </>
       )}
+      {/* Floating idea capture */}
+      <button
+        className={`cg-idea-fab${ideaDrawerOpen ? ' open' : ''}`}
+        onClick={() => setIdeaDrawerOpen(o => !o)}
+        title="Save a topic idea for later"
+      >
+        {ideaDrawerOpen ? '✕' : '+ Idea'}
+      </button>
+
+      {ideaDrawerOpen && (
+        <div className="cg-idea-drawer">
+          <div className="cg-idea-drawer-header">
+            <span className="cg-idea-drawer-title">Topic Ideas</span>
+            <span className="cg-idea-drawer-sub">Park it now, generate when ready</span>
+          </div>
+          <div className="cg-idea-capture">
+            <input
+              className="cg-idea-input"
+              placeholder="What's the topic idea?"
+              value={newIdea}
+              onChange={e => setNewIdea(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') saveIdea(); }}
+              autoFocus
+            />
+            <input
+              className="cg-idea-note-input"
+              placeholder="Optional note..."
+              value={newIdeaNote}
+              onChange={e => setNewIdeaNote(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') saveIdea(); }}
+            />
+            <button className="cg-idea-save-btn" onClick={saveIdea} disabled={savingIdea || !newIdea.trim() || !selectedBrainId}>
+              {savingIdea ? 'Saving...' : 'Save Idea'}
+            </button>
+            {!selectedBrainId && <p className="cg-idea-warn">Select a Brain first.</p>}
+          </div>
+          {ideas.length > 0 && (
+            <div className="cg-idea-list">
+              {ideas.map(idea => (
+                <div key={idea.id} className={`cg-idea-item${idea.status === 'in_progress' ? ' in-progress' : ''}`}>
+                  <div className="cg-idea-item-top">
+                    <span className="cg-idea-topic">{idea.topic}</span>
+                    <div className="cg-idea-item-actions">
+                      <button className="cg-idea-use-btn" onClick={() => useIdea(idea)}>→ Use</button>
+                      <button className="cg-idea-del-btn" onClick={() => deleteIdea(idea.id)}>✕</button>
+                    </div>
+                  </div>
+                  {idea.note && <p className="cg-idea-note-text">{idea.note}</p>}
+                  {idea.status === 'in_progress' && <span className="cg-idea-in-progress">In progress</span>}
+                </div>
+              ))}
+            </div>
+          )}
+          {ideas.length === 0 && selectedBrainId && (
+            <p className="cg-idea-empty">No ideas yet — type one above ↑</p>
+          )}
+        </div>
+      )}
+
     </div>
   );
 }
