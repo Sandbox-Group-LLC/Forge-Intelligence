@@ -87,7 +87,7 @@ interface ChannelDef {
   color: string;
   logo: string;
   credentialFields: { key: string; label: string; placeholder: string; type?: string }[];
-  liveStatus: 'live' | 'staged' | 'legacy';
+  liveStatus: 'live' | 'staged' | 'legacy' | 'hell';
   oauthFlow?: boolean;
   pipedreamApp?: string;
   setupGuide: SetupGuide;
