@@ -576,7 +576,6 @@ export default function IntegrationsPage() {
                           >
                             {isOpen ? 'Cancel' : 'Connect existing token'}
                           </button>
-                            </button>
                         ) : (
                           <button
                             className="int-connect-btn"
