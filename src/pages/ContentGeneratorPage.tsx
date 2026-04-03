@@ -97,11 +97,6 @@ function ContentGeneratorContent() {
   const [newIdea, setNewIdea] = useState('');
   const [newIdeaNote, setNewIdeaNote] = useState('');
   const [savingIdea, setSavingIdea] = useState(false);
-  const [ideaDrawerOpen, setIdeaDrawerOpen] = useState(false);
-  const [ideas, setIdeas] = useState<{id:string;topic:string;note:string|null;status:string;created_at:string}[]>([]);
-  const [newIdea, setNewIdea] = useState('');
-  const [newIdeaNote, setNewIdeaNote] = useState('');
-  const [savingIdea, setSavingIdea] = useState(false);
   const [preflight, setPreflight] = useState<{ status: string; signal?: string; confidence?: string; reframe?: string; reason?: string }>({ status: 'idle' });
 
   useEffect(() => {
@@ -110,6 +105,7 @@ function ContentGeneratorContent() {
 
   useEffect(() => {
     if (!selectedBrainId) { setBriefs([]); setSelectedBriefId(''); return; }
+    loadIdeas(selectedBrainId);
     fetch(`/api/authenticity-enricher/briefs?brandProfileId=${selectedBrainId}`)
       .then(r => r.json())
       .then(d => { if (d.success) setBriefs(d.data); });
@@ -128,6 +124,40 @@ function ContentGeneratorContent() {
       if (d.success) setPreflight({ status: 'done', ...d });
       else setPreflight({ status: 'idle' });
     } catch { setPreflight({ status: 'idle' }); }
+  };
+
+  const loadIdeas = async (brandId: string) => {
+    if (!brandId) return;
+    const d = await fetch(`/api/topic-ideas/${brandId}`).then(r => r.json());
+    if (d.success) setIdeas(d.ideas);
+  };
+
+  const saveIdea = async () => {
+    if (!newIdea.trim() || !selectedBrainId) return;
+    setSavingIdea(true);
+    try {
+      const d = await fetch('/api/topic-ideas', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brandProfileId: selectedBrainId, topic: newIdea.trim(), note: newIdeaNote.trim() || null })
+      }).then(r => r.json());
+      if (d.success) { setIdeas(prev => [d.idea, ...prev]); setNewIdea(''); setNewIdeaNote(''); }
+    } finally { setSavingIdea(false); }
+  };
+
+  const deleteIdea = async (id: string) => {
+    await fetch(`/api/topic-ideas/${id}`, { method: 'DELETE' });
+    setIdeas(prev => prev.filter(i => i.id !== id));
+  };
+
+  const useIdea = (idea: { id: string; topic: string }) => {
+    setTopicPrompt(idea.topic);
+    fetch(`/api/topic-ideas/${idea.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'in_progress' })
+    });
+    setIdeas(prev => prev.map(i => i.id === idea.id ? { ...i, status: 'in_progress' } : i));
+    setIdeaDrawerOpen(false);
+    setTimeout(() => document.querySelector<HTMLElement>('.cg-topic-input')?.focus(), 150);
   };
 
   const runGeneration = () => {
@@ -229,8 +259,7 @@ function ContentGeneratorContent() {
           <div className="geo-input-bar">
           <div style={{ flex: 1 }}>
             <input
-              className="geo-input"
-              className="cg-topic-input" className="cg-topic-input" placeholder="Optional: direct the topic — e.g. 'Why neuroscience matters for event ROI'"
+              className="geo-input cg-topic-input" placeholder="Optional: direct the topic — e.g. 'Why neuroscience matters for event ROI'"
               value={topicPrompt}
               onChange={e => { setTopicPrompt(e.target.value); setPreflight({ status: 'idle' }); }}
               onBlur={checkTopic}
