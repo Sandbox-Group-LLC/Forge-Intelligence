@@ -604,6 +604,11 @@ async function initDB() {
     // Migration: add missing columns to content_analytics
     await pool.query(`ALTER TABLE content_analytics ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ`).catch(() => {});
     await pool.query(`ALTER TABLE publishing_queue ADD COLUMN IF NOT EXISTS hero_image_url TEXT`).catch(() => {});
+    await pool.query(`ALTER TABLE publishing_queue ADD COLUMN IF NOT EXISTS review_token TEXT`).catch(() => {});
+    await pool.query(`ALTER TABLE publishing_queue ADD COLUMN IF NOT EXISTS review_status TEXT`).catch(() => {});
+    await pool.query(`ALTER TABLE publishing_queue ADD COLUMN IF NOT EXISTS review_comment TEXT`).catch(() => {});
+    await pool.query(`ALTER TABLE publishing_queue ADD COLUMN IF NOT EXISTS review_requested_at TIMESTAMPTZ`).catch(() => {});
+    await pool.query(`ALTER TABLE publishing_queue ADD COLUMN IF NOT EXISTS review_actioned_at TIMESTAMPTZ`).catch(() => {});
     await pool.query(`ALTER TABLE content_analytics ADD COLUMN IF NOT EXISTS reading_time INTEGER DEFAULT 0`).catch(() => {});
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_ca_unique ON content_analytics(brand_profile_id, content_id, channel)`).catch(() => {});
     await pool.query(`ALTER TABLE content_analytics ADD COLUMN IF NOT EXISTS positive_feedback INTEGER DEFAULT 0`).catch(() => {});
@@ -5444,6 +5449,88 @@ app.get('/api/pipedream/config', (req, res) => {
   });
 });
 
+
+
+// ── Review Workflow ───────────────────────────────────────────────────────────
+
+// POST /api/publishing/queue/:id/request-review — generate review token
+app.post('/api/publishing/queue/:id/request-review', async (req, res) => {
+  try {
+    const token = require('crypto').randomBytes(24).toString('hex');
+    await pool.query(
+      `UPDATE publishing_queue
+       SET review_token = $1, review_status = 'pending', review_requested_at = NOW(), updated_at = NOW()
+       WHERE id = $2`,
+      [token, req.params.id]
+    );
+    const reviewUrl = `${process.env.BASE_DOMAIN ? 'https://dev.forgeintelligence.ai' : 'http://localhost:5173'}/review/${token}`;
+    res.json({ success: true, token, reviewUrl });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /api/review/:token — load article for reviewer (no auth required)
+app.get('/api/review/:token', async (req, res) => {
+  try {
+    const qRes = await pool.query(
+      `SELECT pq.*, bp.brand_name, bp.brand_url, bp.brand_slug
+       FROM publishing_queue pq
+       LEFT JOIN brand_profiles bp ON bp.id = pq.brand_profile_id
+       WHERE pq.review_token = $1`,
+      [req.params.token]
+    );
+    if (!qRes.rows.length) return res.status(404).json({ error: 'Review link not found or expired' });
+    const item = qRes.rows[0];
+
+    // Load article content
+    const safeId = item.brand_profile_id.replace(/-/g, '_');
+    const artRes = await pool.query(
+      `SELECT title, article_json, hero_image_url, overall_confidence, created_at
+       FROM generated_content_${safeId} WHERE id = $1`,
+      [item.content_id]
+    ).catch(() => ({ rows: [] }));
+
+    const article = artRes.rows[0] || {};
+    res.json({
+      success: true,
+      queueId: item.id,
+      title: item.title,
+      brandName: item.brand_name,
+      brandUrl: item.brand_url,
+      heroImageUrl: item.hero_image_url || article.hero_image_url,
+      articleJson: article.article_json,
+      confidence: article.overall_confidence,
+      createdAt: item.created_at,
+      reviewStatus: item.review_status,
+      reviewComment: item.review_comment,
+      reviewRequestedAt: item.review_requested_at,
+    });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/review/:token — reviewer submits decision
+app.post('/api/review/:token', async (req, res) => {
+  const { decision, comment } = req.body; // decision: 'approved' | 'changes_requested'
+  if (!['approved', 'changes_requested'].includes(decision)) {
+    return res.status(400).json({ error: 'Invalid decision' });
+  }
+  try {
+    const result = await pool.query(
+      `UPDATE publishing_queue
+       SET review_status = $1, review_comment = $2, review_actioned_at = NOW(), updated_at = NOW()
+       WHERE review_token = $3
+       RETURNING id, title, brand_profile_id`,
+      [decision, comment || null, req.params.token]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Review link not found' });
+    res.json({ success: true, decision });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // ── Content Library ───────────────────────────────────────────────────────────
 
