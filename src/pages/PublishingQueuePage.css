@@ -1285,3 +1285,75 @@
   font-style: italic;
   opacity: 0.85;
 }
+
+/* ── Inline article editing ──────────────────────────────────────────────── */
+.pq-editable {
+  cursor: text;
+  position: relative;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.pq-editable:hover {
+  background: rgba(53,99,255,0.06);
+}
+
+.pq-editable:hover .pq-edit-hint {
+  opacity: 1;
+}
+
+.pq-edit-hint {
+  font-size: 0.7rem;
+  color: var(--color-accent);
+  opacity: 0;
+  margin-left: 6px;
+  transition: opacity 0.15s;
+  font-style: normal;
+  font-weight: 500;
+}
+
+.pq-edit-hint-body {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.72rem;
+  color: var(--color-accent);
+}
+
+.pq-editable-body {
+  display: block;
+}
+
+.pq-edit-inline {
+  width: 100%;
+  background: var(--color-bg-elevated);
+  border: 1.5px solid var(--color-accent);
+  border-radius: 8px;
+  color: var(--color-text-primary);
+  font-family: inherit;
+  padding: 10px 12px;
+  outline: none;
+  resize: vertical;
+  line-height: 1.6;
+  box-shadow: 0 0 0 3px rgba(53,99,255,0.12);
+  margin-bottom: 4px;
+}
+
+.pq-edit-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.pq-edit-heading {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.pq-edit-meta {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+
+.pq-edit-body {
+  font-size: 0.875rem;
+}
