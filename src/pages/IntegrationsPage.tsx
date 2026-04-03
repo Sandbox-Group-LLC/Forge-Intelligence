@@ -604,12 +604,11 @@ export default function IntegrationsPage() {
                           >
                             {isOpen ? 'Cancel' : 'Connect existing token'}
                           </button>
-                        ) : (
-                          {ch.liveStatus === 'hell' ? (
+                        ) : ch.liveStatus === 'hell' ? (
                             <button className="int-connect-btn int-connect-hell" disabled title="Reddit's API portal went to hell">
                               Connect
                             </button>
-                          ) : (
+                        ) : (
                           <button
                             className="int-connect-btn"
                             style={{ '--ch-color': ch.color } as React.CSSProperties}
@@ -617,7 +616,6 @@ export default function IntegrationsPage() {
                           >
                             {ch.pipedreamApp ? 'Connect' : (isOpen ? 'Cancel' : 'Connect')}
                           </button>
-                          )}
                         )
                       )
                     )}
