@@ -1248,3 +1248,40 @@
 }
 
 .pq-review-link:hover { text-decoration: underline; }
+
+/* ── Review status badge ─────────────────────────────────────────────────── */
+.pq-review-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 20px;
+  margin-bottom: 5px;
+  width: fit-content;
+}
+
+.pq-review-badge--approved {
+  background: rgba(16,185,129,0.12);
+  color: #10B981;
+  border: 1px solid rgba(16,185,129,0.25);
+}
+
+.pq-review-badge--changes_requested {
+  background: rgba(245,158,11,0.12);
+  color: #F59E0B;
+  border: 1px solid rgba(245,158,11,0.25);
+}
+
+.pq-review-badge--pending {
+  background: rgba(148,163,184,0.1);
+  color: #94A3B8;
+  border: 1px solid rgba(148,163,184,0.2);
+}
+
+.pq-review-comment {
+  font-weight: 400;
+  font-style: italic;
+  opacity: 0.85;
+}
