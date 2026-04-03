@@ -5456,7 +5456,7 @@ app.get('/api/pipedream/config', (req, res) => {
 // POST /api/publishing/queue/:id/request-review — generate review token
 app.post('/api/publishing/queue/:id/request-review', async (req, res) => {
   try {
-    const token = require('crypto').randomBytes(24).toString('hex');
+    const token = randomBytes(24).toString('hex');
     await pool.query(
       `UPDATE publishing_queue
        SET review_token = $1, review_status = 'pending', review_requested_at = NOW(), updated_at = NOW()
