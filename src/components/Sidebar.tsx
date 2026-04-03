@@ -169,6 +169,7 @@ const NAV_ROUTES: Partial<Record<ViewType, string>> = {
   'strategy':             '/app/context-hub',
   'brain-history':        '/app/context-hub',
   'content-library':      '/app/content-library',
+  'content-import':       '/app/content-import',
 };
 
 const topNavItems: TopNavItem[] = [
@@ -180,6 +181,7 @@ const topNavItems: TopNavItem[] = [
   { id: 'integrations',          label: 'Integrations',          icon: 'plug',       href: '/app/integrations' },
   { id: 'publishing-queue',      label: 'Publishing Queue',      icon: 'sendCloud',  href: '/app/publishing-queue' },
   { id: 'content-library',       label: 'Content Library',       icon: 'bookOpen',   href: '/app/content-library' },
+  { id: 'content-import',        label: 'Import Article',        icon: 'download',   href: '/app/content-import' },
   { id: 'performance',           label: 'Performance',           icon: 'barChart2',  href: '/app/performance' },
   { id: 'brand-settings',        label: 'Brand Settings',        icon: 'settings',   href: '/app/brand-settings' },
 ];
