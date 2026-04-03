@@ -884,10 +884,10 @@ app.get('/api/publishing/sync/:queueItemId', async (req, res) => {
         } else if (row.channel === 'x') {
           // Check X tweet status via v2 API with OAuth 1.0a
           const tweetId = row.response_data?.tweetId || row.response_data?.id;
-          const xApiKey    = creds.apiKey    || process.env.X_API_KEY;
-          const xApiSecret = creds.apiSecret || process.env.X_API_SECRET;
-          const xAccessToken  = creds.accessToken  || process.env.X_ACCESS_TOKEN;
-          const xAccessSecret = creds.accessSecret || process.env.X_ACCESS_SECRET;
+          const xApiKey    = creds.apiKey    || process.env.X_OAUTH1CONSUMER_KEY;
+          const xApiSecret = creds.apiSecret || process.env.X_OAUTH1CONSUMER_SECRET;
+          const xAccessToken  = creds.accessToken  || process.env.X_OAUTH1ACCESS_TOKEN;
+          const xAccessSecret = creds.accessSecret || process.env.X_OAUTH1ACCESS_SECRET;
 
           if (tweetId && xApiKey && xAccessToken) {
             const endpoint = `https://api.twitter.com/2/tweets/${tweetId}`;
@@ -3742,8 +3742,8 @@ app.post('/api/publishing/unpublish', async (req, res) => {
           const tweetId = row.response_data?.tweetId
             || (row.published_url?.match(/\/status\/(\d+)/)?.[1]);
           const { accessToken, accessSecret } = creds;
-          const apiKey    = creds.apiKey    || process.env.X_API_KEY;
-          const apiSecret = creds.apiSecret || process.env.X_API_SECRET;
+          const apiKey    = creds.apiKey    || process.env.X_OAUTH1CONSUMER_KEY;
+          const apiSecret = creds.apiSecret || process.env.X_OAUTH1CONSUMER_SECRET;
           if (!tweetId) throw new Error('No tweet ID found');
           if (!apiKey || !apiSecret || !accessToken || !accessSecret) throw new Error('Missing X credentials');
 
@@ -4440,10 +4440,10 @@ Output only the post text.` }]
 
         } else if (channel === 'x') {
           // ── Real X (Twitter) API v2 publish via OAuth 1.0a ──
-          const xApiKey       = creds.apiKey       || process.env.X_API_KEY;
-          const xApiSecret    = creds.apiSecret    || process.env.X_API_SECRET;
-          const xAccessToken  = creds.accessToken  || process.env.X_ACCESS_TOKEN;
-          const xAccessSecret = creds.accessSecret || process.env.X_ACCESS_SECRET;
+          const xApiKey       = creds.apiKey       || process.env.X_OAUTH1CONSUMER_KEY;
+          const xApiSecret    = creds.apiSecret    || process.env.X_OAUTH1CONSUMER_SECRET;
+          const xAccessToken  = creds.accessToken  || process.env.X_OAUTH1ACCESS_TOKEN;
+          const xAccessSecret = creds.accessSecret || process.env.X_OAUTH1ACCESS_SECRET;
           if (!xApiKey || !xApiSecret || !xAccessToken || !xAccessSecret) throw new Error('Missing X credentials');
 
           const articleJson = article.article_json || {};
@@ -4896,10 +4896,10 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
         [brandProfileId]
       ).catch(() => ({ rows: [] }));
       const xCreds = xCredRes.rows[0]?.credentials || {};
-      const xApiKey       = xCreds.apiKey       || process.env.X_API_KEY;
-      const xApiSecret    = xCreds.apiSecret    || process.env.X_API_SECRET;
-      const xAccessToken  = xCreds.accessToken  || process.env.X_ACCESS_TOKEN;
-      const xAccessSecret = xCreds.accessSecret || process.env.X_ACCESS_SECRET;
+      const xApiKey       = xCreds.apiKey       || process.env.X_OAUTH1CONSUMER_KEY;
+      const xApiSecret    = xCreds.apiSecret    || process.env.X_OAUTH1CONSUMER_SECRET;
+      const xAccessToken  = xCreds.accessToken  || process.env.X_OAUTH1ACCESS_TOKEN;
+      const xAccessSecret = xCreds.accessSecret || process.env.X_OAUTH1ACCESS_SECRET;
 
       for (const row of xLogRes.rows) {
         try {
