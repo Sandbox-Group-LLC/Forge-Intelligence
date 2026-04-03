@@ -395,16 +395,17 @@ export default function PublishingQueuePage() {
 
 
   const openDeleteModal = (item: QueueItem) => {
-    // Deduplicate by channel — keep only the most recent live entry per channel
+    // Deduplicate by channel — pull from publishLog AND publish_results on the item
     const seen = new Set<string>();
-    const publishedChannels = (publishLog[item.id] || [])
+    const fromLog = (publishLog[item.id] || [])
       .filter(l => ['published','unknown','error','x:error'].includes(l.live_status))
-      .filter(l => {
-        if (seen.has(l.channel)) return false;
-        seen.add(l.channel);
-        return true;
-      })
+      .filter(l => { if (seen.has(l.channel)) return false; seen.add(l.channel); return true; })
       .map(l => l.channel);
+    // Also pick up channels from item.publish_results that may not be in log yet
+    const fromResults = Object.entries(item.publish_results || {})
+      .filter(([ch, r]: [string, any]) => r && !seen.has(ch))
+      .map(([ch]) => { seen.add(ch); return ch; });
+    const publishedChannels = [...fromLog, ...fromResults];
     setDeleteModal({ item, publishedChannels });
     // Default: all live channels selected for deletion
     const sel: Record<string, boolean> = {};
