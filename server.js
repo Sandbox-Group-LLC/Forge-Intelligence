@@ -5691,9 +5691,7 @@ Return ONLY valid JSON:
     });
     const auditData = await auditRes.json();
     const auditText = auditData.content?.[0]?.text || '';
-    const parsed = JSON.parse(auditText.replace(/```json
-?|
-?```/g, '').trim());
+    const parsed = JSON.parse(auditText.replace(/```json|```/g, '').trim());
 
     // 5. Insert into generated_content as 'imported' status
     const insertRes = await pool.query(
