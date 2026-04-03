@@ -1512,3 +1512,27 @@
   padding: 16px 24px;
   border-top: 1px solid var(--color-border);
 }
+
+/* ── UTM copy button on published rows ──────────────────────────────────── */
+.pq-utm-copy-btn {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  background: rgba(20,184,166,0.1);
+  color: var(--color-teal);
+  border: 1px solid rgba(20,184,166,0.25);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-family: inherit;
+}
+
+.pq-utm-copy-btn:hover {
+  background: rgba(20,184,166,0.2);
+  border-color: var(--color-teal);
+}
+
+.pq-utm-copy-btn:active {
+  transform: scale(0.96);
+}
