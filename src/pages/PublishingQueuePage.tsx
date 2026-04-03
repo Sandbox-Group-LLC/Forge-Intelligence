@@ -13,6 +13,12 @@ const Clock = () => (
     <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
   </svg>
 );
+const Share = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+  </svg>
+);
 const Archive = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
     <rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>
@@ -163,6 +169,8 @@ export default function PublishingQueuePage() {
   const [deleteModal, setDeleteModal] = useState<{ item: QueueItem; publishedChannels: string[] } | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
+  const [reviewUrl, setReviewUrl] = useState<string | null>(null);
+  const [reviewCopied, setReviewCopied] = useState(false);
   const [editingTitleVal, setEditingTitleVal] = useState('');
   const [deleteChannelSelection, setDeleteChannelSelection] = useState<Record<string, boolean>>({});
   const [deleting, setDeleting] = useState(false);
@@ -179,6 +187,19 @@ export default function PublishingQueuePage() {
       });
       setItems(prev => prev.map(i => i.id === item.id ? { ...i, title: editingTitleVal.trim() } : i));
     } finally { setEditingTitleId(null); }
+  };
+
+  const sendForReview = async (item: QueueItem) => {
+    try {
+      const r = await fetch(`/api/publishing/queue/${item.id}/request-review`, { method: 'POST' });
+      const d = await r.json();
+      if (d.reviewUrl) {
+        setReviewUrl(d.reviewUrl);
+        navigator.clipboard.writeText(d.reviewUrl).catch(() => {});
+        setReviewCopied(true);
+        setTimeout(() => { setReviewCopied(false); setReviewUrl(null); }, 5000);
+      }
+    } catch { /* silent */ }
   };
 
   const archiveItem = async (item: QueueItem) => {
@@ -693,6 +714,12 @@ ${bodyHtml}
         )}
 
         {error && <div className="geo-error">{error}</div>}
+        {reviewUrl && (
+          <div className="pq-review-toast">
+            <span>🔗 Review link {reviewCopied ? 'copied!' : 'ready'}:</span>
+            <a href={reviewUrl} target="_blank" rel="noopener noreferrer" className="pq-review-link">{reviewUrl}</a>
+          </div>
+        )}
       {archivedItems.length > 0 && (
         <div className="pq-archive-toggle-wrap">
           <button className="pq-archive-toggle" onClick={() => setShowArchived(p => !p)}>
@@ -805,6 +832,9 @@ ${bodyHtml}
                       </button>
                       <button className="pq-icon-btn" title="UTM Preview" onClick={() => openUtmPreview(item)}>
                         <Link2 />
+                      </button>
+                      <button className="pq-icon-btn" title="Send for Review" onClick={() => sendForReview(item)}>
+                        <Share />
                       </button>
                       <button className="pq-icon-btn" title="Archive" onClick={() => archiveItem(item)}>
                         <Archive />
@@ -1017,6 +1047,9 @@ return (
                       </button>
                       <button className="pq-icon-btn" title="UTM Preview" onClick={() => openUtmPreview(item)}>
                         <Link2 />
+                      </button>
+                      <button className="pq-icon-btn" title="Send for Review" onClick={() => sendForReview(item)}>
+                        <Share />
                       </button>
                       <button className="pq-icon-btn" title="Archive" onClick={() => archiveItem(item)}>
                         <Archive />
