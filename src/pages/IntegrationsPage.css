@@ -732,3 +732,26 @@
   color: var(--color-text-muted);
   line-height: 1.5;
 }
+
+/* ── Reddit: Went to Hell ────────────────────────────────────────────────── */
+.int-hell-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: rgba(71,85,105,0.3);
+  color: #64748B;
+  border: 1px solid rgba(71,85,105,0.3);
+}
+
+.int-connect-hell {
+  background: #1E293B !important;
+  color: #334155 !important;
+  border: 1px solid #1E293B !important;
+  cursor: not-allowed !important;
+  opacity: 0.4;
+}
