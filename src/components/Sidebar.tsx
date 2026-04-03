@@ -181,6 +181,12 @@ const NAV_ROUTES: Partial<Record<ViewType, string>> = {
   'content-import':       '/app/content-import',
 };
 
+const publishingNavItems = [
+  { id: 'publishing-queue', label: 'Queue',           icon: 'sendCloud',  href: '/app/publishing-queue' },
+  { id: 'content-library',  label: 'Content Library', icon: 'bookOpen',   href: '/app/content-library' },
+  { id: 'content-import',   label: 'Import Article',  icon: 'fileImport', href: '/app/content-import' },
+] as const;
+
 const topNavItems: TopNavItem[] = [
   { id: 'geo-strategist',        label: 'GEO Strategist',        icon: 'zap',        href: '/app/geo-strategist' },
   { id: 'authenticity-enricher', label: 'Authenticity Enricher', icon: 'shieldCheck',href: '/app/authenticity-enricher' },
@@ -188,9 +194,7 @@ const topNavItems: TopNavItem[] = [
   { id: 'campaign-generator',    label: 'Campaign Generator',    icon: 'layers',     href: '/app/campaign-generator' },
   { id: 'compliance-gate',       label: 'Compliance Gate',       icon: 'shieldCheck',href: '/app/compliance-gate' },
   { id: 'integrations',          label: 'Integrations',          icon: 'plug',       href: '/app/integrations' },
-  { id: 'publishing-queue',      label: 'Publishing Queue',      icon: 'sendCloud',  href: '/app/publishing-queue' },
-  { id: 'content-library',       label: 'Content Library',       icon: 'bookOpen',   href: '/app/content-library' },
-  { id: 'content-import',        label: 'Import Article',        icon: 'fileImport', href: '/app/content-import' },
+
   { id: 'performance',           label: 'Performance',           icon: 'barChart2',  href: '/app/performance' },
   { id: 'brand-settings',        label: 'Brand Settings',        icon: 'settings',   href: '/app/brand-settings' },
 ];
@@ -198,6 +202,7 @@ const topNavItems: TopNavItem[] = [
 export function Sidebar() {
   const { currentView, setCurrentView, sidebarCollapsed, setSidebarCollapsed, isProcessing, brandProfile } = useApp();
   const [brainGroupOpen, setBrainGroupOpen] = useState(false);
+  const [publishingGroupOpen, setPublishingGroupOpen] = useState(true);
   const [mobileExpanded, setMobileExpanded] = useState(false);
 
   // Auto-collapse on mobile at mount
@@ -341,7 +346,66 @@ export function Sidebar() {
 
         {/* Top-level nav items — all use href for clean URL-based navigation */}
         {topNavItems.map(item => {
-          const status = getTopItemStatus(item.id);
+          // Insert Publishing group before Performance
+          if (item.id === 'performance') {
+            const isPublishingActive = ['/app/publishing-queue','/app/content-library','/app/content-import'].some(r => path.startsWith(r));
+            return (
+              <div key="publishing-group">
+                {/* Publishing group header */}
+                <button
+                  className={`nav-item nav-group-header ${isPublishingActive ? 'active' : 'available'}`}
+                  onClick={() => {
+                    if (sidebarCollapsed) { setSidebarCollapsed(false); setPublishingGroupOpen(true); }
+                    else setPublishingGroupOpen(o => !o);
+                  }}
+                  title={sidebarCollapsed ? 'Publishing' : undefined}
+                >
+                  <span className="nav-icon">{icons.sendCloud}</span>
+                  {!sidebarCollapsed && (
+                    <>
+                      <span className="nav-label">Publishing</span>
+                      <span className={`nav-group-chevron ${publishingGroupOpen ? 'open' : ''}`}>{icons.chevronDown}</span>
+                    </>
+                  )}
+                </button>
+                {/* Publishing children */}
+                {!sidebarCollapsed && publishingGroupOpen && (
+                  <div className="nav-group-children">
+                    {publishingNavItems.map(child => {
+                      const childActive = path.startsWith(child.href);
+                      return (
+                        <a
+                          key={child.id}
+                          href={child.href}
+                          className={`nav-item nav-child-item ${childActive ? 'active' : 'available'}`}
+                          onClick={closeMobileDrawer}
+                        >
+                          <span className="nav-icon">{icons[child.icon as keyof typeof icons]}</span>
+                          <span className="nav-label">{child.label}</span>
+                        </a>
+                      );
+                    })}
+                  </div>
+                )}
+                {/* Then render Performance itself */}
+                {(() => {
+                  const status = getTopItemStatus(item.id as any);
+                  return (
+                    <a
+                      href={item.href}
+                      className={`nav-item ${status}`}
+                      title={sidebarCollapsed ? item.label : undefined}
+                      onClick={closeMobileDrawer}
+                    >
+                      <span className="nav-icon">{icons[item.icon as keyof typeof icons]}</span>
+                      {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
+                    </a>
+                  );
+                })()}
+              </div>
+            );
+          }
+          const status = getTopItemStatus(item.id as any);
           return (
             <a
               key={item.id}
@@ -350,7 +414,7 @@ export function Sidebar() {
               title={sidebarCollapsed ? item.label : undefined}
               onClick={closeMobileDrawer}
             >
-              <span className="nav-icon">{icons[item.icon]}</span>
+              <span className="nav-icon">{icons[item.icon as keyof typeof icons]}</span>
               {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
             </a>
           );
