@@ -187,6 +187,11 @@ const publishingNavItems = [
   { id: 'content-import',   label: 'Import Article',  icon: 'fileImport', href: '/app/content-import' },
 ] as const;
 
+const settingsNavItems = [
+  { id: 'brand-settings', label: 'Brand Settings', icon: 'settings', href: '/app/brand-settings' },
+  { id: 'integrations',   label: 'Integrations',   icon: 'plug',     href: '/app/integrations' },
+] as const;
+
 const topNavItems: TopNavItem[] = [
   { id: 'geo-strategist',        label: 'GEO Strategist',        icon: 'zap',        href: '/app/geo-strategist' },
   { id: 'authenticity-enricher', label: 'Authenticity Enricher', icon: 'shieldCheck',href: '/app/authenticity-enricher' },
@@ -201,6 +206,7 @@ export function Sidebar() {
   const { currentView, setCurrentView, sidebarCollapsed, setSidebarCollapsed, isProcessing, brandProfile } = useApp();
   const [brainGroupOpen, setBrainGroupOpen] = useState(false);
   const [publishingGroupOpen, setPublishingGroupOpen] = useState(true);
+  const [settingsGroupOpen, setSettingsGroupOpen] = useState(true);
   const [mobileExpanded, setMobileExpanded] = useState(false);
 
   // Auto-collapse on mobile at mount
@@ -417,6 +423,48 @@ export function Sidebar() {
             </a>
           );
         })}
+        {/* Settings group */}
+        {(() => {
+          const isSettingsActive = ['/app/brand-settings','/app/integrations'].some(r => path.startsWith(r));
+          return (
+            <div>
+              <button
+                className={`nav-item nav-group-header ${isSettingsActive ? 'active' : 'available'}`}
+                onClick={() => {
+                  if (sidebarCollapsed) { setSidebarCollapsed(false); setSettingsGroupOpen(true); }
+                  else setSettingsGroupOpen(o => !o);
+                }}
+                title={sidebarCollapsed ? 'Settings' : undefined}
+              >
+                <span className="nav-icon">{icons.settings}</span>
+                {!sidebarCollapsed && (
+                  <>
+                    <span className="nav-label">Settings</span>
+                    <span className={`nav-group-chevron ${settingsGroupOpen ? 'open' : ''}`}>{icons.chevronDown}</span>
+                  </>
+                )}
+              </button>
+              {!sidebarCollapsed && settingsGroupOpen && (
+                <div className="nav-group-children">
+                  {settingsNavItems.map(child => {
+                    const childActive = path.startsWith(child.href);
+                    return (
+                      <a
+                        key={child.id}
+                        href={child.href}
+                        className={`nav-item nav-child-item ${childActive ? 'active' : 'available'}`}
+                        onClick={closeMobileDrawer}
+                      >
+                        <span className="nav-icon">{icons[child.icon as keyof typeof icons]}</span>
+                        <span className="nav-label">{child.label}</span>
+                      </a>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </nav>
 
       <div className="sidebar-footer">
