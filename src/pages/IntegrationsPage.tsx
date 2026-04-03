@@ -235,7 +235,7 @@ const CHANNELS: ChannelDef[] = [
   },
   {
     id: 'reddit',
-    label: 'Reddit',
+    label: 'Reddit 🪦',
     
     description: 'Post article links to your company-owned subreddit. Coming soon — Reddit\'s developer portal is currently blocking new app registrations.',
     color: '#FF4500',
@@ -561,6 +561,9 @@ export default function IntegrationsPage() {
                         {ch.liveStatus === 'staged' && (
                           <span className="int-coming-badge">Stage 6.1</span>
                         )}
+                        {ch.liveStatus === 'hell' && (
+                          <span className="int-hell-badge">Went to Hell</span>
+                        )}
                         {ch.liveStatus === 'legacy' && (
                           <span className="int-legacy-badge">Legacy</span>
                         )}
@@ -602,6 +605,11 @@ export default function IntegrationsPage() {
                             {isOpen ? 'Cancel' : 'Connect existing token'}
                           </button>
                         ) : (
+                          {ch.liveStatus === 'hell' ? (
+                            <button className="int-connect-btn int-connect-hell" disabled title="Reddit's API portal went to hell">
+                              Connect
+                            </button>
+                          ) : (
                           <button
                             className="int-connect-btn"
                             style={{ '--ch-color': ch.color } as React.CSSProperties}
@@ -609,6 +617,7 @@ export default function IntegrationsPage() {
                           >
                             {ch.pipedreamApp ? 'Connect' : (isOpen ? 'Cancel' : 'Connect')}
                           </button>
+                          )}
                         )
                       )
                     )}
