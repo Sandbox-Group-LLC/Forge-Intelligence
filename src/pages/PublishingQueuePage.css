@@ -215,10 +215,11 @@
   font-weight: 600;
 }
 .pq-chip.published {
-  background: var(--color-success-muted);
-  border-color: var(--color-success);
-  color: var(--color-success);
+  background: color-mix(in srgb, var(--chip-color, var(--color-success)) 12%, transparent);
+  border-color: var(--chip-color, var(--color-success));
+  color: var(--chip-color, var(--color-success));
   cursor: default;
+  opacity: 0.85;
 }
 /* Selected always overrides published state */
 .pq-chip.selected.published {
