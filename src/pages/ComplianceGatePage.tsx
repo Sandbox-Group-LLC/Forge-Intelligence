@@ -127,14 +127,14 @@ export default function ComplianceGatePage() {
   };
 
   const acceptSuggestion = (idx: number, sectionBody: string, reason: string, suggestion: string) => {
-    const doubleQuoteMatch = reason.match(/"([^"]+)"/);
-    const singleQuoteMatch = reason.match(/'([^']+)'/);
-    const flaggedExcerpt = (doubleQuoteMatch && doubleQuoteMatch[1]) || (singleQuoteMatch && singleQuoteMatch[1]) || '';
+    // Try to find a quoted excerpt in the reason for targeted replacement
+    const quoteMatch = reason.match(/[""'](.[^""']{10,})[""']/);
+    const flaggedExcerpt = quoteMatch?.[1] || '';
     let updated = sectionBody;
     if (flaggedExcerpt && sectionBody.includes(flaggedExcerpt)) {
       updated = sectionBody.replace(flaggedExcerpt, suggestion);
     } else {
-      updated = sectionBody + '\n\n[Suggested replacement: ' + suggestion + ']';
+      updated = '⚡ Brain suggests: ' + suggestion + '\n\n---\n\n' + sectionBody;
     }
     setEditedSections(p => ({ ...p, [idx]: updated }));
   };
