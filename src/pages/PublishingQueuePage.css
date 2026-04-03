@@ -1536,3 +1536,20 @@
 .pq-utm-copy-btn:active {
   transform: scale(0.96);
 }
+
+/* ── Reset & Retry button ────────────────────────────────────────────────── */
+.pq-retry-btn {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  background: rgba(239,68,68,0.1);
+  color: #EF4444;
+  border: 1px solid rgba(239,68,68,0.25);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-family: inherit;
+}
+
+.pq-retry-btn:hover { background: rgba(239,68,68,0.2); border-color: #EF4444; }
+.pq-retry-btn:disabled { opacity: 0.4; cursor: default; }
