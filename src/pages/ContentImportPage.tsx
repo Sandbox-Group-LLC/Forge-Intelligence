@@ -16,7 +16,6 @@ interface ImportResult {
 }
 
 const scoreColor = (n: number) => n >= 75 ? '#10B981' : n >= 50 ? '#F59E0B' : '#EF4444';
-const scoreLabel = (n: number) => n >= 75 ? 'Strong' : n >= 50 ? 'Moderate' : 'Weak';
 
 export default function ContentImportPage() {
   const [brands, setBrands] = useState<Brain[]>([]);
