@@ -3744,7 +3744,7 @@ app.post('/api/publishing/queue/:id/reset-channel', async (req, res) => {
     const results = row.rows[0].publish_results || {};
     delete results[channel];
     // If no channels left, reset status to staged
-    const hasAnyPublished = Object.values(results).some((r: any) => r?.status === 'published');
+    const hasAnyPublished = Object.values(results).some((r) => r && r.status === 'published');
     const newStatus = hasAnyPublished ? 'partial' : 'staged';
     await pool.query(
       'UPDATE publishing_queue SET publish_results = $1, status = $2, updated_at = NOW() WHERE id = $3',
@@ -3757,7 +3757,7 @@ app.post('/api/publishing/queue/:id/reset-channel', async (req, res) => {
       [id, channel]
     ).catch(() => {});
     res.json({ success: true });
-  } catch(e: any) {
+  } catch(e) {
     res.status(500).json({ success: false, error: e.message });
   }
 });
