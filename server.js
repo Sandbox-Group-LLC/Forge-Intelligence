@@ -891,23 +891,7 @@ app.get('/api/publishing/sync/:queueItemId', async (req, res) => {
 
           if (tweetId && xApiKey && xAccessToken) {
             const endpoint = `https://api.twitter.com/2/tweets/${tweetId}`;
-            const oauthParams = {
-              oauth_consumer_key: xApiKey,
-              oauth_nonce: randomBytes(16).toString('hex'),
-              oauth_signature_method: 'HMAC-SHA1',
-              oauth_timestamp: String(Math.floor(Date.now() / 1000)),
-              oauth_token: xAccessToken,
-              oauth_version: '1.0',
-            };
-            const paramStr = Object.entries(oauthParams)
-              .sort(([a],[b]) => a.localeCompare(b))
-              .map(([k,v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
-            const baseStr = `GET&${encodeURIComponent(endpoint)}&${encodeURIComponent(paramStr)}`;
-            const sigKey = `${encodeURIComponent(xApiSecret)}&${encodeURIComponent(xAccessSecret)}`;
-            oauthParams['oauth_signature'] = createHmac('sha1', sigKey).update(baseStr).digest('base64');
-            const authHeader = 'OAuth ' + Object.entries(oauthParams)
-              .sort(([a],[b]) => a.localeCompare(b))
-              .map(([k,v]) => `${encodeURIComponent(k)}="${encodeURIComponent(v)}"`).join(', ');
+            const authHeader = buildXOAuthHeader('GET', endpoint, xApiKey, xApiSecret, xAccessToken, xAccessSecret);
 
             const xRes = await fetch(endpoint, { headers: { 'Authorization': authHeader } });
             if (xRes.status === 404) {
@@ -3764,22 +3748,8 @@ app.post('/api/publishing/unpublish', async (req, res) => {
           if (!apiKey || !apiSecret || !accessToken || !accessSecret) throw new Error('Missing X credentials');
 
           // OAuth 1.0a signature for DELETE
-          const oauthParams = {
-            oauth_consumer_key: apiKey,
-            oauth_nonce: Math.random().toString(36).slice(2),
-            oauth_signature_method: 'HMAC-SHA1',
-            oauth_timestamp: String(Math.floor(Date.now() / 1000)),
-            oauth_token: accessToken,
-            oauth_version: '1.0'
-          };
           const tweetUrl = `https://api.twitter.com/2/tweets/${tweetId}`;
-          const paramStr = Object.keys(oauthParams).sort()
-            .map(k => `${encodeURIComponent(k)}=${encodeURIComponent(oauthParams[k])}`).join('&');
-          const baseStr = `DELETE&${encodeURIComponent(tweetUrl)}&${encodeURIComponent(paramStr)}`;
-          const sigKey = `${encodeURIComponent(apiSecret)}&${encodeURIComponent(accessSecret)}`;
-          oauthParams['oauth_signature'] = createHmac('sha1', sigKey).update(baseStr).digest('base64');
-          const authHeader = 'OAuth ' + Object.keys(oauthParams).sort()
-            .map(k => `${encodeURIComponent(k)}="${encodeURIComponent(oauthParams[k])}"`).join(', ');
+          const authHeader = buildXOAuthHeader('DELETE', tweetUrl, apiKey, apiSecret, accessToken, accessSecret);
 
           const xDelRes = await fetch(tweetUrl, {
             method: 'DELETE',
@@ -4486,22 +4456,7 @@ Output only the post text.` }]
 
           // Build OAuth 1.0a signature
           const tweetUrl = 'https://api.twitter.com/2/tweets';
-          const oauthParams = {
-            oauth_consumer_key: xApiKey,
-            oauth_nonce: randomBytes(16).toString('hex'),
-            oauth_signature_method: 'HMAC-SHA1',
-            oauth_timestamp: String(Math.floor(Date.now() / 1000)),
-            oauth_token: xAccessToken,
-            oauth_version: '1.0',
-          };
-          const sortedParams = Object.entries(oauthParams).sort(([a],[b]) => a.localeCompare(b))
-            .map(([k,v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
-          const baseString = `POST&${encodeURIComponent(tweetUrl)}&${encodeURIComponent(sortedParams)}`;
-          const signingKey = `${encodeURIComponent(xApiSecret)}&${encodeURIComponent(xAccessSecret)}`;
-          const signature = createHmac('sha1', signingKey).update(baseString).digest('base64');
-          oauthParams['oauth_signature'] = signature;
-          const authHeader = 'OAuth ' + Object.entries(oauthParams).sort(([a],[b]) => a.localeCompare(b))
-            .map(([k,v]) => `${encodeURIComponent(k)}="${encodeURIComponent(v)}"`).join(', ');
+          const authHeader = buildXOAuthHeader('POST', tweetUrl, xApiKey, xApiSecret, xAccessToken, xAccessSecret);
 
           const xRes = await fetch(tweetUrl, {
             method: 'POST',
@@ -4968,16 +4923,10 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
             oauth_token: xAccessToken,
             oauth_version: '1.0',
           };
-          // Request public + non_public metrics — non_public gives url_link_clicks (user auth required, own posts only, last 30 days)
+          // Request public + non_public metrics
           const queryString = 'tweet.fields=public_metrics,non_public_metrics,created_at,author_id';
-          const paramStr = Object.entries({ ...oauthParams, ...Object.fromEntries(new URLSearchParams(queryString)) })
-            .sort(([a],[b]) => a.localeCompare(b))
-            .map(([k,v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
-          const baseStr = `GET&${encodeURIComponent(endpoint)}&${encodeURIComponent(paramStr)}`;
-          const sigKey = `${encodeURIComponent(xApiSecret)}&${encodeURIComponent(xAccessSecret)}`;
-          oauthParams['oauth_signature'] = createHmac('sha1', sigKey).update(baseStr).digest('base64');
-          const authHeader = 'OAuth ' + Object.entries(oauthParams).sort(([a],[b]) => a.localeCompare(b))
-            .map(([k,v]) => `${encodeURIComponent(k)}="${encodeURIComponent(v)}"`).join(', ');
+          const authHeader = buildXOAuthHeader('GET', endpoint, xApiKey, xApiSecret, xAccessToken, xAccessSecret,
+            Object.fromEntries(new URLSearchParams(queryString)));
 
           const tweetRes = await fetch(`${endpoint}?${queryString}`, {
             headers: { 'Authorization': authHeader }
