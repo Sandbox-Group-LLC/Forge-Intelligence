@@ -173,11 +173,59 @@ export default function PublishingQueuePage() {
   const [deleteModal, setDeleteModal] = useState<{ item: QueueItem; publishedChannels: string[] } | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
+  const [campaignScheduler, setCampaignScheduler] = useState<{
+    campId: string;
+    name: string;
+    items: QueueItem[];
+    startDate: string;
+    publishTime: string;
+    preview: { id: string; title: string; week: number; day: string; scheduledAt: string }[];
+  } | null>(null);
   const [reviewUrl, setReviewUrl] = useState<string | null>(null);
   const [reviewCopied, setReviewCopied] = useState(false);
   const [editingTitleVal, setEditingTitleVal] = useState('');
   const [deleteChannelSelection, setDeleteChannelSelection] = useState<Record<string, boolean>>({});
   const [deleting, setDeleting] = useState(false);
+
+  const buildSchedulePreview = (items: QueueItem[], startDate: string, publishTime: string) => {
+    if (!startDate || !publishTime) return [];
+    const base = new Date(`${startDate}T${publishTime}`);
+    const dayOffsets: Record<string, number> = {
+      monday: 0, tuesday: 1, wednesday: 2, thursday: 3, friday: 4, saturday: 5, sunday: 6
+    };
+    return items
+      .filter(i => i.week_number)
+      .sort((a, b) => (a.week_number! - b.week_number!) || 0)
+      .map(item => {
+        const weekOffset = ((item.week_number || 1) - 1) * 7;
+        const dayOffset = dayOffsets[(item.publish_day || 'monday').toLowerCase()] ?? 0;
+        const d = new Date(base);
+        d.setDate(d.getDate() + weekOffset + dayOffset);
+        return {
+          id: item.id,
+          title: item.title,
+          week: item.week_number || 1,
+          day: item.publish_day || 'Monday',
+          scheduledAt: d.toISOString()
+        };
+      });
+  };
+
+  const scheduleCampaign = async () => {
+    if (!campaignScheduler) return;
+    const { preview } = campaignScheduler;
+    await Promise.all(preview.map(p =>
+      fetch(`/api/publishing/schedule`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ queueItemId: p.id, scheduledAt: p.scheduledAt })
+      })
+    ));
+    setCampaignScheduler(null);
+    loadQueue();
+    setSuccessMsg(`Campaign scheduled — ${preview.length} articles queued`);
+    setTimeout(() => setSuccessMsg(''), 5000);
+  };
 
   const saveTitle = async (item: QueueItem) => {
     if (!editingTitleVal.trim() || editingTitleVal === item.title) {
@@ -793,7 +841,24 @@ ${bodyHtml}
                         <div className="pq-campaign-group-topic">{group.topic}</div>
                       </div>
                     </div>
-                    <span className="pq-campaign-group-stats">{publishedCount}/{group.items.length} published</span>
+                    <div className="pq-campaign-group-right">
+                      <span className="pq-campaign-group-stats">{publishedCount}/{group.items.length} published</span>
+                      <button
+                        className="pq-schedule-campaign-btn"
+                        onClick={() => setCampaignScheduler({
+                          campId,
+                          name: group.name,
+                          items: group.items,
+                          startDate: '',
+                          publishTime: '09:00',
+                          preview: []
+                        })}
+                        title="Schedule all articles in this campaign"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        Schedule Campaign
+                      </button>
+                    </div>
                   </div>
                   {[1,2,3,4].filter(w => group.items.some(i => i.week_number === w)).map(week => (
                     <div key={week} className="pq-campaign-week">
@@ -1675,6 +1740,79 @@ return (
         </div>
       );
     })()}
+
+      {/* Campaign Scheduler Modal */}
+      {campaignScheduler && (() => {
+        const { name, items, startDate, publishTime } = campaignScheduler;
+        const livePreview = startDate && publishTime ? buildSchedulePreview(items, startDate, publishTime) : [];
+        return (
+          <div className="pq-modal-overlay" onClick={() => setCampaignScheduler(null)}>
+            <div className="pq-modal pq-campaign-sched-modal" onClick={e => e.stopPropagation()}>
+              <div className="pq-modal-header">
+                <div>
+                  <div className="pq-modal-title">Schedule Campaign</div>
+                  <div className="pq-modal-sub">{name} · {items.filter(i => i.week_number).length} articles</div>
+                </div>
+                <button className="pq-modal-close" onClick={() => setCampaignScheduler(null)}><X /></button>
+              </div>
+              <div className="pq-sched-body">
+                <div className="pq-sched-inputs">
+                  <div className="pq-sched-field">
+                    <label className="pq-sched-label">Campaign Start Date</label>
+                    <input
+                      type="date"
+                      className="pq-sched-input"
+                      value={startDate}
+                      min={new Date().toISOString().split('T')[0]}
+                      onChange={e => setCampaignScheduler(prev => prev ? { ...prev, startDate: e.target.value } : null)}
+                    />
+                    <span className="pq-sched-hint">Week 1 articles publish relative to this date</span>
+                  </div>
+                  <div className="pq-sched-field">
+                    <label className="pq-sched-label">Publish Time</label>
+                    <input
+                      type="time"
+                      className="pq-sched-input"
+                      value={publishTime}
+                      onChange={e => setCampaignScheduler(prev => prev ? { ...prev, publishTime: e.target.value } : null)}
+                    />
+                    <span className="pq-sched-hint">Applied to all articles</span>
+                  </div>
+                </div>
+                {livePreview.length > 0 ? (
+                  <div className="pq-sched-preview">
+                    <div className="pq-sched-preview-label">Schedule Preview</div>
+                    <div className="pq-sched-preview-list">
+                      {livePreview.map(p => (
+                        <div key={p.id} className="pq-sched-preview-row">
+                          <span className="pq-sched-preview-week">Wk {p.week} · {p.day}</span>
+                          <span className="pq-sched-preview-article">{p.title.length > 52 ? p.title.slice(0, 52) + '…' : p.title}</span>
+                          <span className="pq-sched-preview-date">
+                            {new Date(p.scheduledAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {new Date(p.scheduledAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="pq-sched-empty">Pick a start date to preview the full schedule ↑</div>
+                )}
+              </div>
+              <div className="pq-sched-footer">
+                <button className="pq-cancel-btn" onClick={() => setCampaignScheduler(null)}>Cancel</button>
+                <button
+                  className="pq-publish-now-btn"
+                  disabled={!startDate || livePreview.length === 0}
+                  onClick={scheduleCampaign}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:6}}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                  Schedule {livePreview.length} Articles
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 }
