@@ -194,40 +194,72 @@
 .pq-unconnected-hint { font-size: 11px; color: var(--color-text-muted); margin-left: 4px; }
 
 .pq-chip {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 5px 12px;
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border-subtle);
+  padding: 4px 10px;
   border-radius: 20px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--color-text-secondary);
+  font-size: 0.775rem;
+  font-weight: 600;
+  border: 1px solid var(--color-border);
+  background: rgba(255,255,255,0.05);
+  color: var(--color-text-muted);
   cursor: pointer;
   transition: all var(--transition-fast);
+  white-space: nowrap;
 }
-.pq-chip:hover { border-color: var(--chip-color, var(--color-accent)); color: var(--chip-color, var(--color-accent)); }
+
+/* Hover */
+.pq-chip:hover {
+  border-color: rgba(255,255,255,0.3);
+  color: #fff;
+  background: rgba(255,255,255,0.08);
+}
+
+/* Selected — bright white, about to publish */
 .pq-chip.selected {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.85);
-  color: #ffffff;
-  font-weight: 600;
+  background: rgba(255,255,255,0.12);
+  border-color: #fff;
+  color: #fff;
+  font-weight: 700;
 }
+
+/* Published — Forge blue */
 .pq-chip.published {
-  background: color-mix(in srgb, var(--chip-color, var(--color-success)) 12%, transparent);
-  border-color: var(--chip-color, var(--color-success));
-  color: var(--chip-color, var(--color-success));
+  background: rgba(53,99,255,0.15);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
   cursor: default;
-  opacity: 0.85;
+  font-weight: 700;
 }
-/* Selected always overrides published state */
+
+/* Published + selected (clicking a live chip to re-select) */
 .pq-chip.selected.published {
-  background: color-mix(in srgb, var(--chip-color, var(--color-accent)) 12%, transparent);
-  border-color: var(--chip-color, var(--color-accent));
-  color: var(--chip-color, var(--color-accent));
+  background: rgba(53,99,255,0.25);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
   cursor: pointer;
 }
+
+/* Published-deleted / unknown — muted grey strikethrough */
+.pq-chip.published-deleted {
+  background: transparent;
+  border-color: var(--color-border);
+  color: var(--color-text-muted);
+  text-decoration: line-through;
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* Error — superman red */
+.pq-chip.error {
+  background: rgba(239,68,68,0.12);
+  border-color: #EF4444;
+  color: #EF4444;
+  cursor: pointer;
+  font-weight: 700;
+}
+
 .pq-chip-link {
   display: flex;
   align-items: center;
