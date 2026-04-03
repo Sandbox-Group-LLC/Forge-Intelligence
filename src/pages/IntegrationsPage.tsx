@@ -78,7 +78,7 @@ function SetupGuide({ guide }: { guide: SetupGuide }) {
 }
 
 // ── Channel definitions ───────────────────────────────────────────────────────
-type ChannelId = 'wordpress' | 'webflow' | 'hubspot' | 'linkedin' | 'x' | 'facebook' | 'reddit' | 'medium' | 'ghost';
+type ChannelId = 'wordpress' | 'webflow' | 'hubspot' | 'linkedin' | 'x' | 'facebook' | 'medium' | 'ghost';
 
 interface ChannelDef {
   id: ChannelId;
@@ -87,7 +87,7 @@ interface ChannelDef {
   color: string;
   logo: string;
   credentialFields: { key: string; label: string; placeholder: string; type?: string }[];
-  liveStatus: 'live' | 'staged' | 'legacy' | 'hell';
+  liveStatus: 'live' | 'staged' | 'legacy';
   oauthFlow?: boolean;
   pipedreamApp?: string;
   setupGuide: SetupGuide;
@@ -234,30 +234,6 @@ const CHANNELS: ChannelDef[] = [
     },
   },
   {
-    id: 'reddit',
-    label: 'Reddit 🪦',
-    
-    description: 'Post article links to your company-owned subreddit. Coming soon — Reddit\'s developer portal is currently blocking new app registrations.',
-    color: '#FF4500',
-    logo: 'r/',
-    liveStatus: 'hell',
-    credentialFields: [
-      { key: 'subreddit', label: 'Subreddit', placeholder: 'r/YourBrand' },
-      { key: 'accessToken', label: 'Access Token', placeholder: 'eyJ...', type: 'password' },
-      { key: 'refreshToken', label: 'Refresh Token', placeholder: 'eyJ...', type: 'password' },
-      { key: 'clientId', label: 'App Client ID', placeholder: 'abc123XYZ' },
-      { key: 'clientSecret', label: 'App Client Secret', placeholder: 'secretXYZ...', type: 'password' },
-    ],
-    setupGuide: {
-      title: 'Reddit OAuth App',
-      steps: [
-        { text: 'Go to Reddit App Preferences and click "Create another app".', url: 'https://www.reddit.com/prefs/apps' },
-        { text: 'Select "script" as the app type. Set redirect URI to http://localhost:8080.' },
-        { text: 'Copy the Client ID (below the app name) and Client Secret.' },
-        { text: 'Use a Reddit OAuth tool or CURL to exchange your credentials for an access token and refresh token with scopes: submit, identity.' },
-        { text: 'Paste the subreddit name (e.g. r/YourBrand), access token, refresh token, client ID, and secret above.' },
-      ],
-    },
   },
   {
     id: 'medium',
@@ -311,8 +287,7 @@ const DEFAULT_UTM: Record<ChannelId, Record<string, string>> = {
   linkedin:  { utm_source: 'linkedin', utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   x:         { utm_source: 'x',        utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   facebook:  { utm_source: 'facebook',   utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
-  reddit:    { utm_source: 'reddit',     utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
-  medium:    { utm_source: 'medium',     utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
+    medium:    { utm_source: 'medium',     utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   ghost:     { utm_source: 'ghost',      utm_medium: 'blog',   utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
 };
 
@@ -334,11 +309,11 @@ export default function IntegrationsPage() {
   const [brands, setBrands] = useState<Brain[]>([]);
   const [selectedBrand, setSelectedBrand] = useState('');
   const [savedChannels, setSavedChannels] = useState<Record<ChannelId, SavedChannel | null>>({
-    wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null, facebook: null, reddit: null, medium: null, ghost: null
+    wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null, facebook: null, medium: null, ghost: null
   });
   const [expanded, setExpanded] = useState<ChannelId | null>(null);
   const [credentials, setCredentials] = useState<Record<ChannelId, Record<string, string>>>({
-    wordpress: {}, webflow: {}, hubspot: {}, linkedin: {}, x: {}, facebook: {}, reddit: {}, medium: {}, ghost: {}
+    wordpress: {}, webflow: {}, hubspot: {}, linkedin: {}, x: {}, facebook: {}, medium: {}, ghost: {}
   });
   const [utmTemplates, setUtmTemplates] = useState<Record<ChannelId, Record<string, string>>>(DEFAULT_UTM);
   const [saving, setSaving] = useState<ChannelId | null>(null);
@@ -368,7 +343,7 @@ export default function IntegrationsPage() {
       .then(d => {
         if (d.success) {
           const map: Record<ChannelId, SavedChannel | null> = {
-            wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null, facebook: null, reddit: null, medium: null, ghost: null
+            wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null, facebook: null, medium: null, ghost: null
           };
           for (const ch of d.channels) map[ch.channel as ChannelId] = ch;
           setSavedChannels(map);
@@ -561,9 +536,6 @@ export default function IntegrationsPage() {
                         {ch.liveStatus === 'staged' && (
                           <span className="int-coming-badge">Stage 6.1</span>
                         )}
-                        {ch.liveStatus === 'hell' && (
-                          <span className="int-hell-badge">Went to Hell</span>
-                        )}
                         {ch.liveStatus === 'legacy' && (
                           <span className="int-legacy-badge">Legacy</span>
                         )}
@@ -604,9 +576,6 @@ export default function IntegrationsPage() {
                           >
                             {isOpen ? 'Cancel' : 'Connect existing token'}
                           </button>
-                        ) : ch.liveStatus === 'hell' ? (
-                            <button className="int-connect-btn int-connect-hell" disabled title="Reddit's API portal went to hell">
-                              Connect
                             </button>
                         ) : (
                           <button
