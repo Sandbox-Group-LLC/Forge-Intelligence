@@ -464,13 +464,17 @@ export default function PublishingQueuePage() {
     const key = `${itemId}:${channel}`;
     setRepublishing(key);
     try {
-      // Clear the error state for this channel so it can be published fresh
       await fetch(`/api/publishing/queue/${itemId}/reset-channel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ channel })
       });
-      loadQueue();
+      // Clear local publish log for this channel so chip resets immediately
+      setPublishLog(prev => ({
+        ...prev,
+        [itemId]: (prev[itemId] || []).filter(l => l.channel !== channel)
+      }));
+      await loadQueue();
     } catch {
       setError('Reset failed — try again');
     } finally {
