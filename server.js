@@ -3354,7 +3354,7 @@ Return ONLY valid JSON in this exact structure:
   "summary": "<2 sentence overall assessment>",
   "flags": [
     {
-      "sectionIndex": <number>,
+      "sectionIndex": <zero-based index of the section in the sections array — first section is 0, second is 1, etc>,
       "sectionHeading": "<heading>",
       "severity": "yellow" | "red",
       "type": "brand_voice" | "factual_claim" | "legal_risk" | "sme_required",
@@ -3379,6 +3379,15 @@ Return ONLY valid JSON in this exact structure:
     const rawText = critiqueData.content?.[0]?.text || '{}';
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
     const report = JSON.parse(jsonMatch ? jsonMatch[0] : rawText);
+
+    // Normalise sectionIndex to 0-based — Claude sometimes returns 1-based
+    if (report.flags?.length && articleJson?.sections?.length) {
+      const maxIdx = articleJson.sections.length - 1;
+      const anyExceedsBounds = report.flags.some(f => f.sectionIndex > maxIdx);
+      if (anyExceedsBounds) {
+        report.flags = report.flags.map(f => ({ ...f, sectionIndex: Math.max(0, f.sectionIndex - 1) }));
+      }
+    }
 
     // Persist compliance report to article record
     await pool.query(
