@@ -240,7 +240,7 @@ const CHANNELS: ChannelDef[] = [
     description: 'Post article links to your company-owned subreddit. Coming soon — Reddit\'s developer portal is currently blocking new app registrations.',
     color: '#FF4500',
     logo: 'r/',
-    liveStatus: 'staged',
+    liveStatus: 'hell',
     credentialFields: [
       { key: 'subreddit', label: 'Subreddit', placeholder: 'r/YourBrand' },
       { key: 'accessToken', label: 'Access Token', placeholder: 'eyJ...', type: 'password' },
