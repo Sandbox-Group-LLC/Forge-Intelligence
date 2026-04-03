@@ -398,7 +398,7 @@ export default function PublishingQueuePage() {
     // Deduplicate by channel — keep only the most recent live entry per channel
     const seen = new Set<string>();
     const publishedChannels = (publishLog[item.id] || [])
-      .filter(l => l.live_status === 'published' || l.live_status === 'unknown')
+      .filter(l => ['published','unknown','error','x:error'].includes(l.live_status))
       .filter(l => {
         if (seen.has(l.channel)) return false;
         seen.add(l.channel);
@@ -1627,7 +1627,9 @@ return (
                     <span className="pq-delete-channel-name" style={{ color: CHANNEL_LABELS[ch]?.color || 'inherit' }}>
                       {CHANNEL_LABELS[ch]?.label || ch}
                     </span>
-                    <span className="pq-delete-channel-status">Live</span>
+                    <span className="pq-delete-channel-status">
+                      {(publishLog[deleteModal.item.id]||[]).find(l=>l.channel===ch)?.live_status === 'published' ? 'Live' : 'Error / Stale'}
+                    </span>
                   </label>
                 ))}
               </div>
