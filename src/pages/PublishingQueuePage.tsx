@@ -135,6 +135,9 @@ interface QueueItem {
   content_type?: string | null;
   funnel_position?: string | null;
   primary_persona?: string | null;
+  review_status?: string | null;
+  review_comment?: string | null;
+  review_actioned_at?: string | null;
 }
 
 interface ConnectedChannel { channel: string; }
@@ -779,6 +782,18 @@ ${bodyHtml}
                   {/* Row top: title + meta + status */}
                   <div className="pq-item-top">
                     <div className="pq-item-meta">
+                      {item.review_status && (
+                        <div className={`pq-review-badge pq-review-badge--${item.review_status}`}>
+                          {item.review_status === 'approved' && '✓ Approved'}
+                          {item.review_status === 'changes_requested' && '↩ Changes Requested'}
+                          {item.review_status === 'pending' && '⏳ Awaiting Review'}
+                          {item.review_comment && (
+                            <span className="pq-review-comment" title={item.review_comment}>
+                              · "{item.review_comment.length > 40 ? item.review_comment.slice(0, 40) + '…' : item.review_comment}"
+                            </span>
+                          )}
+                        </div>
+                      )}
                       {editingTitleId === item.id ? (
                         <input
                           className="pq-title-edit-input"
