@@ -1001,10 +1001,12 @@ ${bodyHtml}
                               key={ch}
                               className={`pq-chip ${isSelected ? 'selected' : ''} ${(() => {
                                 const logEntry = (publishLog[item.id] || []).find(l => l.channel === ch);
+                                // Only mark as published/disabled if actually live — never on error
                                 if (!logEntry) return result?.status === 'published' ? 'published' : '';
                                 if (logEntry.live_status === 'published') return 'published';
                                 if (logEntry.live_status === 'deleted') return 'published-deleted';
                                 if (logEntry.live_status === 'unknown') return 'published-deleted';
+                                if (logEntry.live_status === 'error') return ''; // error = still selectable
                                 return result?.status === 'published' ? 'published' : '';
                               })()}`}
                               style={{ '--chip-color': def?.color } as React.CSSProperties}
@@ -1246,10 +1248,12 @@ return (
                               key={ch}
                               className={`pq-chip ${isSelected ? 'selected' : ''} ${(() => {
                                 const logEntry = (publishLog[item.id] || []).find(l => l.channel === ch);
+                                // Only mark as published/disabled if actually live — never on error
                                 if (!logEntry) return result?.status === 'published' ? 'published' : '';
                                 if (logEntry.live_status === 'published') return 'published';
                                 if (logEntry.live_status === 'deleted') return 'published-deleted';
                                 if (logEntry.live_status === 'unknown') return 'published-deleted';
+                                if (logEntry.live_status === 'error') return ''; // error = still selectable
                                 return result?.status === 'published' ? 'published' : '';
                               })()}`}
                               style={{ '--chip-color': def?.color } as React.CSSProperties}
