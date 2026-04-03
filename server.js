@@ -5444,6 +5444,99 @@ app.get('/api/pipedream/config', (req, res) => {
   });
 });
 
+
+// ── Content Library ───────────────────────────────────────────────────────────
+
+// GET /api/content-library — returns all generated content across all brands or filtered by brand
+app.get('/api/content-library', async (req, res) => {
+  const { brandProfileId, status, search, campaign, limit = 50, offset = 0 } = req.query;
+  try {
+    // Get all brands or just the requested one
+    const brandsRes = brandProfileId
+      ? await pool.query('SELECT id, brand_name, brand_url FROM brand_profiles WHERE id = $1', [brandProfileId])
+      : await pool.query('SELECT id, brand_name, brand_url FROM brand_profiles WHERE is_active = true ORDER BY created_at DESC');
+
+    const brands = brandsRes.rows;
+    const allItems = [];
+
+    for (const brand of brands) {
+      const safeId = brand.id.replace(/-/g, '_');
+      const tableName = `generated_content_${safeId}`;
+
+      // Check table exists
+      const tableExists = await pool.query(
+        `SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = $1)`,
+        [tableName]
+      );
+      if (!tableExists.rows[0].exists) continue;
+
+      // Build query with filters
+      const conditions = ['1=1'];
+      const params = [];
+      let pi = 1;
+
+      if (status && status !== 'all') {
+        conditions.push(`COALESCE(pq.status, 'draft') = $${pi++}`);
+        params.push(status);
+      }
+      if (search) {
+        conditions.push(`gc.title ILIKE $${pi++}`);
+        params.push(`%${search}%`);
+      }
+      if (campaign) {
+        conditions.push(`gc.campaign_id = $${pi++}`);
+        params.push(campaign);
+      }
+
+      const rows = await pool.query(`
+        SELECT
+          gc.id,
+          gc.title,
+          gc.overall_confidence,
+          gc.brain_match_score,
+          gc.compliance_status,
+          gc.hero_image_url,
+          gc.campaign_id,
+          gc.created_at,
+          gc.updated_at,
+          gc.article_json->>'metaDescription' AS meta_description,
+          COALESCE(pq.status, 'draft') AS queue_status,
+          pq.published_at,
+          pq.id AS queue_id,
+          ARRAY_AGG(DISTINCT pl.channel) FILTER (WHERE pl.live_status = 'published') AS published_channels,
+          ARRAY_AGG(DISTINCT pl.published_url) FILTER (WHERE pl.published_url IS NOT NULL) AS live_urls,
+          MAX(ca.impressions) AS impressions,
+          MAX(ca.clicks) AS clicks,
+          '${brand.id}' AS brand_profile_id,
+          '${brand.brand_name || brand.brand_url}' AS brand_name,
+          '${brand.brand_url}' AS brand_url
+        FROM ${tableName} gc
+        LEFT JOIN publishing_queue pq ON pq.content_id = gc.id::text
+        LEFT JOIN publish_log pl ON pl.content_id = gc.id::text
+        LEFT JOIN content_analytics ca ON ca.content_id = gc.id::text AND ca.brand_profile_id = '${brand.id}'
+        WHERE ${conditions.join(' AND ')}
+        GROUP BY gc.id, gc.title, gc.overall_confidence, gc.brain_match_score,
+          gc.compliance_status, gc.hero_image_url, gc.campaign_id,
+          gc.created_at, gc.updated_at, gc.article_json,
+          pq.status, pq.published_at, pq.id
+        ORDER BY gc.created_at DESC
+      `, params).catch(() => ({ rows: [] }));
+
+      allItems.push(...rows.rows);
+    }
+
+    // Sort all by created_at desc, apply pagination
+    allItems.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const total = allItems.length;
+    const paginated = allItems.slice(Number(offset), Number(offset) + Number(limit));
+
+    res.json({ success: true, items: paginated, total, limit: Number(limit), offset: Number(offset) });
+  } catch(e) {
+    console.error('[CONTENT-LIBRARY]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // ── GEO Citation Tracker ──────────────────────────────────────────────────────
 
 // DB table for citations
