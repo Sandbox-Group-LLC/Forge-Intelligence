@@ -3875,7 +3875,7 @@ app.get('/api/publishing/channels/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
   try {
     const result = await pool.query(
-      `SELECT id, brand_profile_id, channel, utm_template, is_active, last_tested_at, test_status, created_at, updated_at
+      `SELECT id, brand_profile_id, channel, credentials, utm_template, is_active, last_tested_at, test_status, created_at, updated_at
        FROM publishing_channels WHERE brand_profile_id = $1 ORDER BY channel`,
       [brandProfileId]
     );
