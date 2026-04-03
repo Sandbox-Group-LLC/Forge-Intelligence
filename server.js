@@ -5569,6 +5569,170 @@ app.post('/api/review/:token', async (req, res) => {
 });
 
 
+
+// ── Content Import (Bring Your Own Article) ──────────────────────────────────
+
+// POST /api/content/import — parse + score an externally written article
+app.post('/api/content/import', async (req, res) => {
+  const { brandProfileId, url, rawText, title: manualTitle } = req.body;
+  if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
+  if (!url && !rawText) return res.status(400).json({ error: 'url or rawText required' });
+
+  try {
+    const safeId = brandProfileId.replace(/-/g, '_');
+    const tableName = `generated_content_${safeId}`;
+
+    // 1. Get content — scrape URL or use raw text
+    let rawContent = rawText || '';
+    let sourceTitle = manualTitle || '';
+
+    if (url && !rawText) {
+      try {
+        const fetchRes = await fetch(url, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ForgeIntelligence/1.0)' },
+          signal: AbortSignal.timeout(8000)
+        });
+        const html = await fetchRes.text();
+        // Strip HTML tags, extract readable text
+        rawContent = html
+          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/\s{3,}/g, '
+
+')
+          .trim()
+          .slice(0, 12000);
+
+        // Try to extract title from <title> tag
+        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+        if (titleMatch) sourceTitle = titleMatch[1].replace(/\s*[|\-–—].*$/, '').trim();
+      } catch(e) {
+        return res.status(400).json({ error: `Could not fetch URL: ${e.message}` });
+      }
+    }
+
+    // 2. Load brand profile for Brain context
+    const brandRes = await pool.query(
+      'SELECT brand_name, brand_url, voice_profile, personas, competitive_gaps FROM brand_profiles WHERE id = $1',
+      [brandProfileId]
+    );
+    const brand = brandRes.rows[0];
+    if (!brand) return res.status(404).json({ error: 'Brand not found' });
+
+    // 3. Load brain patterns + mistakes
+    const patternsRes = await pool.query(
+      'SELECT pattern_type, description, confidence_score FROM brain_patterns WHERE brand_profile_id = $1 ORDER BY confidence_score DESC LIMIT 8',
+      [brandProfileId]
+    ).catch(() => ({ rows: [] }));
+    const mistakesRes = await pool.query(
+      'SELECT mistake_type, description, severity FROM brain_mistakes WHERE brand_profile_id = $1 ORDER BY severity DESC LIMIT 6',
+      [brandProfileId]
+    ).catch(() => ({ rows: [] }));
+
+    // 4. Claude Sonnet: parse + audit the article against the Brain
+    const auditPrompt = `You are the Forge Intelligence Brain Auditor. An article was written OUTSIDE of Forge and is being imported for scoring.
+
+BRAND: ${brand.brand_name} (${brand.brand_url})
+VOICE PROFILE: ${JSON.stringify(brand.voice_profile || {}).slice(0, 500)}
+BRAIN PATTERNS (what works): ${patternsRes.rows.map(p => p.description).join('; ').slice(0, 600)}
+BRAIN MISTAKES (what fails): ${mistakesRes.rows.map(m => m.description).join('; ').slice(0, 400)}
+
+IMPORTED ARTICLE TITLE: ${sourceTitle || 'Unknown'}
+
+IMPORTED CONTENT:
+${rawContent.slice(0, 6000)}
+
+Your job:
+1. Parse this article into structured sections
+2. Score it against the brand brain
+3. Identify voice deviations, missing depth, and structural issues
+4. Be honest. This was written outside the system. Show it.
+
+Return ONLY valid JSON:
+{
+  "title": "article title",
+  "metaDescription": "one sentence summary",
+  "overallConfidence": 0-100,
+  "brainMatchScore": 0-100,
+  "voiceDeviationScore": 0-100,
+  "importVerdict": "brief honest verdict (1-2 sentences)",
+  "sections": [
+    {
+      "heading": "section heading",
+      "body": "section body text",
+      "confidence": 0-100,
+      "flags": ["flag1", "flag2"]
+    }
+  ],
+  "brainFlags": ["top-level issues the brain detected"],
+  "suggestions": ["concrete improvements the brain recommends"]
+}`;
+
+    const auditRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4000,
+        messages: [{ role: 'user', content: auditPrompt }]
+      })
+    });
+    const auditData = await auditRes.json();
+    const auditText = auditData.content?.[0]?.text || '';
+    const parsed = JSON.parse(auditText.replace(/```json
+?|
+?```/g, '').trim());
+
+    // 5. Insert into generated_content as 'imported' status
+    const insertRes = await pool.query(
+      `INSERT INTO ${tableName} (brand_profile_id, title, article_json, overall_confidence, brain_match_score, status, review_mode, compliance_status)
+       VALUES ($1, $2, $3, $4, $5, 'staged', 'approve-to-ship', 'pending') RETURNING id`,
+      [
+        brandProfileId,
+        parsed.title || sourceTitle || 'Imported Article',
+        JSON.stringify({
+          ...parsed,
+          importedFrom: url || 'manual',
+          importedAt: new Date().toISOString()
+        }),
+        parsed.overallConfidence || 50,
+        parsed.brainMatchScore || 50
+      ]
+    );
+    const contentId = insertRes.rows[0].id;
+
+    // 6. Stage in publishing queue
+    await pool.query(
+      `INSERT INTO publishing_queue (brand_profile_id, content_id, title, status, created_at, updated_at)
+       VALUES ($1, $2, $3, 'staged', NOW(), NOW())
+       ON CONFLICT (content_id) DO NOTHING`,
+      [brandProfileId, contentId, parsed.title || sourceTitle]
+    );
+
+    res.json({
+      success: true,
+      contentId,
+      title: parsed.title || sourceTitle,
+      overallConfidence: parsed.overallConfidence,
+      brainMatchScore: parsed.brainMatchScore,
+      voiceDeviationScore: parsed.voiceDeviationScore,
+      importVerdict: parsed.importVerdict,
+      brainFlags: parsed.brainFlags || [],
+      suggestions: parsed.suggestions || [],
+      sectionCount: parsed.sections?.length || 0
+    });
+
+  } catch(e) {
+    console.error('[CONTENT-IMPORT]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // ── Topic Ideas ───────────────────────────────────────────────────────────────
 
 // GET /api/topic-ideas/:brandProfileId
