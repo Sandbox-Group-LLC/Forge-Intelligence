@@ -1,6 +1,6 @@
 # Forge Intelligence — Master SSOT
 
-> **Last updated:** April 2, 2026 (end of night) | **Status:** Stage 8 COMPLETE + Full Production Polish ✅ | 10 pre-launch complaints resolved | Sidebar grouped | Reddit: Coming Soon (never)
+> **Last updated:** April 3, 2026 | **Status:** Stage 8 COMPLETE + X Publishing Live ✅ | OAuth 1.0a fixed | Chip color system | Reset & Retry flow | GSC exorcised | Reddit: Coming Soon (never) 🪦
 > **This README is the single source of truth for all AI sessions, dev work, and project decisions.**
 > When starting a new AI session, read this file top to bottom before touching Always read the README.md first -- it is the SSOT.
 > Always read the current file and capture its SHA before writing - never write blind.
@@ -103,6 +103,13 @@ Medium stopped issuing new API integration tokens in early 2025. The publish bac
 | Full Review Mode | ⏸ SHELVED | Enterprise team workflow — commented out, re-enable when multi-person approval flow is needed |
 | Article Page Diamond Logo | ✅ LIVE | Public article nav uses stroke-only diamond SVG matching sidebar icon, with pulse animation |
 | Forge Intelligence Content Space | ✅ LIVE | `dev.forgeintelligence.ai/articles/forgeintelligence-ai/` — owned GEO surface, 2 articles published, sitemap at `/sitemap.xml`, submitted to GSC |
+| X Publishing | ✅ LIVE | OAuth 1.0a fully working — replaced all hand-rolled signature implementations with verified `buildXOAuthHeader` helper. Correct env var naming (`X_OAUTH1CONSUMER_KEY` etc). Credentials saved and returned from DB. Reset & Retry flow clears error state per-channel without nuking the article. |
+| Chip Color System | ✅ LIVE | Grey=available, White=selected, Forge blue=live, Superman red=error. Universal across all brands/channels. Error chips stay clickable for retry. |
+| Reset & Retry | ✅ LIVE | Red ↺ button on error result rows — clears channel error from `publish_results` + `publish_log`, resets article to stageable for that channel. No more permanent blocks. |
+| Per-channel unpublish modal | ✅ LIVE | Trash icon opens modal with checkboxes per published channel — unpublish from specific platforms, keep in queue or remove entirely. |
+| GSC exorcised | ✅ LIVE | GSC removed from publish channel selector permanently. Was a read-only analytics source that snuck into publish destinations. John Cena'd. |
+| Credential fields fix | ✅ LIVE | Update Connection was saving empty strings — fields were read-only with empty value when connected. Now pre-populates saved values so updates actually save. |
+| GET /api/publishing/channels | ✅ LIVE | credentials column was missing from SELECT — tokens saved correctly but never returned, causing every fallback to env vars. |
 | Topic Ideas (+ Idea FAB) | ✅ LIVE | Floating `+ Idea` button on Content Generator — drawer with quick capture, saved ideas list, `→ Use` fires topic into generator and marks in-progress. Per-brand, persists across sessions. |
 | Campaign Scheduler | ✅ LIVE | "Schedule Campaign" button on campaign group header — start date + publish time picker, live preview of all articles with Wk/day/date/time calculated from existing week_number + publish_day metadata, Schedule All batch-sets scheduled_at in one click. |
 | Content Import + Brain Audit | ✅ LIVE | `/app/content-import` — paste URL or raw text, Claude Sonnet audits against brand brain (voice profile, patterns, mistakes), returns Overall/Brain Match/Voice Deviation scores + verdict + flags + suggestions, drops into Publishing Queue staged for Compliance Gate. |
