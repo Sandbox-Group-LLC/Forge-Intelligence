@@ -1,5 +1,5 @@
 # AI Content Platform — Working Doc
-> Last updated: April 1, 2026 | Status: Stage 8 COMPLETE ✅ | Agency Multi-Brand section added | Active Whiteboard
+> Last updated: April 2, 2026 | Status: Stage 8 COMPLETE + Production Polish Sprint ✅ | Active Whiteboard
 
 ---
 
@@ -992,3 +992,52 @@ Pipedream Connect is priced per connected account per month. At the agency tier 
 - `feat: Pipedream Connect integration — replace custom OAuth with managed auth SDK`
 - `feat: Integrations page redesign — Pipedream Connect embedded auth flow`
 - `feat: publishing_channels migration — store Pipedream account_id instead of raw credentials`
+
+
+---
+
+## Production Polish Sprint — April 2, 2026
+
+Six pre-launch complaints solved before they happened. Audit-driven session.
+
+### What shipped
+
+**Pipedream Connect OAuth (replaces all custom OAuth)**
+All channel connections now use Pipedream managed auth. The entire OAuth layer — redirect URIs, developer app approvals, token refresh, sensitive scope review — is handled by Pipedream. Implementation: single `connect.html` iframe built directly with token in query params + postMessage listener. No SDK dependency needed.
+
+Channels on Pipedream Connect: LinkedIn, Facebook, Reddit, HubSpot, Webflow.
+Channels staying manual: X/Twitter (X asked Pipedream to remove it), Ghost (key-based), WordPress (app password), Medium (legacy).
+
+Key learning: bypassing the Pipedream SDK entirely and building the iframe directly was the correct call. The SDK's token resolution was broken across multiple attempts. The iframe URL `pipedream.com/_static/connect.html?token=xxx&app=slug` is the ground truth.
+
+**Content Library (`/app/content-library`)**
+Every article ever generated, across all brands, in one searchable view. Card grid with hero images, confidence scores, status chips, publish channels, performance stats. Search debounced 350ms. Status tabs (All/Published/Staged/Draft) with live counts. Preview modal with live post links and Go to Queue. Brand filter is top-level in the header — clearly marked as agency/internal, can be removed for single-brand production with one CSS change.
+
+**Inline Article Editing**
+Content preview modal in Publishing Queue now supports click-to-edit on every text element: title, meta description, section headings, section body. Edits save to DB on blur via `PATCH /api/content/:brandSafeId/:contentId`. Title edits also sync to the queue item. No round-trip through Compliance Gate for small copy changes. The edit hint `✎` appears on hover — discoverable without being noisy.
+
+**External Review Workflow (`/review/[token]`)**
+"Send for Review" share icon on every queue card. Generates a signed 48-char hex token, stores against the queue item, copies link to clipboard. Reviewer opens URL — no login, no account. Full article renders (hero, title, body, meta). Sticky review panel: comment textarea + Approve (green) + Request Changes (amber). On action, status writes back to `publishing_queue`. Queue card shows review badge: ✓ Approved (green), ↩ Changes Requested (amber), ⏳ Pending (grey) + inline comment preview. First test: approved with comment "Slay". ✅
+
+**Queue Card Inline Title Edit**
+Click any article title on a queue card → editable input. Enter or blur saves via `PATCH /api/publishing/queue/:id/title`. Edit pencil hint on hover.
+
+**Live Article Preview Link**
+External link icon on queue cards → `/articles/:brandSlug/:articleSlug` in new tab. Brand slug resolved via server-side join on `brand_profiles` in queue query.
+
+### The audit that drove it
+
+Pre-session audit identified 10 holes — things a customer would say before buying. Six resolved this session:
+
+1. ✅ Inline headline/title editing — queue card + content preview modal
+2. ✅ Content Library — full record of everything published
+3. ✅ Live article preview from queue — one-click, correct URL
+4. ✅ Global brand context indicator — brand filter pattern documented for agency tier
+5. ✅ OAuth complexity — Pipedream Connect removes all setup friction
+6. ✅ External review workflow — VP approval without login
+
+Remaining from audit (backlog):
+- Content brief / topic queue
+- Campaign-level scheduling
+- Agency Dashboard (bird's-eye multi-brand view)
+- Brand Switcher in TopBar
