@@ -1,6 +1,6 @@
 /* ── Content Library Page ─────────────────────────────────────────────────── */
 .cl-page {
-  padding: 32px 32px 80px;
+  padding: 24px 24px 80px;
   max-width: 1400px;
 }
 
@@ -13,6 +13,10 @@
 }
 
 /* Toolbar */
+.cl-page .geo-description {
+  margin-bottom: 24px;
+}
+
 .cl-toolbar {
   display: flex;
   align-items: center;
