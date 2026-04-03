@@ -5617,7 +5617,7 @@ app.post('/api/content/import', async (req, res) => {
 
         // Try to extract title from <title> tag
         const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-        if (titleMatch) sourceTitle = titleMatch[1].replace(/\s*[|\-–—].*$/, '').trim();
+        if (titleMatch) sourceTitle = titleMatch[1].replace(/\s*(\||\u2013|\u2014|-).*$/, '').trim();
       } catch(e) {
         return res.status(400).json({ error: `Could not fetch URL: ${e.message}` });
       }
