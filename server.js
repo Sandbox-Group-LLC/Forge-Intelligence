@@ -3732,6 +3732,36 @@ app.delete('/api/publishing/queue/:itemId', async (req, res) => {
   }
 });
 
+// POST /api/publishing/queue/:id/reset-channel — clear error state for one channel
+app.post('/api/publishing/queue/:id/reset-channel', async (req, res) => {
+  const { id } = req.params;
+  const { channel } = req.body;
+  if (!channel) return res.status(400).json({ error: 'channel required' });
+  try {
+    // Remove this channel from publish_results so the card goes back to staged
+    const row = await pool.query('SELECT publish_results, brand_profile_id FROM publishing_queue WHERE id = $1', [id]);
+    if (!row.rows.length) return res.status(404).json({ error: 'Not found' });
+    const results = row.rows[0].publish_results || {};
+    delete results[channel];
+    // If no channels left, reset status to staged
+    const hasAnyPublished = Object.values(results).some((r: any) => r?.status === 'published');
+    const newStatus = hasAnyPublished ? 'partial' : 'staged';
+    await pool.query(
+      'UPDATE publishing_queue SET publish_results = $1, status = $2, updated_at = NOW() WHERE id = $3',
+      [JSON.stringify(results), newStatus, id]
+    );
+    // Also clear from publish_log for this channel
+    const safeId = row.rows[0].brand_profile_id.replace(/-/g, '_');
+    await pool.query(
+      `DELETE FROM publish_log_${safeId} WHERE queue_item_id = $1 AND channel = $2`,
+      [id, channel]
+    ).catch(() => {});
+    res.json({ success: true });
+  } catch(e: any) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // POST /api/publishing/unpublish — delete from live channel + optionally remove from queue
 app.post('/api/publishing/unpublish', async (req, res) => {
   const { queueItemId, channel, deleteFromChannel = true, removeFromQueue = false } = req.body;
