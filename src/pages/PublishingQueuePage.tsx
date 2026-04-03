@@ -1069,6 +1069,26 @@ ${bodyHtml}
                               View post <ExternalLink />
                             </a>
                           )}
+                          {!isDeleted && !isUnknown && (() => {
+                            const bSlug = (item.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
+                            const aSlug = (item.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+                            const cSlug = (item.campaign_name || 'forge-content').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50);
+                            const bs = brandSettings[item.brand_profile_id];
+                            const base = bs?.article_base_url?.trim()
+                              ? bs.article_base_url.replace(/\/+$/, '')
+                              : `https://${window.location.hostname}/articles/${bSlug}`;
+                            const suffix = (bs?.article_url_suffix || '').trim();
+                            const utmUrl = `${base}/${aSlug}${suffix}?utm_source=${ch}&utm_medium=social&utm_campaign=${cSlug}&utm_content=${aSlug}`;
+                            return (
+                              <button
+                                className="pq-utm-copy-btn"
+                                title="Copy UTM link"
+                                onClick={() => { navigator.clipboard.writeText(utmUrl); }}
+                              >
+                                UTM
+                              </button>
+                            );
+                          })()}
                           {log?.last_synced_at && (
                             <span className="pq-synced-at">synced {new Date(log.last_synced_at).toLocaleTimeString()}</span>
                           )}
@@ -1284,6 +1304,26 @@ return (
                               View post <ExternalLink />
                             </a>
                           )}
+                          {!isDeleted && !isUnknown && (() => {
+                            const bSlug = (item.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
+                            const aSlug = (item.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+                            const cSlug = (item.campaign_name || 'forge-content').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50);
+                            const bs = brandSettings[item.brand_profile_id];
+                            const base = bs?.article_base_url?.trim()
+                              ? bs.article_base_url.replace(/\/+$/, '')
+                              : `https://${window.location.hostname}/articles/${bSlug}`;
+                            const suffix = (bs?.article_url_suffix || '').trim();
+                            const utmUrl = `${base}/${aSlug}${suffix}?utm_source=${ch}&utm_medium=social&utm_campaign=${cSlug}&utm_content=${aSlug}`;
+                            return (
+                              <button
+                                className="pq-utm-copy-btn"
+                                title="Copy UTM link"
+                                onClick={() => { navigator.clipboard.writeText(utmUrl); }}
+                              >
+                                UTM
+                              </button>
+                            );
+                          })()}
                           {log?.last_synced_at && (
                             <span className="pq-synced-at">synced {new Date(log.last_synced_at).toLocaleTimeString()}</span>
                           )}
