@@ -1,6 +1,6 @@
 # Forge Intelligence — Master SSOT
 
-> **Last updated:** April 2, 2026 (end of day) | **Status:** Stage 8 COMPLETE + Production Polish Sprint ✅ | Pipedream Connect OAuth ✅ | Content Library ✅ | Inline Article Editing ✅ | External Review Workflow ✅
+> **Last updated:** April 2, 2026 (end of night) | **Status:** Stage 8 COMPLETE + Full Production Polish ✅ | 10 pre-launch complaints resolved | Sidebar grouped | Reddit: Coming Soon (never)
 > **This README is the single source of truth for all AI sessions, dev work, and project decisions.**
 > When starting a new AI session, read this file top to bottom before touching Always read the README.md first -- it is the SSOT.
 > Always read the current file and capture its SHA before writing - never write blind.
@@ -103,6 +103,12 @@ Medium stopped issuing new API integration tokens in early 2025. The publish bac
 | Full Review Mode | ⏸ SHELVED | Enterprise team workflow — commented out, re-enable when multi-person approval flow is needed |
 | Article Page Diamond Logo | ✅ LIVE | Public article nav uses stroke-only diamond SVG matching sidebar icon, with pulse animation |
 | Forge Intelligence Content Space | ✅ LIVE | `dev.forgeintelligence.ai/articles/forgeintelligence-ai/` — owned GEO surface, 2 articles published, sitemap at `/sitemap.xml`, submitted to GSC |
+| Topic Ideas (+ Idea FAB) | ✅ LIVE | Floating `+ Idea` button on Content Generator — drawer with quick capture, saved ideas list, `→ Use` fires topic into generator and marks in-progress. Per-brand, persists across sessions. |
+| Campaign Scheduler | ✅ LIVE | "Schedule Campaign" button on campaign group header — start date + publish time picker, live preview of all articles with Wk/day/date/time calculated from existing week_number + publish_day metadata, Schedule All batch-sets scheduled_at in one click. |
+| Content Import + Brain Audit | ✅ LIVE | `/app/content-import` — paste URL or raw text, Claude Sonnet audits against brand brain (voice profile, patterns, mistakes), returns Overall/Brain Match/Voice Deviation scores + verdict + flags + suggestions, drops into Publishing Queue staged for Compliance Gate. |
+| External Review Workflow | ✅ LIVE | "Send for Review" share icon on queue cards — generates signed token URL (`/review/[token]`), copies to clipboard. Reviewer sees full article + comment + Approve/Request Changes. No login. Review badge on queue card after VP actions. First verdict: "Slay." ✅ |
+| Inline Article Editing | ✅ LIVE | Content preview modal — click title, meta description, section headings, or body text to edit in place. Saves to DB on blur. No round-trip through Compliance Gate for tweaks. |
+| Content Library | ✅ LIVE | `/app/content-library` — card grid of all generated content, search, status tabs, hero thumbnails, confidence scores, performance stats, preview modal. Brand filter top-level (agency/removable for SMB). |
 | Pipedream Connect OAuth | ✅ LIVE | All channel OAuth replaced with Pipedream managed auth — LinkedIn, Facebook, Reddit, HubSpot, Webflow connect via popup in <60s. X stays manual (X asked Pipedream to remove it). Ghost + WordPress stay key-based. |
 | Content Library | ✅ LIVE | `/app/content-library` — card grid of all generated content across all brands, search, status tabs (All/Published/Staged/Draft), hero thumbnails, confidence scores, performance stats, preview modal with live links. Brand filter top-level for agency mode, removable for single-brand production. |
 | Inline Article Editing | ✅ LIVE | Content preview modal in Publishing Queue — click title, meta description, section headings, or body text to edit in place. Saves to DB on blur. No round-trip through Compliance Gate for headline tweaks. |
@@ -142,9 +148,8 @@ Medium stopped issuing new API integration tokens in early 2025. The publish bac
 - Pre-cog Score Dashboard (#18 — Voyage AI embeddings, pgvector)
 - Agency Dashboard — bird's-eye view across all brands (backlog)
 - Brand Switcher in TopBar — quick-switch for agency users (backlog)
-- Content Brief / Topic Queue — park ideas before full pipeline (backlog)
-- Campaign-level scheduling — set cadence for all articles in a campaign at once (backlog)
 - GEO citation data pending Perplexity/ChatGPT indexing forgeintelligence.ai articles
+- Reddit — Coming Soon (never)
 
 ### GEO Content Strategy — Forge Intelligence
 Published articles at `dev.forgeintelligence.ai/articles/forgeintelligence-ai/`:
