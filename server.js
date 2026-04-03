@@ -3750,10 +3750,9 @@ app.post('/api/publishing/queue/:id/reset-channel', async (req, res) => {
       'UPDATE publishing_queue SET publish_results = $1, status = $2, updated_at = NOW() WHERE id = $3',
       [JSON.stringify(results), newStatus, id]
     );
-    // Also clear from publish_log for this channel
-    const safeId = row.rows[0].brand_profile_id.replace(/-/g, '_');
+    // Clear from publish_log — single shared table
     await pool.query(
-      `DELETE FROM publish_log_${safeId} WHERE queue_item_id = $1 AND channel = $2`,
+      'DELETE FROM publish_log WHERE queue_item_id = $1 AND channel = $2',
       [id, channel]
     ).catch(() => {});
     res.json({ success: true });
