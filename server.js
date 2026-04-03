@@ -5474,7 +5474,7 @@ app.post('/api/publishing/queue/:id/request-review', async (req, res) => {
 app.get('/api/review/:token', async (req, res) => {
   try {
     const qRes = await pool.query(
-      `SELECT pq.*, bp.brand_name, bp.brand_url, bp.brand_slug
+      `SELECT pq.*, bp.brand_name, bp.brand_url
        FROM publishing_queue pq
        LEFT JOIN brand_profiles bp ON bp.id = pq.brand_profile_id
        WHERE pq.review_token = $1`,
