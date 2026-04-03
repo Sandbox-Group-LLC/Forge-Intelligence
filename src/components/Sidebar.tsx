@@ -193,10 +193,8 @@ const topNavItems: TopNavItem[] = [
   { id: 'content-generator',     label: 'Content Generator',     icon: 'fileText',   href: '/app/content-generator' },
   { id: 'campaign-generator',    label: 'Campaign Generator',    icon: 'layers',     href: '/app/campaign-generator' },
   { id: 'compliance-gate',       label: 'Compliance Gate',       icon: 'shieldCheck',href: '/app/compliance-gate' },
-  { id: 'integrations',          label: 'Integrations',          icon: 'plug',       href: '/app/integrations' },
 
   { id: 'performance',           label: 'Performance',           icon: 'barChart2',  href: '/app/performance' },
-  { id: 'brand-settings',        label: 'Brand Settings',        icon: 'settings',   href: '/app/brand-settings' },
 ];
 
 export function Sidebar() {
