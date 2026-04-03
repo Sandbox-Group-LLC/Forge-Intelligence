@@ -605,6 +605,17 @@ async function initDB() {
     await pool.query(`ALTER TABLE content_analytics ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ`).catch(() => {});
     await pool.query(`ALTER TABLE publishing_queue ADD COLUMN IF NOT EXISTS hero_image_url TEXT`).catch(() => {});
     await pool.query(`ALTER TABLE publishing_queue ADD COLUMN IF NOT EXISTS review_token TEXT`).catch(() => {});
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS topic_ideas (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        brand_profile_id UUID NOT NULL,
+        topic TEXT NOT NULL,
+        note TEXT,
+        status TEXT NOT NULL DEFAULT 'idea',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `).catch(() => {});
     await pool.query(`ALTER TABLE publishing_queue ADD COLUMN IF NOT EXISTS review_status TEXT`).catch(() => {});
     await pool.query(`ALTER TABLE publishing_queue ADD COLUMN IF NOT EXISTS review_comment TEXT`).catch(() => {});
     await pool.query(`ALTER TABLE publishing_queue ADD COLUMN IF NOT EXISTS review_requested_at TIMESTAMPTZ`).catch(() => {});
@@ -5555,6 +5566,56 @@ app.post('/api/review/:token', async (req, res) => {
   } catch(e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+
+// ── Topic Ideas ───────────────────────────────────────────────────────────────
+
+// GET /api/topic-ideas/:brandProfileId
+app.get('/api/topic-ideas/:brandProfileId', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT * FROM topic_ideas WHERE brand_profile_id = $1 ORDER BY created_at DESC`,
+      [req.params.brandProfileId]
+    );
+    res.json({ success: true, ideas: r.rows });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// POST /api/topic-ideas
+app.post('/api/topic-ideas', async (req, res) => {
+  const { brandProfileId, topic, note } = req.body;
+  if (!brandProfileId || !topic?.trim()) return res.status(400).json({ error: 'brandProfileId and topic required' });
+  try {
+    const r = await pool.query(
+      `INSERT INTO topic_ideas (brand_profile_id, topic, note) VALUES ($1, $2, $3) RETURNING *`,
+      [brandProfileId, topic.trim(), note?.trim() || null]
+    );
+    res.json({ success: true, idea: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// PATCH /api/topic-ideas/:id — update status (idea → in_progress → generated)
+app.patch('/api/topic-ideas/:id', async (req, res) => {
+  const { status, topic, note } = req.body;
+  try {
+    const updates = []; const params = []; let pi = 1;
+    if (status) { updates.push(`status = $${pi++}`); params.push(status); }
+    if (topic) { updates.push(`topic = $${pi++}`); params.push(topic); }
+    if (note !== undefined) { updates.push(`note = $${pi++}`); params.push(note); }
+    updates.push(`updated_at = NOW()`);
+    params.push(req.params.id);
+    await pool.query(`UPDATE topic_ideas SET ${updates.join(', ')} WHERE id = $${pi}`, params);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// DELETE /api/topic-ideas/:id
+app.delete('/api/topic-ideas/:id', async (req, res) => {
+  try {
+    await pool.query(`DELETE FROM topic_ideas WHERE id = $1`, [req.params.id]);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
 // ── Content Library ───────────────────────────────────────────────────────────
