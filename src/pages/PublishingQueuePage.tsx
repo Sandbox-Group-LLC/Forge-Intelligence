@@ -460,6 +460,24 @@ export default function PublishingQueuePage() {
     }
   };
 
+  const handleRetry = async (itemId: string, channel: string) => {
+    const key = `${itemId}:${channel}`;
+    setRepublishing(key);
+    try {
+      // Clear the error state for this channel so it can be published fresh
+      await fetch(`/api/publishing/queue/${itemId}/reset-channel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel })
+      });
+      loadQueue();
+    } catch {
+      setError('Reset failed — try again');
+    } finally {
+      setRepublishing(null);
+    }
+  };
+
   const handleRepublish = async (itemId: string, channel: string) => {
     const key = `${itemId}:${channel}`;
     setRepublishing(key);
@@ -1103,7 +1121,17 @@ ${bodyHtml}
                               {republishing === repKey ? 'Republishing...' : '↺ Republish'}
                             </button>
                           )}
-                          {res.error && <span className="pq-result-error">{res.error}</span>}
+                          {(res.status === 'error' || liveStatus === 'error') && (
+                            <button
+                              className="pq-retry-btn"
+                              onClick={() => handleRetry(item.id, ch)}
+                              disabled={republishing === repKey}
+                              title="Clear error and retry"
+                            >
+                              {republishing === repKey ? 'Resetting...' : '↺ Reset & Retry'}
+                            </button>
+                          )}
+                          {res.error && liveStatus !== 'error' && <span className="pq-result-error">{res.error}</span>}
                           {res.message && <span className="pq-result-msg">{res.message}</span>}
                         </div>
                         );
@@ -1338,7 +1366,17 @@ return (
                               {republishing === repKey ? 'Republishing...' : '↺ Republish'}
                             </button>
                           )}
-                          {res.error && <span className="pq-result-error">{res.error}</span>}
+                          {(res.status === 'error' || liveStatus === 'error') && (
+                            <button
+                              className="pq-retry-btn"
+                              onClick={() => handleRetry(item.id, ch)}
+                              disabled={republishing === repKey}
+                              title="Clear error and retry"
+                            >
+                              {republishing === repKey ? 'Resetting...' : '↺ Reset & Retry'}
+                            </button>
+                          )}
+                          {res.error && liveStatus !== 'error' && <span className="pq-result-error">{res.error}</span>}
                           {res.message && <span className="pq-result-msg">{res.message}</span>}
                         </div>
                         );
