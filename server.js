@@ -5995,6 +5995,36 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
   }
 });
 
+
+// ── Promo Codes ───────────────────────────────────────────────────────────────
+
+// Promo codes stored server-side — never expose to client
+const PROMO_CODES = new Map([
+  ['FORGEFRIEND',   { discount: 100, description: 'Friend of Forge' }],
+  ['EARLYBIRD',     { discount: 100, description: 'Early Access' }],
+  ['SANDBOX100',    { discount: 100, description: 'Sandbox Group Internal' }],
+]);
+
+// POST /api/promo/validate — validate a promo code
+app.post('/api/promo/validate', async (req, res) => {
+  const { code, brandProfileId } = req.body;
+  if (!code || !brandProfileId) return res.status(400).json({ error: 'code and brandProfileId required' });
+
+  const promo = PROMO_CODES.get(code.trim().toUpperCase());
+  if (!promo) return res.json({ valid: false, message: 'Invalid promo code' });
+
+  // Apply — mark brand as paid
+  if (promo.discount === 100) {
+    await pool.query(
+      `UPDATE brand_profiles SET is_paid = true, expires_at = NULL, updated_at = NOW() WHERE id = $1`,
+      [brandProfileId]
+    );
+    console.log(`[PROMO] ${code} applied to brand ${brandProfileId} — ${promo.description}`);
+  }
+
+  res.json({ valid: true, discount: promo.discount, message: `Code applied — ${promo.description}` });
+});
+
 // ── Content Import (Bring Your Own Article) ──────────────────────────────────
 
 // POST /api/content/import — parse + score an externally written article
