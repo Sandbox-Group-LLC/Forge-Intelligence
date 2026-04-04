@@ -177,6 +177,7 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
+  padding-bottom: 90px;
 }
 
 /* Brand Group */
@@ -254,7 +255,8 @@
 }
 
 .version-card.active {
-  background: var(--color-success-muted);
+  background: rgba(53,99,255,0.08);
+  border-color: var(--color-accent);
 }
 
 .version-card.selected {
@@ -362,7 +364,8 @@
   padding: 6px 12px;
   font-size: 11px;
   font-weight: 600;
-  background: var(--color-success-muted);
+  background: rgba(53,99,255,0.12);
+  color: var(--color-accent);
   color: var(--color-success);
   border-radius: 6px;
   text-transform: uppercase;
