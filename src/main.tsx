@@ -16,6 +16,7 @@ import PerformanceDashboardPage from './pages/PerformanceDashboardPage';
 import BrandSettingsPage from './pages/BrandSettingsPage';
 import ContentLibraryPage from './pages/ContentLibraryPage';
 import ContentImportPage from './pages/ContentImportPage';
+import AdminPage from './pages/AdminPage';
 import ReviewPage from './pages/ReviewPage';
 import './index.css';
 
@@ -42,6 +43,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/app/performance" element={<AppProvider><PerformanceDashboardPage /></AppProvider>} />
         <Route path="/app/content-library" element={<AppProvider><ContentLibraryPage /></AppProvider>} />
         <Route path="/app/content-import" element={<AppProvider><ContentImportPage /></AppProvider>} />
+        <Route path="/app/admin" element={<AppProvider><AdminPage /></AppProvider>} />
         <Route path="/app/brand-settings" element={<AppProvider><BrandSettingsPage /></AppProvider>} />
 
         {/* Public article viewer — no AppProvider needed */}
