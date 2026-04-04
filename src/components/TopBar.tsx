@@ -1,4 +1,4 @@
-import { useUser, SignOutButton } from '@clerk/clerk-react';
+import { useUser, SignOutButton, SignedIn, SignedOut } from '@clerk/clerk-react';
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import './TopBar.css';
@@ -91,6 +91,12 @@ export function TopBar() {
           </div>
         )}
         <div className="user-area" style={{ position: 'relative' }}>
+          <SignedOut>
+            <a href="https://accounts.forgeintelligence.ai/sign-in" style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.6)', textDecoration: 'none', fontWeight: 500, padding: '6px 12px', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8 }}>
+              Sign In
+            </a>
+          </SignedOut>
+          <SignedIn>
           <button
             className="user-avatar clerk-avatar"
             onClick={() => setMenuOpen(o => !o)}
@@ -119,6 +125,7 @@ export function TopBar() {
               </SignOutButton>
             </div>
           )}
+          </SignedIn>
         </div>
       </div>
     </header>
