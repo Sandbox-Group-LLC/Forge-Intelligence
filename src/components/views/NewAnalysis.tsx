@@ -81,7 +81,7 @@ export function NewAnalysis() {
               <button
                 type="button"
                 className="btn-primary btn-run"
-                onClick={startAnalysis}
+                onClick={() => startAnalysis()}
                 disabled={!canSubmit}
               >
                 <span className="btn-icon">{icons.play}</span>
