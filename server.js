@@ -6036,33 +6036,6 @@ app.post('/api/promo/validate', async (req, res) => {
   res.json({ valid: true, discount: promo.discount, message: `Code applied — ${promo.description}` });
 });
 
-  const normalised = code.trim().toUpperCase();
-  const promo = PROMO_CODES.get(normalised);
-  if (!promo) return res.json({ valid: false, message: 'Invalid promo code' });
-
-  // Check one-time use — each code can only be used once per brand
-  const already = await pool.query(
-    'SELECT id FROM promo_redemptions WHERE code = $1 AND brand_profile_id = $2',
-    [normalised, brandProfileId]
-  );
-  if (already.rows.length) return res.json({ valid: false, message: 'Code already used' });
-
-  // Log redemption + apply
-  await pool.query(
-    'INSERT INTO promo_redemptions (code, brand_profile_id) VALUES ($1, $2)',
-    [normalised, brandProfileId]
-  );
-
-  if (promo.discount === 100) {
-    await pool.query(
-      `UPDATE brand_profiles SET is_paid = true, expires_at = NULL, updated_at = NOW() WHERE id = $1`,
-      [brandProfileId]
-    );
-    console.log(`[PROMO] ${normalised} applied to brand ${brandProfileId} — ${promo.description}`);
-  }
-
-  res.json({ valid: true, discount: promo.discount, message: `Code applied — ${promo.description}` });
-});
 
 
 // POST /api/admin/reset-brand-paid — dev only, resets is_paid for testing
