@@ -6315,6 +6315,81 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
       }
     }
 
+    // ── WordPress sync ─────────────────────────────────────────────────────
+    if (channel === 'wordpress' || channel === 'all') {
+      const wpLogRes = await pool.query(
+        `SELECT pl.content_id, pl.response_data, pl.attempted_at AS published_at,
+                pl.published_url, ct.title, ct.campaign_id
+         FROM publish_log pl
+         LEFT JOIN generated_content_${safeId} ct ON ct.id::text = pl.content_id
+         WHERE pl.brand_profile_id = $1 AND pl.channel = 'wordpress' AND pl.status = 'published'
+         ORDER BY pl.attempted_at DESC`,
+        [brandProfileId]
+      ).catch(() => ({ rows: [] }));
+
+      for (const row of wpLogRes.rows) {
+        try {
+          const postId = row.response_data?.postId || row.response_data?.id || null;
+          const postUrl = row.published_url || row.response_data?.link || '';
+          
+          // WordPress doesn't have a simple analytics API — record basic publish data
+          // Future: Could integrate Jetpack Stats API if available
+          await pool.query(
+            `INSERT INTO content_analytics
+               (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at, campaign_id)
+             VALUES ($1,$2,'wordpress',$3,0,0,0,0,0,0,0,$4,$5,NOW(),$6)
+             ON CONFLICT (content_id, channel) DO UPDATE SET
+               post_id=COALESCE(EXCLUDED.post_id, content_analytics.post_id),
+               raw_data=EXCLUDED.raw_data, synced_at=NOW(),
+               campaign_id=COALESCE(EXCLUDED.campaign_id, content_analytics.campaign_id)`,
+            [brandProfileId, row.content_id, postId, 
+             JSON.stringify({ title: row.title, url: postUrl, ...row.response_data }), 
+             row.published_at, row.campaign_id || null]
+          );
+          synced.push({ contentId: row.content_id, title: row.title, postId, channel: 'wordpress', url: postUrl });
+        } catch(e) {
+          errors.push({ contentId: row.content_id, channel: 'wordpress', error: e.message });
+        }
+      }
+    }
+
+    // ── Webflow sync ──────────────────────────────────────────────────────
+    if (channel === 'webflow' || channel === 'all') {
+      const wfLogRes = await pool.query(
+        `SELECT pl.content_id, pl.response_data, pl.attempted_at AS published_at,
+                pl.published_url, ct.title, ct.campaign_id
+         FROM publish_log pl
+         LEFT JOIN generated_content_${safeId} ct ON ct.id::text = pl.content_id
+         WHERE pl.brand_profile_id = $1 AND pl.channel = 'webflow' AND pl.status = 'published'
+         ORDER BY pl.attempted_at DESC`,
+        [brandProfileId]
+      ).catch(() => ({ rows: [] }));
+
+      for (const row of wfLogRes.rows) {
+        try {
+          const itemId = row.response_data?.itemId || row.response_data?.id || row.response_data?._id || null;
+          const postUrl = row.published_url || '';
+          
+          // Webflow doesn't have a public analytics API — record basic publish data
+          await pool.query(
+            `INSERT INTO content_analytics
+               (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at, campaign_id)
+             VALUES ($1,$2,'webflow',$3,0,0,0,0,0,0,0,$4,$5,NOW(),$6)
+             ON CONFLICT (content_id, channel) DO UPDATE SET
+               post_id=COALESCE(EXCLUDED.post_id, content_analytics.post_id),
+               raw_data=EXCLUDED.raw_data, synced_at=NOW(),
+               campaign_id=COALESCE(EXCLUDED.campaign_id, content_analytics.campaign_id)`,
+            [brandProfileId, row.content_id, itemId,
+             JSON.stringify({ title: row.title, url: postUrl, ...row.response_data }),
+             row.published_at, row.campaign_id || null]
+          );
+          synced.push({ contentId: row.content_id, title: row.title, itemId, channel: 'webflow', url: postUrl });
+        } catch(e) {
+          errors.push({ contentId: row.content_id, channel: 'webflow', error: e.message });
+        }
+      }
+    }
+
     res.json({ success: true, channel, synced: synced.length, errors: errors.length, data: synced, errs: errors });
   } catch(e) {
     res.status(500).json({ success: false, error: e.message });
