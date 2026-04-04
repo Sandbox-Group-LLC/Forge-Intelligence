@@ -4173,6 +4173,279 @@ app.post('/api/linkedin/select-target', async (req, res) => {
 });
 // ─────────────────────────────────────────────────────────────────────────────
 
+
+// ── HubSpot OAuth ────────────────────────────────────────────────────────────
+app.get('/api/hubspot/auth', (req, res) => {
+  const clientId = process.env.HUBSPOT_CLIENT_ID;
+  if (!clientId) return res.status(500).json({ error: 'HUBSPOT_CLIENT_ID not configured' });
+  
+  const redirectUri = encodeURIComponent(process.env.HUBSPOT_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/hubspot/callback');
+  const brandProfileId = req.query.state?.split('|')[0] || req.query.brandProfileId || 'system';
+  const nonce = randomBytes(16).toString('hex');
+  const state = `${brandProfileId}|${nonce}`;
+  
+  // Scopes matching the Legacy app
+  const scopes = [
+    'cms.knowledge_base.articles.publish',
+    'cms.knowledge_base.articles.read', 
+    'cms.knowledge_base.articles.write',
+    'crm.objects.companies.read',
+    'crm.objects.companies.write',
+    'crm.objects.contacts.read',
+    'crm.objects.contacts.write',
+    'crm.objects.owners.read',
+    'oauth'
+  ].join('%20');
+  
+  const url = `https://app.hubspot.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scopes}&state=${encodeURIComponent(state)}`;
+  res.redirect(url);
+});
+
+app.get('/auth/hubspot/callback', async (req, res) => {
+  const { code, state, error } = req.query;
+  if (error) return res.redirect(`/app/integrations?hubspot_error=${error}`);
+  if (!code) return res.redirect('/app/integrations?hubspot_error=no_code');
+  
+  try {
+    const clientId = process.env.HUBSPOT_CLIENT_ID;
+    const clientSecret = process.env.HUBSPOT_CLIENT_SECRET;
+    const redirectUri = process.env.HUBSPOT_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/hubspot/callback';
+    
+    // Exchange code for tokens
+    const tokenRes = await fetch('https://api.hubapi.com/oauth/v1/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: redirectUri,
+        client_id: clientId,
+        client_secret: clientSecret
+      })
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) throw new Error(tokenData.message || 'Token exchange failed');
+
+    // Get account info (portal ID, hub domain)
+    const accountRes = await fetch('https://api.hubapi.com/oauth/v1/access-tokens/' + tokenData.access_token);
+    const accountInfo = await accountRes.json();
+
+    // Parse brandProfileId from state
+    const stateDecoded = decodeURIComponent(state || '');
+    const brandProfileId = stateDecoded.includes('|') ? stateDecoded.split('|')[0] : 'system';
+
+    await pool.query(`
+      INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active, updated_at)
+      VALUES ($1, 'hubspot', $2, true, NOW())
+      ON CONFLICT (brand_profile_id, channel) DO UPDATE
+        SET credentials = $2, is_active = true, updated_at = NOW()
+    `, [brandProfileId, JSON.stringify({
+      accessToken: tokenData.access_token,
+      refreshToken: tokenData.refresh_token,
+      expiresIn: tokenData.expires_in,
+      expiresAt: Date.now() + (tokenData.expires_in * 1000),
+      connectedAt: new Date().toISOString(),
+      portalId: accountInfo.hub_id,
+      hubDomain: accountInfo.hub_domain,
+      appId: accountInfo.app_id,
+      userId: accountInfo.user_id,
+      userEmail: accountInfo.user
+    })]);
+
+    res.redirect('/app/integrations?hubspot_connected=true');
+  } catch (err) {
+    console.error('HubSpot callback error:', err);
+    res.redirect(`/app/integrations?hubspot_error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+// HubSpot token refresh helper
+async function refreshHubSpotToken(brandProfileId) {
+  const result = await pool.query(
+    `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'hubspot'`,
+    [brandProfileId]
+  );
+  if (!result.rows.length) throw new Error('HubSpot not connected');
+  
+  const creds = result.rows[0].credentials;
+  if (Date.now() < creds.expiresAt - 300000) return creds.accessToken; // Still valid (5 min buffer)
+  
+  const tokenRes = await fetch('https://api.hubapi.com/oauth/v1/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: creds.refreshToken,
+      client_id: process.env.HUBSPOT_CLIENT_ID,
+      client_secret: process.env.HUBSPOT_CLIENT_SECRET
+    })
+  });
+  const tokenData = await tokenRes.json();
+  if (!tokenData.access_token) throw new Error('Token refresh failed');
+  
+  creds.accessToken = tokenData.access_token;
+  creds.refreshToken = tokenData.refresh_token;
+  creds.expiresIn = tokenData.expires_in;
+  creds.expiresAt = Date.now() + (tokenData.expires_in * 1000);
+  
+  await pool.query(
+    `UPDATE publishing_channels SET credentials = $1, updated_at = NOW() WHERE brand_profile_id = $2 AND channel = 'hubspot'`,
+    [JSON.stringify(creds), brandProfileId]
+  );
+  
+  return creds.accessToken;
+}
+
+// ── HubSpot: Publish article to Knowledge Base ───────────────────────────────
+app.post('/api/hubspot/publish-article', async (req, res) => {
+  const { brandProfileId, articleId, title, body, slug } = req.body;
+  if (!brandProfileId || !title || !body) {
+    return res.status(400).json({ error: 'brandProfileId, title, and body required' });
+  }
+  
+  try {
+    const accessToken = await refreshHubSpotToken(brandProfileId);
+    
+    // Create knowledge base article
+    const articleRes = await fetch('https://api.hubapi.com/cms/v3/blogs/posts', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: title,
+        slug: slug || title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        postBody: body,
+        state: 'DRAFT' // Start as draft, can be published separately
+      })
+    });
+    
+    const article = await articleRes.json();
+    if (article.status === 'error') throw new Error(article.message || 'Failed to create article');
+    
+    res.json({ success: true, articleId: article.id, url: article.url });
+  } catch (err) {
+    console.error('HubSpot publish error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── HubSpot: Create/update contact ───────────────────────────────────────────
+app.post('/api/hubspot/upsert-contact', async (req, res) => {
+  const { brandProfileId, email, properties } = req.body;
+  if (!brandProfileId || !email) {
+    return res.status(400).json({ error: 'brandProfileId and email required' });
+  }
+  
+  try {
+    const accessToken = await refreshHubSpotToken(brandProfileId);
+    
+    // Try to get existing contact
+    const searchRes = await fetch('https://api.hubapi.com/crm/v3/objects/contacts/search', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        filterGroups: [{
+          filters: [{ propertyName: 'email', operator: 'EQ', value: email }]
+        }]
+      })
+    });
+    const searchData = await searchRes.json();
+    
+    if (searchData.results?.length > 0) {
+      // Update existing contact
+      const contactId = searchData.results[0].id;
+      const updateRes = await fetch(`https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ properties: properties || {} })
+      });
+      const updated = await updateRes.json();
+      res.json({ success: true, contactId, action: 'updated', contact: updated });
+    } else {
+      // Create new contact
+      const createRes = await fetch('https://api.hubapi.com/crm/v3/objects/contacts', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ properties: { email, ...properties } })
+      });
+      const created = await createRes.json();
+      res.json({ success: true, contactId: created.id, action: 'created', contact: created });
+    }
+  } catch (err) {
+    console.error('HubSpot contact error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── HubSpot: Log content engagement (for attribution) ───────────────────────
+app.post('/api/hubspot/log-engagement', async (req, res) => {
+  const { brandProfileId, email, articleUrl, articleTitle, utmParams } = req.body;
+  if (!brandProfileId || !email || !articleUrl) {
+    return res.status(400).json({ error: 'brandProfileId, email, and articleUrl required' });
+  }
+  
+  try {
+    const accessToken = await refreshHubSpotToken(brandProfileId);
+    
+    // Find contact by email
+    const searchRes = await fetch('https://api.hubapi.com/crm/v3/objects/contacts/search', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        filterGroups: [{
+          filters: [{ propertyName: 'email', operator: 'EQ', value: email }]
+        }]
+      })
+    });
+    const searchData = await searchRes.json();
+    
+    if (!searchData.results?.length) {
+      return res.status(404).json({ error: 'Contact not found in HubSpot' });
+    }
+    
+    const contactId = searchData.results[0].id;
+    
+    // Log engagement as a note/activity
+    const noteRes = await fetch('https://api.hubapi.com/crm/v3/objects/notes', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        properties: {
+          hs_note_body: `📖 Content Engagement: Viewed "${articleTitle || articleUrl}"\n\nURL: ${articleUrl}\n${utmParams ? `UTM: ${JSON.stringify(utmParams)}` : ''}`,
+          hs_timestamp: Date.now()
+        },
+        associations: [{
+          to: { id: contactId },
+          types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 202 }] // Note to Contact
+        }]
+      })
+    });
+    const note = await noteRes.json();
+    
+    res.json({ success: true, contactId, noteId: note.id });
+  } catch (err) {
+    console.error('HubSpot engagement error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Google Search Console OAuth ──────────────────────────────────────────────
 
 // GET /api/gsc/auth — initiate OAuth flow
