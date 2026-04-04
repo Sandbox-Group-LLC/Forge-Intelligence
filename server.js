@@ -625,10 +625,22 @@ async function initDB() {
     )`);
     console.log('NeonDB: Publishing tables ensured');
 
+
+    // Reviewers table
+    await pool.query(`CREATE TABLE IF NOT EXISTS reviewers (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      brand_profile_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      title TEXT DEFAULT '',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`).catch(() => {});
     // Migration: add missing columns to content_analytics
     await pool.query(`ALTER TABLE content_analytics ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ`).catch(() => {});
     await pool.query(`ALTER TABLE publishing_queue ADD COLUMN IF NOT EXISTS hero_image_url TEXT`).catch(() => {});
     await pool.query(`ALTER TABLE publishing_queue ADD COLUMN IF NOT EXISTS review_token TEXT`).catch(() => {});
+    await pool.query(`ALTER TABLE publishing_queue ADD COLUMN IF NOT EXISTS reviewer_id TEXT`).catch(() => {});
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS topic_ideas (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -5505,17 +5517,60 @@ app.get('/api/pipedream/config', (req, res) => {
 
 // ── Review Workflow ───────────────────────────────────────────────────────────
 
-// POST /api/publishing/queue/:id/request-review — generate review token
+// POST /api/publishing/queue/:id/request-review — generate review token + optionally email a reviewer
 app.post('/api/publishing/queue/:id/request-review', async (req, res) => {
+  const { reviewerId } = req.body;
   try {
     const token = randomBytes(24).toString('hex');
+
+    // Get article title for the email
+    const qItem = await pool.query(
+      'SELECT title, brand_profile_id FROM publishing_queue WHERE id = $1',
+      [req.params.id]
+    );
+    const item = qItem.rows[0];
+
     await pool.query(
       `UPDATE publishing_queue
-       SET review_token = $1, review_status = 'pending', review_requested_at = NOW(), updated_at = NOW()
+       SET review_token = $1, review_status = 'pending', review_requested_at = NOW(),
+           reviewer_id = $3, updated_at = NOW()
        WHERE id = $2`,
-      [token, req.params.id]
+      [token, req.params.id, reviewerId || null]
     );
-    const reviewUrl = `${process.env.BASE_DOMAIN ? 'https://dev.forgeintelligence.ai' : 'http://localhost:5173'}/review/${token}`;
+
+    const reviewUrl = `https://dev.forgeintelligence.ai/review/${token}`;
+
+    // Send email if reviewer specified
+    if (reviewerId && RESEND_API_KEY) {
+      const reviewer = await pool.query('SELECT * FROM reviewers WHERE id = $1', [reviewerId]);
+      const r = reviewer.rows[0];
+      if (r) {
+        await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: 'Forge Intelligence <hello@forgeintelligence.ai>',
+            to: r.email,
+            subject: `Review requested: ${item?.title || 'Article'}`,
+            html: `
+              <div style="font-family: Inter, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 24px; background: #0F172A; color: #F8FAFC; border-radius: 12px;">
+                <div style="margin-bottom: 32px;">
+                  <img src="https://forgeintelligence.ai/forge-logo.png" alt="Forge Intelligence" style="height: 32px;" />
+                </div>
+                <h1 style="font-size: 22px; font-weight: 700; margin-bottom: 8px; color: #F8FAFC;">Review requested</h1>
+                <p style="color: #94A3B8; margin-bottom: 24px;">Hi ${r.name}, you've been asked to review an article before it goes live.</p>
+                <div style="background: #1E293B; border-radius: 8px; padding: 20px 24px; margin-bottom: 28px; border-left: 3px solid #3563FF;">
+                  <p style="font-size: 16px; font-weight: 600; color: #F8FAFC; margin: 0;">${item?.title || 'Article for Review'}</p>
+                </div>
+                <a href="${reviewUrl}" style="display: inline-block; background: #3563FF; color: #fff; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 15px;">Review Article →</a>
+                <p style="color: #475569; font-size: 12px; margin-top: 32px;">This link is unique to you and expires after your review is submitted. Powered by Forge Intelligence.</p>
+              </div>
+            `
+          })
+        }).catch(e => console.error('[REVIEW EMAIL]', e.message));
+      }
+    }
+
     res.json({ success: true, token, reviewUrl });
   } catch(e) {
     res.status(500).json({ success: false, error: e.message });
@@ -5663,6 +5718,16 @@ app.get('/api/admin/stats', async (req, res) => {
       stats: {
         totalBrands: parseInt(brands.rows[0].count),
       totalReach: (await pool.query(`SELECT COALESCE(SUM(impressions),0) as total FROM content_analytics`).catch(()=>({rows:[{total:0}]}))).rows[0].total,
+      avgConfidence: (await (async () => {
+        const bIds = (await pool.query('SELECT id FROM brand_profiles')).rows;
+        let total = 0, count = 0;
+        for (const b of bIds) {
+          const s = b.id.replace(/-/g,'_');
+          const r = await pool.query(`SELECT AVG(overall_confidence) as avg FROM generated_content_${s} WHERE overall_confidence IS NOT NULL`).catch(()=>({rows:[{avg:null}]}));
+          if (r.rows[0].avg) { total += parseFloat(r.rows[0].avg); count++; }
+        }
+        return count ? total/count : 0;
+      })()),
         totalContent,
         totalQueued: parseInt(queue.rows[0].count),
         totalPublished: parseInt(queue.rows[0].published),
@@ -5733,6 +5798,41 @@ app.post('/api/admin/seed-brain', async (req, res) => {
   } catch(e) {
     res.status(500).json({ success: false, error: e.message });
   }
+});
+
+
+// ── Reviewers ─────────────────────────────────────────────────────────────────
+
+// GET /api/reviewers/:brandProfileId
+app.get('/api/reviewers/:brandProfileId', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM reviewers WHERE brand_profile_id = $1 ORDER BY name ASC',
+      [req.params.brandProfileId]
+    );
+    res.json({ success: true, reviewers: result.rows });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// POST /api/reviewers — add reviewer
+app.post('/api/reviewers', async (req, res) => {
+  const { brandProfileId, name, email, title } = req.body;
+  if (!brandProfileId || !name || !email) return res.status(400).json({ error: 'brandProfileId, name, email required' });
+  try {
+    const result = await pool.query(
+      'INSERT INTO reviewers (brand_profile_id, name, email, title) VALUES ($1,$2,$3,$4) RETURNING *',
+      [brandProfileId, name, email, title || '']
+    );
+    res.json({ success: true, reviewer: result.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// DELETE /api/reviewers/:id
+app.delete('/api/reviewers/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM reviewers WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
 // ── Content Import (Bring Your Own Article) ──────────────────────────────────
