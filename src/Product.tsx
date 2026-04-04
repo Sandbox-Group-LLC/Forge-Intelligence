@@ -20,7 +20,7 @@ const CheckIcon = () => (
 );
 
 const stages = [
-  { num: 1, name: 'Context Hub', desc: 'Brand voice, personas, competitive gaps — extracted in minutes' },
+  { num: 1, name: 'Context Hub', desc: 'Brand voice, personas, competitive gaps — extracted in minutes, not months' },
   { num: 2, name: 'GEO Strategy', desc: 'AI citation opportunities across ChatGPT, Perplexity, Gemini' },
   { num: 3, name: 'Authenticity', desc: 'E-E-A-T signals, SME hooks, first-person experience injection' },
   { num: 4, name: 'Generation', desc: 'Brain-informed content with confidence scoring per section' },
@@ -28,6 +28,45 @@ const stages = [
   { num: 6, name: 'Publishing', desc: 'Multi-channel distribution with UTM intelligence' },
   { num: 7, name: 'Performance', desc: 'Analytics sync, decay monitoring, citation tracking' },
   { num: 8, name: 'Feedback Loop', desc: 'Patterns extracted, mistakes crystallized, brain compounds' },
+];
+
+const personas = [
+  {
+    name: 'Strategic Sarah',
+    role: 'VP of Marketing',
+    pain: 'Another AI tool promising magic — will this actually understand our brand\'s specific positioning, or just create more cleanup work?',
+    outcome: 'Scale content operations without proportional headcount growth. Own differentiated positioning before competitors claim key narratives.',
+  },
+  {
+    name: 'Operations Owen',
+    role: 'Head of Content',
+    pain: 'Spending 40% of time on research and context-gathering before actual content creation.',
+    outcome: 'Eliminate repetitive research. Build systematic competitive intelligence that compounds over time.',
+  },
+  {
+    name: 'Performance Pete',
+    role: 'Director of Demand Gen',
+    pain: 'How does brand intelligence actually translate to demand gen performance? Need to see clear pipeline impact, not just content outputs.',
+    outcome: 'Deploy persona-specific messaging at scale. Build defensible positioning competitors can\'t easily replicate.',
+  },
+];
+
+const gaps = [
+  {
+    title: 'Pipeline Transparency',
+    claim: 'Most AI content tools are black boxes.',
+    ours: 'Forge\'s explicit 8-stage pipeline creates transparent, auditable intelligence generation that enterprises can trust.',
+  },
+  {
+    title: 'Brand Context That Compounds',
+    claim: 'Competitors require repeated context input or shallow brand profiles.',
+    ours: 'Deep contextual memory that compounds over time — largely unclaimed territory in the market.',
+  },
+  {
+    title: 'Competitive Intelligence Integration',
+    claim: 'CI tools and content tools exist separately.',
+    ours: 'Real-time competitive signals integrated directly into content generation. A significant white space.',
+  },
 ];
 
 const timeline = [
@@ -58,7 +97,7 @@ export default function Product() {
         
         {/* Hero */}
         <section style={styles.hero}>
-          <p style={styles.eyebrow}>Content Intelligence Platform</p>
+          <p style={styles.eyebrow}>Brand Intelligence Infrastructure</p>
           <h1 style={styles.headline}>
             The only member of your content team who will tell you when the strategy is wrong.
           </h1>
@@ -79,6 +118,39 @@ export default function Product() {
               where the system gets measurably smarter and more commercially effective with every publish cycle.
             </p>
             <p style={styles.problemPunch}>That's the gap. That's the product.</p>
+          </div>
+        </section>
+
+        {/* Competitive Whitespace */}
+        <section style={styles.section}>
+          <h2 style={styles.sectionTitle}>What We Own</h2>
+          <p style={styles.sectionSub}>Territory that's ours — not another "AI writing tool."</p>
+          <div style={styles.gapsGrid}>
+            {gaps.map((g) => (
+              <div key={g.title} style={styles.gapCard}>
+                <div style={styles.gapTitle}>{g.title}</div>
+                <p style={styles.gapClaim}>{g.claim}</p>
+                <p style={styles.gapOurs}>{g.ours}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Who This Is For */}
+        <section style={styles.section}>
+          <h2 style={styles.sectionTitle}>Built For Skeptics</h2>
+          <p style={styles.sectionSub}>We know what you're thinking. We thought it too.</p>
+          <div style={styles.personaGrid}>
+            {personas.map((p) => (
+              <div key={p.name} style={styles.personaCard}>
+                <div style={styles.personaHeader}>
+                  <div style={styles.personaName}>{p.name}</div>
+                  <div style={styles.personaRole}>{p.role}</div>
+                </div>
+                <p style={styles.personaPain}>"{p.pain}"</p>
+                <p style={styles.personaOutcome}>{p.outcome}</p>
+              </div>
+            ))}
           </div>
         </section>
 
@@ -124,50 +196,48 @@ export default function Product() {
           </div>
         </section>
 
-        {/* For Who */}
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>Built For</h2>
-          <div style={styles.audienceGrid}>
-            <div style={styles.audienceCard}>
-              <div style={styles.audienceLabel}>SMB Marketing Teams</div>
-              <p style={styles.audienceText}>
-                See your brand understood better in 7 minutes than your last agency understood it in 3 months.
-              </p>
-              <div style={styles.audiencePrice}>$99 one-time</div>
-            </div>
-            <div style={styles.audienceCard}>
-              <div style={styles.audienceLabel}>Agencies</div>
-              <p style={styles.audienceText}>
-                You run Forge for your clients the way we run Forge for ours. Every brand gets its own brain.
-              </p>
-              <div style={styles.audiencePrice}>$499/mo</div>
-            </div>
-          </div>
-        </section>
-
         {/* What's Included */}
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>What You Get</h2>
           <div style={styles.featuresGrid}>
             {[
               'Brand Intelligence Profile',
+              'Persona Pain Point Mapping',
+              'Competitive Gap Analysis',
               'GEO Strategy Brief',
               'E-E-A-T Enrichment',
               'AI Content Generation',
+              'Confidence Scoring',
               'Compliance Gate',
               'Multi-Channel Publishing',
               'Performance Dashboard',
               'Pattern Learning',
               'Decay Monitoring',
-              'Citation Tracking',
-              'Campaign Analytics',
-              'Unlimited Articles',
             ].map((f) => (
               <div key={f} style={styles.featureItem}>
                 <span style={styles.checkIcon}><CheckIcon /></span>
                 {f}
               </div>
             ))}
+          </div>
+        </section>
+
+        {/* Pricing */}
+        <section style={styles.section}>
+          <h2 style={styles.sectionTitle}>Pricing</h2>
+          <div style={styles.pricingGrid}>
+            <div style={styles.pricingCard}>
+              <div style={styles.pricingLabel}>SMB</div>
+              <div style={styles.pricingPrice}>$99</div>
+              <div style={styles.pricingTerm}>one-time</div>
+              <p style={styles.pricingDesc}>Full 8-stage pipeline. One brand. Forever.</p>
+            </div>
+            <div style={{ ...styles.pricingCard, borderColor: '#3563FF' }}>
+              <div style={styles.pricingLabel}>Agency</div>
+              <div style={styles.pricingPrice}>$499</div>
+              <div style={styles.pricingTerm}>/month</div>
+              <p style={styles.pricingDesc}>Multi-brand. Each brain learns independently.</p>
+            </div>
           </div>
         </section>
 
@@ -312,6 +382,71 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#14B8A6',
     margin: 0,
   },
+  gapsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+    gap: '20px',
+  },
+  gapCard: {
+    backgroundColor: '#1E293B',
+    borderRadius: '12px',
+    padding: '24px',
+    border: '1px solid rgba(255,255,255,0.05)',
+  },
+  gapTitle: {
+    fontSize: '16px',
+    fontWeight: 600,
+    color: '#3563FF',
+    marginBottom: '12px',
+  },
+  gapClaim: {
+    fontSize: '14px',
+    color: '#94A3B8',
+    margin: '0 0 12px 0',
+    fontStyle: 'italic',
+  },
+  gapOurs: {
+    fontSize: '14px',
+    color: '#CBD5E1',
+    margin: 0,
+    lineHeight: 1.6,
+  },
+  personaGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+    gap: '20px',
+  },
+  personaCard: {
+    backgroundColor: '#1E293B',
+    borderRadius: '12px',
+    padding: '24px',
+    border: '1px solid rgba(255,255,255,0.05)',
+  },
+  personaHeader: {
+    marginBottom: '16px',
+  },
+  personaName: {
+    fontSize: '16px',
+    fontWeight: 600,
+    color: '#F8FAFC',
+  },
+  personaRole: {
+    fontSize: '13px',
+    color: '#64748B',
+  },
+  personaPain: {
+    fontSize: '14px',
+    color: '#F87171',
+    fontStyle: 'italic',
+    margin: '0 0 12px 0',
+    lineHeight: 1.6,
+  },
+  personaOutcome: {
+    fontSize: '14px',
+    color: '#14B8A6',
+    margin: 0,
+    lineHeight: 1.6,
+  },
   stagesGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
@@ -406,36 +541,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontStyle: 'italic',
     margin: 0,
   },
-  audienceGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-    gap: '20px',
-  },
-  audienceCard: {
-    backgroundColor: '#1E293B',
-    borderRadius: '12px',
-    padding: '28px',
-    border: '1px solid rgba(255,255,255,0.05)',
-  },
-  audienceLabel: {
-    fontSize: '11px',
-    fontWeight: 500,
-    letterSpacing: '0.08em',
-    textTransform: 'uppercase',
-    color: '#14B8A6',
-    marginBottom: '12px',
-  },
-  audienceText: {
-    fontSize: '15px',
-    lineHeight: 1.7,
-    color: '#CBD5E1',
-    margin: '0 0 16px 0',
-  },
-  audiencePrice: {
-    fontSize: '20px',
-    fontWeight: 600,
-    color: '#F8FAFC',
-  },
   featuresGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
@@ -451,6 +556,44 @@ const styles: Record<string, React.CSSProperties> = {
   checkIcon: {
     color: '#14B8A6',
     display: 'flex',
+  },
+  pricingGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+    gap: '24px',
+    maxWidth: '600px',
+    margin: '0 auto',
+  },
+  pricingCard: {
+    backgroundColor: '#1E293B',
+    borderRadius: '12px',
+    padding: '32px',
+    border: '1px solid rgba(255,255,255,0.1)',
+    textAlign: 'center',
+  },
+  pricingLabel: {
+    fontSize: '11px',
+    fontWeight: 500,
+    letterSpacing: '0.1em',
+    textTransform: 'uppercase',
+    color: '#14B8A6',
+    marginBottom: '8px',
+  },
+  pricingPrice: {
+    fontSize: '48px',
+    fontWeight: 700,
+    color: '#F8FAFC',
+    lineHeight: 1,
+  },
+  pricingTerm: {
+    fontSize: '14px',
+    color: '#64748B',
+    marginBottom: '16px',
+  },
+  pricingDesc: {
+    fontSize: '14px',
+    color: '#94A3B8',
+    margin: 0,
   },
   ctaSection: {
     textAlign: 'center',
