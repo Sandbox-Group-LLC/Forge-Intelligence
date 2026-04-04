@@ -1,8 +1,6 @@
 .view-shell-centered { margin: 0 auto; }
 
-.brain-history {
-  padding: 48px 40px 0;
-}
+.brain-history {}
 
 /* Empty State */
 .brain-history.empty-state {
