@@ -20,7 +20,7 @@ function ContextAgentPage() {
     }
   };
 
-  return <AppShell><div className="view-container">{renderView()}</div></AppShell>;
+  return <AppShell>{renderView()}</AppShell>;
 }
 
 export default ContextAgentPage;
