@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import GateModal from './GateModal';
+import './GateModal.css';
 import { ViewType } from '../types';
 import './Sidebar.css';
 
@@ -207,7 +210,20 @@ const topNavItems: TopNavItem[] = [
 ];
 
 export function Sidebar() {
-  const { currentView, setCurrentView, sidebarCollapsed, setSidebarCollapsed, isProcessing, brandProfile } = useApp();
+  const { currentView, setCurrentView, sidebarCollapsed, setSidebarCollapsed, isProcessing, brandProfile, isPaid } = useApp();
+  const [gateFeature, setGateFeature] = useState<string | null>(null);
+  const LOCKED_ROUTES = [
+    '/app/geo-strategist', '/app/authenticity-enricher', '/app/content-generator',
+    '/app/campaign-generator', '/app/compliance-gate', '/app/publishing-queue',
+    '/app/content-library', '/app/content-import', '/app/topic-queue',
+    '/app/performance', '/app/integrations', '/app/admin',
+  ];
+  const handleGatedClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string, label: string) => {
+    if (!isPaid && LOCKED_ROUTES.includes(href)) {
+      e.preventDefault();
+      setGateFeature(label);
+    }
+  };
   const [brainGroupOpen, setBrainGroupOpen] = useState(false);
   const [publishingGroupOpen, setPublishingGroupOpen] = useState(() => ['/app/publishing-queue','/app/content-library','/app/content-import','/app/topic-queue'].some(r => window.location.pathname.startsWith(r)));
   const [settingsGroupOpen, setSettingsGroupOpen] = useState(() => ['/app/brand-settings','/app/integrations'].some(r => window.location.pathname.startsWith(r)));
@@ -413,12 +429,12 @@ export function Sidebar() {
                   return (
                     <a
                       href={item.href}
-                      className={`nav-item ${status}`}
+                      className={`nav-item ${status}${!isPaid && LOCKED_ROUTES.includes(item.href||'') ? ' gated' : ''}`}
                       title={sidebarCollapsed ? item.label : undefined}
-                      onClick={closeMobileDrawer}
+                      onClick={(e) => { closeMobileDrawer(); handleGatedClick(e, item.href||'', item.label); }}
                     >
                       <span className="nav-icon">{icons[item.icon as keyof typeof icons]}</span>
-                      {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
+                      {!sidebarCollapsed && <span className="nav-label">{item.label}{!isPaid && LOCKED_ROUTES.includes(item.href||'') && <svg style={{marginLeft:'auto',opacity:0.35,flexShrink:0}} width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5'><rect x='3' y='11' width='18' height='11' rx='2'/><path d='M7 11V7a5 5 0 0 1 10 0v4'/></svg>}</span>}
                     </a>
                   );
                 })()}
@@ -430,12 +446,12 @@ export function Sidebar() {
             <a
               key={item.id}
               href={item.href}
-              className={`nav-item ${status}`}
+              className={`nav-item ${status}${!isPaid && LOCKED_ROUTES.includes(item.href||'') ? ' gated' : ''}`}
               title={sidebarCollapsed ? item.label : undefined}
-              onClick={closeMobileDrawer}
+              onClick={(e) => { closeMobileDrawer(); handleGatedClick(e, item.href||'', item.label); }}
             >
               <span className="nav-icon">{icons[item.icon as keyof typeof icons]}</span>
-              {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
+              {!sidebarCollapsed && <span className="nav-label">{item.label}{!isPaid && LOCKED_ROUTES.includes(item.href||'') && <svg style={{marginLeft:'auto',opacity:0.35,flexShrink:0}} width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5'><rect x='3' y='11' width='18' height='11' rx='2'/><path d='M7 11V7a5 5 0 0 1 10 0v4'/></svg>}</span>}
             </a>
           );
         })}
