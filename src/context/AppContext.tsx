@@ -1,3 +1,4 @@
+import { useActiveBrand } from '../hooks/useActiveBrand';
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { ViewType, BrandProfile, AnalysisInput, ProcessingStage, HistoryEntry } from '../types';
 import { initialProcessingStages, sampleAnalysisInput } from '../data/mockData';
