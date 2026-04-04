@@ -5981,10 +5981,24 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
       }
     }
 
-    const result = await pool.query(
+    let result = await pool.query(
       `SELECT * FROM brand_profiles WHERE clerk_user_id = $1 AND is_active = true ORDER BY updated_at DESC LIMIT 1`,
       [req.userId]
     );
+    // No tethered brand yet — fall back to most recent brand (pre-auth flow)
+    if (!result.rows.length) {
+      result = await pool.query(
+        `SELECT * FROM brand_profiles WHERE is_active = true ORDER BY updated_at DESC LIMIT 1`
+      );
+      // Auto-tether this brand to the user
+      if (result.rows.length) {
+        await pool.query(
+          `UPDATE brand_profiles SET clerk_user_id = $1, updated_at = NOW() WHERE id = $2`,
+          [req.userId, result.rows[0].id]
+        );
+        console.log(`[AUTH] Auto-tethered brand ${result.rows[0].id} to user ${req.userId}`);
+      }
+    }
     res.json({
       success: true,
       userId: req.userId,
