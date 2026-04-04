@@ -170,10 +170,10 @@ Every AI content tool today solves for production volume. None solve for **compo
 | X (Twitter) | ✅ LIVE |
 | Facebook Page | ✅ LIVE |
 | Ghost CMS | ✅ LIVE |
-| Reddit | ✅ LIVE |
 | Medium | ✅ LEGACY |
 | WordPress | 🔲 Phase 2 |
 | Webflow | 🔲 Phase 2 |
+| Hubspot | 🔲 Phase 2 |
 
 **Smart Export:** HTML (site-template-aware), Markdown, JSON, UTM Link
 
@@ -301,6 +301,7 @@ Landing page → Clerk-free, zero friction
 
 ### Phase 2 — Pro ($299/mo)
 
+- [ ] Build out Clerk user account management tools beyond sign in/out
 - [ ] WordPress live publish
 - [ ] Webflow live publish
 - [ ] HubSpot Track A (campaign-level attribution)
