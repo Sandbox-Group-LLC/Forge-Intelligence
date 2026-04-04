@@ -20,8 +20,12 @@ export function useActiveBrand() {
       try {
         if (isSignedIn) {
           // Authenticated — fetch user's specific brand via /api/auth/me
+          // Pass brand_id from URL if present (post-payment sign-up redirect)
           const token = await getToken();
-          const res = await fetch('/api/auth/me', {
+          const urlParams = new URLSearchParams(window.location.search);
+          const brandId = urlParams.get('brand_id') || '';
+          const meUrl = brandId ? `/api/auth/me?brand_id=${encodeURIComponent(brandId)}` : '/api/auth/me';
+          const res = await fetch(meUrl, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           const d = await res.json();
