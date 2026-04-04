@@ -20,6 +20,8 @@ interface AppContextType {
   startAnalysis: () => void;
   loadSampleData: () => void;
   isPaid: boolean;
+  clerkToken: string | null;
+  updateClerkToken: (token: string | null) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -65,7 +67,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  // God mode — ?god=ForgeCanvas sets localStorage, ?ungod clears it
+  // God mode — ?god=ForgeCanvas sets localStorage, ?ungod clears it (dev only)
   const godMode = (() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('god') === 'ForgeCanvas') { localStorage.setItem('forge_god_mode', 'true'); return true; }
@@ -73,6 +75,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return localStorage.getItem('forge_god_mode') === 'true';
   })();
   const [isPaid, setIsPaid] = useState(godMode);
+  const [clerkToken, setClerkToken] = useState<string | null>(null);
 
   // Update isPaid when brandProfile changes
   useEffect(() => {
@@ -81,6 +84,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setIsPaid(true);
     }
   }, [brandProfile]);
+
+  // Expose token setter so ClerkTokenProvider can inject it
+  const updateClerkToken = (token: string | null) => setClerkToken(token);
 
   // Load brain history from Neon on mount
   useEffect(() => {
