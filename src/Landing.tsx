@@ -29,7 +29,7 @@ export default function Landing() {
       // Store URL for context-hub to pick up, then redirect immediately
       // Analysis runs in the background — Active Run handles the in-progress state
       sessionStorage.setItem('forge_onboard_url', brandUrl);
-      window.location.href = '/app/context-hub';
+      window.location.href = '/app/context-hub?view=active-run';
     } catch(e: any) {
       setStatus('error');
       setError(e.message || 'Something went wrong. Try again.');
