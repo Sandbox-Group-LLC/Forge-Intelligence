@@ -639,52 +639,71 @@ User sees their brand understood better in 7 minutes than their last agency unde
 
 ## MVP Build Roadmap
 
-### Phase 1 — Context Intelligence Engine *(Months 1–3)* ✅ COMPLETE
-> **Deliverable:** Brand Intelligence Profile + GEO/E-E-A-T enriched brief in <10 min from a URL
+---
 
-- [x] Client Brain: NeonDB/pgvector
-- [x] Brain-First protocol on all agents
-- [x] Agent 1 — Context Agent (Stage 1) LIVE
-- [x] Agent 2 — GEO Strategist (Stage 2) LIVE
-- [x] Agent 3 — Authenticity Enricher (Stage 3) LIVE
-- [x] Stage 4 — Content Generator LIVE
-- [x] Stage 5 — Compliance Gate LIVE
-- [x] Stage 6 — Publishing Queue + LinkedIn + Public Article LIVE
-- [x] Stage 7B — Performance Dashboard polish DONE
-- [ ] Admin dashboard (agent activity log)
-- [ ] Brand brain pre-seeding script
+### Phase 1 — Pre-Launch Core (SMB $99/mo)
+> **Deliverable:** Shippable single-brand product.
+
+- [ ] Admin dashboard — surface agent_activity_log
+- [ ] Brand brain pre-seeding script — bulk seed on onboarding
 - [ ] Server-side UUID auto-generation
-
-### Phase 2 — Generation + Governance *(Months 4–6)*
-> **Deliverable:** Full multimodal content package with human approval gate
-> **Pricing:** $299/mo Pro · $799/mo Agency Pro
-
-- [ ] Post scheduling (queue → auto-publish at set time)
-- [ ] LinkedIn/X analytics pull-back into queue UI
-- [ ] WordPress + Webflow + HubSpot Track A integrations
-- [ ] Pre-cog score running silently (hidden, Standard tier)
-- [ ] White-label architecture: data model supports it, UI not yet built
-
-### Phase 3 — Intelligence Loop *(Months 7–12)*
-> **Deliverable:** Closed-loop compounding content intelligence system
-> **Pricing:** $599/mo Enterprise · Custom agency
-
-- [ ] Stage 7 — Performance Intelligence (GSC, GEO citation tracking, engagement, decay, ROI dashboard)
-- [ ] Stage 8 — Pattern Extractor Agent (weekly cadence)
-- [ ] Pre-cog score dashboard (Pro pay-to-view unlock)
-- [ ] Revenue attribution Track B: HubSpot email/contact
-- [ ] Deep Pattern Analysis add-on
-
-### Phase 4 — Scale & Expansion *(Year 2)*
-
-- [ ] White-label agency layer
-- [ ] External client approval portal
-- [ ] Reader-level personalization via CDP
-- [ ] Native video + audio generation
-- [ ] Industry Benchmark Reports (opt-in, default OFF)
-- [ ] EU AI Act compliance layer
+- [ ] Content brief / topic queue — park ideas before full pipeline
 
 ---
+
+### Phase 2 — Pro Tier ($299/mo)
+> **Deliverable:** Full publishing automation + channel depth
+
+- [ ] Post scheduling UI — auto-publish at set time (backend done, no UI)
+- [ ] WordPress live publish — REST API connector
+- [ ] Webflow live publish — CMS API connector
+- [ ] HubSpot Track A — campaign-level attribution, no email required
+- [ ] Pre-cog score running silently in background (Standard tier hidden)
+- [ ] LinkedIn/X analytics pull-back into queue UI
+
+---
+
+### Phase 3 — Enterprise ($599/mo)
+> **Deliverable:** Closed-loop compounding intelligence. The moat.
+
+- [ ] Stage 7 full — GSC deep, GEO citation tracking, engagement decay, ROI dashboard
+- [ ] Stage 8 — Pattern Extractor Agent (EasyCron weekly cadence)
+- [ ] Pre-cog score dashboard — Pro pay-to-view unlock
+- [ ] Revenue attribution Track B — HubSpot email/contact
+- [ ] Deep Pattern Analysis add-on
+
+---
+
+### Phase 4 — Scale Core (Year 2)
+> **Deliverable:** Platform depth for regulated industries and global expansion
+
+- [ ] Reader-level personalization via CDP
+- [ ] Native video + audio generation
+- [ ] EU AI Act compliance layer
+- [ ] GA4 native attribution
+
+---
+
+### Phase 4.5 — Agency / Multi-Brand (Parallel Track)
+> **Deliverable:** Forge for agencies. $499/mo Standard · $799/mo Pro · Custom white-label.
+> **Note:** Data model, per-brand tables, brand selectors, and publishing channels are ALL already built. This phase is UX, access control, and commercial packaging only.
+
+**Already built in dev — needs production toggle:**
+- [ ] Brand selector dropdowns — show when >1 brand, hide when single brand (CSS toggle)
+- [ ] Performance Dashboard brand dropdown — agency weekly client check-in workflow
+- [ ] Per-brand publishing channels — fully isolated, needs agency UX polish
+- [ ] Campaign Generator per brand — scoped, needs agency-first view
+
+**Needs building:**
+- [ ] Brand Switcher in TopBar — quick-switch between client contexts
+- [ ] Global brand context indicator — "Currently working in: [Brand]" in TopBar
+- [ ] Agency Dashboard — bird's-eye view across all brands
+- [ ] Client-level access control — Clerk auth + org-slug (admin sees all, client sees own)
+- [ ] Brand duplication — "Clone this brand's settings to new brand"
+- [ ] External client approval portal — white-label review workflow
+- [ ] White-label architecture — UI skinning, custom domain
+- [ ] Cross-client pattern sharing — opt-in, Industry Benchmark Reports as value exchange
+- [ ] Industry Benchmark Reports — vertical-level pattern data, opt-in OFF by default
 
 ## Tech Stack & Implementation
 
