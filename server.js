@@ -1888,7 +1888,7 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
       }});
     }
 
-await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata) VALUES ($1,$2,$3,$4,$5,$6)', ['stage1_context_agent', brandProfileId||null, 'success', (usage?.input_tokens||0)+(usage?.output_tokens||0), Date.now()-startTime, JSON.stringify({ brandUrl })]).catch(()=>{});
+    await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata) VALUES ($1,$2,$3,$4,$5,$6)', ['stage1_context_agent', brandProfileId||null, 'success', (usage?.input_tokens||0)+(usage?.output_tokens||0), Date.now()-startTime, JSON.stringify({ brandUrl })]).catch(()=>{});
         res.json({ success: true, cached: false, data: {
       id: randomUUID(), brandUrl, brandName,
       version: 1, isActive: false, cacheStatus: 'fresh',
@@ -2256,7 +2256,7 @@ Return ONLY valid JSON:
     console.log('[GEO] FINAL topicalAuthorityMap[0]:', JSON.stringify(topicalAuthorityMap[0]));
     console.log('[GEO] FINAL geoOpportunities[0]:', JSON.stringify(geoOpportunitiesNorm[0]));
     console.log('[GEO] FINAL counts — topical:', topicalAuthorityMap.length, 'geo:', geoOpportunitiesNorm.length);
-await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata) VALUES ($1,$2,$3,$4,$5,$6)', ['stage2_geo_strategist', brandProfileId, 'success', (geoUsage?.input_tokens||0)+(geoUsage?.output_tokens||0), Date.now()-startTime, JSON.stringify({ brandProfileId })]).catch(()=>{});
+    await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata) VALUES ($1,$2,$3,$4,$5,$6)', ['stage2_geo_strategist', brandProfileId, 'success', 0, Date.now()-startTime, JSON.stringify({ brandProfileId })]).catch(()=>{});
         res.json({ success: true, cached: false, data: {
       id, brandProfileId, brandUrl: profile.brand_url, brandName: profile.brand_name,
       version: nextVersion, opportunityScore, latencyMs,
@@ -2561,7 +2561,7 @@ Respond with this exact JSON structure:
     const latencyMs = Date.now() - startTime;
     console.log(`[ENRICH] Complete — Score: ${confidenceScore} | Gaps: ${gaps.length} | NeedsManual: ${needsManualInput} | Latency: ${latencyMs}ms`);
 
-await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata) VALUES ($1,$2,$3,$4,$5,$6)', ['stage3_authenticity_enricher', brandProfileId, 'success', 0, Date.now()-startTime, JSON.stringify({ brandProfileId })]).catch(()=>{});
+    await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata) VALUES ($1,$2,$3,$4,$5,$6)', ['stage3_authenticity_enricher', brandProfileId, 'success', 0, Date.now()-startTime, JSON.stringify({ brandProfileId })]).catch(()=>{});
         res.json({ success: true, cached: false, data: {
       id: newId, brandProfileId, brandUrl: profile.brand_url, brandName,
       version: nextVersion, confidenceScore, latencyMs, needsManualInput,
@@ -5610,7 +5610,7 @@ app.get('/api/admin/activity', async (req, res) => {
   try {
     let query = `SELECT a.*, bp.brand_name
       FROM agent_activity_log a
-      LEFT JOIN brand_profiles bp ON bp.id = a.brand_profile_id
+      LEFT JOIN brand_profiles bp ON bp.id::text = a.brand_profile_id
       WHERE 1=1`;
     const params = [];
     let pi = 1;
