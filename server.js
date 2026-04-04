@@ -4184,7 +4184,7 @@ app.get('/api/hubspot/auth', (req, res) => {
   const nonce = randomBytes(16).toString('hex');
   const state = `${brandProfileId}|${nonce}`;
   
-  // Scopes matching the Legacy app
+  // Full CRM + CMS scopes
   const scopes = [
     'cms.knowledge_base.articles.publish',
     'cms.knowledge_base.articles.read', 
