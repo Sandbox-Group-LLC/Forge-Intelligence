@@ -21,6 +21,20 @@ import TopicQueuePage from './pages/TopicQueuePage';
 import ReviewPage from './pages/ReviewPage';
 import './index.css';
 
+
+// God mode bootstrap — runs before any route renders
+// Must happen here before AppContext initializes
+(() => {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('god') === 'ForgeCanvas') {
+    localStorage.setItem('forge_god_mode', 'true');
+    window.history.replaceState({}, '', '/app/context-hub');
+  } else if (params.has('ungod')) {
+    localStorage.removeItem('forge_god_mode');
+    window.history.replaceState({}, '', '/app/context-hub');
+  }
+})();
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
