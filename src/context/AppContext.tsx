@@ -73,14 +73,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return localStorage.getItem('forge_god_mode') === 'true';
   })();
   const [isPaid, setIsPaid] = useState(godMode);
+  const { brand: activeBrand } = useActiveBrand();
 
-  // Update isPaid when brandProfile changes
+  // Update isPaid from activeBrand (Clerk-authed) or brandProfile (analysis result)
   useEffect(() => {
     if (godMode) { setIsPaid(true); return; }
-    if (brandProfile && (brandProfile as any).is_paid) {
-      setIsPaid(true);
-    }
-  }, [brandProfile]);
+    if (activeBrand?.isPaid) { setIsPaid(true); return; }
+    if (brandProfile && (brandProfile as any).is_paid) { setIsPaid(true); }
+  }, [brandProfile, activeBrand]);
 
 
   // Load brain history from Neon on mount
