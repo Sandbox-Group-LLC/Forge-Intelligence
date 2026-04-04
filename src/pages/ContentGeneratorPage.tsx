@@ -258,21 +258,23 @@ function ContentGeneratorContent() {
           </p>
         </div>
         {article && (
-          <div className="geo-score-badge">
-            <div className="score-value">{article.overallConfidence}</div>
-            <div className="score-label">Confidence</div>
-          </div>
-          {precogLoading ? (
-            <div className="geo-score-badge" style={{ opacity: 0.5 }}>
-              <div className="score-value">...</div>
-              <div className="score-label">Pre-cog</div>
+          <>
+            <div className="geo-score-badge">
+              <div className="score-value">{article.overallConfidence}</div>
+              <div className="score-label">Confidence</div>
             </div>
-          ) : precogScore && (
-            <div className="geo-score-badge" style={{ borderColor: precogScore.color }} title={precogScore.prediction}>
-              <div className="score-value" style={{ color: precogScore.color }}>🔮 {precogScore.score}</div>
-              <div className="score-label">Pre-cog</div>
-            </div>
-          )}
+            {precogLoading ? (
+              <div className="geo-score-badge" style={{ opacity: 0.5 }}>
+                <div className="score-value">...</div>
+                <div className="score-label">Pre-cog</div>
+              </div>
+            ) : precogScore && (
+              <div className="geo-score-badge" style={{ borderColor: precogScore.color }} title={precogScore.prediction}>
+                <div className="score-value" style={{ color: precogScore.color }}>🔮 {precogScore.score}</div>
+                <div className="score-label">Pre-cog</div>
+              </div>
+            )}
+          </>
         )}
       </div>
 
