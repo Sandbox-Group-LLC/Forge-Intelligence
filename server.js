@@ -4230,9 +4230,52 @@ app.get('/auth/hubspot/callback', async (req, res) => {
     const accountRes = await fetch('https://api.hubapi.com/oauth/v1/access-tokens/' + tokenData.access_token);
     const accountInfo = await accountRes.json();
 
+    // Fetch available blogs (for publishing)
+    let blogs = [];
+    try {
+      const blogsRes = await fetch('https://api.hubapi.com/cms/v3/blogs/posts?limit=1', {
+        headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+      });
+      // If we can access blogs API, fetch the actual blog list
+      if (blogsRes.ok) {
+        const contentGroupsRes = await fetch('https://api.hubapi.com/content/api/v2/blogs', {
+          headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+        });
+        if (contentGroupsRes.ok) {
+          const blogsData = await contentGroupsRes.json();
+          blogs = (blogsData.objects || []).map(b => ({
+            id: b.id,
+            name: b.name,
+            slug: b.slug,
+            absoluteUrl: b.absolute_url
+          }));
+        }
+      }
+    } catch (e) { console.log('[HubSpot] Could not fetch blogs:', e.message); }
+
+    // Fetch available knowledge bases
+    let knowledgeBases = [];
+    try {
+      const kbRes = await fetch('https://api.hubapi.com/cms/v3/knowledge-base-articles?limit=1', {
+        headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+      });
+      if (kbRes.ok) {
+        // Knowledge base access confirmed - would need separate API for KB list
+        knowledgeBases = [{ id: 'default', name: 'Default Knowledge Base' }];
+      }
+    } catch (e) { console.log('[HubSpot] Could not fetch KB:', e.message); }
+
     // Parse brandProfileId from state
     const stateDecoded = decodeURIComponent(state || '');
     const brandProfileId = stateDecoded.includes('|') ? stateDecoded.split('|')[0] : 'system';
+
+    // Build available targets
+    const availableTargets = {
+      blogs: blogs,
+      knowledgeBases: knowledgeBases
+    };
+    const selectedBlog = blogs.length > 0 ? blogs[0] : null;
+    const selectedKB = knowledgeBases.length > 0 ? knowledgeBases[0] : null;
 
     await pool.query(`
       INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active, updated_at)
@@ -4249,7 +4292,10 @@ app.get('/auth/hubspot/callback', async (req, res) => {
       hubDomain: accountInfo.hub_domain,
       appId: accountInfo.app_id,
       userId: accountInfo.user_id,
-      userEmail: accountInfo.user
+      userEmail: accountInfo.user,
+      availableTargets: availableTargets,
+      selectedBlog: selectedBlog,
+      selectedKB: selectedKB
     })]);
 
     res.redirect('/app/integrations?hubspot_connected=true');
@@ -4442,6 +4488,105 @@ app.post('/api/hubspot/log-engagement', async (req, res) => {
     res.json({ success: true, contactId, noteId: note.id });
   } catch (err) {
     console.error('HubSpot engagement error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// ── HubSpot: Switch publishing target (blog or KB) ──────────────────────────
+app.post('/api/hubspot/select-target', async (req, res) => {
+  const { brandProfileId, targetType, targetId } = req.body;
+  if (!brandProfileId || !targetType || !targetId) {
+    return res.status(400).json({ error: 'brandProfileId, targetType, and targetId required' });
+  }
+  
+  try {
+    const existing = await pool.query(
+      `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'hubspot'`,
+      [brandProfileId]
+    );
+    if (!existing.rows.length) return res.status(404).json({ error: 'HubSpot not connected' });
+    
+    const creds = existing.rows[0].credentials;
+    
+    if (targetType === 'blog') {
+      const blog = (creds.availableTargets?.blogs || []).find(b => b.id === targetId);
+      if (!blog) return res.status(400).json({ error: 'Invalid blog ID' });
+      creds.selectedBlog = blog;
+    } else if (targetType === 'kb') {
+      const kb = (creds.availableTargets?.knowledgeBases || []).find(k => k.id === targetId);
+      if (!kb) return res.status(400).json({ error: 'Invalid KB ID' });
+      creds.selectedKB = kb;
+    } else {
+      return res.status(400).json({ error: 'targetType must be "blog" or "kb"' });
+    }
+    
+    await pool.query(
+      `UPDATE publishing_channels SET credentials = $1, updated_at = NOW() WHERE brand_profile_id = $2 AND channel = 'hubspot'`,
+      [JSON.stringify(creds), brandProfileId]
+    );
+    
+    res.json({ success: true, selectedBlog: creds.selectedBlog, selectedKB: creds.selectedKB });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── HubSpot: Refresh available targets ───────────────────────────────────────
+app.post('/api/hubspot/refresh-targets', async (req, res) => {
+  const { brandProfileId } = req.body;
+  if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
+  
+  try {
+    const accessToken = await refreshHubSpotToken(brandProfileId);
+    
+    // Fetch blogs
+    let blogs = [];
+    try {
+      const contentGroupsRes = await fetch('https://api.hubapi.com/content/api/v2/blogs', {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      if (contentGroupsRes.ok) {
+        const blogsData = await contentGroupsRes.json();
+        blogs = (blogsData.objects || []).map(b => ({
+          id: b.id,
+          name: b.name,
+          slug: b.slug,
+          absoluteUrl: b.absolute_url
+        }));
+      }
+    } catch (e) { console.log('[HubSpot] Could not fetch blogs:', e.message); }
+
+    // Fetch knowledge bases
+    let knowledgeBases = [];
+    try {
+      const kbRes = await fetch('https://api.hubapi.com/cms/v3/knowledge-base-articles?limit=1', {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      if (kbRes.ok) {
+        knowledgeBases = [{ id: 'default', name: 'Default Knowledge Base' }];
+      }
+    } catch (e) { console.log('[HubSpot] Could not fetch KB:', e.message); }
+
+    // Update stored credentials
+    const existing = await pool.query(
+      `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'hubspot'`,
+      [brandProfileId]
+    );
+    if (existing.rows.length) {
+      const creds = existing.rows[0].credentials;
+      creds.availableTargets = { blogs, knowledgeBases };
+      if (!creds.selectedBlog && blogs.length > 0) creds.selectedBlog = blogs[0];
+      if (!creds.selectedKB && knowledgeBases.length > 0) creds.selectedKB = knowledgeBases[0];
+      
+      await pool.query(
+        `UPDATE publishing_channels SET credentials = $1, updated_at = NOW() WHERE brand_profile_id = $2 AND channel = 'hubspot'`,
+        [JSON.stringify(creds), brandProfileId]
+      );
+    }
+
+    res.json({ success: true, blogs, knowledgeBases });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
