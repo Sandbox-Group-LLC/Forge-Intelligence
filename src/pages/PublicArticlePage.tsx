@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import './PublicArticlePage.css';
 // ── Markdown helper ───────────────────────────────────────────────────────────
 const ARTIFACT_RX = /\[(?:NEEDS CITATION|CITATION|SOURCE)[^\]]*\]/gi;
@@ -198,7 +198,7 @@ export default function PublicArticlePage() {
                   </a>
                 </span>
               </div>
-              <a href="https://forgeintelligence.ai" className="pa-back-link">← More articles</a>
+              <Link to={`/articles/${brandSlug}`} className="pa-back-link">← More articles</Link>
             </div>
           </footer>
 
