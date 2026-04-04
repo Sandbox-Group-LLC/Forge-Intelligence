@@ -1,4 +1,3 @@
-import { useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { AppShell } from '../layouts/AppShell';
 import { NewAnalysis } from '../components/views/NewAnalysis';
@@ -8,21 +7,7 @@ import { Strategy } from '../components/views/Strategy';
 import { BrainHistory } from '../components/views/BrainHistory';
 
 function ContextAgentPage() {
-  const { currentView, startAnalysis } = useApp();
-  const firedRef = useRef(false);
-
-  useEffect(() => {
-    if (firedRef.current) return;
-    const params = new URLSearchParams(window.location.search);
-    const onboardId = params.get('onboard');
-    const onboardUrl = sessionStorage.getItem('forge_onboard_url');
-    if (!onboardId || !onboardUrl) return;
-    firedRef.current = true;
-    window.history.replaceState({}, '', '/app/context-hub');
-    sessionStorage.removeItem('forge_onboard_url');
-    // Pass URL directly — no state dependency, no race condition
-    startAnalysis(onboardUrl);
-  }, []);
+  const { currentView } = useApp();
 
   const renderView = () => {
     switch (currentView) {
