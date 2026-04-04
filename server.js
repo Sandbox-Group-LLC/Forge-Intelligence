@@ -1640,6 +1640,258 @@ Extract 3-6 patterns and 2-4 mistakes. Be specific and actionable. Focus on cont
     ]);
 
     res.json({ success: true, patternsWritten, mistakesWritten, patterns: pRes.rows, mistakes: mRes.rows });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── Pre-cog Score — Predictive Performance Scoring ────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+// POST /api/precog/score — Calculate pre-cog score for a content item
+app.post('/api/precog/score', async (req, res) => {
+  const { brandProfileId, contentId } = req.body;
+  if (!brandProfileId || !contentId) {
+    return res.status(400).json({ error: 'brandProfileId and contentId required' });
+  }
+
+  try {
+    const safeId = brandProfileId.replace(/-/g, '_');
+    const contentTable = `generated_content_${safeId}`;
+
+    // 1. Get the content
+    const contentRes = await pool.query(`SELECT * FROM ${contentTable} WHERE id = $1`, [contentId]);
+    if (!contentRes.rows.length) return res.status(404).json({ error: 'Content not found' });
+    const content = contentRes.rows[0];
+    const articleJson = content.article_json || {};
+    const sections = articleJson.sections || [];
+
+    // 2. Get historical performance data
+    const analyticsRes = await pool.query(`
+      SELECT 
+        AVG(impressions) as avg_impressions,
+        AVG(clicks) as avg_clicks,
+        AVG(engagement_rate) as avg_engagement,
+        AVG(ctr) as avg_ctr,
+        MAX(impressions) as max_impressions,
+        MAX(engagement_rate) as max_engagement,
+        COUNT(*) as total_posts
+      FROM content_analytics 
+      WHERE brand_profile_id = $1 AND impressions > 0
+    `, [brandProfileId]);
+    const stats = analyticsRes.rows[0] || {};
+
+    // 3. Get top performing content patterns
+    const topPerformersRes = await pool.query(`
+      SELECT ca.content_id, ca.impressions, ca.engagement_rate, ca.channel
+      FROM content_analytics ca
+      WHERE ca.brand_profile_id = $1 AND ca.impressions > 0
+      ORDER BY ca.engagement_rate DESC
+      LIMIT 10
+    `, [brandProfileId]);
+
+    // 4. Get brain patterns
+    const patternsRes = await pool.query(`
+      SELECT pattern_type, description, confidence_score, success_rate
+      FROM brain_patterns
+      WHERE brand_profile_id = $1
+      ORDER BY success_rate DESC
+      LIMIT 20
+    `, [brandProfileId]);
+    const patterns = patternsRes.rows;
+
+    // 5. Get brain mistakes (anti-patterns)
+    const mistakesRes = await pool.query(`
+      SELECT mistake_type, description, severity
+      FROM brain_mistakes
+      WHERE brand_profile_id = $1
+    `, [brandProfileId]);
+    const mistakes = mistakesRes.rows;
+
+    // ── SCORING ALGORITHM ──
+    let score = 50; // Base score
+    const breakdown = {};
+
+    // A. Content Structure Score (0-15 points)
+    const wordCount = sections.reduce((acc, s) => acc + ((s.body || s.content || '').split(' ').length), 0);
+    const sectionCount = sections.length;
+    const hasHeadings = sections.filter(s => s.heading).length;
+    
+    let structureScore = 0;
+    if (wordCount >= 800 && wordCount <= 2000) structureScore += 5;
+    else if (wordCount >= 500 && wordCount <= 2500) structureScore += 3;
+    if (sectionCount >= 3 && sectionCount <= 8) structureScore += 5;
+    else if (sectionCount >= 2) structureScore += 2;
+    if (hasHeadings >= 3) structureScore += 5;
+    else if (hasHeadings >= 1) structureScore += 2;
+    
+    breakdown.structure = { score: structureScore, max: 15, wordCount, sectionCount, hasHeadings };
+    score += structureScore;
+
+    // B. Title Score (0-15 points)
+    const title = content.title || '';
+    let titleScore = 0;
+    if (title.length >= 30 && title.length <= 70) titleScore += 5;
+    if (/\d/.test(title)) titleScore += 3;
+    if (/how|why|what|guide|tips|secrets|mistakes/i.test(title)) titleScore += 4;
+    if (!/\?$/.test(title) && title.length > 0) titleScore += 3;
+    
+    breakdown.title = { score: titleScore, max: 15, length: title.length };
+    score += titleScore;
+
+    // C. Pattern Match Score (0-20 points)
+    let patternScore = 0;
+    const matchedPatterns = [];
+    const titleLower = title.toLowerCase();
+    const bodyText = sections.map(s => (s.body || s.content || '').toLowerCase()).join(' ');
+    
+    for (const p of patterns) {
+      const desc = (p.description || '').toLowerCase();
+      const keywords = desc.split(' ').filter(w => w.length > 4).slice(0, 5);
+      const matches = keywords.filter(k => titleLower.includes(k) || bodyText.includes(k));
+      if (matches.length >= 2) {
+        patternScore += Math.min(4, (p.success_rate || 0.5) * 5);
+        matchedPatterns.push({ type: p.pattern_type, confidence: p.confidence_score });
+      }
+    }
+    patternScore = Math.min(20, patternScore);
+    breakdown.patternMatch = { score: patternScore, max: 20, matchedPatterns };
+    score += patternScore;
+
+    // D. Anti-pattern Penalty (-10 to 0 points)
+    let penaltyScore = 0;
+    const triggeredMistakes = [];
+    for (const m of mistakes) {
+      const desc = (m.description || '').toLowerCase();
+      const keywords = desc.split(' ').filter(w => w.length > 4).slice(0, 3);
+      const matches = keywords.filter(k => titleLower.includes(k) || bodyText.includes(k));
+      if (matches.length >= 2) {
+        const penalty = m.severity === 'high' ? -4 : m.severity === 'medium' ? -2 : -1;
+        penaltyScore += penalty;
+        triggeredMistakes.push({ type: m.mistake_type, severity: m.severity });
+      }
+    }
+    penaltyScore = Math.max(-10, penaltyScore);
+    breakdown.antiPatterns = { score: penaltyScore, max: 0, triggeredMistakes };
+    score += penaltyScore;
+
+    // E. Historical Context Score (0-10 points)
+    let historyScore = 0;
+    if (stats.total_posts > 0) {
+      if (stats.total_posts >= 20) historyScore += 5;
+      else if (stats.total_posts >= 10) historyScore += 3;
+      else if (stats.total_posts >= 5) historyScore += 1;
+      if (stats.avg_engagement > 0.03) historyScore += 5;
+      else if (stats.avg_engagement > 0.01) historyScore += 3;
+    }
+    breakdown.history = { 
+      score: historyScore, 
+      max: 10, 
+      totalPosts: parseInt(stats.total_posts) || 0,
+      avgEngagement: parseFloat(stats.avg_engagement) || 0,
+      avgImpressions: parseInt(stats.avg_impressions) || 0
+    };
+    score += historyScore;
+
+    // Normalize to 0-100
+    score = Math.max(0, Math.min(100, score));
+
+    // Prediction tier
+    let tier, prediction, color;
+    if (score >= 80) {
+      tier = 'high'; prediction = 'Likely to outperform your average'; color = '#22C55E';
+    } else if (score >= 60) {
+      tier = 'medium'; prediction = 'Expected to perform near your average'; color = '#EAB308';
+    } else if (score >= 40) {
+      tier = 'low'; prediction = 'May underperform — consider revisions'; color = '#F97316';
+    } else {
+      tier = 'risk'; prediction = 'High risk — review before publishing'; color = '#EF4444';
+    }
+
+    // Predicted impressions range
+    const predictedImpressions = stats.avg_impressions 
+      ? { low: Math.round(stats.avg_impressions * (score / 100) * 0.7), high: Math.round(stats.avg_impressions * (score / 100) * 1.5) }
+      : null;
+
+    // Save score to content table
+    await pool.query(`ALTER TABLE ${contentTable} ADD COLUMN IF NOT EXISTS precog_score INTEGER`).catch(() => {});
+    await pool.query(`ALTER TABLE ${contentTable} ADD COLUMN IF NOT EXISTS precog_breakdown JSONB`).catch(() => {});
+    await pool.query(`UPDATE ${contentTable} SET precog_score = $1, precog_breakdown = $2, updated_at = NOW() WHERE id = $3`, [score, JSON.stringify(breakdown), contentId]);
+
+    res.json({
+      success: true, score, tier, prediction, color, breakdown, predictedImpressions,
+      historicalContext: {
+        totalPosts: parseInt(stats.total_posts) || 0,
+        avgImpressions: Math.round(stats.avg_impressions) || 0,
+        avgEngagement: ((parseFloat(stats.avg_engagement) || 0) * 100).toFixed(2) + '%'
+      }
+    });
+
+  } catch (err) {
+    console.error('[Pre-cog] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/precog/score/:brandProfileId/:contentId — Get cached score
+app.get('/api/precog/score/:brandProfileId/:contentId', async (req, res) => {
+  const { brandProfileId, contentId } = req.params;
+  try {
+    const safeId = brandProfileId.replace(/-/g, '_');
+    const contentTable = `generated_content_${safeId}`;
+    
+    const result = await pool.query(`SELECT precog_score, precog_breakdown FROM ${contentTable} WHERE id = $1`, [contentId]);
+    if (!result.rows.length) return res.status(404).json({ error: 'Content not found' });
+    
+    const row = result.rows[0];
+    if (!row.precog_score) return res.json({ success: true, score: null, message: 'Score not yet calculated' });
+
+    const score = row.precog_score;
+    let tier, prediction, color;
+    if (score >= 80) { tier = 'high'; prediction = 'Likely to outperform'; color = '#22C55E'; }
+    else if (score >= 60) { tier = 'medium'; prediction = 'Near average'; color = '#EAB308'; }
+    else if (score >= 40) { tier = 'low'; prediction = 'May underperform'; color = '#F97316'; }
+    else { tier = 'risk'; prediction = 'High risk'; color = '#EF4444'; }
+
+    res.json({ success: true, score, tier, prediction, color, breakdown: row.precog_breakdown });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/precog/batch — Score all unscored content for a brand
+app.post('/api/precog/batch', async (req, res) => {
+  const { brandProfileId } = req.body;
+  if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
+
+  try {
+    const safeId = brandProfileId.replace(/-/g, '_');
+    const contentTable = `generated_content_${safeId}`;
+    
+    await pool.query(`ALTER TABLE ${contentTable} ADD COLUMN IF NOT EXISTS precog_score INTEGER`).catch(() => {});
+    await pool.query(`ALTER TABLE ${contentTable} ADD COLUMN IF NOT EXISTS precog_breakdown JSONB`).catch(() => {});
+
+    const unscoredRes = await pool.query(`SELECT id FROM ${contentTable} WHERE precog_score IS NULL ORDER BY created_at DESC LIMIT 50`);
+
+    const scored = [];
+    for (const row of unscoredRes.rows) {
+      try {
+        const scoreRes = await fetch(`https://${req.headers.host}/api/precog/score`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ brandProfileId, contentId: row.id })
+        });
+        const data = await scoreRes.json();
+        if (data.success) scored.push({ id: row.id, score: data.score });
+      } catch (e) {
+        console.error(`[Pre-cog] Failed to score ${row.id}:`, e.message);
+      }
+    }
+
+    res.json({ success: true, scored: scored.length, items: scored });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
   } catch(e) {
     console.error('[EXTRACT-PATTERNS]', e.message);
     res.status(500).json({ success: false, error: e.message });
