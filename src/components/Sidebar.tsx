@@ -179,6 +179,7 @@ const NAV_ROUTES: Partial<Record<ViewType, string>> = {
   'brain-history':        '/app/context-hub',
   'content-library':      '/app/content-library',
   'content-import':       '/app/content-import',
+  'admin':                '/app/admin',
 };
 
 const publishingNavItems = [
@@ -190,6 +191,7 @@ const publishingNavItems = [
 const settingsNavItems = [
   { id: 'brand-settings', label: 'Brand Settings', icon: 'settings', href: '/app/brand-settings' },
   { id: 'integrations',   label: 'Integrations',   icon: 'plug',     href: '/app/integrations' },
+  { id: 'admin',          label: 'Admin',          icon: 'cpu',      href: '/app/admin' },
 ] as const;
 
 const topNavItems: TopNavItem[] = [
