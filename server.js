@@ -3973,13 +3973,13 @@ app.delete('/api/publishing/channels/:id', async (req, res) => {
 app.get('/api/linkedin/auth', (req, res) => {
   const clientId = process.env.LINKEDIN_CLIENT_ID;
   const redirectUri = encodeURIComponent(process.env.LINKEDIN_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/linkedin/callback');
-  const brandProfileId = req.query.brandProfileId || 'system';
+  const brandProfileId = req.query.state?.split('|')[0] || req.query.brandProfileId || 'system';
   const nonce = randomBytes(16).toString('hex');
   // Embed brandProfileId in state so callback knows which brand to save to
   const state = `${brandProfileId}|${nonce}`;
   const scopes = 'openid profile email w_member_social r_organization_social w_organization_social';
   const url = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&state=${encodeURIComponent(state)}&scope=${encodeURIComponent(scopes)}`;
-  res.json({ authUrl: url, state });
+  res.redirect(url);
 });
 
 app.get('/auth/linkedin/callback', async (req, res) => {
@@ -4098,7 +4098,7 @@ app.post('/api/linkedin/select-target', async (req, res) => {
 app.get('/api/gsc/auth', (req, res) => {
   const clientId = process.env.GSC_CLIENT_ID;
   if (!clientId) return res.status(500).json({ error: 'GOOGLE_CLIENT_ID not configured' });
-  const brandProfileId = req.query.brandProfileId || 'system';
+  const brandProfileId = req.query.state?.split('|')[0] || req.query.brandProfileId || 'system';
   const nonce = randomBytes(16).toString('hex');
   const state = `${brandProfileId}|${nonce}`;
   const redirectUri = encodeURIComponent(process.env.GSC_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/gsc/callback');
