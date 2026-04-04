@@ -231,8 +231,15 @@ export default function ComplianceGatePage() {
               <div className="comp-article-list">
                 <div className="comp-list-label">Select an article to review</div>
                 {articles.map(a => (
-                  <button key={a.id} className="comp-article-row" onClick={() => selectArticle(a)}>
-                    <div className="comp-article-title">{a.article_json?.title || a.title}</div>
+                  <button 
+                    key={a.id} 
+                    className={`comp-article-row ${selectedArticle?.id === a.id ? 'comp-article-selected' : ''}`}
+                    onClick={() => selectArticle(a)}
+                  >
+                    <div className="comp-article-title">
+                      {selectedArticle?.id === a.id && <span className="comp-selected-indicator">▸ </span>}
+                      {a.article_json?.title || a.title}
+                    </div>
                     <div className="comp-article-meta">
                       <span className={`comp-status-pill ${a.compliance_status}`}>{statusBadge(a.compliance_status)}</span>
                       <span className="comp-article-date">{new Date(a.created_at).toLocaleDateString()}</span>
