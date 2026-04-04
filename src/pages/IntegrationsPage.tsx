@@ -362,8 +362,8 @@ export default function IntegrationsPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('linkedin_connected') === 'true') {
-      setSuccess('LinkedIn connected successfully!');
+    if (params.get('linkedin_connected') === 'true' || params.get('linkedin_org_connected') === 'true') {
+      setSuccess(params.get('linkedin_org_connected') ? 'LinkedIn Company Page connected!' : 'LinkedIn Personal Profile connected!');
       setExpanded('linkedin');
       window.history.replaceState({}, '', '/app/integrations');
       const brand = localStorage.getItem(LS_BRAND_KEY);
@@ -580,8 +580,8 @@ export default function IntegrationsPage() {
                             style={{ '--ch-color': ch.color } as React.CSSProperties}
                             onClick={() => {
                               if (ch.id === 'linkedin') {
-                                // Custom OAuth flow for LinkedIn (supports company pages)
-                                window.location.href = `/api/linkedin/auth?state=${encodeURIComponent(selectedBrand + '|' + Date.now())}`;
+                                // Show LinkedIn connection options
+                                setExpanded('linkedin');
                               } else if (ch.pipedreamApp) {
                                 handleSave(ch.id);
                               } else {
@@ -685,6 +685,40 @@ export default function IntegrationsPage() {
                       </div>
                     )}
 
+                    {/* LinkedIn: Connection options (Personal vs Company Page) */}
+                    {ch.id === 'linkedin' && !connected && (
+                      <div className="int-form-section">
+                        <div className="int-form-label">
+                          Connect LinkedIn
+                          <span className="int-utm-hint">Choose how to connect your LinkedIn account</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                          <button
+                            className="int-connect-btn"
+                            style={{ '--ch-color': '#0A66C2', flex: '1 1 200px' } as React.CSSProperties}
+                            onClick={() => {
+                              window.location.href = `/api/linkedin/auth?state=${encodeURIComponent(selectedBrand + '|' + Date.now())}`;
+                            }}
+                          >
+                            👤 Personal Profile
+                          </button>
+                          <button
+                            className="int-connect-btn"
+                            style={{ '--ch-color': '#0A66C2', flex: '1 1 200px' } as React.CSSProperties}
+                            onClick={() => {
+                              window.location.href = `/api/linkedin/org/auth?state=${encodeURIComponent(selectedBrand + '|' + Date.now())}`;
+                            }}
+                          >
+                            🏢 Company Page
+                          </button>
+                        </div>
+                        <div style={{ marginTop: 12, fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>
+                          <strong>Personal Profile:</strong> Post as yourself<br/>
+                          <strong>Company Page:</strong> Post to a company page you admin (requires separate LinkedIn app)
+                        </div>
+                      </div>
+                    )}
+
                     {/* Manual credential fields for non-Pipedream channels */}
                     {!ch.pipedreamApp && (
                       <div className="int-form-section">
@@ -782,3 +816,4 @@ export default function IntegrationsPage() {
     </AppShell>
   );
 }
+
