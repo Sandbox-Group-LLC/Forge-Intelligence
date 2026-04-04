@@ -9,7 +9,7 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
-  animation: gateBackdropIn 0.5s ease;
+  animation: gateBackdropIn 3s ease;
 }
 
 @keyframes gateBackdropIn {
