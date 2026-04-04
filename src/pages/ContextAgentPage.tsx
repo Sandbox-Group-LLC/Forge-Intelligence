@@ -10,7 +10,7 @@ import { initialProcessingStages } from '../data/mockData';
 import { ProcessingStage } from '../types';
 
 function ContextAgentPage() {
-  const { currentView, setCurrentView, setIsProcessing, setProcessingStages, setBrandProfile } = useApp();
+  const { currentView, setCurrentView, setIsProcessing, setProcessingStages, setBrandProfile, setAnalysisInput } = useApp();
   const firedRef = useRef(false);
 
   useEffect(() => {
@@ -23,6 +23,7 @@ function ContextAgentPage() {
     // Switch to active run and reset stages
     setCurrentView('active-run');
     setIsProcessing(true);
+    setAnalysisInput({ brandUrl: onboardUrl, competitorUrls: [], audienceNotes: '', strategicNotes: '', checkBrainFirst: false, saveToBrain: true });
     // Drive stage animations while Claude works
     const stageTimings = [2000, 3000, 4000, 3000, 2000];
     let cancelled = false;
