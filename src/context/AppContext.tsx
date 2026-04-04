@@ -20,8 +20,6 @@ interface AppContextType {
   startAnalysis: () => void;
   loadSampleData: () => void;
   isPaid: boolean;
-  clerkToken: string | null;
-  updateClerkToken: (token: string | null) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -75,7 +73,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return localStorage.getItem('forge_god_mode') === 'true';
   })();
   const [isPaid, setIsPaid] = useState(godMode);
-  const [clerkToken, setClerkToken] = useState<string | null>(null);
 
   // Update isPaid when brandProfile changes
   useEffect(() => {
@@ -85,8 +82,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [brandProfile]);
 
-  // Expose token setter so ClerkTokenProvider can inject it
-  const updateClerkToken = (token: string | null) => setClerkToken(token);
 
   // Load brain history from Neon on mount
   useEffect(() => {
