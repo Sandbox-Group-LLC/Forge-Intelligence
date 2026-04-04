@@ -723,6 +723,119 @@ export default function IntegrationsPage() {
                       </div>
                     )}
 
+                    {/* HubSpot: Blog selector */}
+                    {ch.id === 'hubspot' && connected && saved?.credentials?.availableTargets?.blogs?.length > 0 && (
+                      <div className="int-form-section">
+                        <div className="int-form-label">
+                          Publish to Blog
+                          <span className="int-utm-hint">Select which HubSpot blog to publish articles to</span>
+                        </div>
+                        <select
+                          className="geo-select"
+                          style={{ maxWidth: 400 }}
+                          value={saved?.credentials?.selectedBlog?.id || ''}
+                          onChange={async (e) => {
+                            try {
+                              const res = await fetch('/api/hubspot/select-target', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ brandProfileId: selectedBrand, targetType: 'blog', targetId: e.target.value })
+                              });
+                              const d = await res.json();
+                              if (d.success) {
+                                setSuccess(`Publishing to: ${d.selectedBlog?.name}`);
+                                loadChannels(selectedBrand);
+                                setTimeout(() => setSuccess(''), 3000);
+                              } else {
+                                setError(d.error || 'Failed to switch blog');
+                              }
+                            } catch {
+                              setError('Failed to switch HubSpot blog');
+                            }
+                          }}
+                        >
+                          {(saved?.credentials?.availableTargets?.blogs || []).map((b: any) => (
+                            <option key={b.id} value={b.id}>
+                              📝 {b.name}
+                            </option>
+                          ))}
+                        </select>
+                        {saved?.credentials?.selectedBlog?.absoluteUrl && (
+                          <div style={{ marginTop: 8, fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>
+                            URL: <a href={saved.credentials.selectedBlog.absoluteUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#FF7A59' }}>{saved.credentials.selectedBlog.absoluteUrl}</a>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* HubSpot: Knowledge Base selector */}
+                    {ch.id === 'hubspot' && connected && saved?.credentials?.availableTargets?.knowledgeBases?.length > 0 && (
+                      <div className="int-form-section">
+                        <div className="int-form-label">
+                          Publish to Knowledge Base
+                          <span className="int-utm-hint">Select which Knowledge Base to publish articles to</span>
+                        </div>
+                        <select
+                          className="geo-select"
+                          style={{ maxWidth: 400 }}
+                          value={saved?.credentials?.selectedKB?.id || ''}
+                          onChange={async (e) => {
+                            try {
+                              const res = await fetch('/api/hubspot/select-target', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ brandProfileId: selectedBrand, targetType: 'kb', targetId: e.target.value })
+                              });
+                              const d = await res.json();
+                              if (d.success) {
+                                setSuccess(`Publishing to: ${d.selectedKB?.name}`);
+                                loadChannels(selectedBrand);
+                                setTimeout(() => setSuccess(''), 3000);
+                              } else {
+                                setError(d.error || 'Failed to switch KB');
+                              }
+                            } catch {
+                              setError('Failed to switch HubSpot KB');
+                            }
+                          }}
+                        >
+                          {(saved?.credentials?.availableTargets?.knowledgeBases || []).map((kb: any) => (
+                            <option key={kb.id} value={kb.id}>
+                              📚 {kb.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* HubSpot: No targets found */}
+                    {ch.id === 'hubspot' && connected && !saved?.credentials?.availableTargets?.blogs?.length && !saved?.credentials?.availableTargets?.knowledgeBases?.length && (
+                      <div className="int-form-section">
+                        <div style={{ padding: '12px 16px', background: 'rgba(255,122,89,0.1)', borderRadius: 8, fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)' }}>
+                          ⚠️ No blogs or knowledge bases found. Create one in HubSpot, then{' '}
+                          <button 
+                            style={{ background: 'none', border: 'none', color: '#FF7A59', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
+                            onClick={async () => {
+                              try {
+                                const res = await fetch('/api/hubspot/refresh-targets', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ brandProfileId: selectedBrand })
+                                });
+                                const d = await res.json();
+                                if (d.success) {
+                                  setSuccess(`Found ${d.blogs?.length || 0} blogs, ${d.knowledgeBases?.length || 0} KBs`);
+                                  loadChannels(selectedBrand);
+                                }
+                              } catch {
+                                setError('Failed to refresh');
+                              }
+                            }}
+                          >refresh targets</button>.
+                        </div>
+                      </div>
+                    )}
+
                     {/* LinkedIn: Connection options (Personal vs Company Page) */}
                     {ch.id === 'linkedin' && !connected && (
                       <div className="int-form-section">
