@@ -234,8 +234,6 @@ const CHANNELS: ChannelDef[] = [
     },
   },
   {
-  },
-  {
     id: 'medium',
     label: 'Medium',
     description: 'Medium stopped issuing new API tokens in early 2025. Existing tokens still work -- if you have a pre-2025 token you can connect it here. New tokens are no longer available.',
