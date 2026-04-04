@@ -3,6 +3,7 @@ import { Sidebar } from '../components/Sidebar';
 import { TopBar } from '../components/TopBar';
 import { useApp } from '../context/AppContext';
 import '../layouts/WorkspaceLayout.css';
+import { ClerkTokenSync } from '../components/ClerkTokenSync';
 
 interface AppShellProps {
   children: ReactNode;
@@ -18,6 +19,7 @@ export function AppShell({ children, showSidebar = true }: AppShellProps) {
       {showSidebar && <Sidebar />}
       <div className="app-main">
         <TopBar />
+        <ClerkTokenSync />
         <main className="app-content">
           <div className="view-container">
             {children}
