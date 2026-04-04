@@ -25,17 +25,24 @@ export default function Landing() {
     setStatus('loading');
     setError('');
     try {
-      const res = await fetch('/api/onboard/analyze', {
+      const brandUrl = trimmed.startsWith('http') ? trimmed : `https://${trimmed}`;
+      const res = await fetch('/api/context-hub/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: trimmed }),
+        body: JSON.stringify({
+          brandUrl,
+          competitorUrls: [],
+          audienceNotes: '',
+          strategicNotes: '',
+          checkBrainFirst: false,
+          saveToBrain: true,
+        }),
       });
       const d = await res.json();
-      if (d.success && d.brandProfileId) {
-        // Store in session and redirect to active run
-        sessionStorage.setItem('forge_onboard_id', d.brandProfileId);
-        sessionStorage.setItem('forge_onboard_url', d.brandUrl);
-        window.location.href = `/app/context-hub?onboard=${d.brandProfileId}`;
+      if (d.success && d.data?.id) {
+        sessionStorage.setItem('forge_brain_id', d.data.id);
+        sessionStorage.setItem('forge_brain_url', brandUrl);
+        window.location.href = '/app/context-hub?view=brand-profile';
       } else {
         throw new Error(d.error || 'Something went wrong');
       }
