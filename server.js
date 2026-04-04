@@ -5129,36 +5129,6 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
   }
 });
 
-
-// POST /api/analytics/upsert — insert or update a single analytics record (also accepts backdated syncedAt)
-app.post('/api/analytics/upsert', async (req, res) => {
-  const { brandProfileId, contentId, channel, postId, impressions, clicks, reactions,
-          reposts, comments, ctr, engagementRate, publishedAt, syncedAt } = req.body;
-  if (!brandProfileId || !contentId || !channel) return res.status(400).json({ error: 'brandProfileId, contentId, channel required' });
-  try {
-    await pool.query(
-      `INSERT INTO content_analytics
-         (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions,
-          reposts, comments, ctr, engagement_rate, published_at, synced_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-       ON CONFLICT (content_id, channel)
-       DO UPDATE SET
-         post_id=EXCLUDED.post_id, impressions=EXCLUDED.impressions,
-         clicks=EXCLUDED.clicks, reactions=EXCLUDED.reactions,
-         reposts=EXCLUDED.reposts, comments=EXCLUDED.comments,
-         ctr=EXCLUDED.ctr, engagement_rate=EXCLUDED.engagement_rate,
-         published_at=EXCLUDED.published_at, synced_at=EXCLUDED.synced_at`,
-      [brandProfileId, contentId, channel, postId || null,
-       impressions||0, clicks||0, reactions||0, reposts||0, comments||0,
-       ctr||0, engagementRate||0,
-       publishedAt || null, syncedAt || new Date().toISOString()]
-    );
-    res.json({ success: true });
-  } catch(e) {
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
 // GET /api/analytics/dashboard/:brandProfileId — aggregated dashboard stats
 app.get('/api/analytics/dashboard/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
@@ -5610,6 +5580,157 @@ app.post('/api/review/:token', async (req, res) => {
 });
 
 
+
+
+// ── Admin Dashboard ───────────────────────────────────────────────────────────
+
+// Ensure agent_activity_log table exists
+pool.query(`CREATE TABLE IF NOT EXISTS agent_activity_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_name TEXT NOT NULL,
+  brand_profile_id TEXT,
+  status TEXT DEFAULT 'success',
+  tokens_used INTEGER DEFAULT 0,
+  latency_ms INTEGER DEFAULT 0,
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+)`).catch(() => {});
+
+// GET /api/admin/activity — recent agent activity log
+app.get('/api/admin/activity', async (req, res) => {
+  const limit = parseInt(req.query.limit) || 50;
+  const offset = parseInt(req.query.offset) || 0;
+  const agentFilter = req.query.agent || null;
+  const brandFilter = req.query.brand || null;
+  try {
+    let query = `SELECT a.*, bp.brand_name
+      FROM agent_activity_log a
+      LEFT JOIN brand_profiles bp ON bp.id = a.brand_profile_id
+      WHERE 1=1`;
+    const params = [];
+    let pi = 1;
+    if (agentFilter) { query += ` AND a.agent_name = $${pi++}`; params.push(agentFilter); }
+    if (brandFilter) { query += ` AND a.brand_profile_id = $${pi++}`; params.push(brandFilter); }
+    query += ` ORDER BY a.created_at DESC LIMIT $${pi++} OFFSET $${pi++}`;
+    params.push(limit, offset);
+    const result = await pool.query(query, params);
+    const countResult = await pool.query(
+      `SELECT COUNT(*) FROM agent_activity_log${agentFilter ? ` WHERE agent_name = '${agentFilter}'` : ''}`,
+    );
+    res.json({ success: true, activity: result.rows, total: parseInt(countResult.rows[0].count) });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /api/admin/stats — platform-wide stats
+app.get('/api/admin/stats', async (req, res) => {
+  try {
+    const [brands, activity, content, queue] = await Promise.all([
+      pool.query('SELECT COUNT(*) FROM brand_profiles'),
+      pool.query(`SELECT 
+        COUNT(*) as total_calls,
+        SUM(tokens_used) as total_tokens,
+        AVG(latency_ms) as avg_latency,
+        COUNT(CASE WHEN status = 'error' THEN 1 END) as error_count,
+        COUNT(DISTINCT brand_profile_id) as active_brands
+        FROM agent_activity_log WHERE created_at > NOW() - INTERVAL '30 days'`),
+      pool.query(`SELECT COUNT(*) FROM (
+        SELECT id FROM generated_content_${(await pool.query('SELECT id FROM brand_profiles LIMIT 1')).rows[0]?.id?.replace(/-/g,'_') || 'x'} LIMIT 1
+      ) t`).catch(() => ({ rows: [{ count: 0 }] })),
+      pool.query('SELECT COUNT(*), COUNT(CASE WHEN status = 'published' THEN 1 END) as published FROM publishing_queue'),
+    ]);
+
+    // Get total content across all brands
+    const brandIds = (await pool.query('SELECT id FROM brand_profiles')).rows;
+    let totalContent = 0;
+    for (const b of brandIds) {
+      const safeId = b.id.replace(/-/g, '_');
+      const cnt = await pool.query(`SELECT COUNT(*) FROM generated_content_${safeId}`).catch(() => ({ rows: [{ count: 0 }] }));
+      totalContent += parseInt(cnt.rows[0].count);
+    }
+
+    const agentBreakdown = await pool.query(`
+      SELECT agent_name, COUNT(*) as calls, SUM(tokens_used) as tokens, AVG(latency_ms) as avg_latency
+      FROM agent_activity_log
+      WHERE created_at > NOW() - INTERVAL '30 days'
+      GROUP BY agent_name ORDER BY calls DESC`);
+
+    res.json({
+      success: true,
+      stats: {
+        totalBrands: parseInt(brands.rows[0].count),
+        totalContent,
+        totalQueued: parseInt(queue.rows[0].count),
+        totalPublished: parseInt(queue.rows[0].published),
+        last30Days: {
+          totalCalls: parseInt(activity.rows[0].total_calls),
+          totalTokens: parseInt(activity.rows[0].total_tokens) || 0,
+          avgLatency: Math.round(parseFloat(activity.rows[0].avg_latency) || 0),
+          errorCount: parseInt(activity.rows[0].error_count),
+          activeBrands: parseInt(activity.rows[0].active_brands),
+        },
+        agentBreakdown: agentBreakdown.rows,
+      }
+    });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+
+// POST /api/admin/seed-brain — pre-seed a brand brain from a URL
+app.post('/api/admin/seed-brain', async (req, res) => {
+  const { url, brandName } = req.body;
+  if (!url) return res.status(400).json({ error: 'url required' });
+  try {
+    // 1. Create brand profile
+    const brandInsert = await pool.query(
+      `INSERT INTO brand_profiles (brand_url, brand_name, status, created_at, updated_at)
+       VALUES ($1, $2, 'active', NOW(), NOW()) RETURNING id`,
+      [url, brandName || url.replace(/https?:\/\//, '').split('/')[0]]
+    );
+    const brandProfileId = brandInsert.rows[0].id;
+    const safeId = brandProfileId.replace(/-/g, '_');
+
+    // 2. Provision brand tables
+    await pool.query(`CREATE TABLE IF NOT EXISTS generated_content_${safeId} (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      brand_profile_id TEXT NOT NULL,
+      enriched_brief_id TEXT,
+      title TEXT,
+      article_json JSONB DEFAULT '{}',
+      overall_confidence INTEGER,
+      brain_match_score INTEGER,
+      status VARCHAR(30) DEFAULT 'draft',
+      review_mode TEXT DEFAULT 'approve-to-ship',
+      compliance_status TEXT DEFAULT 'pending',
+      compliance_report JSONB,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+
+    // 3. Trigger a Context Hub analysis to seed the brain
+    const contextRes = await fetch(`https://${req.headers.host}/api/context-hub/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ brandProfileId, url, autoSave: true })
+    });
+    const contextData = await contextRes.json().catch(() => ({}));
+
+    res.json({
+      success: true,
+      brandProfileId,
+      brandName: brandName || url,
+      contextTriggered: contextRes.ok,
+      message: contextRes.ok
+        ? 'Brand created and brain analysis triggered'
+        : 'Brand created — trigger Context Hub analysis manually'
+    });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
 
 // ── Content Import (Bring Your Own Article) ──────────────────────────────────
 
