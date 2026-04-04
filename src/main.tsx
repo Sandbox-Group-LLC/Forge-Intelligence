@@ -1,4 +1,5 @@
 import { StrictMode } from 'react';
+import { ClerkProvider, SignedIn, SignedOut, RedirectToSignIn } from '@clerk/clerk-react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
@@ -35,15 +36,26 @@ import './index.css';
   }
 })();
 
+
+// Wrap protected app routes — redirects to Clerk sign-in if not authenticated
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  return (
+    <>
+      <SignedIn>{children}</SignedIn>
+      <SignedOut><RedirectToSignIn /></SignedOut>
+    </>
+  );
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
+    <ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY}>
     <BrowserRouter>
       <Routes>
         {/* Marketing site */}
         <Route path="/" element={<Landing />} />
 
         {/* App — all product routes live under /app/ */}
-        <Route path="/app" element={<Navigate to="/app/context-hub" replace />} />
         <Route
           path="/app/context-hub/*"
           element={<AppProvider><ContextAgentPage /></AppProvider>}
@@ -80,5 +92,6 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/performance" element={<Navigate to="/app/performance" replace />} />
       </Routes>
     </BrowserRouter>
+    </ClerkProvider>
   </StrictMode>
 );
