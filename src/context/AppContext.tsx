@@ -19,6 +19,7 @@ interface AppContextType {
   setSidebarCollapsed: (collapsed: boolean) => void;
   startAnalysis: () => void;
   loadSampleData: () => void;
+  isPaid: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -64,6 +65,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // God mode bypasses gate in dev — set VITE_GOD_MODE=true in .env
+  const godMode = import.meta.env.VITE_GOD_MODE === 'true';
+  const [isPaid, setIsPaid] = useState(godMode);
+
+  // Update isPaid when brandProfile changes
+  useEffect(() => {
+    if (godMode) return;
+    if (brandProfile && (brandProfile as any).is_paid) {
+      setIsPaid(true);
+    }
+  }, [brandProfile]);
 
   // Load brain history from Neon on mount
   useEffect(() => {
