@@ -5545,11 +5545,11 @@ app.post('/api/publishing/queue/:id/request-review', async (req, res) => {
       const reviewer = await pool.query('SELECT * FROM reviewers WHERE id = $1', [reviewerId]);
       const r = reviewer.rows[0];
       if (r) {
-        await fetch('https://api.resend.com/emails', {
+        const emailRes = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            from: 'Forge Intelligence <hello@forgeintelligence.ai>',
+            from: 'onboarding@resend.dev',
             to: r.email,
             subject: `Review requested: ${item?.title || 'Article'}`,
             html: `
@@ -5567,7 +5567,9 @@ app.post('/api/publishing/queue/:id/request-review', async (req, res) => {
               </div>
             `
           })
-        }).catch(e => console.error('[REVIEW EMAIL]', e.message));
+        });
+        const emailData = await emailRes.json();
+        console.log('[REVIEW EMAIL]', emailRes.status, JSON.stringify(emailData));
       }
     }
 
