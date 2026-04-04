@@ -41,6 +41,14 @@ interface GeneratedArticle {
   authorBlock: { suggestedByline: string; schemaMarkup: object };
   citationOpportunities: string[];
   brainMatchScore: number;
+  contentId?: string;
+}
+
+interface PrecogScore {
+  score: number;
+  tier: 'high' | 'medium' | 'low' | 'risk';
+  prediction: string;
+  color: string;
 }
 
 
@@ -86,6 +94,8 @@ function ContentGeneratorContent() {
   const [isRunning, setIsRunning] = useState(false);
   const [streamText, setStreamText] = useState('');
   const [article, setArticle] = useState<GeneratedArticle | null>(null);
+  const [precogScore, setPrecogScore] = useState<PrecogScore | null>(null);
+  const [precogLoading, setPrecogLoading] = useState(false);
   const [articleImageUrl, setArticleImageUrl] = useState<string | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
   const [error, setError] = useState('');
@@ -166,6 +176,7 @@ function ContentGeneratorContent() {
     setStreamText('');
     setArticle(null);
     setArticleImageUrl(null);
+    setPrecogScore(null);
     setImageLoading(true);
     setError('');
 
@@ -185,6 +196,22 @@ function ContentGeneratorContent() {
         setArticle(parsed);
         setStreamText('');
         setImageLoading(true);
+        
+        // Trigger Pre-cog score calculation
+        if (parsed.contentId && selectedBrainId) {
+          setPrecogLoading(true);
+          fetch('/api/precog/score', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ brandProfileId: selectedBrainId, contentId: parsed.contentId })
+          })
+            .then(r => r.json())
+            .then(data => {
+              if (data.success) setPrecogScore({ score: data.score, tier: data.tier, prediction: data.prediction, color: data.color });
+            })
+            .catch(() => {})
+            .finally(() => setPrecogLoading(false));
+        }
       } catch {
         es.close();
         setError('Failed to parse generated article. Raw output preserved.');
@@ -235,6 +262,17 @@ function ContentGeneratorContent() {
             <div className="score-value">{article.overallConfidence}</div>
             <div className="score-label">Confidence</div>
           </div>
+          {precogLoading ? (
+            <div className="geo-score-badge" style={{ opacity: 0.5 }}>
+              <div className="score-value">...</div>
+              <div className="score-label">Pre-cog</div>
+            </div>
+          ) : precogScore && (
+            <div className="geo-score-badge" style={{ borderColor: precogScore.color }} title={precogScore.prediction}>
+              <div className="score-value" style={{ color: precogScore.color }}>🔮 {precogScore.score}</div>
+              <div className="score-label">Pre-cog</div>
+            </div>
+          )}
         )}
       </div>
 
