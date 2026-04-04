@@ -333,3 +333,7 @@
 .sidebar.collapsed .sidebar-logo-text {
   display: none;
 }
+/* ── Gate lock indicator ─────────────────────────────────────────────────── */
+.nav-item.gated { opacity: 0.55; }
+.nav-item.gated:hover { opacity: 0.8; cursor: pointer; }
+.nav-label { display: flex; align-items: center; width: 100%; }
