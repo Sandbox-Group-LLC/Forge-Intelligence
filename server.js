@@ -3779,6 +3779,98 @@ function buildUtmString(params) {
   return Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
 }
 
+
+// GET /api/public/articles — list published articles (for public library)
+app.get('/api/public/articles', async (req, res) => {
+  const { brandSlug } = req.query;
+  try {
+    let brandFilter = '';
+    let brandName = '';
+    let values = [];
+
+    if (brandSlug) {
+      // Find the brand by slug (derived from brand_url)
+      const brandRes = await pool.query(`
+        SELECT id, brand_name, brand_url FROM brand_profiles 
+        WHERE LOWER(REGEXP_REPLACE(brand_url, '[^a-zA-Z0-9]', '-', 'g')) LIKE $1
+        OR LOWER(REGEXP_REPLACE(COALESCE(brand_name, ''), '[^a-zA-Z0-9]', '-', 'g')) LIKE $1
+        LIMIT 1
+      `, [`%${brandSlug.toLowerCase()}%`]);
+      
+      if (brandRes.rows.length > 0) {
+        brandFilter = 'AND pq.brand_profile_id = $1';
+        values = [brandRes.rows[0].id];
+        brandName = brandRes.rows[0].brand_name || brandRes.rows[0].brand_url;
+      }
+    }
+
+    // Get published articles from publishing_queue with status 'published'
+    const articlesRes = await pool.query(`
+      SELECT 
+        pq.id,
+        pq.content_id,
+        pq.title,
+        pq.brand_profile_id,
+        pq.published_at,
+        pq.hero_image_url,
+        bp.brand_name,
+        bp.brand_url
+      FROM publishing_queue pq
+      LEFT JOIN brand_profiles bp ON bp.id = pq.brand_profile_id
+      WHERE pq.status = 'published' ${brandFilter}
+      ORDER BY pq.published_at DESC NULLS LAST, pq.created_at DESC
+      LIMIT 50
+    `, values);
+
+    const articles = await Promise.all(articlesRes.rows.map(async (row) => {
+      // Build slugs
+      const brandSlugVal = (row.brand_url || row.brand_name || 'brand')
+        .replace(/https?:\/\//i, '')
+        .replace(/[^a-z0-9]/gi, '-')
+        .toLowerCase()
+        .replace(/^-+|-+$/g, '');
+      
+      const articleSlug = (row.title || 'article')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 80);
+
+      // Try to get meta description from generated content
+      let metaDescription = '';
+      if (row.content_id && row.brand_profile_id) {
+        try {
+          const safeId = row.brand_profile_id.replace(/-/g, '_');
+          const contentRes = await pool.query(
+            `SELECT article_json FROM generated_content_${safeId} WHERE id = $1`,
+            [row.content_id]
+          );
+          if (contentRes.rows.length > 0) {
+            const articleJson = contentRes.rows[0].article_json || {};
+            metaDescription = articleJson.metaDescription || '';
+          }
+        } catch {}
+      }
+
+      return {
+        id: row.id,
+        title: row.title,
+        metaDescription,
+        brandSlug: brandSlugVal,
+        articleSlug,
+        brandName: row.brand_name || row.brand_url || 'Unknown',
+        publishedAt: row.published_at,
+        heroImageUrl: row.hero_image_url
+      };
+    }));
+
+    res.json({ success: true, articles, brandName });
+  } catch (err) {
+    console.error('[Public Articles]', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // GET /api/publishing/queue/:brandProfileId
 app.get('/api/publishing/queue/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
