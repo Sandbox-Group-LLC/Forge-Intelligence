@@ -5756,8 +5756,8 @@ app.post('/api/admin/seed-brain', async (req, res) => {
   try {
     // 1. Create brand profile
     const brandInsert = await pool.query(
-      `INSERT INTO brand_profiles (brand_url, brand_name, status, created_at, updated_at)
-       VALUES ($1, $2, 'active', NOW(), NOW()) RETURNING id`,
+      `INSERT INTO brand_profiles (id, brand_url, brand_name, version, is_active, cache_status, profile_data, created_at, updated_at)
+       VALUES (gen_random_uuid()::text, $1, $2, 1, true, 'fresh', '{}'::jsonb, NOW(), NOW()) RETURNING id`,
       [url, brandName || url.replace(/https?:\/\//, '').split('/')[0]]
     );
     const brandProfileId = brandInsert.rows[0].id;
@@ -5859,8 +5859,8 @@ app.post('/api/onboard/analyze', async (req, res) => {
     // Create brand profile with 24hr expiry
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     const brandInsert = await pool.query(
-      `INSERT INTO brand_profiles (brand_url, brand_name, status, expires_at, is_paid, created_at, updated_at)
-       VALUES ($1, $2, 'active', $3, false, NOW(), NOW()) RETURNING id`,
+      `INSERT INTO brand_profiles (id, brand_url, brand_name, version, is_active, cache_status, profile_data, expires_at, is_paid, created_at, updated_at)
+       VALUES (gen_random_uuid()::text, $1, $2, 1, true, 'fresh', '{}'::jsonb, $3, false, NOW(), NOW()) RETURNING id`,
       [brandUrl, brandName, expiresAt]
     );
     const brandProfileId = brandInsert.rows[0].id;
@@ -5890,7 +5890,7 @@ app.post('/api/onboard/analyze', async (req, res) => {
 app.get('/api/onboard/brain/:brandProfileId', async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, brand_name, brand_url, expires_at, is_paid, status FROM brand_profiles WHERE id = $1',
+      'SELECT id, brand_name, brand_url, expires_at, is_paid FROM brand_profiles WHERE id = $1',
       [req.params.brandProfileId]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Brain not found' });
