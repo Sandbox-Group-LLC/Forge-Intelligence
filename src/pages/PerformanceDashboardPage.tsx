@@ -604,7 +604,12 @@ export default function PerformanceDashboardPage() {
                             <tbody>
                               {(data?.posts || []).map((post, i) => (
                                 <tr key={i}>
-                                  <td className="perf-title-cell"><span className="perf-post-title">{post.title || (post as any).raw_data?.pageUrl || 'Unknown'}</span></td>
+                                  <td className="perf-title-cell">
+                                    {post.hero_image_url && (
+                                      <img src={post.hero_image_url} alt="" className="perf-thumb" loading="lazy" width="40" height="28" />
+                                    )}
+                                    <span className="perf-post-title">{post.title || (post as any).raw_data?.pageUrl || 'Unknown'}</span>
+                                  </td>
                                   <td className="num">{fmt(post.clicks)}</td>
                                   <td className="num">{fmt(post.impressions)}</td>
                                   <td className="num">{post.ctr ? `${post.ctr}%` : '—'}</td>
