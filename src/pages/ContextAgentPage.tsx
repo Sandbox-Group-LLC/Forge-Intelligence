@@ -8,7 +8,7 @@ import { Strategy } from '../components/views/Strategy';
 import { BrainHistory } from '../components/views/BrainHistory';
 
 function ContextAgentPage() {
-  const { currentView, setCurrentView, setAnalysisInput, startAnalysis } = useApp();
+  const { currentView, setAnalysisInput, startAnalysis } = useApp();
 
   // If arriving from landing page onboard flow, auto-fire analysis for that brand
   useEffect(() => {
