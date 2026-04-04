@@ -15,6 +15,9 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
   const [ppLoading, setPpLoading] = useState(true);
   const [ppError, setPpError] = useState('');
   const [paid, setPaid] = useState(false);
+  const [promoCode, setPromoCode] = useState('');
+  const [promoStatus, setPromoStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [promoMsg, setPromoMsg] = useState('');
 
   useEffect(() => {
     if (window.paypal) { setPpLoading(false); renderButtons(); return; }
@@ -54,6 +57,37 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
         onError: () => setPpError('Payment failed. Please try again.'),
       }).render('#forge-gate-paypal');
     }, 100);
+  };
+
+
+  const applyPromo = async () => {
+    if (!promoCode.trim()) return;
+    setPromoStatus('loading');
+    try {
+      const res = await fetch('/api/promo/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: promoCode.trim(), brandProfileId }),
+      });
+      const d = await res.json();
+      if (d.valid) {
+        setPromoStatus('success');
+        setPromoMsg(d.message);
+        setTimeout(() => {
+          setPaid(true);
+          onUnlocked?.();
+          setTimeout(() => {
+            window.location.href = `https://accounts.forgeintelligence.ai/sign-up?redirect_url=${encodeURIComponent(window.location.origin + '/app/context-hub')}&brand_id=${brandProfileId || ''}`;
+          }, 1500);
+        }, 800);
+      } else {
+        setPromoStatus('error');
+        setPromoMsg(d.message || 'Invalid code');
+      }
+    } catch {
+      setPromoStatus('error');
+      setPromoMsg('Something went wrong');
+    }
   };
 
   if (paid) return null;
