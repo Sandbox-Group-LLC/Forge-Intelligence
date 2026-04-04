@@ -51,7 +51,8 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
           onUnlocked?.();
           // Redirect to Clerk sign-up to tether account to this brain
           setTimeout(() => {
-            window.location.href = `https://accounts.forgeintelligence.ai/sign-up?redirect_url=${encodeURIComponent(window.location.origin + '/app/context-hub')}&brand_id=${brandProfileId || ''}`;
+            if (brandProfileId) localStorage.setItem('forge_pending_brand_id', brandProfileId);
+            window.location.href = `https://accounts.forgeintelligence.ai/sign-up?redirect_url=${encodeURIComponent(window.location.origin + '/app/context-hub')}`;
           }, 1500);
         },
         onError: () => setPpError('Payment failed. Please try again.'),
@@ -77,7 +78,8 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
           setPaid(true);
           onUnlocked?.();
           setTimeout(() => {
-            window.location.href = `https://accounts.forgeintelligence.ai/sign-up?redirect_url=${encodeURIComponent(window.location.origin + '/app/context-hub')}&brand_id=${brandProfileId || ''}`;
+            if (brandProfileId) localStorage.setItem('forge_pending_brand_id', brandProfileId);
+            window.location.href = `https://accounts.forgeintelligence.ai/sign-up?redirect_url=${encodeURIComponent(window.location.origin + '/app/context-hub')}`;
           }, 1500);
         }, 800);
       } else {
