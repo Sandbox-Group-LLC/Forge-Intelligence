@@ -37,8 +37,8 @@ function buildXOAuthHeader(method, url, apiKey, apiSecret, accessToken, accessSe
 }
 const PORT = process.env.PORT || 3000;
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const CLERK_JWKS_URL = process.env.CLERK_JWKS_URL;
-const clerkJWKS = CLERK_JWKS_URL ? createRemoteJWKSet(new URL(CLERK_JWKS_URL)) : null;
+const CLERK_JWKS_URL = process.env.CLERK_JWKS_URL || 'https://clerk.forgeintelligence.ai/.well-known/jwks.json';
+const clerkJWKS = createRemoteJWKSet(new URL(CLERK_JWKS_URL));
 
 const pool = new Pool({ connectionString: process.env.NEON_DATABASE_URL });
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 1200000 }); // 20min
