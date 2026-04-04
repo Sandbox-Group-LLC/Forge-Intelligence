@@ -8,7 +8,7 @@ import { Strategy } from '../components/views/Strategy';
 import { BrainHistory } from '../components/views/BrainHistory';
 
 function ContextAgentPage() {
-  const { currentView, setAnalysisInput, startAnalysis } = useApp();
+  const { currentView, startAnalysis } = useApp();
   const firedRef = useRef(false);
 
   useEffect(() => {
@@ -20,16 +20,8 @@ function ContextAgentPage() {
     firedRef.current = true;
     window.history.replaceState({}, '', '/app/context-hub');
     sessionStorage.removeItem('forge_onboard_url');
-    // setAnalysisInput then call startAnalysis in next tick so state is flushed
-    setAnalysisInput({
-      brandUrl: onboardUrl,
-      competitorUrls: [],
-      audienceNotes: '',
-      strategicNotes: '',
-      checkBrainFirst: false,
-      saveToBrain: true,
-    });
-    setTimeout(() => startAnalysis(), 0);
+    // Pass URL directly — no state dependency, no race condition
+    startAnalysis(onboardUrl);
   }, []);
 
   const renderView = () => {
