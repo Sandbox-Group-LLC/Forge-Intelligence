@@ -3977,7 +3977,7 @@ app.get('/api/linkedin/auth', (req, res) => {
   const nonce = randomBytes(16).toString('hex');
   // Embed brandProfileId in state so callback knows which brand to save to
   const state = `${brandProfileId}|${nonce}`;
-  const scopes = 'openid profile email w_member_social w_organization_social_feed';
+  const scopes = 'openid profile email w_member_social';
   const url = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&state=${encodeURIComponent(state)}&scope=${encodeURIComponent(scopes)}`;
   res.redirect(url);
 });
@@ -4058,6 +4058,87 @@ app.get('/auth/linkedin/callback', async (req, res) => {
     res.redirect('/app/integrations?linkedin_connected=true');
   } catch (err) {
     console.error('LinkedIn callback error:', err);
+    res.redirect(`/app/integrations?linkedin_error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+
+// ── LinkedIn ORG OAuth (Company Pages - separate app required by LinkedIn) ───
+app.get('/api/linkedin/org/auth', (req, res) => {
+  const clientId = process.env.LINKEDIN_ORG_CLIENT_ID;
+  if (!clientId) return res.status(500).json({ error: 'LINKEDIN_ORG_CLIENT_ID not configured' });
+  const redirectUri = encodeURIComponent(process.env.LINKEDIN_ORG_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/linkedin/org/callback');
+  const brandProfileId = req.query.state?.split('|')[0] || req.query.brandProfileId || 'system';
+  const nonce = randomBytes(16).toString('hex');
+  const state = `${brandProfileId}|${nonce}`;
+  const scopes = 'w_organization_social_feed r_organization_social_feed';
+  const url = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&state=${encodeURIComponent(state)}&scope=${encodeURIComponent(scopes)}`;
+  res.redirect(url);
+});
+
+app.get('/auth/linkedin/org/callback', async (req, res) => {
+  const { code, state, error } = req.query;
+  if (error) return res.redirect(`/app/integrations?linkedin_error=${error}`);
+  if (!code) return res.redirect('/app/integrations?linkedin_error=no_code');
+  try {
+    const clientId = process.env.LINKEDIN_ORG_CLIENT_ID;
+    const clientSecret = process.env.LINKEDIN_ORG_SECRET;
+    const redirectUri = process.env.LINKEDIN_ORG_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/linkedin/org/callback';
+    
+    const tokenRes = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirectUri, client_id: clientId, client_secret: clientSecret })
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) throw new Error(tokenData.error_description || 'Token exchange failed');
+
+    // Fetch company pages user is admin of
+    const orgsRes = await fetch('https://api.linkedin.com/v2/organizationalEntityAcls?q=roleAssignee&role=ADMINISTRATOR&projection=(elements*(organizationalTarget~))', {
+      headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+    });
+    if (!orgsRes.ok) throw new Error('Failed to fetch organizations');
+    
+    const orgsData = await orgsRes.json();
+    const companyPages = (orgsData.elements || []).map(el => {
+      const org = el['organizationalTarget~'] || {};
+      const orgUrn = el.organizationalTarget;
+      return {
+        type: 'company',
+        urn: orgUrn,
+        name: org.localizedName || org.name || 'Company Page',
+        vanityName: org.vanityName || null,
+        logoUrl: org.logoV2?.['original~']?.elements?.[0]?.identifiers?.[0]?.identifier || null
+      };
+    });
+
+    if (companyPages.length === 0) {
+      return res.redirect('/app/integrations?linkedin_error=no_company_pages');
+    }
+
+    const stateDecoded = decodeURIComponent(state || '');
+    const brandProfileId = stateDecoded.includes('|') ? stateDecoded.split('|')[0] : 'system';
+
+    // Default to first company page
+    const selectedTarget = companyPages[0];
+
+    await pool.query(`
+      INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active, updated_at)
+      VALUES ($1, 'linkedin_org', $2, true, NOW())
+      ON CONFLICT (brand_profile_id, channel) DO UPDATE
+        SET credentials = $2, is_active = true, updated_at = NOW()
+    `, [brandProfileId, JSON.stringify({
+      accessToken: tokenData.access_token,
+      expiresIn: tokenData.expires_in,
+      connectedAt: new Date().toISOString(),
+      authorUrn: selectedTarget.urn,
+      availableTargets: companyPages,
+      selectedTarget: selectedTarget
+    })]);
+
+    res.redirect('/app/integrations?linkedin_org_connected=true');
+  } catch (err) {
+    console.error('LinkedIn Org callback error:', err);
     res.redirect(`/app/integrations?linkedin_error=${encodeURIComponent(err.message)}`);
   }
 });
