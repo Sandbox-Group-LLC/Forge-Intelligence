@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { AppShell } from '../layouts/AppShell';
 import { NewAnalysis } from '../components/views/NewAnalysis';
@@ -7,7 +8,29 @@ import { Strategy } from '../components/views/Strategy';
 import { BrainHistory } from '../components/views/BrainHistory';
 
 function ContextAgentPage() {
-  const { currentView } = useApp();
+  const { currentView, setCurrentView, setAnalysisInput, startAnalysis } = useApp();
+
+  // If arriving from landing page onboard flow, auto-fire analysis for that brand
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const onboardId = params.get('onboard');
+    const onboardUrl = sessionStorage.getItem('forge_onboard_url');
+    if (onboardId && onboardUrl) {
+      // Set the brand URL and kick off the active run immediately
+      setAnalysisInput({
+        brandUrl: onboardUrl,
+        competitorUrls: [],
+        audienceNotes: '',
+        strategicNotes: '',
+        checkBrainFirst: false,
+        saveToBrain: true,
+        onboardBrandProfileId: onboardId,
+      } as any);
+      startAnalysis();
+      sessionStorage.removeItem('forge_onboard_url');
+      window.history.replaceState({}, '', '/app/context-hub');
+    }
+  }, []);
 
   const renderView = () => {
     switch (currentView) {
