@@ -130,7 +130,7 @@ function TrendChart({ data, onSync }: { data: TrendPoint[]; onSync?: () => void 
   const areaPath = `${linePath} L${pts[pts.length-1].x.toFixed(1)},${(padY + chartH).toFixed(1)} L${pts[0].x.toFixed(1)},${(padY + chartH).toFixed(1)} Z`;
   const labels = [0, Math.floor(data.length / 2), data.length - 1].map(i => data[i]);
   return (
-    <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} className="trend-chart" preserveAspectRatio="xMidYMid meet">
+    <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} className="trend-chart" preserveAspectRatio="none">
       <defs>
         <linearGradient id="tg" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#3563FF" stopOpacity="0.35"/>
