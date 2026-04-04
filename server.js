@@ -37,6 +37,8 @@ function buildXOAuthHeader(method, url, apiKey, apiSecret, accessToken, accessSe
 }
 const PORT = process.env.PORT || 3000;
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const CLERK_JWKS_URL = process.env.CLERK_JWKS_URL;
+const clerkJWKS = CLERK_JWKS_URL ? createRemoteJWKSet(new URL(CLERK_JWKS_URL)) : null;
 
 const pool = new Pool({ connectionString: process.env.NEON_DATABASE_URL });
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 1200000 }); // 20min
@@ -1274,7 +1276,7 @@ app.get('/api/content/:safeId/:contentId', async (req, res) => {
 
 // ── Context Agent API ─────────────────────────────────────────────────────────
 
-app.get('/api/context-hub/brains', async (req, res) => {
+app.get('/api/context-hub/brains', softAuth, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT id, brand_url, brand_name, version, is_active, cache_status,
@@ -1709,7 +1711,7 @@ app.get('/api/context-hub/history/:encodedUrl', async (req, res) => {
   }
 });
 
-app.post('/api/context-hub/analyze', async (req, res) => {
+app.post('/api/context-hub/analyze', softAuth, async (req, res) => {
   const { brandUrl, competitorUrls = [], audienceNotes = '', strategicNotes = '', checkBrainFirst = true, saveToBrain = true } = req.body;
   if (!brandUrl) {
     return res.status(400).json({ success: false, error: 'brandUrl is required' });
@@ -1887,9 +1889,9 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
       const id = randomUUID();
 
       const inserted = await pool.query(
-        `INSERT INTO brand_profiles (id, brand_url, brand_name, version, is_active, cache_status, profile_data)
-         VALUES ($1, $2, $3, $4, true, 'fresh', $5) RETURNING *`,
-        [id, brandUrl, resolvedBrandName, nextVersion, JSON.stringify(profileData)]
+        `INSERT INTO brand_profiles (id, brand_url, brand_name, version, is_active, cache_status, profile_data, clerk_user_id)
+         VALUES ($1, $2, $3, $4, true, 'fresh', $5, $6) RETURNING *`,
+        [id, brandUrl, resolvedBrandName, nextVersion, JSON.stringify(profileData), req.userId || null]
       );
       const r = inserted.rows[0];
       return res.json({ success: true, cached: false, data: {
@@ -5838,11 +5840,48 @@ app.delete('/api/reviewers/:id', async (req, res) => {
 });
 
 
+
+// ── Clerk Auth Middleware ─────────────────────────────────────────────────────
+
+// Verify Clerk JWT and attach userId to req
+async function requireAuth(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const token = authHeader.split(' ')[1];
+    if (!clerkJWKS) return res.status(500).json({ error: 'Auth not configured' });
+    const { payload } = await jwtVerify(token, clerkJWKS, { algorithms: ['RS256'] });
+    req.userId = payload.sub;
+    next();
+  } catch(e) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+}
+
+// Soft auth — attaches userId if present, continues either way (for public + authed routes)
+async function softAuth(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      if (clerkJWKS) {
+        const { payload } = await jwtVerify(token, clerkJWKS, { algorithms: ['RS256'] });
+        req.userId = payload.sub;
+      }
+    }
+  } catch { /* no-op */ }
+  next();
+}
+
 // ── Onboarding / GTM Flow ─────────────────────────────────────────────────────
 
 // Add expires_at to brand_profiles for free trial brains
 pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ`).catch(() => {});
 pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS is_paid BOOLEAN DEFAULT false`).catch(() => {});
+    await pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS clerk_user_id TEXT`).catch(() => {});
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_bp_clerk ON brand_profiles(clerk_user_id)`).catch(() => {});
 pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS onboard_session_id TEXT`).catch(() => {});
 
 // POST /api/onboard/analyze — landing page entry point
@@ -5914,6 +5953,25 @@ app.post('/api/onboard/paypal-success', async (req, res) => {
     );
     console.log('[PAYPAL] Payment confirmed — brandProfileId:', brandProfileId, 'orderId:', orderId);
     res.json({ success: true, unlocked: true });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+
+// GET /api/auth/me — returns the authenticated user's brand profile
+app.get('/api/auth/me', requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT * FROM brand_profiles WHERE clerk_user_id = $1 AND is_active = true ORDER BY updated_at DESC LIMIT 1`,
+      [req.userId]
+    );
+    res.json({
+      success: true,
+      userId: req.userId,
+      brand: result.rows[0] || null,
+      isPaid: result.rows[0]?.is_paid || false,
+    });
   } catch(e) {
     res.status(500).json({ success: false, error: e.message });
   }
