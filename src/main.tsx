@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import Landing from './Landing';
+import Product from './Product';
 import ContextAgentPage from './pages/ContextAgentPage';
 import GeoStrategistPage from './pages/GeoStrategistPage';
 import AuthenticityEnricherPage from './pages/AuthenticityEnricherPage';
@@ -44,6 +45,7 @@ createRoot(document.getElementById('root')!).render(
       <Routes>
         {/* Marketing site */}
         <Route path="/" element={<Landing />} />
+        <Route path="/product" element={<Product />} />
 
         {/* App — all product routes live under /app/ */}
         <Route
