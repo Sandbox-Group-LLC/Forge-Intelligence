@@ -91,6 +91,8 @@ export default function Landing() {
           <span>© 2026 Sandbox Group LLC</span>
           <span style={styles.footerDivider}>·</span>
           <a href="mailto:hello@forgeintelligence.ai" style={styles.footerLink}>hello@forgeintelligence.ai</a>
+          <span style={styles.footerDivider}>·</span>
+          <a href="/product" style={styles.footerLink}>How It Works</a>
         </div>
       </div>
     </div>
