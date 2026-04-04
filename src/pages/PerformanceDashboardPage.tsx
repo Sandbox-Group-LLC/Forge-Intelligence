@@ -972,7 +972,7 @@ function KpiIcon({ type }: { type: string }) {
     trend: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>,
   };
   return <span className="perf-kpi-icon">{icons[type] || null}</span>;
-}function TrendChart({ data }: { data: TrendPoint[] }) {
+}function TrendChart({ data, onSync }: { data: TrendPoint[]; onSync?: () => void }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = React.useState(900);
 
