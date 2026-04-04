@@ -126,6 +126,36 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
           <span className="gate-price-note">one-time · full suite · brain saved permanently</span>
         </div>
 
+        {/* Promo code */}
+        <div style={{ marginBottom: 4 }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              style={{ flex: 1, padding: '9px 14px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, color: '#F8FAFC', fontSize: '0.875rem', fontFamily: 'inherit', outline: 'none' }}
+              placeholder="Promo code"
+              value={promoCode}
+              onChange={e => { setPromoCode(e.target.value); setPromoStatus('idle'); setPromoMsg(''); }}
+              onKeyDown={e => e.key === 'Enter' && applyPromo()}
+              disabled={promoStatus === 'loading' || promoStatus === 'success'}
+            />
+            <button
+              style={{ padding: '9px 18px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, color: '#F8FAFC', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', opacity: (!promoCode.trim() || promoStatus === 'loading' || promoStatus === 'success') ? 0.45 : 1 }}
+              onClick={applyPromo}
+              disabled={!promoCode.trim() || promoStatus === 'loading' || promoStatus === 'success'}
+            >
+              {promoStatus === 'loading' ? '...' : 'Apply'}
+            </button>
+          </div>
+          {promoMsg && (
+            <div style={{ fontSize: '0.8rem', marginTop: 6, color: promoStatus === 'success' ? '#10B981' : '#F87171' }}>
+              {promoStatus === 'success' ? '✓ ' : '✕ '}{promoMsg}
+            </div>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '12px 0', color: 'rgba(255,255,255,0.25)', fontSize: '0.75rem' }}>
+          <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.1)' }} />
+          <span>or pay with PayPal</span>
+          <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.1)' }} />
+        </div>
         {ppLoading && <div className="gate-loading">Loading payment...</div>}
         {ppError && <div className="gate-error">{ppError}</div>}
         <div id="forge-gate-paypal" />
