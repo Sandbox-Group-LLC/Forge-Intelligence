@@ -3122,7 +3122,7 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
        0, JSON.stringify({ title: parsed.title, overallConfidence: parsed.overallConfidence })]
     ).catch(() => {});
 
-    send('done', JSON.stringify(parsed));
+    send('done', JSON.stringify({ ...parsed, contentId }));
 
     // Fire Flux image generation in parallel — don't block the done event
     (async () => {
