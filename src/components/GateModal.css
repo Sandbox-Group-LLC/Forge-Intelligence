@@ -1,0 +1,118 @@
+/* ── Gate Modal ──────────────────────────────────────────────────────────── */
+.gate-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: fadeIn 0.15s ease;
+}
+
+.gate-modal {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-top: 2px solid #3563FF;
+  border-radius: var(--radius-lg);
+  padding: 36px 40px;
+  max-width: 480px;
+  width: 100%;
+  position: relative;
+  animation: slideUp 0.2s ease;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.gate-close {
+  position: absolute;
+  top: 16px; right: 16px;
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+}
+.gate-close:hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
+
+.gate-lock { margin-bottom: 16px; }
+
+.gate-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin: 0 0 10px;
+}
+
+.gate-desc {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+  margin: 0 0 20px;
+}
+
+.gate-features {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.gate-feature {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.8375rem;
+  color: var(--color-text-secondary);
+}
+
+.gate-check {
+  color: #10B981;
+  font-weight: 700;
+  flex-shrink: 0;
+  width: 14px;
+}
+
+.gate-price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.gate-price {
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: var(--color-text-primary);
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.gate-price-note {
+  font-size: 0.775rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.gate-loading { font-size: 0.875rem; color: var(--color-text-muted); padding: 8px 0; }
+.gate-error   { font-size: 0.875rem; color: #F87171; padding: 8px 0; }
+
+#forge-gate-paypal { min-height: 48px; }
+
+.gate-caption {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  text-align: center;
+  margin-top: 14px;
+  margin-bottom: 0;
+}
