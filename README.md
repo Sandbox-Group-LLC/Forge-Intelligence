@@ -64,7 +64,22 @@ forgeintelligence.ai → Landing (URL input)
 
 ---
 
-## Current Build Status (as of March 30, 2026 — 2:00 PM PDT)
+## Current Build Status (as of April 4, 2026 — Evening PDT)
+
+## Publishing Integrations (6 of 7 LIVE)
+
+| Channel | Status | Auth Method |
+|---------|--------|-------------|
+| LinkedIn | ✅ LIVE | OAuth (Personal + Org separate apps) |
+| X/Twitter | ✅ LIVE | OAuth 1.0a |
+| HubSpot | ✅ LIVE | OAuth + CRM auto-sync |
+| Webflow | ✅ LIVE | OAuth + site/collection selector |
+| WordPress | ✅ LIVE | REST API + App Password |
+| Ghost | ✅ LIVE | Admin API Key |
+| Medium | 🏚️ Legacy | API deprecated 2025 |
+| Facebook | ⬜ Parked | OAuth (not priority) |
+
+---
 
 ## Known Issues
 
@@ -77,7 +92,8 @@ The posts table in Performance shows titles correctly from `publishing_queue`. T
 Ghost publish is live. Analytics sync (impressions, reactions) not yet wired into `content_analytics`. Ghost Admin API has stats endpoints but requires additional implementation.
 
 ### Medium Integration
-**Status:** Legacy  
+**Status:** Legacy (API deprecated early 2025)  
+New tokens no longer available. Existing pre-2025 tokens still work.
 Medium stopped issuing new API integration tokens in early 2025. The publish backend works for existing pre-2025 tokens. New clients cannot generate tokens. Channel is marked Legacy in the Integrations UI — visible and connectable for users with existing tokens, blocked for new signups.
 
 ### ✅ What Is Live Right Now
@@ -774,3 +790,4 @@ The project board tracks all active issues against this roadmap. When picking up
    - Forge Intelligence is the third pillar — the intelligence layer that turns live experiences into measurable revenue
 
 **Tone for AI collaboration:** Direct, fast, no hand-holding. Build it, commit it, tell them what changed and why. Don't ask for permission on things already decided in this doc.
+
