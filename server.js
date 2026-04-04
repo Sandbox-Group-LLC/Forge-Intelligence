@@ -5240,7 +5240,12 @@ app.post('/api/publishing/publish', async (req, res) => {
           });
           const wfData = await wfRes.json();
           if (!wfRes.ok) throw new Error(wfData.message || JSON.stringify(wfData));
-          const publishedUrl = `https://${brand.brand_url || siteId}/articles/${slug}`;
+          // Build Webflow URL from site info or item response
+          const wfSiteDomain = creds.selectedSite?.shortName 
+            ? `${creds.selectedSite.shortName}.webflow.io`
+            : (creds.selectedSite?.previewUrl?.replace(/^https?:\/\//, '').replace(/\/$/, '') || siteId);
+          const collectionSlug = creds.selectedCollection?.slug || 'blog';
+          const publishedUrl = `https://${wfSiteDomain}/${collectionSlug}/${slug}`;
           results[channel] = { status: 'published', url: publishedUrl, itemId: wfData.id, utmParams };
 
         } else if (channel === 'hubspot') {
