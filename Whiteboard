@@ -707,7 +707,57 @@ User sees their brand understood better in 7 minutes than their last agency unde
 
 
 
-## Auth Layer Complete — April 4, 2026 (Session 2)
+
+## ✅ Auth Complete — April 4, 2026
+
+**forgeintelligence.ai is fully authenticated. ICE ain't coming in this house.**
+
+### Auth Architecture (locked)
+
+```
+Landing page → Clerk-free, zero friction
+  → Free Context Hub analysis (unauthenticated)
+  → Brand Profile reveal
+  → Click locked feature → GateModal
+      → FORGEFRIEND / EARLYBIRD / SANDBOX100 (unlimited promo)
+        OR PayPal $99
+      → is_paid = true in DB
+      → if signed in: reload → useActiveBrand → isPaid = true → gate drops
+      → if not signed in: localStorage brand_id → Clerk sign-up
+                          → return → auto-tether → gate drops
+```
+
+### Key decisions
+- `ClerkProvider` wraps `BrowserRouter` — single instance, initialises everywhere but only matters on `/app/*`
+- `requireAuth` middleware (jose + JWKS) guards `/api/auth/me` and future protected endpoints
+- `softAuth` middleware attaches userId if token present, passes either way (public routes)
+- `clerk_user_id` on `brand_profiles` — auto-tethered on first `/api/auth/me` call
+- `useActiveBrand` waits for `isLoaded` before firing, re-runs on `isSignedIn` change
+- `AppContext.isPaid` wired from `useActiveBrand.isPaid` — single source of truth
+- TopBar: signed in → avatar dropdown (email + sign out) | signed out → Sign In link → `accounts.forgeintelligence.ai/sign-in`
+- God mode (`?god=ForgeCanvas`) still works for dev testing
+
+### Clerk URLs
+- Sign in: https://accounts.forgeintelligence.ai/sign-in
+- Sign up: https://accounts.forgeintelligence.ai/sign-up
+- JWKS: https://clerk.forgeintelligence.ai/.well-known/jwks.json
+
+### Promo codes (unlimited, server-side only)
+| Code | Description |
+|------|-------------|
+| `FORGEFRIEND` | Friend of Forge 🐐 |
+| `EARLYBIRD` | Early Access |
+| `SANDBOX100` | Sandbox Internal |
+
+### Dev reset endpoint
+`POST /api/admin/reset-brand-paid`
+```json
+{ "brandProfileId": "xxx", "adminPassword": "ForgeCanvas" }
+```
+Resets `is_paid = false`, clears `clerk_user_id`, clears promo redemptions.
+
+
+## Auth Layer Complete (in progress — see above for final) — April 4, 2026 (Session 2)
 
 ### What shipped
 
