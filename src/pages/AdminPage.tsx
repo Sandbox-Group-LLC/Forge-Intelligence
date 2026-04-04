@@ -113,10 +113,13 @@ export default function AdminPage() {
           <div className="admin-section-header">
             <div className="admin-section-title">Reviewers</div>
             {brands.length > 1 && (
-              <select className="geo-select" style={{ fontSize: '0.8125rem', padding: '6px 10px' }}
-                value={selectedBrand} onChange={e => setSelectedBrand(e.target.value)}>
-                {brands.map(b => <option key={b.id} value={b.id}>{b.brandName || b.brandUrl}</option>)}
-              </select>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>Brand:</span>
+                <select className="geo-select" style={{ fontSize: '0.8125rem', padding: '6px 10px' }}
+                  value={selectedBrand} onChange={e => setSelectedBrand(e.target.value)}>
+                  {brands.map(b => <option key={b.id} value={b.id}>{b.brandName || b.brandUrl}</option>)}
+                </select>
+              </div>
             )}
           </div>
 
