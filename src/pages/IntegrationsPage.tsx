@@ -120,11 +120,11 @@ const CHANNELS: ChannelDef[] = [
   {
     id: 'webflow',
     label: 'Webflow',
-    pipedreamApp: 'webflow',
-    description: 'Create CMS items via Webflow Data API. Live publish in Stage 6.1.',
+    description: 'Publish articles to Webflow CMS collections via OAuth.',
     color: '#4353FF',
     logo: 'WF',
-    liveStatus: 'staged',
+    liveStatus: 'live',
+    oauthFlow: true,
     credentialFields: [
       { key: 'apiToken', label: 'API Token', placeholder: 'eyJhbGci...', type: 'password' },
       { key: 'siteId', label: 'Site ID', placeholder: '5f4d...' },
@@ -382,12 +382,26 @@ export default function IntegrationsPage() {
         setTimeout(() => loadChannels(brand), 500);
       }
     }
+    if (params.get('webflow_connected') === 'true') {
+      setSuccess('Webflow connected successfully!');
+      setExpanded('webflow');
+      window.history.replaceState({}, '', '/app/integrations');
+      const brand = localStorage.getItem(LS_BRAND_KEY);
+      if (brand) {
+        setSelectedBrand(brand);
+        setTimeout(() => loadChannels(brand), 500);
+      }
+    }
     if (params.get('linkedin_error')) {
       setError(`LinkedIn authorization failed: ${decodeURIComponent(params.get('linkedin_error') || '')}`);
       window.history.replaceState({}, '', '/app/integrations');
     }
     if (params.get('hubspot_error')) {
       setError(`HubSpot authorization failed: ${decodeURIComponent(params.get('hubspot_error') || '')}`);
+      window.history.replaceState({}, '', '/app/integrations');
+    }
+    if (params.get('webflow_error')) {
+      setError(`Webflow authorization failed: ${decodeURIComponent(params.get('webflow_error') || '')}`);
       window.history.replaceState({}, '', '/app/integrations');
     }
   }, []);
@@ -599,6 +613,9 @@ export default function IntegrationsPage() {
                               } else if (ch.id === 'hubspot') {
                                 // Custom OAuth flow for HubSpot
                                 window.location.href = `/api/hubspot/auth?state=${encodeURIComponent(selectedBrand + '|' + Date.now())}`;
+                              } else if (ch.id === 'webflow') {
+                                // Custom OAuth flow for Webflow
+                                window.location.href = `/api/webflow/auth?state=${encodeURIComponent(selectedBrand + '|' + Date.now())}`;
                               } else if (ch.pipedreamApp) {
                                 handleSave(ch.id);
                               } else {
@@ -833,6 +850,106 @@ export default function IntegrationsPage() {
                             }}
                           >refresh targets</button>.
                         </div>
+                      </div>
+                    )}
+
+                    {/* Webflow: Connected status */}
+                    {ch.id === 'webflow' && connected && (
+                      <div className="int-form-section">
+                        <div className="int-pipedream-status">
+                          <div className="int-pipedream-badge" style={{ background: 'rgba(67, 83, 255, 0.15)', color: '#4353FF' }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                            Connected via OAuth
+                          </div>
+                          <span className="int-pipedream-sub">
+                            Site: <strong>{saved?.credentials?.selectedSite?.name || '--'}</strong>
+                            {' · '}Collection: <strong>{saved?.credentials?.selectedCollection?.name || '--'}</strong>
+                            {' · '}Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}
+                          </span>
+                          <button className="int-reauth-btn" onClick={() => {
+                            window.location.href = `/api/webflow/auth?state=${encodeURIComponent(selectedBrand + '|' + Date.now())}`;
+                          }}>Reconnect</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Webflow: Site selector */}
+                    {ch.id === 'webflow' && connected && saved?.credentials?.sites?.length > 0 && (
+                      <div className="int-form-section">
+                        <div className="int-form-label">
+                          Publish to Site
+                          <span className="int-utm-hint">Select which Webflow site to publish to</span>
+                        </div>
+                        <select
+                          className="geo-select"
+                          style={{ maxWidth: 400 }}
+                          value={saved?.credentials?.selectedSite?.id || ''}
+                          onChange={async (e) => {
+                            try {
+                              const res = await fetch('/api/webflow/select-target', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ brandProfileId: selectedBrand, siteId: e.target.value })
+                              });
+                              const d = await res.json();
+                              if (d.success) {
+                                setSuccess(`Publishing to: ${d.selectedSite?.name}`);
+                                loadChannels(selectedBrand);
+                                setTimeout(() => setSuccess(''), 3000);
+                              } else {
+                                setError(d.error || 'Failed to switch site');
+                              }
+                            } catch {
+                              setError('Failed to switch Webflow site');
+                            }
+                          }}
+                        >
+                          {(saved?.credentials?.sites || []).map((s: any) => (
+                            <option key={s.id} value={s.id}>
+                              🌐 {s.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Webflow: Collection selector */}
+                    {ch.id === 'webflow' && connected && saved?.credentials?.selectedSite?.collections?.length > 0 && (
+                      <div className="int-form-section">
+                        <div className="int-form-label">
+                          Publish to Collection
+                          <span className="int-utm-hint">Select which CMS collection to add articles to</span>
+                        </div>
+                        <select
+                          className="geo-select"
+                          style={{ maxWidth: 400 }}
+                          value={saved?.credentials?.selectedCollection?.id || ''}
+                          onChange={async (e) => {
+                            try {
+                              const res = await fetch('/api/webflow/select-target', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ brandProfileId: selectedBrand, collectionId: e.target.value })
+                              });
+                              const d = await res.json();
+                              if (d.success) {
+                                setSuccess(`Publishing to: ${d.selectedCollection?.name}`);
+                                loadChannels(selectedBrand);
+                                setTimeout(() => setSuccess(''), 3000);
+                              } else {
+                                setError(d.error || 'Failed to switch collection');
+                              }
+                            } catch {
+                              setError('Failed to switch Webflow collection');
+                            }
+                          }}
+                        >
+                          {(saved?.credentials?.selectedSite?.collections || []).map((c: any) => (
+                            <option key={c.id} value={c.id}>
+                              📁 {c.name}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     )}
 
