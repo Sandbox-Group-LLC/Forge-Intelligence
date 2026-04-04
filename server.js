@@ -3977,7 +3977,7 @@ app.get('/api/linkedin/auth', (req, res) => {
   const nonce = randomBytes(16).toString('hex');
   // Embed brandProfileId in state so callback knows which brand to save to
   const state = `${brandProfileId}|${nonce}`;
-  const scopes = 'openid profile email w_member_social r_organization_social w_organization_social';
+  const scopes = 'openid profile email w_member_social';
   const url = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&state=${encodeURIComponent(state)}&scope=${encodeURIComponent(scopes)}`;
   res.redirect(url);
 });
