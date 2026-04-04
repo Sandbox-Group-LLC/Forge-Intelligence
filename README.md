@@ -11,6 +11,40 @@
 
 ---
 
+## 🚀 Production Launch — April 4, 2026
+
+**forgeintelligence.ai is LIVE.**
+
+| | |
+|---|---|
+| **URL** | https://forgeintelligence.ai |
+| **Dev** | https://dev.forgeintelligence.ai |
+| **Branch** | `production` → Render auto-deploy |
+| **Price** | $99 one-time via PayPal |
+
+### Phase 1 Complete ✅
+
+- [x] Landing page — URL input → Context Agent → Brand Profile reveal
+- [x] PayPal $99 gate — unlocks full suite permanently
+- [x] Admin dashboard — KPIs + reviewer management
+- [x] Approval flow — Resend email, signed token, no Forge account needed
+- [x] Topic Queue — `/app/topic-queue`
+- [x] Brand dropdown removed from production — `useActiveBrand` hook
+- [x] Brand name in TopBar — green dot pill top-right
+- [x] God mode — `?god=ForgeCanvas` / `?ungod`
+
+### Production Architecture
+
+```
+forgeintelligence.ai → Landing (URL input)
+  → POST /api/context-hub/analyze (free)
+  → Active Run (ass shake 🍑)
+  → Brand Profile (full reveal, free)
+  → PayPal Gate ($99 → is_paid = true)
+  → Full suite unlocked
+```
+
+
 ## What Is This
 
 **Forge Intelligence** is a premium B2B marketing intelligence platform.
@@ -649,8 +683,8 @@ Forge connects to the broader Sandbox Group ecosystem:
 - [x] `/context-agent` workspace UI — fully built + styled
 - [x] Stage 2 — GEO Strategist agent (LIVE — Topical Authority Mapper, GEO Opportunity Scorer, Entity & Schema Mapper, Brief Generator)
 - [ ] Stage 3 — Authenticity Enricher agent (prompt spec written, agent NOT built)
-- [ ] Admin dashboard (surface `agent_activity_log`)
-- [ ] Brand brain pre-seeding script (run against target prospect domains)
+- [x] Admin dashboard — KPI cards + reviewer management ✅
+- [x] Brand brain pre-seeding — UUID auto-generated on Context Hub run ✅
 - [ ] Server-side UUID auto-generation (currently requires client to send valid UUID)
 
 ### Phase 2 — Generation + Governance (Months 4–6)
