@@ -4795,7 +4795,7 @@ ${canonicalNote}`,
       ).catch(e => console.error('[MEMORY] Write error:', e.message));
     }
 
-        await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata) VALUES ($1,$2,$3,$4,$5,$6)', ['stage6_publisher', brandProfileId, 'success', 0, Date.now()-startTime, JSON.stringify({ channels: selectedChannels, status: newStatus })]).catch(e => console.error('[ACTIVITY LOG]', e.message));
+        await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata) VALUES ($1,$2,$3,$4,$5,$6)', ['stage6_publisher', item?.brand_profile_id||null, 'success', 0, Date.now()-startTime, JSON.stringify({ channels: selectedChannels, status: newStatus })]).catch(e => console.error('[ACTIVITY LOG]', e.message));
         res.json({ success: true, status: newStatus, results });
   } catch (err) {
     console.error('[PUBLISH] Error:', err);
