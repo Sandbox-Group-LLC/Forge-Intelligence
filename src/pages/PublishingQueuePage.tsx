@@ -138,6 +138,7 @@ interface QueueItem {
   review_status?: string | null;
   review_comment?: string | null;
   review_actioned_at?: string | null;
+  precog_score?: number | null;
 }
 
 interface ConnectedChannel { channel: string; }
@@ -959,6 +960,16 @@ ${bodyHtml}
                         <span className="pq-brand-tag">{brandName(item)}</span>
                         <span className="pq-dot">·</span>
                         <span className="pq-date">Staged {new Date(item.created_at).toLocaleDateString()}</span>
+                        {item.precog_score != null && (
+                          <>
+                            <span className="pq-dot">·</span>
+                            <span className="pq-precog-badge" style={{ 
+                              color: item.precog_score >= 80 ? '#22C55E' : item.precog_score >= 60 ? '#EAB308' : item.precog_score >= 40 ? '#F97316' : '#EF4444'
+                            }} title={`Pre-cog Score: ${item.precog_score} - ${item.precog_score >= 80 ? 'Likely to outperform' : item.precog_score >= 60 ? 'Near average' : item.precog_score >= 40 ? 'May underperform' : 'High risk'}`}>
+                              🔮 {item.precog_score}
+                            </span>
+                          </>
+                        )}
                         {item.scheduled_at && (
                           <>
                             <span className="pq-dot">·</span>
@@ -1248,6 +1259,16 @@ return (
                         <span className="pq-brand-tag">{brandName(item)}</span>
                         <span className="pq-dot">·</span>
                         <span className="pq-date">Staged {new Date(item.created_at).toLocaleDateString()}</span>
+                        {item.precog_score != null && (
+                          <>
+                            <span className="pq-dot">·</span>
+                            <span className="pq-precog-badge" style={{ 
+                              color: item.precog_score >= 80 ? '#22C55E' : item.precog_score >= 60 ? '#EAB308' : item.precog_score >= 40 ? '#F97316' : '#EF4444'
+                            }} title={`Pre-cog Score: ${item.precog_score} - ${item.precog_score >= 80 ? 'Likely to outperform' : item.precog_score >= 60 ? 'Near average' : item.precog_score >= 40 ? 'May underperform' : 'High risk'}`}>
+                              🔮 {item.precog_score}
+                            </span>
+                          </>
+                        )}
                         {item.scheduled_at && (
                           <>
                             <span className="pq-dot">·</span>
