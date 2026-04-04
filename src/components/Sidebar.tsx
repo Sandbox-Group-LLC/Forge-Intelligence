@@ -189,7 +189,7 @@ const publishingNavItems = [
   { id: 'publishing-queue', label: 'Queue',           icon: 'sendCloud',  href: '/app/publishing-queue' },
   { id: 'content-library',  label: 'Content Library', icon: 'bookOpen',   href: '/app/content-library' },
   { id: 'content-import',   label: 'Import Article',  icon: 'fileImport', href: '/app/content-import' },
-  { id: 'topic-queue',      label: 'Topic Queue',     icon: 'list',       href: '/app/topic-queue' },
+  { id: 'topic-queue',      label: 'Topic Queue',     icon: 'fileText',   href: '/app/topic-queue' },
 ] as const;
 
 const settingsNavItems = [
