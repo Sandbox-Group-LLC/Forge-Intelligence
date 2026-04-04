@@ -6427,7 +6427,7 @@ app.get('/api/analytics/dashboard/:brandProfileId', async (req, res) => {
               ca.comments, ca.reposts, ca.ctr, ca.engagement_rate,
               ca.reading_time, ca.positive_feedback, ca.negative_feedback,
               ca.synced_at AS published_at, ca.synced_at,
-              pl.published_url, pq.title
+              pl.published_url, pq.title, pq.hero_image_url
        FROM content_analytics ca
        LEFT JOIN LATERAL (
          SELECT published_url FROM publish_log
@@ -6463,7 +6463,7 @@ app.get('/api/analytics/dashboard/:brandProfileId', async (req, res) => {
               ca.comments, ca.reposts, ca.ctr, ca.engagement_rate,
               ca.reading_time, ca.positive_feedback, ca.negative_feedback,
               ca.synced_at AS published_at, ca.synced_at, ca.channel,
-              pl.published_url, pq.title
+              pl.published_url, pq.title, pq.hero_image_url
        FROM content_analytics ca
        LEFT JOIN LATERAL (
          SELECT published_url FROM publish_log
