@@ -5998,6 +5998,15 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
 
 // ── Promo Codes ───────────────────────────────────────────────────────────────
 
+// Promo redemptions table
+pool.query(`CREATE TABLE IF NOT EXISTS promo_redemptions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code TEXT NOT NULL,
+  brand_profile_id TEXT NOT NULL,
+  redeemed_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(code, brand_profile_id)
+)`).catch(() => {});
+
 // Promo codes stored server-side — never expose to client
 const PROMO_CODES = new Map([
   ['FORGEFRIEND',   { discount: 100, description: 'Friend of Forge' }],
@@ -6010,16 +6019,29 @@ app.post('/api/promo/validate', async (req, res) => {
   const { code, brandProfileId } = req.body;
   if (!code || !brandProfileId) return res.status(400).json({ error: 'code and brandProfileId required' });
 
-  const promo = PROMO_CODES.get(code.trim().toUpperCase());
+  const normalised = code.trim().toUpperCase();
+  const promo = PROMO_CODES.get(normalised);
   if (!promo) return res.json({ valid: false, message: 'Invalid promo code' });
 
-  // Apply — mark brand as paid
+  // Check one-time use — each code can only be used once per brand
+  const already = await pool.query(
+    'SELECT id FROM promo_redemptions WHERE code = $1 AND brand_profile_id = $2',
+    [normalised, brandProfileId]
+  );
+  if (already.rows.length) return res.json({ valid: false, message: 'Code already used' });
+
+  // Log redemption + apply
+  await pool.query(
+    'INSERT INTO promo_redemptions (code, brand_profile_id) VALUES ($1, $2)',
+    [normalised, brandProfileId]
+  );
+
   if (promo.discount === 100) {
     await pool.query(
       `UPDATE brand_profiles SET is_paid = true, expires_at = NULL, updated_at = NOW() WHERE id = $1`,
       [brandProfileId]
     );
-    console.log(`[PROMO] ${code} applied to brand ${brandProfileId} — ${promo.description}`);
+    console.log(`[PROMO] ${normalised} applied to brand ${brandProfileId} — ${promo.description}`);
   }
 
   res.json({ valid: true, discount: promo.discount, message: `Code applied — ${promo.description}` });
