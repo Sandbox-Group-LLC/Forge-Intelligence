@@ -1586,3 +1586,89 @@
 
 .pq-retry-btn:hover { background: rgba(239,68,68,0.2); border-color: #EF4444; }
 .pq-retry-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* ── Reviewer Dropdown ───────────────────────────────────────────────────── */
+.pq-reviewer-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 240px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.pq-reviewer-dropdown-title {
+  padding: 10px 14px 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--color-text-muted);
+}
+
+.pq-reviewer-empty {
+  padding: 8px 14px 12px;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.pq-reviewer-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 14px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: background var(--transition-fast);
+}
+
+.pq-reviewer-option:hover { background: var(--color-bg-elevated); }
+
+.pq-reviewer-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(53,99,255,0.15);
+  color: var(--color-accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.pq-reviewer-rname {
+  font-size: 0.8375rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.pq-reviewer-rtitle {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+}
+
+.pq-reviewer-divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 4px 0;
+}
+
+.pq-reviewer-link-only .pq-reviewer-avatar {
+  background: var(--color-bg-elevated);
+  font-size: 0.875rem;
+}
+
+.pq-reviewer-link-only .pq-reviewer-rname {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
