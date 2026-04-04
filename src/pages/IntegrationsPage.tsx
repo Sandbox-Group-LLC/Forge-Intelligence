@@ -167,8 +167,7 @@ const CHANNELS: ChannelDef[] = [
   {
     id: 'linkedin',
     label: 'LinkedIn',
-    description: 'Share articles to your LinkedIn profile via OAuth2. Click Connect to authorize Forge -- no manual token needed.',
-    pipedreamApp: 'linkedin',
+    description: 'Share articles to your LinkedIn profile or company page via OAuth2. Click Connect to authorize.',
     color: '#0A66C2',
     logo: 'in',
     liveStatus: 'live',
@@ -579,7 +578,16 @@ export default function IntegrationsPage() {
                           <button
                             className="int-connect-btn"
                             style={{ '--ch-color': ch.color } as React.CSSProperties}
-                            onClick={() => ch.pipedreamApp ? handleSave(ch.id) : setExpanded(isOpen ? null : ch.id)}
+                            onClick={() => {
+                              if (ch.id === 'linkedin') {
+                                // Custom OAuth flow for LinkedIn (supports company pages)
+                                window.location.href = `/api/linkedin/auth?state=${encodeURIComponent(selectedBrand + '|' + Date.now())}`;
+                              } else if (ch.pipedreamApp) {
+                                handleSave(ch.id);
+                              } else {
+                                setExpanded(isOpen ? null : ch.id);
+                              }
+                            }}
                           >
                             {ch.pipedreamApp ? 'Connect' : (isOpen ? 'Cancel' : 'Connect')}
                           </button>
@@ -601,7 +609,33 @@ export default function IntegrationsPage() {
                             Connected via Pipedream
                           </div>
                           <span className="int-pipedream-sub">OAuth managed by Pipedream · Token auto-refreshes · Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}</span>
-                          <button className="int-reauth-btn" onClick={() => handleSave(ch.id)}>Reconnect</button>
+                          <button className="int-reauth-btn" onClick={() => {
+                            if (ch.id === 'linkedin') {
+                              window.location.href = `/api/linkedin/auth?state=${encodeURIComponent(selectedBrand + '|' + Date.now())}`;
+                            } else {
+                              handleSave(ch.id);
+                            }
+                          }}>Reconnect</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* LinkedIn: Connected status (custom OAuth, not Pipedream) */}
+                    {ch.id === 'linkedin' && connected && (
+                      <div className="int-form-section">
+                        <div className="int-pipedream-status">
+                          <div className="int-pipedream-badge" style={{ background: 'rgba(10, 102, 194, 0.15)', color: '#0A66C2' }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                            Connected via OAuth
+                          </div>
+                          <span className="int-pipedream-sub">
+                            Posting as: <strong>{saved?.credentials?.selectedTarget?.name || saved?.credentials?.name || 'LinkedIn Profile'}</strong>
+                            {saved?.credentials?.selectedTarget?.type === 'company' && ' (Company Page)'}
+                            {' · '}Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}
+                          </span>
+                          <button className="int-reauth-btn" onClick={() => {
+                            window.location.href = `/api/linkedin/auth?state=${encodeURIComponent(selectedBrand + '|' + Date.now())}`;
+                          }}>Reconnect</button>
                         </div>
                       </div>
                     )}
