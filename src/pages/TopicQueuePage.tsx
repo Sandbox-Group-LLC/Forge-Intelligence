@@ -64,7 +64,7 @@ export default function TopicQueuePage() {
   useEffect(() => {
     if (!selectedBrand) return;
     fetch(`/api/topic-ideas/${selectedBrand}`).then(r => r.json()).then(d => {
-      if (d.success) setTopics(d.data || d.topics || []);
+      if (d.success) setTopics(d.ideas || d.data || []);
     });
   }, [selectedBrand]);
 
@@ -78,7 +78,7 @@ export default function TopicQueuePage() {
     });
     const d = await r.json();
     if (d.success) {
-      setTopics(prev => [d.data, ...prev]);
+      setTopics(prev => [d.idea || d.data, ...prev]);
       setTopic('');
       setNote('');
     }
