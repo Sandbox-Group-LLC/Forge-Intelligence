@@ -5059,6 +5059,7 @@ Output only the post text.` }]
 });
 
 app.post('/api/publishing/publish', async (req, res) => {
+  const startTime = Date.now();
   const { queueItemId, channels: selectedChannels } = req.body;
   if (!queueItemId) return res.status(400).json({ error: 'queueItemId required' });
   try {
