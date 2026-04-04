@@ -216,9 +216,10 @@ export function Sidebar() {
     }
   }, []);
 
-  // Sync group open state with current path
+  // Sync group open state and path with navigation
   useEffect(() => {
     const p = window.location.pathname;
+    setPath(p);
     if (['/app/publishing-queue','/app/content-library','/app/content-import'].some(r => p.startsWith(r))) {
       setPublishingGroupOpen(true);
     }
@@ -247,7 +248,7 @@ export function Sidebar() {
     }
   };
 
-  const path = window.location.pathname;
+  const [path, setPath] = useState(window.location.pathname);
   const isBrainViewActive = path.startsWith('/app/context-hub');
 
   const getBrainItemStatus = (id: ViewType): 'active' | 'available' | 'disabled' => {
