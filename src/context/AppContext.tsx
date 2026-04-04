@@ -17,7 +17,7 @@ interface AppContextType {
   setHistoryEntries: (entries: HistoryEntry[]) => void;
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (collapsed: boolean) => void;
-  startAnalysis: (overrideUrl?: string) => void;
+  startAnalysis: () => void;
   loadSampleData: () => void;
 }
 
@@ -74,8 +74,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAnalysisInput(sampleAnalysisInput);
   };
 
-  const startAnalysis = async (overrideUrl?: string) => {
-    const effectiveUrl = overrideUrl || analysisInput.brandUrl;
+  const startAnalysis = async () => {
+    const effectiveUrl = analysisInput.brandUrl;
     setIsProcessing(true);
     setCurrentView('active-run');
     const stages = initialProcessingStages.map(s => ({ ...s, status: 'pending' as const }));
@@ -94,7 +94,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         competitorUrls: analysisInput.competitorUrls,
         audienceNotes: analysisInput.audienceNotes,
         strategicNotes: analysisInput.strategicNotes,
-        checkBrainFirst: overrideUrl ? false : analysisInput.checkBrainFirst,
+        checkBrainFirst: analysisInput.checkBrainFirst,
         saveToBrain: analysisInput.saveToBrain
       })
     });
