@@ -142,7 +142,19 @@ Medium stopped issuing new API integration tokens in early 2025. The publish bac
 | Sync-to-Staged on Delete | ✅ LIVE | Queue item resets to staged when post deleted on X or LinkedIn |
 | BASE_DOMAIN env var | ✅ LIVE | Article URLs in posts use `BASE_DOMAIN` — dev points to `dev.forgeintelligence.ai` |
 
+### 🎨 UI Polish (April 3)
+
+- Performance Dashboard tabs — flat underline style, no Ubuntu 2005 bevel
+- Performance chart — dynamic ResizeObserver width, Forge blue line, gradient fill, proper dots, full-width responsive
+- Chip color system — grey=available, white=selected, Forge blue=live, superman red=error
+- New Analysis Advanced Overrides — padding-bottom fix so content doesn't escape viewport
+- Import Article — 30px header margin, 900px form card
+- Sidebar groups — path-reactive active states, Settings no longer jealous of Publishing
+- Publishing Queue — UTM copy button on every published result row
+- GSC John Cena'd from publish channel selector permanently
+
 ### 🔲 What Is NOT Built Yet
+
 
 - LinkedIn impressions/clicks (requires Marketing Developer Platform approval — applied; Pipedream Connect may unlock this)
 - WordPress live API publish
