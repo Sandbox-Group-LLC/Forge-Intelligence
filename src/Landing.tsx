@@ -26,26 +26,10 @@ export default function Landing() {
     setError('');
     try {
       const brandUrl = trimmed.startsWith('http') ? trimmed : `https://${trimmed}`;
-      const res = await fetch('/api/context-hub/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          brandUrl,
-          competitorUrls: [],
-          audienceNotes: '',
-          strategicNotes: '',
-          checkBrainFirst: false,
-          saveToBrain: true,
-        }),
-      });
-      const d = await res.json();
-      if (d.success && d.data?.id) {
-        sessionStorage.setItem('forge_brain_id', d.data.id);
-        sessionStorage.setItem('forge_brain_url', brandUrl);
-        window.location.href = '/app/context-hub?view=brand-profile';
-      } else {
-        throw new Error(d.error || 'Something went wrong');
-      }
+      // Store URL for context-hub to pick up, then redirect immediately
+      // Analysis runs in the background — Active Run handles the in-progress state
+      sessionStorage.setItem('forge_onboard_url', brandUrl);
+      window.location.href = '/app/context-hub';
     } catch(e: any) {
       setStatus('error');
       setError(e.message || 'Something went wrong. Try again.');
