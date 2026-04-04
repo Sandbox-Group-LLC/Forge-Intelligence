@@ -5549,7 +5549,7 @@ app.post('/api/publishing/queue/:id/request-review', async (req, res) => {
           method: 'POST',
           headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            from: 'onboarding@resend.dev',
+            from: 'Forge Intelligence <hello@forgeintelligence.ai>',
             to: r.email,
             subject: `Review requested: ${item?.title || 'Article'}`,
             html: `
