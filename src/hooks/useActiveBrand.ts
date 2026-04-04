@@ -20,11 +20,11 @@ export function useActiveBrand() {
       try {
         if (isSignedIn) {
           // Authenticated — fetch user's specific brand via /api/auth/me
-          // Pass brand_id from URL if present (post-payment sign-up redirect)
+          // Check localStorage for pending brand_id from post-payment sign-up
           const token = await getToken();
-          const urlParams = new URLSearchParams(window.location.search);
-          const brandId = urlParams.get('brand_id') || '';
-          const meUrl = brandId ? `/api/auth/me?brand_id=${encodeURIComponent(brandId)}` : '/api/auth/me';
+          const pendingBrandId = localStorage.getItem('forge_pending_brand_id') || '';
+          if (pendingBrandId) localStorage.removeItem('forge_pending_brand_id');
+          const meUrl = pendingBrandId ? `/api/auth/me?brand_id=${encodeURIComponent(pendingBrandId)}` : '/api/auth/me';
           const res = await fetch(meUrl, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
