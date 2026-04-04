@@ -95,7 +95,7 @@
 /* ── Channel Tabs ── */
 .perf-channels {
   display: flex;
-  gap: 8px;
+  gap: 0;
   border-bottom: 1px solid var(--color-border);
   flex-wrap: wrap;
 }
@@ -104,30 +104,32 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 16px;
+  padding: 10px 18px;
   font-size: 0.875rem;
-  color: var(--color-text-secondary);
+  font-weight: 500;
+  color: var(--color-text-muted);
+  border: none;
   border-bottom: 2px solid transparent;
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-  transition: all var(--transition-normal);
-  cursor: pointer;
   background: none;
+  cursor: pointer;
   margin-bottom: -1px;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+  border-radius: 0;
 }
 
 .perf-channel-tab:hover:not(:disabled) {
   color: var(--color-text-primary);
-  background: var(--color-bg-elevated);
+  background: none;
 }
 
 .perf-channel-tab.active {
-  color: var(--color-accent);
+  color: var(--color-text-primary);
   border-bottom-color: var(--color-accent);
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .perf-channel-tab.coming-soon {
-  opacity: 0.45;
+  opacity: 0.35;
   cursor: default;
 }
 
