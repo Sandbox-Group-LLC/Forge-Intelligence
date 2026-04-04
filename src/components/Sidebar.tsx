@@ -205,8 +205,8 @@ const topNavItems: TopNavItem[] = [
 export function Sidebar() {
   const { currentView, setCurrentView, sidebarCollapsed, setSidebarCollapsed, isProcessing, brandProfile } = useApp();
   const [brainGroupOpen, setBrainGroupOpen] = useState(false);
-  const [publishingGroupOpen, setPublishingGroupOpen] = useState(true);
-  const [settingsGroupOpen, setSettingsGroupOpen] = useState(true);
+  const [publishingGroupOpen, setPublishingGroupOpen] = useState(() => ['/app/publishing-queue','/app/content-library','/app/content-import'].some(r => window.location.pathname.startsWith(r)));
+  const [settingsGroupOpen, setSettingsGroupOpen] = useState(() => ['/app/brand-settings','/app/integrations'].some(r => window.location.pathname.startsWith(r)));
   const [mobileExpanded, setMobileExpanded] = useState(false);
 
   // Auto-collapse on mobile at mount
@@ -215,6 +215,17 @@ export function Sidebar() {
       setSidebarCollapsed(true);
     }
   }, []);
+
+  // Sync group open state with current path
+  useEffect(() => {
+    const p = window.location.pathname;
+    if (['/app/publishing-queue','/app/content-library','/app/content-import'].some(r => p.startsWith(r))) {
+      setPublishingGroupOpen(true);
+    }
+    if (['/app/brand-settings','/app/integrations'].some(r => p.startsWith(r))) {
+      setSettingsGroupOpen(true);
+    }
+  }, [window.location.pathname]);
 
   // Track mobile expanded state (collapsed=false on mobile = drawer open)
   const isMobile = () => window.innerWidth <= 768;
