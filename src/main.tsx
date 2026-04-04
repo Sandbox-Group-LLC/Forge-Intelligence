@@ -39,7 +39,6 @@ import './index.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_live_Y2xlcmsuZm9yZ2VpbnRlbGxpZ2VuY2UuYWkkMA"}>
     <BrowserRouter>
       <Routes>
         {/* Marketing site */}
@@ -48,21 +47,21 @@ createRoot(document.getElementById('root')!).render(
         {/* App — all product routes live under /app/ */}
         <Route
           path="/app/context-hub/*"
-          element={<AppProvider><ContextAgentPage /></AppProvider>}
+          element={<ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_live_Y2xlcmsuZm9yZ2VpbnRlbGxpZ2VuY2UuYWkkMA"}><AppProvider><ContextAgentPage /></AppProvider></ClerkProvider>}
         />
-        <Route path="/app/geo-strategist" element={<AppProvider><GeoStrategistPage /></AppProvider>} />
-        <Route path="/app/authenticity-enricher" element={<AppProvider><AuthenticityEnricherPage /></AppProvider>} />
-        <Route path="/app/content-generator" element={<AppProvider><ContentGeneratorPage /></AppProvider>} />
-        <Route path="/app/campaign-generator" element={<AppProvider><CampaignGeneratorPage /></AppProvider>} />
-        <Route path="/app/compliance-gate" element={<AppProvider><ComplianceGatePage /></AppProvider>} />
-        <Route path="/app/integrations" element={<AppProvider><IntegrationsPage /></AppProvider>} />
-        <Route path="/app/publishing-queue" element={<AppProvider><PublishingQueuePage /></AppProvider>} />
-        <Route path="/app/performance" element={<AppProvider><PerformanceDashboardPage /></AppProvider>} />
-        <Route path="/app/content-library" element={<AppProvider><ContentLibraryPage /></AppProvider>} />
-        <Route path="/app/content-import" element={<AppProvider><ContentImportPage /></AppProvider>} />
-        <Route path="/app/admin" element={<AppProvider><AdminPage /></AppProvider>} />
-        <Route path="/app/topic-queue" element={<AppProvider><TopicQueuePage /></AppProvider>} />
-        <Route path="/app/brand-settings" element={<AppProvider><BrandSettingsPage /></AppProvider>} />
+        <Route path="/app/geo-strategist" element={<ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_live_Y2xlcmsuZm9yZ2VpbnRlbGxpZ2VuY2UuYWkkMA"}><AppProvider><GeoStrategistPage /></AppProvider></ClerkProvider>} />
+        <Route path="/app/authenticity-enricher" element={<ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_live_Y2xlcmsuZm9yZ2VpbnRlbGxpZ2VuY2UuYWkkMA"}><AppProvider><AuthenticityEnricherPage /></AppProvider></ClerkProvider>} />
+        <Route path="/app/content-generator" element={<ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_live_Y2xlcmsuZm9yZ2VpbnRlbGxpZ2VuY2UuYWkkMA"}><AppProvider><ContentGeneratorPage /></AppProvider></ClerkProvider>} />
+        <Route path="/app/campaign-generator" element={<ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_live_Y2xlcmsuZm9yZ2VpbnRlbGxpZ2VuY2UuYWkkMA"}><AppProvider><CampaignGeneratorPage /></AppProvider></ClerkProvider>} />
+        <Route path="/app/compliance-gate" element={<ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_live_Y2xlcmsuZm9yZ2VpbnRlbGxpZ2VuY2UuYWkkMA"}><AppProvider><ComplianceGatePage /></AppProvider></ClerkProvider>} />
+        <Route path="/app/integrations" element={<ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_live_Y2xlcmsuZm9yZ2VpbnRlbGxpZ2VuY2UuYWkkMA"}><AppProvider><IntegrationsPage /></AppProvider></ClerkProvider>} />
+        <Route path="/app/publishing-queue" element={<ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_live_Y2xlcmsuZm9yZ2VpbnRlbGxpZ2VuY2UuYWkkMA"}><AppProvider><PublishingQueuePage /></AppProvider></ClerkProvider>} />
+        <Route path="/app/performance" element={<ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_live_Y2xlcmsuZm9yZ2VpbnRlbGxpZ2VuY2UuYWkkMA"}><AppProvider><PerformanceDashboardPage /></AppProvider></ClerkProvider>} />
+        <Route path="/app/content-library" element={<ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_live_Y2xlcmsuZm9yZ2VpbnRlbGxpZ2VuY2UuYWkkMA"}><AppProvider><ContentLibraryPage /></AppProvider></ClerkProvider>} />
+        <Route path="/app/content-import" element={<ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_live_Y2xlcmsuZm9yZ2VpbnRlbGxpZ2VuY2UuYWkkMA"}><AppProvider><ContentImportPage /></AppProvider></ClerkProvider>} />
+        <Route path="/app/admin" element={<ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_live_Y2xlcmsuZm9yZ2VpbnRlbGxpZ2VuY2UuYWkkMA"}><AppProvider><AdminPage /></AppProvider></ClerkProvider>} />
+        <Route path="/app/topic-queue" element={<ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_live_Y2xlcmsuZm9yZ2VpbnRlbGxpZ2VuY2UuYWkkMA"}><AppProvider><TopicQueuePage /></AppProvider></ClerkProvider>} />
+        <Route path="/app/brand-settings" element={<ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_live_Y2xlcmsuZm9yZ2VpbnRlbGxpZ2VuY2UuYWkkMA"}><AppProvider><BrandSettingsPage /></AppProvider></ClerkProvider>} />
 
         {/* Public article viewer — no AppProvider needed */}
         <Route path="/articles/:brandSlug/:articleSlug" element={<PublicArticlePage />} />
@@ -82,6 +81,5 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/performance" element={<Navigate to="/app/performance" replace />} />
       </Routes>
     </BrowserRouter>
-    </ClerkProvider>
   </StrictMode>
 );
