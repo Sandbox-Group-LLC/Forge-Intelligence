@@ -1,5 +1,4 @@
 import { useUser, SignOutButton } from '@clerk/clerk-react';
-import { useActiveBrand } from '../hooks/useActiveBrand';
 import { useApp } from '../context/AppContext';
 import './TopBar.css';
 
@@ -57,7 +56,6 @@ const pathTitles: Record<string, string> = {
 
 export function TopBar() {
   const { currentView, brandProfile, sidebarCollapsed, setSidebarCollapsed } = useApp();
-  const { brand: activeBrand } = useActiveBrand();
   const { user } = useUser();
 
   return (
