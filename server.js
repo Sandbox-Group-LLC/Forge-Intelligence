@@ -2256,8 +2256,8 @@ Return ONLY valid JSON:
     console.log('[GEO] FINAL topicalAuthorityMap[0]:', JSON.stringify(topicalAuthorityMap[0]));
     console.log('[GEO] FINAL geoOpportunities[0]:', JSON.stringify(geoOpportunitiesNorm[0]));
     console.log('[GEO] FINAL counts — topical:', topicalAuthorityMap.length, 'geo:', geoOpportunitiesNorm.length);
-    await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata) VALUES ($1,$2,$3,$4,$5,$6)', ['stage2_geo_strategist', brandProfileId, 'success', 0, Date.now()-startTime, JSON.stringify({ brandProfileId })]).catch(()=>{});
-        res.json({ success: true, cached: false, data: {
+    await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata) VALUES ($1,$2,$3,$4,$5,$6)', ['stage2_geo_strategist', brandProfileId, 'success', 0, latencyMs, JSON.stringify({ brandProfileId })]).catch(e => console.error('[ACTIVITY LOG]', e.message));
+            res.json({ success: true, cached: false, data: {
       id, brandProfileId, brandUrl: profile.brand_url, brandName: profile.brand_name,
       version: nextVersion, opportunityScore, latencyMs,
       topicalAuthorityMap, geoOpportunities: geoOpportunitiesNorm, entitySchemaMap, geoBrief
@@ -2561,8 +2561,8 @@ Respond with this exact JSON structure:
     const latencyMs = Date.now() - startTime;
     console.log(`[ENRICH] Complete — Score: ${confidenceScore} | Gaps: ${gaps.length} | NeedsManual: ${needsManualInput} | Latency: ${latencyMs}ms`);
 
-    await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata) VALUES ($1,$2,$3,$4,$5,$6)', ['stage3_authenticity_enricher', brandProfileId, 'success', 0, Date.now()-startTime, JSON.stringify({ brandProfileId })]).catch(()=>{});
-        res.json({ success: true, cached: false, data: {
+    await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata) VALUES ($1,$2,$3,$4,$5,$6)', ['stage3_authenticity_enricher', brandProfileId, 'success', 0, latencyMs, JSON.stringify({ brandProfileId })]).catch(e => console.error('[ACTIVITY LOG]', e.message));
+            res.json({ success: true, cached: false, data: {
       id: newId, brandProfileId, brandUrl: profile.brand_url, brandName,
       version: nextVersion, confidenceScore, latencyMs, needsManualInput,
       ...enrichedData
@@ -3479,8 +3479,8 @@ app.post('/api/compliance/approve', async (req, res) => {
       ).catch(e => console.error('[QUEUE] Auto-stage error:', e.message));
     }
 
-        await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata) VALUES ($1,$2,$3,$4,$5,$6)', ['stage5_compliance_gate', brandProfileId, 'success', 0, Date.now()-startTime, JSON.stringify({ contentId, status: finalStatus })]).catch(()=>{});
-    res.json({ success: true, status: finalStatus, contentId });
+        await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata) VALUES ($1,$2,$3,$4,$5,$6)', ['stage5_compliance_gate', brandProfileId, 'success', 0, Date.now()-startTime, JSON.stringify({ contentId, status: finalStatus })]).catch(e => console.error('[ACTIVITY LOG]', e.message));
+        res.json({ success: true, status: finalStatus, contentId });
   } catch (err) {
     console.error('[COMPLIANCE] Approve error:', err);
     res.status(500).json({ success: false, error: err.message });
@@ -4795,8 +4795,8 @@ ${canonicalNote}`,
       ).catch(e => console.error('[MEMORY] Write error:', e.message));
     }
 
-        await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata) VALUES ($1,$2,$3,$4,$5,$6)', ['stage6_publisher', brandProfileId, 'success', 0, Date.now()-startTime, JSON.stringify({ channels: selectedChannels, status: newStatus })]).catch(()=>{});
-    res.json({ success: true, status: newStatus, results });
+        await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata) VALUES ($1,$2,$3,$4,$5,$6)', ['stage6_publisher', brandProfileId, 'success', 0, Date.now()-startTime, JSON.stringify({ channels: selectedChannels, status: newStatus })]).catch(e => console.error('[ACTIVITY LOG]', e.message));
+        res.json({ success: true, status: newStatus, results });
   } catch (err) {
     console.error('[PUBLISH] Error:', err);
     res.status(500).json({ success: false, error: err.message });
