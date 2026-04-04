@@ -5837,6 +5837,88 @@ app.delete('/api/reviewers/:id', async (req, res) => {
   } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
+
+// ── Onboarding / GTM Flow ─────────────────────────────────────────────────────
+
+// Add expires_at to brand_profiles for free trial brains
+pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ`).catch(() => {});
+pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS is_paid BOOLEAN DEFAULT false`).catch(() => {});
+pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS onboard_session_id TEXT`).catch(() => {});
+
+// POST /api/onboard/analyze — landing page entry point
+// Creates a UUID, seeds the brain, fires Context Agent, returns session
+app.post('/api/onboard/analyze', async (req, res) => {
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: 'url required' });
+
+  try {
+    // Normalise URL
+    const brandUrl = url.startsWith('http') ? url : `https://${url}`;
+    const brandName = brandUrl.replace(/https?:\/\//, '').split('/')[0].replace(/^www\./, '');
+
+    // Create brand profile with 24hr expiry
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const brandInsert = await pool.query(
+      `INSERT INTO brand_profiles (brand_url, brand_name, status, expires_at, is_paid, created_at, updated_at)
+       VALUES ($1, $2, 'active', $3, false, NOW(), NOW()) RETURNING id`,
+      [brandUrl, brandName, expiresAt]
+    );
+    const brandProfileId = brandInsert.rows[0].id;
+    const safeId = brandProfileId.replace(/-/g, '_');
+
+    // Provision content table
+    await pool.query(`CREATE TABLE IF NOT EXISTS generated_content_${safeId} (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      brand_profile_id TEXT NOT NULL,
+      enriched_brief_id TEXT,
+      title TEXT,
+      article_json JSONB DEFAULT '{}',
+      overall_confidence INTEGER,
+      brain_match_score INTEGER,
+      status VARCHAR(30) DEFAULT 'draft',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`).catch(() => {});
+
+    res.json({ success: true, brandProfileId, brandName, brandUrl, expiresAt });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /api/onboard/brain/:brandProfileId — check if brain exists and is still valid
+app.get('/api/onboard/brain/:brandProfileId', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, brand_name, brand_url, expires_at, is_paid, status FROM brand_profiles WHERE id = $1',
+      [req.params.brandProfileId]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Brain not found' });
+    const brain = result.rows[0];
+    const expired = !brain.is_paid && brain.expires_at && new Date(brain.expires_at) < new Date();
+    res.json({ success: true, brain: { ...brain, expired } });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/onboard/paypal-success — called after PayPal payment confirmed
+// Removes expiry, marks as paid, unlocks all stages
+app.post('/api/onboard/paypal-success', async (req, res) => {
+  const { brandProfileId, orderId } = req.body;
+  if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
+  try {
+    await pool.query(
+      `UPDATE brand_profiles SET is_paid = true, expires_at = NULL, updated_at = NOW() WHERE id = $1`,
+      [brandProfileId]
+    );
+    console.log('[PAYPAL] Payment confirmed — brandProfileId:', brandProfileId, 'orderId:', orderId);
+    res.json({ success: true, unlocked: true });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // ── Content Import (Bring Your Own Article) ──────────────────────────────────
 
 // POST /api/content/import — parse + score an externally written article
