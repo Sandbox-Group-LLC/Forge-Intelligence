@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { AppShell } from '../layouts/AppShell';
 import { NewAnalysis } from '../components/views/NewAnalysis';
@@ -9,27 +9,27 @@ import { BrainHistory } from '../components/views/BrainHistory';
 
 function ContextAgentPage() {
   const { currentView, setAnalysisInput, startAnalysis } = useApp();
+  const firedRef = useRef(false);
 
-  // If arriving from landing page onboard flow, auto-fire analysis for that brand
   useEffect(() => {
+    if (firedRef.current) return;
     const params = new URLSearchParams(window.location.search);
     const onboardId = params.get('onboard');
     const onboardUrl = sessionStorage.getItem('forge_onboard_url');
-    if (onboardId && onboardUrl) {
-      // Set the brand URL and kick off the active run immediately
-      setAnalysisInput({
-        brandUrl: onboardUrl,
-        competitorUrls: [],
-        audienceNotes: '',
-        strategicNotes: '',
-        checkBrainFirst: false,
-        saveToBrain: true,
-        onboardBrandProfileId: onboardId,
-      } as any);
-      startAnalysis();
-      sessionStorage.removeItem('forge_onboard_url');
-      window.history.replaceState({}, '', '/app/context-hub');
-    }
+    if (!onboardId || !onboardUrl) return;
+    firedRef.current = true;
+    window.history.replaceState({}, '', '/app/context-hub');
+    sessionStorage.removeItem('forge_onboard_url');
+    // setAnalysisInput then call startAnalysis in next tick so state is flushed
+    setAnalysisInput({
+      brandUrl: onboardUrl,
+      competitorUrls: [],
+      audienceNotes: '',
+      strategicNotes: '',
+      checkBrainFirst: false,
+      saveToBrain: true,
+    });
+    setTimeout(() => startAnalysis(), 0);
   }, []);
 
   const renderView = () => {
