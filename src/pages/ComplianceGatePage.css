@@ -421,3 +421,19 @@
   background: rgba(16, 185, 129, 0.2);
   border-color: #10B981;
 }
+
+/* Selected article row */
+.comp-article-row.comp-article-selected {
+  background: rgba(53, 99, 255, 0.15);
+  border-color: #3563FF;
+  box-shadow: 0 0 0 1px rgba(53, 99, 255, 0.3);
+}
+
+.comp-article-row.comp-article-selected .comp-article-title {
+  color: #fff;
+}
+
+.comp-selected-indicator {
+  color: #3563FF;
+  font-weight: 600;
+}
