@@ -4306,6 +4306,99 @@ app.get('/auth/hubspot/callback', async (req, res) => {
 });
 
 // HubSpot token refresh helper
+// ── HubSpot: Sync Clerk user to HubSpot CRM (for Forge's own tracking) ───────
+async function syncUserToHubSpot(clerkUserId) {
+  try {
+    // Get system-level HubSpot connection
+    const hubspot = await pool.query(
+      `SELECT credentials FROM publishing_channels WHERE brand_profile_id = 'system' AND channel = 'hubspot'`
+    );
+    if (!hubspot.rows.length) {
+      console.log('[HubSpot Sync] No system HubSpot connection');
+      return null;
+    }
+    
+    // Fetch user details from Clerk
+    const clerkRes = await fetch(`https://api.clerk.com/v1/users/${clerkUserId}`, {
+      headers: { 'Authorization': `Bearer ${process.env.CLERK_SECRET_KEY}` }
+    });
+    if (!clerkRes.ok) {
+      console.log('[HubSpot Sync] Could not fetch Clerk user:', clerkUserId);
+      return null;
+    }
+    const clerkUser = await clerkRes.json();
+    
+    const email = clerkUser.email_addresses?.[0]?.email_address;
+    if (!email) {
+      console.log('[HubSpot Sync] No email for user:', clerkUserId);
+      return null;
+    }
+    
+    // Get fresh HubSpot token
+    const accessToken = await refreshHubSpotToken('system');
+    
+    // Check if contact exists
+    const searchRes = await fetch('https://api.hubapi.com/crm/v3/objects/contacts/search', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        filterGroups: [{
+          filters: [{ propertyName: 'email', operator: 'EQ', value: email }]
+        }]
+      })
+    });
+    const searchData = await searchRes.json();
+    
+    // Build properties
+    const firstName = clerkUser.first_name || '';
+    const lastName = clerkUser.last_name || '';
+    const company = clerkUser.public_metadata?.company || clerkUser.unsafe_metadata?.company || '';
+    
+    const properties = {
+      email,
+      firstname: firstName,
+      lastname: lastName,
+      ...(company && { company }),
+      forge_clerk_id: clerkUserId,
+      forge_signup_date: clerkUser.created_at ? new Date(clerkUser.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+    };
+    
+    if (searchData.results?.length > 0) {
+      // Update existing contact
+      const contactId = searchData.results[0].id;
+      await fetch(`https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ properties })
+      });
+      console.log(`[HubSpot Sync] Updated contact ${contactId} for ${email}`);
+      return { action: 'updated', contactId, email };
+    } else {
+      // Create new contact
+      const createRes = await fetch('https://api.hubapi.com/crm/v3/objects/contacts', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ properties })
+      });
+      const created = await createRes.json();
+      console.log(`[HubSpot Sync] Created contact ${created.id} for ${email}`);
+      return { action: 'created', contactId: created.id, email };
+    }
+  } catch (err) {
+    console.error('[HubSpot Sync] Error:', err.message);
+    return null;
+  }
+}
+
 async function refreshHubSpotToken(brandProfileId) {
   const result = await pool.query(
     `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'hubspot'`,
@@ -6567,6 +6660,8 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
         if (match) activeBrand = match;
       }
       console.log(`[AUTH] Super admin ${req.userId} — ${allBrands.rows.length} brands available`);
+      // Fire-and-forget: sync user to HubSpot CRM
+      syncUserToHubSpot(req.userId).catch(() => {});
       return res.json({
         success: true,
         userId: req.userId,
@@ -6601,6 +6696,9 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
         console.log(`[AUTH] Auto-tethered brand ${result.rows[0].id} to user ${req.userId}`);
       }
     }
+    // Fire-and-forget: sync user to HubSpot CRM
+    syncUserToHubSpot(req.userId).catch(() => {});
+    
     res.json({
       success: true,
       userId: req.userId,
