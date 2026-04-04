@@ -706,6 +706,44 @@ User sees their brand understood better in 7 minutes than their last agency unde
 - [ ] Industry Benchmark Reports — vertical-level pattern data, opt-in OFF by default
 
 
+
+## Auth Layer Complete — April 4, 2026 (Session 2)
+
+### What shipped
+
+**Clerk Auth — full flow working:**
+- `@clerk/clerk-react` + `jose` installed
+- Single `ClerkProvider` wraps `BrowserRouter` — initialises on `/app/*` only
+- `requireAuth` + `softAuth` middleware in server.js — verifies Clerk JWT via JWKS
+- `clerk_user_id` column on `brand_profiles` — auto-tethered on first `/api/auth/me` call
+- `/api/auth/me` — returns user's brand + `isPaid`, auto-tethers most recent brand if none linked
+- `useActiveBrand` hook — waits for `isLoaded`, re-fires on `isSignedIn` change
+- `AppContext.isPaid` now wired from `useActiveBrand.isPaid` — was previously blind to Clerk auth state
+- `ClerkTokenSync` component — no-op, Clerk SDK manages token internally
+- TopBar — Clerk user avatar + `SignOutButton` → redirects to `/`
+
+**Auth flow:**
+```
+Landing (no auth) → free ass shake → Brand Profile
+→ Click locked feature → GateModal
+  → FORGEFRIEND promo OR PayPal $99
+  → is_paid = true in DB
+  → if signed in: reload → useActiveBrand refetches → isPaid = true → gate drops
+  → if not signed in: localStorage brand_id → Clerk sign-up → return → auto-tether → gate drops
+```
+
+**Promo codes (unlimited, no tracking):**
+- `FORGEFRIEND` — Friend of Forge 🐐
+- `EARLYBIRD` — Early Access
+- `SANDBOX100` — Sandbox Internal
+
+**Reset endpoint (dev/testing):**
+`POST /api/admin/reset-brand-paid` — resets `is_paid`, clears `clerk_user_id`, clears promo redemptions
+
+**Key architectural fix:**
+`AppContext.isPaid` was only watching `brandProfile.is_paid` from analysis runs.
+Added `useActiveBrand` import into AppContext — now `activeBrand.isPaid` feeds directly into `isPaid` state.
+
 ## 🚀 Production Launch — April 4, 2026
 
 **forgeintelligence.ai is live.**
