@@ -5608,10 +5608,7 @@ app.get('/api/admin/activity', async (req, res) => {
   const agentFilter = req.query.agent || null;
   const brandFilter = req.query.brand || null;
   try {
-    let query = `SELECT a.*, bp.brand_name
-      FROM agent_activity_log a
-      LEFT JOIN brand_profiles bp ON bp.id::text = a.brand_profile_id
-      WHERE 1=1`;
+    let query = `SELECT a.* FROM agent_activity_log a WHERE 1=1`;
     const params = [];
     let pi = 1;
     if (agentFilter) { query += ` AND a.agent_name = $${pi++}`; params.push(agentFilter); }
