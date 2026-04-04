@@ -11,7 +11,7 @@ interface TopicIdea {
   created_at: string;
 }
 
-interface Brand { id: string; brand_name?: string; brand_url?: string; }
+interface Brand { id: string; brandName?: string; brandUrl?: string; }
 
 const STATUS_LABEL: Record<string, string> = {
   idea: 'Idea',
@@ -64,7 +64,7 @@ export default function TopicQueuePage() {
   useEffect(() => {
     if (!selectedBrand) return;
     fetch(`/api/topic-ideas/${selectedBrand}`).then(r => r.json()).then(d => {
-      if (d.success) setTopics(d.data || []);
+      if (d.success) setTopics(d.data || d.topics || []);
     });
   }, [selectedBrand]);
 
@@ -124,7 +124,7 @@ export default function TopicQueuePage() {
           </div>
           {brands.length > 1 && (
             <select className="geo-select" value={selectedBrand} onChange={e => setSelectedBrand(e.target.value)}>
-              {brands.map(b => <option key={b.id} value={b.id}>{b.brand_name || b.brand_url}</option>)}
+              {brands.map(b => <option key={b.id} value={b.id}>{b.brandName || b.brandUrl}</option>)}
             </select>
           )}
         </div>
