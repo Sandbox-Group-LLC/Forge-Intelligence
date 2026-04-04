@@ -641,13 +641,13 @@ User sees their brand understood better in 7 minutes than their last agency unde
 
 ---
 
-### Phase 1 — Pre-Launch Core (SMB $99/mo)
-> **Deliverable:** Shippable single-brand product.
+### Phase 1 — Pre-Launch Core (SMB $99/mo) ✅ COMPLETE — April 4, 2026
+> **Deliverable:** Shippable single-brand product. LIVE at forgeintelligence.ai
 
-- [ ] Admin dashboard — surface agent_activity_log
-- [ ] Brand brain pre-seeding script — bulk seed on onboarding
-- [ ] Server-side UUID auto-generation
-- [ ] Content brief / topic queue — park ideas before full pipeline
+- [x] Admin dashboard — KPI cards (reach, articles, published, avg confidence) + reviewer management
+- [x] Brand brain pre-seeding — UUID auto-generated server-side on every Context Hub run
+- [x] Server-side UUID auto-generation — confirmed, gen_random_uuid() throughout
+- [x] Content brief / topic queue — /app/topic-queue, add/filter/send to generator
 
 ---
 
@@ -704,6 +704,52 @@ User sees their brand understood better in 7 minutes than their last agency unde
 - [ ] White-label architecture — UI skinning, custom domain
 - [ ] Cross-client pattern sharing — opt-in, Industry Benchmark Reports as value exchange
 - [ ] Industry Benchmark Reports — vertical-level pattern data, opt-in OFF by default
+
+
+## 🚀 Production Launch — April 4, 2026
+
+**forgeintelligence.ai is live.**
+
+### What shipped at launch
+
+**GTM Flow:**
+- Landing page — URL input → "Analyze My Brand Free →" → ass shake → Brand Profile reveal
+- Free tier: Context Agent runs free, Active Run + Brand Profile fully visible
+- PayPal gate — $99 one-time unlocks full suite permanently
+- God mode: `?god=ForgeCanvas` → localStorage → gate bypassed (dev/testing)
+- Twat mode: `?ungod` → clears god mode, restores gate for testing
+
+**Gate map:**
+- Free: Brain group (New Analysis, Active Run, Brand Profile) + Brand Settings
+- Locked: GEO Strategist, Authenticity Enricher, Content Generator, Campaign Generator, Compliance Gate, Publishing group, Performance, Integrations, Admin
+- Gate animation: 3s backdrop fade, 1.5s modal spring — gentle, not crackhead
+
+**Production migration:**
+- `main` → `production` branch fast-forwarded (442 commits)
+- Brand dropdown surgically removed from all 13 pages
+- `useActiveBrand` hook — auto-selects most recent brand, single source of truth
+- Brand name pill in TopBar (top-right, green dot + brand name)
+- `forgeintelligence.ai` Render service + env vars via shared environment group
+- `NEON_DATABASE_URL` on `ep-odd-waterfall-akyrdo6x-pooler` (never revert)
+
+**Reviewer approval flow:**
+- Admin page: add reviewers by name/email/title per brand
+- Publishing Queue: share icon → reviewer dropdown → Resend email fires
+- Email from `hello@forgeintelligence.ai` (domain verified in Resend)
+- Reviewer opens signed token URL, approves or requests changes — no Forge account needed
+
+**Admin dashboard:**
+- KPIs: Total Reach · Articles Generated · Published · Avg Confidence
+- Reviewer management below
+
+**Topic Queue** (`/app/topic-queue`):
+- Park content ideas, filter by status, send to Content Generator with one click
+
+### Architecture decisions locked at launch
+- $99 = 1 brand, 1 account. More brands = more $99.
+- Most recent brain = active brand (auth formalizes this later)
+- Brand dropdown hidden in production (Phase 4.5 toggle)
+- `useActiveBrand` hook is single source of truth for active brand across all pages
 
 ## Tech Stack & Implementation
 
