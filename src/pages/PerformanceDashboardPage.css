@@ -286,12 +286,6 @@
 
 .trend-chart {
   display: block;
-  width: 100%;
-  height: 260px;
-}
-
-.perf-impressions-card {
-  min-height: 0;
 }
 
 .trend-empty {
