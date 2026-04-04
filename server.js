@@ -3977,7 +3977,7 @@ app.get('/api/linkedin/auth', (req, res) => {
   const nonce = randomBytes(16).toString('hex');
   // Embed brandProfileId in state so callback knows which brand to save to
   const state = `${brandProfileId}|${nonce}`;
-  const scopes = 'openid profile email w_member_social';
+  const scopes = 'openid profile email w_member_social r_organization_social w_organization_social';
   const url = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&state=${encodeURIComponent(state)}&scope=${encodeURIComponent(scopes)}`;
   res.json({ authUrl: url, state });
 });
@@ -4003,23 +4003,91 @@ app.get('/auth/linkedin/callback', async (req, res) => {
       headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
     });
     const profile = await profileRes.json();
-    const authorUrn = `urn:li:person:${profile.sub}`;
+    const personUrn = `urn:li:person:${profile.sub}`;
+
+    // Fetch company pages user is admin of
+    let companyPages = [];
+    try {
+      const orgsRes = await fetch('https://api.linkedin.com/v2/organizationalEntityAcls?q=roleAssignee&role=ADMINISTRATOR&projection=(elements*(organizationalTarget~))', {
+        headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+      });
+      if (orgsRes.ok) {
+        const orgsData = await orgsRes.json();
+        companyPages = (orgsData.elements || []).map(el => {
+          const org = el['organizationalTarget~'] || {};
+          const orgUrn = el.organizationalTarget; // e.g. urn:li:organization:12345
+          return {
+            urn: orgUrn,
+            name: org.localizedName || org.name || 'Company Page',
+            vanityName: org.vanityName || null,
+            logoUrl: org.logoV2?.['original~']?.elements?.[0]?.identifiers?.[0]?.identifier || null
+          };
+        });
+      }
+    } catch (orgErr) {
+      console.log('[LinkedIn] Could not fetch orgs (user may not be admin of any):', orgErr.message);
+    }
 
     // Parse brandProfileId from state param
     const stateDecoded = decodeURIComponent(state || '');
     const brandProfileId = stateDecoded.includes('|') ? stateDecoded.split('|')[0] : 'system';
+
+    // Build available targets (personal + company pages)
+    const availableTargets = [
+      { type: 'personal', urn: personUrn, name: profile.name || 'Personal Profile' },
+      ...companyPages.map(p => ({ type: 'company', urn: p.urn, name: p.name, vanityName: p.vanityName, logoUrl: p.logoUrl }))
+    ];
+
+    // Default to personal profile, user can switch later
+    const selectedTarget = availableTargets[0];
 
     await pool.query(`
       INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active, updated_at)
       VALUES ($1, 'linkedin', $2, true, NOW())
       ON CONFLICT (brand_profile_id, channel) DO UPDATE
         SET credentials = $2, is_active = true, updated_at = NOW()
-    `, [brandProfileId, JSON.stringify({ accessToken: tokenData.access_token, expiresIn: tokenData.expires_in, authorUrn, name: profile.name })]);
+    `, [brandProfileId, JSON.stringify({
+      accessToken: tokenData.access_token,
+      expiresIn: tokenData.expires_in,
+      authorUrn: selectedTarget.urn,
+      selectedTarget,
+      availableTargets,
+      name: profile.name
+    })]);
 
     res.redirect('/app/integrations?linkedin_connected=true');
   } catch (err) {
     console.error('LinkedIn callback error:', err);
     res.redirect(`/app/integrations?linkedin_error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+// ── LinkedIn: Switch posting target (personal vs company page) ───────────────
+app.post('/api/linkedin/select-target', async (req, res) => {
+  const { brandProfileId, targetUrn } = req.body;
+  if (!brandProfileId || !targetUrn) return res.status(400).json({ error: 'brandProfileId and targetUrn required' });
+  try {
+    const existing = await pool.query(
+      `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'linkedin'`,
+      [brandProfileId]
+    );
+    if (!existing.rows.length) return res.status(404).json({ error: 'LinkedIn not connected' });
+    
+    const creds = existing.rows[0].credentials;
+    const target = (creds.availableTargets || []).find(t => t.urn === targetUrn);
+    if (!target) return res.status(400).json({ error: 'Invalid target URN' });
+
+    creds.authorUrn = targetUrn;
+    creds.selectedTarget = target;
+    
+    await pool.query(
+      `UPDATE publishing_channels SET credentials = $1, updated_at = NOW() WHERE brand_profile_id = $2 AND channel = 'linkedin'`,
+      [JSON.stringify(creds), brandProfileId]
+    );
+    
+    res.json({ success: true, selectedTarget: target });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 // ─────────────────────────────────────────────────────────────────────────────
