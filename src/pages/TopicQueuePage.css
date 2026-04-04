@@ -1,0 +1,198 @@
+/* ── Topic Queue ─────────────────────────────────────────────────────────── */
+.tq-page { max-width: 900px; }
+
+/* Add card */
+.tq-add-card {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 20px 24px;
+  margin-bottom: 24px;
+}
+
+.tq-add-inputs {
+  flex: 1;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.tq-input {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  font-size: 0.875rem;
+  padding: 9px 14px;
+  outline: none;
+  font-family: inherit;
+  transition: border-color var(--transition-fast);
+}
+
+.tq-input:focus { border-color: var(--color-accent); }
+.tq-input::placeholder { color: var(--color-text-muted); }
+.tq-topic-input { flex: 2 1 240px; }
+.tq-note-input { flex: 1 1 160px; }
+
+.tq-add-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 18px;
+  background: var(--color-accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+  transition: opacity var(--transition-fast);
+}
+
+.tq-add-btn:hover:not(:disabled) { opacity: 0.85; }
+.tq-add-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* Filter tabs */
+.tq-filters {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.tq-filter-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all var(--transition-fast);
+}
+
+.tq-filter-tab:hover { color: var(--color-text-primary); background: var(--color-bg-elevated); }
+
+.tq-filter-tab.active {
+  color: var(--color-text-primary);
+  background: var(--color-bg-card);
+  border-color: var(--color-border);
+}
+
+.tq-filter-count {
+  font-size: 0.7rem;
+  padding: 1px 6px;
+  background: var(--color-bg-elevated);
+  border-radius: 10px;
+  color: var(--color-text-muted);
+}
+
+.tq-filter-tab.active .tq-filter-count {
+  background: rgba(53,99,255,0.12);
+  color: var(--color-accent);
+}
+
+/* Topic list */
+.tq-empty {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.tq-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tq-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  transition: border-color var(--transition-fast);
+}
+
+.tq-row:hover { border-color: rgba(53,99,255,0.3); }
+
+.tq-row-left { flex: 1; min-width: 0; }
+
+.tq-topic {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tq-note {
+  font-size: 0.775rem;
+  color: var(--color-text-muted);
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tq-row-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.tq-status {
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tq-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: 0.775rem;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all var(--transition-fast);
+}
+
+.tq-send-btn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background: rgba(53,99,255,0.06);
+}
+
+.tq-delete-btn {
+  padding: 5px 8px;
+  opacity: 0;
+}
+
+.tq-row:hover .tq-delete-btn { opacity: 1; }
+
+.tq-delete-btn:hover {
+  border-color: #EF4444;
+  color: #EF4444;
+  background: rgba(239,68,68,0.06);
+}
