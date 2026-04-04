@@ -5129,6 +5129,36 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
   }
 });
 
+
+// POST /api/analytics/upsert — insert or update a single analytics record (also accepts backdated syncedAt)
+app.post('/api/analytics/upsert', async (req, res) => {
+  const { brandProfileId, contentId, channel, postId, impressions, clicks, reactions,
+          reposts, comments, ctr, engagementRate, publishedAt, syncedAt } = req.body;
+  if (!brandProfileId || !contentId || !channel) return res.status(400).json({ error: 'brandProfileId, contentId, channel required' });
+  try {
+    await pool.query(
+      `INSERT INTO content_analytics
+         (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions,
+          reposts, comments, ctr, engagement_rate, published_at, synced_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       ON CONFLICT (content_id, channel)
+       DO UPDATE SET
+         post_id=EXCLUDED.post_id, impressions=EXCLUDED.impressions,
+         clicks=EXCLUDED.clicks, reactions=EXCLUDED.reactions,
+         reposts=EXCLUDED.reposts, comments=EXCLUDED.comments,
+         ctr=EXCLUDED.ctr, engagement_rate=EXCLUDED.engagement_rate,
+         published_at=EXCLUDED.published_at, synced_at=EXCLUDED.synced_at`,
+      [brandProfileId, contentId, channel, postId || null,
+       impressions||0, clicks||0, reactions||0, reposts||0, comments||0,
+       ctr||0, engagementRate||0,
+       publishedAt || null, syncedAt || new Date().toISOString()]
+    );
+    res.json({ success: true });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // GET /api/analytics/dashboard/:brandProfileId — aggregated dashboard stats
 app.get('/api/analytics/dashboard/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
