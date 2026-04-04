@@ -291,6 +291,7 @@ const DEFAULT_UTM: Record<ChannelId, Record<string, string>> = {
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface SavedChannel {
+  credentials?: any;
   id: string;
   channel: ChannelId;
   utm_template: Record<string, string>;
