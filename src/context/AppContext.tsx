@@ -65,13 +65,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  // God mode bypasses gate in dev — set VITE_GOD_MODE=true in .env
-  const godMode = import.meta.env.VITE_GOD_MODE === 'true';
+  // God mode — ?god=ForgeCanvas sets localStorage, ?ungod clears it
+  const godMode = (() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('god') === 'ForgeCanvas') { localStorage.setItem('forge_god_mode', 'true'); return true; }
+    if (params.has('ungod')) { localStorage.removeItem('forge_god_mode'); return false; }
+    return localStorage.getItem('forge_god_mode') === 'true';
+  })();
   const [isPaid, setIsPaid] = useState(godMode);
 
   // Update isPaid when brandProfile changes
   useEffect(() => {
-    if (godMode) return;
+    if (godMode) { setIsPaid(true); return; }
     if (brandProfile && (brandProfile as any).is_paid) {
       setIsPaid(true);
     }
