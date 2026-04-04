@@ -5638,7 +5638,7 @@ app.get('/api/admin/stats', async (req, res) => {
       pool.query(`SELECT COUNT(*) FROM (
         SELECT id FROM generated_content_${(await pool.query('SELECT id FROM brand_profiles LIMIT 1')).rows[0]?.id?.replace(/-/g,'_') || 'x'} LIMIT 1
       ) t`).catch(() => ({ rows: [{ count: 0 }] })),
-      pool.query('SELECT COUNT(*), COUNT(CASE WHEN status = 'published' THEN 1 END) as published FROM publishing_queue'),
+      pool.query(`SELECT COUNT(*), COUNT(CASE WHEN status = 'published' THEN 1 END) as published FROM publishing_queue`),
     ]);
 
     // Get total content across all brands
