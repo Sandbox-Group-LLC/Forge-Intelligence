@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import GateModal from './GateModal';
 import './GateModal.css';
@@ -306,6 +305,14 @@ export function Sidebar() {
 
   return (
     <>
+      {gateFeature && (
+        <GateModal
+          featureName={gateFeature}
+          onClose={() => setGateFeature(null)}
+          brandProfileId={(brandProfile as any)?.id}
+          onUnlocked={() => { setGateFeature(null); window.location.reload(); }}
+        />
+      )}
       {/* Mobile backdrop */}
       {mobileExpanded && (
         <div className="sidebar-backdrop" onClick={closeMobileDrawer} aria-hidden="true" />
