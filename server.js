@@ -3855,6 +3855,22 @@ app.get('/api/publishing/queue/:brandProfileId', async (req, res) => {
       }
     }
 
+    // Fetch Pre-cog scores for all items
+    const contentIds = items.filter(i => i.content_id).map(i => i.content_id);
+    if (contentIds.length > 0) {
+      const precogRes = await pool.query(
+        `SELECT id::text, precog_score FROM generated_content_${safeId} WHERE id::text = ANY($1)`,
+        [contentIds]
+      ).catch(() => ({ rows: [] }));
+      const precogMap = {};
+      for (const row of precogRes.rows) precogMap[row.id] = row.precog_score;
+      for (const item of items) {
+        if (item.content_id && precogMap[item.content_id] !== undefined) {
+          item.precog_score = precogMap[item.content_id];
+        }
+      }
+    }
+
     res.json({ success: true, items });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
