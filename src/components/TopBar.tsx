@@ -1,4 +1,5 @@
 import { useUser, SignOutButton } from '@clerk/clerk-react';
+import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import './TopBar.css';
 
@@ -57,6 +58,7 @@ const pathTitles: Record<string, string> = {
 export function TopBar() {
   const { currentView, brandProfile, sidebarCollapsed, setSidebarCollapsed } = useApp();
   const { user } = useUser();
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
     <header className="topbar">
@@ -88,17 +90,35 @@ export function TopBar() {
             </span>
           </div>
         )}
-        <div className="user-area">
-          <SignOutButton redirectUrl="/">
-            <button className="user-avatar clerk-avatar" title={user?.primaryEmailAddress?.emailAddress || 'Sign out'}>
-              {user?.imageUrl
-                ? <img src={user.imageUrl} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
-                : <span style={{ fontSize: '0.75rem', fontWeight: 700 }}>
-                    {user?.firstName?.[0] || user?.primaryEmailAddress?.emailAddress?.[0]?.toUpperCase() || '?'}
-                  </span>
-              }
-            </button>
-          </SignOutButton>
+        <div className="user-area" style={{ position: 'relative' }}>
+          <button
+            className="user-avatar clerk-avatar"
+            onClick={() => setMenuOpen(o => !o)}
+            title="Account"
+          >
+            {user?.imageUrl
+              ? <img src={user.imageUrl} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+              : <span style={{ fontSize: '0.75rem', fontWeight: 700 }}>
+                  {user?.firstName?.[0] || user?.primaryEmailAddress?.emailAddress?.[0]?.toUpperCase() || '?'}
+                </span>
+            }
+          </button>
+          {menuOpen && (
+            <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: '#1a1f2e', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '8px 0', minWidth: 200, zIndex: 999, boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
+              onMouseLeave={() => setMenuOpen(false)}
+            >
+              <div style={{ padding: '8px 16px 10px', borderBottom: '1px solid rgba(255,255,255,0.08)', fontSize: '0.8rem', color: 'rgba(255,255,255,0.45)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {user?.primaryEmailAddress?.emailAddress || user?.firstName || 'Your account'}
+              </div>
+              <SignOutButton redirectUrl="/">
+                <button style={{ width: '100%', padding: '10px 16px', background: 'none', border: 'none', color: '#F87171', fontSize: '0.875rem', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}
+                  onClick={() => setMenuOpen(false)}
+                >
+                  Sign out
+                </button>
+              </SignOutButton>
+            </div>
+          )}
         </div>
       </div>
     </header>
