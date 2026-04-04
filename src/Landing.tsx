@@ -14,34 +14,34 @@ const ArrowRightIcon = () => (
 );
 
 export default function Landing() {
-  const [email, setEmail] = useState('');
-  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const [message, setMessage] = useState('');
+  const [url, setUrl] = useState('');
+  const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !email.includes('@')) {
-      setStatus('error');
-      setMessage('Please enter a valid email address.');
-      return;
-    }
+    const trimmed = url.trim();
+    if (!trimmed) { setError('Enter your website URL to get started.'); return; }
     setStatus('loading');
+    setError('');
     try {
-      const res = await fetch('/api/waitlist', {
+      const res = await fetch('/api/onboard/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ url: trimmed }),
       });
-      if (res.ok) {
-        setStatus('success');
-        setMessage("You're on the list. We'll be in touch.");
-        setEmail('');
+      const d = await res.json();
+      if (d.success && d.brandProfileId) {
+        // Store in session and redirect to active run
+        sessionStorage.setItem('forge_onboard_id', d.brandProfileId);
+        sessionStorage.setItem('forge_onboard_url', d.brandUrl);
+        window.location.href = `/app/context-hub?onboard=${d.brandProfileId}`;
       } else {
-        throw new Error('Request failed');
+        throw new Error(d.error || 'Something went wrong');
       }
-    } catch {
+    } catch(e: any) {
       setStatus('error');
-      setMessage('Something went wrong. Try again or email hello@forgeintelligence.ai');
+      setError(e.message || 'Something went wrong. Try again.');
     }
   };
 
@@ -55,51 +55,45 @@ export default function Landing() {
         </div>
 
         <div style={styles.content}>
-          <p style={styles.eyebrow}>Context Hub · Early Access</p>
+          <p style={styles.eyebrow}>Brand Intelligence · Free Analysis</p>
           <h1 style={styles.headline}>The intelligence layer behind modern marketing.</h1>
           <p style={styles.subline}>
-            Forge Intelligence gives marketing teams a unified view of brand context, audience signals, and strategic direction — so every decision starts from clarity, not guesswork.
+            Enter your URL. We'll read your brand to filth — voice profile, audience signals, competitive gaps — in under 10 minutes. Free.
           </p>
 
-          {status === 'success' ? (
-            <div style={styles.successState}>
-              <span style={styles.successDot} />
-              {message}
+          <form onSubmit={handleSubmit} style={styles.form}>
+            <div style={styles.inputRow}>
+              <input
+                type="text"
+                value={url}
+                onChange={e => setUrl(e.target.value)}
+                placeholder="yourcompany.com"
+                style={styles.input}
+                disabled={status === 'loading'}
+                autoComplete="url"
+                autoFocus
+              />
+              <button
+                type="submit"
+                style={{
+                  ...styles.button,
+                  opacity: status === 'loading' ? 0.7 : 1,
+                  cursor: status === 'loading' ? 'not-allowed' : 'pointer',
+                }}
+                disabled={status === 'loading'}
+              >
+                {status === 'loading' ? (
+                  <span style={styles.buttonInner}>Analyzing...</span>
+                ) : (
+                  <span style={styles.buttonInner}>
+                    Analyze My Brand Free <ArrowRightIcon />
+                  </span>
+                )}
+              </button>
             </div>
-          ) : (
-            <form onSubmit={handleSubmit} style={styles.form}>
-              <div style={styles.inputRow}>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  placeholder="you@company.com"
-                  style={styles.input}
-                  disabled={status === 'loading'}
-                  autoComplete="email"
-                />
-                <button
-                  type="submit"
-                  style={{
-                    ...styles.button,
-                    opacity: status === 'loading' ? 0.7 : 1,
-                    cursor: status === 'loading' ? 'not-allowed' : 'pointer',
-                  }}
-                  disabled={status === 'loading'}
-                >
-                  {status === 'loading' ? 'Sending...' : (
-                    <span style={styles.buttonInner}>
-                      Request early access <ArrowRightIcon />
-                    </span>
-                  )}
-                </button>
-              </div>
-              {status === 'error' && (
-                <p style={styles.errorMsg}>{message}</p>
-              )}
-              <p style={styles.formCaption}>No spam. No noise. Just a heads-up when we're ready.</p>
-            </form>
-          )}
+            {error && <p style={styles.errorMsg}>{error}</p>}
+            <p style={styles.formCaption}>No account needed. Your brand brief is ready in minutes.</p>
+          </form>
         </div>
 
         <div style={styles.footer}>
@@ -146,61 +140,15 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     gap: '64px',
   },
-  wordmark: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    color: '#F8FAFC',
-  },
-  diamondWrap: {
-    display: 'flex',
-    alignItems: 'center',
-    color: '#3563FF',
-    animation: 'pulse 3s ease-in-out infinite',
-  },
-  wordmarkText: {
-    fontSize: '18px',
-    fontWeight: 600,
-    letterSpacing: '-0.01em',
-  },
-  content: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '24px',
-  },
-  eyebrow: {
-    fontSize: '11px',
-    fontWeight: 500,
-    letterSpacing: '0.08em',
-    textTransform: 'uppercase',
-    color: '#3563FF',
-    margin: 0,
-  },
-  headline: {
-    fontSize: 'clamp(28px, 5vw, 42px)',
-    fontWeight: 600,
-    lineHeight: 1.2,
-    letterSpacing: '-0.02em',
-    color: '#F8FAFC',
-    margin: 0,
-  },
-  subline: {
-    fontSize: '16px',
-    lineHeight: 1.7,
-    color: '#94A3B8',
-    margin: 0,
-    maxWidth: '520px',
-  },
-  form: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '10px',
-  },
-  inputRow: {
-    display: 'flex',
-    gap: '10px',
-    flexWrap: 'wrap',
-  },
+  wordmark: { display: 'flex', alignItems: 'center', gap: '10px', color: '#F8FAFC' },
+  diamondWrap: { display: 'flex', alignItems: 'center', color: '#3563FF' },
+  wordmarkText: { fontSize: '18px', fontWeight: 600, letterSpacing: '-0.01em' },
+  content: { display: 'flex', flexDirection: 'column', gap: '24px' },
+  eyebrow: { fontSize: '11px', fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#3563FF', margin: 0 },
+  headline: { fontSize: 'clamp(28px, 5vw, 42px)', fontWeight: 600, lineHeight: 1.2, letterSpacing: '-0.02em', color: '#F8FAFC', margin: 0 },
+  subline: { fontSize: '16px', lineHeight: 1.7, color: '#94A3B8', margin: 0, maxWidth: '520px' },
+  form: { display: 'flex', flexDirection: 'column', gap: '10px' },
+  inputRow: { display: 'flex', gap: '10px', flexWrap: 'wrap' as const },
   input: {
     flex: '1 1 220px',
     padding: '11px 16px',
@@ -221,54 +169,13 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '14px',
     fontWeight: 500,
     fontFamily: 'inherit',
-    whiteSpace: 'nowrap',
+    whiteSpace: 'nowrap' as const,
     transition: 'background-color 0.15s ease',
   },
-  buttonInner: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-  },
-  formCaption: {
-    fontSize: '12px',
-    color: '#64748B',
-    margin: 0,
-  },
-  errorMsg: {
-    fontSize: '13px',
-    color: '#F87171',
-    margin: 0,
-  },
-  successState: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    fontSize: '15px',
-    color: '#14B8A6',
-    padding: '14px 18px',
-    backgroundColor: 'rgba(20, 184, 166, 0.08)',
-    border: '1px solid rgba(20, 184, 166, 0.2)',
-    borderRadius: '10px',
-  },
-  successDot: {
-    width: '8px',
-    height: '8px',
-    borderRadius: '50%',
-    backgroundColor: '#14B8A6',
-    flexShrink: 0,
-  },
-  footer: {
-    display: 'flex',
-    gap: '12px',
-    alignItems: 'center',
-    fontSize: '12px',
-    color: '#475569',
-  },
-  footerDivider: {
-    color: '#334155',
-  },
-  footerLink: {
-    color: '#475569',
-    textDecoration: 'none',
-  },
+  buttonInner: { display: 'flex', alignItems: 'center', gap: '8px' },
+  formCaption: { fontSize: '12px', color: '#64748B', margin: 0 },
+  errorMsg: { fontSize: '13px', color: '#F87171', margin: 0 },
+  footer: { display: 'flex', gap: '12px', alignItems: 'center', fontSize: '12px', color: '#475569' },
+  footerDivider: { color: '#334155' },
+  footerLink: { color: '#475569', textDecoration: 'none' },
 };
