@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useAuth } from '@clerk/clerk-react';
 
 interface GateModalProps {
   featureName: string;
@@ -12,6 +13,7 @@ declare global { interface Window { paypal: any; } }
 const PAYPAL_CLIENT_ID = 'AV1QAbjyqG1YTRCWKXzWjZr1Ls7uNLRnk5SzoC-ajEb3rZaq5h58SCUoi9lcZgd9OCvJrM2WchL1om6l';
 
 export default function GateModal({ featureName, onClose, brandProfileId, onUnlocked }: GateModalProps) {
+  const { isSignedIn } = useAuth();
   const [ppLoading, setPpLoading] = useState(true);
   const [ppError, setPpError] = useState('');
   const [paid, setPaid] = useState(false);
@@ -76,8 +78,14 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
         setPromoMsg(d.message);
         setTimeout(() => {
           setPaid(true);
-          if (brandProfileId) localStorage.setItem('forge_pending_brand_id', brandProfileId);
-          window.location.href = `https://accounts.forgeintelligence.ai/sign-up?redirect_url=${encodeURIComponent(window.location.origin + '/app/context-hub')}`;
+          if (isSignedIn) {
+            // Already signed in — just reload to re-fetch isPaid from server
+            window.location.reload();
+          } else {
+            // Not signed in — redirect to Clerk sign-up
+            if (brandProfileId) localStorage.setItem('forge_pending_brand_id', brandProfileId);
+            window.location.href = `https://accounts.forgeintelligence.ai/sign-up?redirect_url=${encodeURIComponent(window.location.origin + '/app/context-hub')}`;
+          }
         }, 1200);
       } else {
         setPromoStatus('error');
