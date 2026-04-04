@@ -28,6 +28,16 @@ const icons = {
       <circle cx="12" cy="8" r="5"/>
       <path d="M20 21a8 8 0 1 0-16 0"/>
     </svg>
+  ),
+  chevronDown: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="6 9 12 15 18 9"/>
+    </svg>
+  ),
+  shield: (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+    </svg>
   )
 };
 
@@ -56,9 +66,12 @@ const pathTitles: Record<string, string> = {
 };
 
 export function TopBar() {
-  const { currentView, brandProfile, sidebarCollapsed, setSidebarCollapsed } = useApp();
+  const { currentView, brandProfile, sidebarCollapsed, setSidebarCollapsed, isSuperAdmin, allBrands, switchBrand, activeBrandId } = useApp();
   const { user } = useUser();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [brandMenuOpen, setBrandMenuOpen] = useState(false);
+
+  const currentBrand = allBrands?.find(b => b.id === activeBrandId) || allBrands?.[0];
 
   return (
     <header className="topbar">
@@ -79,6 +92,92 @@ export function TopBar() {
       </div>
 
       <div className="topbar-right">
+        {/* Super Admin Brand Switcher */}
+        {isSuperAdmin && allBrands && allBrands.length > 0 && (
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setBrandMenuOpen(o => !o)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '6px 12px',
+                background: 'rgba(99, 102, 241, 0.15)',
+                border: '1px solid rgba(99, 102, 241, 0.3)',
+                borderRadius: '8px',
+                color: '#A5B4FC',
+                fontSize: '0.8rem',
+                fontWeight: 500,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              <span style={{ color: '#818CF8' }}>{icons.shield}</span>
+              <span style={{ maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {currentBrand?.brandName || 'Select Brand'}
+              </span>
+              {icons.chevronDown}
+            </button>
+            {brandMenuOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 8px)',
+                  right: 0,
+                  background: '#1a1f2e',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '10px',
+                  padding: '8px 0',
+                  minWidth: '240px',
+                  maxHeight: '320px',
+                  overflowY: 'auto',
+                  zIndex: 999,
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+                }}
+                onMouseLeave={() => setBrandMenuOpen(false)}
+              >
+                <div style={{ padding: '8px 16px 10px', borderBottom: '1px solid rgba(255,255,255,0.08)', fontSize: '0.7rem', fontWeight: 600, color: 'rgba(99, 102, 241, 0.8)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  {icons.shield} Super Admin · {allBrands.length} Brands
+                </div>
+                {allBrands.map(b => (
+                  <button
+                    key={b.id}
+                    onClick={() => {
+                      switchBrand(b.id);
+                      setBrandMenuOpen(false);
+                      // Force reload to refresh all data for new brand
+                      window.location.reload();
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '10px 16px',
+                      background: b.id === activeBrandId ? 'rgba(99, 102, 241, 0.15)' : 'none',
+                      border: 'none',
+                      color: b.id === activeBrandId ? '#A5B4FC' : 'rgba(255,255,255,0.7)',
+                      fontSize: '0.85rem',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {b.brandName}
+                    </span>
+                    {b.isPaid && (
+                      <span style={{ fontSize: '0.65rem', background: 'rgba(20, 184, 166, 0.2)', color: '#14B8A6', padding: '2px 6px', borderRadius: '4px' }}>
+                        PAID
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {brandProfile && (
           <div className={`cache-indicator ${brandProfile.cacheStatus}`}>
             <span className="cache-icon">
