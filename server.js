@@ -3687,6 +3687,7 @@ Return ONLY valid JSON in this exact structure:
 
 // POST approve — save human edits, write mistakes to brain, mark approved
 app.post('/api/compliance/approve', async (req, res) => {
+  const startTime = Date.now();
   const { brandProfileId, contentId, reviewMode, editedSections, decisions } = req.body;
   if (!brandProfileId || !contentId) return res.status(400).json({ error: 'brandProfileId and contentId required' });
   try {
