@@ -46,6 +46,10 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
           }
           setPaid(true);
           onUnlocked?.();
+          // Redirect to Clerk sign-up to tether account to this brain
+          setTimeout(() => {
+            window.location.href = `https://accounts.forgeintelligence.ai/sign-up?redirect_url=${encodeURIComponent(window.location.origin + '/app/context-hub')}&brand_id=${brandProfileId || ''}`;
+          }, 1500);
         },
         onError: () => setPpError('Payment failed. Please try again.'),
       }).render('#forge-gate-paypal');
