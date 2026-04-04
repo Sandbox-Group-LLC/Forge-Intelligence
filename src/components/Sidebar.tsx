@@ -187,6 +187,7 @@ const publishingNavItems = [
   { id: 'publishing-queue', label: 'Queue',           icon: 'sendCloud',  href: '/app/publishing-queue' },
   { id: 'content-library',  label: 'Content Library', icon: 'bookOpen',   href: '/app/content-library' },
   { id: 'content-import',   label: 'Import Article',  icon: 'fileImport', href: '/app/content-import' },
+  { id: 'topic-queue',      label: 'Topic Queue',     icon: 'list',       href: '/app/topic-queue' },
 ] as const;
 
 const settingsNavItems = [
@@ -208,7 +209,7 @@ const topNavItems: TopNavItem[] = [
 export function Sidebar() {
   const { currentView, setCurrentView, sidebarCollapsed, setSidebarCollapsed, isProcessing, brandProfile } = useApp();
   const [brainGroupOpen, setBrainGroupOpen] = useState(false);
-  const [publishingGroupOpen, setPublishingGroupOpen] = useState(() => ['/app/publishing-queue','/app/content-library','/app/content-import'].some(r => window.location.pathname.startsWith(r)));
+  const [publishingGroupOpen, setPublishingGroupOpen] = useState(() => ['/app/publishing-queue','/app/content-library','/app/content-import','/app/topic-queue'].some(r => window.location.pathname.startsWith(r)));
   const [settingsGroupOpen, setSettingsGroupOpen] = useState(() => ['/app/brand-settings','/app/integrations'].some(r => window.location.pathname.startsWith(r)));
   const [mobileExpanded, setMobileExpanded] = useState(false);
 
@@ -223,7 +224,7 @@ export function Sidebar() {
   useEffect(() => {
     const p = window.location.pathname;
     setPath(p);
-    if (['/app/publishing-queue','/app/content-library','/app/content-import'].some(r => p.startsWith(r))) {
+    if (['/app/publishing-queue','/app/content-library','/app/content-import','/app/topic-queue'].some(r => p.startsWith(r))) {
       setPublishingGroupOpen(true);
     }
     if (['/app/brand-settings','/app/integrations'].some(r => p.startsWith(r))) {
@@ -367,7 +368,7 @@ export function Sidebar() {
         {topNavItems.map(item => {
           // Insert Publishing group before Performance
           if (item.id === 'performance') {
-            const isPublishingActive = ['/app/publishing-queue','/app/content-library','/app/content-import'].some(r => path.startsWith(r));
+            const isPublishingActive = ['/app/publishing-queue','/app/content-library','/app/content-import','/app/topic-queue'].some(r => path.startsWith(r));
             return (
               <div key="publishing-group">
                 {/* Publishing group header */}
