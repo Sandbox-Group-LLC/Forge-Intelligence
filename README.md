@@ -22,7 +22,7 @@
 | **Branch** | `production` → Render auto-deploy |
 | **Price** | $99 one-time via PayPal |
 
-### Phase 1 Complete ✅
+### Phase 1 Complete ✅ + Auth Complete ✅
 
 - [x] Landing page — URL input → Context Agent → Brand Profile reveal
 - [x] PayPal $99 gate — unlocks full suite permanently
@@ -32,6 +32,11 @@
 - [x] Brand dropdown removed from production — `useActiveBrand` hook
 - [x] Brand name in TopBar — green dot pill top-right
 - [x] God mode — `?god=ForgeCanvas` / `?ungod`
+- [x] Clerk auth — Google, GitHub, email/password
+- [x] Avatar dropdown — email display + sign out
+- [x] Sign In link when signed out
+- [x] Brand auto-tethered to Clerk user on first sign-in
+- [x] `isPaid` wired from Clerk-authed brand — gate drops on reload after payment
 
 ### Production Architecture
 
