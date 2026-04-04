@@ -1672,3 +1672,12 @@
   color: var(--color-text-secondary);
   font-weight: 500;
 }
+
+/* Pre-cog Score Badge */
+.pq-precog-badge {
+  font-weight: 600;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
