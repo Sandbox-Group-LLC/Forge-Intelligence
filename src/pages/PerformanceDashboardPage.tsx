@@ -41,8 +41,8 @@ const CHANNELS = [
   { id: 'ghost', label: 'Ghost', live: true },
   { id: 'gsc',   label: 'GSC',   live: true },
   { id: 'geo',   label: 'GEO',   live: true },
-  { id: 'wordpress', label: 'WordPress', live: false },
-  { id: 'webflow', label: 'Webflow', live: false },
+  { id: 'wordpress', label: 'WordPress', live: true },
+  { id: 'webflow', label: 'Webflow', live: true },
   { id: 'campaigns', label: 'Campaigns', live: true },
 ];
 
