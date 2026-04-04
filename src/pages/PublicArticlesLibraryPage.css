@@ -1,0 +1,249 @@
+.pal-container {
+  min-height: 100vh;
+  background: #0a0a0f;
+  color: #e5e5e5;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header */
+.pal-header {
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  padding: 16px 24px;
+}
+
+.pal-header-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.pal-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: #fff;
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+.pal-cta-link {
+  color: #3563FF;
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 0.9rem;
+  transition: color 0.2s;
+}
+
+.pal-cta-link:hover {
+  color: #5a82ff;
+}
+
+/* Main */
+.pal-main {
+  flex: 1;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 48px 24px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.pal-hero {
+  text-align: center;
+  margin-bottom: 48px;
+}
+
+.pal-title {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 12px;
+}
+
+.pal-subtitle {
+  font-size: 1.1rem;
+  color: rgba(255,255,255,0.6);
+  margin: 0;
+}
+
+/* Loading */
+.pal-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 64px 0;
+  color: rgba(255,255,255,0.5);
+}
+
+.pal-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(53,99,255,0.2);
+  border-top-color: #3563FF;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Empty state */
+.pal-empty {
+  text-align: center;
+  padding: 64px 0;
+  color: rgba(255,255,255,0.5);
+}
+
+.pal-empty-cta {
+  display: inline-block;
+  margin-top: 16px;
+  color: #3563FF;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.pal-empty-cta:hover {
+  text-decoration: underline;
+}
+
+/* Grid */
+.pal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 24px;
+}
+
+/* Card */
+.pal-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.2s, transform 0.2s;
+}
+
+.pal-card:hover {
+  border-color: rgba(53,99,255,0.4);
+  transform: translateY(-2px);
+}
+
+.pal-card-image {
+  aspect-ratio: 16/9;
+  overflow: hidden;
+  background: rgba(255,255,255,0.05);
+}
+
+.pal-card-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pal-card-content {
+  padding: 20px;
+}
+
+.pal-card-title {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #fff;
+  margin: 0 0 8px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.pal-card-desc {
+  font-size: 0.9rem;
+  color: rgba(255,255,255,0.6);
+  margin: 0 0 12px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.pal-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: rgba(255,255,255,0.4);
+}
+
+.pal-card-brand {
+  color: #3563FF;
+  font-weight: 500;
+}
+
+.pal-card-dot {
+  opacity: 0.5;
+}
+
+/* Footer */
+.pal-footer {
+  border-top: 1px solid rgba(255,255,255,0.08);
+  padding: 24px;
+}
+
+.pal-footer-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.pal-footer-text {
+  color: rgba(255,255,255,0.4);
+  font-size: 0.85rem;
+}
+
+.pal-footer-text a {
+  color: #3563FF;
+  text-decoration: none;
+}
+
+.pal-footer-text a:hover {
+  text-decoration: underline;
+}
+
+.pal-footer-cta {
+  color: #3563FF;
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.pal-footer-cta:hover {
+  text-decoration: underline;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .pal-title {
+    font-size: 1.8rem;
+  }
+  
+  .pal-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .pal-footer-inner {
+    flex-direction: column;
+    text-align: center;
+  }
+}
