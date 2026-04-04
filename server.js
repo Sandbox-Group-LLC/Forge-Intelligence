@@ -4684,6 +4684,146 @@ app.post('/api/hubspot/refresh-targets', async (req, res) => {
   }
 });
 
+
+// ── Webflow OAuth ────────────────────────────────────────────────────────────
+app.get('/api/webflow/auth', (req, res) => {
+  const clientId = process.env.WEBFLOW_CLIENT_ID;
+  if (!clientId) return res.status(500).json({ error: 'WEBFLOW_CLIENT_ID not configured' });
+  
+  const redirectUri = encodeURIComponent(process.env.WEBFLOW_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/webflow/callback');
+  const brandProfileId = req.query.state?.split('|')[0] || req.query.brandProfileId || 'system';
+  const nonce = randomBytes(16).toString('hex');
+  const state = `${brandProfileId}|${nonce}`;
+  
+  // Scopes for Data API
+  const scopes = 'sites:read cms:read cms:write';
+  
+  const url = `https://webflow.com/oauth/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&scope=${encodeURIComponent(scopes)}&state=${encodeURIComponent(state)}`;
+  res.redirect(url);
+});
+
+app.get('/auth/webflow/callback', async (req, res) => {
+  const { code, state, error } = req.query;
+  if (error) return res.redirect(`/app/integrations?webflow_error=${error}`);
+  if (!code) return res.redirect('/app/integrations?webflow_error=no_code');
+  
+  try {
+    const clientId = process.env.WEBFLOW_CLIENT_ID;
+    const clientSecret = process.env.WEBFLOW_CLIENT_SECRET;
+    const redirectUri = process.env.WEBFLOW_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/webflow/callback';
+    
+    // Exchange code for token
+    const tokenRes = await fetch('https://api.webflow.com/oauth/access_token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        grant_type: 'authorization_code',
+        redirect_uri: redirectUri
+      })
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) throw new Error(tokenData.error || 'Token exchange failed');
+
+    // Fetch available sites
+    const sitesRes = await fetch('https://api.webflow.com/v2/sites', {
+      headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+    });
+    const sitesData = await sitesRes.json();
+    const sites = (sitesData.sites || []).map(s => ({
+      id: s.id,
+      name: s.displayName || s.shortName,
+      shortName: s.shortName,
+      previewUrl: s.previewUrl
+    }));
+
+    // Fetch collections for each site
+    const sitesWithCollections = await Promise.all(sites.map(async (site) => {
+      try {
+        const collRes = await fetch(`https://api.webflow.com/v2/sites/${site.id}/collections`, {
+          headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+        });
+        const collData = await collRes.json();
+        site.collections = (collData.collections || []).map(c => ({
+          id: c.id,
+          name: c.displayName || c.slug,
+          slug: c.slug
+        }));
+      } catch {
+        site.collections = [];
+      }
+      return site;
+    }));
+
+    // Parse brandProfileId from state
+    const stateDecoded = decodeURIComponent(state || '');
+    const brandProfileId = stateDecoded.includes('|') ? stateDecoded.split('|')[0] : 'system';
+
+    // Default to first site and its first collection
+    const selectedSite = sitesWithCollections[0] || null;
+    const selectedCollection = selectedSite?.collections?.[0] || null;
+
+    await pool.query(`
+      INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active, updated_at)
+      VALUES ($1, 'webflow', $2, true, NOW())
+      ON CONFLICT (brand_profile_id, channel) DO UPDATE
+        SET credentials = $2, is_active = true, updated_at = NOW()
+    `, [brandProfileId, JSON.stringify({
+      accessToken: tokenData.access_token,
+      connectedAt: new Date().toISOString(),
+      sites: sitesWithCollections,
+      selectedSite: selectedSite,
+      selectedCollection: selectedCollection
+    })]);
+
+    res.redirect('/app/integrations?webflow_connected=true');
+  } catch (err) {
+    console.error('Webflow callback error:', err);
+    res.redirect(`/app/integrations?webflow_error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+// ── Webflow: Switch site/collection target ───────────────────────────────────
+app.post('/api/webflow/select-target', async (req, res) => {
+  const { brandProfileId, siteId, collectionId } = req.body;
+  if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
+  
+  try {
+    const existing = await pool.query(
+      `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'webflow'`,
+      [brandProfileId]
+    );
+    if (!existing.rows.length) return res.status(404).json({ error: 'Webflow not connected' });
+    
+    const creds = existing.rows[0].credentials;
+    
+    if (siteId) {
+      const site = (creds.sites || []).find(s => s.id === siteId);
+      if (!site) return res.status(400).json({ error: 'Invalid site ID' });
+      creds.selectedSite = site;
+      // Auto-select first collection of new site
+      creds.selectedCollection = site.collections?.[0] || null;
+    }
+    
+    if (collectionId) {
+      const collection = (creds.selectedSite?.collections || []).find(c => c.id === collectionId);
+      if (!collection) return res.status(400).json({ error: 'Invalid collection ID' });
+      creds.selectedCollection = collection;
+    }
+    
+    await pool.query(
+      `UPDATE publishing_channels SET credentials = $1, updated_at = NOW() WHERE brand_profile_id = $2 AND channel = 'webflow'`,
+      [JSON.stringify(creds), brandProfileId]
+    );
+    
+    res.json({ success: true, selectedSite: creds.selectedSite, selectedCollection: creds.selectedCollection });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Google Search Console OAuth ──────────────────────────────────────────────
 
 // GET /api/gsc/auth — initiate OAuth flow
@@ -5062,10 +5202,10 @@ app.post('/api/publishing/publish', async (req, res) => {
 
         } else if (channel === 'webflow') {
           // ── Real Webflow CMS publish ──
-          const webflowToken = creds.apiToken || process.env.WEBFLOW_API_TOKEN;
-          const siteId = creds.siteId || '69c715bf39ddf47aae9481b1';
-          const collectionId = creds.collectionId || '69c7189df169a5faf671dba4';
-          if (!webflowToken) throw new Error('Missing Webflow API token');
+          const webflowToken = creds.accessToken || creds.apiToken || process.env.WEBFLOW_API_TOKEN;
+          const siteId = creds.selectedSite?.id || creds.siteId || '69c715bf39ddf47aae9481b1';
+          const collectionId = creds.selectedCollection?.id || creds.collectionId || '69c7189df169a5faf671dba4';
+          if (!webflowToken) throw new Error('Missing Webflow API token - connect via OAuth');
 
           const articleJson = article.article_json || {};
           const sections = articleJson.sections || [];
