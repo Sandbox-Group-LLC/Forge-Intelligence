@@ -121,7 +121,7 @@ function TrendChart({ data, onSync }: { data: TrendPoint[]; onSync?: () => void 
   const w = 600, h = 160, padX = 40, padY = 16;
   const maxVal = Math.max(...data.map(d => d.impressions), 1);
   const pts = data.map((d, i) => {
-    const x = padX + (i / (data.length - 1)) * (w - padX * 2);
+    const x = data.length === 1 ? w / 2 : padX + (i / (data.length - 1)) * (w - padX * 2);
     const y = padY + (1 - d.impressions / maxVal) * (h - padY * 2 - 20);
     return { x, y, d };
   });
@@ -144,7 +144,7 @@ function TrendChart({ data, onSync }: { data: TrendPoint[]; onSync?: () => void 
       <path d={linePath} fill="none" stroke="var(--color-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       {pts.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r="2" fill="var(--color-primary)" opacity="0.7" />)}
       {labels.map((label, i) => (
-        <text key={i} x={pts[[0, Math.floor(data.length / 2), data.length - 1][i]].x} y={h - 8} textAnchor="middle" fontSize="10" fill="var(--color-text-muted)">
+        <text key={i} x={Math.max(50, Math.min(w - 50, pts[[0, Math.floor(data.length / 2), data.length - 1][i]].x))} y={h - 8} textAnchor="middle" fontSize="10" fill="var(--color-text-muted)">
           {new Date(label.day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
         </text>
       ))}
