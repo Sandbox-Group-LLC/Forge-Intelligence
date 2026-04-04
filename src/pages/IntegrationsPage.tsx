@@ -605,6 +605,51 @@ export default function IntegrationsPage() {
                       </div>
                     )}
 
+                    {/* LinkedIn: Target selector (personal vs company page) */}
+                    {ch.id === 'linkedin' && connected && saved?.credentials?.availableTargets?.length > 1 && (
+                      <div className="int-form-section">
+                        <div className="int-form-label">
+                          Post to
+                          <span className="int-utm-hint">Select your personal profile or a company page you manage</span>
+                        </div>
+                        <select
+                          className="geo-select"
+                          style={{ maxWidth: 320 }}
+                          value={saved?.credentials?.selectedTarget?.urn || ''}
+                          onChange={async (e) => {
+                            const targetUrn = e.target.value;
+                            try {
+                              const res = await fetch('/api/linkedin/select-target', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ brandProfileId: selectedBrand, targetUrn })
+                              });
+                              const d = await res.json();
+                              if (d.success) {
+                                setSuccess(`Now posting to: ${d.selectedTarget.name}`);
+                                loadChannels(selectedBrand);
+                                setTimeout(() => setSuccess(''), 3000);
+                              } else {
+                                setError(d.error || 'Failed to switch target');
+                              }
+                            } catch {
+                              setError('Failed to switch LinkedIn target');
+                            }
+                          }}
+                        >
+                          {(saved?.credentials?.availableTargets || []).map((t: any) => (
+                            <option key={t.urn} value={t.urn}>
+                              {t.type === 'company' ? '🏢 ' : '👤 '}{t.name}
+                            </option>
+                          ))}
+                        </select>
+                        <div style={{ marginTop: 8, fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>
+                          Currently posting as: <strong style={{ color: 'rgba(255,255,255,0.8)' }}>{saved?.credentials?.selectedTarget?.name || 'Personal Profile'}</strong>
+                          {saved?.credentials?.selectedTarget?.type === 'company' && ' (Company Page)'}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Manual credential fields for non-Pipedream channels */}
                     {!ch.pipedreamApp && (
                       <div className="int-form-section">
