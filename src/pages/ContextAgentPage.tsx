@@ -8,7 +8,7 @@ import { Strategy } from '../components/views/Strategy';
 import { BrainHistory } from '../components/views/BrainHistory';
 
 function ContextAgentPage() {
-  const { currentView, setCurrentView, setIsProcessing, setProcessingStages, setBrandProfile } = useApp();
+  const { currentView, setCurrentView, setIsProcessing, setBrandProfile } = useApp();
   const firedRef = useRef(false);
 
   useEffect(() => {
