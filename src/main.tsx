@@ -1,4 +1,4 @@
-import { StrictMode } from 'react';
+import React, { StrictMode } from 'react';
 import { ClerkProvider, SignedIn, SignedOut, RedirectToSignIn } from '@clerk/clerk-react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
@@ -58,21 +58,21 @@ createRoot(document.getElementById('root')!).render(
         {/* App — all product routes live under /app/ */}
         <Route
           path="/app/context-hub/*"
-          element={<AppProvider><ContextAgentPage /></AppProvider>}
+          element={<ProtectedRoute><AppProvider><ContextAgentPage /></AppProvider></ProtectedRoute>}
         />
-        <Route path="/app/geo-strategist" element={<AppProvider><GeoStrategistPage /></AppProvider>} />
-        <Route path="/app/authenticity-enricher" element={<AppProvider><AuthenticityEnricherPage /></AppProvider>} />
-        <Route path="/app/content-generator" element={<AppProvider><ContentGeneratorPage /></AppProvider>} />
-        <Route path="/app/campaign-generator" element={<AppProvider><CampaignGeneratorPage /></AppProvider>} />
-        <Route path="/app/compliance-gate" element={<AppProvider><ComplianceGatePage /></AppProvider>} />
-        <Route path="/app/integrations" element={<AppProvider><IntegrationsPage /></AppProvider>} />
-        <Route path="/app/publishing-queue" element={<AppProvider><PublishingQueuePage /></AppProvider>} />
-        <Route path="/app/performance" element={<AppProvider><PerformanceDashboardPage /></AppProvider>} />
-        <Route path="/app/content-library" element={<AppProvider><ContentLibraryPage /></AppProvider>} />
-        <Route path="/app/content-import" element={<AppProvider><ContentImportPage /></AppProvider>} />
-        <Route path="/app/admin" element={<AppProvider><AdminPage /></AppProvider>} />
-        <Route path="/app/topic-queue" element={<AppProvider><TopicQueuePage /></AppProvider>} />
-        <Route path="/app/brand-settings" element={<AppProvider><BrandSettingsPage /></AppProvider>} />
+        <Route path="/app/geo-strategist" element={<ProtectedRoute><AppProvider><GeoStrategistPage /></AppProvider></ProtectedRoute>} />
+        <Route path="/app/authenticity-enricher" element={<ProtectedRoute><AppProvider><AuthenticityEnricherPage /></AppProvider></ProtectedRoute>} />
+        <Route path="/app/content-generator" element={<ProtectedRoute><AppProvider><ContentGeneratorPage /></AppProvider></ProtectedRoute>} />
+        <Route path="/app/campaign-generator" element={<ProtectedRoute><AppProvider><CampaignGeneratorPage /></AppProvider></ProtectedRoute>} />
+        <Route path="/app/compliance-gate" element={<ProtectedRoute><AppProvider><ComplianceGatePage /></AppProvider></ProtectedRoute>} />
+        <Route path="/app/integrations" element={<ProtectedRoute><AppProvider><IntegrationsPage /></AppProvider></ProtectedRoute>} />
+        <Route path="/app/publishing-queue" element={<ProtectedRoute><AppProvider><PublishingQueuePage /></AppProvider></ProtectedRoute>} />
+        <Route path="/app/performance" element={<ProtectedRoute><AppProvider><PerformanceDashboardPage /></AppProvider></ProtectedRoute>} />
+        <Route path="/app/content-library" element={<ProtectedRoute><AppProvider><ContentLibraryPage /></AppProvider></ProtectedRoute>} />
+        <Route path="/app/content-import" element={<ProtectedRoute><AppProvider><ContentImportPage /></AppProvider></ProtectedRoute>} />
+        <Route path="/app/admin" element={<ProtectedRoute><AppProvider><AdminPage /></AppProvider></ProtectedRoute>} />
+        <Route path="/app/topic-queue" element={<ProtectedRoute><AppProvider><TopicQueuePage /></AppProvider></ProtectedRoute>} />
+        <Route path="/app/brand-settings" element={<ProtectedRoute><AppProvider><BrandSettingsPage /></AppProvider></ProtectedRoute>} />
 
         {/* Public article viewer — no AppProvider needed */}
         <Route path="/articles/:brandSlug/:articleSlug" element={<PublicArticlePage />} />
