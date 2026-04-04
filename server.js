@@ -5555,7 +5555,7 @@ app.post('/api/publishing/queue/:id/request-review', async (req, res) => {
             html: `
               <div style="font-family: Inter, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 24px; background: #0F172A; color: #F8FAFC; border-radius: 12px;">
                 <div style="margin-bottom: 32px;">
-                  <img src="https://forgeintelligence.ai/forge-logo.png" alt="Forge Intelligence" style="height: 32px;" />
+                  <span style="font-family: Inter, sans-serif; font-size: 16px; font-weight: 800; color: #3563FF; letter-spacing: -0.02em;">⬡ Forge Intelligence</span>
                 </div>
                 <h1 style="font-size: 22px; font-weight: 700; margin-bottom: 8px; color: #F8FAFC;">Review requested</h1>
                 <p style="color: #94A3B8; margin-bottom: 24px;">Hi ${r.name}, you've been asked to review an article before it goes live.</p>
