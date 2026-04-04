@@ -40,6 +40,11 @@ const PORT = process.env.PORT || 3000;
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const CLERK_JWKS_URL = process.env.CLERK_JWKS_URL || 'https://clerk.forgeintelligence.ai/.well-known/jwks.json';
 const clerkJWKS = createRemoteJWKSet(new URL(CLERK_JWKS_URL));
+// Super Admin user IDs (Clerk) — full access to all brands
+const SUPER_ADMIN_IDS = [
+  'user_3BtC7nusm7CShN7EdUYaaLZcDwp', // brian@sandbox-xm.com
+];
+
 
 const pool = new Pool({ connectionString: process.env.NEON_DATABASE_URL });
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 1200000 }); // 20min
@@ -5965,9 +5970,10 @@ app.post('/api/onboard/paypal-success', async (req, res) => {
 app.get('/api/auth/me', requireAuth, async (req, res) => {
   try {
     const brandId = req.query.brand_id || null;
+    const isSuperAdmin = SUPER_ADMIN_IDS.includes(req.userId);
 
     // If brand_id provided and user has no brand yet, tether it
-    if (brandId) {
+    if (brandId && !isSuperAdmin) {
       const existing = await pool.query(
         `SELECT id FROM brand_profiles WHERE clerk_user_id = $1 LIMIT 1`,
         [req.userId]
@@ -5981,6 +5987,35 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
       }
     }
 
+    // Super admin: return ALL brands
+    if (isSuperAdmin) {
+      const allBrands = await pool.query(
+        `SELECT id, brand_url, brand_name, is_paid, is_active, updated_at 
+         FROM brand_profiles WHERE is_active = true ORDER BY updated_at DESC`
+      );
+      // If brand_id specified, use that; otherwise first one
+      let activeBrand = allBrands.rows[0] || null;
+      if (brandId) {
+        const match = allBrands.rows.find(b => b.id === brandId);
+        if (match) activeBrand = match;
+      }
+      console.log(`[AUTH] Super admin ${req.userId} — ${allBrands.rows.length} brands available`);
+      return res.json({
+        success: true,
+        userId: req.userId,
+        isSuperAdmin: true,
+        brand: activeBrand,
+        allBrands: allBrands.rows.map(b => ({
+          id: b.id,
+          brandName: b.brand_name || b.brand_url,
+          brandUrl: b.brand_url,
+          isPaid: b.is_paid || false,
+        })),
+        isPaid: true, // Super admins always paid
+      });
+    }
+
+    // Regular user flow
     let result = await pool.query(
       `SELECT * FROM brand_profiles WHERE clerk_user_id = $1 AND is_active = true ORDER BY updated_at DESC LIMIT 1`,
       [req.userId]
@@ -6002,7 +6037,9 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
     res.json({
       success: true,
       userId: req.userId,
+      isSuperAdmin: false,
       brand: result.rows[0] || null,
+      allBrands: null,
       isPaid: result.rows[0]?.is_paid || false,
     });
   } catch(e) {
