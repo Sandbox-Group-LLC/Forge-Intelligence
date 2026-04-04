@@ -14,6 +14,7 @@ import ComplianceGatePage from './pages/ComplianceGatePage';
 import IntegrationsPage from './pages/IntegrationsPage';
 import PublishingQueuePage from './pages/PublishingQueuePage';
 import PublicArticlePage from './pages/PublicArticlePage';
+import PublicArticlesLibraryPage from './pages/PublicArticlesLibraryPage';
 import PerformanceDashboardPage from './pages/PerformanceDashboardPage';
 import BrandSettingsPage from './pages/BrandSettingsPage';
 import ContentLibraryPage from './pages/ContentLibraryPage';
@@ -68,6 +69,8 @@ createRoot(document.getElementById('root')!).render(
 
         {/* Public article viewer — no AppProvider needed */}
         <Route path="/articles/:brandSlug/:articleSlug" element={<PublicArticlePage />} />
+        <Route path="/articles/:brandSlug" element={<PublicArticlesLibraryPage />} />
+        <Route path="/articles" element={<PublicArticlesLibraryPage />} />
 
         {/* External review page — no AppProvider, no auth */}
         <Route path="/review/:token" element={<ReviewPage />} />
