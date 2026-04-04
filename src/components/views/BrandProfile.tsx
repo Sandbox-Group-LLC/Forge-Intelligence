@@ -81,7 +81,7 @@ export function BrandProfile() {
   };
 
   return (
-    <div className="brand-profile view-shell-centered">
+    <div className="brand-profile">
       <div className="profile-header">
         <div className="profile-info">
           <h2 className="profile-brand-name">{brandProfile.brandName}</h2>
