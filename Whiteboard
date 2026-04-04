@@ -7,6 +7,20 @@
 
 > Newest first. Detailed session logs in [Session Archive](#session-archive) at bottom.
 
+### April 4, 2026 (Evening) — Integration Blitz 🔌
+
+**6 of 7 channels LIVE. Full OAuth flows. CRM sync.**
+
+- LinkedIn OAuth: Personal Profile + Company Page (separate apps required by LinkedIn)
+- HubSpot OAuth: Full CRM + CMS integration, blog/KB target selectors, auto user sync on login
+- Webflow OAuth: Site + collection discovery and selection
+- WordPress: REST API live with Application Passwords
+- Ghost: Already working (Admin API key)
+- Medium: Legacy badge (API deprecated early 2025)
+- Facebook: Parked (OAuth bureaucracy not worth it today)
+- Super Admin role: Brian sees all 8 brands, purple shield dropdown in TopBar
+- User sync to HubSpot: Every Clerk login auto-upserts contact to Forge's HubSpot CRM
+
 ### April 4, 2026 — Production Launch + Auth Complete 🚀
 
 **forgeintelligence.ai is LIVE. ICE ain't coming in this house.**
@@ -171,9 +185,9 @@ Every AI content tool today solves for production volume. None solve for **compo
 | Facebook Page | ✅ LIVE |
 | Ghost CMS | ✅ LIVE |
 | Medium | ✅ LEGACY |
-| WordPress | 🔲 Phase 2 |
-| Webflow | 🔲 Phase 2 |
-| Hubspot | 🔲 Phase 2 |
+| WordPress | ✅ LIVE |
+| Webflow | ✅ LIVE (OAuth + site/collection selector) |
+| HubSpot | ✅ LIVE (OAuth + CRM sync + blog/KB selector) |
 
 **Smart Export:** HTML (site-template-aware), Markdown, JSON, UTM Link
 
@@ -369,16 +383,24 @@ Landing page → Clerk-free, zero friction
 
 ## Architectural Decisions
 
-### Pipedream Connect (OAuth Layer)
+### OAuth Strategy (Updated April 4, 2026)
 
-> **Decision:** April 1, 2026 — Replace all custom OAuth with Pipedream Connect
+> **Decision:** Custom OAuth for core channels, Pipedream only where needed.
 
-**Why:** OAuth is not our core product. Intelligence is.
+**Custom OAuth (full control):**
+- LinkedIn Personal: `LINKEDIN_CLIENT_ID` + `LINKEDIN_CLIENT_SECRET`
+- LinkedIn Org: `LINKEDIN_ORG_CLIENT_ID` + `LINKEDIN_ORG_SECRET` (separate app required)
+- HubSpot: `HUBSPOT_CLIENT_ID` + `HUBSPOT_CLIENT_SECRET` (Legacy app with CRM+CMS scopes)
+- Webflow: `WEBFLOW_CLIENT_ID` + `WEBFLOW_CLIENT_SECRET`
 
-**Channels on Pipedream:** LinkedIn, Facebook, Reddit, HubSpot, Webflow
-**Channels staying manual:** X (removed from Pipedream), Ghost (key-based), WordPress (app password)
+**Manual credentials:**
+- X/Twitter: OAuth 1.0a (consumer keys + access tokens)
+- Ghost: Admin API key
+- WordPress: Application Password
 
-**Implementation:** Direct iframe to `pipedream.com/_static/connect.html?token=xxx&app=slug` — SDK was broken, iframe is ground truth.
+**Pipedream:** Facebook, Reddit (if needed)
+
+**Legacy:** Medium (API deprecated early 2025)
 
 ---
 
@@ -560,3 +582,4 @@ Landing page → Clerk-free, zero friction
 - Article: `forgeintelligence.ai/articles/sandbox-gtm-com/first-sales-hire-playbook...`
 - LinkedIn post: `linkedin.com/feed/update/urn:li:share:7443723401157829...`
 - Brand: Sandbox GTM (`ac6b7ff1-5e6c-4fe6-a3bb-441c2f969779`)
+
