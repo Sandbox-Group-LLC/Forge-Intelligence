@@ -1888,7 +1888,8 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
       }});
     }
 
-    res.json({ success: true, cached: false, data: {
+await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata) VALUES ($1,$2,$3,$4,$5,$6)', ['stage1_context_agent', brandProfileId||null, 'success', (usage?.input_tokens||0)+(usage?.output_tokens||0), Date.now()-startTime, JSON.stringify({ brandUrl })]).catch(()=>{});
+        res.json({ success: true, cached: false, data: {
       id: randomUUID(), brandUrl, brandName,
       version: 1, isActive: false, cacheStatus: 'fresh',
       latencyMs, discoveredCompetitors: sonarCompetitors,
@@ -2255,7 +2256,8 @@ Return ONLY valid JSON:
     console.log('[GEO] FINAL topicalAuthorityMap[0]:', JSON.stringify(topicalAuthorityMap[0]));
     console.log('[GEO] FINAL geoOpportunities[0]:', JSON.stringify(geoOpportunitiesNorm[0]));
     console.log('[GEO] FINAL counts — topical:', topicalAuthorityMap.length, 'geo:', geoOpportunitiesNorm.length);
-    res.json({ success: true, cached: false, data: {
+await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata) VALUES ($1,$2,$3,$4,$5,$6)', ['stage2_geo_strategist', brandProfileId, 'success', (geoUsage?.input_tokens||0)+(geoUsage?.output_tokens||0), Date.now()-startTime, JSON.stringify({ brandProfileId })]).catch(()=>{});
+        res.json({ success: true, cached: false, data: {
       id, brandProfileId, brandUrl: profile.brand_url, brandName: profile.brand_name,
       version: nextVersion, opportunityScore, latencyMs,
       topicalAuthorityMap, geoOpportunities: geoOpportunitiesNorm, entitySchemaMap, geoBrief
@@ -2559,7 +2561,8 @@ Respond with this exact JSON structure:
     const latencyMs = Date.now() - startTime;
     console.log(`[ENRICH] Complete — Score: ${confidenceScore} | Gaps: ${gaps.length} | NeedsManual: ${needsManualInput} | Latency: ${latencyMs}ms`);
 
-    res.json({ success: true, cached: false, data: {
+await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata) VALUES ($1,$2,$3,$4,$5,$6)', ['stage3_authenticity_enricher', brandProfileId, 'success', 0, Date.now()-startTime, JSON.stringify({ brandProfileId })]).catch(()=>{});
+        res.json({ success: true, cached: false, data: {
       id: newId, brandProfileId, brandUrl: profile.brand_url, brandName,
       version: nextVersion, confidenceScore, latencyMs, needsManualInput,
       ...enrichedData
@@ -3476,6 +3479,7 @@ app.post('/api/compliance/approve', async (req, res) => {
       ).catch(e => console.error('[QUEUE] Auto-stage error:', e.message));
     }
 
+        await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata) VALUES ($1,$2,$3,$4,$5,$6)', ['stage5_compliance_gate', brandProfileId, 'success', 0, Date.now()-startTime, JSON.stringify({ contentId, status: finalStatus })]).catch(()=>{});
     res.json({ success: true, status: finalStatus, contentId });
   } catch (err) {
     console.error('[COMPLIANCE] Approve error:', err);
@@ -4791,6 +4795,7 @@ ${canonicalNote}`,
       ).catch(e => console.error('[MEMORY] Write error:', e.message));
     }
 
+        await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata) VALUES ($1,$2,$3,$4,$5,$6)', ['stage6_publisher', brandProfileId, 'success', 0, Date.now()-startTime, JSON.stringify({ channels: selectedChannels, status: newStatus })]).catch(()=>{});
     res.json({ success: true, status: newStatus, results });
   } catch (err) {
     console.error('[PUBLISH] Error:', err);
@@ -5660,6 +5665,7 @@ app.get('/api/admin/stats', async (req, res) => {
       success: true,
       stats: {
         totalBrands: parseInt(brands.rows[0].count),
+      totalReach: (await pool.query(`SELECT COALESCE(SUM(impressions),0) as total FROM content_analytics`).catch(()=>({rows:[{total:0}]}))).rows[0].total,
         totalContent,
         totalQueued: parseInt(queue.rows[0].count),
         totalPublished: parseInt(queue.rows[0].published),
