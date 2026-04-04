@@ -173,6 +173,19 @@ export default function PublicArticlePage() {
             </section>
           ))}
 
+          {/* CTA Section */}
+          <div className="pa-cta">
+            <div className="pa-cta-inner">
+              <h3 className="pa-cta-headline">Ready to build content that compounds?</h3>
+              <p className="pa-cta-body">
+                Most AI content tools optimize for volume. Forge Intelligence optimizes for results—learning what works for <em>your</em> brand, <em>your</em> audience, and <em>your</em> goals. No generic outputs. No starting over every time.
+              </p>
+              <a href="https://forgeintelligence.ai" className="pa-cta-button">
+                Run your brand through Forge →
+              </a>
+            </div>
+          </div>
+
           <footer className="pa-footer">
             <div className="pa-footer-divider" />
             <div className="pa-footer-row">
