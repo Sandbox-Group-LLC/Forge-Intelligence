@@ -16,6 +16,7 @@ interface ActivityRow {
 
 interface Stats {
   totalBrands: number;
+  totalReach: number;
   totalContent: number;
   totalQueued: number;
   totalPublished: number;
@@ -88,8 +89,8 @@ export default function AdminPage() {
           <>
             <div className="admin-kpi-grid">
               <div className="admin-kpi-card">
-                <div className="admin-kpi-value">{stats.totalBrands}</div>
-                <div className="admin-kpi-label">Total Brands</div>
+                <div className="admin-kpi-value">{fmt(stats.totalReach)}</div>
+                <div className="admin-kpi-label">Total Reach</div>
               </div>
               <div className="admin-kpi-card">
                 <div className="admin-kpi-value">{fmt(stats.totalContent)}</div>
