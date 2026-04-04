@@ -3,6 +3,13 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { ViewType, BrandProfile, AnalysisInput, ProcessingStage, HistoryEntry } from '../types';
 import { initialProcessingStages, sampleAnalysisInput } from '../data/mockData';
 
+interface ActiveBrandMini {
+  id: string;
+  brandName: string;
+  brandUrl: string;
+  isPaid: boolean;
+}
+
 interface AppContextType {
   currentView: ViewType;
   setCurrentView: (view: ViewType) => void;
@@ -21,6 +28,11 @@ interface AppContextType {
   startAnalysis: () => void;
   loadSampleData: () => void;
   isPaid: boolean;
+  // Super admin
+  isSuperAdmin: boolean;
+  allBrands: ActiveBrandMini[] | null;
+  switchBrand: (brandId: string) => void;
+  activeBrandId: string | null;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -74,14 +86,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return localStorage.getItem('forge_god_mode') === 'true';
   })();
   const [isPaid, setIsPaid] = useState(godMode);
-  const { brand: activeBrand } = useActiveBrand();
+  const { brand: activeBrand, isSuperAdmin, allBrands, switchBrand } = useActiveBrand();
 
   // Update isPaid from activeBrand (Clerk-authed) or brandProfile (analysis result)
   useEffect(() => {
     if (godMode) { setIsPaid(true); return; }
+    if (isSuperAdmin) { setIsPaid(true); return; }
     if (activeBrand?.isPaid) { setIsPaid(true); return; }
     if (brandProfile && (brandProfile as any).is_paid) { setIsPaid(true); }
-  }, [brandProfile, activeBrand]);
+  }, [brandProfile, activeBrand, isSuperAdmin]);
 
 
   // Load brain history from Neon on mount
@@ -130,32 +143,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ));
     }
 
-    // Final stage waits for API response
-    setProcessingStages(prev => prev.map((s, idx) =>
-      idx === stages.length - 1 ? { ...s, status: 'running' as const, startTime: Date.now() } : s
-    ));
-
-    try {
-      const res = await analyzePromise;
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error);
-
-      setProcessingStages(prev => prev.map(s => ({ ...s, status: 'complete' as const, endTime: Date.now() })));
-      setBrandProfile(data.data as BrandProfile);
-
+    // Wait for real response
+    const analyzeRes = await analyzePromise;
+    const analyzeData = await analyzeRes.json();
+    if (analyzeData.success && analyzeData.profile) {
+      setBrandProfile(analyzeData.profile);
       // Refresh brain history
       fetchBrains().then(entries => setHistoryEntries(entries)).catch(() => {});
-
-      setIsProcessing(false);
-      setCurrentView('brand-profile');
-    } catch (err) {
-      setProcessingStages(prev => prev.map((s, idx) =>
-        idx === stages.length - 1
-          ? { ...s, status: 'error' as const, message: err instanceof Error ? err.message : 'Analysis failed' }
-          : s
-      ));
-      setIsProcessing(false);
     }
+    setIsProcessing(false);
+    setCurrentView('brand-profile');
   };
 
   return (
@@ -177,7 +174,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSidebarCollapsed,
         startAnalysis,
         loadSampleData,
-        isPaid
+        isPaid,
+        isSuperAdmin,
+        allBrands,
+        switchBrand,
+        activeBrandId: activeBrand?.id || null,
       }}
     >
       {children}
