@@ -6060,7 +6060,11 @@ app.post('/api/admin/reset-brand-paid', async (req, res) => {
       `UPDATE brand_profiles SET is_paid = false, expires_at = NOW() + INTERVAL '24 hours', clerk_user_id = NULL, updated_at = NOW() WHERE id = $1`,
       [brandProfileId]
     );
-    res.json({ success: true, message: 'Brand reset to free tier' });
+    await pool.query(
+      `DELETE FROM promo_redemptions WHERE brand_profile_id = $1`,
+      [brandProfileId]
+    );
+    res.json({ success: true, message: 'Brand reset to free tier + promo redemptions cleared' });
   } catch(e) {
     res.status(500).json({ error: e.message });
   }
