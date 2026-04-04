@@ -398,6 +398,7 @@ export function Sidebar() {
                 <button
                   className={`nav-item nav-group-header ${isPublishingActive ? 'active' : 'available'}`}
                   onClick={() => {
+                    if (!isPaid) { setGateFeature('Publishing'); return; }
                     if (sidebarCollapsed) { setSidebarCollapsed(false); setPublishingGroupOpen(true); }
                     else setPublishingGroupOpen(o => !o);
                   }}
