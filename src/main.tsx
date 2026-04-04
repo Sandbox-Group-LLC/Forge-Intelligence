@@ -39,7 +39,7 @@ import './index.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_live_Y2xlcmsuZm9yZ2VpbnRlbGxpZ2VuY2UuYWkkMA"}>
+    <ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY}>
     <BrowserRouter>
       <Routes>
         {/* Marketing site */}
