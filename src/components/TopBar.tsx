@@ -63,6 +63,10 @@ const pathTitles: Record<string, string> = {
   '/app/performance':            'Performance Dashboard',
   '/app/brand-settings':         'Brand Settings',
   '/app/context-hub':            'New Analysis',
+  '/app/admin':                  'Admin',
+  '/app/topic-queue':            'Topic Queue',
+  '/app/content-library':        'Content Library',
+  '/app/content-import':         'Content Import',
 };
 
 export function TopBar() {
