@@ -76,12 +76,9 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
         setPromoMsg(d.message);
         setTimeout(() => {
           setPaid(true);
-          onUnlocked?.();
-          setTimeout(() => {
-            if (brandProfileId) localStorage.setItem('forge_pending_brand_id', brandProfileId);
-            window.location.href = `https://accounts.forgeintelligence.ai/sign-up?redirect_url=${encodeURIComponent(window.location.origin + '/app/context-hub')}`;
-          }, 1500);
-        }, 800);
+          if (brandProfileId) localStorage.setItem('forge_pending_brand_id', brandProfileId);
+          window.location.href = `https://accounts.forgeintelligence.ai/sign-up?redirect_url=${encodeURIComponent(window.location.origin + '/app/context-hub')}`;
+        }, 1200);
       } else {
         setPromoStatus('error');
         setPromoMsg(d.message || 'Invalid code');
