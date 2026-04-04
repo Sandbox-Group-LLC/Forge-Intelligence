@@ -118,33 +118,36 @@ function TrendChart({ data, onSync }: { data: TrendPoint[]; onSync?: () => void 
       )}
     </div>
   );
-  const w = 600, h = 160, padX = 40, padY = 16;
+  const w = 600, h = 200, padX = 8, padY = 20, padBottom = 28;
   const maxVal = Math.max(...data.map(d => d.impressions), 1);
+  const chartH = h - padY - padBottom;
   const pts = data.map((d, i) => {
     const x = data.length === 1 ? w / 2 : padX + (i / (data.length - 1)) * (w - padX * 2);
-    const y = padY + (1 - d.impressions / maxVal) * (h - padY * 2 - 20);
+    const y = padY + (1 - d.impressions / maxVal) * chartH;
     return { x, y, d };
   });
   const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-  const areaPath = `${linePath} L${pts[pts.length-1].x.toFixed(1)},${h} L${pts[0].x.toFixed(1)},${h} Z`;
+  const areaPath = `${linePath} L${pts[pts.length-1].x.toFixed(1)},${(padY + chartH).toFixed(1)} L${pts[0].x.toFixed(1)},${(padY + chartH).toFixed(1)} Z`;
   const labels = [0, Math.floor(data.length / 2), data.length - 1].map(i => data[i]);
   return (
     <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} className="trend-chart" preserveAspectRatio="none">
       <defs>
         <linearGradient id="tg" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="0.18"/>
-          <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0"/>
+          <stop offset="0%" stopColor="#3563FF" stopOpacity="0.35"/>
+          <stop offset="100%" stopColor="#3563FF" stopOpacity="0.02"/>
         </linearGradient>
       </defs>
       {[0, 0.25, 0.5, 0.75, 1].map(v => {
-        const y = padY + v * (h - padY * 2);
-        return <line key={v} x1={padX} y1={y} x2={w - padX} y2={y} stroke="var(--color-border)" strokeWidth="1" strokeDasharray="3 4" opacity="0.5" />;
+        const y = padY + v * chartH;
+        return <line key={v} x1={0} y1={y} x2={w} y2={y} stroke="rgba(255,255,255,0.06)" strokeWidth="1" />;
       })}
       <path d={areaPath} fill="url(#tg)" />
-      <path d={linePath} fill="none" stroke="var(--color-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      {pts.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r="2" fill="var(--color-primary)" opacity="0.7" />)}
+      <path d={linePath} fill="none" stroke="#3563FF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      {pts.map((p, i) => (
+        <circle key={i} cx={p.x} cy={p.y} r="3" fill="#3563FF" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" />
+      ))}
       {labels.map((label, i) => (
-        <text key={i} x={Math.max(50, Math.min(w - 50, pts[[0, Math.floor(data.length / 2), data.length - 1][i]].x))} y={h - 8} textAnchor="middle" fontSize="10" fill="var(--color-text-muted)">
+        <text key={i} x={Math.max(30, Math.min(w - 30, pts[[0, Math.floor(data.length / 2), data.length - 1][i]].x))} y={h - 8} textAnchor="middle" fontSize="11" fill="rgba(255,255,255,0.4)">
           {new Date(label.day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
         </text>
       ))}
