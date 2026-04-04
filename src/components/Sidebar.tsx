@@ -179,6 +179,7 @@ const NAV_ROUTES: Partial<Record<ViewType, string>> = {
   'brain-history':        '/app/context-hub',
   'content-library':      '/app/content-library',
   'content-import':       '/app/content-import',
+  'topic-queue':          '/app/topic-queue',
   'admin':                '/app/admin',
 };
 
