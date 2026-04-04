@@ -690,7 +690,7 @@ Forge connects to the broader Sandbox Group ecosystem:
 - [ ] Stage 3 — Authenticity Enricher agent (prompt spec written, agent NOT built)
 - [x] Admin dashboard — KPI cards + reviewer management ✅
 - [x] Brand brain pre-seeding — UUID auto-generated on Context Hub run ✅
-- [ ] Server-side UUID auto-generation (currently requires client to send valid UUID)
+- [x] Server-side UUID — gen_random_uuid() throughout ✅ (currently requires client to send valid UUID)
 
 ### Phase 2 — Generation + Governance (Months 4–6)
 
