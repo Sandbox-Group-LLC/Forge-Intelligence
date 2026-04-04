@@ -169,7 +169,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         sidebarCollapsed,
         setSidebarCollapsed,
         startAnalysis,
-        loadSampleData
+        loadSampleData,
+        isPaid
       }}
     >
       {children}
