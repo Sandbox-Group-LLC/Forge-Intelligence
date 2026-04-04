@@ -5960,8 +5960,26 @@ app.post('/api/onboard/paypal-success', async (req, res) => {
 
 
 // GET /api/auth/me — returns the authenticated user's brand profile
+// Optional ?brand_id=xxx — tethers an existing brand to this user on first sign-in
 app.get('/api/auth/me', requireAuth, async (req, res) => {
   try {
+    const brandId = req.query.brand_id || null;
+
+    // If brand_id provided and user has no brand yet, tether it
+    if (brandId) {
+      const existing = await pool.query(
+        `SELECT id FROM brand_profiles WHERE clerk_user_id = $1 LIMIT 1`,
+        [req.userId]
+      );
+      if (!existing.rows.length) {
+        await pool.query(
+          `UPDATE brand_profiles SET clerk_user_id = $1, updated_at = NOW() WHERE id = $2 AND (clerk_user_id IS NULL)`,
+          [req.userId, brandId]
+        );
+        console.log(`[AUTH] Tethered brand ${brandId} to user ${req.userId}`);
+      }
+    }
+
     const result = await pool.query(
       `SELECT * FROM brand_profiles WHERE clerk_user_id = $1 AND is_active = true ORDER BY updated_at DESC LIMIT 1`,
       [req.userId]
