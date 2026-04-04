@@ -7,6 +7,7 @@ import { BrandProfile } from '../components/views/BrandProfile';
 import { Strategy } from '../components/views/Strategy';
 import { BrainHistory } from '../components/views/BrainHistory';
 import { initialProcessingStages } from '../data/mockData';
+import { ProcessingStage } from '../types';
 
 function ContextAgentPage() {
   const { currentView, setCurrentView, setIsProcessing, setProcessingStages, setBrandProfile } = useApp();
@@ -22,23 +23,25 @@ function ContextAgentPage() {
     // Switch to active run and reset stages
     setCurrentView('active-run');
     setIsProcessing(true);
-    setProcessingStages(initialProcessingStages.map(s => ({ ...s, status: 'pending' as const })));
-
     // Drive stage animations while Claude works
     const stageTimings = [2000, 3000, 4000, 3000, 2000];
     let cancelled = false;
 
+    let stages: ProcessingStage[] = initialProcessingStages.map(s => ({ ...s, status: 'pending' as const }));
+
     const driveStages = async () => {
       for (let i = 0; i < stageTimings.length; i++) {
         if (cancelled) break;
-        setProcessingStages(prev => prev.map((s, idx) =>
+        stages = stages.map((s, idx) =>
           idx === i ? { ...s, status: 'running' as const, startTime: Date.now() } : s
-        ));
+        );
+        setProcessingStages([...stages]);
         await new Promise(r => setTimeout(r, stageTimings[i]));
         if (cancelled) break;
-        setProcessingStages(prev => prev.map((s, idx) =>
+        stages = stages.map((s, idx) =>
           idx === i ? { ...s, status: 'complete' as const, endTime: Date.now() } : s
-        ));
+        );
+        setProcessingStages([...stages]);
       }
     };
 
