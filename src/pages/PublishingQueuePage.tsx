@@ -169,7 +169,9 @@ export default function PublishingQueuePage() {
   const [copied, setCopied] = useState<string>('');
   const [publishLog, setPublishLog] = useState<Record<string, { channel: string; live_status: string; published_url?: string; last_synced_at?: string }[]>>({});
   const [syncing, setSyncing] = useState<string | null>(null);
-  const [republishing, setRepublishing] = useState<string | null>(null); // "itemId:channel"
+  const [republishing, setRepublishing] = useState<string | null>(null);
+  const [reviewers, setReviewers] = useState<{id:string;name:string;email:string;title:string}[]>([]);
+  const [reviewDropdown, setReviewDropdown] = useState<string | null>(null); // itemId // "itemId:channel"
   const [deleteModal, setDeleteModal] = useState<{ item: QueueItem; publishedChannels: string[] } | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
@@ -241,14 +243,19 @@ export default function PublishingQueuePage() {
     } finally { setEditingTitleId(null); }
   };
 
-  const sendForReview = async (item: QueueItem) => {
+  const sendForReview = async (item: QueueItem, reviewerId?: string) => {
     try {
-      const r = await fetch(`/api/publishing/queue/${item.id}/request-review`, { method: 'POST' });
+      const r = await fetch(`/api/publishing/queue/${item.id}/request-review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reviewerId: reviewerId || null })
+      });
       const d = await r.json();
       if (d.reviewUrl) {
         setReviewUrl(d.reviewUrl);
         navigator.clipboard.writeText(d.reviewUrl).catch(() => {});
         setReviewCopied(true);
+        setReviewDropdown(null);
         setTimeout(() => { setReviewCopied(false); setReviewUrl(null); }, 5000);
       }
     } catch { /* silent */ }
@@ -316,6 +323,16 @@ export default function PublishingQueuePage() {
   useEffect(() => {
     loadQueue(); // brands loaded inside loadQueue via brand-scoped queue endpoints
   }, [loadQueue]);
+
+  // Load reviewers when items load
+  useEffect(() => {
+    if (!items.length) return;
+    const brandId = items[0]?.brand_profile_id;
+    if (!brandId) return;
+    fetch(`/api/reviewers/${brandId}`).then(r=>r.json()).then(d => {
+      if (d.success) setReviewers(d.reviewers);
+    });
+  }, [items]);
 
   // Load connected channels per brand
   useEffect(() => {
@@ -973,9 +990,35 @@ ${bodyHtml}
                       <button className="pq-icon-btn" title="UTM Preview" onClick={() => openUtmPreview(item)}>
                         <Link2 />
                       </button>
-                      <button className="pq-icon-btn" title="Send for Review" onClick={() => sendForReview(item)}>
-                        <Share />
-                      </button>
+                      <div style={{ position: 'relative' }}>
+                        <button className="pq-icon-btn" title="Send for Review"
+                          onClick={() => setReviewDropdown(reviewDropdown === item.id ? null : item.id)}>
+                          <Share />
+                        </button>
+                        {reviewDropdown === item.id && (
+                          <div className="pq-reviewer-dropdown">
+                            <div className="pq-reviewer-dropdown-title">Send for Review</div>
+                            {reviewers.length === 0 ? (
+                              <div className="pq-reviewer-empty">No reviewers — add them in Admin</div>
+                            ) : reviewers.map(rv => (
+                              <button key={rv.id} className="pq-reviewer-option"
+                                onClick={() => sendForReview(item, rv.id)}>
+                                <span className="pq-reviewer-avatar">{rv.name[0].toUpperCase()}</span>
+                                <span>
+                                  <div className="pq-reviewer-rname">{rv.name}</div>
+                                  {rv.title && <div className="pq-reviewer-rtitle">{rv.title}</div>}
+                                </span>
+                              </button>
+                            ))}
+                            <div className="pq-reviewer-divider" />
+                            <button className="pq-reviewer-option pq-reviewer-link-only"
+                              onClick={() => sendForReview(item)}>
+                              <span className="pq-reviewer-avatar">🔗</span>
+                              <span><div className="pq-reviewer-rname">Copy link only</div></span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
                       <button className="pq-icon-btn" title="Archive" onClick={() => archiveItem(item)}>
                         <Archive />
                       </button>
@@ -1224,9 +1267,35 @@ return (
                       <button className="pq-icon-btn" title="UTM Preview" onClick={() => openUtmPreview(item)}>
                         <Link2 />
                       </button>
-                      <button className="pq-icon-btn" title="Send for Review" onClick={() => sendForReview(item)}>
-                        <Share />
-                      </button>
+                      <div style={{ position: 'relative' }}>
+                        <button className="pq-icon-btn" title="Send for Review"
+                          onClick={() => setReviewDropdown(reviewDropdown === item.id ? null : item.id)}>
+                          <Share />
+                        </button>
+                        {reviewDropdown === item.id && (
+                          <div className="pq-reviewer-dropdown">
+                            <div className="pq-reviewer-dropdown-title">Send for Review</div>
+                            {reviewers.length === 0 ? (
+                              <div className="pq-reviewer-empty">No reviewers — add them in Admin</div>
+                            ) : reviewers.map(rv => (
+                              <button key={rv.id} className="pq-reviewer-option"
+                                onClick={() => sendForReview(item, rv.id)}>
+                                <span className="pq-reviewer-avatar">{rv.name[0].toUpperCase()}</span>
+                                <span>
+                                  <div className="pq-reviewer-rname">{rv.name}</div>
+                                  {rv.title && <div className="pq-reviewer-rtitle">{rv.title}</div>}
+                                </span>
+                              </button>
+                            ))}
+                            <div className="pq-reviewer-divider" />
+                            <button className="pq-reviewer-option pq-reviewer-link-only"
+                              onClick={() => sendForReview(item)}>
+                              <span className="pq-reviewer-avatar">🔗</span>
+                              <span><div className="pq-reviewer-rname">Copy link only</div></span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
                       <button className="pq-icon-btn" title="Archive" onClick={() => archiveItem(item)}>
                         <Archive />
                       </button>
