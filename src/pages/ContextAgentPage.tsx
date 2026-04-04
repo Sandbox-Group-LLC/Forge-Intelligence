@@ -6,9 +6,10 @@ import { ActiveRun } from '../components/views/ActiveRun';
 import { BrandProfile } from '../components/views/BrandProfile';
 import { Strategy } from '../components/views/Strategy';
 import { BrainHistory } from '../components/views/BrainHistory';
+import { initialProcessingStages } from '../data/mockData';
 
 function ContextAgentPage() {
-  const { currentView, setCurrentView, setIsProcessing, setBrandProfile } = useApp();
+  const { currentView, setCurrentView, setIsProcessing, setProcessingStages, setBrandProfile } = useApp();
   const firedRef = useRef(false);
 
   useEffect(() => {
@@ -18,11 +19,32 @@ function ContextAgentPage() {
     firedRef.current = true;
     sessionStorage.removeItem('forge_onboard_url');
 
-    // Switch to active run immediately so user sees progress
+    // Switch to active run and reset stages
     setCurrentView('active-run');
     setIsProcessing(true);
+    setProcessingStages(initialProcessingStages.map(s => ({ ...s, status: 'pending' as const })));
 
-    // Fire analysis directly — no stale closure risk
+    // Drive stage animations while Claude works
+    const stageTimings = [2000, 3000, 4000, 3000, 2000];
+    let cancelled = false;
+
+    const driveStages = async () => {
+      for (let i = 0; i < stageTimings.length; i++) {
+        if (cancelled) break;
+        setProcessingStages(prev => prev.map((s, idx) =>
+          idx === i ? { ...s, status: 'running' as const, startTime: Date.now() } : s
+        ));
+        await new Promise(r => setTimeout(r, stageTimings[i]));
+        if (cancelled) break;
+        setProcessingStages(prev => prev.map((s, idx) =>
+          idx === i ? { ...s, status: 'complete' as const, endTime: Date.now() } : s
+        ));
+      }
+    };
+
+    driveStages();
+
+    // Fire analysis — when done, cancel stage loop and show brand profile
     fetch('/api/context-hub/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -37,11 +59,17 @@ function ContextAgentPage() {
     })
       .then(r => r.json())
       .then(d => {
-        if (d.success && d.data) setBrandProfile(d.data);
+        cancelled = true;
+        if (d.success && d.data) {
+          // Mark all stages complete
+          setProcessingStages(initialProcessingStages.map(s => ({ ...s, status: 'complete' as const })));
+          setBrandProfile(d.data);
+        }
         setIsProcessing(false);
         setCurrentView('brand-profile');
       })
       .catch(() => {
+        cancelled = true;
         setIsProcessing(false);
       });
   }, []);
