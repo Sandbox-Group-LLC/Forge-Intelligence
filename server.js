@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import pkg from 'pg';
 import Anthropic from '@anthropic-ai/sdk';
 import { randomUUID, randomBytes, createHmac } from 'crypto';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
 
 const { Pool } = pkg;
 const __filename = fileURLToPath(import.meta.url);
