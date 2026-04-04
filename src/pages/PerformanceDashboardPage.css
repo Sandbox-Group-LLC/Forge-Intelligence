@@ -284,7 +284,15 @@
   box-shadow: var(--shadow-sm);
 }
 
-.trend-chart { display: block; }
+.trend-chart {
+  display: block;
+  width: 100%;
+  height: 200px;
+}
+
+.perf-impressions-card {
+  min-height: 260px;
+}
 
 .trend-empty {
   display: flex;
