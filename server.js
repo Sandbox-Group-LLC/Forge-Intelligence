@@ -6018,14 +6018,14 @@ const PROMO_CODES = new Map([
 // POST /api/promo/validate — validate a promo code (unlimited use)
 app.post('/api/promo/validate', async (req, res) => {
   const { code, brandProfileId } = req.body;
-  if (!code || !brandProfileId) return res.status(400).json({ error: 'code and brandProfileId required' });
+  if (!code) return res.status(400).json({ error: 'code required' });
 
   const normalised = code.trim().toUpperCase();
   const promo = PROMO_CODES.get(normalised);
   if (!promo) return res.json({ valid: false, message: 'Invalid promo code' });
 
   // Apply — mark brand as paid
-  if (promo.discount === 100) {
+  if (promo.discount === 100 && brandProfileId) {
     await pool.query(
       `UPDATE brand_profiles SET is_paid = true, expires_at = NULL, updated_at = NOW() WHERE id = $1`,
       [brandProfileId]
