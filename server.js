@@ -6047,6 +6047,25 @@ app.post('/api/promo/validate', async (req, res) => {
   res.json({ valid: true, discount: promo.discount, message: `Code applied — ${promo.description}` });
 });
 
+
+// POST /api/admin/reset-brand-paid — dev only, resets is_paid for testing
+app.post('/api/admin/reset-brand-paid', async (req, res) => {
+  if (process.env.NODE_ENV === 'production' && !req.body.adminPassword === process.env.ADMIN_PASSWORD) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const { brandProfileId, adminPassword } = req.body;
+  if (adminPassword !== process.env.ADMIN_PASSWORD) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    await pool.query(
+      `UPDATE brand_profiles SET is_paid = false, expires_at = NOW() + INTERVAL '24 hours', clerk_user_id = NULL, updated_at = NOW() WHERE id = $1`,
+      [brandProfileId]
+    );
+    res.json({ success: true, message: 'Brand reset to free tier' });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Content Import (Bring Your Own Article) ──────────────────────────────────
 
 // POST /api/content/import — parse + score an externally written article
