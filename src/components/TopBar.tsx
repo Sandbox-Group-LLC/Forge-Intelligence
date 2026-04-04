@@ -1,3 +1,5 @@
+import { useUser, SignOutButton } from '@clerk/clerk-react';
+import { useActiveBrand } from '../hooks/useActiveBrand';
 import { useApp } from '../context/AppContext';
 import './TopBar.css';
 
@@ -55,6 +57,8 @@ const pathTitles: Record<string, string> = {
 
 export function TopBar() {
   const { currentView, brandProfile, sidebarCollapsed, setSidebarCollapsed } = useApp();
+  const { brand: activeBrand } = useActiveBrand();
+  const { user } = useUser();
 
   return (
     <header className="topbar">
@@ -87,7 +91,16 @@ export function TopBar() {
           </div>
         )}
         <div className="user-area">
-          <span className="user-avatar">{icons.user}</span>
+          <SignOutButton redirectUrl="/">
+            <button className="user-avatar clerk-avatar" title={user?.primaryEmailAddress?.emailAddress || 'Sign out'}>
+              {user?.imageUrl
+                ? <img src={user.imageUrl} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                : <span style={{ fontSize: '0.75rem', fontWeight: 700 }}>
+                    {user?.firstName?.[0] || user?.primaryEmailAddress?.emailAddress?.[0]?.toUpperCase() || '?'}
+                  </span>
+              }
+            </button>
+          </SignOutButton>
         </div>
       </div>
     </header>
