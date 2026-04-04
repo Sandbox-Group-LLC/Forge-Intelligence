@@ -144,11 +144,11 @@ const CHANNELS: ChannelDef[] = [
   {
     id: 'hubspot',
     label: 'HubSpot',
-    pipedreamApp: 'hubspot',
-    description: 'Contact tracking + campaign attribution. Connects published article UTMs to HubSpot contacts.',
+    description: 'CRM + CMS integration. Publish articles, track contacts, and attribute content engagement.',
     color: '#FF7A59',
     logo: 'HS',
-    liveStatus: 'staged',
+    liveStatus: 'live',
+    oauthFlow: true,
     credentialFields: [
       { key: 'accessToken', label: 'Private App Token', placeholder: 'pat-na2-...', type: 'password' },
       { key: 'portalId', label: 'Portal ID', placeholder: '244954048' },
@@ -372,8 +372,22 @@ export default function IntegrationsPage() {
         setTimeout(() => loadChannels(brand), 500);
       }
     }
+    if (params.get('hubspot_connected') === 'true') {
+      setSuccess('HubSpot connected successfully!');
+      setExpanded('hubspot');
+      window.history.replaceState({}, '', '/app/integrations');
+      const brand = localStorage.getItem(LS_BRAND_KEY);
+      if (brand) {
+        setSelectedBrand(brand);
+        setTimeout(() => loadChannels(brand), 500);
+      }
+    }
     if (params.get('linkedin_error')) {
       setError(`LinkedIn authorization failed: ${decodeURIComponent(params.get('linkedin_error') || '')}`);
+      window.history.replaceState({}, '', '/app/integrations');
+    }
+    if (params.get('hubspot_error')) {
+      setError(`HubSpot authorization failed: ${decodeURIComponent(params.get('hubspot_error') || '')}`);
       window.history.replaceState({}, '', '/app/integrations');
     }
   }, []);
@@ -582,6 +596,9 @@ export default function IntegrationsPage() {
                               if (ch.id === 'linkedin') {
                                 // Show LinkedIn connection options
                                 setExpanded('linkedin');
+                              } else if (ch.id === 'hubspot') {
+                                // Custom OAuth flow for HubSpot
+                                window.location.href = `/api/hubspot/auth?state=${encodeURIComponent(selectedBrand + '|' + Date.now())}`;
                               } else if (ch.pipedreamApp) {
                                 handleSave(ch.id);
                               } else {
@@ -681,6 +698,27 @@ export default function IntegrationsPage() {
                         <div style={{ marginTop: 8, fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>
                           Currently posting as: <strong style={{ color: 'rgba(255,255,255,0.8)' }}>{saved?.credentials?.selectedTarget?.name || 'Personal Profile'}</strong>
                           {saved?.credentials?.selectedTarget?.type === 'company' && ' (Company Page)'}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* HubSpot: Connected status */}
+                    {ch.id === 'hubspot' && connected && (
+                      <div className="int-form-section">
+                        <div className="int-pipedream-status">
+                          <div className="int-pipedream-badge" style={{ background: 'rgba(255, 122, 89, 0.15)', color: '#FF7A59' }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                            Connected via OAuth
+                          </div>
+                          <span className="int-pipedream-sub">
+                            Portal: <strong>{saved?.credentials?.portalId || '--'}</strong>
+                            {saved?.credentials?.hubDomain && ` (${saved.credentials.hubDomain})`}
+                            {' · '}Connected by: {saved?.credentials?.userEmail || '--'}
+                            {' · '}Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}
+                          </span>
+                          <button className="int-reauth-btn" onClick={() => {
+                            window.location.href = `/api/hubspot/auth?state=${encodeURIComponent(selectedBrand + '|' + Date.now())}`;
+                          }}>Reconnect</button>
                         </div>
                       </div>
                     )}
