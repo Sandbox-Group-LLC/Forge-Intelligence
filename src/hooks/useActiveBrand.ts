@@ -8,23 +8,28 @@ export interface ActiveBrand {
   isPaid: boolean;
 }
 
-// Returns the authenticated user's brand profile
-// Falls back to most recent brand for unauthenticated (landing page flow)
 export function useActiveBrand() {
   const [brand, setBrand] = useState<ActiveBrand | null>(null);
   const [loading, setLoading] = useState(true);
-  const { isSignedIn, getToken } = useAuth();
+  const { isSignedIn, isLoaded, getToken } = useAuth();
 
   useEffect(() => {
+    if (!isLoaded) return; // Wait for Clerk to finish loading
+
     async function load() {
+      setLoading(true);
       try {
         if (isSignedIn) {
-          // Authenticated — fetch user's specific brand via /api/auth/me
-          // Check localStorage for pending brand_id from post-payment sign-up
-          const token = await getToken();
+          // Authenticated — fetch via /api/auth/me
+          // Check localStorage for pending brand from post-payment flow
           const pendingBrandId = localStorage.getItem('forge_pending_brand_id') || '';
           if (pendingBrandId) localStorage.removeItem('forge_pending_brand_id');
-          const meUrl = pendingBrandId ? `/api/auth/me?brand_id=${encodeURIComponent(pendingBrandId)}` : '/api/auth/me';
+
+          const token = await getToken();
+          const meUrl = pendingBrandId
+            ? `/api/auth/me?brand_id=${encodeURIComponent(pendingBrandId)}`
+            : '/api/auth/me';
+
           const res = await fetch(meUrl, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
@@ -40,7 +45,7 @@ export function useActiveBrand() {
             setBrand(null);
           }
         } else {
-          // Unauthenticated — fall back to most recent brand (landing page flow)
+          // Unauthenticated — use most recent brain from API (landing/free flow)
           const res = await fetch('/api/context-hub/brains');
           const d = await res.json();
           if (d.success && d.data?.length) {
@@ -51,13 +56,16 @@ export function useActiveBrand() {
               brandUrl: b.brandUrl,
               isPaid: b.is_paid || false,
             });
+          } else {
+            setBrand(null);
           }
         }
       } catch { /* silent */ }
       setLoading(false);
     }
+
     load();
-  }, [isSignedIn]);
+  }, [isSignedIn, isLoaded]); // Re-runs when Clerk auth state changes
 
   return { brand, loading };
 }
