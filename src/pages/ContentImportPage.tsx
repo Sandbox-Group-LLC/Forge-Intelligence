@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useApp } from '../context/AppContext';
 import { AppShell } from '../layouts/AppShell';
 import './ContentImportPage.css';
 
@@ -18,8 +19,9 @@ interface ImportResult {
 const scoreColor = (n: number) => n >= 75 ? '#10B981' : n >= 50 ? '#F59E0B' : '#EF4444';
 
 export default function ContentImportPage() {
-  const [brands, setBrands] = useState<Brain[]>([]);
-  const [selectedBrand, setSelectedBrand] = useState('');
+  const { activeBrand } = useApp();
+
+
   const [mode, setMode] = useState<'url' | 'paste'>('url');
   const [url, setUrl] = useState('');
   const [rawText, setRawText] = useState('');
@@ -28,14 +30,10 @@ export default function ContentImportPage() {
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState('');
 
-  useState(() => {
-    fetch('/api/context-hub/brains').then(r => r.json()).then(d => {
-      if (d.success) { setBrands(d.data || []); if (d.data?.length) setSelectedBrand(d.data[0].id); }
-    });
-  });
+  // Brain selection handled by TopBar
 
   const runImport = async () => {
-    if (!selectedBrand) { setError('Select a Brain first'); return; }
+    if (!activeBrand?.id) { setError('Select a brain from TopBar first'); return; }
     if (mode === 'url' && !url.trim()) { setError('Enter a URL'); return; }
     if (mode === 'paste' && !rawText.trim()) { setError('Paste some content'); return; }
     setImporting(true);
@@ -46,7 +44,7 @@ export default function ContentImportPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          brandProfileId: selectedBrand,
+          brandProfileId: activeBrand?.id,
           url: mode === 'url' ? url.trim() : undefined,
           rawText: mode === 'paste' ? rawText.trim() : undefined,
           title: manualTitle.trim() || undefined
@@ -73,13 +71,12 @@ export default function ContentImportPage() {
 
         {!result ? (
           <div className="ci-form-card">
-            {/* Brand selector */}
+            {/* Brain from TopBar */}
             <div className="ci-field">
               <label className="ci-label">Brain</label>
-              <select className="geo-select" value={selectedBrand} onChange={e => setSelectedBrand(e.target.value)}>
-                <option value="">Select a Brain...</option>
-                {brands.map(b => <option key={b.id} value={b.id}>{b.brandName || b.brandUrl}</option>)}
-              </select>
+              <div className="geo-select" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {activeBrand ? <><span style={{ color: '#10B981' }}>✓</span> {activeBrand.brandName}</> : <span style={{ opacity: 0.5 }}>Select brain from TopBar</span>}
+              </div>
             </div>
 
             {/* Mode toggle */}
@@ -140,7 +137,7 @@ export default function ContentImportPage() {
             <button
               className="ci-import-btn"
               onClick={runImport}
-              disabled={importing || !selectedBrand}
+              disabled={importing || !activeBrand?.id}
             >
               {importing ? (
                 <><span className="ci-spinner" /> Brain is reading your article...</>
