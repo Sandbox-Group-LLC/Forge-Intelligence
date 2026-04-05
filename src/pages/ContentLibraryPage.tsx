@@ -49,9 +49,9 @@ const timeAgo = (date: string) => {
 
 export default function ContentLibraryPage() {
   const { getToken } = useAuth();
-  const { activeBrandId } = useApp();
-  const [brains, setBrains] = useState<Brain[]>([]);
-  const [selectedBrand, setSelectedBrand] = useState('');
+  const { activeBrand } = useApp();
+
+
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -61,25 +61,9 @@ export default function ContentLibraryPage() {
   const [page, setPage] = useState(0);
   const LIMIT = 24;
 
-  // Sync with TopBar brain selection
-  useEffect(() => {
-    if (activeBrandId) setSelectedBrand(activeBrandId);
-  }, [activeBrandId]);
+  // Brain selection handled by TopBar
 
-  useEffect(() => {
-    (async () => {
-      const token = await getToken();
-      const res = await fetch('/api/context-hub/brains', {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-      });
-      const d = await res.json();
-      if (d.success) setBrains(d.data);
-    })();
-  }, []);
 
-  // Sync with global brand selection from TopBar
-  useEffect(() => {
-    if (activeBrandId) setSelectedBrand(activeBrandId);
   }, [activeBrandId]);
 
   const load = useCallback(async (brandId: string, q: string, status: string, pg: number) => {
@@ -98,12 +82,12 @@ export default function ContentLibraryPage() {
   }, []);
 
   useEffect(() => {
-    load(selectedBrand, search, statusFilter, page);
-  }, [selectedBrand, statusFilter, page, load]);
+    load(activeBrand?.id, search, statusFilter, page);
+  }, [activeBrand?.id, statusFilter, page, load]);
 
   // Debounce search
   useEffect(() => {
-    const t = setTimeout(() => { setPage(0); load(selectedBrand, search, statusFilter, 0); }, 350);
+    const t = setTimeout(() => { setPage(0); load(activeBrand?.id, search, statusFilter, 0); }, 350);
     return () => clearTimeout(t);
   }, [search]);
 
@@ -124,12 +108,11 @@ export default function ContentLibraryPage() {
             <h1 className="geo-title">Content Library</h1>
             <p className="geo-description">Every article generated across all brands — searchable, filterable, actionable.</p>
           </div>
-          {/* Brand filter — agency/internal, remove for single-brand production */}
+          {/* Current brand from TopBar */}
           <div className="cl-brand-filter">
-            <select className="geo-select" value={selectedBrand} onChange={e => { setSelectedBrand(e.target.value); setPage(0); }}>
-              <option value="">All Brands</option>
-              {brains.map(b => <option key={b.id} value={b.id}>{b.brandName || b.brandUrl}</option>)}
-            </select>
+            <div className="geo-select" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {activeBrand ? <><span style={{ color: '#10B981' }}>✓</span> {activeBrand.brandName}</> : <span style={{ opacity: 0.5 }}>All articles</span>}
+            </div>
           </div>
         </div>
 
