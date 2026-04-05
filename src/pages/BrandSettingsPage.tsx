@@ -1,6 +1,6 @@
 import { useAuth } from '@clerk/clerk-react';
 import { useApp } from '../context/AppContext';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { AppShell } from '../layouts/AppShell';
 import './BrandSettingsPage.css';
 
@@ -30,7 +30,7 @@ export default function BrandSettingsPage() {
   const [brands, setBrands] = useState<BrandSettings[]>([]);
 
   // Sync with global brand selection from TopBar
-  const loadBrands = useCallback(async () => {
+  const loadBrands = async () => {
     try {
       const token = await getToken();
       const r = await fetch('/api/context-hub/brains', {
@@ -51,7 +51,7 @@ export default function BrandSettingsPage() {
     } finally {
       setLoading(false);
     }
-  }, [activeBrandId]);
+  };
 
   useEffect(() => { loadBrands(); }, []);
 
@@ -60,7 +60,7 @@ export default function BrandSettingsPage() {
     fetch(`/api/brand-settings/${activeBrandId}`)
       .then(r => r.json())
       .then(d => { if (d.success) setForm(d.settings); });
-  }, [activeBrandId]);
+  };
 
   const handleScrape = async () => {
     if (!activeBrandId || !articleTemplateUrl) return;
