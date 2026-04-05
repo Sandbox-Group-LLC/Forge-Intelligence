@@ -17,7 +17,6 @@ interface BrandSettings {
 export default function BrandSettingsPage() {
   const { getToken } = useAuth();
   const { activeBrandId } = useApp();
-  const { activeBrandId } = useApp();
   const [brands, setBrands] = useState<BrandSettings[]>([]);
   const [selected, setSelected] = useState<string>('');
   const [form, setForm] = useState<Partial<BrandSettings>>({});
