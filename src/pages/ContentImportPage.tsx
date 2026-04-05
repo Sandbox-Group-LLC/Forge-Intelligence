@@ -3,7 +3,6 @@ import { useApp } from '../context/AppContext';
 import { AppShell } from '../layouts/AppShell';
 import './ContentImportPage.css';
 
-interface Brain { id: string; brandName?: string; brandUrl?: string; }
 interface ImportResult {
   contentId: string;
   title: string;
