@@ -7316,7 +7316,8 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
       isSuperAdmin: false,
       brand: result.rows[0] || null,
       allBrands: null,
-      isPaid: result.rows[0]?.is_paid || false,
+      // Founder accounts always paid (fallback if super admin check misses)
+      isPaid: result.rows[0]?.is_paid || req.userId === 'user_3BtC7nusm7CShN7EdUYaaLZcDwp',
     });
   } catch(e) {
     res.status(500).json({ success: false, error: e.message });
