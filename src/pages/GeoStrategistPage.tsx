@@ -38,9 +38,9 @@ const STAGES = [
 ];
 
 function GeoStrategistContent() {
-  const { setCurrentView, historyEntries } = useApp();
   const { activeBrandId } = useApp();
-  // Using activeBrandId from context
+  const { setCurrentView, historyEntries } = useApp();
+  // Brand selection from TopBar: const [activeBrandId, (() => {})] = useState...
   const [isRunning, setIsRunning] = useState(false);
   const [currentStage, setCurrentStage] = useState(0);
   const [completedStages, setCompletedStages] = useState<number[]>([]);
@@ -53,7 +53,7 @@ function GeoStrategistContent() {
     setCurrentView('geo-strategist');
     const params = new URLSearchParams(window.location.search);
     const profileId = params.get('profileId');
-    if (profileId) () => {}(profileId);
+    if (profileId) (() => {})(profileId);
   }, []);
 
   // Use historyEntries from AppContext (already loaded) as brain list
@@ -130,7 +130,16 @@ function GeoStrategistContent() {
       {!isRunning && !result && (
         <div className="geo-input-bar">
           <div className="geo-select-wrap">
-            {/* Brain selector moved to TopBar */}
+            <select
+              className="geo-select"
+              value={activeBrandId}
+              disabled style={{opacity:0.5}})(e.target.value)}
+            >
+              <option value="">Select a Brand Profile...</option>
+              {brains.map(b => (
+                <option key={b.id} value={b.id}>{b.brandName} — {b.brandUrl}</option>
+              ))}
+            </select>
           </div>
           <button className="geo-run-btn" onClick={runAnalysis} disabled={!activeBrandId}>
             {icons.zap} Run GEO Analysis
