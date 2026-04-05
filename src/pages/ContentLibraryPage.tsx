@@ -50,8 +50,8 @@ const timeAgo = (date: string) => {
 export default function ContentLibraryPage() {
   const { getToken } = useAuth();
   const { activeBrandId } = useApp();
-    // Using activeBrandId from context instead
-  // const [activeBrandId, () => {}] = useState('');
+  const [brains, setBrains] = useState<Brain[]>([]);
+  // Brand selection from TopBar: const [activeBrandId, (() => {})] = useState...
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -74,7 +74,7 @@ export default function ContentLibraryPage() {
 
   // Sync with global brand selection from TopBar
   useEffect(() => {
-    if (activeBrandId) () => {}(activeBrandId);
+    if (activeBrandId) (() => {})(activeBrandId);
   }, [activeBrandId]);
 
   const load = useCallback(async (brandId: string, q: string, status: string, pg: number) => {
@@ -121,7 +121,10 @@ export default function ContentLibraryPage() {
           </div>
           {/* Brand filter — agency/internal, remove for single-brand production */}
           <div className="cl-brand-filter">
-            {/* Brain selector removed - using TopBar */}
+            <select className="geo-select" value={activeBrandId} disabled style={{opacity:0.5}})(e.target.value); setPage(0); }}>
+              <option value="">All Brands</option>
+              {brains.map(b => <option key={b.id} value={b.id}>{b.brandName || b.brandUrl}</option>)}
+            </select>
           </div>
         </div>
 
