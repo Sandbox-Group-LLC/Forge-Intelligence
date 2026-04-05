@@ -3,12 +3,6 @@ import { AppShell } from '../layouts/AppShell';
 import { useApp } from '../context/AppContext';
 import './GeoStrategistPage.css';
 
-interface BrainEntry {
-  id: string;
-  brandName: string;
-  brandUrl: string;
-  updatedAt: string;
-}
 
 interface GeoResult {
   opportunityScore: number;
