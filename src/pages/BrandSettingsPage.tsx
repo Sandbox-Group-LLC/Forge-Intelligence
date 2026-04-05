@@ -46,6 +46,7 @@ export default function BrandSettingsPage() {
         logo_url: b.logo_url || '',
         settings: b.settings || {},
       }));
+      setBrands(list);
     } finally {
       setLoading(false);
     }
@@ -71,7 +72,6 @@ export default function BrandSettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ articleUrl: articleTemplateUrl, catalogUrl: catalogTemplateUrl || undefined })
       });
-      setBrands(list);
       const d = await r.json();
       if (d.success) {
         setScrapeSuccess(true);
