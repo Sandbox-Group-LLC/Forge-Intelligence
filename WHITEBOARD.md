@@ -104,7 +104,6 @@ Every AI content tool today solves for production volume. None solve for **compo
 - Brand Scraper: Social included? (LinkedIn/X for voice signals)
 - Context refresh: Manual or scheduled cadence?
 - Third-Party Voice: G2 parsing depth? Reddit weight?
-- CRM: Required or optional for SMB tier?
 
 ---
 
@@ -414,8 +413,8 @@ Running Sandbox-XM, Sandbox-GTM, and Forge Intelligence simultaneously revealed 
 
 OAuth is not Forge's core product. Intelligence is. Every hour debugging LinkedIn redirect URIs is an hour not spent on Pre-cog scores and GEO Citation. Pipedream Connect handles the full OAuth flow for 2,700+ apps using pre-approved client IDs — token storage, refresh, rotation, sensitive scope reviews already cleared.
 
-**Channels on Pipedream Connect:** LinkedIn, Facebook, HubSpot, Webflow
-**Channels staying manual:** X (X asked Pipedream to remove), Ghost (key-based), WordPress (app password), Medium (legacy)
+**Channels on Pipedream Connect:** Facebook
+**Channels staying manual:** X (X asked Pipedream to remove), HubSpot, Webflow, Ghost (key-based), WordPress (app password), Medium (legacy), LinkedIn
 
 **Implementation:** `connect.html` iframe with token in query params + postMessage listener. Bypassed the SDK entirely — SDK token resolution was broken. The iframe URL is the ground truth.
 
