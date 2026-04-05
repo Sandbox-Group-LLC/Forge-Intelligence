@@ -1,5 +1,5 @@
-import { useApp } from '../context/AppContext';
 import { useState, useEffect } from 'react';
+import { useApp } from '../context/AppContext';
 import { AppShell } from '../layouts/AppShell';
 import './TopicQueuePage.css';
 
@@ -24,11 +24,6 @@ const STATUS_COLOR: Record<string, string> = {
   generated: '#10B981',
 };
 
-const PlusIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-  </svg>
-);
 
 const TrashIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -44,38 +39,18 @@ const ArrowIcon = () => (
 
 export default function TopicQueuePage() {
   const { activeBrandId } = useApp();
+  const selectedBrand = activeBrandId || localStorage.getItem('forge_active_brand_id') || '';
   const [topics, setTopics] = useState<TopicIdea[]>([]);
-  const [topic, setTopic] = useState('');
-  const [note, setNote] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [filter, setFilter] = useState<'all' | 'idea' | 'in_progress' | 'generated'>('all');
-
-
+  const filter = 'all' as const;
 
 
   useEffect(() => {
-    if (!activeBrandId) return;
-    fetch(`/api/topic-ideas/${activeBrandId}`).then(r => r.json()).then(d => {
+    if (!selectedBrand) return;
+    fetch(`/api/topic-ideas/${selectedBrand}`).then(r => r.json()).then(d => {
       if (d.success) setTopics(d.ideas || d.data || []);
     });
-  }, [activeBrandId]);
+  }, [selectedBrand]);
 
-  const addTopic = async () => {
-    if (!topic.trim() || !activeBrandId) return;
-    setLoading(true);
-    const r = await fetch('/api/topic-ideas', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ brandProfileId: activeBrandId, topic: topic.trim(), note: note.trim() }),
-    });
-    const d = await r.json();
-    if (d.success) {
-      setTopics(prev => [d.idea || d.data, ...prev]);
-      setTopic('');
-      setNote('');
-    }
-    setLoading(false);
-  };
 
   const updateStatus = async (id: string, status: string) => {
     await fetch(`/api/topic-ideas/${id}`, {
@@ -98,13 +73,6 @@ export default function TopicQueuePage() {
 
   const filtered = filter === 'all' ? topics : topics.filter(t => t.status === filter);
 
-  const counts = {
-    all: topics.length,
-    idea: topics.filter(t => t.status === 'idea').length,
-    in_progress: topics.filter(t => t.status === 'in_progress').length,
-    generated: topics.filter(t => t.status === 'generated').length,
-  };
-
   return (
     <AppShell>
       <div className="tq-page">
@@ -116,39 +84,6 @@ export default function TopicQueuePage() {
           </div>
         </div>
 
-        {/* Add topic */}
-        <div className="tq-add-card">
-          <div className="tq-add-inputs">
-            <input
-              className="tq-input tq-topic-input"
-              placeholder="Topic or content idea..."
-              value={topic}
-              onChange={e => setTopic(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && !e.shiftKey && addTopic()}
-            />
-            <input
-              className="tq-input tq-note-input"
-              placeholder="Note (optional)"
-              value={note}
-              onChange={e => setNote(e.target.value)}
-            />
-          </div>
-          <button className="tq-add-btn" onClick={addTopic} disabled={loading || !topic.trim()}>
-            <PlusIcon /> Add
-          </button>
-        </div>
-
-        {/* Filter tabs */}
-        <div className="tq-filters">
-          {(['all', 'idea', 'in_progress', 'generated'] as const).map(f => (
-            <button key={f} className={`tq-filter-tab ${filter === f ? 'active' : ''}`} onClick={() => setFilter(f)}>
-              {f === 'all' ? 'All' : STATUS_LABEL[f]}
-              <span className="tq-filter-count">{counts[f]}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Topic list */}
         {filtered.length === 0 ? (
           <div className="tq-empty">
             {filter === 'all' ? 'No topics yet. Add your first idea above.' : `No ${STATUS_LABEL[filter]} topics.`}
