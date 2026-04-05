@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@clerk/clerk-react';
+import { useApp } from '../context/AppContext';
 import { AppShell } from '../layouts/AppShell';
 import './ContentGeneratorPage.css';
 
@@ -89,6 +90,7 @@ function StreamProgress({ text }: { text: string }) {
 
 function ContentGeneratorContent() {
   const { getToken } = useAuth();
+  const { activeBrandId } = useApp();
   const [brains, setBrains] = useState<Brain[]>([]);
   const [briefs, setBriefs] = useState<EnrichedBrief[]>([]);
   const [selectedBrainId, setSelectedBrainId] = useState('');
@@ -121,6 +123,14 @@ function ContentGeneratorContent() {
       if (d.success) setBrains(d.data);
     })();
   }, [getToken]);
+
+  // Sync with global brand selection from TopBar
+  useEffect(() => {
+    if (activeBrandId && brains.length > 0) {
+      const match = brains.find(b => b.id === activeBrandId);
+      if (match) setSelectedBrainId(activeBrandId);
+    }
+  }, [activeBrandId, brains]);
 
   useEffect(() => {
     if (!selectedBrainId) { setBriefs([]); setSelectedBriefId(''); return; }
