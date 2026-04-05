@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useAuth } from '@clerk/clerk-react';
 import { AppShell } from '../layouts/AppShell';
 import './ContentGeneratorPage.css';
 
@@ -87,6 +88,7 @@ function StreamProgress({ text }: { text: string }) {
 }
 
 function ContentGeneratorContent() {
+  const { getToken } = useAuth();
   const [brains, setBrains] = useState<Brain[]>([]);
   const [briefs, setBriefs] = useState<EnrichedBrief[]>([]);
   const [selectedBrainId, setSelectedBrainId] = useState('');
@@ -110,8 +112,15 @@ function ContentGeneratorContent() {
   const [preflight, setPreflight] = useState<{ status: string; signal?: string; confidence?: string; reframe?: string; reason?: string }>({ status: 'idle' });
 
   useEffect(() => {
-    fetch('/api/context-hub/brains').then(r => r.json()).then(d => { if (d.success) setBrains(d.data); });
-  }, []);
+    (async () => {
+      const token = await getToken();
+      const res = await fetch('/api/context-hub/brains', {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+      const d = await res.json();
+      if (d.success) setBrains(d.data);
+    })();
+  }, [getToken]);
 
   useEffect(() => {
     if (!selectedBrainId) { setBriefs([]); setSelectedBriefId(''); return; }
