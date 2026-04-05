@@ -112,8 +112,8 @@ const CONFIDENCE_COLORS = { green: '#14B8A6', yellow: '#F5B942', red: '#EF4444' 
 const EEAT_LABELS = ['experience', 'expertise', 'authoritativeness', 'trustworthiness'];
 
 function AuthenticityEnricherContent() {
-  const [brains, setBrains] = useState<BrainOption[]>([]);
-  const [selectedBrainId, setSelectedBrainId] = useState('');
+  const { activeBrandId } = useApp();
+    // Using activeBrandId from context
   const [isRunning, setIsRunning] = useState(false);
   const [result, setResult] = useState<EnrichResult | null>(null);
   const [error, setError] = useState('');
@@ -134,7 +134,7 @@ function AuthenticityEnricherContent() {
   }, []);
 
   const runAnalysis = async (withManual = false, forceRefresh = false) => {
-    if (!selectedBrainId) return;
+    if (!activeBrandId) return;
     setIsRunning(true);
     setResult(null);
     setError('');
@@ -145,7 +145,7 @@ function AuthenticityEnricherContent() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        brandProfileId: selectedBrainId,
+        brandProfileId: activeBrandId,
         manualInputs: withManual ? manualInputs : {},
         force: withManual || forceRefresh
       })
@@ -213,12 +213,9 @@ function AuthenticityEnricherContent() {
       {/* Brain selector */}
       <div className="geo-input-bar">
         <div className="geo-select-wrap">
-        <select className="geo-select" value={selectedBrainId} onChange={e => setSelectedBrainId(e.target.value)}>
-          <option value="">Select a Brain...</option>
-          {brains.map(b => <option key={b.id} value={b.id}>{b.brandName} — {b.brandUrl}</option>)}
-        </select>
+        {/* Brain selector moved to TopBar */}
         </div>
-        <button className="geo-run-btn" onClick={() => runAnalysis(false)} disabled={!selectedBrainId || isRunning}>
+        <button className="geo-run-btn" onClick={() => runAnalysis(false)} disabled={!activeBrandId || isRunning}>
           <ShieldCheck size={14} />{isRunning ? 'Enriching...' : result ? 'Run Again' : 'Run Enrichment'}
         </button>
         {result && !isRunning && (
