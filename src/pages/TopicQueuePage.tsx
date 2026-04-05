@@ -49,8 +49,7 @@ export default function TopicQueuePage() {
   const { getToken } = useAuth();
   const { activeBrandId } = useApp();
   const [brands, setBrands] = useState<Brand[]>([]);
-  // Using activeBrandId from context instead
-  // const [activeBrandId, () => {}] = useState('');
+  // Brand selection from TopBar: const [activeBrandId, (() => {})] = useState...
   const [topics, setTopics] = useState<TopicIdea[]>([]);
   const [topic, setTopic] = useState('');
   const [note, setNote] = useState('');
@@ -66,13 +65,13 @@ export default function TopicQueuePage() {
       const d = await res.json();
       if (d.success && d.data?.length) {
         setBrands(d.data);
-        () => {}(d.data[0].id);
+        (() => {})(d.data[0].id);
       }
     })();
   }, [getToken]);
   // Sync with global brand selection from TopBar
   useEffect(() => {
-    if (activeBrandId) () => {}(activeBrandId);
+    if (activeBrandId) (() => {})(activeBrandId);
   }, [activeBrandId]);
 
 
@@ -138,7 +137,9 @@ export default function TopicQueuePage() {
             <p className="geo-description">Park content ideas here. Send them to the generator when ready.</p>
           </div>
           {brands.length > 1 && (
-            {/* Brain selector removed - using TopBar */}
+            <select className="geo-select" value={activeBrandId} disabled style={{opacity:0.5}})(e.target.value)}>
+              {brands.map(b => <option key={b.id} value={b.id}>{b.brandName || b.brandUrl}</option>)}
+            </select>
           )}
         </div>
 
