@@ -8,6 +8,8 @@ export interface ActiveBrand {
   isPaid: boolean;
 }
 
+const ACTIVE_BRAND_KEY = 'forge_active_brand_id';
+
 export function useActiveBrand() {
   const [brand, setBrand] = useState<ActiveBrand | null>(null);
   const [allBrands, setAllBrands] = useState<ActiveBrand[] | null>(null);
@@ -19,11 +21,13 @@ export function useActiveBrand() {
     setLoading(true);
     try {
       if (isSignedIn) {
-        // Check localStorage for pending brand from post-payment flow
+        // Check localStorage for pending brand from post-payment flow OR previously selected brand
         const pendingBrandId = localStorage.getItem('forge_pending_brand_id') || '';
+        const savedBrandId = localStorage.getItem(ACTIVE_BRAND_KEY) || '';
         if (pendingBrandId) localStorage.removeItem('forge_pending_brand_id');
 
-        const brandIdToUse = selectedBrandId || pendingBrandId || '';
+        // Priority: explicit selection > pending > saved > default
+        const brandIdToUse = selectedBrandId || pendingBrandId || savedBrandId || '';
         const token = await getToken();
         const meUrl = brandIdToUse
           ? `/api/auth/me?brand_id=${encodeURIComponent(brandIdToUse)}`
@@ -39,6 +43,8 @@ export function useActiveBrand() {
           setAllBrands(d.allBrands || null);
           
           if (d.brand) {
+            // Save the active brand ID for persistence across reloads
+            localStorage.setItem(ACTIVE_BRAND_KEY, d.brand.id);
             setBrand({
               id: d.brand.id,
               brandName: d.brand.brand_name || d.brand.brandName || d.brand.brand_url,
@@ -79,9 +85,10 @@ export function useActiveBrand() {
     loadBrands();
   }, [isSignedIn, isLoaded, loadBrands]);
 
-  // Switch brand (super admin only)
+  // Switch brand (super admin only) - persists to localStorage
   const switchBrand = useCallback((brandId: string) => {
     if (!isSuperAdmin) return;
+    localStorage.setItem(ACTIVE_BRAND_KEY, brandId);
     loadBrands(brandId);
   }, [isSuperAdmin, loadBrands]);
 
