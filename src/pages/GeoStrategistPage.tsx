@@ -47,8 +47,6 @@ function GeoStrategistContent() {
 
   useEffect(() => {
     setCurrentView('geo-strategist');
-    const params = new URLSearchParams(window.location.search);
-    const profileId = params.get('profileId');
     // Brain selection now handled by TopBar
   }, []);
 
