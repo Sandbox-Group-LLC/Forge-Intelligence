@@ -150,6 +150,7 @@ interface UtmPreview {
 }
 
 export default function PublishingQueuePage() {
+  const { getToken } = useAuth();
   const [items, setItems] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [brands, setBrands] = useState<{ id: string; brandName?: string; brandUrl?: string }[]>([]);
