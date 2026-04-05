@@ -17,8 +17,6 @@ interface BrandSettings {
 export default function BrandSettingsPage() {
   const { getToken } = useAuth();
   const { activeBrandId } = useApp();
-  const [brands, setBrands] = useState<BrandSettings[]>([]);
-  const [selected, setSelected] = useState<string>('');
   const [form, setForm] = useState<Partial<BrandSettings>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -31,10 +29,6 @@ export default function BrandSettingsPage() {
   const [error, setError] = useState('');
 
   // Sync with global brand selection from TopBar
-  useEffect(() => {
-    if (activeBrandId) setSelected(activeBrandId);
-  }, [activeBrandId]);
-
   const loadBrands = useCallback(async () => {
     try {
       const token = await getToken();
@@ -51,29 +45,27 @@ export default function BrandSettingsPage() {
         logo_url: b.logo_url || '',
         settings: b.settings || {},
       }));
-      setBrands(list);
-      if (list.length > 0 && !selected) setSelected(list[0].id);
     } finally {
       setLoading(false);
     }
-  }, [selected]);
+  }, [activeBrandId]);
 
   useEffect(() => { loadBrands(); }, []);
 
   useEffect(() => {
-    if (!selected) return;
-    fetch(`/api/brand-settings/${selected}`)
+    if (!activeBrandId) return;
+    fetch(`/api/brand-settings/${activeBrandId}`)
       .then(r => r.json())
       .then(d => { if (d.success) setForm(d.settings); });
-  }, [selected]);
+  }, [activeBrandId]);
 
   const handleScrape = async () => {
-    if (!selected || !articleTemplateUrl) return;
+    if (!activeBrandId || !articleTemplateUrl) return;
     setScraping(true);
     setScrapeError('');
     setScrapeSuccess(false);
     try {
-      const r = await fetch(`/api/brand-settings/${selected}/scrape-template`, {
+      const r = await fetch(`/api/brand-settings/${activeBrandId}/scrape-template`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ articleUrl: articleTemplateUrl, catalogUrl: catalogTemplateUrl || undefined })
@@ -93,11 +85,11 @@ export default function BrandSettingsPage() {
   };
 
   const handleSave = async () => {
-    if (!selected) return;
+    if (!activeBrandId) return;
     setSaving(true);
     setError('');
     try {
-      const r = await fetch(`/api/brand-settings/${selected}`, {
+      const r = await fetch(`/api/brand-settings/${activeBrandId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -122,7 +114,7 @@ export default function BrandSettingsPage() {
   const set = (key: keyof BrandSettings, val: string) =>
     setForm(prev => ({ ...prev, [key]: val }));
 
-  const activeBrand = brands.find(b => b.id === selected);
+  const activeBrand = brands.find(b => b.id === activeBrandId);
 
   return (
     <AppShell pageTitle="Brand Settings">
@@ -141,22 +133,6 @@ export default function BrandSettingsPage() {
           <div className="bs-empty">No brands found. Run a Brain analysis first to create a brand profile.</div>
         ) : (
           <div className="bs-layout">
-            {/* Brand selector dropdown */}
-            {brands.length > 1 && (
-              <div className="bs-brand-dropdown-wrap">
-                <select
-                  className="geo-select bs-brand-dropdown"
-                  value={selected}
-                  onChange={e => setSelected(e.target.value)}
-                >
-                  {brands.map(b => (
-                    <option key={b.id} value={b.id}>
-                      {b.brand_name || b.brand_url}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
 
             <div className="bs-content">
               {/* Identity */}
