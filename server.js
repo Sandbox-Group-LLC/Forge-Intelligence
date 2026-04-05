@@ -1309,13 +1309,20 @@ app.get('/api/context-hub/brains', softAuth, async (req, res) => {
       return res.json({ success: true, data: sessData });
     }
     
-    // Authenticated: show user's brains
-    const result = await pool.query(
-      `SELECT id, brand_url, brand_name, version, is_active, cache_status,
-              created_at, updated_at, profile_data
-       FROM brand_profiles WHERE is_active = true AND clerk_user_id = $1 ORDER BY updated_at DESC`,
-      [req.userId]
-    );
+    // Authenticated: show user's brains (super admins see all)
+    const isSuperAdmin = SUPER_ADMIN_IDS.includes(req.userId);
+    const result = isSuperAdmin
+      ? await pool.query(
+          `SELECT id, brand_url, brand_name, version, is_active, cache_status,
+                  created_at, updated_at, profile_data
+           FROM brand_profiles WHERE is_active = true ORDER BY updated_at DESC`
+        )
+      : await pool.query(
+          `SELECT id, brand_url, brand_name, version, is_active, cache_status,
+                  created_at, updated_at, profile_data
+           FROM brand_profiles WHERE is_active = true AND clerk_user_id = $1 ORDER BY updated_at DESC`,
+          [req.userId]
+        );
     const data = result.rows.map(r => ({
       id: r.id,
       brandUrl: r.brand_url,
