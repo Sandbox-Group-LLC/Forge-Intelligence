@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useApp } from '../context/AppContext';
 import { AppShell } from '../layouts/AppShell';
 import './ComplianceGatePage.css';
 
@@ -60,8 +61,8 @@ const tierColor = (tier: string) => tier === 'green' ? '#22C55E' : tier === 'yel
 
 export default function ComplianceGatePage() {
   const [mode, setMode] = useState<ReviewMode>('approve-to-ship');
-  const [brandProfileId, setBrandProfileId] = useState('');
-  const [brands, setBrands] = useState<{ id: string; brandName?: string; brandUrl?: string }[]>([]);
+
+
   const [articles, setArticles] = useState<Article[]>([]);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [report, setReport] = useState<ComplianceReport | null>(null);
@@ -73,11 +74,7 @@ export default function ComplianceGatePage() {
   const [step, setStep] = useState<'select' | 'review' | 'done'>('select');
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    fetch('/api/context-hub/brains').then(r => r.json()).then(d => {
-      if (d.success) setBrands(d.data || []);
-    }).catch(() => {});
-  }, []);
+
 
   const loadArticles = async (bpId: string) => {
     if (!bpId) return;
@@ -105,7 +102,7 @@ export default function ComplianceGatePage() {
       const r = await fetch('/api/compliance/critique', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brandProfileId, contentId: article.id })
+        body: JSON.stringify({ activeBrand?.id, contentId: article.id })
       });
       const d = await r.json();
       if (d.success) {
@@ -150,7 +147,7 @@ export default function ComplianceGatePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          brandProfileId,
+          activeBrand?.id,
           contentId: article.id,
           reviewMode: mode,
           editedSections: edits,
@@ -215,14 +212,14 @@ export default function ComplianceGatePage() {
         {step === 'select' && (
           <div className="comp-select-panel">
             <div className="comp-row">
-              <select
-                className="geo-select"
-                value={brandProfileId}
-                onChange={e => { setBrandProfileId(e.target.value); loadArticles(e.target.value); }}
-              >
-                <option value="">Select a Brain...</option>
-                {brands.map(b => <option key={b.id} value={b.id}>{b.brandName || b.brandUrl}</option>)}
-              </select>
+              <div className="geo-select" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                {activeBrand ? <><span style={{ color: '#10B981' }}>✓</span> {activeBrand.brandName}</> : <span style={{ opacity: 0.5 }}>Select brain from TopBar</span>}
+              </div>
+              {activeBrand && !articles.length && !loading && (
+                <button className="geo-run-btn" onClick={() => loadArticles(activeBrand.id)} style={{ marginBottom: '12px' }}>
+                  Load Articles
+                </button>
+              )}
             </div>
 
             {loading && <div className="comp-loading"><span className="comp-spinner" /> Loading articles...</div>}
