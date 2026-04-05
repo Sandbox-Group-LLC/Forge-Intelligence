@@ -162,7 +162,7 @@ export default function PublishingQueuePage() {
   const [scheduleDate, setScheduleDate] = useState<Record<string, string>>({});
   const [selectedChannels, setSelectedChannels] = useState<Record<string, string[]>>({});
   const [utmPreview, setUtmPreview] = useState<UtmPreview | null>(null);
-  // Brand selection from TopBar: const [activeBrandId, (() => {})] = useState...
+  const [filterBrand, setFilterBrand] = useState<string>('all');
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [contentPreview, setContentPreview] = useState<{ item: QueueItem; article: any; postCopy: Record<string, string> } | null>(null);
@@ -274,8 +274,13 @@ export default function PublishingQueuePage() {
   };
 
   // Sync with global brand selection from TopBar
+  // Sync with TopBar brain selection
   useEffect(() => {
-    if (activeBrandId) (() => {})(activeBrandId);
+    if (activeBrandId) setFilterBrand(activeBrandId);
+  }, [activeBrandId]);
+
+  useEffect(() => {
+    if (activeBrandId) setFilterBrand(activeBrandId);
   }, [activeBrandId]);
 
   const loadQueue = useCallback(async () => {
@@ -797,7 +802,7 @@ ${bodyHtml}
   // Filter logic
   const archivedItems = items.filter(i => i.status === 'archived');
   const filteredItems = items.filter(item => {
-    if (activeBrandId !== 'all' && item.brand_profile_id !== activeBrandId) return false;
+    if (filterBrand !== 'all' && item.brand_profile_id !== filterBrand) return false;
     if (showArchived) return item.status === 'archived';
     return item.status !== 'archived';
   });
@@ -844,8 +849,8 @@ ${bodyHtml}
         {brands.length > 1 && (
           <select
             className="geo-select pq-brand-filter"
-            value={activeBrandId}
-            disabled style={{opacity:0.5}})(e.target.value)}
+            value={filterBrand}
+            onChange={e => setFilterBrand(e.target.value)}
           >
             <option value="all">All Brands</option>
             {brands.map(b => (
