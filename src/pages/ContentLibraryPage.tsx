@@ -98,7 +98,7 @@ export default function ContentLibraryPage() {
         {/* Header */}
         <div className="geo-header">
           <div>
-            <div className="geo-eyebrow">Content</div>
+            <div className="geo-eyebrow">Publishing</div>
             <h1 className="geo-title">Content Library</h1>
             <p className="geo-description">Every article generated across all brands — searchable, filterable, actionable.</p>
           </div>
