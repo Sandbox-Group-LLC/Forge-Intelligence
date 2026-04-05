@@ -106,6 +106,7 @@ function Sparkline({ data, key: _k }: { data: number[]; key?: string }) {
 
 
 export default function PerformanceDashboardPage() {
+  const { activeBrandId } = useApp();
   const [brandProfileId, setBrandProfileId] = useState('');
   const [brands, setBrands] = useState<{id: string; brandName: string; brandUrl: string}[]>([]);
   const [activeChannel, setActiveChannel] = useState('linkedin');
