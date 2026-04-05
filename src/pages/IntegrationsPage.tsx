@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useApp } from '../context/AppContext';
 import { AppShell } from '../layouts/AppShell';
 import './IntegrationsPage.css';
 
