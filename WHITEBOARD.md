@@ -129,15 +129,38 @@ const brandProfileId = activeBrand?.id || localStorage.getItem('forge_active_bra
 
 ---
 
+## Build Status
+
+### Phase 1 — SMB ($99/mo) ✅ Complete
+All 8 stages live, auth, PayPal gate, full pipeline.
+
+### Phase 2 — Pro ($299/mo) ✅ Complete
+- Pre-cog scoring engine (Haiku-powered, data-gated, auth-scoped)
+- Pre-cog Predictions tab in Performance Dashboard
+- Pre-cog score badge on Publishing Queue cards
+- Ghost analytics — honest KPIs (clicks, read time, feedback — no fake impressions)
+- WordPress + Webflow live publish confirmed
+- Ghost CMS publish + analytics confirmed
+
+### Phase 3 — Intelligence Loop 🔄 Active
+To be defined with Brian. Candidates:
+- HubSpot Track A (UTM → deal/campaign attribution)
+- Pre-cog accuracy tracking (predicted vs actual over time)
+- Deeper pattern analysis (cross-article trends)
+- LinkedIn impressions/clicks (⏳ blocked on MDP approval — submitted)
+
+### Phase 4.5 — Agency ($499/mo) ⏸ Parked
+Not current focus. Multi-brand UI already built in dev branch.
+- Brand Switcher in TopBar
+- Agency Dashboard (bird's-eye view)
+- Client-level access control (Clerk org-slug)
+
 ## Open Issues
 
-| Issue | Priority | Notes |
-|-------|----------|-------|
-| LinkedIn impressions/clicks | Medium | Requires MDP approval — reactions/comments live |
-| Ghost analytics impressions | Low | Reads Ghost Admin API, not yet in `content_analytics` |
-| Pre-cog Score Dashboard | Backlog | Voyage AI embeddings, pgvector — Phase 3 |
-| Agency Dashboard | Backlog | Bird's-eye cross-brand view |
-| Medium integration | Legacy | New tokens unavailable since early 2025 |
+| Issue | Notes |
+|-------|-------|
+| LinkedIn impressions/clicks | MDP approval submitted, under review — unblock when approved |
+| Medium integration | Legacy — new tokens unavailable since early 2025 |
 
 ---
 
