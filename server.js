@@ -1284,10 +1284,37 @@ app.get('/api/content/:safeId/:contentId', async (req, res) => {
 
 app.get('/api/context-hub/brains', softAuth, async (req, res) => {
   try {
+    const sessionId = req.headers['x-session-id'];
+    
+    // Unauthenticated: check session ID, filter expired
+    if (!req.userId) {
+      if (!sessionId) {
+        return res.json({ success: true, data: [] });
+      }
+      const sessResult = await pool.query(
+        `SELECT id, brand_url, brand_name, version, is_active, cache_status,
+                created_at, updated_at, profile_data
+         FROM brand_profiles 
+         WHERE is_active = true 
+           AND onboard_session_id = $1 
+           AND (expires_at IS NULL OR expires_at > NOW())
+         ORDER BY updated_at DESC`,
+        [sessionId]
+      );
+      const sessData = sessResult.rows.map(r => ({
+        id: r.id, brandUrl: r.brand_url, brandName: r.brand_name,
+        version: r.version, isActive: r.is_active, cacheStatus: r.cache_status,
+        createdAt: r.created_at, updatedAt: r.updated_at, ...r.profile_data
+      }));
+      return res.json({ success: true, data: sessData });
+    }
+    
+    // Authenticated: show user's brains
     const result = await pool.query(
       `SELECT id, brand_url, brand_name, version, is_active, cache_status,
               created_at, updated_at, profile_data
-       FROM brand_profiles WHERE is_active = true ORDER BY updated_at DESC`
+       FROM brand_profiles WHERE is_active = true AND clerk_user_id = $1 ORDER BY updated_at DESC`,
+      [req.userId]
     );
     const data = result.rows.map(r => ({
       id: r.id,
@@ -2146,10 +2173,14 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
       const nextVersion = versionResult.rows[0].max_v + 1;
       const id = randomUUID();
 
+      // For unauthenticated users: store session ID and set 24hr expiry
+      const sessionId = req.body.sessionId || null;
+      const expiresAt = req.userId ? null : "NOW() + INTERVAL '24 hours'";
+      
       const inserted = await pool.query(
-        `INSERT INTO brand_profiles (id, brand_url, brand_name, version, is_active, cache_status, profile_data, clerk_user_id)
-         VALUES ($1, $2, $3, $4, true, 'fresh', $5, $6) RETURNING *`,
-        [id, brandUrl, resolvedBrandName, nextVersion, JSON.stringify(profileData), req.userId || null]
+        `INSERT INTO brand_profiles (id, brand_url, brand_name, version, is_active, cache_status, profile_data, clerk_user_id, onboard_session_id, expires_at)
+         VALUES ($1, $2, $3, $4, true, 'fresh', $5, $6, $7, ${expiresAt ? expiresAt : 'NULL'}) RETURNING *`,
+        [id, brandUrl, resolvedBrandName, nextVersion, JSON.stringify(profileData), req.userId || null, sessionId]
       );
       const r = inserted.rows[0];
       return res.json({ success: true, cached: false, data: {
@@ -7135,7 +7166,7 @@ pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS onboard_session_
 // POST /api/onboard/analyze — landing page entry point
 // Creates a UUID, seeds the brain, fires Context Agent, returns session
 app.post('/api/onboard/analyze', async (req, res) => {
-  const { url } = req.body;
+  const { url, sessionId } = req.body;
   if (!url) return res.status(400).json({ error: 'url required' });
 
   try {
@@ -7143,12 +7174,12 @@ app.post('/api/onboard/analyze', async (req, res) => {
     const brandUrl = url.startsWith('http') ? url : `https://${url}`;
     const brandName = brandUrl.replace(/https?:\/\//, '').split('/')[0].replace(/^www\./, '');
 
-    // Create brand profile with 24hr expiry
+    // Create brand profile with 24hr expiry + session ID for persistence
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     const brandInsert = await pool.query(
-      `INSERT INTO brand_profiles (id, brand_url, brand_name, version, is_active, cache_status, profile_data, expires_at, is_paid, created_at, updated_at)
-       VALUES (gen_random_uuid()::text, $1, $2, 1, true, 'fresh', '{}'::jsonb, $3, false, NOW(), NOW()) RETURNING id`,
-      [brandUrl, brandName, expiresAt]
+      `INSERT INTO brand_profiles (id, brand_url, brand_name, version, is_active, cache_status, profile_data, expires_at, is_paid, onboard_session_id, created_at, updated_at)
+       VALUES (gen_random_uuid()::text, $1, $2, 1, true, 'fresh', '{}'::jsonb, $3, false, $4, NOW(), NOW()) RETURNING id`,
+      [brandUrl, brandName, expiresAt, sessionId || null]
     );
     const brandProfileId = brandInsert.rows[0].id;
     const safeId = brandProfileId.replace(/-/g, '_');
