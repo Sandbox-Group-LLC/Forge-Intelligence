@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { useApp } from '../context/AppContext';
 import { AppShell } from '../layouts/AppShell';
+import GateModal from '../components/GateModal';
+import { useApp } from '../context/AppContext';
 import './IntegrationsPage.css';
 
 // ── Icons ────────────────────────────────────────────────────────────────────
@@ -121,11 +122,11 @@ const CHANNELS: ChannelDef[] = [
   {
     id: 'webflow',
     label: 'Webflow',
-    description: 'Publish articles to Webflow CMS collections via OAuth.',
+    pipedreamApp: 'webflow',
+    description: 'Create CMS items via Webflow Data API. Live publish in Stage 6.1.',
     color: '#4353FF',
     logo: 'WF',
-    liveStatus: 'live',
-    oauthFlow: true,
+    liveStatus: 'staged',
     credentialFields: [
       { key: 'apiToken', label: 'API Token', placeholder: 'eyJhbGci...', type: 'password' },
       { key: 'siteId', label: 'Site ID', placeholder: '5f4d...' },
@@ -145,11 +146,11 @@ const CHANNELS: ChannelDef[] = [
   {
     id: 'hubspot',
     label: 'HubSpot',
-    description: 'CRM + CMS integration. Publish articles, track contacts, and attribute content engagement.',
+    pipedreamApp: 'hubspot',
+    description: 'Contact tracking + campaign attribution. Connects published article UTMs to HubSpot contacts.',
     color: '#FF7A59',
     logo: 'HS',
-    liveStatus: 'live',
-    oauthFlow: true,
+    liveStatus: 'staged',
     credentialFields: [
       { key: 'accessToken', label: 'Private App Token', placeholder: 'pat-na2-...', type: 'password' },
       { key: 'portalId', label: 'Portal ID', placeholder: '244954048' },
@@ -168,7 +169,8 @@ const CHANNELS: ChannelDef[] = [
   {
     id: 'linkedin',
     label: 'LinkedIn',
-    description: 'Share articles to your LinkedIn profile or company page via OAuth2. Click Connect to authorize.',
+    description: 'Share articles to your LinkedIn profile via OAuth2. Click Connect to authorize Forge -- no manual token needed.',
+    pipedreamApp: 'linkedin',
     color: '#0A66C2',
     logo: 'in',
     liveStatus: 'live',
@@ -291,7 +293,6 @@ const DEFAULT_UTM: Record<ChannelId, Record<string, string>> = {
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface SavedChannel {
-  credentials?: any;
   id: string;
   channel: ChannelId;
   utm_template: Record<string, string>;
@@ -300,13 +301,23 @@ interface SavedChannel {
   updated_at: string;
 }
 
-
-const LS_BRAND_KEY = 'forge_integrations_brand';
-
 export default function IntegrationsPage() {
-  const { activeBrand } = useApp();
+  const { isPaid, brandLoading, activeBrandId } = useApp();
+  
+  if (brandLoading) return null;
+  if (!isPaid) {
+    return (
+      <AppShell>
+        <GateModal 
+          featureName="Integrations" 
+          onClose={() => window.location.href = '/app/context-hub'} 
+          onUnlocked={() => {}} 
+        />
+      </AppShell>
+    );
+  }
 
-
+  const selectedBrand = activeBrandId || localStorage.getItem('forge_active_brand_id') || '';
   const [savedChannels, setSavedChannels] = useState<Record<ChannelId, SavedChannel | null>>({
     wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null, facebook: null, medium: null, ghost: null
   });
@@ -320,7 +331,10 @@ export default function IntegrationsPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-
+  // Load channels whenever active brand resolves
+  useEffect(() => {
+    if (selectedBrand) loadChannels(selectedBrand);
+  }, [selectedBrand]);
 
   const loadChannels = (brandId: string) => {
     fetch(`/api/publishing/channels/${brandId}`)
@@ -344,51 +358,20 @@ export default function IntegrationsPage() {
   };
 
   useEffect(() => {
-    if (activeBrand?.id) loadChannels(activeBrand?.id || '');
-  }, [activeBrand?.id]);
+    if (selectedBrand) loadChannels(selectedBrand);
+  }, [selectedBrand]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('linkedin_connected') === 'true' || params.get('linkedin_org_connected') === 'true') {
-      setSuccess(params.get('linkedin_org_connected') ? 'LinkedIn Company Page connected!' : 'LinkedIn Personal Profile connected!');
+    if (params.get('linkedin_connected') === 'true') {
+      setSuccess('LinkedIn connected successfully!');
       setExpanded('linkedin');
       window.history.replaceState({}, '', '/app/integrations');
-      const brand = localStorage.getItem(LS_BRAND_KEY);
-      if (brand) {
-        // setSelectedBrand removed(brand);
-        setTimeout(() => loadChannels(brand), 500);
-      }
-    }
-    if (params.get('hubspot_connected') === 'true') {
-      setSuccess('HubSpot connected successfully!');
-      setExpanded('hubspot');
-      window.history.replaceState({}, '', '/app/integrations');
-      const brand = localStorage.getItem(LS_BRAND_KEY);
-      if (brand) {
-        // setSelectedBrand removed(brand);
-        setTimeout(() => loadChannels(brand), 500);
-      }
-    }
-    if (params.get('webflow_connected') === 'true') {
-      setSuccess('Webflow connected successfully!');
-      setExpanded('webflow');
-      window.history.replaceState({}, '', '/app/integrations');
-      const brand = localStorage.getItem(LS_BRAND_KEY);
-      if (brand) {
-        // setSelectedBrand removed(brand);
-        setTimeout(() => loadChannels(brand), 500);
-      }
+      const brand = activeBrandId || localStorage.getItem('forge_active_brand_id') || '';
+      if (brand) setTimeout(() => loadChannels(brand), 500);
     }
     if (params.get('linkedin_error')) {
       setError(`LinkedIn authorization failed: ${decodeURIComponent(params.get('linkedin_error') || '')}`);
-      window.history.replaceState({}, '', '/app/integrations');
-    }
-    if (params.get('hubspot_error')) {
-      setError(`HubSpot authorization failed: ${decodeURIComponent(params.get('hubspot_error') || '')}`);
-      window.history.replaceState({}, '', '/app/integrations');
-    }
-    if (params.get('webflow_error')) {
-      setError(`Webflow authorization failed: ${decodeURIComponent(params.get('webflow_error') || '')}`);
       window.history.replaceState({}, '', '/app/integrations');
     }
   }, []);
@@ -396,12 +379,12 @@ export default function IntegrationsPage() {
   const handleSave = async (channelId: ChannelId) => {
     const channel = CHANNELS.find(c => c.id === channelId);
     if (channel?.pipedreamApp) {
-      if (!activeBrand?.id) { setError('Select a brain from TopBar first'); return; }
+      if (!selectedBrand) { setError('Select a Brain first'); return; }
       try {
         // Get short-lived token from our server
         const tokenRes = await fetch('/api/pipedream/token', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ brandProfileId: activeBrand?.id })
+          body: JSON.stringify({ brandProfileId: selectedBrand })
         });
         const { token } = await tokenRes.json();
         if (!token) throw new Error('Could not get connect token');
@@ -423,10 +406,10 @@ export default function IntegrationsPage() {
               const accountId = e.data.authProvisionId;
               await fetch('/api/pipedream/account', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ brandProfileId: activeBrand?.id, channel: channelId, accountId, appSlug: channel.pipedreamApp })
+                body: JSON.stringify({ brandProfileId: selectedBrand, channel: channelId, accountId, appSlug: channel.pipedreamApp })
               });
               setSuccess(`${channel.label} connected via Pipedream ✓`);
-              loadChannels(activeBrand?.id || '');
+              loadChannels(selectedBrand);
               setTimeout(() => setSuccess(''), 4000);
               resolve();
             } else if (e.data.type === 'error') {
@@ -450,7 +433,7 @@ export default function IntegrationsPage() {
       }
       return;
     }
-    if (!activeBrand?.id) { setError('Select a brain from TopBar first'); return; }
+    if (!selectedBrand) { setError('Select a Brain first'); return; }
     setSaving(channelId);
     setError(''); setSuccess('');
     try {
@@ -458,7 +441,7 @@ export default function IntegrationsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          brandProfileId: activeBrand?.id,
+          brandProfileId: selectedBrand,
           channel: channelId,
           credentials: credentials[channelId],
           utmTemplate: utmTemplates[channelId],
@@ -467,7 +450,7 @@ export default function IntegrationsPage() {
       const d = await r.json();
       if (d.success) {
         setSuccess(`${CHANNELS.find(c => c.id === channelId)?.label} connected successfully`);
-        loadChannels(activeBrand?.id || '');
+        loadChannels(selectedBrand);
         setExpanded(channelId);
         setTimeout(() => setSuccess(''), 4000);
       } else {
@@ -508,17 +491,11 @@ export default function IntegrationsPage() {
           </div>
         </div>
 
-        {/* Brain from TopBar */}
-        <div className="int-brain-bar">
-          <div className="geo-select" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {activeBrand ? <><span style={{ color: '#10B981' }}>✓</span> {activeBrand.brandName}</> : <span style={{ opacity: 0.5 }}>Select brain from TopBar</span>}
+        {selectedBrand && (
+          <div className="int-connected-count">
+            {Object.values(savedChannels).filter(Boolean).length} of {CHANNELS.length} channels connected
           </div>
-          {activeBrand?.id && (
-            <div className="int-connected-count">
-              {Object.values(savedChannels).filter(Boolean).length} of {CHANNELS.length} channels connected
-            </div>
-          )}
-        </div>
+        )}
 
         {error && <div className="geo-error">{error}</div>}
         {success && <div className="int-success">{success}</div>}
@@ -574,7 +551,7 @@ export default function IntegrationsPage() {
                         </button>
                       </div>
                     ) : (
-                      activeBrand?.id && (
+                      selectedBrand && (
                         ch.liveStatus === 'legacy' ? (
                           <button
                             className="int-connect-btn int-connect-legacy"
@@ -586,22 +563,7 @@ export default function IntegrationsPage() {
                           <button
                             className="int-connect-btn"
                             style={{ '--ch-color': ch.color } as React.CSSProperties}
-                            onClick={() => {
-                              if (ch.id === 'linkedin') {
-                                // Show LinkedIn connection options
-                                setExpanded('linkedin');
-                              } else if (ch.id === 'hubspot') {
-                                // Custom OAuth flow for HubSpot
-                                window.location.href = `/api/hubspot/auth?state=${encodeURIComponent((activeBrand?.id || '') + '|' + Date.now())}`;
-                              } else if (ch.id === 'webflow') {
-                                // Custom OAuth flow for Webflow
-                                window.location.href = `/api/webflow/auth?state=${encodeURIComponent((activeBrand?.id || '') + '|' + Date.now())}`;
-                              } else if (ch.pipedreamApp) {
-                                handleSave(ch.id);
-                              } else {
-                                setExpanded(isOpen ? null : ch.id);
-                              }
-                            }}
+                            onClick={() => ch.pipedreamApp ? handleSave(ch.id) : setExpanded(isOpen ? null : ch.id)}
                           >
                             {ch.pipedreamApp ? 'Connect' : (isOpen ? 'Cancel' : 'Connect')}
                           </button>
@@ -623,346 +585,7 @@ export default function IntegrationsPage() {
                             Connected via Pipedream
                           </div>
                           <span className="int-pipedream-sub">OAuth managed by Pipedream · Token auto-refreshes · Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}</span>
-                          <button className="int-reauth-btn" onClick={() => {
-                            if (ch.id === 'linkedin') {
-                              window.location.href = `/api/linkedin/auth?state=${encodeURIComponent((activeBrand?.id || '') + '|' + Date.now())}`;
-                            } else {
-                              handleSave(ch.id);
-                            }
-                          }}>Reconnect</button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* LinkedIn: Connected status (custom OAuth, not Pipedream) */}
-                    {ch.id === 'linkedin' && connected && (
-                      <div className="int-form-section">
-                        <div className="int-pipedream-status">
-                          <div className="int-pipedream-badge" style={{ background: 'rgba(10, 102, 194, 0.15)', color: '#0A66C2' }}>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                            Connected via OAuth
-                          </div>
-                          <span className="int-pipedream-sub">
-                            Posting as: <strong>{saved?.credentials?.selectedTarget?.name || saved?.credentials?.name || 'LinkedIn Profile'}</strong>
-                            {saved?.credentials?.selectedTarget?.type === 'company' && ' (Company Page)'}
-                            {' · '}Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}
-                          </span>
-                          <button className="int-reauth-btn" onClick={() => {
-                            window.location.href = `/api/linkedin/auth?state=${encodeURIComponent((activeBrand?.id || '') + '|' + Date.now())}`;
-                          }}>Reconnect</button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* LinkedIn: Target selector (personal vs company page) */}
-                    {ch.id === 'linkedin' && connected && saved?.credentials?.availableTargets?.length > 1 && (
-                      <div className="int-form-section">
-                        <div className="int-form-label">
-                          Post to
-                          <span className="int-utm-hint">Select your personal profile or a company page you manage</span>
-                        </div>
-                        <select
-                          className="geo-select"
-                          style={{ maxWidth: 320 }}
-                          value={saved?.credentials?.selectedTarget?.urn || ''}
-                          onChange={async (e) => {
-                            const targetUrn = e.target.value;
-                            try {
-                              const res = await fetch('/api/linkedin/select-target', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ brandProfileId: activeBrand?.id, targetUrn })
-                              });
-                              const d = await res.json();
-                              if (d.success) {
-                                setSuccess(`Now posting to: ${d.selectedTarget.name}`);
-                                loadChannels(activeBrand?.id || '');
-                                setTimeout(() => setSuccess(''), 3000);
-                              } else {
-                                setError(d.error || 'Failed to switch target');
-                              }
-                            } catch {
-                              setError('Failed to switch LinkedIn target');
-                            }
-                          }}
-                        >
-                          {(saved?.credentials?.availableTargets || []).map((t: any) => (
-                            <option key={t.urn} value={t.urn}>
-                              {t.type === 'company' ? '🏢 ' : '👤 '}{t.name}
-                            </option>
-                          ))}
-                        </select>
-                        <div style={{ marginTop: 8, fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>
-                          Currently posting as: <strong style={{ color: 'rgba(255,255,255,0.8)' }}>{saved?.credentials?.selectedTarget?.name || 'Personal Profile'}</strong>
-                          {saved?.credentials?.selectedTarget?.type === 'company' && ' (Company Page)'}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* HubSpot: Connected status */}
-                    {ch.id === 'hubspot' && connected && (
-                      <div className="int-form-section">
-                        <div className="int-pipedream-status">
-                          <div className="int-pipedream-badge" style={{ background: 'rgba(255, 122, 89, 0.15)', color: '#FF7A59' }}>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                            Connected via OAuth
-                          </div>
-                          <span className="int-pipedream-sub">
-                            Portal: <strong>{saved?.credentials?.portalId || '--'}</strong>
-                            {saved?.credentials?.hubDomain && ` (${saved.credentials.hubDomain})`}
-                            {' · '}Connected by: {saved?.credentials?.userEmail || '--'}
-                            {' · '}Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}
-                          </span>
-                          <button className="int-reauth-btn" onClick={() => {
-                            window.location.href = `/api/hubspot/auth?state=${encodeURIComponent((activeBrand?.id || '') + '|' + Date.now())}`;
-                          }}>Reconnect</button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* HubSpot: Blog selector */}
-                    {ch.id === 'hubspot' && connected && saved?.credentials?.availableTargets?.blogs?.length > 0 && (
-                      <div className="int-form-section">
-                        <div className="int-form-label">
-                          Publish to Blog
-                          <span className="int-utm-hint">Select which HubSpot blog to publish articles to</span>
-                        </div>
-                        <select
-                          className="geo-select"
-                          style={{ maxWidth: 400 }}
-                          value={saved?.credentials?.selectedBlog?.id || ''}
-                          onChange={async (e) => {
-                            try {
-                              const res = await fetch('/api/hubspot/select-target', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ brandProfileId: activeBrand?.id, targetType: 'blog', targetId: e.target.value })
-                              });
-                              const d = await res.json();
-                              if (d.success) {
-                                setSuccess(`Publishing to: ${d.selectedBlog?.name}`);
-                                loadChannels(activeBrand?.id || '');
-                                setTimeout(() => setSuccess(''), 3000);
-                              } else {
-                                setError(d.error || 'Failed to switch blog');
-                              }
-                            } catch {
-                              setError('Failed to switch HubSpot blog');
-                            }
-                          }}
-                        >
-                          {(saved?.credentials?.availableTargets?.blogs || []).map((b: any) => (
-                            <option key={b.id} value={b.id}>
-                              📝 {b.name}
-                            </option>
-                          ))}
-                        </select>
-                        {saved?.credentials?.selectedBlog?.absoluteUrl && (
-                          <div style={{ marginTop: 8, fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>
-                            URL: <a href={saved.credentials.selectedBlog.absoluteUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#FF7A59' }}>{saved.credentials.selectedBlog.absoluteUrl}</a>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* HubSpot: Knowledge Base selector */}
-                    {ch.id === 'hubspot' && connected && saved?.credentials?.availableTargets?.knowledgeBases?.length > 0 && (
-                      <div className="int-form-section">
-                        <div className="int-form-label">
-                          Publish to Knowledge Base
-                          <span className="int-utm-hint">Select which Knowledge Base to publish articles to</span>
-                        </div>
-                        <select
-                          className="geo-select"
-                          style={{ maxWidth: 400 }}
-                          value={saved?.credentials?.selectedKB?.id || ''}
-                          onChange={async (e) => {
-                            try {
-                              const res = await fetch('/api/hubspot/select-target', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ brandProfileId: activeBrand?.id, targetType: 'kb', targetId: e.target.value })
-                              });
-                              const d = await res.json();
-                              if (d.success) {
-                                setSuccess(`Publishing to: ${d.selectedKB?.name}`);
-                                loadChannels(activeBrand?.id || '');
-                                setTimeout(() => setSuccess(''), 3000);
-                              } else {
-                                setError(d.error || 'Failed to switch KB');
-                              }
-                            } catch {
-                              setError('Failed to switch HubSpot KB');
-                            }
-                          }}
-                        >
-                          {(saved?.credentials?.availableTargets?.knowledgeBases || []).map((kb: any) => (
-                            <option key={kb.id} value={kb.id}>
-                              📚 {kb.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    {/* HubSpot: No targets found */}
-                    {ch.id === 'hubspot' && connected && !saved?.credentials?.availableTargets?.blogs?.length && !saved?.credentials?.availableTargets?.knowledgeBases?.length && (
-                      <div className="int-form-section">
-                        <div style={{ padding: '12px 16px', background: 'rgba(255,122,89,0.1)', borderRadius: 8, fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)' }}>
-                          ⚠️ No blogs or knowledge bases found. Create one in HubSpot, then{' '}
-                          <button 
-                            style={{ background: 'none', border: 'none', color: '#FF7A59', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
-                            onClick={async () => {
-                              try {
-                                const res = await fetch('/api/hubspot/refresh-targets', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ brandProfileId: activeBrand?.id })
-                                });
-                                const d = await res.json();
-                                if (d.success) {
-                                  setSuccess(`Found ${d.blogs?.length || 0} blogs, ${d.knowledgeBases?.length || 0} KBs`);
-                                  loadChannels(activeBrand?.id || '');
-                                }
-                              } catch {
-                                setError('Failed to refresh');
-                              }
-                            }}
-                          >refresh targets</button>.
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Webflow: Connected status */}
-                    {ch.id === 'webflow' && connected && (
-                      <div className="int-form-section">
-                        <div className="int-pipedream-status">
-                          <div className="int-pipedream-badge" style={{ background: 'rgba(67, 83, 255, 0.15)', color: '#4353FF' }}>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                            Connected via OAuth
-                          </div>
-                          <span className="int-pipedream-sub">
-                            Site: <strong>{saved?.credentials?.selectedSite?.name || '--'}</strong>
-                            {' · '}Collection: <strong>{saved?.credentials?.selectedCollection?.name || '--'}</strong>
-                            {' · '}Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}
-                          </span>
-                          <button className="int-reauth-btn" onClick={() => {
-                            window.location.href = `/api/webflow/auth?state=${encodeURIComponent((activeBrand?.id || '') + '|' + Date.now())}`;
-                          }}>Reconnect</button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Webflow: Site selector */}
-                    {ch.id === 'webflow' && connected && saved?.credentials?.sites?.length > 0 && (
-                      <div className="int-form-section">
-                        <div className="int-form-label">
-                          Publish to Site
-                          <span className="int-utm-hint">Select which Webflow site to publish to</span>
-                        </div>
-                        <select
-                          className="geo-select"
-                          style={{ maxWidth: 400 }}
-                          value={saved?.credentials?.selectedSite?.id || ''}
-                          onChange={async (e) => {
-                            try {
-                              const res = await fetch('/api/webflow/select-target', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ brandProfileId: activeBrand?.id, siteId: e.target.value })
-                              });
-                              const d = await res.json();
-                              if (d.success) {
-                                setSuccess(`Publishing to: ${d.selectedSite?.name}`);
-                                loadChannels(activeBrand?.id || '');
-                                setTimeout(() => setSuccess(''), 3000);
-                              } else {
-                                setError(d.error || 'Failed to switch site');
-                              }
-                            } catch {
-                              setError('Failed to switch Webflow site');
-                            }
-                          }}
-                        >
-                          {(saved?.credentials?.sites || []).map((s: any) => (
-                            <option key={s.id} value={s.id}>
-                              🌐 {s.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    {/* Webflow: Collection selector */}
-                    {ch.id === 'webflow' && connected && saved?.credentials?.selectedSite?.collections?.length > 0 && (
-                      <div className="int-form-section">
-                        <div className="int-form-label">
-                          Publish to Collection
-                          <span className="int-utm-hint">Select which CMS collection to add articles to</span>
-                        </div>
-                        <select
-                          className="geo-select"
-                          style={{ maxWidth: 400 }}
-                          value={saved?.credentials?.selectedCollection?.id || ''}
-                          onChange={async (e) => {
-                            try {
-                              const res = await fetch('/api/webflow/select-target', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ brandProfileId: activeBrand?.id, collectionId: e.target.value })
-                              });
-                              const d = await res.json();
-                              if (d.success) {
-                                setSuccess(`Publishing to: ${d.selectedCollection?.name}`);
-                                loadChannels(activeBrand?.id || '');
-                                setTimeout(() => setSuccess(''), 3000);
-                              } else {
-                                setError(d.error || 'Failed to switch collection');
-                              }
-                            } catch {
-                              setError('Failed to switch Webflow collection');
-                            }
-                          }}
-                        >
-                          {(saved?.credentials?.selectedSite?.collections || []).map((c: any) => (
-                            <option key={c.id} value={c.id}>
-                              📁 {c.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    {/* LinkedIn: Connection options (Personal vs Company Page) */}
-                    {ch.id === 'linkedin' && !connected && (
-                      <div className="int-form-section">
-                        <div className="int-form-label">
-                          Connect LinkedIn
-                          <span className="int-utm-hint">Choose how to connect your LinkedIn account</span>
-                        </div>
-                        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                          <button
-                            className="int-connect-btn"
-                            style={{ '--ch-color': '#0A66C2', flex: '1 1 200px' } as React.CSSProperties}
-                            onClick={() => {
-                              window.location.href = `/api/linkedin/auth?state=${encodeURIComponent((activeBrand?.id || '') + '|' + Date.now())}`;
-                            }}
-                          >
-                            👤 Personal Profile
-                          </button>
-                          <button
-                            className="int-connect-btn"
-                            style={{ '--ch-color': '#0A66C2', flex: '1 1 200px' } as React.CSSProperties}
-                            onClick={() => {
-                              window.location.href = `/api/linkedin/org/auth?state=${encodeURIComponent((activeBrand?.id || '') + '|' + Date.now())}`;
-                            }}
-                          >
-                            🏢 Company Page
-                          </button>
-                        </div>
-                        <div style={{ marginTop: 12, fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>
-                          <strong>Personal Profile:</strong> Post as yourself<br/>
-                          <strong>Company Page:</strong> Post to a company page you admin (requires separate LinkedIn app)
+                          <button className="int-reauth-btn" onClick={() => handleSave(ch.id)}>Reconnect</button>
                         </div>
                       </div>
                     )}
@@ -1032,12 +655,12 @@ export default function IntegrationsPage() {
                           className="int-save-btn"
                           style={{ background: 'var(--color-bg-elevated)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
                           onClick={async () => {
-                            if (!activeBrand?.id) return;
+                            if (!selectedBrand) return;
                             setSaving(ch.id);
                             try {
                               const r = await fetch('/api/publishing/channels', {
                                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ brandProfileId: activeBrand?.id, channel: ch.id, credentials: ch.pipedreamApp ? savedChannels[ch.id] : credentials[ch.id], utmTemplate: utmTemplates[ch.id] })
+                                body: JSON.stringify({ brandProfileId: selectedBrand, channel: ch.id, credentials: ch.pipedreamApp ? savedChannels[ch.id] : credentials[ch.id], utmTemplate: utmTemplates[ch.id] })
                               });
                               const d = await r.json();
                               if (d.success) { setSuccess('UTM template saved'); setTimeout(() => setSuccess(''), 3000); }
@@ -1064,4 +687,3 @@ export default function IntegrationsPage() {
     </AppShell>
   );
 }
-
