@@ -25,7 +25,6 @@ interface LibraryItem {
   meta_description: string | null;
 }
 
-interface Brain { id: string; brandName?: string; brandUrl?: string; }
 
 const statusColor: Record<string, string> = {
   published: '#10B981',
@@ -48,8 +47,7 @@ const timeAgo = (date: string) => {
 };
 
 export default function ContentLibraryPage() {
-  const { getToken } = useAuth();
-  const { activeBrand } = useApp();
+    const { activeBrand } = useApp();
 
 
   const [items, setItems] = useState<LibraryItem[]>([]);
@@ -79,12 +77,12 @@ export default function ContentLibraryPage() {
   }, []);
 
   useEffect(() => {
-    load(activeBrand?.id, search, statusFilter, page);
+    load(activeBrand?.id || '', search, statusFilter, page);
   }, [activeBrand?.id, statusFilter, page, load]);
 
   // Debounce search
   useEffect(() => {
-    const t = setTimeout(() => { setPage(0); load(activeBrand?.id, search, statusFilter, 0); }, 350);
+    const t = setTimeout(() => { setPage(0); load(activeBrand?.id || '', search, statusFilter, 0); }, 350);
     return () => clearTimeout(t);
   }, [search]);
 
