@@ -1,3 +1,4 @@
+import { useApp } from '../context/AppContext';
 import React, { useState, useEffect, useCallback } from 'react';
 import { AppShell } from '../layouts/AppShell';
 import './PerformanceDashboardPage.css';
