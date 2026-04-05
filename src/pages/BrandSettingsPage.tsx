@@ -60,7 +60,7 @@ export default function BrandSettingsPage() {
     fetch(`/api/brand-settings/${activeBrandId}`)
       .then(r => r.json())
       .then(d => { if (d.success) setForm(d.settings); });
-  };
+  }, [activeBrandId]);
 
   const handleScrape = async () => {
     if (!activeBrandId || !articleTemplateUrl) return;
