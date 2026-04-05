@@ -38,9 +38,8 @@ const STAGES = [
 ];
 
 function GeoStrategistContent() {
-  const { setCurrentView, historyEntries } = useApp();
-  const { activeBrandId } = useApp();
-  const [selectedBrainId, setSelectedBrainId] = useState('');
+  const { setCurrentView, activeBrand } = useApp();
+
   const [isRunning, setIsRunning] = useState(false);
   const [currentStage, setCurrentStage] = useState(0);
   const [completedStages, setCompletedStages] = useState<number[]>([]);
@@ -50,29 +49,19 @@ function GeoStrategistContent() {
   const [isRerun, setIsRerun] = useState(false);
 
   // Sync with TopBar brain selection
-  useEffect(() => {
-    if (activeBrandId) setSelectedBrainId(activeBrandId);
-  }, [activeBrandId]);
+
 
   useEffect(() => {
     setCurrentView('geo-strategist');
     const params = new URLSearchParams(window.location.search);
     const profileId = params.get('profileId');
-    if (profileId) setSelectedBrainId(profileId);
+    // Brain selection now handled by TopBar
   }, []);
 
-  // Use historyEntries from AppContext (already loaded) as brain list
-  const brains: BrainEntry[] = historyEntries.map(e => ({
-    id: e.id,
-    brandName: e.brandName,
-    brandUrl: e.brandUrl,
-    updatedAt: e.timestamp
-  }));
-
-  const selectedBrain = brains.find(b => b.id === selectedBrainId);
+  // Use activeBrand from context (selected via TopBar dropdown)
 
   const runAnalysis = async () => {
-    if (!selectedBrainId) return;
+    if (!activeBrand?.id) return;
     const shouldForce = isRerun;
     setIsRunning(true);
     setResult(null);
@@ -84,7 +73,7 @@ function GeoStrategistContent() {
     const analyzePromise = fetch('/api/geo-strategist/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ brandProfileId: selectedBrainId, force: shouldForce })
+      body: JSON.stringify({ brandProfileId: activeBrand?.id, force: shouldForce })
     });
 
     const timings = [1500, 3000, 3500, 2500];
@@ -135,18 +124,15 @@ function GeoStrategistContent() {
       {!isRunning && !result && (
         <div className="geo-input-bar">
           <div className="geo-select-wrap">
-            <select
-              className="geo-select"
-              value={selectedBrainId}
-              onChange={e => setSelectedBrainId(e.target.value)}
-            >
-              <option value="">Select a Brand Profile...</option>
-              {brains.map(b => (
-                <option key={b.id} value={b.id}>{b.brandName} — {b.brandUrl}</option>
-              ))}
-            </select>
+            <div className="geo-select" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {activeBrand ? (
+                <><span style={{ color: '#10B981' }}>✓</span> {activeBrand.brandName}</>
+              ) : (
+                <span style={{ opacity: 0.5 }}>Select a brain from TopBar</span>
+              )}
+            </div>
           </div>
-          <button className="geo-run-btn" onClick={runAnalysis} disabled={!selectedBrainId}>
+          <button className="geo-run-btn" onClick={runAnalysis} disabled={!activeBrand?.id}>
             {icons.zap} Run GEO Analysis
           </button>
         </div>
@@ -155,7 +141,7 @@ function GeoStrategistContent() {
       {/* ── Active run ── */}
       {isRunning && (
         <div className="geo-running">
-          <div className="geo-running-brand">{selectedBrain?.brandName}</div>
+          <div className="geo-running-brand">{activeBrand?.brandName}</div>
           <div className="geo-stages">
             {STAGES.map(s => {
               const done = completedStages.includes(s.id);
