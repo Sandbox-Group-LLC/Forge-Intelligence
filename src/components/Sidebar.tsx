@@ -225,7 +225,7 @@ export function Sidebar() {
   };
   const [brainGroupOpen, setBrainGroupOpen] = useState(false);
   const [publishingGroupOpen, setPublishingGroupOpen] = useState(() => ['/app/publishing-queue','/app/content-library','/app/content-import','/app/topic-queue'].some(r => window.location.pathname.startsWith(r)));
-  const [settingsGroupOpen, setSettingsGroupOpen] = useState(() => ['/app/brand-settings','/app/integrations'].some(r => window.location.pathname.startsWith(r)));
+  const [settingsGroupOpen, setSettingsGroupOpen] = useState(() => ['/app/brand-settings','/app/integrations','/app/admin'].some(r => window.location.pathname.startsWith(r)));
   const [mobileExpanded, setMobileExpanded] = useState(false);
 
   // Auto-collapse on mobile at mount
@@ -242,7 +242,7 @@ export function Sidebar() {
     if (['/app/publishing-queue','/app/content-library','/app/content-import','/app/topic-queue'].some(r => p.startsWith(r))) {
       setPublishingGroupOpen(true);
     }
-    if (['/app/brand-settings','/app/integrations'].some(r => p.startsWith(r))) {
+    if (['/app/brand-settings','/app/integrations','/app/admin'].some(r => p.startsWith(r))) {
       setSettingsGroupOpen(true);
     }
   }, [window.location.pathname]);
@@ -465,7 +465,7 @@ export function Sidebar() {
         })}
         {/* Settings group */}
         {(() => {
-          const isSettingsActive = ['/app/brand-settings','/app/integrations'].some(r => path.startsWith(r));
+          const isSettingsActive = ['/app/brand-settings','/app/integrations','/app/admin'].some(r => path.startsWith(r));
           return (
             <div>
               <button
