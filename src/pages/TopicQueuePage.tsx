@@ -1,4 +1,3 @@
-import { useAuth } from '@clerk/clerk-react';
 import { useApp } from '../context/AppContext';
 import { useState, useEffect } from 'react';
 import { AppShell } from '../layouts/AppShell';
@@ -12,8 +11,6 @@ interface TopicIdea {
   status: 'idea' | 'in_progress' | 'generated';
   created_at: string;
 }
-
-interface Brand { id: string; brandName?: string; brandUrl?: string; }
 
 const STATUS_LABEL: Record<string, string> = {
   idea: 'Idea',
@@ -46,7 +43,6 @@ const ArrowIcon = () => (
 );
 
 export default function TopicQueuePage() {
-  const { getToken } = useAuth();
   const { activeBrandId } = useApp();
   const [topics, setTopics] = useState<TopicIdea[]>([]);
   const [topic, setTopic] = useState('');
