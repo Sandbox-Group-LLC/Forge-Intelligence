@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import GateModal from './GateModal';
-import { useActiveBrand } from '../hooks/useActiveBrand';
 import './GateModal.css';
 import { ViewType } from '../types';
 import './Sidebar.css';
@@ -210,8 +209,7 @@ const topNavItems: TopNavItem[] = [
 ];
 
 export function Sidebar() {
-  const { currentView, setCurrentView, sidebarCollapsed, setSidebarCollapsed, isProcessing, brandProfile, isPaid } = useApp();
-  const { brand: activeBrand } = useActiveBrand();
+  const { currentView, setCurrentView, sidebarCollapsed, setSidebarCollapsed, isProcessing, brandProfile, isPaid, activeBrand } = useApp();
   const [gateFeature, setGateFeature] = useState<string | null>(null);
   const LOCKED_ROUTES = [
     '/app/geo-strategist', '/app/authenticity-enricher', '/app/content-generator',
