@@ -162,8 +162,7 @@ export default function PublishingQueuePage() {
   const [scheduleDate, setScheduleDate] = useState<Record<string, string>>({});
   const [selectedChannels, setSelectedChannels] = useState<Record<string, string[]>>({});
   const [utmPreview, setUtmPreview] = useState<UtmPreview | null>(null);
-  // Using activeBrandId from context instead
-  // const [activeBrandId, () => {}] = useState<string>('all');
+  // Brand selection from TopBar: const [activeBrandId, (() => {})] = useState...
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [contentPreview, setContentPreview] = useState<{ item: QueueItem; article: any; postCopy: Record<string, string> } | null>(null);
@@ -276,7 +275,7 @@ export default function PublishingQueuePage() {
 
   // Sync with global brand selection from TopBar
   useEffect(() => {
-    if (activeBrandId) () => {}(activeBrandId);
+    if (activeBrandId) (() => {})(activeBrandId);
   }, [activeBrandId]);
 
   const loadQueue = useCallback(async () => {
@@ -846,7 +845,7 @@ ${bodyHtml}
           <select
             className="geo-select pq-brand-filter"
             value={activeBrandId}
-            onChange={e => () => {}(e.target.value)}
+            disabled style={{opacity:0.5}})(e.target.value)}
           >
             <option value="all">All Brands</option>
             {brands.map(b => (
