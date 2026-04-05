@@ -1,5 +1,5 @@
-import { useApp } from '../context/AppContext';
 import React, { useState, useEffect, useCallback } from 'react';
+import { useApp } from '../context/AppContext';
 import { AppShell } from '../layouts/AppShell';
 import './PerformanceDashboardPage.css';
 
@@ -108,7 +108,7 @@ function Sparkline({ data, key: _k }: { data: number[]; key?: string }) {
 
 export default function PerformanceDashboardPage() {
   const { activeBrandId } = useApp();
-  const [brandProfileId, setBrandProfileId] = useState('');
+  // Brand selection from TopBar: const [activeBrandId, (() => {})] = useState...
   const [brands, setBrands] = useState<{id: string; brandName: string; brandUrl: string}[]>([]);
   const [activeChannel, setActiveChannel] = useState('linkedin');
   const [data, setData] = useState<DashboardData | null>(null);
@@ -138,38 +138,38 @@ export default function PerformanceDashboardPage() {
       .then(d => {
         const list = d.profiles || d.data || d.brands || [];
         setBrands(list);
-        if (list.length > 0) setBrandProfileId(list[0].id);
+        if (list.length > 0) (() => {})(list[0].id);
       }).catch(() => {});
   }, []);
 
   const loadCampaigns = useCallback(async () => {
-    if (!brandProfileId) return;
+    if (!activeBrandId) return;
     setCampaignsLoading(true);
     try {
-      const res = await fetch(`/api/analytics/campaigns/${brandProfileId}`);
+      const res = await fetch(`/api/analytics/campaigns/${activeBrandId}`);
       const d = await res.json();
       if (d.success) setCampaigns(d.campaigns || []);
     } catch { /* non-fatal */ }
     setCampaignsLoading(false);
-  }, [brandProfileId]);
+  }, [activeBrandId]);
 
   useEffect(() => {
     if (activeChannel === 'campaigns') loadCampaigns();
-    if (activeChannel === 'geo' && brandProfileId) {
-      fetch(`/api/geo/citations/${brandProfileId}`)
+    if (activeChannel === 'geo' && activeBrandId) {
+      fetch(`/api/geo/citations/${activeBrandId}`)
         .then(r => r.json())
         .then(d => { if (d.success) { setGeoCitations(d.citations || []); setGeoLoaded(true); } })
         .catch(() => setGeoLoaded(true));
     }
-    if (activeChannel === 'gsc' && brandProfileId) {
-      fetch(`/api/gsc/status/${brandProfileId}`).then(r => r.json()).then(d => setGscStatus(d)).catch(() => {});
+    if (activeChannel === 'gsc' && activeBrandId) {
+      fetch(`/api/gsc/status/${activeBrandId}`).then(r => r.json()).then(d => setGscStatus(d)).catch(() => {});
     }
-    if (brandProfileId) {
-      fetch(`/api/analytics/decay/${brandProfileId}`)
+    if (activeBrandId) {
+      fetch(`/api/analytics/decay/${activeBrandId}`)
         .then(r => r.json())
         .then(d => { if (d.success) { setDecayAlerts(d.alerts || []); setDecayLoaded(true); } })
         .catch(() => {});
-      fetch(`/api/analytics/patterns/${brandProfileId}`)
+      fetch(`/api/analytics/patterns/${activeBrandId}`)
         .then(r => r.json())
         .then(d => { if (d.success) { setPatterns(d.patterns || []); setMistakes(d.mistakes || []); } })
         .catch(() => {});
@@ -177,12 +177,12 @@ export default function PerformanceDashboardPage() {
   }, [activeChannel, loadCampaigns]);
 
   const loadDashboard = useCallback(async () => {
-    if (!brandProfileId || activeChannel === 'campaigns') return;
+    if (!activeBrandId || activeChannel === 'campaigns') return;
     setLoading(true); setError('');
     try {
       const [dashRes, chanRes] = await Promise.all([
-        fetch(`/api/analytics/dashboard/${brandProfileId}?channel=${activeChannel}`),
-        fetch(`/api/analytics/channels/${brandProfileId}`)
+        fetch(`/api/analytics/dashboard/${activeBrandId}?channel=${activeChannel}`),
+        fetch(`/api/analytics/channels/${activeBrandId}`)
       ]);
       const dashData = await dashRes.json();
       const chanData = await chanRes.json();
@@ -190,28 +190,28 @@ export default function PerformanceDashboardPage() {
       if (chanData.success) setChannelInfo(chanData.channels);
     } catch(e) { setError('Failed to load analytics'); }
     setLoading(false);
-  }, [brandProfileId, activeChannel]);
+  }, [activeBrandId, activeChannel]);
 
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
 
   const handleGeoTrack = async () => {
-    if (!brandProfileId) return;
+    if (!activeBrandId) return;
     setGeoTracking(true);
     try {
-      const r = await fetch(`/api/geo/track/${brandProfileId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+      const r = await fetch(`/api/geo/track/${activeBrandId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
       const d = await r.json();
       if (d.success) {
-        const c = await fetch(`/api/geo/citations/${brandProfileId}`).then(r => r.json());
+        const c = await fetch(`/api/geo/citations/${activeBrandId}`).then(r => r.json());
         if (c.success) setGeoCitations(c.citations || []);
       }
     } finally { setGeoTracking(false); }
   };
 
   const handleGscSync = async () => {
-    if (!brandProfileId) return;
+    if (!activeBrandId) return;
     setGscSyncing(true);
     try {
-      const r = await fetch(`/api/analytics/sync-gsc/${brandProfileId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ days: 28 }) });
+      const r = await fetch(`/api/analytics/sync-gsc/${activeBrandId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ days: 28 }) });
       const d = await r.json();
       if (d.success) {
         await loadDashboard();
@@ -221,24 +221,24 @@ export default function PerformanceDashboardPage() {
   };
 
   const handleGscConnect = async () => {
-    if (!brandProfileId) return;
-    const r = await fetch(`/api/gsc/auth?brandProfileId=${brandProfileId}`);
+    if (!activeBrandId) return;
+    const r = await fetch(`/api/gsc/auth?activeBrandId=${activeBrandId}`);
     const d = await r.json();
     if (d.authUrl) window.location.href = d.authUrl;
   };
 
   const resolveDecay = async (contentId: string) => {
-    if (!brandProfileId) return;
-    await fetch(`/api/analytics/decay/${brandProfileId}/resolve/${contentId}`, { method: 'POST' });
+    if (!activeBrandId) return;
+    await fetch(`/api/analytics/decay/${activeBrandId}/resolve/${contentId}`, { method: 'POST' });
     setDecayAlerts(prev => prev.filter(a => a.content_id !== contentId));
   };
 
   const handleExtract = async () => {
-    if (!brandProfileId) return;
+    if (!activeBrandId) return;
     setExtracting(true);
     setExtractResult('');
     try {
-      const r = await fetch(`/api/analytics/extract-patterns/${brandProfileId}`, { method: 'POST' });
+      const r = await fetch(`/api/analytics/extract-patterns/${activeBrandId}`, { method: 'POST' });
       const d = await r.json();
       if (d.success) {
         setPatterns(d.patterns || []);
@@ -256,10 +256,10 @@ export default function PerformanceDashboardPage() {
   };
 
   const handleSync = async () => {
-    if (!brandProfileId || syncing) return;
+    if (!activeBrandId || syncing) return;
     setSyncing(true); setSyncMsg('');
     try {
-      const res = await fetch(`/api/analytics/sync/${brandProfileId}`, {
+      const res = await fetch(`/api/analytics/sync/${activeBrandId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ channel: activeChannel })
@@ -291,14 +291,14 @@ export default function PerformanceDashboardPage() {
             {brands.length > 1 && (
               <select
                 className="perf-brand-select"
-                value={brandProfileId}
-                onChange={e => setBrandProfileId(e.target.value)}
+                value={activeBrandId}
+                disabled style={{opacity:0.5}})(e.target.value)}
               >
                 {brands.map(b => <option key={b.id} value={b.id}>{b.brandName || b.brandUrl}</option>)}
               </select>
             )}
             <div className="perf-sync-wrap">
-              <button className={`perf-sync-btn ${syncing ? 'syncing' : ''}`} onClick={handleSync} disabled={syncing || !brandProfileId}>
+              <button className={`perf-sync-btn ${syncing ? 'syncing' : ''}`} onClick={handleSync} disabled={syncing || !activeBrandId}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={syncing ? 'spin' : ''}>
                   <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
                   <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
@@ -451,7 +451,7 @@ export default function PerformanceDashboardPage() {
                     <h2 className="perf-section-title">GEO Citation Tracker</h2>
                     <p className="perf-section-sub">Track when your content is cited by ChatGPT, Perplexity, and other AI engines. Results write to Brain patterns.</p>
                   </div>
-                  <button className="perf-sync-btn perf-geo-track-btn" onClick={handleGeoTrack} disabled={geoTracking || !brandProfileId}>
+                  <button className="perf-sync-btn perf-geo-track-btn" onClick={handleGeoTrack} disabled={geoTracking || !activeBrandId}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={geoTracking ? 'spin' : ''}>
                       <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
                       <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
@@ -554,7 +554,7 @@ export default function PerformanceDashboardPage() {
                     </div>
                     <h3 className="perf-gsc-title">Connect Google Search Console</h3>
                     <p className="perf-gsc-desc">Pull organic search performance — clicks, impressions, CTR, and position — for every article on your domain. Works with BYO published articles too.</p>
-                    <button className="perf-gsc-btn" onClick={handleGscConnect} disabled={!brandProfileId}>
+                    <button className="perf-gsc-btn" onClick={handleGscConnect} disabled={!activeBrandId}>
                       Connect GSC
                     </button>
                   </div>
@@ -565,7 +565,7 @@ export default function PerformanceDashboardPage() {
                       {gscStatus.verifiedSites && gscStatus.verifiedSites.length > 0 && (
                         <span className="perf-gsc-sites">{gscStatus.verifiedSites.slice(0,3).join(', ')}{gscStatus.verifiedSites.length > 3 ? ` +${gscStatus.verifiedSites.length - 3} more` : ''}</span>
                       )}
-                      <button className="perf-sync-btn" onClick={handleGscSync} disabled={gscSyncing || !brandProfileId}>
+                      <button className="perf-sync-btn" onClick={handleGscSync} disabled={gscSyncing || !activeBrandId}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={gscSyncing ? 'spin' : ''}>
                           <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
                           <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
@@ -697,7 +697,7 @@ export default function PerformanceDashboardPage() {
                   <button
                     className={`perf-extract-btn ${extracting ? 'extracting' : ''}`}
                     onClick={handleExtract}
-                    disabled={extracting || !brandProfileId}
+                    disabled={extracting || !activeBrandId}
                   >
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={extracting ? 'spin' : ''}>
                       <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/>
