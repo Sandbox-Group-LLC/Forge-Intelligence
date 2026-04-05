@@ -828,7 +828,7 @@ ${bodyHtml}
         {/* Header */}
         <div className="geo-header">
           <div>
-            <div className="geo-eyebrow">Stage 6</div>
+            <div className="geo-eyebrow">Publishing</div>
             <h1 className="geo-title">Publishing Queue</h1>
             <p className="geo-description">Approved articles staged for distribution. Select channels, publish now or schedule — every publish writes to the Brain.</p>
           </div>
