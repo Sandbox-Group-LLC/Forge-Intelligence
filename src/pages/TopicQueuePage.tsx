@@ -1,3 +1,4 @@
+import { useAuth } from '@clerk/clerk-react';
 import { useState, useEffect } from 'react';
 import { AppShell } from '../layouts/AppShell';
 import './TopicQueuePage.css';
@@ -44,6 +45,7 @@ const ArrowIcon = () => (
 );
 
 export default function TopicQueuePage() {
+  const { getToken } = useAuth();
   const [brands, setBrands] = useState<Brand[]>([]);
   const [selectedBrand, setSelectedBrand] = useState('');
   const [topics, setTopics] = useState<TopicIdea[]>([]);
@@ -53,13 +55,18 @@ export default function TopicQueuePage() {
   const [filter, setFilter] = useState<'all' | 'idea' | 'in_progress' | 'generated'>('all');
 
   useEffect(() => {
-    fetch('/api/context-hub/brains').then(r => r.json()).then(d => {
+    (async () => {
+      const token = await getToken();
+      const res = await fetch('/api/context-hub/brains', {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+      const d = await res.json();
       if (d.success && d.data?.length) {
         setBrands(d.data);
         setSelectedBrand(d.data[0].id);
       }
-    });
-  }, []);
+    })();
+  }, [getToken]);
 
   useEffect(() => {
     if (!selectedBrand) return;
