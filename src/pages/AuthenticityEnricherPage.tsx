@@ -114,7 +114,7 @@ const EEAT_LABELS = ['experience', 'expertise', 'authoritativeness', 'trustworth
 function AuthenticityEnricherContent() {
   const { activeBrandId } = useApp();
   const [brains, setBrains] = useState<BrainOption[]>([]);
-  // Brand selection from TopBar: const [activeBrandId, (() => {})] = useState...
+  const [selectedBrainId, setSelectedBrainId] = useState('');
   const [isRunning, setIsRunning] = useState(false);
   const [result, setResult] = useState<EnrichResult | null>(null);
   const [error, setError] = useState('');
@@ -127,6 +127,11 @@ function AuthenticityEnricherContent() {
 
   const { setCurrentView } = useApp();
 
+  // Sync with TopBar brain selection
+  useEffect(() => {
+    if (activeBrandId) setSelectedBrainId(activeBrandId);
+  }, [activeBrandId]);
+
   useEffect(() => {
     setCurrentView('authenticity-enricher');
     fetch('/api/context-hub/brains')
@@ -135,7 +140,7 @@ function AuthenticityEnricherContent() {
   }, []);
 
   const runAnalysis = async (withManual = false, forceRefresh = false) => {
-    if (!activeBrandId) return;
+    if (!selectedBrainId) return;
     setIsRunning(true);
     setResult(null);
     setError('');
@@ -146,7 +151,7 @@ function AuthenticityEnricherContent() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        brandProfileId: activeBrandId,
+        brandProfileId: selectedBrainId,
         manualInputs: withManual ? manualInputs : {},
         force: withManual || forceRefresh
       })
@@ -214,12 +219,12 @@ function AuthenticityEnricherContent() {
       {/* Brain selector */}
       <div className="geo-input-bar">
         <div className="geo-select-wrap">
-        <select className="geo-select" value={activeBrandId} disabled style={{opacity:0.5}})(e.target.value)}>
+        <select className="geo-select" value={selectedBrainId} onChange={e => setSelectedBrainId(e.target.value)}>
           <option value="">Select a Brain...</option>
           {brains.map(b => <option key={b.id} value={b.id}>{b.brandName} — {b.brandUrl}</option>)}
         </select>
         </div>
-        <button className="geo-run-btn" onClick={() => runAnalysis(false)} disabled={!activeBrandId || isRunning}>
+        <button className="geo-run-btn" onClick={() => runAnalysis(false)} disabled={!selectedBrainId || isRunning}>
           <ShieldCheck size={14} />{isRunning ? 'Enriching...' : result ? 'Run Again' : 'Run Enrichment'}
         </button>
         {result && !isRunning && (
