@@ -1,4 +1,3 @@
-import { useAuth } from '@clerk/clerk-react';
 import { useApp } from '../context/AppContext';
 import { useState, useEffect, useCallback } from 'react';
 import { AppShell } from '../layouts/AppShell';
