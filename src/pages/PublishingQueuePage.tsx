@@ -1,3 +1,4 @@
+import { useAuth } from '@clerk/clerk-react';
 import { useState, useEffect, useCallback } from 'react';
 import { AppShell } from '../layouts/AppShell';
 import './PublishingQueuePage.css';
@@ -273,7 +274,10 @@ export default function PublishingQueuePage() {
     setLoading(true);
     try {
       // Fetch brands first, then load each brand's enriched queue
-      const brandsRes = await fetch('/api/context-hub/brains').then(r => r.json());
+      const token = await getToken();
+      const brandsRes = await fetch('/api/context-hub/brains', {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      }).then(r => r.json());
       const brandList = brandsRes.success ? (brandsRes.data || []) : [];
       if (brandList.length > 0) setBrands(brandList);
 
