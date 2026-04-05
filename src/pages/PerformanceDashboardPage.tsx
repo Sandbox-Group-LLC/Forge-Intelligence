@@ -188,13 +188,26 @@ export default function PerformanceDashboardPage() {
     if (!activeBrandId) return;
     setGeoTracking(true);
     try {
-      const r = await fetch(`/api/geo/track/${activeBrandId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
-      const d = await r.json();
-      if (d.success) {
-        const c = await fetch(`/api/geo/citations/${activeBrandId}`).then(r => r.json());
-        if (c.success) setGeoCitations(c.citations || []);
-      }
-    } finally { setGeoTracking(false); }
+      await fetch(`/api/geo/track/${activeBrandId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+      const startTime = new Date();
+      let attempts = 0;
+      const poll = setInterval(async () => {
+        attempts++;
+        try {
+          const c = await fetch(`/api/geo/citations/${activeBrandId}`).then(r => r.json());
+          if (c.success) setGeoCitations(c.citations || []);
+          const hasNewData = (c.citations || []).some(
+            (cit: any) => cit.lastChecked && new Date(cit.lastChecked) > startTime
+          );
+          if (hasNewData || attempts >= 20) {
+            clearInterval(poll);
+            setGeoTracking(false);
+          }
+        } catch { /* keep polling */ }
+      }, 3000);
+    } catch(e) {
+      setGeoTracking(false);
+    }
   };
 
   const handleGscSync = async () => {
