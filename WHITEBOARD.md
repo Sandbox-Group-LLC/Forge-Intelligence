@@ -17,6 +17,16 @@
 
 ---
 
+## Session Log — April 5, 2026 (continued)
+
+### Phase 2 Completion
+
+- **Pre-cog scoring engine** — full rewrite: Haiku-powered semantic reasoning, real data gate (≥3 articles), percentile-based predicted impressions, `requireAuth` on all endpoints, `ALTER TABLE` moved to `initDB`, batch uses shared fn not self-HTTP. 8 duplicate `initDB` migrations cleaned.
+- **Predictions tab** — new tab in Performance Dashboard: all scored articles, batch scoring button, signals (positive/negative/neutral), recommended actions, predicted impressions range vs historical avg
+- **Pre-cog badge** — Publishing Queue cards: lazy-loaded colored score pill, tooltip with prediction + first action, honest "No data yet" state for new brands
+- **Ghost analytics** — KPIs now show Clicks / Avg Read Time / Positive Feedback / Negative Feedback (not fake impressions). Bar chart uses clicks as reach proxy. `AnalyticsTotals` interface updated.
+- Phase 1 and Phase 2 declared complete. Phase 3 Intelligence Loop is active.
+
 ## Session Log — April 5, 2026
 
 ### Critical Infosec Fix — Application-Layer Brand Scoping
