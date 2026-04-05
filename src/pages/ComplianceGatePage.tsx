@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { AppShell } from '../layouts/AppShell';
 import './ComplianceGatePage.css';
@@ -60,6 +60,7 @@ const MODES: { id: ReviewMode; label: string; sub: string; icon: string; color: 
 const tierColor = (tier: string) => tier === 'green' ? '#22C55E' : tier === 'yellow' ? '#F5B942' : '#EF4444';
 
 export default function ComplianceGatePage() {
+  const { activeBrand } = useApp();
   const [mode, setMode] = useState<ReviewMode>('approve-to-ship');
 
 
