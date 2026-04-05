@@ -50,8 +50,8 @@ const timeAgo = (date: string) => {
 export default function ContentLibraryPage() {
   const { getToken } = useAuth();
   const { activeBrandId } = useApp();
-  const [brains, setBrains] = useState<Brain[]>([]);
-  const [selectedBrand, setSelectedBrand] = useState('');
+    // Using activeBrandId from context instead
+  // const [activeBrandId, () => {}] = useState('');
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -74,7 +74,7 @@ export default function ContentLibraryPage() {
 
   // Sync with global brand selection from TopBar
   useEffect(() => {
-    if (activeBrandId) setSelectedBrand(activeBrandId);
+    if (activeBrandId) () => {}(activeBrandId);
   }, [activeBrandId]);
 
   const load = useCallback(async (brandId: string, q: string, status: string, pg: number) => {
@@ -93,12 +93,12 @@ export default function ContentLibraryPage() {
   }, []);
 
   useEffect(() => {
-    load(selectedBrand, search, statusFilter, page);
-  }, [selectedBrand, statusFilter, page, load]);
+    load(activeBrandId, search, statusFilter, page);
+  }, [activeBrandId, statusFilter, page, load]);
 
   // Debounce search
   useEffect(() => {
-    const t = setTimeout(() => { setPage(0); load(selectedBrand, search, statusFilter, 0); }, 350);
+    const t = setTimeout(() => { setPage(0); load(activeBrandId, search, statusFilter, 0); }, 350);
     return () => clearTimeout(t);
   }, [search]);
 
@@ -121,10 +121,7 @@ export default function ContentLibraryPage() {
           </div>
           {/* Brand filter — agency/internal, remove for single-brand production */}
           <div className="cl-brand-filter">
-            <select className="geo-select" value={selectedBrand} onChange={e => { setSelectedBrand(e.target.value); setPage(0); }}>
-              <option value="">All Brands</option>
-              {brains.map(b => <option key={b.id} value={b.id}>{b.brandName || b.brandUrl}</option>)}
-            </select>
+            {/* Brain selector removed - using TopBar */}
           </div>
         </div>
 
