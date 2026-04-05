@@ -302,9 +302,9 @@ interface SavedChannel {
 }
 
 export default function IntegrationsPage() {
-  const { isPaid, brandLoading, activeBrandId } = useApp();
+  const { isPaid, isAuthLoading, activeBrandId } = useApp();
   
-  if (brandLoading) return null;
+  if (isAuthLoading) return null;
   if (!isPaid) {
     return (
       <AppShell>
