@@ -39,7 +39,8 @@ const STAGES = [
 
 function GeoStrategistContent() {
   const { setCurrentView, historyEntries } = useApp();
-  const [selectedBrainId, setSelectedBrainId] = useState('');
+  const { activeBrandId } = useApp();
+  // Using activeBrandId from context
   const [isRunning, setIsRunning] = useState(false);
   const [currentStage, setCurrentStage] = useState(0);
   const [completedStages, setCompletedStages] = useState<number[]>([]);
@@ -52,7 +53,7 @@ function GeoStrategistContent() {
     setCurrentView('geo-strategist');
     const params = new URLSearchParams(window.location.search);
     const profileId = params.get('profileId');
-    if (profileId) setSelectedBrainId(profileId);
+    if (profileId) () => {}(profileId);
   }, []);
 
   // Use historyEntries from AppContext (already loaded) as brain list
@@ -63,10 +64,10 @@ function GeoStrategistContent() {
     updatedAt: e.timestamp
   }));
 
-  const selectedBrain = brains.find(b => b.id === selectedBrainId);
+  const selectedBrain = brains.find(b => b.id === activeBrandId);
 
   const runAnalysis = async () => {
-    if (!selectedBrainId) return;
+    if (!activeBrandId) return;
     const shouldForce = isRerun;
     setIsRunning(true);
     setResult(null);
@@ -78,7 +79,7 @@ function GeoStrategistContent() {
     const analyzePromise = fetch('/api/geo-strategist/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ brandProfileId: selectedBrainId, force: shouldForce })
+      body: JSON.stringify({ brandProfileId: activeBrandId, force: shouldForce })
     });
 
     const timings = [1500, 3000, 3500, 2500];
@@ -129,18 +130,9 @@ function GeoStrategistContent() {
       {!isRunning && !result && (
         <div className="geo-input-bar">
           <div className="geo-select-wrap">
-            <select
-              className="geo-select"
-              value={selectedBrainId}
-              onChange={e => setSelectedBrainId(e.target.value)}
-            >
-              <option value="">Select a Brand Profile...</option>
-              {brains.map(b => (
-                <option key={b.id} value={b.id}>{b.brandName} — {b.brandUrl}</option>
-              ))}
-            </select>
+            {/* Brain selector moved to TopBar */}
           </div>
-          <button className="geo-run-btn" onClick={runAnalysis} disabled={!selectedBrainId}>
+          <button className="geo-run-btn" onClick={runAnalysis} disabled={!activeBrandId}>
             {icons.zap} Run GEO Analysis
           </button>
         </div>
