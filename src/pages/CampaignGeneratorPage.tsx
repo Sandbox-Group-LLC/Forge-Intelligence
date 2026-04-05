@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { AppShell } from '../layouts/AppShell';
 import './CampaignGeneratorPage.css';
@@ -31,7 +31,6 @@ const BookOpen = ({ size = 16 }: { size?: number }) => (
 );
 
 // ── Types ────────────────────────────────────────────────────────────────────
-interface Brain { id: string; brandName: string; brandUrl: string; }
 
 const FUNNEL_COLORS: Record<string, string> = {
   TOFU: '#3B82F6', MOFU: '#8B5CF6', BOFU: '#10B981',
@@ -84,7 +83,7 @@ function StreamProgress({ text }: { text: string }) {
 // ── Main component ────────────────────────────────────────────────────────────
 function CampaignGeneratorContent() {
   // Use global activeBrand from AppContext - no local brain selection needed
-  const { activeBrand, isAuthLoading } = useApp();
+  const { activeBrand } = useApp();
   const selectedBrainId = activeBrand?.id || '';
   const [step, setStep] = useState<'setup' | 'plan' | 'generating' | 'complete'>('setup');
   const [isPlanning, setIsPlanning] = useState(false);
@@ -100,7 +99,7 @@ function CampaignGeneratorContent() {
 
 
   const checkTopic = async () => {
-    if (!activeBrandId || !topicPrompt.trim()) { setPreflight({ status: 'idle' }); return; }
+    if (!activeBrand?.id || !topicPrompt.trim()) { setPreflight({ status: 'idle' }); return; }
     setPreflight({ status: 'checking' });
     try {
       const r = await fetch('/api/content/topic-check', {
@@ -115,7 +114,7 @@ function CampaignGeneratorContent() {
   };
 
   const handlePlan = async () => {
-    if (!activeBrandId) return;
+    if (!activeBrand?.id) return;
     setIsPlanning(true); setError('');
     try {
       const res = await fetch('/api/campaign/plan', {
@@ -130,7 +129,7 @@ function CampaignGeneratorContent() {
   };
 
   const handleGenerate = async () => {
-    if (!plan || !activeBrandId) return;
+    if (!plan || !activeBrand?.id) return;
     setError('');
     try {
       const res = await fetch('/api/campaign/create', {
@@ -242,7 +241,7 @@ function CampaignGeneratorContent() {
               </div>
             )}
           </div>
-          <button className="camp-plan-btn" onClick={handlePlan} disabled={isPlanning || !activeBrandId}>
+          <button className="camp-plan-btn" onClick={handlePlan} disabled={isPlanning || !activeBrand?.id}>
             {isPlanning ? <><span className="camp-spinner" />Planning angles...</> : <><Zap size={16} />Plan Campaign</>}
           </button>
           {error && <div className="geo-error">{error}</div>}
