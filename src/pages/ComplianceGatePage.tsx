@@ -102,7 +102,7 @@ export default function ComplianceGatePage() {
       const r = await fetch('/api/compliance/critique', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ activeBrand?.id, contentId: article.id })
+        body: JSON.stringify({ brandProfileId: activeBrand?.id, contentId: article.id })
       });
       const d = await r.json();
       if (d.success) {
@@ -147,7 +147,7 @@ export default function ComplianceGatePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          activeBrand?.id,
+          brandProfileId: activeBrand?.id,
           contentId: article.id,
           reviewMode: mode,
           editedSections: edits,
