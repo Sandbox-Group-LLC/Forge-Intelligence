@@ -1,10 +1,24 @@
-import { useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useState, useEffect } from 'react';
 import { AppShell } from '../layouts/AppShell';
 import './ComplianceGatePage.css';
+import { useApp } from '../context/AppContext';
+import GateModal from '../components/GateModal';
+import '../components/GateModal.css';
 
 type ReviewMode = 'auto-ship' | 'approve-to-ship' | 'full-review';
 type ComplianceStatus = 'pending' | 'reviewed' | 'approved' | 'rejected';
+
+const IconZap = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+  </svg>
+);
+const IconCheck = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="20 6 9 17 4 12"/>
+  </svg>
+);
+
 
 interface ArticleSection {
   heading: string;
@@ -51,19 +65,34 @@ interface ComplianceReport {
   mistakesApplied: string[];
 }
 
-const MODES: { id: ReviewMode; label: string; sub: string; icon: string; color: string }[] = [
-  { id: 'auto-ship', label: 'Auto-Ship', sub: 'AI self-critique passes → publishes automatically. Human notified only.', icon: '⚡', color: '#14B8A6' },
-  { id: 'approve-to-ship', label: 'Approve-to-Ship', sub: 'Review yellows & reds. One-click approve on greens. Standard workflow.', icon: '✓', color: '#3563FF' },
+const MODES: { id: ReviewMode; label: string; sub: string; icon: React.ReactNode; color: string }[] = [
+  { id: 'auto-ship', label: 'Auto-Ship', sub: 'AI self-critique passes → publishes automatically. Human notified only.', icon: <IconZap />, color: '#14B8A6' },
+  { id: 'approve-to-ship', label: 'Approve-to-Ship', sub: 'Review yellows & reds. One-click approve on greens. Standard workflow.', icon: <IconCheck />, color: '#3563FF' },
   // { id: 'full-review', label: 'Full Review', sub: 'Every section routes to named approver. Full audit log written to Brain.', icon: '🔒', color: '#F5B942' }, // Enterprise — re-enable when team workflow is needed
 ];
 
 const tierColor = (tier: string) => tier === 'green' ? '#22C55E' : tier === 'yellow' ? '#F5B942' : '#EF4444';
 
 export default function ComplianceGatePage() {
-  const { activeBrand } = useApp();
+  const { isPaid, brandLoading, activeBrand } = useApp();
+  // Gate check for direct URL access
+  if (brandLoading) return null;
+  if (!isPaid) {
+    return (
+      <AppShell>
+        <div className="geo-gate-wrapper">
+          <GateModal
+            featureName="Compliance Gate"
+            onClose={() => window.location.href = '/app/context-hub'}
+            onUnlocked={() => {}}
+          />
+        </div>
+      </AppShell>
+    );
+  }
+
   const [mode, setMode] = useState<ReviewMode>('approve-to-ship');
-
-
+  const [brandProfileId, setBrandProfileId] = useState(activeBrand?.id || localStorage.getItem('forge_active_brand_id') || '');
   const [articles, setArticles] = useState<Article[]>([]);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [report, setReport] = useState<ComplianceReport | null>(null);
@@ -75,7 +104,11 @@ export default function ComplianceGatePage() {
   const [step, setStep] = useState<'select' | 'review' | 'done'>('select');
   const [error, setError] = useState('');
 
-
+  // Seed brandProfileId from active brand context
+  useEffect(() => {
+    const id = activeBrandId || localStorage.getItem('forge_active_brand_id') || '';
+    if (id) { setBrandProfileId(id); loadArticles(id); }
+  }, [activeBrand?.id]);
 
   const loadArticles = async (bpId: string) => {
     if (!bpId) return;
@@ -103,7 +136,7 @@ export default function ComplianceGatePage() {
       const r = await fetch('/api/compliance/critique', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brandProfileId: activeBrand?.id, contentId: article.id })
+        body: JSON.stringify({ brandProfileId, contentId: article.id })
       });
       const d = await r.json();
       if (d.success) {
@@ -148,7 +181,7 @@ export default function ComplianceGatePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          brandProfileId: activeBrand?.id,
+          brandProfileId,
           contentId: article.id,
           reviewMode: mode,
           editedSections: edits,
@@ -212,32 +245,14 @@ export default function ComplianceGatePage() {
         {/* Brand + Article selector */}
         {step === 'select' && (
           <div className="comp-select-panel">
-            <div className="comp-row">
-              <div className="geo-select" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                {activeBrand ? <><span style={{ color: '#10B981' }}>✓</span> {activeBrand.brandName}</> : <span style={{ opacity: 0.5 }}>Select brain from TopBar</span>}
-              </div>
-              {activeBrand && !articles.length && !loading && (
-                <button className="geo-run-btn" onClick={() => loadArticles(activeBrand.id)} style={{ marginBottom: '12px' }}>
-                  Load Articles
-                </button>
-              )}
-            </div>
-
             {loading && <div className="comp-loading"><span className="comp-spinner" /> Loading articles...</div>}
 
             {!loading && articles.length > 0 && (
               <div className="comp-article-list">
                 <div className="comp-list-label">Select an article to review</div>
                 {articles.map(a => (
-                  <button 
-                    key={a.id} 
-                    className={`comp-article-row ${selectedArticle?.id === a.id ? 'comp-article-selected' : ''}`}
-                    onClick={() => selectArticle(a)}
-                  >
-                    <div className="comp-article-title">
-                      {selectedArticle?.id === a.id && <span className="comp-selected-indicator">▸ </span>}
-                      {a.article_json?.title || a.title}
-                    </div>
+                  <button key={a.id} className="comp-article-row" onClick={() => selectArticle(a)}>
+                    <div className="comp-article-title">{a.article_json?.title || a.title}</div>
                     <div className="comp-article-meta">
                       <span className={`comp-status-pill ${a.compliance_status}`}>{statusBadge(a.compliance_status)}</span>
                       <span className="comp-article-date">{new Date(a.created_at).toLocaleDateString()}</span>
@@ -255,7 +270,7 @@ export default function ComplianceGatePage() {
               >
                 {critiqueLoading
                   ? <><span className="comp-spinner-sm" /> Running AI Critique...</>
-                  : <>⚡ Run Compliance Critique</>}
+                  : <><IconZap /> Run Compliance Critique</>}
               </button>
             )}
           </div>
@@ -371,7 +386,7 @@ export default function ComplianceGatePage() {
                   ? <><span className="comp-spinner-sm" /> Saving...</>
                   : mode === 'full-review'
                     ? 'Submit for Final Approval'
-                    : '✓ Approve & Save to Brain'}
+                    : <><IconCheck /> Approve &amp; Save to Brain</>}
               </button>
             </div>
           </div>
