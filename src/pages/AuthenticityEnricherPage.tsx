@@ -113,7 +113,8 @@ const EEAT_LABELS = ['experience', 'expertise', 'authoritativeness', 'trustworth
 
 function AuthenticityEnricherContent() {
   const { activeBrandId } = useApp();
-    // Using activeBrandId from context
+  const [brains, setBrains] = useState<BrainOption[]>([]);
+  // Brand selection from TopBar: const [activeBrandId, (() => {})] = useState...
   const [isRunning, setIsRunning] = useState(false);
   const [result, setResult] = useState<EnrichResult | null>(null);
   const [error, setError] = useState('');
@@ -213,7 +214,10 @@ function AuthenticityEnricherContent() {
       {/* Brain selector */}
       <div className="geo-input-bar">
         <div className="geo-select-wrap">
-        {/* Brain selector moved to TopBar */}
+        <select className="geo-select" value={activeBrandId} disabled style={{opacity:0.5}})(e.target.value)}>
+          <option value="">Select a Brain...</option>
+          {brains.map(b => <option key={b.id} value={b.id}>{b.brandName} — {b.brandUrl}</option>)}
+        </select>
         </div>
         <button className="geo-run-btn" onClick={() => runAnalysis(false)} disabled={!activeBrandId || isRunning}>
           <ShieldCheck size={14} />{isRunning ? 'Enriching...' : result ? 'Run Again' : 'Run Enrichment'}
