@@ -11,38 +11,41 @@ interface RequirePaidProps {
 
 /**
  * Route wrapper that enforces payment gate for premium features.
- * - If user has paid → render children
+ * - If user has paid or is super admin → render children
  * - If user hasn't paid → show GateModal
  * - On unlock → reload to refresh state
  */
 export function RequirePaid({ children, featureName = 'Premium Features' }: RequirePaidProps) {
-  const { isPaid, brandProfile, activeBrandId } = useApp();
+  const { isPaid, brandProfile, activeBrandId, isSuperAdmin } = useApp();
   const { isLoaded, isSignedIn } = useAuth();
   const [showGate, setShowGate] = useState(false);
   const location = useLocation();
 
   // Wait for Clerk to load AND for brand data to arrive before making paid decision
   const stillLoading = !isLoaded || (isSignedIn && !activeBrandId);
+  
+  // User has access if paid OR super admin
+  const hasAccess = isPaid || isSuperAdmin;
 
   useEffect(() => {
-    // Show gate modal if not paid (after auth is loaded and confirmed not paid)
-    if (!stillLoading && !isPaid) {
+    // Show gate modal if no access (after auth is loaded)
+    if (!stillLoading && !hasAccess) {
       const timer = setTimeout(() => setShowGate(true), 100);
       return () => clearTimeout(timer);
     }
-  }, [isPaid, stillLoading]);
+  }, [hasAccess, stillLoading]);
 
-  // Still loading auth or brand data — show nothing (or a loader)
+  // Still loading auth or brand data — show nothing
   if (stillLoading) {
     return null;
   }
 
-  // If paid, render children normally
-  if (isPaid) {
+  // If has access, render children normally
+  if (hasAccess) {
     return <>{children}</>;
   }
 
-  // Not paid — show gate modal over a redirect to context-hub
+  // No access — show gate modal over a redirect to context-hub
   return (
     <>
       <Navigate to="/app/context-hub" replace state={{ from: location }} />
