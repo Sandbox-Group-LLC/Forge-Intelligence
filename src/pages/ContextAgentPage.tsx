@@ -9,6 +9,16 @@ import { BrainHistory } from '../components/views/BrainHistory';
 import { initialProcessingStages } from '../data/mockData';
 import { ProcessingStage } from '../types';
 
+// Session ID for trial brain persistence
+function getSessionId(): string {
+  let sessionId = localStorage.getItem('forge_session_id');
+  if (!sessionId) {
+    sessionId = crypto.randomUUID();
+    localStorage.setItem('forge_session_id', sessionId);
+  }
+  return sessionId;
+}
+
 function ContextAgentPage() {
   const { currentView, setCurrentView, setIsProcessing, setProcessingStages, setBrandProfile, setAnalysisInput } = useApp();
   const firedRef = useRef(false);
@@ -25,7 +35,7 @@ function ContextAgentPage() {
     setIsProcessing(true);
     setAnalysisInput({ brandUrl: onboardUrl, competitorUrls: [], audienceNotes: '', strategicNotes: '', checkBrainFirst: false, saveToBrain: true });
     // Drive stage animations while Claude works
-    const stageTimings = [2000, 3000, 4000, 3000, 2000];
+    const stageTimings = [8000, 10000, 12000, 10000, 8000]; // ~48s to match real analysis
     let cancelled = false;
 
     let stages: ProcessingStage[] = initialProcessingStages.map(s => ({ ...s, status: 'pending' as const }));
@@ -54,6 +64,7 @@ function ContextAgentPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         brandUrl: onboardUrl,
+        sessionId: getSessionId(),
         competitorUrls: [],
         audienceNotes: '',
         strategicNotes: '',
