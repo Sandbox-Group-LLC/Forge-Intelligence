@@ -1,3 +1,4 @@
+import { useAuth } from '@clerk/clerk-react';
 import { useState, useEffect, useCallback } from 'react';
 import { AppShell } from '../layouts/AppShell';
 import './BrandSettingsPage.css';
@@ -13,6 +14,7 @@ interface BrandSettings {
 }
 
 export default function BrandSettingsPage() {
+  const { getToken } = useAuth();
   const [brands, setBrands] = useState<BrandSettings[]>([]);
   const [selected, setSelected] = useState<string>('');
   const [form, setForm] = useState<Partial<BrandSettings>>({});
@@ -28,7 +30,10 @@ export default function BrandSettingsPage() {
 
   const loadBrands = useCallback(async () => {
     try {
-      const r = await fetch('/api/context-hub/brains').then(r => r.json());
+      const token = await getToken();
+      const r = await fetch('/api/context-hub/brains', {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      }).then(r => r.json());
       const raw = r.success ? (r.data || []) : [];
       // Normalize camelCase API response to snake_case interface
       const list = raw.map((b: any) => ({
