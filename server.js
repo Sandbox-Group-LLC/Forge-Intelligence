@@ -7265,8 +7265,18 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
       }
     }
 
-    // Super admin: return ALL brands
+    // Super admin: return ALL brands + auto-tether orphans
     if (isSuperAdmin) {
+      // Auto-tether any orphan brains to this super admin
+      const tethered = await pool.query(
+        `UPDATE brand_profiles SET clerk_user_id = $1, updated_at = NOW() 
+         WHERE clerk_user_id IS NULL AND is_active = true RETURNING id`,
+        [req.userId]
+      );
+      if (tethered.rows.length > 0) {
+        console.log(`[AUTH] Auto-tethered ${tethered.rows.length} orphan brains to super admin ${req.userId}`);
+      }
+      
       const allBrands = await pool.query(
         `SELECT id, brand_url, brand_name, is_paid, is_active, updated_at 
          FROM brand_profiles WHERE is_active = true ORDER BY updated_at DESC`
