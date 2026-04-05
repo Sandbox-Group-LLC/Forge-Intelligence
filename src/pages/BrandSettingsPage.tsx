@@ -1,4 +1,5 @@
 import { useAuth } from '@clerk/clerk-react';
+import { useApp } from '../context/AppContext';
 import { useState, useEffect, useCallback } from 'react';
 import { AppShell } from '../layouts/AppShell';
 import './BrandSettingsPage.css';
@@ -15,6 +16,8 @@ interface BrandSettings {
 
 export default function BrandSettingsPage() {
   const { getToken } = useAuth();
+  const { activeBrandId } = useApp();
+  const { activeBrandId } = useApp();
   const [brands, setBrands] = useState<BrandSettings[]>([]);
   const [selected, setSelected] = useState<string>('');
   const [form, setForm] = useState<Partial<BrandSettings>>({});
@@ -27,6 +30,11 @@ export default function BrandSettingsPage() {
   const [articleTemplateUrl, setArticleTemplateUrl] = useState('');
   const [catalogTemplateUrl, setCatalogTemplateUrl] = useState('');
   const [error, setError] = useState('');
+
+  // Sync with global brand selection from TopBar
+  useEffect(() => {
+    if (activeBrandId) setSelected(activeBrandId);
+  }, [activeBrandId]);
 
   const loadBrands = useCallback(async () => {
     try {
