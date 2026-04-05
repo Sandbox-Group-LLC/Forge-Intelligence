@@ -91,9 +91,9 @@ function StreamProgress({ text }: { text: string }) {
 function ContentGeneratorContent() {
   const { getToken } = useAuth();
   const { activeBrandId } = useApp();
-  // Brain selection now comes from TopBar via activeBrandId
+  const [brains, setBrains] = useState<Brain[]>([]);
   const [briefs, setBriefs] = useState<EnrichedBrief[]>([]);
-  
+  // Brand selection from TopBar: const [activeBrandId, (() => {})] = useState...
   const [selectedBriefId, setSelectedBriefId] = useState('');
   const [isRunning, setIsRunning] = useState(false);
   const [streamText, setStreamText] = useState('');
@@ -113,7 +113,24 @@ function ContentGeneratorContent() {
   const [savingIdea, setSavingIdea] = useState(false);
   const [preflight, setPreflight] = useState<{ status: string; signal?: string; confidence?: string; reframe?: string; reason?: string }>({ status: 'idle' });
 
+  useEffect(() => {
+    (async () => {
+      const token = await getToken();
+      const res = await fetch('/api/context-hub/brains', {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+      const d = await res.json();
+      if (d.success) setBrains(d.data);
+    })();
+  }, [getToken]);
 
+  // Sync with global brand selection from TopBar
+  useEffect(() => {
+    if (activeBrandId && brains.length > 0) {
+      const match = brains.find(b => b.id === activeBrandId);
+      if (match) (() => {})(activeBrandId);
+    }
+  }, [activeBrandId, brains]);
 
   useEffect(() => {
     if (!activeBrandId) { setBriefs([]); setSelectedBriefId(''); return; }
@@ -283,7 +300,12 @@ function ContentGeneratorContent() {
       {!isRunning && !article && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <div className="geo-input-bar">
-            
+            <div className="geo-select-wrap" style={{ flex: 1, minWidth: '220px' }}>
+              <select className="geo-select" value={activeBrandId} disabled style={{opacity:0.5}})(e.target.value)}>
+                <option value="">Select a Brain...</option>
+                {brains.map(b => <option key={b.id} value={b.id}>{b.brandName} — {b.brandUrl}</option>)}
+              </select>
+            </div>
             {briefs.length > 0 && (
               <div className="geo-select-wrap" style={{ flex: 1, minWidth: '220px' }}>
                 <select className="geo-select" value={selectedBriefId} onChange={e => setSelectedBriefId(e.target.value)}>
