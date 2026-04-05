@@ -300,7 +300,6 @@ interface SavedChannel {
   updated_at: string;
 }
 
-interface Brain { id: string; brandName?: string; brandUrl?: string; }
 
 const LS_BRAND_KEY = 'forge_integrations_brand';
 
@@ -345,7 +344,7 @@ export default function IntegrationsPage() {
   };
 
   useEffect(() => {
-    if (activeBrand?.id) loadChannels(activeBrand?.id);
+    if (activeBrand?.id) loadChannels(activeBrand?.id || '');
   }, [activeBrand?.id]);
 
   useEffect(() => {
@@ -427,7 +426,7 @@ export default function IntegrationsPage() {
                 body: JSON.stringify({ brandProfileId: activeBrand?.id, channel: channelId, accountId, appSlug: channel.pipedreamApp })
               });
               setSuccess(`${channel.label} connected via Pipedream ✓`);
-              loadChannels(activeBrand?.id);
+              loadChannels(activeBrand?.id || '');
               setTimeout(() => setSuccess(''), 4000);
               resolve();
             } else if (e.data.type === 'error') {
@@ -468,7 +467,7 @@ export default function IntegrationsPage() {
       const d = await r.json();
       if (d.success) {
         setSuccess(`${CHANNELS.find(c => c.id === channelId)?.label} connected successfully`);
-        loadChannels(activeBrand?.id);
+        loadChannels(activeBrand?.id || '');
         setExpanded(channelId);
         setTimeout(() => setSuccess(''), 4000);
       } else {
@@ -593,10 +592,10 @@ export default function IntegrationsPage() {
                                 setExpanded('linkedin');
                               } else if (ch.id === 'hubspot') {
                                 // Custom OAuth flow for HubSpot
-                                window.location.href = `/api/hubspot/auth?state=${encodeURIComponent(activeBrand?.id + '|' + Date.now())}`;
+                                window.location.href = `/api/hubspot/auth?state=${encodeURIComponent((activeBrand?.id || '') + '|' + Date.now())}`;
                               } else if (ch.id === 'webflow') {
                                 // Custom OAuth flow for Webflow
-                                window.location.href = `/api/webflow/auth?state=${encodeURIComponent(activeBrand?.id + '|' + Date.now())}`;
+                                window.location.href = `/api/webflow/auth?state=${encodeURIComponent((activeBrand?.id || '') + '|' + Date.now())}`;
                               } else if (ch.pipedreamApp) {
                                 handleSave(ch.id);
                               } else {
@@ -626,7 +625,7 @@ export default function IntegrationsPage() {
                           <span className="int-pipedream-sub">OAuth managed by Pipedream · Token auto-refreshes · Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}</span>
                           <button className="int-reauth-btn" onClick={() => {
                             if (ch.id === 'linkedin') {
-                              window.location.href = `/api/linkedin/auth?state=${encodeURIComponent(activeBrand?.id + '|' + Date.now())}`;
+                              window.location.href = `/api/linkedin/auth?state=${encodeURIComponent((activeBrand?.id || '') + '|' + Date.now())}`;
                             } else {
                               handleSave(ch.id);
                             }
@@ -649,7 +648,7 @@ export default function IntegrationsPage() {
                             {' · '}Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}
                           </span>
                           <button className="int-reauth-btn" onClick={() => {
-                            window.location.href = `/api/linkedin/auth?state=${encodeURIComponent(activeBrand?.id + '|' + Date.now())}`;
+                            window.location.href = `/api/linkedin/auth?state=${encodeURIComponent((activeBrand?.id || '') + '|' + Date.now())}`;
                           }}>Reconnect</button>
                         </div>
                       </div>
@@ -677,7 +676,7 @@ export default function IntegrationsPage() {
                               const d = await res.json();
                               if (d.success) {
                                 setSuccess(`Now posting to: ${d.selectedTarget.name}`);
-                                loadChannels(activeBrand?.id);
+                                loadChannels(activeBrand?.id || '');
                                 setTimeout(() => setSuccess(''), 3000);
                               } else {
                                 setError(d.error || 'Failed to switch target');
@@ -715,7 +714,7 @@ export default function IntegrationsPage() {
                             {' · '}Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}
                           </span>
                           <button className="int-reauth-btn" onClick={() => {
-                            window.location.href = `/api/hubspot/auth?state=${encodeURIComponent(activeBrand?.id + '|' + Date.now())}`;
+                            window.location.href = `/api/hubspot/auth?state=${encodeURIComponent((activeBrand?.id || '') + '|' + Date.now())}`;
                           }}>Reconnect</button>
                         </div>
                       </div>
@@ -742,7 +741,7 @@ export default function IntegrationsPage() {
                               const d = await res.json();
                               if (d.success) {
                                 setSuccess(`Publishing to: ${d.selectedBlog?.name}`);
-                                loadChannels(activeBrand?.id);
+                                loadChannels(activeBrand?.id || '');
                                 setTimeout(() => setSuccess(''), 3000);
                               } else {
                                 setError(d.error || 'Failed to switch blog');
@@ -787,7 +786,7 @@ export default function IntegrationsPage() {
                               const d = await res.json();
                               if (d.success) {
                                 setSuccess(`Publishing to: ${d.selectedKB?.name}`);
-                                loadChannels(activeBrand?.id);
+                                loadChannels(activeBrand?.id || '');
                                 setTimeout(() => setSuccess(''), 3000);
                               } else {
                                 setError(d.error || 'Failed to switch KB');
@@ -823,7 +822,7 @@ export default function IntegrationsPage() {
                                 const d = await res.json();
                                 if (d.success) {
                                   setSuccess(`Found ${d.blogs?.length || 0} blogs, ${d.knowledgeBases?.length || 0} KBs`);
-                                  loadChannels(activeBrand?.id);
+                                  loadChannels(activeBrand?.id || '');
                                 }
                               } catch {
                                 setError('Failed to refresh');
@@ -848,7 +847,7 @@ export default function IntegrationsPage() {
                             {' · '}Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}
                           </span>
                           <button className="int-reauth-btn" onClick={() => {
-                            window.location.href = `/api/webflow/auth?state=${encodeURIComponent(activeBrand?.id + '|' + Date.now())}`;
+                            window.location.href = `/api/webflow/auth?state=${encodeURIComponent((activeBrand?.id || '') + '|' + Date.now())}`;
                           }}>Reconnect</button>
                         </div>
                       </div>
@@ -875,7 +874,7 @@ export default function IntegrationsPage() {
                               const d = await res.json();
                               if (d.success) {
                                 setSuccess(`Publishing to: ${d.selectedSite?.name}`);
-                                loadChannels(activeBrand?.id);
+                                loadChannels(activeBrand?.id || '');
                                 setTimeout(() => setSuccess(''), 3000);
                               } else {
                                 setError(d.error || 'Failed to switch site');
@@ -915,7 +914,7 @@ export default function IntegrationsPage() {
                               const d = await res.json();
                               if (d.success) {
                                 setSuccess(`Publishing to: ${d.selectedCollection?.name}`);
-                                loadChannels(activeBrand?.id);
+                                loadChannels(activeBrand?.id || '');
                                 setTimeout(() => setSuccess(''), 3000);
                               } else {
                                 setError(d.error || 'Failed to switch collection');
@@ -946,7 +945,7 @@ export default function IntegrationsPage() {
                             className="int-connect-btn"
                             style={{ '--ch-color': '#0A66C2', flex: '1 1 200px' } as React.CSSProperties}
                             onClick={() => {
-                              window.location.href = `/api/linkedin/auth?state=${encodeURIComponent(activeBrand?.id + '|' + Date.now())}`;
+                              window.location.href = `/api/linkedin/auth?state=${encodeURIComponent((activeBrand?.id || '') + '|' + Date.now())}`;
                             }}
                           >
                             👤 Personal Profile
@@ -955,7 +954,7 @@ export default function IntegrationsPage() {
                             className="int-connect-btn"
                             style={{ '--ch-color': '#0A66C2', flex: '1 1 200px' } as React.CSSProperties}
                             onClick={() => {
-                              window.location.href = `/api/linkedin/org/auth?state=${encodeURIComponent(activeBrand?.id + '|' + Date.now())}`;
+                              window.location.href = `/api/linkedin/org/auth?state=${encodeURIComponent((activeBrand?.id || '') + '|' + Date.now())}`;
                             }}
                           >
                             🏢 Company Page
