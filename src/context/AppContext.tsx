@@ -37,6 +37,17 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+
+// Session ID for trial brain persistence (24hr)
+function getSessionId(): string {
+  let sessionId = localStorage.getItem('forge_session_id');
+  if (!sessionId) {
+    sessionId = crypto.randomUUID();
+    localStorage.setItem('forge_session_id', sessionId);
+  }
+  return sessionId;
+}
+
 function mapBrainToHistoryEntry(b: any): HistoryEntry {
   return {
     id: b.id,
@@ -50,7 +61,9 @@ function mapBrainToHistoryEntry(b: any): HistoryEntry {
 }
 
 async function fetchBrains(): Promise<HistoryEntry[]> {
-  const res = await fetch('/api/context-hub/brains');
+  const res = await fetch('/api/context-hub/brains', {
+    headers: { 'x-session-id': getSessionId() }
+  });
   const data = await res.json();
   if (data.success && Array.isArray(data.data)) {
     return data.data.map(mapBrainToHistoryEntry);
@@ -119,6 +132,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         brandUrl: effectiveUrl,
+        sessionId: getSessionId(),
         brandName: (() => {
           const domain = effectiveUrl.replace(/https?:\/\//, '').replace(/^www\./, '').split('/')[0].split('.')[0];
           return domain.charAt(0).toUpperCase() + domain.slice(1);
