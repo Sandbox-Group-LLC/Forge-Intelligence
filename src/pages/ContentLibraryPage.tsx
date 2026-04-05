@@ -50,7 +50,6 @@ const timeAgo = (date: string) => {
 export default function ContentLibraryPage() {
   const { getToken } = useAuth();
   const { activeBrandId } = useApp();
-  const { activeBrandId } = useApp();
   const [brains, setBrains] = useState<Brain[]>([]);
   const [selectedBrand, setSelectedBrand] = useState('');
   const [items, setItems] = useState<LibraryItem[]>([]);
