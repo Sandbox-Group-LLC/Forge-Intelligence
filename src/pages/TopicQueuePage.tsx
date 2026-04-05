@@ -1,4 +1,5 @@
 import { useAuth } from '@clerk/clerk-react';
+import { useApp } from '../context/AppContext';
 import { useState, useEffect } from 'react';
 import { AppShell } from '../layouts/AppShell';
 import './TopicQueuePage.css';
@@ -46,6 +47,7 @@ const ArrowIcon = () => (
 
 export default function TopicQueuePage() {
   const { getToken } = useAuth();
+  const { activeBrandId } = useApp();
   const [brands, setBrands] = useState<Brand[]>([]);
   const [selectedBrand, setSelectedBrand] = useState('');
   const [topics, setTopics] = useState<TopicIdea[]>([]);
@@ -67,6 +69,11 @@ export default function TopicQueuePage() {
       }
     })();
   }, [getToken]);
+  // Sync with global brand selection from TopBar
+  useEffect(() => {
+    if (activeBrandId) setSelectedBrand(activeBrandId);
+  }, [activeBrandId]);
+
 
   useEffect(() => {
     if (!selectedBrand) return;
