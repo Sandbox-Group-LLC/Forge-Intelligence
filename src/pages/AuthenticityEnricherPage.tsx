@@ -69,7 +69,6 @@ const X = ({ size = 16, color = 'currentColor' }: { size?: number; color?: strin
   </svg>
 );
 
-interface BrainOption { id: string; brandName: string; brandUrl: string; }
 
 interface EEATScore { score: number; rationale: string; evidence: string[]; }
 interface Gap {
