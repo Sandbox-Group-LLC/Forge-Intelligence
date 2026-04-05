@@ -27,6 +27,7 @@ export default function BrandSettingsPage() {
   const [articleTemplateUrl, setArticleTemplateUrl] = useState('');
   const [catalogTemplateUrl, setCatalogTemplateUrl] = useState('');
   const [error, setError] = useState('');
+  const [brands, setBrands] = useState<BrandSettings[]>([]);
 
   // Sync with global brand selection from TopBar
   const loadBrands = useCallback(async () => {
