@@ -93,7 +93,7 @@ function ContentGeneratorContent() {
   const { activeBrandId } = useApp();
   const [brains, setBrains] = useState<Brain[]>([]);
   const [briefs, setBriefs] = useState<EnrichedBrief[]>([]);
-  // Brand selection from TopBar: const [activeBrandId, (() => {})] = useState...
+  const [selectedBrainId, setSelectedBrainId] = useState('');
   const [selectedBriefId, setSelectedBriefId] = useState('');
   const [isRunning, setIsRunning] = useState(false);
   const [streamText, setStreamText] = useState('');
@@ -113,6 +113,11 @@ function ContentGeneratorContent() {
   const [savingIdea, setSavingIdea] = useState(false);
   const [preflight, setPreflight] = useState<{ status: string; signal?: string; confidence?: string; reframe?: string; reason?: string }>({ status: 'idle' });
 
+  // Sync with TopBar brain selection
+  useEffect(() => {
+    if (activeBrandId) setSelectedBrainId(activeBrandId);
+  }, [activeBrandId]);
+
   useEffect(() => {
     (async () => {
       const token = await getToken();
@@ -128,26 +133,26 @@ function ContentGeneratorContent() {
   useEffect(() => {
     if (activeBrandId && brains.length > 0) {
       const match = brains.find(b => b.id === activeBrandId);
-      if (match) (() => {})(activeBrandId);
+      if (match) setSelectedBrainId(activeBrandId);
     }
   }, [activeBrandId, brains]);
 
   useEffect(() => {
-    if (!activeBrandId) { setBriefs([]); setSelectedBriefId(''); return; }
-    loadIdeas(activeBrandId);
-    fetch(`/api/authenticity-enricher/briefs?brandProfileId=${activeBrandId}`)
+    if (!selectedBrainId) { setBriefs([]); setSelectedBriefId(''); return; }
+    loadIdeas(selectedBrainId);
+    fetch(`/api/authenticity-enricher/briefs?brandProfileId=${selectedBrainId}`)
       .then(r => r.json())
       .then(d => { if (d.success) setBriefs(d.data); });
-  }, [activeBrandId]);
+  }, [selectedBrainId]);
 
   const checkTopic = async () => {
-    if (!activeBrandId || !topicPrompt.trim()) { setPreflight({ status: 'idle' }); return; }
+    if (!selectedBrainId || !topicPrompt.trim()) { setPreflight({ status: 'idle' }); return; }
     setPreflight({ status: 'checking' });
     try {
       const r = await fetch('/api/content/topic-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brandProfileId: activeBrandId, topic: topicPrompt })
+        body: JSON.stringify({ brandProfileId: selectedBrainId, topic: topicPrompt })
       });
       const d = await r.json();
       if (d.success) setPreflight({ status: 'done', ...d });
@@ -162,12 +167,12 @@ function ContentGeneratorContent() {
   };
 
   const saveIdea = async () => {
-    if (!newIdea.trim() || !activeBrandId) return;
+    if (!newIdea.trim() || !selectedBrainId) return;
     setSavingIdea(true);
     try {
       const d = await fetch('/api/topic-ideas', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brandProfileId: activeBrandId, topic: newIdea.trim(), note: newIdeaNote.trim() || null })
+        body: JSON.stringify({ brandProfileId: selectedBrainId, topic: newIdea.trim(), note: newIdeaNote.trim() || null })
       }).then(r => r.json());
       if (d.success) { setIdeas(prev => [d.idea, ...prev]); setNewIdea(''); setNewIdeaNote(''); }
     } finally { setSavingIdea(false); }
@@ -190,7 +195,7 @@ function ContentGeneratorContent() {
   };
 
   const runGeneration = () => {
-    if (!activeBrandId) return;
+    if (!selectedBrainId) return;
     setIsRunning(true);
     setStreamText('');
     setArticle(null);
@@ -200,7 +205,7 @@ function ContentGeneratorContent() {
     setError('');
 
     const es = new EventSource(
-      `/api/content-generator/generate?brandProfileId=${activeBrandId}${selectedBriefId ? `&enrichedBriefId=${selectedBriefId}` : ''}${topicPrompt.trim() ? `&topicPrompt=${encodeURIComponent(topicPrompt.trim())}` : ''}`
+      `/api/content-generator/generate?brandProfileId=${selectedBrainId}${selectedBriefId ? `&enrichedBriefId=${selectedBriefId}` : ''}${topicPrompt.trim() ? `&topicPrompt=${encodeURIComponent(topicPrompt.trim())}` : ''}`
     );
     streamRef.current = es;
 
@@ -217,12 +222,12 @@ function ContentGeneratorContent() {
         setImageLoading(true);
         
         // Trigger Pre-cog score calculation
-        if (parsed.contentId && activeBrandId) {
+        if (parsed.contentId && selectedBrainId) {
           setPrecogLoading(true);
           fetch('/api/precog/score', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ brandProfileId: activeBrandId, contentId: parsed.contentId })
+            body: JSON.stringify({ brandProfileId: selectedBrainId, contentId: parsed.contentId })
           })
             .then(r => r.json())
             .then(data => {
@@ -301,7 +306,7 @@ function ContentGeneratorContent() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <div className="geo-input-bar">
             <div className="geo-select-wrap" style={{ flex: 1, minWidth: '220px' }}>
-              <select className="geo-select" value={activeBrandId} disabled style={{opacity:0.5}})(e.target.value)}>
+              <select className="geo-select" value={selectedBrainId} onChange={e => setSelectedBrainId(e.target.value)}>
                 <option value="">Select a Brain...</option>
                 {brains.map(b => <option key={b.id} value={b.id}>{b.brandName} — {b.brandUrl}</option>)}
               </select>
@@ -345,7 +350,7 @@ function ContentGeneratorContent() {
               </div>
             )}
           </div>
-          <button className="geo-run-btn" onClick={runGeneration} disabled={!activeBrandId}>
+          <button className="geo-run-btn" onClick={runGeneration} disabled={!selectedBrainId}>
             <FileText size={14} /> Generate Article
           </button>
           </div>
@@ -485,10 +490,10 @@ function ContentGeneratorContent() {
               onChange={e => setNewIdeaNote(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') saveIdea(); }}
             />
-            <button className="cg-idea-save-btn" onClick={saveIdea} disabled={savingIdea || !newIdea.trim() || !activeBrandId}>
+            <button className="cg-idea-save-btn" onClick={saveIdea} disabled={savingIdea || !newIdea.trim() || !selectedBrainId}>
               {savingIdea ? 'Saving...' : 'Save Idea'}
             </button>
-            {!activeBrandId && <p className="cg-idea-warn">Select a Brain first.</p>}
+            {!selectedBrainId && <p className="cg-idea-warn">Select a Brain first.</p>}
           </div>
           {ideas.length > 0 && (
             <div className="cg-idea-list">
@@ -507,7 +512,7 @@ function ContentGeneratorContent() {
               ))}
             </div>
           )}
-          {ideas.length === 0 && activeBrandId && (
+          {ideas.length === 0 && selectedBrainId && (
             <p className="cg-idea-empty">No ideas yet — type one above ↑</p>
           )}
         </div>
