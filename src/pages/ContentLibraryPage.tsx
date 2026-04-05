@@ -63,9 +63,6 @@ export default function ContentLibraryPage() {
 
   // Brain selection handled by TopBar
 
-
-  }, [activeBrandId]);
-
   const load = useCallback(async (brandId: string, q: string, status: string, pg: number) => {
     setLoading(true);
     try {
