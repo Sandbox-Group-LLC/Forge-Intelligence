@@ -1,4 +1,5 @@
 import { useAuth } from '@clerk/clerk-react';
+import { useApp } from '../context/AppContext';
 import { useState, useEffect, useCallback } from 'react';
 import { AppShell } from '../layouts/AppShell';
 import './ContentLibraryPage.css';
@@ -48,6 +49,8 @@ const timeAgo = (date: string) => {
 
 export default function ContentLibraryPage() {
   const { getToken } = useAuth();
+  const { activeBrandId } = useApp();
+  const { activeBrandId } = useApp();
   const [brains, setBrains] = useState<Brain[]>([]);
   const [selectedBrand, setSelectedBrand] = useState('');
   const [items, setItems] = useState<LibraryItem[]>([]);
@@ -69,6 +72,11 @@ export default function ContentLibraryPage() {
       if (d.success) setBrains(d.data);
     })();
   }, []);
+
+  // Sync with global brand selection from TopBar
+  useEffect(() => {
+    if (activeBrandId) setSelectedBrand(activeBrandId);
+  }, [activeBrandId]);
 
   const load = useCallback(async (brandId: string, q: string, status: string, pg: number) => {
     setLoading(true);
