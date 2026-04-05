@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useApp } from '../context/AppContext';
 import { AppShell } from '../layouts/AppShell';
+import { useApp } from '../context/AppContext';
 import './ContentImportPage.css';
 
 interface ImportResult {
@@ -15,12 +15,52 @@ interface ImportResult {
   sectionCount: number;
 }
 
+// Lucide-style icons
+const IconLink = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+  </svg>
+);
+const IconClipboard = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+  </svg>
+);
+const IconZap = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+  </svg>
+);
+const IconBrain = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.46 2.5 2.5 0 0 1-1.077-4.56A3 3 0 0 1 3.83 9.85a3 3 0 0 1 .81-4.87A2.5 2.5 0 0 1 9.5 2Z"/>
+    <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.46 2.5 2.5 0 0 0 1.077-4.56A3 3 0 0 0 20.17 9.85a3 3 0 0 0-.81-4.87A2.5 2.5 0 0 0 14.5 2Z"/>
+  </svg>
+);
+const IconAlert = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+    <path d="M12 9v4"/><path d="M12 17h.01"/>
+  </svg>
+);
+const IconLightbulb = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/>
+    <path d="M9 18h6"/><path d="M10 22h4"/>
+  </svg>
+);
+const IconArrow = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+  </svg>
+);
+
 const scoreColor = (n: number) => n >= 75 ? '#10B981' : n >= 50 ? '#F59E0B' : '#EF4444';
 
 export default function ContentImportPage() {
-  const { activeBrand } = useApp();
-
-
+  const { activeBrandId } = useApp();
+  const selectedBrand = activeBrandId || localStorage.getItem('forge_active_brand_id') || '';
   const [mode, setMode] = useState<'url' | 'paste'>('url');
   const [url, setUrl] = useState('');
   const [rawText, setRawText] = useState('');
@@ -29,10 +69,8 @@ export default function ContentImportPage() {
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState('');
 
-  // Brain selection handled by TopBar
-
   const runImport = async () => {
-    if (!activeBrand?.id) { setError('Select a brain from TopBar first'); return; }
+    if (!selectedBrand) { setError('No Brain found — run an analysis first'); return; }
     if (mode === 'url' && !url.trim()) { setError('Enter a URL'); return; }
     if (mode === 'paste' && !rawText.trim()) { setError('Paste some content'); return; }
     setImporting(true);
@@ -43,7 +81,7 @@ export default function ContentImportPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          brandProfileId: activeBrand?.id,
+          brandProfileId: selectedBrand,
           url: mode === 'url' ? url.trim() : undefined,
           rawText: mode === 'paste' ? rawText.trim() : undefined,
           title: manualTitle.trim() || undefined
@@ -62,7 +100,7 @@ export default function ContentImportPage() {
       <div className="ci-page">
         <div className="geo-header">
           <div>
-            <div className="geo-eyebrow">Content</div>
+            <div className="geo-eyebrow">Publishing</div>
             <h1 className="geo-title">Import Article</h1>
             <p className="geo-description">Bring an article written outside Forge. The Brain will read it, score it, and tell you exactly what it thinks.</p>
           </div>
@@ -70,23 +108,15 @@ export default function ContentImportPage() {
 
         {!result ? (
           <div className="ci-form-card">
-            {/* Brain from TopBar */}
-            <div className="ci-field">
-              <label className="ci-label">Brain</label>
-              <div className="geo-select" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                {activeBrand ? <><span style={{ color: '#10B981' }}>✓</span> {activeBrand.brandName}</> : <span style={{ opacity: 0.5 }}>Select brain from TopBar</span>}
-              </div>
-            </div>
-
             {/* Mode toggle */}
             <div className="ci-field">
               <label className="ci-label">Import Method</label>
               <div className="ci-mode-toggle">
                 <button className={`ci-mode-btn ${mode === 'url' ? 'active' : ''}`} onClick={() => setMode('url')}>
-                  🔗 Paste URL
+                  <IconLink /> Paste URL
                 </button>
                 <button className={`ci-mode-btn ${mode === 'paste' ? 'active' : ''}`} onClick={() => setMode('paste')}>
-                  📋 Paste Text
+                  <IconClipboard /> Paste Text
                 </button>
               </div>
             </div>
@@ -129,19 +159,19 @@ export default function ContentImportPage() {
             {error && <div className="geo-error">{error}</div>}
 
             <div className="ci-disclaimer">
-              <span>⚡</span>
+              <IconZap />
               The Brain will score this article against your brand voice, patterns, and audience data. It will not be gentle.
             </div>
 
             <button
               className="ci-import-btn"
               onClick={runImport}
-              disabled={importing || !activeBrand?.id}
+              disabled={importing || !selectedBrand}
             >
               {importing ? (
                 <><span className="ci-spinner" /> Brain is reading your article...</>
               ) : (
-                '→ Import & Audit'
+                <><IconArrow /> Import & Audit</>
               )}
             </button>
           </div>
@@ -174,10 +204,10 @@ export default function ContentImportPage() {
             {/* Brain flags */}
             {result.brainFlags.length > 0 && (
               <div className="ci-section">
-                <div className="ci-section-title">🧠 Brain Flags</div>
+                <div className="ci-section-title"><IconBrain /> Brain Flags</div>
                 <div className="ci-flags">
                   {result.brainFlags.map((f, i) => (
-                    <div key={i} className="ci-flag">⚠ {f}</div>
+                    <div key={i} className="ci-flag"><IconAlert /> {f}</div>
                   ))}
                 </div>
               </div>
@@ -186,10 +216,10 @@ export default function ContentImportPage() {
             {/* Suggestions */}
             {result.suggestions.length > 0 && (
               <div className="ci-section">
-                <div className="ci-section-title">💡 Brain Suggests</div>
+                <div className="ci-section-title"><IconLightbulb /> Brain Suggests</div>
                 <div className="ci-suggestions">
                   {result.suggestions.map((s, i) => (
-                    <div key={i} className="ci-suggestion">→ {s}</div>
+                    <div key={i} className="ci-suggestion"><IconArrow /> {s}</div>
                   ))}
                 </div>
               </div>
@@ -198,7 +228,7 @@ export default function ContentImportPage() {
             {/* Actions */}
             <div className="ci-result-actions">
               <a href="/app/compliance-gate" className="ci-action-btn primary">
-                → Review in Compliance Gate
+                <IconArrow /> Review in Compliance Gate
               </a>
               <a href="/app/publishing-queue" className="ci-action-btn secondary">
                 View in Queue
