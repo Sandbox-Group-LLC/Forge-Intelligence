@@ -7249,7 +7249,6 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
   try {
     const brandId = req.query.brand_id || null;
     const isSuperAdmin = SUPER_ADMIN_IDS.includes(req.userId);
-    console.log('[AUTH DEBUG] userId:', req.userId, 'isSuperAdmin:', isSuperAdmin, 'SUPER_ADMIN_IDS:', SUPER_ADMIN_IDS);
 
     // If brand_id provided and user has no brand yet, tether it
     if (brandId && !isSuperAdmin) {
