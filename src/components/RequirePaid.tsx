@@ -1,6 +1,7 @@
 import { ReactNode, useState, useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '@clerk/clerk-react';
 import GateModal from './GateModal';
 
 interface RequirePaidProps {
@@ -15,17 +16,26 @@ interface RequirePaidProps {
  * - On unlock → reload to refresh state
  */
 export function RequirePaid({ children, featureName = 'Premium Features' }: RequirePaidProps) {
-  const { isPaid, brandProfile } = useApp();
+  const { isPaid, brandProfile, activeBrandId } = useApp();
+  const { isLoaded, isSignedIn } = useAuth();
   const [showGate, setShowGate] = useState(false);
   const location = useLocation();
 
+  // Wait for Clerk to load AND for brand data to arrive before making paid decision
+  const stillLoading = !isLoaded || (isSignedIn && !activeBrandId);
+
   useEffect(() => {
-    // Show gate modal if not paid (after a brief delay to let state settle)
-    if (!isPaid) {
+    // Show gate modal if not paid (after auth is loaded and confirmed not paid)
+    if (!stillLoading && !isPaid) {
       const timer = setTimeout(() => setShowGate(true), 100);
       return () => clearTimeout(timer);
     }
-  }, [isPaid]);
+  }, [isPaid, stillLoading]);
+
+  // Still loading auth or brand data — show nothing (or a loader)
+  if (stillLoading) {
+    return null;
+  }
 
   // If paid, render children normally
   if (isPaid) {
