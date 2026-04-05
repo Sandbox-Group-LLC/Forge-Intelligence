@@ -5322,7 +5322,7 @@ app.post('/api/analytics/sync-gsc/:brandProfileId', async (req, res) => {
     if (!brand) return res.status(404).json({ error: 'Brand not found' });
 
     // Determine which GSC property to query
-    const brandDomain = (brand.article_base_url || brand.brand_url || '').replace(/https?:\/\//, '').replace(/\/.*/, '');
+    const brandDomain = (brand.brand_url || brand.article_base_url || '').replace(/https?:\/\//, '').replace(/\/.*/, '').replace(/^www\./, '');
     const verifiedSites = creds.verifiedSites || [];
     const siteUrl = verifiedSites.find(s => s.includes(brandDomain))
       || verifiedSites.find(s => s.includes('sc-domain:'))
@@ -7790,7 +7790,7 @@ app.post('/api/geo/track/:brandProfileId', async (req, res) => {
       const brandRes = await pool.query('SELECT * FROM brand_profiles WHERE id = $1', [brandProfileId]);
       if (!brandRes.rows.length) return;
       const brand = brandRes.rows[0];
-      const brandDomain = (brand.article_base_url || brand.brand_url || '').replace(/https?:\/\//, '').replace(/\/.*/, '');
+      const brandDomain = (brand.brand_url || brand.article_base_url || '').replace(/https?:\/\//, '').replace(/\/.*/, '').replace(/^www\./, '');
       const brandName = brand.brand_name || brand.brand_url;
 
       const safeId = brandProfileId.replace(/-/g, '_');
@@ -7858,10 +7858,14 @@ app.post('/api/geo/track/:brandProfileId', async (req, res) => {
                 })
               });
               const oData = await oRes.json();
-              // Responses API: output is array of items
-              const outputText = oData.output?.find(o => o.type === 'message')?.content?.find(c => c.type === 'output_text')?.text || '';
-              const annotations = oData.output?.find(o => o.type === 'message')?.content?.find(c => c.type === 'output_text')?.annotations || [];
-              const urlCitations = annotations.filter(a => a.type === 'url_citation').map(a => a.url || '');
+              // Responses API: find message item in output array, extract text + annotations
+              const msgItem = oData.output?.find(o => o.type === 'message');
+              const textContent = msgItem?.content?.find(c => c.type === 'output_text');
+              const outputText = textContent?.text || oData.output_text || '';
+              const annotations = textContent?.annotations || [];
+              const urlCitations = annotations
+                .filter(a => a.type === 'url_citation')
+                .map(a => a.url || a.url_citation?.url || '');
               const isCited = urlCitations.some(u => u.includes(brandDomain)) || outputText.toLowerCase().includes(brandDomain.toLowerCase());
               let citedSection = null;
               if (isCited) {
