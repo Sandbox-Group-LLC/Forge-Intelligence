@@ -74,9 +74,9 @@ const MODES: { id: ReviewMode; label: string; sub: string; icon: React.ReactNode
 const tierColor = (tier: string) => tier === 'green' ? '#22C55E' : tier === 'yellow' ? '#F5B942' : '#EF4444';
 
 export default function ComplianceGatePage() {
-  const { isPaid, brandLoading, activeBrandId } = useApp();
+  const { isPaid, isAuthLoading, activeBrandId } = useApp();
   // Gate check for direct URL access
-  if (brandLoading) return null;
+  if (isAuthLoading) return null;
   if (!isPaid) {
     return (
       <AppShell>
