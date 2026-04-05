@@ -1,13 +1,14 @@
 # Forge Intelligence — Master SSOT
 
 > **This README is the single source of truth for all AI sessions, dev work, and project decisions.**
-> When starting a new AI session, read this file top to bottom before touching Always read the README.md first -- it is the SSOT.
-> Always read the current file and capture its SHA before writing - never write blind.
-> Always commit with a descriptive message using conventional commits (feat:, fix:, refactor:, style:).
-> Never give the user code to run themselves - make the commit directly.
-> Render auto-deploys on every push to main - no manual deploy step DO NOT narrate or ask Brian to confirm changes.
-> URL pattern: frontend routes match product names (e.g. /context-hub, /geo-strategist), API routes follow / api/{product-slug}/
-> DO NOT narrate or ask Brian to commit changes.
+> Always read this file top to bottom before touching anything.
+> Always read WHITEBOARD.md second — it is the active working doc.
+> Always read the current file and capture its SHA before writing — never write blind.
+> Always commit with a descriptive message using conventional commits (feat:, fix:, refactor:, style:)
+> Never give Brian code to run themselves — make the commit directly.
+> Render auto-deploys on every push to production — no manual deploy step needed.
+> DO NOT narrate or ask Brian to confirm changes.
+> URL pattern: frontend routes match product names (e.g. /context-hub, /geo-strategist), API routes follow /api/{product-slug}/
 
 ---
 
@@ -22,33 +23,7 @@
 | **Branch** | `production` → Render auto-deploy |
 | **Price** | $99 one-time via PayPal |
 
-### Phase 1 Complete ✅ + Auth Complete ✅
-
-- [x] Landing page — URL input → Context Agent → Brand Profile reveal
-- [x] PayPal $99 gate — unlocks full suite permanently
-- [x] Admin dashboard — KPIs + reviewer management
-- [x] Approval flow — Resend email, signed token, no Forge account needed
-- [x] Topic Queue — `/app/topic-queue`
-- [x] Brand dropdown removed from production — `useActiveBrand` hook
-- [x] Brand name in TopBar — green dot pill top-right
-- [x] God mode — `?god=ForgeCanvas` / `?ungod`
-- [x] Clerk auth — Google, GitHub, email/password
-- [x] Avatar dropdown — email display + sign out
-- [x] Sign In link when signed out
-- [x] Brand auto-tethered to Clerk user on first sign-in
-- [x] `isPaid` wired from Clerk-authed brand — gate drops on reload after payment
-
-### Production Architecture
-
-```
-forgeintelligence.ai → Landing (URL input)
-  → POST /api/context-hub/analyze (free)
-  → Active Run (ass shake 🍑)
-  → Brand Profile (full reveal, free)
-  → PayPal Gate ($99 → is_paid = true)
-  → Full suite unlocked
-```
-
+---
 
 ## What Is This
 
@@ -60,240 +35,76 @@ forgeintelligence.ai → Landing (URL input)
 
 **Descriptor:** The intelligence layer behind modern marketing.
 
-**Brand promise:** Turn fragmented marketing activity into clear intelligence and confident action.
-
 ---
 
-## Current Build Status (as of April 4, 2026 — Evening PDT)
+## Platform Status (April 5, 2026)
 
-## Publishing Integrations (6 of 7 LIVE)
+### All 8 Stages Live
 
-| Channel | Status | Auth Method |
-|---------|--------|-------------|
-| LinkedIn | ✅ LIVE | OAuth (Personal + Org separate apps) |
-| X/Twitter | ✅ LIVE | OAuth 1.0a |
-| HubSpot | ✅ LIVE | OAuth + CRM auto-sync |
-| Webflow | ✅ LIVE | OAuth + site/collection selector |
-| WordPress | ✅ LIVE | REST API + App Password |
-| Ghost | ✅ LIVE | Admin API Key |
-| Medium | 🏚️ Legacy | API deprecated 2025 |
-| Facebook | ⬜ Parked | OAuth (not priority) |
+| Stage | Name | Status | Model |
+|-------|------|--------|-------|
+| 1 | Context Hub | ✅ LIVE | Claude Sonnet 4.5 |
+| 2 | GEO Strategist | ✅ LIVE | Claude Sonnet 4.5 |
+| 3 | Authenticity Enricher | ✅ LIVE | Claude Sonnet 4.5 |
+| 4 | Content Generator | ✅ LIVE | Claude Sonnet 4.5 |
+| 4.5 | Campaign Generator | ✅ LIVE | Claude Sonnet 4.5 |
+| 5 | Compliance Gate | ✅ LIVE | Claude Sonnet 4.5 |
+| 6 | Publishing & Distribution | ✅ LIVE | Queue + multi-channel |
+| 7 | Performance Intelligence | ✅ LIVE | LinkedIn + X + Ghost + GSC + GEO |
+| 8 | Feedback Loop | ✅ LIVE | Pattern Extractor (Claude Haiku) |
 
----
+### Auth Architecture
+- **Clerk** — Google, GitHub, email/password
+- `isPaid` derived from `activeBrand?.isPaid` — computed, not state
+- `GateModal` returns null if `!isLoaded || isSignedIn` — never flashes for authed users
+- All gated pages: `if (brandLoading) return null` before gate check
+- Auto-marks `is_paid = true` on every Clerk auth in `/api/auth/me`
 
-## Known Issues
+### Brand Scoping (Critical)
+- **Every page** reads `activeBrand` from `useApp()` — the single source of truth for `brandProfileId`
+- No page fetches `/api/context-hub/brains` without an auth token
+- No page renders a brand picker dropdown (production is single-brand per user)
+- All API endpoints that touch brand data require `requireAuth`
+- Admin stats scoped to `WHERE clerk_user_id = $1` — no cross-user data
 
-### Performance Dashboard — Post Title Join
-**Status:** Minor  
-The posts table in Performance shows titles correctly from `publishing_queue`. The `generated_content_` table join was removed in favour of a simpler `publish_log + publishing_queue` join to avoid silent failures on missing columns. Hero image thumbnails not yet shown in the posts table for the Performance view.
-
-### Ghost Analytics Sync
-**Status:** Pending
-Ghost publish is live. Analytics sync (impressions, reactions) not yet wired into `content_analytics`. Ghost Admin API has stats endpoints but requires additional implementation.
-
-### Medium Integration
-**Status:** Legacy (API deprecated early 2025)  
-New tokens no longer available. Existing pre-2025 tokens still work.
-Medium stopped issuing new API integration tokens in early 2025. The publish backend works for existing pre-2025 tokens. New clients cannot generate tokens. Channel is marked Legacy in the Integrations UI — visible and connectable for users with existing tokens, blocked for new signups.
-
-### ✅ What Is Live Right Now
-
-| Component | Status | Notes |
-|-----------|--------|-------|
-| Landing page | ✅ LIVE | `forgeintelligence.ai` — fully styled, waitlist capture working |
-| Waitlist email capture | ✅ LIVE | Resend wired, emails delivering |
-| `/context-agent` workspace | ✅ LIVE | Full UI built + styled with 12-directive design system |
-| Context Agent backend | ✅ LIVE | Stage 1, Claude Sonnet 4.6, Brain-First protocol |
-| GEO Strategist backend | ✅ LIVE | Stage 2, Claude Sonnet 4.6, 12 topics, per-platform scoring |
-| `/geo-strategist` workspace | ✅ LIVE | Topical Authority + GEO Opportunities + Entity & Schema + GEO Brief tabs |
-| `/authenticity-enricher` workspace | ✅ LIVE | Stage 3 UI — Brain selector, Run Enrichment, E-E-A-T output |
-| Authenticity Enricher backend | ✅ LIVE | Stage 3, Claude Sonnet 4.6, E-E-A-T + SME signals + author schema |
-| NeonDB brand profiles | ✅ LIVE | Persisting on every call, cache hits working |
-| Activity logging | ✅ LIVE | `agent_activity_log` table, tokens + latency tracked |
-| Real `brandProfileId` | ✅ LIVE | Returns UUID on every call, `cached: true` on repeat |
-| Render deployment | ✅ LIVE | Auto-deploys on push to main |
-| Stage 4 Content Generator | ✅ LIVE | `/content-generator` — SSE streaming, Brain-First, confidence scoring, per-brand table |
-| Hero Image Generation | ✅ LIVE | Flux via fal.ai — `buildImagePrompt()` injects full brand voice profile; auto-backfills missing images |
-| Stage 5 Compliance Gate | ✅ LIVE | Three-mode review (Auto/Approve/Full), human edit loop → Brain Mistakes |
-| Publishing Queue UI | ✅ LIVE | `/publishing-queue` — Draft→Approved→Published flow, preview modal |
-| LinkedIn Publishing | ✅ LIVE | API publish via `ugcPosts`; AI-generated post copy (Claude Haiku); `Read more:` link |
-| X (Twitter) Publishing | ✅ LIVE | OAuth 1.0a, X API v2, `public_metrics`, tweet URL uses authenticated handle |
-| Public Article Page | ✅ LIVE | `forgeintelligence.ai/articles/:brandSlug/:articleSlug` — editorial dark layout |
-| OG Meta Injection | ✅ LIVE | Server-side `og:image`, `og:title`, `og:description`, `article:author` for social crawlers |
-| Article Read Time | ✅ LIVE | Accurate word count from `section.body`, 200 wpm |
-| Brand Byline | ✅ LIVE | Reads `brand_name` column from `brand_profiles` |
-| Hero Image Generation | ✅ LIVE | Flux via fal.ai — Generate Image button in Publishing Queue preview |
-| Performance Dashboard | ✅ LIVE | `/performance` — LinkedIn + X (Twitter) tabs live, KPI cards, 30-day trend, posts table |
-| Campaign Analytics | ✅ LIVE | Campaigns tab in Performance — cross-campaign KPIs, per-channel breakdown, article leaderboard |
-| Campaign → Publishing pipeline | ✅ LIVE | Campaign articles now mirror into `generated_content_{uuid}` + `publishing_queue` with `campaign_id` stamped |
-| UTM campaign slugs | ✅ LIVE | `utm_campaign` now resolves to readable campaign name slug instead of `forge-content` |
-| Facebook Page publishing | ✅ LIVE | Graph API v21.0 — Page feed publish with Haiku post copy |
-| Medium publishing | ✅ LEGACY | Integration token auth — backend live, new tokens unavailable since early 2025 |
-| Mobile sidebar | ✅ LIVE | Auto-collapses on mobile, icon rail always visible, drawer expands with backdrop overlay |
-| Mobile layout | ✅ LIVE | `app-main` offset by 64px on mobile, hamburger hidden (chevron is sole toggle) |
-| Brand Settings | ✅ LIVE | `/brand-settings` — per-brand identity, BYO article base URL, logo URL, billing stub, danger zone |
-| BYO Domain (article_base_url) | ✅ LIVE | Per-brand `article_base_url` on `brand_profiles` — all publish routes, UTM links, canonical URLs use configured domain |
-| Site Template Scraper | ✅ LIVE | `POST /api/brand-settings/:id/scrape-template` — scrapes article + catalog page DOM class names, stores in `brand_profiles.settings.siteTemplate` |
-| Smart Export | ✅ LIVE | Publishing Queue download icon — HTML (site-template-aware), Markdown, JSON, UTM Link export per article |
-| Smart Export HTML | ✅ LIVE | Uses scraped class names, strips `[NEEDS CITATION]`/`[SME Hook]` annotations, converts `**bold**` → `<strong>`, correct OG meta + canonical |
-| Performance Dashboard | ✅ LIVE | `/performance` — Stage 7 eyebrow, geo-header pattern, KPI cards, 30-day trend, campaigns tab |
-| Ghost Analytics Sync | ✅ LIVE | `POST /api/analytics/sync` with `channel=ghost` — queries Ghost Admin API directly, matches posts by title, stores clicks/reading_time/feedback in `content_analytics` |
-| Ghost Performance Tab | ✅ LIVE | Ghost tab in Performance Dashboard — clicks, reading time, positive/negative feedback per post |
-| Pattern Dashboard | ✅ LIVE | Performance Dashboard bottom section — What's Working + What to Avoid columns, confidence bars, severity tags |
-| Pattern Extractor Agent | ✅ LIVE | `POST /api/analytics/extract-patterns/:brandId` — Claude Haiku analyzes content_analytics, writes to brain_patterns + brain_mistakes |
-| Feedback Loop | ✅ LIVE | Brain → Generate → Publish → Analytics Sync → Pattern Extraction → brain_patterns/brain_mistakes → Content Generator |
-| Agent Pattern Awareness | ✅ LIVE | All three agents read brain_patterns + brain_mistakes by brand_profile_id — Content Generator treats patterns as hard constraints, Context Hub injects prior patterns into brand analysis, Campaign Generator already wired |
-| Topic Pre-flight Check | ✅ LIVE | `POST /api/content/topic-check` — Claude Haiku evaluates user topic against brain_patterns/mistakes, returns strong/caution/weak signal, reason, and tappable reframe suggestion before generation |
-| Topic Prompt Field | ✅ LIVE | Optional topic direction on Content Generator and Campaign Generator — injects as hard directive into generation prompt while brain shapes voice/format |
-| GSC OAuth | ✅ LIVE | Per-brand Google Search Console OAuth — `/api/gsc/auth`, `/auth/gsc/callback`, stores refresh token, GSC tab in Performance Dashboard with Clicks/Impressions/CTR/Position KPIs |
-| Article URL Suffix | ✅ LIVE | Per-brand `article_url_suffix` in Brand Settings — `.html` for static sites, blank for clean URLs. Flows through publish routes, Smart Export, UTM links |
-| UTM Custom URL | ✅ LIVE | Smart Export UTM Link tab — paste live article URL to override Forge base URL, UTM params appended automatically, suffix-aware |
-| Regenerate Image | ✅ LIVE | Hover over hero image in Publishing Queue content preview — overlay button calls fal.ai Flux for new image, swaps in place without closing modal |
-| Brand Settings Dropdown | ✅ LIVE | Multi-brand selector dropdown in Brand Settings replacing left rail buttons |
-| Decay Monitoring Agent | ✅ LIVE | `decay_alerts` table, `runDecayMonitoring()` runs every 6h — flags 50%+ engagement drop from peak after 14+ days, Haiku generates recommended action, writes to `brain_mistakes`, Decay Alerts section in Performance Dashboard |
-| GEO Citation Tracker | ✅ LIVE | `geo_citations` table, `POST /api/geo/track/:brandId` queries Perplexity + ChatGPT with article topics, detects brand citations, identifies cited sections, writes citation patterns to `brain_patterns`, GEO tab in Performance Dashboard |
-| Compliance Gate Fixes | ✅ LIVE | Edit textarea now pre-populated with `section.body` (was empty), Accept Suggestion button replaces flagged text in one click, approve writes to brand-scoped `brain_mistakes` |
-| Full Review Mode | ⏸ SHELVED | Enterprise team workflow — commented out, re-enable when multi-person approval flow is needed |
-| Article Page Diamond Logo | ✅ LIVE | Public article nav uses stroke-only diamond SVG matching sidebar icon, with pulse animation |
-| Forge Intelligence Content Space | ✅ LIVE | `dev.forgeintelligence.ai/articles/forgeintelligence-ai/` — owned GEO surface, 2 articles published, sitemap at `/sitemap.xml`, submitted to GSC |
-| X Publishing | ✅ LIVE | OAuth 1.0a fully working — replaced all hand-rolled signature implementations with verified `buildXOAuthHeader` helper. Correct env var naming (`X_OAUTH1CONSUMER_KEY` etc). Credentials saved and returned from DB. Reset & Retry flow clears error state per-channel without nuking the article. |
-| Chip Color System | ✅ LIVE | Grey=available, White=selected, Forge blue=live, Superman red=error. Universal across all brands/channels. Error chips stay clickable for retry. |
-| Reset & Retry | ✅ LIVE | Red ↺ button on error result rows — clears channel error from `publish_results` + `publish_log`, resets article to stageable for that channel. No more permanent blocks. |
-| Per-channel unpublish modal | ✅ LIVE | Trash icon opens modal with checkboxes per published channel — unpublish from specific platforms, keep in queue or remove entirely. |
-| GSC exorcised | ✅ LIVE | GSC removed from publish channel selector permanently. Was a read-only analytics source that snuck into publish destinations. John Cena'd. |
-| Credential fields fix | ✅ LIVE | Update Connection was saving empty strings — fields were read-only with empty value when connected. Now pre-populates saved values so updates actually save. |
-| GET /api/publishing/channels | ✅ LIVE | credentials column was missing from SELECT — tokens saved correctly but never returned, causing every fallback to env vars. |
-| Topic Ideas (+ Idea FAB) | ✅ LIVE | Floating `+ Idea` button on Content Generator — drawer with quick capture, saved ideas list, `→ Use` fires topic into generator and marks in-progress. Per-brand, persists across sessions. |
-| Campaign Scheduler | ✅ LIVE | "Schedule Campaign" button on campaign group header — start date + publish time picker, live preview of all articles with Wk/day/date/time calculated from existing week_number + publish_day metadata, Schedule All batch-sets scheduled_at in one click. |
-| Content Import + Brain Audit | ✅ LIVE | `/app/content-import` — paste URL or raw text, Claude Sonnet audits against brand brain (voice profile, patterns, mistakes), returns Overall/Brain Match/Voice Deviation scores + verdict + flags + suggestions, drops into Publishing Queue staged for Compliance Gate. |
-| External Review Workflow | ✅ LIVE | "Send for Review" share icon on queue cards — generates signed token URL (`/review/[token]`), copies to clipboard. Reviewer sees full article + comment + Approve/Request Changes. No login. Review badge on queue card after VP actions. First verdict: "Slay." ✅ |
-| Inline Article Editing | ✅ LIVE | Content preview modal — click title, meta description, section headings, or body text to edit in place. Saves to DB on blur. No round-trip through Compliance Gate for tweaks. |
-| Content Library | ✅ LIVE | `/app/content-library` — card grid of all generated content, search, status tabs, hero thumbnails, confidence scores, performance stats, preview modal. Brand filter top-level (agency/removable for SMB). |
-| Content Library | ✅ LIVE | `/app/content-library` — card grid of all generated content across all brands, search, status tabs (All/Published/Staged/Draft), hero thumbnails, confidence scores, performance stats, preview modal with live links. Brand filter top-level for agency mode, removable for single-brand production. |
-| Inline Article Editing | ✅ LIVE | Content preview modal in Publishing Queue — click title, meta description, section headings, or body text to edit in place. Saves to DB on blur. No round-trip through Compliance Gate for headline tweaks. |
-| External Review Workflow | ✅ LIVE | "Send for Review" button on queue cards — generates signed token URL (`/review/[token]`), copies to clipboard. Reviewer sees full article render + comment field + Approve / Request Changes buttons. No login required. Review status badge (green/amber/grey) shows on queue card after VP actions. |
-| Queue Card Inline Title Edit | ✅ LIVE | Click article title on any queue card to edit inline — Enter or blur saves via PATCH endpoint. Pencil hint on hover. |
-| Live Article Preview Link | ✅ LIVE | External link icon on queue cards — opens `/articles/:brandSlug/:articleSlug` in new tab. Brand slug resolved from queue join. |
-| Publishing Queue Archive | ✅ LIVE | Archive button on queue cards, Show Archived toggle, archived articles hidden by default. |
-| GSC OAuth | ✅ LIVE | `/api/gsc/auth` + `/auth/gsc/callback` — per-brand Google Search Console OAuth, stores refresh token in publishing_channels, GSC tab in Performance Dashboard |
-| GSC Sync | ✅ LIVE | `POST /api/analytics/sync-gsc/:brandId` — pulls clicks/impressions/CTR/position by page for last 28 days, matches to content_analytics |
-| Article URL Suffix | ✅ LIVE | Per-brand `article_url_suffix` in Brand Settings — append `.html` for static sites, blank for clean URLs. Flows through publish routes, Smart Export, UTM links |
-| Regenerate Image | ✅ LIVE | Hover over hero image in Publishing Queue content preview — overlay button calls fal.ai Flux for a new image, swaps in place |
-| UTM Custom URL | ✅ LIVE | Smart Export UTM Link tab — paste live article URL to override Forge base URL, UTM params appended automatically |
-| TopBar page titles | ✅ LIVE | Path-based title resolution via `startsWith` — all pages show correct titles |
-| Ghost CMS publishing | ✅ LIVE | JWT auth, HTML via `?source=html`, hero image as `feature_image`, canonical URL, live sync |
-| Reverse publish | ✅ LIVE | Per-channel unpublish modal — delete from LinkedIn/X/Ghost/WordPress/Facebook + Forge or Forge only |
-| Publishing Queue polish | ✅ LIVE | Status filter tabs removed, per-channel checkboxes in delete modal, chip colors accurate, DISTINCT ON dedup |
-| Sidebar active state | ✅ LIVE | Fully URL-based, NAV_ROUTES single source of truth, all items render as `<a>` tags |
-| Post scheduling | ✅ LIVE | `datetime-local` input + server-side scheduler polls every 60s, fires `publish` endpoint internally, marks `publishing` to prevent double-fire |
-| Campaign queue grouping | ✅ LIVE | Campaign articles grouped by campaign → week lanes (Wk 1–4), meta row shows `Wk · Day | Type | Funnel`, standalone articles below |
-| UTM injection | ✅ LIVE | All channels get UTMs at publish time. Default template fallback for unconfigured channels. LinkedIn full URL + params. X URL never truncated (Twitter counts URLs as 23 chars) |
-| Hero image auto-generation | ✅ LIVE | If article has no `hero_image_url` at publish time, generates via Haiku + fal.ai Flux before channel loop fires |
-| Article OG meta | ✅ LIVE | `fs.promises.readFile` fix — article landing pages now render full OG tags, Twitter cards, hero image for social crawlers |
-| brain_patterns / brain_mistakes tables | ✅ LIVE | Created in `initDB` — campaign generator was querying these but they never existed |
-| X Analytics Sync | ✅ LIVE | `public_metrics` from X API v2 — impressions, reactions, comments, reposts, clicks |
-| LinkedIn Analytics Sync | ✅ LIVE | `socialActions` for reactions/comments; `shareStatistics` upgrades automatically on MDP approval |
-| Publishing Queue Backfill | ✅ LIVE | Approved articles auto-staged on server start; `/api/publishing/backfill-queue` for on-demand |
-| Sync-to-Staged on Delete | ✅ LIVE | Queue item resets to staged when post deleted on X or LinkedIn |
-| BASE_DOMAIN env var | ✅ LIVE | Article URLs in posts use `BASE_DOMAIN` — dev points to `dev.forgeintelligence.ai` |
-
-### 🎨 UI Polish (April 3)
-
-- Performance Dashboard tabs — flat underline style, no Ubuntu 2005 bevel
-- Performance chart — dynamic ResizeObserver width, Forge blue line, gradient fill, proper dots, full-width responsive
-- Chip color system — grey=available, white=selected, Forge blue=live, superman red=error
-- New Analysis Advanced Overrides — padding-bottom fix so content doesn't escape viewport
-- Import Article — 30px header margin, 900px form card
-- Sidebar groups — path-reactive active states, Settings no longer jealous of Publishing
-- Publishing Queue — UTM copy button on every published result row
-- GSC John Cena'd from publish channel selector permanently
-
-### 🔲 What Is NOT Built Yet
-
-
-- LinkedIn impressions/clicks (requires Marketing Developer Platform approval — applied; Pipedream Connect may unlock this)
-- WordPress live API publish
-- Webflow live API publish (Pipedream Connect wired, publish logic pending)
-- Admin dashboard (agent activity log UI)
-- Pre-seed / bulk brand brain seeding script
-- Pre-cog Score Dashboard (#18 — Voyage AI embeddings, pgvector)
-- Agency Dashboard — bird's-eye view across all brands (backlog)
-- Brand Switcher in TopBar — quick-switch for agency users (backlog)
-- GEO citation data pending Perplexity/ChatGPT indexing forgeintelligence.ai articles
-
-### GEO Content Strategy — Forge Intelligence
-Published articles at `dev.forgeintelligence.ai/articles/forgeintelligence-ai/`:
-1. AI-Powered Analyst Relations: Multi-Agent Orchestration for Enterprise AR Programs
-2. Multi-Agent Content Orchestration: The 8-Stage Pipeline Replacing Content Team Bottlenecks
-
-Sitemap: `https://dev.forgeintelligence.ai/sitemap.xml` — submitted to GSC.
-Strategy: publish Forge Intelligence articles through the full pipeline to build GEO citation surface on own domain. Topics: multi-agent content orchestration, B2B content intelligence, GEO vs SEO, brand voice AI.
-
-### Proven Publishing Workflow — Sandbox-XM
-End-to-end pipeline validated March 31, 2026:
-1. **Brand Settings → Site Template** — paste article URL + catalog URL, hit Scrape. Forge extracts DOM class names from live site.
-2. **Content Generator** — select brain, enter topic direction, generate. 88% confidence article in one run.
-3. **Smart Export → HTML tab** — downloads article HTML using scraped site class names. Zero styling guesswork.
-4. **Replit agent** — receives the HTML file, writes it to the site. On-brand, no iteration needed.
-5. **Result** — https://sandbox-xm.forge-os.ai/articles/ai-in-event-tech.html — pixel-perfect to existing articles.
-
-This workflow scales to any number of articles without touching code. Applicable to Sandbox-GTM and any future brand with a self-hosted site.
-- Multi-brand stress test (#35) pending
-- NEON_DATABASE_URL: correct endpoint is ep-odd-waterfall-akyrdo6x (restored branch) — do not revert to ep-cool-firefly
-- Ghost CMS integration — publish ✅ LIVE, analytics pending
+### JSON Parse Hardening
+- `sanitizeJson()` — shared top-level utility in `server.js`
+- Applied at every LLM JSON.parse call: context agent, content generator (2 paths), campaign plan, campaign articles (×8), compliance critique
+- Handles bare newlines/tabs/control chars inside Claude's streamed string values
 
 ---
 
 ## Infrastructure
 
-### Hosting & Services
-
 | Service | Details |
 |---------|---------|
 | **Repo** | `github.com/Sandbox-Group-LLC/Forge-Intelligence` |
-| **Branch: main** | Development — fast deploys, no gates → `dev.forgeintelligence.ai` |
-| **Branch: production** | Public app — PR-only merges → `forgeintelligence.ai/app/*` |
-| **Render (dev)** | `forge-dev` service watching `main` |
-| **Render (prod)** | `forge-production` service watching `production` |
-| **Live domain** | `forgeintelligence.ai` (Hostinger DNS → Render CNAME) |
-| **Auth (upcoming)** | Clerk — wired into `production` branch, org-slug multi-tenancy Phase 2 |
-| **Email** | Resend — waitlist capture + future digests/alerts |
+| **Branch: main** | Development → `dev.forgeintelligence.ai` |
+| **Branch: production** | Public app → `forgeintelligence.ai/app/*` |
+| **Render (dev)** | `forge-dev` watching `main` |
+| **Render (prod)** | `forge-production` watching `production` |
+| **Database** | NeonDB `ep-odd-waterfall-akyrdo6x-pooler` — **never revert to ep-cool-firefly** |
+| **Auth** | Clerk — org-slug multi-tenancy Phase 2 |
+| **Email** | Resend |
+| **Images** | fal.ai Flux |
+| **CMS** | Ghost Admin API |
 
-### NeonDB
+### Architecture Rules — Do Not Break
+- **Never** use Render env vars `PUT` API — replaces ALL vars. Individual updates only.
+- **Never** `git merge main → production` or copy entire files between branches
+- **NEON_DATABASE_URL** must stay on `ep-odd-waterfall-akyrdo6x-pooler`
+- **requireAuth** on every endpoint that touches brand data
+- **sanitizeJson()** is a top-level shared utility — do not re-inline it
+- **activeBrand from useApp()** is the only source of brandProfileId — no direct brains fetches from pages
+- GitHub Contents API commits require a freshly fetched SHA — stale SHAs fail
 
-**Three databases:**
+### Branch Differences
 
-```
-forge_platform       ← shared platform tables (clients, users, billing, activity log)
-forge_brain          ← default brain DB (used for Phase 1 testing)
-forge_brain_{uuid}   ← per-client brain (provisioned at signup, Phase 2+)
-```
-
-**`forge_platform` tables (all confirmed created):**
-- `brand_profiles` — voice profile, personas, competitive gaps, third-party signals
-- `agent_activity_log` — every agent call, tokens used, latency, status
-- `clients` — client records
-- `users` — user accounts
-- `billing` — billing records
-
-**`forge_brain` tables (all confirmed created via `brain/schema.sql`):**
-- `memories` — vector embeddings (pgvector, HNSW index on cosine ops)
-- `patterns` — structured wins, success rates, confidence scores
-- `mistakes` — failures + human feedback + guardrails generated
-- `agent_coordination` — multi-agent sync log
-- `brand_profiles` — per-brain brand profile
-- `geo_briefs` — Stage 2 output
-- `enriched_briefs` — Stage 3 output
-- `generated_content_{brandProfileId}` — Stage 4 output (per-brand table, auto-provisioned on first generate call)
-
-**Active `NEON_DATABASE_URL`** points to `forge_platform`. Set in Render environment variables.
-
-### Environment Variables (set in Render)
-
-See `Content Platform Global Env Vars.docx` in repo for full list. Key vars:
-- `ANTHROPIC_API_KEY` — Claude Sonnet 4.6
-- `NEON_DATABASE_URL` — forge_platform connection string
-- `RESEND_API_KEY` — email delivery
+| Component | Production | Main (Dev) |
+|-----------|-----------|------------|
+| `TopBar.tsx` | No brand switcher | Multi-brand dropdown |
+| `AppContext.tsx` | Single brand, Clerk auth | Multi-brand, isSuperAdmin, allBrands, switchBrand |
+| Auth pattern | Clerk + requireAuth everywhere | Same + super admin brian@sandbox-xm.com |
 
 ---
 
@@ -302,229 +113,55 @@ See `Content Platform Global Env Vars.docx` in repo for full list. Key vars:
 ```
 /
 ├── README.md              ← THIS FILE. SSOT. Read before touching anything.
-├── Whiteboard             ← Full product spec (8-stage workflow, detailed architecture)
-├── server.js              ← Main Express server + all API routes (includes shared buildImagePrompt() fn)
+├── WHITEBOARD.md          ← Active working doc. Session state, pending work, known issues.
+├── server.js              ← Express server + all API routes + shared utilities (sanitizeJson, buildImagePrompt, extractJSON)
 ├── src/
-│   ├── agents/
-│   │   ├── stage1_context_agent/
-│   │   │   ├── index.ts   ← Context Agent — fully wired, live
-│   │   │   └── tools.ts   ← Scraper tools
-│   │   ├── stage2_geo_strategist/
-│   │   │   └── system_prompt.md   ← Prompt spec written, wired in server.js
-│   │   └── stage3_authenticity_enricher/
-│   │       └── system_prompt.md   ← Prompt spec written, agent LIVE
-│   │   └── stage4_content_generator/
-│   │       └── system_prompt.md   ← Brain-First, confidence tiers, E-E-A-T injection format
-│   └── tools/
-│       └── scraper.ts     ← Brand/review/competitor scraper (Claude direct prompt, no tool-calling)
-├── brain/
-│   └── schema.sql         ← Full NeonDB schema for Client Brain
-├── public/                ← Static assets, landing page files
+│   ├── context/
+│   │   └── AppContext.tsx  ← activeBrand, isPaid, brandLoading — single source of truth
+│   ├── hooks/
+│   │   └── useActiveBrand.ts ← auth-scoped brand resolution
+│   ├── components/
+│   │   ├── Sidebar.tsx    ← Nav, Settings group (brand-settings + integrations + admin)
+│   │   └── TopBar.tsx     ← Brand pill, avatar dropdown
+│   ├── layouts/
+│   │   └── AppShell.tsx   ← view-container owns all page padding (48px 40px 96px)
+│   └── pages/             ← All stage pages — brandProfileId from activeBrand only
+├── public/                ← Static assets, landing page
 ├── package.json
-├── tsconfig.json
 └── vite.config.ts
 ```
 
 ---
 
-## API Endpoints (Live)
-
-### `GET /`
-Returns platform health JSON.
-
-### `GET /health`
-Returns service status + uptime.
-
-### `POST /api/v1/context`
-**The main Stage 1 endpoint.**
-
-```json
-// Request
-{
-  "clientId": "550e8400-e29b-41d4-a716-446655440000",  // Must be valid UUID
-  "url": "https://example.com",
-  "competitors": ["competitor1.com", "competitor2.com"]
-}
-
-// Response (first call — fresh)
-{
-  "status": "complete",
-  "stage": 1,
-  "brandProfileId": "799a5acf-8bbf-4beb-a704-b5adb07a5a37",
-  "cached": false,
-  "profile": {
-    "voice_profile": { "formality_score", "confidence_score", "complexity_score", "brand_vocabulary", "tone_summary" },
-    "personas": [{ "title", "primary_pain_point", "trigger_event", "skepticism" }],
-    "third_party_signals": { "customer_power_phrases", "friction_points" },
-    "competitive_gaps": { "competitor_owned_topics", "white_space" }
-  }
-}
-
-// Response (repeat call — cache hit, instant return)
-{
-  "status": "complete",
-  "stage": 1,
-  "brandProfileId": "799a5acf-8bbf-4beb-a704-b5adb07a5a37",
-  "cached": true,
-  "profile": { ... }
-}
-```
-
-**Important:** `clientId` must be a valid UUID v4. Auto-generation of UUID server-side if non-UUID is passed is on the backlog.
-
-
-### `POST /api/authenticity-enricher/analyze`
-**Body:** `{ brandProfileId, geoBriefId?, manualInputs?, force? }`  
-**Returns:** E-E-A-T scores, SME signals, injection map, enriched brief sections, author schema, confidence score, gaps + manual input prompts  
-**Tools:** Perplexity SME scraper → E-E-A-T scorer → Voice/Persona mapper → Enriched Brief assembler
-
----
-
-### `POST /api/geo-strategist/analyze`
-**The main Stage 2 endpoint.**
-
-```json
-// Request
-{
-  "brandProfileId": "799a5acf-8bbf-4beb-a704-b5adb07a5a37"
-}
-
-// Response
-{
-  "success": true,
-  "data": {
-    "topicalAuthorityMap": [
-      {
-        "topic": "AI Training Infrastructure Leadership",
-        "citationProbability": 92,
-        "coverage": "NVIDIA dominates discourse with CUDA ecosystem and H100/A100 citations",
-        "priority": "high"
-      }
-    ],
-    "geoOpportunities": [
-      {
-        "topic": "Sovereign AI and Local Inference",
-        "chatgpt": 72, "perplexity": 75, "aiOverviews": 68, "gemini": 71,
-        "quickWin": true
-      }
-    ],
-    "entitySchema": { ... },
-    "geoBrief": { ... },
-    "opportunityScore": 74,
-    "cached": false
-  }
-}
-```
-
-**Caching:** Results stored in `geo_briefs` table in NeonDB. Stale cache auto-detected (topics named "Unknown" or zero scores trigger fresh run).
-
-
-### `POST /api/content-generator/generate`
-**Stage 4 — Content Generator (streaming)**
-
-**Body:** `{ brandProfileId, enrichedBriefId?, force? }`
-
-**Response:** Server-Sent Events (SSE) stream — article body chunks with confidence metadata
-
-**Brain-First:** Reads `brand_profiles`, `geo_briefs`, `enriched_briefs` before generating a single word.
-
-**Output stored in:** `generated_content_{brandProfileId}` table (per-brand, UUID-keyed)
-
-**Confidence tiers (per section):**
-- 🟢 Green — high Brain pattern match, auto-approvable
-- 🟡 Yellow — SME input needed or fact needs verification  
-- 🔴 Red — explicit human decision required
-
-> **Multi-tenancy note:** Current UI allows manual brand/brief selection for dev/test purposes.
-> Production refactor required: remove brand selector, scope all calls to authenticated client's brandProfileId only.
-
-### `GET /api/publishing/queue/:brandProfileId`
-Returns all articles in the publishing queue for a brand — status, channel, scheduled time.
-
-### `POST /api/publishing/publish`
-Publishes an article to a channel (LinkedIn, WordPress, etc.). LinkedIn uses `ugcPosts` API. Returns published URL + post ID.
-
-### `POST /api/publishing/generate-post-copy`
-**Body:** `{ title, headings, readMinutes, articleUrl }`  
-Claude Haiku generates a 3–4 paragraph LinkedIn post — full overview, no ellipsis cutoffs, ends with `Read more: [url]`.
-
-### `POST /api/publishing/regen-image`
-**Body:** `{ brandProfileId, contentId }`  
-Regenerates hero image for an article via Flux/fal.ai. Uses `buildImagePrompt()` with full brand voice profile.
-
-### `GET /articles/:brandSlug/:articleSlug`
-**Public article page** — server-side renders `index.html` with full OG meta tags injected (`og:image`, `og:title`, `og:description`, `og:image:secure_url`, `article:author`, `twitter:card`) before serving SPA. Must run BEFORE `express.static` middleware.
-
-### `POST /api/articles/:brandSlug/:articleSlug/ensure-image`
-Auto-generates and saves hero image if `hero_image_url` is NULL. Called by article page on load. Returns `{ imageUrl, generated: bool }`.
-
-### `GET /api/articles/:brandSlug/:articleSlug`
-Returns full article JSON including `sections`, `heroImageUrl`, `metaDescription`, `brandName` (from `brand_profiles.brand_name` column), `createdAt`.
-
-### `POST /api/waitlist`
-Captures waitlist email, stores in DB, sends confirmation via Resend.
-
----
-
-## The Context Agent (Stage 1) — How It Works
-
-**Model:** Claude Sonnet 4.6
-
-**Brain-First Protocol:** Before any action, agent checks `brand_profiles` for existing data. Cache hit = instant return, zero Claude tokens spent.
-
-**On cache miss:**
-1. Fires Claude Sonnet 4.6 with brand analysis prompt
-2. Claude analyzes the URL + competitor list
-3. Returns structured JSON (voice profile, personas, competitive gaps, third-party signals)
-4. Persists to `brand_profiles` in NeonDB
-5. Logs call to `agent_activity_log` (tokens used, latency, status)
-6. Returns `brandProfileId` + full profile
-
-**Files:**
-- `src/agents/stage1_context_agent/index.ts` — full agent logic
-- `src/tools/scraper.ts` — scraping tools (Claude direct prompt, NOT tool-calling API — SDK version locked at `^0.39.0` to avoid TS type conflicts)
-
-**Known issue / backlog:** `clientId` must be sent as UUID from client. Server-side auto-generation of UUID if string is passed = backlog item.
-
----
-
 ## UI Design System
 
-### Design Principles (12-Directive System)
-
-The UI is built on these non-negotiable directives, applied to all screens:
+### 12-Directive System (Non-Negotiable)
 
 1. **Dark foundation** — `#0F1720` base, `#1E293B` cards/panels
 2. **Intelligence Blue accent** — `#3563FF` primary CTA, active states
 3. **Signal Teal secondary** — `#14B8A6` for positive states, insight signals
 4. **Proof Amber highlight** — `#F5B942` sparingly, never dominant
-5. **Inter/Geist typography** — modern neo-grotesk, strong hierarchy, generous spacing
-6. **Slightly rounded corners** — 10–14px radius. Not sharp. Not pill.
-7. **Lucide icons** — 1.5 stroke weight, round caps, consistent across all UI
-8. **Subtle motion** — purposeful transitions only (hover depth, graph movement, signal pulses)
-9. **Grid-based layout** — modular, reusable components, progressive information density
-10. **Real product UI over abstract decoration** — dashboards, signal maps, workflow diagrams
-11. **Calm UX** — no noise, no gratuitous animation, no clutter
-12. **Brand continuity** — landing page visual language = app visual language. No seam.
+5. **Inter/Geist typography** — strong hierarchy, generous spacing
+6. **Slightly rounded corners** — 10–14px radius
+7. **Lucide icons** — 1.5 stroke weight, round caps, `currentColor`, consistent across all UI. **No emojis anywhere in the UI.**
+8. **Subtle motion** — purposeful transitions only
+9. **Grid-based layout** — modular, reusable components
+10. **Real product UI** — no abstract decoration
+11. **Calm UX** — no noise, no gratuitous animation
+12. **Brand continuity** — landing page = app visual language, no seam
 
-### Screens Built
+### Layout Rule
+`view-container` in `WorkspaceLayout.css` owns all page padding: `padding: 48px 40px 96px`.
+Page-level CSS classes (`.cl-page`, `.ci-page`, etc.) must NOT add their own padding — they stack and break the layout.
 
-- **Landing page** (`forgeintelligence.ai`) — hero, interrupt, 3 pillars, moat section, GEO FAQ bait, waitlist CTA
-- **`/context-agent` workspace** — fully styled, wired to live API, shows brand profile output
-- **`/geo-strategist` workspace** — fully styled, 4-tab layout (Topical Authority, GEO Opportunities, Entity & Schema, GEO Brief), wired to live API
-
-- **`/publishing-queue` workspace** — Publishing Queue UI, preview modal, channel selector, AI post copy
-- **`/articles/:brandSlug/:articleSlug`** — Public editorial article page (full-bleed hero, reading column, brand byline, read time)
-
-### Screens NOT Built Yet
-
-- Admin dashboard (agent activity log)
-- Client brain viewer
-- Billing / account management
+### Sidebar Active States
+- Active item: `background: transparent`, `color: var(--color-accent)`, `border-left-color: var(--color-accent)`
+- No gradient blobs, no fill backgrounds
+- Settings group opens and highlights on `/app/brand-settings`, `/app/integrations`, **and** `/app/admin`
 
 ---
 
-## The 8-Stage Workflow (Product Architecture)
+## The 8-Stage Workflow
 
 ```
 [1. Context Hub] → [2. GEO Strategy] → [3. Authenticity Enrichment]
@@ -532,226 +169,95 @@ The UI is built on these non-negotiable directives, applied to all screens:
 [8. Feedback Loop] ←— [7. Performance] ←— [6. Publish] ←— [5. Compliance] ←— [4. Generation]
 ```
 
-See `Whiteboard` file for full detailed spec on all 8 stages. Summary:
+### What Each Stage Does
 
-| Stage | Name | Status | Agent | Model |
-|-------|------|--------|-------|-------|
-| 1 | Context Hub | ✅ LIVE | Context Agent | Claude Sonnet 4.6 |
-| 2 | GEO Strategy | ✅ LIVE | GEO Strategist | Claude Sonnet 4.6 |
-| 3 | Authenticity Enrichment | ✅ LIVE | Authenticity Enricher | Claude Sonnet 4.6 |
-| 4 | Content Generator | ✅ LIVE | Content Generator | Claude Sonnet 4.6 |
-| 4.5 | Campaign Generator | ✅ LIVE | Campaign Angle Planner | Claude Sonnet 4.6 |
-| 5 | Compliance & Human Gate | ✅ LIVE | Compliance Gate | Claude Sonnet 4.6 |
-| 6 | Publishing & Distribution | ✅ LIVE | Publishing Agent | Queue UI + LinkedIn API + Public Article Page + OG meta live |
-| 7 | Performance Intelligence | 🔲 Not built | Performance Agent | Claude Sonnet 4.6 |
-| 8 | Feedback Loop | 🔲 Not built | Pattern Extractor | Claude Opus 4.6 |
+| Stage | Route | Key Output |
+|-------|-------|------------|
+| 1 | `/app/context-hub` | Brand voice profile, personas, competitive gaps |
+| 2 | `/app/geo-strategist` | Topical authority map, GEO opportunities, entity schema |
+| 3 | `/app/authenticity-enricher` | E-E-A-T signals, SME injection map, author schema |
+| 4 | `/app/content-generator` | Full article (SSE stream), confidence tiers, hero image |
+| 4.5 | `/app/campaign-generator` | 8-article campaign plan + generation |
+| 5 | `/app/compliance-gate` | AI critique + human refinement → brain_mistakes write |
+| 6 | `/app/publishing-queue` | Multi-channel publish, UTM, schedule, Smart Export |
+| 7 | `/app/performance` | LinkedIn/X/Ghost/GSC analytics, decay alerts, GEO citations, pattern dashboard |
+| 8 | (auto) | Pattern extractor writes brain_patterns + brain_mistakes from analytics |
+
+### Supporting Pages
+
+| Page | Route | Notes |
+|------|-------|-------|
+| Content Library | `/app/content-library` | Card grid, search, status tabs, preview modal |
+| Content Import | `/app/content-import` | URL or paste → Brain audit → Publishing Queue |
+| Topic Queue | `/app/topic-queue` | Idea capture, send to generator |
+| Brand Settings | `/app/brand-settings` | Identity, BYO domain, site template scraper, billing |
+| Integrations | `/app/integrations` | Per-channel credentials, UTM templates |
+| Admin | `/app/admin` | KPIs (auth-scoped), reviewer management |
 
 ---
 
-## Client Brain Architecture
+## Brain Architecture
 
-Each client gets an isolated NeonDB instance with pgvector. Multi-agent shared memory.
+Each brand gets isolated storage. Multi-agent shared memory.
 
 ```
-Client Brain (NeonDB + pgvector)
-├── memories          — vector embeddings (what was published, performance outcome)
-├── patterns          — what worked (success rate, confidence, recency weight)
-├── mistakes          — what failed + human feedback + guardrail generated
-├── agent_coordination — multi-agent sync log
-└── Predictive Guardrails (derived, not a table)
+brand_profiles                  ← voice profile, personas, competitive gaps
+generated_content_{uuid}        ← per-brand article table (auto-provisioned)
+publishing_queue                ← staged → approved → published
+publish_log                     ← channel publish results
+content_analytics               ← impressions, clicks, engagement per article
+brain_patterns                  ← what worked (confidence, recency weighted)
+brain_mistakes                  ← what failed + human feedback + guardrails
+geo_citations                   ← brand mention detection in AI search results
+decay_alerts                    ← 50%+ engagement drop flags
+agent_activity_log              ← every agent call, tokens, latency
 ```
 
 **Brain-First Protocol (mandatory on every agent):**
 ```
-BEFORE any action:
-  1. Read Mistakes relevant to this task
-  2. Read Patterns that succeeded in this context
-  3. Read Memories of similar past content
-  4. THEN act — informed by all three
+BEFORE generating:
+  1. Read brain_mistakes relevant to this task
+  2. Read brain_patterns that succeeded in this context
+  3. THEN generate — informed by both
 ```
 
-**The Compounding Effect:**
-```
-Day 1:    Brain empty. Agents start from brand context only.
-Week 4:   10–15 patterns. Agents prefer proven structures.
-Month 3:  50+ patterns. 20+ guardrails. Human edit rate drops ~30%.
-Month 6:  Personas behavioral. Agents self-correct before human review.
-Month 12: Brain is a proprietary asset. Switching = starting over.
-```
+---
+
+## Key API Endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/context-hub/analyze` | optional | Stage 1 — brand analysis + caching |
+| POST | `/api/geo-strategist/analyze` | required | Stage 2 — GEO opportunities |
+| POST | `/api/authenticity-enricher/analyze` | required | Stage 3 — E-E-A-T enrichment |
+| GET | `/api/content-generator/generate` | required | Stage 4 — SSE article stream |
+| POST | `/api/campaign/plan` | required | Stage 4.5 — 8 angle profiles |
+| POST | `/api/campaign/create` | required | Save campaign to DB |
+| POST | `/api/compliance/critique` | required | Stage 5 — AI critique JSON |
+| POST | `/api/compliance/approve` | required | Save edits + write brain_mistakes |
+| GET | `/api/publishing/queue/:brandProfileId` | required | Queue items |
+| POST | `/api/publishing/publish` | required | Publish to channel |
+| POST | `/api/analytics/sync/:brandProfileId` | required | Sync channel analytics |
+| POST | `/api/analytics/extract-patterns/:brandId` | required | Stage 8 — pattern extraction |
+| GET | `/api/admin/stats` | required | Auth-scoped KPIs |
+| GET | `/articles/:brandSlug/:articleSlug` | public | Server-rendered article page |
 
 ---
 
 ## LLM Routing
 
-| Agent/Task | Model | Reason |
-|------------|-------|--------|
-| Context Agent (Stage 1) | Claude Sonnet 4.6 | Reasoning/planning, pattern extraction, structured JSON |
-| GEO Strategist (Stage 2) | Claude Sonnet 4.6 | Multi-step competitive reasoning → structured brief |
-| Authenticity Enricher (Stage 3) | Gemini 2.5 Pro | Voice matching, natural E-E-A-T injections |
-| Multimodal Generator (Stage 4) | Gemini 2.5 Pro | Publishable copy generation |
-| Compliance Agent (Stage 5) | Claude Sonnet 4.6 | Structured rule checking, fast + precise |
-| Pattern Extractor (Stage 8) | Claude Opus 4.6 | Complex reasoning: performance analysis, guardrail gen |
-| Pre-cog Scorer | Claude Opus 4.6 | Probabilistic reasoning across Brain data |
-| GTM Strategy layer | GPT 5.2 | Branding, tone, positioning |
-
-**SDK:** Anthropic SDK pinned to `^0.39.0` in `package.json`. Do NOT upgrade without testing — tool-calling types changed between versions and broke builds previously.
-
----
-
-## Brand Platform
-
-### Identity
-
-- **Brand name:** Forge Intelligence
-- **Descriptor:** The intelligence layer behind modern marketing
-- **Mission:** Help marketers see clearly, act faster, and prove what drives growth
-- **Vision:** A world where every marketer operates with the clarity of a full intelligence team
-
-### Tagline Options
-- "The intelligence layer behind modern marketing."
-- "From fragmented signals to measurable growth."
-- "Clearer signals. Smarter marketing."
-- "See what matters. Act with confidence."
-
-### Voice Attributes
-- Intelligent, not academic
-- Confident, not inflated
-- Clear, not simplistic
-- Human, not robotic
-- Strategic, not buzzword-heavy
-
-### Color Palette
-
-| Name | Hex | Usage |
-|------|-----|-------|
-| Charcoal | `#0F1720` | Base background |
-| Graphite | `#1E293B` | Cards, panels |
-| Cloud | `#F8FAFC` | Light backgrounds |
-| Stone | `#D0D7E2` | Borders, dividers |
-| Intelligence Blue | `#3563FF` | Primary accent, CTAs |
-| Signal Teal | `#14B8A6` | Secondary, insight states |
-| Proof Amber | `#F5B942` | Highlight only |
-
-### Anti-Patterns (never do this)
-- Do not over-emphasize events, registrations, or live experiences
-- Do not use neon-cyberpunk aesthetics
-- Do not use overly playful consumer UI
-- Do not rely on abstract AI visuals with no product proof
-- Do not make the brand feel like a narrow point solution
-- Do not use buzzword stacking or startup clichés
-
----
-
-## GTM Strategy
-
-### Phase 0 — Sandbox Method (Dogfooding)
-
-**Goal:** Use Forge to launch Forge. Test the full funnel in a controlled environment.
-
-**The Frictionless Hook:**
-- Input: Just a URL. No forms, no onboarding calls.
-- 7 minutes → Full Brand Intelligence Profile (Voice, 3 Personas, Competitive Gap Map)
-- CTA: "Generate first content package" ($29 trial or $99/mo)
-
-**The Magic Moment:** User sees their brand understood better in 7 minutes than their last agency understood it in 3 months.
-
-### Sandbox-GTM Integration (The Differentiator)
-
-Forge connects to the broader Sandbox Group ecosystem:
-- **Sandbox-GTM** event registration + live experience data feeds directly into Forge Client Brain
-- What attendees say/do/engage with at live events becomes proprietary content intelligence
-- Post-event content cadence is generated from actual event behavioral data
-- **Moat:** "We turn your live experiences into content intelligence." No standalone AI tool can replicate physical event data ingestion.
-
-### Pricing
-
-| Tier | Phase | Price | Value |
-|------|-------|-------|-------|
-| SMB Standard | 1 | $99/mo | Brand Intelligence + Enriched Briefs |
-| Agency Standard | 1 | $499/mo | Multi-client briefs + competitive snapshots |
-| Pro | 2 | $299/mo | Full content generation + approval gate |
-| Agency Pro | 2 | $799/mo | Agency generation + client publishing |
-| Enterprise | 3 | $599/mo | Full intelligence loop + ROI dashboard |
-| White-label | 4 | Custom | Agency network licensing |
-
-### Unit Economics
-
-| Component | Per Client/Month | Notes |
-|-----------|-----------------|-------|
-| NeonDB + pgvector | ~$20 | Scales with usage |
-| LLM calls | $0.50–$2/brief | Model routing keeps lean |
-| EasyCron | Negligible | — |
-| Resend | $0.10/1k emails | — |
-| **Total COGS** | ~$25/mo | $99 SMB = ~75% margin |
-
----
-
-## Build Roadmap
-
-### Phase 1 — Context Intelligence Engine (Months 1–3) ← WE ARE HERE
-
-**Deliverable:** Brand Intelligence Profile + GEO/E-E-A-T enriched brief in <10 min from a URL
-**Target:** SMB marketing teams, boutique agencies
-**Pricing:** $99/mo SMB · $499/mo Agency
-
-**Status:**
-- [x] Render service live + auto-deploy from main
-- [x] `forgeintelligence.ai` domain live
-- [x] Landing page built + styled
-- [x] Waitlist email capture (Resend wired)
-- [x] NeonDB setup (`forge_platform`, `forge_brain`, full schema)
-- [x] Context Agent (Stage 1) — fully wired, persisting, caching, logging
-- [x] `/context-agent` workspace UI — fully built + styled
-- [x] Stage 2 — GEO Strategist agent (LIVE — Topical Authority Mapper, GEO Opportunity Scorer, Entity & Schema Mapper, Brief Generator)
-- [ ] Stage 3 — Authenticity Enricher agent (prompt spec written, agent NOT built)
-- [x] Admin dashboard — KPI cards + reviewer management ✅
-- [x] Brand brain pre-seeding — UUID auto-generated on Context Hub run ✅
-- [x] Server-side UUID — gen_random_uuid() throughout ✅ (currently requires client to send valid UUID)
-
-### Phase 2 — Generation + Governance (Months 4–6)
-
-| Stage 4 Content Generator | ✅ LIVE | `/content-generator` — SSE streaming, Brain-First, confidence scoring, per-brand `generated_content_{uuid}` table | (long-form + social + email + video + podcast)
-| Stage 5 Compliance Gate | ✅ LIVE | `/compliance-gate` — Auto-Ship, Approve-to-Ship, Full Review, Brain write-back | —
-| Stage 6 Integrations | ✅ LIVE | `/integrations` — per-brain channel connections, UTM templates, WordPress live | Webflow live, HubSpot attribution, X pending
-| Stage 6 Publishing Queue | ✅ LIVE | `/publishing-queue` — staged articles, multi-channel publish, schedule, UTM preview | —
-- Stage 5 — Compliance & Human Refinement Gate (3 modes)
-- Stage 6 — Publishing (UTM engine, queue, version control, WordPress/Webflow/HubSpot integrations)
-- Pre-cog score running silently (hidden Standard tier)
-- LinkedIn + X one-click OAuth publish
-
-### Phase 3 — Intelligence Loop (Months 7–12)
-
-- Stage 7 — Performance Intelligence (GSC, GEO citation tracking, engagement, revenue attribution)
-- Stage 8 — Pattern Extractor / Feedback Loop
-- Pre-cog score dashboard (Pro pay-to-view)
-- HubSpot Track B (email/contact attribution)
-- Deep Pattern Analysis add-on
-
-### Phase 4 — Scale & Expansion (Year 2)
-
-- White-label agency layer
-- External client approval portal
-- Reader-level personalization (CDP integration)
-- Native video + audio generation
-- Industry Benchmark Reports (cross-client opt-in)
-- EU AI Act compliance layer
-
----
-
-## GitHub Project Board
-
-The project board tracks all active issues against this roadmap. When picking up a new session:
-1. Read this README
-2. Check open issues on the GitHub project board
-3. Confirm current deployment status on Render before pushing anything
-
-**Key issue categories:**
-- `stage-1` — Context Hub / Context Agent work
-- `stage-2` — GEO Strategist work
-- `stage-3` — Authenticity Enricher work
-- `infra` — Render, NeonDB, env vars, deployment
-- `ui` — Frontend, design system, screens
-- `gtm` — Landing page, waitlist, brand
+| Agent | Model | Reason |
+|-------|-------|--------|
+| Context Agent (Stage 1) | Claude Sonnet 4.5 | Structured JSON, brand reasoning |
+| GEO Strategist (Stage 2) | Claude Sonnet 4.5 | Multi-step competitive reasoning |
+| Authenticity Enricher (Stage 3) | Claude Sonnet 4.5 | E-E-A-T analysis |
+| Content Generator (Stage 4) | Claude Sonnet 4.5 | Long-form, Brain-First |
+| Campaign Generator (Stage 4.5) | Claude Sonnet 4.5 | 8-angle planner + article gen |
+| Compliance Gate (Stage 5) | Claude Sonnet 4.5 | Structured rule checking |
+| Pattern Extractor (Stage 8) | Claude Haiku | Fast, cheap, pattern analysis |
+| Post copy generation | Claude Haiku | LinkedIn/X/Facebook post copy |
+| Topic pre-flight check | Claude Haiku | Pattern/mistake signal check |
+| Image prompts | Claude Haiku + fal.ai Flux | Hero image generation |
 
 ---
 
@@ -759,35 +265,25 @@ The project board tracks all active issues against this roadmap. When picking up
 
 | Item | Priority | Notes |
 |------|----------|-------|
-| Server-side UUID auto-gen | Medium | `clientId` currently must be sent as valid UUID from client |
-| LinkedIn impressions | Medium | Requires MDP approval — `socialActions` gives reactions/comments now |
-| `brandProfileId` was returning "unknown" | ✅ Fixed | Now returns real UUID from NeonDB |
-| Anthropic SDK tool-calling TS errors | ✅ Fixed | Removed tool-calling pattern. SDK pinned to `^0.39.0` |
-| publishing_queue articles not showing | ✅ Fixed | Missing UNIQUE on content_id + ON CONFLICT clause |
-| Hero image columns missing | ✅ Fixed | Migration adds `hero_image_url` + `hero_image_prompt` on startup |
-| publish_log missing columns | ✅ Fixed | `live_status`, `last_synced_at`, `synced_count`, `published_at` added via migration |
-| X analytics synced: 0 | ✅ Fixed | `publish_log.published_at` doesn't exist — aliased `attempted_at` |
-| Brand slug collision (sandbox-xm vs sandbox-gtm) | ✅ Fixed | Exact match first in brand lookup |
-| Article URL hardcoded to prod | ✅ Fixed | All URLs now use `BASE_DOMAIN` env var |
-| X deleted tweet detection | ✅ Fixed | X API v2 returns 200+errors[] not 404 — handled |
+| LinkedIn impressions/clicks | Medium | Requires MDP approval — reactions/comments live |
+| WordPress live API publish | Medium | Pending |
+| Webflow live API publish | Medium | Pipedream Connect wired, logic pending |
+| Pre-cog Score Dashboard | Backlog | Voyage AI embeddings, pgvector — Phase 3 |
+| Agency Dashboard | Backlog | Cross-brand bird's-eye view |
+| Medium integration | Legacy | New tokens unavailable since early 2025 |
 
 ---
 
-## For AI Sessions — Context Pack Instructions
+## For AI Sessions — Start Here
 
-**When starting a new session with this codebase:**
+1. Read this README top to bottom
+2. Read WHITEBOARD.md for current session state and pending work
+3. Fetch and read the specific file before editing — never write blind
+4. The Anthropic SDK is pinned at `^0.39.0` — do not change
+5. `NEON_DATABASE_URL` points to `ep-odd-waterfall-akyrdo6x-pooler` — this is correct and must not change
+6. All production commits go to the `production` branch
+7. Render auto-deploys on every push — no manual step needed
+8. Brian is direct, works fast, expects commits not instructions. No narration. No confirmation requests.
 
-1. Read this README top to bottom first
-2. Check `Whiteboard` file for deep-dive on any specific stage
-3. Pull current repo file tree to understand actual state of code
-4. Check open GitHub issues before suggesting new work
-5. Check Render deploy status before pushing
-6. The Anthropic SDK is pinned at `^0.39.0` — do not change this
-7. `NEON_DATABASE_URL` points to `forge_platform` — this is correct
-8. All commits go to `main` — Render auto-deploys
-9. The owner of this repo and project is the founder of Sandbox Group LLC (Portland, OR)
-   - Sandbox Group comprises: **Sandbox-XM** (experience marketing agency) + **Sandbox-GTM** (event registration + GTM platform)
-   - Forge Intelligence is the third pillar — the intelligence layer that turns live experiences into measurable revenue
-
-**Tone for AI collaboration:** Direct, fast, no hand-holding. Build it, commit it, tell them what changed and why. Don't ask for permission on things already decided in this doc.
-
+**Owner:** Brian — Founder, Sandbox Group LLC (Portland, OR)
+Sandbox Group: **Sandbox-XM** (experience marketing) + **Sandbox-GTM** (event registration + GTM platform) + **Forge Intelligence** (the intelligence layer)
