@@ -20,7 +20,6 @@ const Zap = ({ size = 16 }: { size?: number }) => (
   </svg>
 );
 
-interface Brain { id: string; brandName: string; brandUrl: string; }
 interface EnrichedBrief { id: string; brandName: string; confidenceScore: number; createdAt: string; }
 
 interface ArticleSection {
@@ -89,8 +88,7 @@ function StreamProgress({ text }: { text: string }) {
 }
 
 function ContentGeneratorContent() {
-  const { getToken } = useAuth();
-  const { activeBrand } = useApp();
+    const { activeBrand } = useApp();
 
   const [briefs, setBriefs] = useState<EnrichedBrief[]>([]);
 
