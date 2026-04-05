@@ -162,7 +162,6 @@ export default function PublishingQueuePage() {
   const [scheduleDate, setScheduleDate] = useState<Record<string, string>>({});
   const [selectedChannels, setSelectedChannels] = useState<Record<string, string[]>>({});
   const [utmPreview, setUtmPreview] = useState<UtmPreview | null>(null);
-  const [filterBrand, setFilterBrand] = useState<string>('all');
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [contentPreview, setContentPreview] = useState<{ item: QueueItem; article: any; postCopy: Record<string, string> } | null>(null);
@@ -275,13 +274,6 @@ export default function PublishingQueuePage() {
 
   // Sync with global brand selection from TopBar
   // Sync with TopBar brain selection
-  useEffect(() => {
-    if (activeBrandId) setFilterBrand(activeBrandId);
-  }, [activeBrandId]);
-
-  useEffect(() => {
-    if (activeBrandId) setFilterBrand(activeBrandId);
-  }, [activeBrandId]);
 
   const loadQueue = useCallback(async () => {
     setLoading(true);
@@ -802,7 +794,7 @@ ${bodyHtml}
   // Filter logic
   const archivedItems = items.filter(i => i.status === 'archived');
   const filteredItems = items.filter(item => {
-    if (filterBrand !== 'all' && item.brand_profile_id !== filterBrand) return false;
+    if (activeBrandId !== 'all' && item.brand_profile_id !== activeBrandId) return false;
     if (showArchived) return item.status === 'archived';
     return item.status !== 'archived';
   });
@@ -846,18 +838,6 @@ ${bodyHtml}
         </div>
 
         {/* Brand filter */}
-        {brands.length > 1 && (
-          <select
-            className="geo-select pq-brand-filter"
-            value={filterBrand}
-            onChange={e => setFilterBrand(e.target.value)}
-          >
-            <option value="all">All Brands</option>
-            {brands.map(b => (
-              <option key={b.id} value={b.id}>{b.brandName || b.brandUrl}</option>
-            ))}
-          </select>
-        )}
 
         {error && <div className="geo-error">{error}</div>}
         {reviewUrl && (
