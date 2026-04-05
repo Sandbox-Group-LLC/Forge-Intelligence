@@ -48,52 +48,29 @@ const ArrowIcon = () => (
 export default function TopicQueuePage() {
   const { getToken } = useAuth();
   const { activeBrandId } = useApp();
-  const [brands, setBrands] = useState<Brand[]>([]);
-  const [selectedBrand, setSelectedBrand] = useState('');
   const [topics, setTopics] = useState<TopicIdea[]>([]);
   const [topic, setTopic] = useState('');
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<'all' | 'idea' | 'in_progress' | 'generated'>('all');
 
-  // Sync with TopBar brain selection
-  useEffect(() => {
-    if (activeBrandId) setSelectedBrand(activeBrandId);
-  }, [activeBrandId]);
 
-  useEffect(() => {
-    (async () => {
-      const token = await getToken();
-      const res = await fetch('/api/context-hub/brains', {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-      });
-      const d = await res.json();
-      if (d.success && d.data?.length) {
-        setBrands(d.data);
-        setSelectedBrand(d.data[0].id);
-      }
-    })();
-  }, [getToken]);
-  // Sync with global brand selection from TopBar
-  useEffect(() => {
-    if (activeBrandId) setSelectedBrand(activeBrandId);
-  }, [activeBrandId]);
 
 
   useEffect(() => {
-    if (!selectedBrand) return;
-    fetch(`/api/topic-ideas/${selectedBrand}`).then(r => r.json()).then(d => {
+    if (!activeBrandId) return;
+    fetch(`/api/topic-ideas/${activeBrandId}`).then(r => r.json()).then(d => {
       if (d.success) setTopics(d.ideas || d.data || []);
     });
-  }, [selectedBrand]);
+  }, [activeBrandId]);
 
   const addTopic = async () => {
-    if (!topic.trim() || !selectedBrand) return;
+    if (!topic.trim() || !activeBrandId) return;
     setLoading(true);
     const r = await fetch('/api/topic-ideas', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ brandProfileId: selectedBrand, topic: topic.trim(), note: note.trim() }),
+      body: JSON.stringify({ brandProfileId: activeBrandId, topic: topic.trim(), note: note.trim() }),
     });
     const d = await r.json();
     if (d.success) {
@@ -141,11 +118,6 @@ export default function TopicQueuePage() {
             <h1 className="geo-title">Topic Queue</h1>
             <p className="geo-description">Park content ideas here. Send them to the generator when ready.</p>
           </div>
-          {brands.length > 1 && (
-            <select className="geo-select" value={selectedBrand} onChange={e => setSelectedBrand(e.target.value)}>
-              {brands.map(b => <option key={b.id} value={b.id}>{b.brandName || b.brandUrl}</option>)}
-            </select>
-          )}
         </div>
 
         {/* Add topic */}
