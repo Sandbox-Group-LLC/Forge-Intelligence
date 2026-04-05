@@ -1,11 +1,6 @@
 /* ── Content Import Page ─────────────────────────────────────────────────── */
 .ci-page {
-  padding: 24px 24px 80px;
   max-width: 960px;
-}
-
-.geo-header {
-  margin-bottom: 30px;
 }
 
 .ci-form-card {
