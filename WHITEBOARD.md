@@ -124,8 +124,6 @@ const brandProfileId = activeBrand?.id || localStorage.getItem('forge_active_bra
 | Issue | Priority | Notes |
 |-------|----------|-------|
 | LinkedIn impressions/clicks | Medium | Requires MDP approval — reactions/comments live |
-| WordPress live publish | Medium | Logic pending |
-| Webflow live publish | Medium | Pipedream wired, logic pending |
 | Ghost analytics impressions | Low | Reads Ghost Admin API, not yet in `content_analytics` |
 | Pre-cog Score Dashboard | Backlog | Voyage AI embeddings, pgvector — Phase 3 |
 | Agency Dashboard | Backlog | Bird's-eye cross-brand view |
