@@ -90,6 +90,7 @@
   opacity: 0.6;
   border-left: 2px solid transparent;
   margin-left: -2px;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   text-decoration: none;
   cursor: pointer;
   width: 100%;
@@ -109,8 +110,8 @@
 }
 
 .nav-item.active {
-  background: linear-gradient(90deg, rgba(15,23,42,0.0), rgba(37, 99, 235, 0.14));
-  color: var(--color-text-primary);
+  background: transparent;
+  color: var(--color-accent);
   opacity: 1;
   border-left-color: var(--color-accent);
 }
@@ -165,8 +166,8 @@
 
 .nav-child-item.active {
   opacity: 1;
-  background: linear-gradient(90deg, rgba(15,23,42,0.0), rgba(37, 99, 235, 0.14));
-  color: var(--color-text-primary);
+  background: transparent;
+  color: var(--color-accent);
   border-left-color: var(--color-accent);
 }
 
