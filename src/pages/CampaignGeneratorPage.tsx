@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useApp } from '../context/AppContext';
 import { AppShell } from '../layouts/AppShell';
 import './CampaignGeneratorPage.css';
 
@@ -82,8 +83,9 @@ function StreamProgress({ text }: { text: string }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 function CampaignGeneratorContent() {
-  const [brains, setBrains] = useState<Brain[]>([]);
-  const [selectedBrainId, setSelectedBrainId] = useState('');
+  // Use global activeBrand from AppContext - no local brain selection needed
+  const { activeBrand, isAuthLoading } = useApp();
+  const selectedBrainId = activeBrand?.id || '';
   const [step, setStep] = useState<'setup' | 'plan' | 'generating' | 'complete'>('setup');
   const [isPlanning, setIsPlanning] = useState(false);
   const [topicPrompt, setTopicPrompt] = useState('');
@@ -95,14 +97,10 @@ function CampaignGeneratorContent() {
   const [error, setError] = useState('');
   const esRef = useRef<EventSource | null>(null);
 
-  useEffect(() => {
-    fetch('/api/context-hub/brains').then(r => r.json()).then(d => { if (d.success) setBrains(d.data); });
-  }, []);
 
-  const selectedBrain = brains.find(b => b.id === selectedBrainId);
 
   const checkTopic = async () => {
-    if (!selectedBrainId || !topicPrompt.trim()) { setPreflight({ status: 'idle' }); return; }
+    if (!activeBrandId || !topicPrompt.trim()) { setPreflight({ status: 'idle' }); return; }
     setPreflight({ status: 'checking' });
     try {
       const r = await fetch('/api/content/topic-check', {
@@ -117,7 +115,7 @@ function CampaignGeneratorContent() {
   };
 
   const handlePlan = async () => {
-    if (!selectedBrainId) return;
+    if (!activeBrandId) return;
     setIsPlanning(true); setError('');
     try {
       const res = await fetch('/api/campaign/plan', {
@@ -132,7 +130,7 @@ function CampaignGeneratorContent() {
   };
 
   const handleGenerate = async () => {
-    if (!plan || !selectedBrainId) return;
+    if (!plan || !activeBrandId) return;
     setError('');
     try {
       const res = await fetch('/api/campaign/create', {
@@ -205,20 +203,7 @@ function CampaignGeneratorContent() {
 
       {step === 'setup' && (
         <div className="camp-setup">
-          <div className="camp-brand-display">
-            <select
-              className="geo-select"
-              value={selectedBrainId}
-              onChange={e => setSelectedBrainId(e.target.value)}
-              style={{ width: '100%', marginBottom: '4px' }}
-            >
-              <option value="">Select a Brain...</option>
-              {brains.map(b => <option key={b.id} value={b.id}>{b.brandName} — {b.brandUrl}</option>)}
-            </select>
-            <div className="camp-brand-sub">
-              {selectedBrain ? `${selectedBrain.brandName} · Angle diversity enforced` : 'Choose an existing brain to begin'}
-            </div>
-          </div>
+
           <div className="camp-stats">
             {[['8','Articles'],['4','Weeks'],['~$1.14','Total cost'],['~18min','Est. time']].map(([n,l]) => (
               <div key={l} className="camp-stat">
@@ -257,7 +242,7 @@ function CampaignGeneratorContent() {
               </div>
             )}
           </div>
-          <button className="camp-plan-btn" onClick={handlePlan} disabled={isPlanning || !selectedBrainId}>
+          <button className="camp-plan-btn" onClick={handlePlan} disabled={isPlanning || !activeBrandId}>
             {isPlanning ? <><span className="camp-spinner" />Planning angles...</> : <><Zap size={16} />Plan Campaign</>}
           </button>
           {error && <div className="geo-error">{error}</div>}
