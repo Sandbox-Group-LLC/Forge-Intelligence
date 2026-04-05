@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { useAuth } from '@clerk/clerk-react';
+import { useApp } from '../context/AppContext';
 import { AppShell } from '../layouts/AppShell';
 import './AdminPage.css';
 
@@ -17,8 +19,6 @@ interface Reviewer {
   title: string;
 }
 
-interface Brand { id: string; brandName?: string; brandUrl?: string; }
-
 function fmt(n: number) {
   if (n >= 1000000) return `${(n/1000000).toFixed(1)}M`;
   if (n >= 1000) return `${(n/1000).toFixed(1)}K`;
@@ -26,9 +26,10 @@ function fmt(n: number) {
 }
 
 export default function AdminPage() {
+  const { getToken } = useAuth();
+  const { activeBrandId } = useApp();
   const [stats, setStats] = useState<Stats | null>(null);
-  const [brands, setBrands] = useState<Brand[]>([]);
-  const [selectedBrand, setSelectedBrand] = useState('');
+  const [selectedBrand, setSelectedBrand] = useState(activeBrandId || '');
   const [reviewers, setReviewers] = useState<Reviewer[]>([]);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -37,10 +38,12 @@ export default function AdminPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetch('/api/admin/stats').then(r => r.json()).then(d => { if (d.success) setStats(d.stats); });
-    fetch('/api/context-hub/brains').then(r => r.json()).then(d => {
-      if (d.success) { setBrands(d.data || []); if (d.data?.length) setSelectedBrand(d.data[0].id); }
+    getToken().then(token => {
+      fetch('/api/admin/stats', { headers: { 'Authorization': `Bearer ${token}` } })
+        .then(r => r.json()).then(d => { if (d.success) setStats(d.stats); });
     });
+    // Use activeBrand from context — already auth-scoped
+    if (activeBrandId) setSelectedBrand(activeBrandId);
   }, []);
 
   useEffect(() => {
@@ -112,15 +115,7 @@ export default function AdminPage() {
         <div className="admin-section">
           <div className="admin-section-header">
             <div className="admin-section-title">Reviewers</div>
-            {brands.length > 1 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>Brand:</span>
-                <select className="geo-select" style={{ fontSize: '0.8125rem', padding: '6px 10px' }}
-                  value={selectedBrand} onChange={e => setSelectedBrand(e.target.value)}>
-                  {brands.map(b => <option key={b.id} value={b.id}>{b.brandName || b.brandUrl}</option>)}
-                </select>
-              </div>
-            )}
+
           </div>
 
           <p className="admin-desc">Reviewers receive an email with a unique link to approve or request changes on articles before they publish. No Forge account required.</p>
