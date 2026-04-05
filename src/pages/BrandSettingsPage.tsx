@@ -43,6 +43,7 @@ export default function BrandSettingsPage() {
         brand_name: b.brandName || b.brand_name || '',
         brand_url:  b.brandUrl  || b.brand_url  || '',
         article_base_url: b.article_base_url || '',
+        article_url_suffix: b.article_url_suffix || '',
         logo_url: b.logo_url || '',
         settings: b.settings || {},
       }));
