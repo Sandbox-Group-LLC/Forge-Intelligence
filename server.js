@@ -1667,6 +1667,11 @@ Extract 3-6 patterns and 2-4 mistakes. Be specific and actionable. Focus on cont
     ]);
 
     res.json({ success: true, patternsWritten, mistakesWritten, patterns: pRes.rows, mistakes: mRes.rows });
+  } catch(e) {
+    console.error('[EXTRACT-PATTERNS]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ── Pre-cog Score — Predictive Performance Scoring ────────────────────────────
@@ -1915,13 +1920,6 @@ app.post('/api/precog/batch', async (req, res) => {
     res.json({ success: true, scored: scored.length, items: scored });
   } catch (err) {
     res.status(500).json({ error: err.message });
-  }
-});
-
-
-  } catch(e) {
-    console.error('[EXTRACT-PATTERNS]', e.message);
-    res.status(500).json({ success: false, error: e.message });
   }
 });
 
