@@ -18,7 +18,7 @@
 - Ghost: Already working (Admin API key)
 - Medium: Legacy badge (API deprecated early 2025)
 - Facebook: Parked (OAuth bureaucracy not worth it today)
-- Super Admin role: Brian sees all 8 brands, purple shield dropdown in TopBar
+- Super Admin role: Brian sees all 8 brands, purple shield dropdown in TopBar (dev only)
 - User sync to HubSpot: Every Clerk login auto-upserts contact to Forge's HubSpot CRM
 
 ### April 4, 2026 — Production Launch + Auth Complete 🚀
@@ -37,7 +37,7 @@
 
 ### April 2, 2026 — Production Polish Sprint
 
-- Pipedream Connect OAuth (replaces all custom OAuth) — LinkedIn, Facebook, Reddit, HubSpot, Webflow
+- Pipedream Connect OAuth (replaces all custom OAuth) — LinkedIn, Facebook
 - Content Library (`/app/content-library`) — full searchable archive across all brands
 - Inline Article Editing — click-to-edit title, meta, sections in preview modal
 - External Review Workflow (`/review/[token]`) — VP approval without Forge account
