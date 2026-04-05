@@ -1,3 +1,4 @@
+import { useAuth } from '@clerk/clerk-react';
 import { useState, useEffect, useCallback } from 'react';
 import { AppShell } from '../layouts/AppShell';
 import './ContentLibraryPage.css';
@@ -46,6 +47,7 @@ const timeAgo = (date: string) => {
 };
 
 export default function ContentLibraryPage() {
+  const { getToken } = useAuth();
   const [brains, setBrains] = useState<Brain[]>([]);
   const [selectedBrand, setSelectedBrand] = useState('');
   const [items, setItems] = useState<LibraryItem[]>([]);
@@ -58,9 +60,14 @@ export default function ContentLibraryPage() {
   const LIMIT = 24;
 
   useEffect(() => {
-    fetch('/api/context-hub/brains').then(r => r.json()).then(d => {
-      if (d.success) setBrains(d.data || []);
-    });
+    (async () => {
+      const token = await getToken();
+      const res = await fetch('/api/context-hub/brains', {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+      const d = await res.json();
+      if (d.success) setBrains(d.data);
+    })();
   }, []);
 
   const load = useCallback(async (brandId: string, q: string, status: string, pg: number) => {
