@@ -7710,12 +7710,16 @@ app.get('/api/content-library', async (req, res) => {
 // DB table for citations
 // Created in initDB — added below to migration
 
-// GET /api/geo/debug/:brandProfileId — diagnostic, remove after debugging
+// GET /api/geo/debug/:brandProfileId — diagnostic endpoint, remove after debugging
 app.get('/api/geo/debug/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
   const out = { brandProfileId, env: {}, db: {}, apiTest: {} };
+
+  // Check env vars
   out.env.hasOpenAI = !!process.env.OPENAI_API_KEY;
   out.env.hasPerplexity = !!process.env.PERPLEXITY_API_KEY;
+
+  // Check geo_citations rows
   try {
     const r = await pool.query(
       'SELECT engine, query, is_cited, checked_at FROM geo_citations WHERE brand_profile_id = $1 ORDER BY checked_at DESC LIMIT 10',
@@ -7724,6 +7728,8 @@ app.get('/api/geo/debug/:brandProfileId', async (req, res) => {
     out.db.rowCount = r.rows.length;
     out.db.recentRows = r.rows;
   } catch(e) { out.db.error = e.message; }
+
+  // Check brand + articles
   try {
     const brandRes = await pool.query('SELECT id, brand_name, brand_url, article_base_url FROM brand_profiles WHERE id = $1', [brandProfileId]);
     out.brand = brandRes.rows[0] || null;
@@ -7733,24 +7739,28 @@ app.get('/api/geo/debug/:brandProfileId', async (req, res) => {
       out.db.recentArticles = artRes.rows;
     }
   } catch(e) { out.brand = { error: e.message }; }
+
+  // Test one OpenAI call
   if (process.env.OPENAI_API_KEY) {
     try {
       const controller = new AbortController();
-      setTimeout(() => controller.abort(), 15000);
+      setTimeout(() => controller.abort(), 12000);
       const oRes = await fetch('https://api.openai.com/v1/responses', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'gpt-4o-mini', tools: [{ type: 'web_search_preview' }], input: 'What is Forge Intelligence forgeintelligence.ai?' }),
+        body: JSON.stringify({ model: 'gpt-4o-mini', tools: [{ type: 'web_search_preview' }], input: 'What is Forge Intelligence?' }),
         signal: controller.signal
       });
       const oData = await oRes.json();
-      out.apiTest.openai = { status: oRes.status, keys: Object.keys(oData), error: oData.error || null, outputLength: oData.output?.length || 0 };
+      out.apiTest.openai = { status: oRes.status, hasOutput: !!oData.output, error: oData.error || null, rawKeys: Object.keys(oData) };
     } catch(e) { out.apiTest.openai = { error: e.message }; }
   }
+
+  // Test one Perplexity call
   if (process.env.PERPLEXITY_API_KEY) {
     try {
       const controller = new AbortController();
-      setTimeout(() => controller.abort(), 15000);
+      setTimeout(() => controller.abort(), 12000);
       const pRes = await fetch('https://api.perplexity.ai/chat/completions', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`, 'Content-Type': 'application/json' },
@@ -7761,6 +7771,7 @@ app.get('/api/geo/debug/:brandProfileId', async (req, res) => {
       out.apiTest.perplexity = { status: pRes.status, hasContent: !!pData.choices?.[0]?.message?.content, error: pData.error || null };
     } catch(e) { out.apiTest.perplexity = { error: e.message }; }
   }
+
   res.json(out);
 });
 
@@ -7846,6 +7857,39 @@ app.post('/api/geo/track/:brandProfileId', async (req, res) => {
                   input: question
                 })
               });
+              const oData = await oRes.json();
+              // Responses API: output is array of items
+              const outputText = oData.output?.find(o => o.type === 'message')?.content?.find(c => c.type === 'output_text')?.text || '';
+              const annotations = oData.output?.find(o => o.type === 'message')?.content?.find(c => c.type === 'output_text')?.annotations || [];
+              const urlCitations = annotations.filter(a => a.type === 'url_citation').map(a => a.url || '');
+              const isCited = urlCitations.some(u => u.includes(brandDomain)) || outputText.toLowerCase().includes(brandDomain.toLowerCase());
+              let citedSection = null;
+              if (isCited) {
+                for (const s of sections) {
+                  const body = (s.body || s.content || '').toLowerCase();
+                  if (outputText.toLowerCase().split(' ').filter(w => w.length > 6 && body.includes(w)).length > 3) { citedSection = s.heading; break; }
+                }
+              }
+              await pool.query(
+                `INSERT INTO geo_citations (brand_profile_id, content_id, engine, query, is_cited, cited_url, cited_section, response_snippet, raw_citations, checked_at)
+                 VALUES ($1,$2,'chatgpt',$3,$4,$5,$6,$7,$8,NOW())
+                 ON CONFLICT (brand_profile_id, content_id, engine, query)
+                 DO UPDATE SET is_cited=$4, cited_url=$5, cited_section=$6, response_snippet=$7, raw_citations=$8, checked_at=NOW()`,
+                [brandProfileId, article.id, question, isCited,
+                 urlCitations.find(u => u.includes(brandDomain)) || null,
+                 citedSection, outputText.slice(0, 300), JSON.stringify(urlCitations)]
+              ).catch(e => console.error('[GEO-DB]', e.message));
+            } catch(e) { console.error('[GEO-OPENAI]', e.message); }
+          }
+        }));
+      }));
+
+      console.log(`[GEO-TRACK] Complete for ${brandProfileId} — ${articlesRes.rows.length} articles checked`);
+    } catch(e) {
+      console.error('[GEO-TRACK] Background error:', e.message);
+    }
+  })();
+});
 
 // GET /api/geo/citations/:brandProfileId — get all citation results
 app.get('/api/geo/citations/:brandProfileId', async (req, res) => {
