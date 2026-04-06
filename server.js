@@ -7301,6 +7301,7 @@ app.delete('/api/reviewers/:id', async (req, res) => {
 // Every authenticated endpoint that takes a brandProfileId MUST call this.
 async function verifyBrandAccess(brandProfileId, userId) {
   if (!brandProfileId || !userId) return false;
+  if (SUPER_ADMIN_IDS.includes(userId)) return true;
   const r = await pool.query(
     'SELECT id FROM brand_profiles WHERE id = $1 AND clerk_user_id = $2',
     [brandProfileId, userId]
