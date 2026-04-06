@@ -110,10 +110,10 @@ function Sparkline({ data, key: _k }: { data: number[]; key?: string }) {
 
 
 export default function PerformanceDashboardPage() {
-  const { isPaid, brandLoading, activeBrand, isSuperAdmin } = useApp();
+  const { isPaid, brandLoading, activeBrand } = useApp();
   
   if (brandLoading) return null;
-  if (!isPaid && !isSuperAdmin) {
+  if (!isPaid) {
     return (
       <AppShell>
         <GateModal 
@@ -130,9 +130,7 @@ export default function PerformanceDashboardPage() {
   const handleBatchScore = async () => {
     if (!brandProfileId || batchScoring) return;
     setBatchScoring(true);
-    const token = localStorage.getItem('forge_clerk_token') || '';
     const headers: Record<string,string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
     try {
       const r = await fetch('/api/precog/batch', { method: 'POST', headers, body: JSON.stringify({ brandProfileId }) });
       const d = await r.json();
@@ -194,14 +192,11 @@ export default function PerformanceDashboardPage() {
     if (activeChannel === 'campaigns') loadCampaigns();
     if (activeChannel === 'predictions' && brandProfileId) {
       setPredictionsLoading(true);
-      const token = localStorage.getItem('forge_clerk_token') || '';
-      const headers: Record<string, string> = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-      // Fetch all scored content for this brand
-      fetch(`/api/precog/all/${brandProfileId}`, { headers })
+      // Fetch all scored content for this brand (auth injected by global fetch interceptor)
+      fetch(`/api/precog/all/${brandProfileId}`)
         .then(r => r.json())
         .then(d => { if (d.success) setPredictions(d.items || []); });
-      fetch(`/api/precog/accuracy/${brandProfileId}`, { headers })
+      fetch(`/api/precog/accuracy/${brandProfileId}`)
         .then(r => r.json())
         .then(d => { if (d.success) setAccuracy(d); })
         .catch(() => {})
