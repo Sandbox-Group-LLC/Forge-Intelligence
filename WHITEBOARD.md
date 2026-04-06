@@ -22,6 +22,14 @@
 ### Phase 1 — SMB ($99/mo) ✅ Complete
 All 8 stages live. Auth, PayPal gate, full pipeline end-to-end.
 
+**Publishing Queue — fully audited and fixed (April 5, 2026):**
+- Post copy now injects real UTM-tagged article URLs per channel (was hardcoded to forgeintelligence.ai, UTMs never applied)
+- Bitly shortening via Pro account — X and LinkedIn post copy use `bit.ly/...` URLs. `BITLY_ACCESS_TOKEN` in Render.
+- Smart Export UTM Link tab rebuilt — per-channel ready-to-copy links using stored templates, falls back to sensible defaults when template is null
+- UTM Preview modal killed — was showing fake `yoursite.com` URL, useless
+- Send for Review `🔗` emoji → Lucide SVG
+- Publishing icon row is now: Content Preview, Smart Export, Send for Review, Archive, Delete (5 actions, no confusion)
+
 ### Phase 2 — Pro ($299/mo) ✅ Complete
 - Pre-cog scoring engine (Haiku-powered, data-gated, `requireAuth`, no fake scores)
 - Pre-cog Predictions tab in Performance Dashboard
