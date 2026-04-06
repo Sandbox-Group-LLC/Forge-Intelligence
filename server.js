@@ -7182,7 +7182,6 @@ app.delete('/api/reviewers/:id', async (req, res) => {
 // ── Clerk Auth Middleware ─────────────────────────────────────────────────────
 
 // Verify Clerk JWT and attach userId to req
-async 
 // ── Brand ownership verification ─────────────────────────────────────────────
 // Every authenticated endpoint that takes a brandProfileId MUST call this.
 async function verifyBrandAccess(brandProfileId, userId) {
