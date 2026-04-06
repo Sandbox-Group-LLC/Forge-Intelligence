@@ -2,7 +2,15 @@ import { useState, useEffect } from 'react';
 import { AppShell } from '../layouts/AppShell';
 import { useApp } from '../context/AppContext';
 import './GeoStrategistPage.css';
+import GateModal from '../components/GateModal';
+import '../components/GateModal.css';
 
+interface BrainEntry {
+  id: string;
+  brandName: string;
+  brandUrl: string;
+  updatedAt: string;
+}
 
 interface GeoResult {
   opportunityScore: number;
@@ -32,8 +40,8 @@ const STAGES = [
 ];
 
 function GeoStrategistContent() {
-  const { setCurrentView, activeBrand } = useApp();
-
+  const { setCurrentView, historyEntries, activeBrand } = useApp();
+  const [selectedBrainId, setSelectedBrainId] = useState('');
   const [isRunning, setIsRunning] = useState(false);
   const [currentStage, setCurrentStage] = useState(0);
   const [completedStages, setCompletedStages] = useState<number[]>([]);
@@ -42,18 +50,35 @@ function GeoStrategistContent() {
   const [error, setError] = useState('');
   const [isRerun, setIsRerun] = useState(false);
 
-  // Sync with TopBar brain selection
-
-
   useEffect(() => {
     setCurrentView('geo-strategist');
-    // Brain selection now handled by TopBar
+    const params = new URLSearchParams(window.location.search);
+    const profileId = params.get('profileId');
+    if (profileId) {
+      setSelectedBrainId(profileId);
+    } else {
+      const id = activeBrand?.id || localStorage.getItem('forge_active_brand_id') || '';
+      if (id) setSelectedBrainId(id);
+    }
   }, []);
 
-  // Use activeBrand from context (selected via TopBar dropdown)
+  // Re-seed if activeBrand loads after mount
+  useEffect(() => {
+    if (activeBrand?.id && !selectedBrainId) setSelectedBrainId(activeBrand.id);
+  }, [activeBrand?.id]);
+
+  // Use historyEntries from AppContext (already loaded) as brain list
+  const brains: BrainEntry[] = historyEntries.map(e => ({
+    id: e.id,
+    brandName: e.brandName,
+    brandUrl: e.brandUrl,
+    updatedAt: e.timestamp
+  }));
+
+  const selectedBrain = brains.find(b => b.id === selectedBrainId);
 
   const runAnalysis = async () => {
-    if (!activeBrand?.id) return;
+    if (!selectedBrainId) return;
     const shouldForce = isRerun;
     setIsRunning(true);
     setResult(null);
@@ -65,7 +90,7 @@ function GeoStrategistContent() {
     const analyzePromise = fetch('/api/geo-strategist/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ brandProfileId: activeBrand?.id, force: shouldForce })
+      body: JSON.stringify({ brandProfileId: selectedBrainId, force: shouldForce })
     });
 
     const timings = [1500, 3000, 3500, 2500];
@@ -116,15 +141,18 @@ function GeoStrategistContent() {
       {!isRunning && !result && (
         <div className="geo-input-bar">
           <div className="geo-select-wrap">
-            <div className="geo-select" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              {activeBrand ? (
-                <><span style={{ color: '#10B981' }}>✓</span> {activeBrand.brandName}</>
-              ) : (
-                <span style={{ opacity: 0.5 }}>Select a brain from TopBar</span>
-              )}
-            </div>
+            <select
+              className="geo-select"
+              value={selectedBrainId}
+              onChange={e => setSelectedBrainId(e.target.value)}
+            >
+              <option value="">Select a Brand Profile...</option>
+              {brains.map(b => (
+                <option key={b.id} value={b.id}>{b.brandName} — {b.brandUrl}</option>
+              ))}
+            </select>
           </div>
-          <button className="geo-run-btn" onClick={runAnalysis} disabled={!activeBrand?.id}>
+          <button className="geo-run-btn" onClick={runAnalysis} disabled={!selectedBrainId}>
             {icons.zap} Run GEO Analysis
           </button>
         </div>
@@ -133,7 +161,7 @@ function GeoStrategistContent() {
       {/* ── Active run ── */}
       {isRunning && (
         <div className="geo-running">
-          <div className="geo-running-brand">{activeBrand?.brandName}</div>
+          <div className="geo-running-brand">{selectedBrain?.brandName}</div>
           <div className="geo-stages">
             {STAGES.map(s => {
               const done = completedStages.includes(s.id);
@@ -286,5 +314,21 @@ function ScoreCell({ score }: { score: number }) {
 }
 
 export default function GeoStrategistPage() {
+  const { isPaid , brandLoading } = useApp();
+  if (brandLoading) return null;
+  if (!isPaid) {
+    return (
+      <AppShell>
+        <div className="geo-gate-wrapper">
+          <GateModal
+            featureName="GEO Strategist"
+            onClose={() => window.location.href = '/app/context-hub'}
+            onUnlocked={() => {}}
+          />
+        </div>
+      </AppShell>
+    );
+  }
+
   return <AppShell><GeoStrategistContent /></AppShell>;
 }
