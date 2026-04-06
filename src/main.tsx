@@ -69,7 +69,63 @@ const _origFetch = window.fetch.bind(window);
 function AuthGate() {
   const { isLoaded, isSignedIn } = useAuth();
   if (!isLoaded) return null;
-  if (!isSignedIn) return <SignIn routing="hash" />;
+  if (!isSignedIn) return (
+    <div style={{
+      position: 'fixed', inset: 0,
+      backgroundColor: '#0F1720',
+      backgroundImage: 'radial-gradient(circle at top left, rgba(53,99,255,0.18), transparent 55%), radial-gradient(circle at bottom right, rgba(20,184,166,0.10), transparent 55%)',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      zIndex: 9999,
+    }}>
+      <div style={{ marginBottom: 28, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3563FF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        <span style={{ color: '#F8FAFC', fontSize: 18, fontWeight: 700, fontFamily: "Inter, system-ui, sans-serif", letterSpacing: '-0.3px' }}>Forge Intelligence</span>
+      </div>
+      <SignIn
+        routing="hash"
+        appearance={{
+          elements: {
+            rootBox: { width: 380 },
+            card: {
+              backgroundColor: '#1E293B',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: 12,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+              padding: '32px 32px 24px',
+            },
+            headerTitle: { color: '#F8FAFC', fontSize: 18, fontWeight: 700 },
+            headerSubtitle: { color: '#64748B' },
+            socialButtonsBlockButton: {
+              backgroundColor: '#0F1720',
+              border: '1px solid rgba(255,255,255,0.1)',
+              color: '#F8FAFC',
+              borderRadius: 8,
+            },
+            socialButtonsBlockButtonText: { color: '#F8FAFC' },
+            dividerLine: { backgroundColor: 'rgba(255,255,255,0.08)' },
+            dividerText: { color: '#64748B' },
+            formFieldLabel: { color: '#94A3B8', fontSize: 13 },
+            formFieldInput: {
+              backgroundColor: '#0F1720',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 8,
+              color: '#F8FAFC',
+            },
+            formButtonPrimary: {
+              backgroundColor: '#3563FF',
+              borderRadius: 8,
+              fontSize: 14,
+              fontWeight: 600,
+            },
+            footerActionText: { color: '#64748B' },
+            footerActionLink: { color: '#3563FF' },
+            identityPreviewText: { color: '#94A3B8' },
+            identityPreviewEditButton: { color: '#3563FF' },
+          },
+        }}
+      />
+    </div>
+  );
   return <Outlet />;
 }
 
