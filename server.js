@@ -7515,7 +7515,7 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
     res.json({
       success: true,
       userId: req.userId,
-      isSuperAdmin: false,
+      isSuperAdmin: isSuperAdmin,
       brand: result.rows[0] || null,
       allBrands: allUserBrands.rows.map(b => ({
         id: b.id,
@@ -7523,8 +7523,7 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
         brandUrl: b.brand_url,
         isPaid: b.is_paid || false,
       })),
-      // Founder accounts always paid (fallback if super admin check misses)
-      isPaid: result.rows[0]?.is_paid || req.userId === 'user_3BtC7nusm7CShN7EdUYaaLZcDwp',
+      isPaid: isSuperAdmin || result.rows[0]?.is_paid || false,
     });
   } catch(e) {
     res.status(500).json({ success: false, error: e.message });
