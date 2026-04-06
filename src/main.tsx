@@ -1,5 +1,5 @@
 import { StrictMode } from 'react';
-import { ClerkProvider, SignedIn, RedirectToSignIn, useAuth } from '@clerk/clerk-react';
+import { ClerkProvider, RedirectToSignIn, useAuth } from '@clerk/clerk-react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
