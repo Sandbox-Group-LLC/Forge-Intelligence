@@ -73,7 +73,6 @@ export function TopBar() {
   const { currentView, brandProfile, sidebarCollapsed, setSidebarCollapsed, isSuperAdmin, allBrands, switchBrand, activeBrandId } = useApp();
   const { user } = useUser();
   const { openUserProfile } = useClerk();
-  const { openUserProfile } = useClerk();
   const [menuOpen, setMenuOpen] = useState(false);
   const [brandMenuOpen, setBrandMenuOpen] = useState(false);
 
@@ -227,12 +226,7 @@ export function TopBar() {
               >
                 Manage Account
               </button>
-              <button 
-                style={{ width: '100%', padding: '10px 16px', background: 'none', border: 'none', color: 'rgba(255,255,255,0.8)', fontSize: '0.875rem', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}
-                onClick={() => { openUserProfile(); setMenuOpen(false); }}
-              >
-                Manage Account
-              </button>
+
               <SignOutButton redirectUrl="/">
                 <button style={{ width: '100%', padding: '10px 16px', background: 'none', border: 'none', color: '#F87171', fontSize: '0.875rem', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}
                   onClick={() => setMenuOpen(false)}
