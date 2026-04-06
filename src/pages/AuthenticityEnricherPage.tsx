@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { AppShell } from '../layouts/AppShell';
 import { useApp } from '../context/AppContext';
 import './GeoStrategistPage.css';
+import GateModal from '../components/GateModal';
+import '../components/GateModal.css';
 // Inline SVG icon components (no lucide-react dependency)
 const ShieldCheck = ({ size = 16, color = 'currentColor' }: { size?: number; color?: string }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -69,7 +71,6 @@ const X = ({ size = 16, color = 'currentColor' }: { size?: number; color?: strin
   </svg>
 );
 
-
 interface EEATScore { score: number; rationale: string; evidence: string[]; }
 interface Gap {
   dimension: string; gapType: string; severity: string;
@@ -111,9 +112,7 @@ const CONFIDENCE_COLORS = { green: '#14B8A6', yellow: '#F5B942', red: '#EF4444' 
 const EEAT_LABELS = ['experience', 'expertise', 'authoritativeness', 'trustworthiness'];
 
 function AuthenticityEnricherContent() {
-  const { activeBrand } = useApp();
-
-
+  const [selectedBrainId, setSelectedBrainId] = useState('');
   const [isRunning, setIsRunning] = useState(false);
   const [result, setResult] = useState<EnrichResult | null>(null);
   const [error, setError] = useState('');
@@ -124,16 +123,24 @@ function AuthenticityEnricherContent() {
   const [showManualForm, setShowManualForm] = useState(false);
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
 
-  const { setCurrentView } = useApp();
-
-  // Sync with TopBar brain selection
+  const { setCurrentView, historyEntries, activeBrand } = useApp();
 
   useEffect(() => {
     setCurrentView('authenticity-enricher');
+    const id = activeBrand?.id || localStorage.getItem('forge_active_brand_id') || '';
+    if (id) setSelectedBrainId(id);
   }, []);
 
+  // Re-seed if activeBrand loads after mount
+  useEffect(() => {
+    if (activeBrand?.id && !selectedBrainId) setSelectedBrainId(activeBrand.id);
+  }, [activeBrand?.id]);
+
+  // Use historyEntries from context as brain list
+  const brains = historyEntries.map(e => ({ id: e.id, brandName: e.brandName, brandUrl: e.brandUrl }));
+
   const runAnalysis = async (withManual = false, forceRefresh = false) => {
-    if (!activeBrand?.id) return;
+    if (!selectedBrainId) return;
     setIsRunning(true);
     setResult(null);
     setError('');
@@ -144,7 +151,7 @@ function AuthenticityEnricherContent() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        brandProfileId: activeBrand?.id,
+        brandProfileId: selectedBrainId,
         manualInputs: withManual ? manualInputs : {},
         force: withManual || forceRefresh
       })
@@ -212,11 +219,12 @@ function AuthenticityEnricherContent() {
       {/* Brain selector */}
       <div className="geo-input-bar">
         <div className="geo-select-wrap">
-        <div className="geo-select" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {activeBrand ? <><span style={{ color: '#10B981' }}>✓</span> {activeBrand.brandName}</> : <span style={{ opacity: 0.5 }}>Select brain from TopBar</span>}
+        <select className="geo-select" value={selectedBrainId} onChange={e => setSelectedBrainId(e.target.value)}>
+          <option value="">Select a Brain...</option>
+          {brains.map(b => <option key={b.id} value={b.id}>{b.brandName} — {b.brandUrl}</option>)}
+        </select>
         </div>
-        </div>
-        <button className="geo-run-btn" onClick={() => runAnalysis(false)} disabled={!activeBrand?.id || isRunning}>
+        <button className="geo-run-btn" onClick={() => runAnalysis(false)} disabled={!selectedBrainId || isRunning}>
           <ShieldCheck size={14} />{isRunning ? 'Enriching...' : result ? 'Run Again' : 'Run Enrichment'}
         </button>
         {result && !isRunning && (
@@ -543,5 +551,21 @@ function AuthenticityEnricherContent() {
 }
 
 export default function AuthenticityEnricherPage() {
+  const { isPaid , brandLoading } = useApp();
+  if (brandLoading) return null;
+  if (!isPaid) {
+    return (
+      <AppShell>
+        <div className="geo-gate-wrapper">
+          <GateModal
+            featureName="Authenticity Enricher"
+            onClose={() => window.location.href = '/app/context-hub'}
+            onUnlocked={() => {}}
+          />
+        </div>
+      </AppShell>
+    );
+  }
+
   return <AppShell><AuthenticityEnricherContent /></AppShell>;
 }
