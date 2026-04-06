@@ -7490,10 +7490,11 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
     }
 
     // Regular user flow
-    let result = await pool.query(
-      `SELECT * FROM brand_profiles WHERE clerk_user_id = $1 AND is_active = true ORDER BY updated_at DESC LIMIT 1`,
+    const allUserBrands = await pool.query(
+      `SELECT id, brand_url, brand_name, is_paid, updated_at FROM brand_profiles WHERE clerk_user_id = $1 AND is_active = true ORDER BY updated_at DESC`,
       [req.userId]
     );
+    let result = { rows: allUserBrands.rows.slice(0, 1) };
     // No tethered brand yet — fall back to most recent brand (pre-auth flow)
     if (!result.rows.length) {
       result = await pool.query(
@@ -7516,7 +7517,12 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
       userId: req.userId,
       isSuperAdmin: false,
       brand: result.rows[0] || null,
-      allBrands: null,
+      allBrands: allUserBrands.rows.map(b => ({
+        id: b.id,
+        brandName: b.brand_name || b.brand_url,
+        brandUrl: b.brand_url,
+        isPaid: b.is_paid || false,
+      })),
       // Founder accounts always paid (fallback if super admin check misses)
       isPaid: result.rows[0]?.is_paid || req.userId === 'user_3BtC7nusm7CShN7EdUYaaLZcDwp',
     });
