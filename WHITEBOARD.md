@@ -42,7 +42,7 @@ All 8 stages live. Auth, PayPal gate, full pipeline end-to-end.
 To be defined with Brian. Candidates:
 - HubSpot Track A (UTM → deal/campaign attribution)
 - Pre-cog accuracy tracking ✅ Done — `precog_outcomes` table, `updatePrecogOutcomes` runs after every analytics sync, accuracy banner + predicted vs actual in Predictions tab
-- Deeper pattern analysis (cross-article trends beyond Haiku extraction) 🔄 Active
+- Deeper pattern analysis ✅ Done — content structure correlation, pre-cog feedback loop, channel breakdown, monthly trends, topic momentum, pattern upsert with freshness tracking
 - LinkedIn impressions/clicks (⏳ blocked — MDP approval submitted and under review)
 
 ### Phase 4 — Scale Core (Year 2) 🔲 Not started
