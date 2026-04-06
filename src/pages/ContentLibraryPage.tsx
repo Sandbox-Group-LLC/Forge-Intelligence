@@ -48,8 +48,6 @@ const timeAgo = (date: string) => {
 
 export default function ContentLibraryPage() {
     const { isPaid, activeBrand, brandLoading } = useApp();
-  const activeBrandId = activeBrand?.id ?? '';
-
   if (brandLoading) return null;
   if (!isPaid) {
     return (
