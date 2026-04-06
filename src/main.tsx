@@ -1,5 +1,5 @@
 import { StrictMode } from 'react';
-import { ClerkProvider, RedirectToSignIn, useAuth } from '@clerk/clerk-react';
+import { ClerkProvider, SignIn, useAuth } from '@clerk/clerk-react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
@@ -69,7 +69,11 @@ const _origFetch = window.fetch.bind(window);
 function AuthGate() {
   const { isLoaded, isSignedIn } = useAuth();
   if (!isLoaded) return null;
-  if (!isSignedIn) return <RedirectToSignIn />;
+  if (!isSignedIn) return (
+    <div style={{ minHeight: '100vh', backgroundColor: '#0B0F1A', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <SignIn routing="hash" />
+    </div>
+  );
   return <Outlet />;
 }
 
