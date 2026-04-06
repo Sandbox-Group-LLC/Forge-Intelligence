@@ -209,7 +209,7 @@ const topNavItems: TopNavItem[] = [
 ];
 
 export function Sidebar() {
-  const { currentView, setCurrentView, sidebarCollapsed, setSidebarCollapsed, isProcessing, brandProfile, isPaid, activeBrand } = useApp();
+  const { currentView, setCurrentView, setAnalysisInput, analysisInput, sidebarCollapsed, setSidebarCollapsed, isProcessing, brandProfile, isPaid, brandLoading, activeBrand, refetchBrand } = useApp();
   const [gateFeature, setGateFeature] = useState<string | null>(null);
   const LOCKED_ROUTES = [
     '/app/geo-strategist', '/app/authenticity-enricher', '/app/content-generator',
@@ -217,8 +217,9 @@ export function Sidebar() {
     '/app/content-library', '/app/content-import', '/app/topic-queue',
     '/app/performance', '/app/integrations', '/app/admin',
   ];
+  // Never gate while auth is still resolving — brandProfileId would be undefined
   const handleGatedClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string, label: string) => {
-    if (!isPaid && LOCKED_ROUTES.includes(href)) {
+    if (!isPaid && !brandLoading && LOCKED_ROUTES.includes(href)) {
       e.preventDefault();
       setGateFeature(label);
     }
@@ -287,6 +288,11 @@ export function Sidebar() {
 
   const handleBrainItemClick = (id: ViewType, status: string) => {
     if (status === 'disabled') return;
+    // Pre-seed the URL field with the active brand URL so New Analysis always
+    // opens ready to re-scan their own brand, not blank/stale
+    if (id === 'new-analysis' && activeBrand?.brandUrl) {
+      setAnalysisInput({ ...analysisInput, brandUrl: activeBrand.brandUrl });
+    }
     const routeMap: Record<string, string> = {
       'new-analysis': '/app/context-hub',
       'active-run': '/app/context-hub?view=active-run',
@@ -309,8 +315,8 @@ export function Sidebar() {
         <GateModal
           featureName={gateFeature}
           onClose={() => setGateFeature(null)}
-          brandProfileId={activeBrand?.id || (brandProfile as any)?.id}
-          onUnlocked={() => { setGateFeature(null); window.location.reload(); }}
+          brandProfileId={activeBrand?.id || (brandProfile as any)?.id || localStorage.getItem('forge_active_brand_id') || undefined}
+          onUnlocked={() => { setGateFeature(null); refetchBrand(); }}
         />
       )}
       {/* Mobile backdrop */}
