@@ -27,9 +27,9 @@ function fmt(n: number) {
 
 export default function AdminPage() {
   const { getToken } = useAuth();
-  const { activeBrandId } = useApp();
+  const { activeBrand } = useApp();
   const [stats, setStats] = useState<Stats | null>(null);
-  const [selectedBrand, setSelectedBrand] = useState(activeBrandId || '');
+  const [selectedBrand, setSelectedBrand] = useState(activeBrand?.id || '');
   const [reviewers, setReviewers] = useState<Reviewer[]>([]);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -43,7 +43,7 @@ export default function AdminPage() {
         .then(r => r.json()).then(d => { if (d.success) setStats(d.stats); });
     });
     // Use activeBrand from context — already auth-scoped
-    if (activeBrandId) setSelectedBrand(activeBrandId);
+    if (activeBrand) setSelectedBrand(activeBrand.id);
   }, []);
 
   useEffect(() => {
@@ -77,9 +77,9 @@ export default function AdminPage() {
   return (
     <AppShell pageTitle="Admin">
       <div className="admin-page">
-        <div className="geo-header" style={{ marginBottom: 32 }}>
+        <div className="geo-header">
           <div>
-            <div className="geo-eyebrow">System</div>
+            <div className="geo-eyebrow">Settings</div>
             <h1 className="geo-title">Admin</h1>
             <p className="geo-description">Platform overview and reviewer management.</p>
           </div>
@@ -129,7 +129,7 @@ export default function AdminPage() {
               {saving ? 'Adding...' : '+ Add Reviewer'}
             </button>
           </div>
-          {error && <div className="geo-error" style={{ marginBottom: 16 }}>{error}</div>}
+          {error && <div className="geo-error bs-error-block">{error}</div>}
 
           {/* Reviewer list */}
           {reviewers.length === 0 ? (
