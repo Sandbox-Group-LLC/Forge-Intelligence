@@ -221,7 +221,7 @@ export default function PerformanceDashboardPage() {
         .then(d => { if (d.success) { setPatterns(d.patterns || []); setMistakes(d.mistakes || []); } })
         .catch(() => {});
     }
-  }, [activeChannel, loadCampaigns]);
+  }, [activeChannel, brandProfileId, loadCampaigns]);
 
   const loadDashboard = useCallback(async () => {
     if (!brandProfileId || activeChannel === 'campaigns') return;
