@@ -1,3 +1,4 @@
+import GateModal from '../components/GateModal';
 import { useApp } from '../context/AppContext';
 import { useState, useEffect, useCallback } from 'react';
 import { AppShell } from '../layouts/AppShell';
@@ -46,7 +47,21 @@ const timeAgo = (date: string) => {
 };
 
 export default function ContentLibraryPage() {
-    const { activeBrand } = useApp();
+    const { isPaid, activeBrand, brandLoading } = useApp();
+  const activeBrandId = activeBrand?.id ?? '';
+
+  if (brandLoading) return null;
+  if (!isPaid) {
+    return (
+      <AppShell>
+        <GateModal
+          featureName="Content Library"
+          onClose={() => window.location.href = '/app/context-hub'}
+          onUnlocked={() => {}}
+        />
+      </AppShell>
+    );
+  }
 
 
   const [items, setItems] = useState<LibraryItem[]>([]);
