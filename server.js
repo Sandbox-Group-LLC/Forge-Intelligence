@@ -8325,6 +8325,191 @@ app.post('/api/admin/relay', async (req, res) => {
   } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
+// ── Performance Digest ─────────────────────────────────────────────────────
+// Scheduled: POST /api/digest/send-all (EasyCron, admin key)
+// Or per-brand:               POST /api/digest/send/:brandProfileId (requireAuth)
+
+const sendDigestForBrand = async (brandProfileId) => {
+  const safeId = brandProfileId.replace(/-/g, '_');
+
+  // Load brand + check opt-out
+  const brandRes = await pool.query(
+    `SELECT * FROM brand_profiles WHERE id = $1`, [brandProfileId]
+  );
+  if (!brandRes.rows.length) return { skipped: 'brand_not_found' };
+  const brand = brandRes.rows[0];
+  if (brand.digest_unsubscribed) return { skipped: 'unsubscribed' };
+  if (!brand.is_paid) return { skipped: 'not_paid' };
+  if (!brand.clerk_user_id) return { skipped: 'no_clerk_user' };
+
+  // Get user email from Clerk
+  const clerkRes = await fetch(`https://api.clerk.com/v1/users/${brand.clerk_user_id}`, {
+    headers: { 'Authorization': `Bearer ${process.env.CLERK_SECRET_KEY}` }
+  });
+  if (!clerkRes.ok) return { skipped: 'clerk_fetch_failed' };
+  const clerkUser = await clerkRes.json();
+  const email = clerkUser.email_addresses?.[0]?.email_address;
+  if (!email) return { skipped: 'no_email' };
+
+  const RESEND_API_KEY = process.env.RESEND_API_KEY;
+  if (!RESEND_API_KEY) return { skipped: 'resend_not_configured' };
+
+  const brandName = brand.brand_name || brand.brand_url || 'Your Brand';
+  const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  // ── Gather digest data ──────────────────────────────────────────────────────
+
+  // 1. Brain activity this week
+  const patternsAdded = await pool.query(
+    `SELECT COUNT(*) FROM brain_patterns WHERE brand_profile_id = $1 AND created_at > $2`,
+    [brandProfileId, oneWeekAgo]
+  ).catch(() => ({ rows: [{ count: 0 }] }));
+  const mistakesLogged = await pool.query(
+    `SELECT COUNT(*) FROM brain_mistakes WHERE brand_profile_id = $1 AND created_at > $2`,
+    [brandProfileId, oneWeekAgo]
+  ).catch(() => ({ rows: [{ count: 0 }] }));
+  const newPatterns = parseInt(patternsAdded.rows[0].count) || 0;
+  const newMistakes = parseInt(mistakesLogged.rows[0].count) || 0;
+
+  // 2. Top performer this week
+  const topPerformer = await pool.query(
+    `SELECT ca.content_id, pq.title, ca.impressions, ca.clicks, ca.engagement_rate, ca.channel
+     FROM content_analytics ca
+     LEFT JOIN publishing_queue pq ON pq.content_id = ca.content_id
+     WHERE ca.brand_profile_id = $1 AND ca.synced_at > $2 AND ca.impressions > 0
+     ORDER BY ca.impressions DESC LIMIT 1`,
+    [brandProfileId, oneWeekAgo]
+  ).catch(() => ({ rows: [] }));
+  const top = topPerformer.rows[0] || null;
+
+  // 3. Decay alerts this week
+  const decayAlerts = await pool.query(
+    `SELECT COUNT(*) FROM decay_alerts WHERE brand_profile_id = $1 AND status = 'active' AND detected_at > $2`,
+    [brandProfileId, oneWeekAgo]
+  ).catch(() => ({ rows: [{ count: 0 }] }));
+  const decayCount = parseInt(decayAlerts.rows[0].count) || 0;
+
+  // 4. Pipeline CTA — what should they do next?
+  const stagedCount = await pool.query(
+    `SELECT COUNT(*) FROM publishing_queue WHERE brand_profile_id = $1 AND status = 'staged'`,
+    [brandProfileId]
+  ).catch(() => ({ rows: [{ count: 0 }] }));
+  const staged = parseInt(stagedCount.rows[0].count) || 0;
+
+  // Total articles ever generated — useful for new users
+  const totalContent = await pool.query(
+    `SELECT COUNT(*) FROM generated_content_${safeId}`
+  ).catch(() => ({ rows: [{ count: 0 }] }));
+  const totalArticles = parseInt(totalContent.rows[0].count) || 0;
+
+  // Brand age — always send in first 30 days regardless of activity
+  const brandAge = (Date.now() - new Date(brand.created_at).getTime()) / (1000 * 60 * 60 * 24);
+  const isNewBrand = brandAge <= 30;
+
+  // Skip only if truly nothing to say AND not a new brand
+  const hasActivity = newPatterns > 0 || newMistakes > 0 || top || decayCount > 0 || staged > 0 || totalArticles > 0;
+  if (!hasActivity && !isNewBrand) {
+    return { skipped: 'nothing_to_report' };
+  }
+
+  // Ensure unsubscribe token exists
+  if (!brand.digest_unsubscribe_token) {
+    const token = randomBytes(24).toString('hex');
+    await pool.query(`UPDATE brand_profiles SET digest_unsubscribe_token = $1 WHERE id = $2`, [token, brandProfileId]);
+    brand.digest_unsubscribe_token = token;
+  }
+
+  const baseDomain = process.env.BASE_DOMAIN ? `https://${process.env.BASE_DOMAIN}` : 'https://forgeintelligence.ai';
+  const unsubUrl = `${baseDomain}/api/digest/unsubscribe/${brand.digest_unsubscribe_token}`;
+  const appUrl = `${baseDomain}/app`;
+
+  // ── Build email HTML ────────────────────────────────────────────────────────
+  const fmt = (n) => n >= 1000 ? `${(n/1000).toFixed(1)}K` : String(n);
+
+  const brainSection = (newPatterns > 0 || newMistakes > 0) ? `
+    <div style="background:#1E293B;border-radius:10px;padding:20px 24px;margin-bottom:20px;border-left:3px solid #3563FF;">
+      <p style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#64748B;margin:0 0 12px;">Brain Activity This Week</p>
+      <table cellpadding="0" cellspacing="0" border="0"><tr>
+        ${newPatterns > 0 ? `<td style="padding-right:32px;vertical-align:top;"><span style="font-size:28px;font-weight:700;color:#3563FF;letter-spacing:-0.02em;display:block;">${newPatterns}</span><span style="font-size:12px;color:#94A3B8;display:block;margin-top:2px;">new pattern${newPatterns !== 1 ? 's' : ''} learned</span></td>` : ''}
+        ${newMistakes > 0 ? `<td style="vertical-align:top;"><span style="font-size:28px;font-weight:700;color:#F59E0B;letter-spacing:-0.02em;display:block;">${newMistakes}</span><span style="font-size:12px;color:#94A3B8;display:block;margin-top:2px;">mistake${newMistakes !== 1 ? 's' : ''} logged</span></td>` : ''}
+      </tr></table>
+    </div>` : '';
+
+  const topSection = top ? `
+    <div style="background:#1E293B;border-radius:10px;padding:20px 24px;margin-bottom:20px;border-left:3px solid #22C55E;">
+      <p style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#64748B;margin:0 0 12px;">Top Performer</p>
+      <p style="font-size:14px;font-weight:600;color:#F8FAFC;margin:0 0 8px;">${top.title || 'Untitled'}</p>
+      <p style="font-size:12px;color:#94A3B8;margin:6px 0 0;line-height:1.6;">
+        ${[top.impressions ? `${fmt(top.impressions)} impressions` : '', top.clicks ? `${fmt(top.clicks)} clicks` : '', top.engagement_rate ? `${parseFloat(top.engagement_rate).toFixed(1)}% engagement` : ''].filter(Boolean).join(' &nbsp;&middot;&nbsp; ')}
+      </p>
+    </div>` : '';
+
+  const decaySection = decayCount > 0 ? `
+    <div style="background:#1E293B;border-radius:10px;padding:20px 24px;margin-bottom:20px;border-left:3px solid #EF4444;">
+      <p style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#64748B;margin:0 0 8px;">Decay Alerts</p>
+      <p style="font-size:14px;color:#F8FAFC;margin:0;">${decayCount} article${decayCount !== 1 ? 's' : ''} dropped 50%+ in engagement — <a href="${appUrl}/performance" style="color:#3563FF;text-decoration:none;">review in Performance →</a></p>
+    </div>` : '';
+
+  let ctaText, ctaHref, ctaLabel;
+  if (staged > 0) {
+    ctaText = `You have ${staged} article${staged !== 1 ? 's' : ''} staged and ready for review.`;
+    ctaHref = `${appUrl}/compliance-gate`;
+    ctaLabel = `Review in Compliance Gate →`;
+  } else if (totalArticles === 0) {
+    ctaText = `Your Brain is ready. Run your first content generation to see it in action.`;
+    ctaHref = `${appUrl}/content-generator`;
+    ctaLabel = `Generate your first article →`;
+  } else if (!top) {
+    ctaText = `Sync your analytics after publishing to keep your Brain learning.`;
+    ctaHref = `${appUrl}/performance`;
+    ctaLabel = `Open Performance Dashboard →`;
+  } else {
+    ctaText = `Keep the loop going — publish, sync, and let your Brain compound.`;
+    ctaHref = `${appUrl}/performance`;
+    ctaLabel = `Open Performance Dashboard →`;
+  }
+
+  const html = `
+    <div style="font-family:Inter,system-ui,sans-serif;max-width:600px;margin:0 auto;padding:40px 24px;background:#0F172A;color:#F8FAFC;border-radius:12px;">
+      <div style="margin-bottom:28px;">
+        <img src="https://forgeintelligence.ai/forge-logo-white.png" alt="Forge Intelligence" style="height:28px;width:auto;" />
+      </div>
+      <h1 style="font-size:22px;font-weight:700;margin:0 0 6px;color:#F8FAFC;letter-spacing:-0.02em;">Your Brain — Weekly Report</h1>
+      <p style="color:#64748B;font-size:13px;margin:0 0 28px;">${brandName} · Week ending ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+
+      ${brainSection}
+      ${topSection}
+      ${decaySection}
+
+      <div style="background:#1E293B;border-radius:10px;padding:20px 24px;margin-bottom:28px;">
+        <p style="font-size:13px;color:#94A3B8;margin:0 0 14px;">${ctaText}</p>
+        <a href="${ctaHref}" style="display:inline-block;background:#3563FF;color:#fff;padding:10px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;">${ctaLabel}</a>
+      </div>
+
+      <p style="color:#334155;font-size:11px;margin:0;line-height:1.6;">
+        You're receiving this because you have an active Forge Intelligence subscription. &nbsp;
+        <a href="${unsubUrl}" style="color:#475569;text-decoration:underline;">Unsubscribe from weekly digest</a>
+      </p>
+    </div>
+  `;
+
+  const emailRes = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: 'Forge Intelligence <hello@forgeintelligence.ai>',
+      to: email,
+      subject: `Your Forge Brain — Weekly Intelligence Report`,
+      html
+    })
+  });
+  const emailData = await emailRes.json();
+  if (!emailRes.ok) throw new Error(`Resend error: ${JSON.stringify(emailData)}`);
+
+  console.log(`[DIGEST] Sent to ${email} for brand ${brandProfileId}`);
+  return { sent: true, email };
+}
+
 app.post('/api/digest/send/:brandProfileId', requireAuth, async (req, res) => {
   try {
     const result = await sendDigestForBrand(req.params.brandProfileId);
