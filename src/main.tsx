@@ -22,6 +22,7 @@ import ContentImportPage from './pages/ContentImportPage';
 import AdminPage from './pages/AdminPage';
 import TopicQueuePage from './pages/TopicQueuePage';
 import ReviewPage from './pages/ReviewPage';
+import PrivacyPage from './pages/PrivacyPage';
 import { RequirePaid } from './components/RequirePaid';
 import './index.css';
 
@@ -70,6 +71,7 @@ createRoot(document.getElementById('root')!).render(
       <Routes>
         {/* Marketing site */}
         <Route path="/" element={<Landing />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/product" element={<Product />} />
 
         {/* App — all product routes live under /app/ */}
