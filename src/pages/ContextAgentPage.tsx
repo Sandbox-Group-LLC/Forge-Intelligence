@@ -9,18 +9,8 @@ import { BrainHistory } from '../components/views/BrainHistory';
 import { initialProcessingStages } from '../data/mockData';
 import { ProcessingStage } from '../types';
 
-// Session ID for trial brain persistence
-function getSessionId(): string {
-  let sessionId = localStorage.getItem('forge_session_id');
-  if (!sessionId) {
-    sessionId = crypto.randomUUID();
-    localStorage.setItem('forge_session_id', sessionId);
-  }
-  return sessionId;
-}
-
 function ContextAgentPage() {
-  const { currentView, setCurrentView, setIsProcessing, setProcessingStages, setBrandProfile, setAnalysisInput } = useApp();
+  const { currentView, setCurrentView, setIsProcessing, setProcessingStages, setBrandProfile, setAnalysisInput, activeBrand } = useApp();
   const firedRef = useRef(false);
 
   useEffect(() => {
@@ -30,14 +20,12 @@ function ContextAgentPage() {
     firedRef.current = true;
     sessionStorage.removeItem('forge_onboard_url');
 
-    // Switch to active run and reset stages
     setCurrentView('active-run');
     setIsProcessing(true);
-    setAnalysisInput({ brandUrl: onboardUrl, competitorUrls: [], audienceNotes: '', strategicNotes: '', checkBrainFirst: false, saveToBrain: true });
-    // Drive stage animations while Claude works
-    const stageTimings = [8000, 10000, 12000, 10000, 8000]; // ~48s to match real analysis
-    let cancelled = false;
+    setAnalysisInput({ brandUrl: onboardUrl, competitorUrls: [], audienceNotes: '', strategicNotes: '', checkBrainFirst: true, saveToBrain: true });
 
+    const stageTimings = [8000, 10000, 12000, 10000, 8000];
+    let cancelled = false;
     let stages: ProcessingStage[] = initialProcessingStages.map(s => ({ ...s, status: 'pending' as const }));
 
     const driveStages = async () => {
@@ -58,17 +46,16 @@ function ContextAgentPage() {
 
     driveStages();
 
-    // Fire analysis — when done, cancel stage loop and show brand profile
+    // Domain is the session key — no session ID needed
     fetch('/api/context-hub/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         brandUrl: onboardUrl,
-        sessionId: getSessionId(),
         competitorUrls: [],
         audienceNotes: '',
         strategicNotes: '',
-        checkBrainFirst: false,
+        checkBrainFirst: true,
         saveToBrain: true,
       }),
     })
@@ -76,9 +63,20 @@ function ContextAgentPage() {
       .then(d => {
         cancelled = true;
         if (d.success && d.data) {
-          // Mark all stages complete
           setProcessingStages(initialProcessingStages.map(s => ({ ...s, status: 'complete' as const })));
           setBrandProfile(d.data);
+
+          // Store brand in localStorage — domain IS the key, no session ID needed
+          // Returning users just type their domain again to resume within 24hrs
+          const activeBrand = {
+            id: d.data.id,
+            brandUrl: d.data.brandUrl,
+            brandName: d.data.brandName,
+            expiresAt: d.data.expiresAt || null,
+            isPaid: d.data.isPaid || false,
+          };
+          localStorage.setItem('forge_active_brand', JSON.stringify(activeBrand));
+          localStorage.setItem('forge_active_brand_id', d.data.id);
         }
         setIsProcessing(false);
         setCurrentView('brand-profile');
@@ -88,6 +86,17 @@ function ContextAgentPage() {
         setIsProcessing(false);
       });
   }, []);
+
+  // Seed URL from active brand when landing on new-analysis with no pending onboard URL
+  // This covers the full-page-reload path (window.location.href navigation)
+  useEffect(() => {
+    if (currentView !== 'new-analysis') return;
+    const onboardUrl = sessionStorage.getItem('forge_onboard_url');
+    if (onboardUrl) return; // landing page flow takes precedence
+    if (activeBrand?.brandUrl) {
+      setAnalysisInput({ brandUrl: activeBrand.brandUrl || '', competitorUrls: [], audienceNotes: '', strategicNotes: '', checkBrainFirst: true, saveToBrain: true });
+    }
+  }, [currentView, activeBrand?.brandUrl]);
 
   const renderView = () => {
     switch (currentView) {
