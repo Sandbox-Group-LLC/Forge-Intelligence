@@ -20,8 +20,6 @@ interface RequirePaidProps {
 export function RequirePaid({ children, featureName = 'Premium Features' }: RequirePaidProps) {
   const { isAuthLoading, hasAccess, brandProfile } = useApp();
   const { userId } = useAuth();
-  // Dev super admin — always through
-  if (userId === 'user_3BtC7nusm7CShN7EdUYaaLZcDwp') return <>{children}</>;
   const location = useLocation();
   const [showGate, setShowGate] = useState(false);
 
@@ -31,15 +29,14 @@ export function RequirePaid({ children, featureName = 'Premium Features' }: Requ
     }
   }, [isAuthLoading, hasAccess]);
 
+  // Dev super admin — always through
+  if (userId === 'user_3BtC7nusm7CShN7EdUYaaLZcDwp') return <>{children}</>;
+
   // Still loading - show nothing
-  if (isAuthLoading) {
-    return null;
-  }
+  if (isAuthLoading) return null;
 
   // Has access - render children
-  if (hasAccess) {
-    return <>{children}</>;
-  }
+  if (hasAccess) return <>{children}</>;
 
   // No access - gate modal
   return (
