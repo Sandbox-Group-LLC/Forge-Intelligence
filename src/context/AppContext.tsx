@@ -22,13 +22,15 @@ interface AppContextType {
   activeBrand: BrandMini | null;
   allBrands: BrandMini[] | null;
   switchBrand: (brandId: string) => void;
-  
+
   // Legacy compatibility (maps to new state)
   isPaid: boolean;
+  brandLoading: boolean; // alias for isAuthLoading — keeps Sidebar/GateModal compat
   activeBrandId: string | null;
+  refetchBrand: () => void; // alias for loadAuth() — keeps Sidebar/GateModal compat
   brandProfile: BrandProfile | null;
   setBrandProfile: (profile: BrandProfile | null) => void;
-  
+
   // App state
   currentView: ViewType;
   setCurrentView: (view: ViewType) => void;
@@ -80,7 +82,6 @@ async function fetchBrains(token?: string | null): Promise<HistoryEntry[]> {
     'X-Session-ID': getSessionId()
   };
   if (token) headers['Authorization'] = `Bearer ${token}`;
-  
   const res = await fetch('/api/context-hub/brains', { headers });
   const data = await res.json();
   return (data.data || []).map(mapBrainToHistoryEntry);
@@ -92,17 +93,29 @@ async function fetchBrains(token?: string | null): Promise<HistoryEntry[]> {
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const { isLoaded, isSignedIn, getToken } = useAuth();
-  
+
   // Auth state
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [activeBrand, setActiveBrand] = useState<BrandMini | null>(null);
   const [allBrands, setAllBrands] = useState<BrandMini[] | null>(null);
-  
+
   // App state
   const [brandProfile, setBrandProfile] = useState<BrandProfile | null>(null);
-  const [currentView, setCurrentView] = useState<ViewType>('active-run');
-  const [analysisInput, setAnalysisInput] = useState<AnalysisInput>(sampleAnalysisInput);
+  const [currentView, setCurrentView] = useState<ViewType>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const viewParam = params.get('view');
+    const valid: ViewType[] = ['new-analysis', 'active-run', 'brand-profile', 'strategy', 'brain-history', 'content-generator', 'campaign-generator'];
+    return (valid.includes(viewParam as ViewType) ? viewParam : 'new-analysis') as ViewType;
+  });
+  const [analysisInput, setAnalysisInput] = useState<AnalysisInput>({
+    brandUrl: '',
+    competitorUrls: [],
+    audienceNotes: '',
+    strategicNotes: '',
+    checkBrainFirst: true,
+    saveToBrain: true,
+  });
   const [processingStages, setProcessingStages] = useState<ProcessingStage[]>(initialProcessingStages);
   const [isProcessing, setIsProcessing] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
@@ -111,50 +124,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return stored === 'true';
   });
 
+  // God mode — ?god=ForgeCanvas persists in localStorage; ?ungod clears it
+  const godMode = (() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('god') === 'ForgeCanvas') { localStorage.setItem('forge_god_mode', 'true'); return true; }
+    if (params.has('ungod')) { localStorage.removeItem('forge_god_mode'); return false; }
+    return localStorage.getItem('forge_god_mode') === 'true';
+  })();
+
   // ─────────────────────────────────────────────────────────────────────────
   // SINGLE AUTH LOAD - THE ONLY PLACE WE CALL /api/auth/me
   // ─────────────────────────────────────────────────────────────────────────
-  
+
   const loadAuth = useCallback(async (selectedBrandId?: string) => {
     setIsAuthLoading(true);
-    
     try {
       if (!isSignedIn) {
-        // Not signed in - reset to defaults
         setIsSuperAdmin(false);
         setActiveBrand(null);
         setAllBrands(null);
-        
-        // Still fetch brains for session-based trial users
         const brains = await fetchBrains();
         setHistoryEntries(brains);
         setIsAuthLoading(false);
         return;
       }
-      
-      // Signed in - get auth state from server
+
       const token = await getToken();
       const savedBrandId = localStorage.getItem(ACTIVE_BRAND_KEY) || '';
       const brandIdToUse = selectedBrandId || savedBrandId || '';
-      
-      const url = brandIdToUse 
+
+      const url = brandIdToUse
         ? `/api/auth/me?brand_id=${encodeURIComponent(brandIdToUse)}`
         : '/api/auth/me';
-      
+
       const res = await fetch(url, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
-      
+
       if (data.success) {
         setIsSuperAdmin(data.isSuperAdmin || false);
-        
-        // Set brands
+
         if (data.allBrands) {
           setAllBrands(data.allBrands);
         }
-        
-        // Set active brand
+
         if (data.brand) {
           const brand: BrandMini = {
             id: data.brand.id,
@@ -165,8 +179,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setActiveBrand(brand);
           localStorage.setItem(ACTIVE_BRAND_KEY, brand.id);
         }
-        
-        // Fetch brains
+
         const brains = await fetchBrains(token);
         setHistoryEntries(brains);
       }
@@ -184,10 +197,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [isLoaded, loadAuth]);
 
+  // Keep window.__forgeToken fresh — Clerk tokens expire ~60s, refresh every 55s
+  useEffect(() => {
+    if (!isSignedIn) return;
+    const refresh = async () => {
+      const t = await getToken();
+      if (t) (window as any).__forgeToken = t;
+    };
+    refresh();
+    const interval = setInterval(refresh, 55_000);
+    return () => clearInterval(interval);
+  }, [isSignedIn, getToken]);
+
+  // Sidebar collapse persistence
+  useEffect(() => {
+    localStorage.setItem('forge_sidebar_collapsed', String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
+
   // ─────────────────────────────────────────────────────────────────────────
   // SWITCH BRAND - calls loadAuth with new brand ID
   // ─────────────────────────────────────────────────────────────────────────
-  
+
   const switchBrand = useCallback((brandId: string) => {
     localStorage.setItem(ACTIVE_BRAND_KEY, brandId);
     loadAuth(brandId);
@@ -196,32 +226,88 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ─────────────────────────────────────────────────────────────────────────
   // DERIVED STATE
   // ─────────────────────────────────────────────────────────────────────────
-  
+
   // Super admins ALWAYS have access. Regular users need isPaid on their brand.
-  const hasAccess = isSuperAdmin || (activeBrand?.isPaid ?? false);
-  
+  const hasAccess = godMode || isSuperAdmin || (activeBrand?.isPaid ?? false);
+
   // Legacy compatibility
   const isPaid = hasAccess;
   const activeBrandId = activeBrand?.id ?? null;
-
-  // Sidebar collapse persistence
-  useEffect(() => {
-    localStorage.setItem('forge_sidebar_collapsed', String(sidebarCollapsed));
-  }, [sidebarCollapsed]);
+  const brandLoading = isAuthLoading;
+  const refetchBrand = useCallback(() => loadAuth(), [loadAuth]);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // LEGACY FUNCTIONS
+  // START ANALYSIS — full pipeline (mirrors production)
   // ─────────────────────────────────────────────────────────────────────────
-  
-  const startAnalysis = () => {
-    setProcessingStages(initialProcessingStages);
-    setCurrentView('active-run');
+
+  const startAnalysis = async () => {
+    const effectiveUrl = analysisInput.brandUrl;
     setIsProcessing(true);
+    setCurrentView('active-run');
+    const stages = initialProcessingStages.map(s => ({ ...s, status: 'pending' as const }));
+    setProcessingStages(stages);
+
+    const analyzePromise = fetch('/api/context-hub/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        brandUrl: effectiveUrl,
+        sessionId: getSessionId(),
+        brandName: (() => {
+          const domain = effectiveUrl.replace(/https?:\/\//, '').replace(/^www\./, '').split('/')[0].split('.')[0];
+          return domain.charAt(0).toUpperCase() + domain.slice(1);
+        })(),
+        competitorUrls: analysisInput.competitorUrls,
+        audienceNotes: analysisInput.audienceNotes,
+        strategicNotes: analysisInput.strategicNotes,
+        checkBrainFirst: analysisInput.checkBrainFirst,
+        saveToBrain: analysisInput.saveToBrain,
+      }),
+    });
+
+    const stageTimings = [2000, 3000, 4000, 3000];
+    for (let i = 0; i < stageTimings.length; i++) {
+      setProcessingStages(prev => prev.map((s, idx) =>
+        idx === i ? { ...s, status: 'running' as const, startTime: Date.now() } : s
+      ));
+      await new Promise(r => setTimeout(r, stageTimings[i]));
+      setProcessingStages(prev => prev.map((s, idx) =>
+        idx === i ? { ...s, status: 'complete' as const, endTime: Date.now() } : s
+      ));
+    }
+
+    setProcessingStages(prev => prev.map((s, idx) =>
+      idx === stages.length - 1 ? { ...s, status: 'running' as const, startTime: Date.now() } : s
+    ));
+
+    try {
+      const res = await analyzePromise;
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+
+      setProcessingStages(prev => prev.map(s => ({ ...s, status: 'complete' as const, endTime: Date.now() })));
+      setBrandProfile(data.data as BrandProfile);
+
+      // Persist brand ID across route changes so GateModal always has it
+      const scannedId = (data.data as any)?.id || (data.data as any)?.brandProfileId;
+      if (scannedId) localStorage.setItem(ACTIVE_BRAND_KEY, scannedId);
+
+      const token = isSignedIn ? await getToken() : null;
+      fetchBrains(token).then(setHistoryEntries).catch(() => {});
+
+      setIsProcessing(false);
+      setCurrentView('brand-profile');
+    } catch (err) {
+      setProcessingStages(prev => prev.map((s, idx) =>
+        idx === stages.length - 1
+          ? { ...s, status: 'error' as const, message: err instanceof Error ? err.message : 'Analysis failed' }
+          : s
+      ));
+      setIsProcessing(false);
+    }
   };
 
-  const loadSampleData = () => {
-    setAnalysisInput(sampleAnalysisInput);
-  };
+  const loadSampleData = () => setAnalysisInput(sampleAnalysisInput);
 
   // ─────────────────────────────────────────────────────────────────────────
   // CONTEXT VALUE
@@ -235,13 +321,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     activeBrand,
     allBrands,
     switchBrand,
-    
+
     // Legacy compatibility
     isPaid,
+    brandLoading,
     activeBrandId,
+    refetchBrand,
     brandProfile,
     setBrandProfile,
-    
+
     // App state
     currentView,
     setCurrentView,
