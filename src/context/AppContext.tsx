@@ -12,6 +12,7 @@ interface BrandMini {
   brandName: string;
   brandUrl: string;
   isPaid: boolean;
+  updatedAt?: string;
 }
 
 interface AppContextType {
