@@ -459,6 +459,47 @@ Daily/Weekly: Performance digest → compile + Resend
 
 ---
 
+
+## Security Architecture — Multi-Tenant Data Isolation
+
+**Status: Hardened April 5, 2026**
+
+### The Problem (discovered April 5, 2026)
+A test account (different `clerk_user_id`) had created a "Forge Intelligence" brand profile and run Pattern Extraction against it. That orphaned brand's `brain_patterns` and `brain_mistakes` were leaking into Brian's Performance Dashboard because the brand URL matched and application-layer checks were missing on the patterns endpoints. 83 routes had no `requireAuth`. 0 routes verified brand ownership.
+
+### Three-Layer Defense Now In Place
+
+**Layer 1 — Authentication (`requireAuth` middleware)**
+Every route that serves or modifies brand data now requires a valid Clerk JWT. 55 previously unauthenticated routes locked down, including:
+- All analytics endpoints (sync, dashboard, patterns, decay)
+- Publishing queue (read, write, archive, delete, publish)
+- Publishing channels (read, write — contains API credentials)
+- Brand settings (read and write)
+- Compliance Gate endpoints
+- Content library, topic ideas, reviewers
+- GEO strategist, authenticity enricher, campaign generator
+
+**Layer 2 — Ownership verification (`verifyBrandAccess`)**
+After authentication, every endpoint that takes a `brandProfileId` verifies the authenticated user OWNS that brand via `SELECT id FROM brand_profiles WHERE id = $1 AND clerk_user_id = $2`. A valid JWT is not enough — you must own the brand you're querying. Returns 403 if not.
+
+**Layer 3 — Neon Row Level Security**
+RLS enabled with `FORCE ROW LEVEL SECURITY` on all sensitive tables:
+`publishing_queue`, `publishing_channels`, `content_analytics`, `brain_patterns`, `brain_mistakes`, `geo_briefs`, `geo_citations`, `decay_alerts`, `precog_outcomes`, `topic_ideas`, `reviewers`, `memories`, `publish_log`
+
+Policy: `no_orphan_brands` — enforces that `brand_profile_id` must belong to a brand with a non-null `clerk_user_id`. Even if application code has a bug, the DB will not serve data for orphaned brands.
+
+**Boot-time orphan purge**
+On every server boot, `brain_patterns` and `brain_mistakes` rows belonging to brands with no `clerk_user_id` are automatically deleted.
+
+### Remaining Phase 2 Security Work
+- Full user-level RLS (requires transaction wrapper around pool queries to set `SET LOCAL app.current_user_id`)
+- Audit `generated_content_*` dynamic tables (per-brand tables, access controlled by safeId derivation but no RLS)
+- Formal penetration test before Agency tier launch
+- `forge_brain_{client_id}` Neon project — confirm nothing writes to it and decommission
+
+### Architecture Note
+Multi-tenant shared tables with `brand_profile_id` scoping is standard SaaS architecture and SOC2-compliant when all three layers are in place. The shared table pattern is NOT the problem. Orphaned brands and missing auth were.
+
 ## Architecture Rules — Do Not Break
 
 - **Never** use Render env vars `PUT` API — replaces ALL vars. Individual updates only.
