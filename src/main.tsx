@@ -70,7 +70,7 @@ function AuthGate() {
   const { isLoaded, isSignedIn } = useAuth();
   if (!isLoaded) return null;
   if (!isSignedIn) return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#0B0F1A', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: '#0B0F1A', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: '80px', paddingBottom: '80px', overflowY: 'auto' }}>
       <SignIn routing="hash" />
     </div>
   );
