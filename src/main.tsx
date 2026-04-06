@@ -1,5 +1,5 @@
 import { StrictMode } from 'react';
-import { ClerkProvider } from '@clerk/clerk-react';
+import { ClerkProvider, SignedIn, RedirectToSignIn, useAuth } from '@clerk/clerk-react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
@@ -64,6 +64,15 @@ const _origFetch = window.fetch.bind(window);
 })();
 
 
+
+// ── Dev auth gate — require sign-in for all /app/* routes ──
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const { isLoaded, isSignedIn } = useAuth();
+  if (!isLoaded) return null;
+  if (!isSignedIn) return <RedirectToSignIn />;
+  return <>{children}</>;
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_live_Y2xlcmsuZm9yZ2VpbnRlbGxpZ2VuY2UuYWkk"}>
@@ -77,21 +86,21 @@ createRoot(document.getElementById('root')!).render(
         {/* App — all product routes live under /app/ */}
         <Route
           path="/app/context-hub/*"
-          element={<AppProvider><ContextAgentPage /></AppProvider>}
+          element={<AuthGate><AppProvider><ContextAgentPage /></AppProvider></AuthGate>}
         />
-        <Route path="/app/geo-strategist" element={<AppProvider><RequirePaid featureName="Geo Strategist"><GeoStrategistPage /></RequirePaid></AppProvider>} />
-        <Route path="/app/authenticity-enricher" element={<AppProvider><RequirePaid featureName="Authenticity Enricher"><AuthenticityEnricherPage /></RequirePaid></AppProvider>} />
-        <Route path="/app/content-generator" element={<AppProvider><RequirePaid featureName="Content Generator"><ContentGeneratorPage /></RequirePaid></AppProvider>} />
-        <Route path="/app/campaign-generator" element={<AppProvider><RequirePaid featureName="Campaign Generator"><CampaignGeneratorPage /></RequirePaid></AppProvider>} />
-        <Route path="/app/compliance-gate" element={<AppProvider><RequirePaid featureName="Compliance Gate"><ComplianceGatePage /></RequirePaid></AppProvider>} />
-        <Route path="/app/integrations" element={<AppProvider><RequirePaid featureName="Integrations"><IntegrationsPage /></RequirePaid></AppProvider>} />
-        <Route path="/app/publishing-queue" element={<AppProvider><RequirePaid featureName="Publishing Queue"><PublishingQueuePage /></RequirePaid></AppProvider>} />
-        <Route path="/app/performance" element={<AppProvider><RequirePaid featureName="Performance Dashboard"><PerformanceDashboardPage /></RequirePaid></AppProvider>} />
-        <Route path="/app/content-library" element={<AppProvider><RequirePaid featureName="Content Library"><ContentLibraryPage /></RequirePaid></AppProvider>} />
-        <Route path="/app/content-import" element={<AppProvider><RequirePaid featureName="Content Import"><ContentImportPage /></RequirePaid></AppProvider>} />
-        <Route path="/app/admin" element={<AppProvider><RequirePaid featureName="Admin"><AdminPage /></RequirePaid></AppProvider>} />
-        <Route path="/app/topic-queue" element={<AppProvider><RequirePaid featureName="Topic Queue"><TopicQueuePage /></RequirePaid></AppProvider>} />
-        <Route path="/app/brand-settings" element={<AppProvider><RequirePaid featureName="Brand Settings"><BrandSettingsPage /></RequirePaid></AppProvider>} />
+        <Route path="/app/geo-strategist" element={<AuthGate><AppProvider><RequirePaid featureName="Geo Strategist"><GeoStrategistPage /></RequirePaid></AppProvider></AuthGate>} />
+        <Route path="/app/authenticity-enricher" element={<AuthGate><AppProvider><RequirePaid featureName="Authenticity Enricher"><AuthenticityEnricherPage /></RequirePaid></AppProvider></AuthGate>} />
+        <Route path="/app/content-generator" element={<AuthGate><AppProvider><RequirePaid featureName="Content Generator"><ContentGeneratorPage /></RequirePaid></AppProvider></AuthGate>} />
+        <Route path="/app/campaign-generator" element={<AuthGate><AppProvider><RequirePaid featureName="Campaign Generator"><CampaignGeneratorPage /></RequirePaid></AppProvider></AuthGate>} />
+        <Route path="/app/compliance-gate" element={<AuthGate><AppProvider><RequirePaid featureName="Compliance Gate"><ComplianceGatePage /></RequirePaid></AppProvider></AuthGate>} />
+        <Route path="/app/integrations" element={<AuthGate><AppProvider><RequirePaid featureName="Integrations"><IntegrationsPage /></RequirePaid></AppProvider></AuthGate>} />
+        <Route path="/app/publishing-queue" element={<AuthGate><AppProvider><RequirePaid featureName="Publishing Queue"><PublishingQueuePage /></RequirePaid></AppProvider></AuthGate>} />
+        <Route path="/app/performance" element={<AuthGate><AppProvider><RequirePaid featureName="Performance Dashboard"><PerformanceDashboardPage /></RequirePaid></AppProvider></AuthGate>} />
+        <Route path="/app/content-library" element={<AuthGate><AppProvider><RequirePaid featureName="Content Library"><ContentLibraryPage /></RequirePaid></AppProvider></AuthGate>} />
+        <Route path="/app/content-import" element={<AuthGate><AppProvider><RequirePaid featureName="Content Import"><ContentImportPage /></RequirePaid></AppProvider></AuthGate>} />
+        <Route path="/app/admin" element={<AuthGate><AppProvider><RequirePaid featureName="Admin"><AdminPage /></RequirePaid></AppProvider></AuthGate>} />
+        <Route path="/app/topic-queue" element={<AuthGate><AppProvider><RequirePaid featureName="Topic Queue"><TopicQueuePage /></RequirePaid></AppProvider></AuthGate>} />
+        <Route path="/app/brand-settings" element={<AuthGate><AppProvider><RequirePaid featureName="Brand Settings"><BrandSettingsPage /></RequirePaid></AppProvider></AuthGate>} />
 
         {/* Public article viewer — no AppProvider needed */}
         <Route path="/articles/:brandSlug/:articleSlug" element={<PublicArticlePage />} />
