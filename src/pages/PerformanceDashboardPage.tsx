@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useApp } from '../context/AppContext';
 import { AppShell } from '../layouts/AppShell';
+import GateModal from '../components/GateModal';
+import { useApp } from '../context/AppContext';
 import './PerformanceDashboardPage.css';
 
 // ── Types ──────────────────────────────────────────────────────────────────────────────────
@@ -8,6 +9,7 @@ interface AnalyticsTotals {
   posts: number; impressions: number; clicks: number;
   reactions: number; comments: number; reposts: number;
   avgCtr: string; avgEngagementRate: string; lastSynced: string | null;
+  positiveFeedback?: number; negativeFeedback?: number; avgReadingTime?: number;
 }
 interface TrendPoint { day: string; impressions: number; clicks: number; reactions: number; }
 interface PostRow {
@@ -37,13 +39,14 @@ interface CampaignRow {
 }
 
 const CHANNELS = [
+  { id: 'predictions', label: 'Predictions', live: true },
   { id: 'linkedin', label: 'LinkedIn', live: true },
   { id: 'x', label: 'X (Twitter)', live: true },
   { id: 'ghost', label: 'Ghost', live: true },
   { id: 'gsc',   label: 'GSC',   live: true },
   { id: 'geo',   label: 'GEO',   live: true },
-  { id: 'wordpress', label: 'WordPress', live: true },
-  { id: 'webflow', label: 'Webflow', live: true },
+  { id: 'wordpress', label: 'WordPress', live: false },
+  { id: 'webflow', label: 'Webflow', live: false },
   { id: 'campaigns', label: 'Campaigns', live: true },
 ];
 
@@ -107,7 +110,40 @@ function Sparkline({ data, key: _k }: { data: number[]; key?: string }) {
 
 
 export default function PerformanceDashboardPage() {
-  const { activeBrandId } = useApp();
+  const { isPaid, brandLoading, activeBrand } = useApp();
+  
+  if (brandLoading) return null;
+  if (!isPaid) {
+    return (
+      <AppShell>
+        <GateModal 
+          featureName="Performance Dashboard" 
+          onClose={() => window.location.href = '/app/context-hub'} 
+          onUnlocked={() => {}} 
+        />
+      </AppShell>
+    );
+  }
+
+  const brandProfileId = activeBrand?.id ?? '';
+
+  const handleBatchScore = async () => {
+    if (!brandProfileId || batchScoring) return;
+    setBatchScoring(true);
+    const token = localStorage.getItem('forge_clerk_token') || '';
+    const headers: Record<string,string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    try {
+      const r = await fetch('/api/precog/batch', { method: 'POST', headers, body: JSON.stringify({ brandProfileId }) });
+      const d = await r.json();
+      if (d.success) {
+        // Reload predictions
+        const r2 = await fetch(`/api/precog/all/${brandProfileId}`, { headers });
+        const d2 = await r2.json();
+        if (d2.success) setPredictions(d2.items || []);
+      }
+    } catch { /* non-fatal */ } finally { setBatchScoring(false); }
+  };
   const [activeChannel, setActiveChannel] = useState('linkedin');
   const [data, setData] = useState<DashboardData | null>(null);
   const [channelInfo, setChannelInfo] = useState<ChannelInfo[]>([]);
@@ -116,6 +152,13 @@ export default function PerformanceDashboardPage() {
   const [campaignsLoading, setCampaignsLoading] = useState(false);
   const [expandedCampaign, setExpandedCampaign] = useState<string | null>(null);
   const [patterns, setPatterns] = useState<any[]>([]);
+  const [predictions, setPredictions] = useState<any[]>([]);
+  const [predictionsLoading, setPredictionsLoading] = useState(false);
+  const [batchScoring, setBatchScoring] = useState(false);
+  const [accuracy, setAccuracy] = useState<{
+    measuredCount: number; pendingCount: number; totalPredictions: number;
+    directionAccuracy: number | null; rangeAccuracy: number | null;
+  } | null>(null);
   const [mistakes, setMistakes] = useState<any[]>([]);
   const [extracting, setExtracting] = useState(false);
   const [decayAlerts, setDecayAlerts] = useState<any[]>([]);
@@ -126,40 +169,59 @@ export default function PerformanceDashboardPage() {
   const [geoLoaded, setGeoLoaded] = useState(false);
   const [gscStatus, setGscStatus] = useState<{ connected: boolean; verifiedSites?: string[] } | null>(null);
   const [extractResult, setExtractResult] = useState<string>('');
+  const [extractMeta, setExtractMeta] = useState<{
+    articlesAnalyzed: number; precogOutcomesUsed: number;
+    predictionAccuracy: number | null; trendDirection: string;
+    channelsAnalyzed: string[];
+  } | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
   const [error, setError] = useState('');
 
-  // Sync with TopBar brain selection
 
   const loadCampaigns = useCallback(async () => {
-    if (!activeBrandId) return;
+    if (!brandProfileId) return;
     setCampaignsLoading(true);
     try {
-      const res = await fetch(`/api/analytics/campaigns/${activeBrandId}`);
+      const res = await fetch(`/api/analytics/campaigns/${brandProfileId}`);
       const d = await res.json();
       if (d.success) setCampaigns(d.campaigns || []);
     } catch { /* non-fatal */ }
     setCampaignsLoading(false);
-  }, [activeBrandId]);
+  }, [brandProfileId]);
 
   useEffect(() => {
     if (activeChannel === 'campaigns') loadCampaigns();
-    if (activeChannel === 'geo' && activeBrandId) {
-      fetch(`/api/geo/citations/${activeBrandId}`)
+    if (activeChannel === 'predictions' && brandProfileId) {
+      setPredictionsLoading(true);
+      const token = localStorage.getItem('forge_clerk_token') || '';
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      // Fetch all scored content for this brand
+      fetch(`/api/precog/all/${brandProfileId}`, { headers })
+        .then(r => r.json())
+        .then(d => { if (d.success) setPredictions(d.items || []); });
+      fetch(`/api/precog/accuracy/${brandProfileId}`, { headers })
+        .then(r => r.json())
+        .then(d => { if (d.success) setAccuracy(d); })
+        .catch(() => {})
+        .finally(() => setPredictionsLoading(false));
+    }
+    if (activeChannel === 'geo' && brandProfileId) {
+      fetch(`/api/geo/citations/${brandProfileId}`)
         .then(r => r.json())
         .then(d => { if (d.success) { setGeoCitations(d.citations || []); setGeoLoaded(true); } })
         .catch(() => setGeoLoaded(true));
     }
-    if (activeChannel === 'gsc' && activeBrandId) {
-      fetch(`/api/gsc/status/${activeBrandId}`).then(r => r.json()).then(d => setGscStatus(d)).catch(() => {});
+    if (activeChannel === 'gsc' && brandProfileId) {
+      fetch(`/api/gsc/status/${brandProfileId}`).then(r => r.json()).then(d => setGscStatus(d)).catch(() => {});
     }
-    if (activeBrandId) {
-      fetch(`/api/analytics/decay/${activeBrandId}`)
+    if (brandProfileId) {
+      fetch(`/api/analytics/decay/${brandProfileId}`)
         .then(r => r.json())
         .then(d => { if (d.success) { setDecayAlerts(d.alerts || []); setDecayLoaded(true); } })
         .catch(() => {});
-      fetch(`/api/analytics/patterns/${activeBrandId}`)
+      fetch(`/api/analytics/patterns/${brandProfileId}`)
         .then(r => r.json())
         .then(d => { if (d.success) { setPatterns(d.patterns || []); setMistakes(d.mistakes || []); } })
         .catch(() => {});
@@ -167,12 +229,12 @@ export default function PerformanceDashboardPage() {
   }, [activeChannel, loadCampaigns]);
 
   const loadDashboard = useCallback(async () => {
-    if (!activeBrandId || activeChannel === 'campaigns') return;
+    if (!brandProfileId || activeChannel === 'campaigns') return;
     setLoading(true); setError('');
     try {
       const [dashRes, chanRes] = await Promise.all([
-        fetch(`/api/analytics/dashboard/${activeBrandId}?channel=${activeChannel}`),
-        fetch(`/api/analytics/channels/${activeBrandId}`)
+        fetch(`/api/analytics/dashboard/${brandProfileId}?channel=${activeChannel}`),
+        fetch(`/api/analytics/channels/${brandProfileId}`)
       ]);
       const dashData = await dashRes.json();
       const chanData = await chanRes.json();
@@ -180,22 +242,26 @@ export default function PerformanceDashboardPage() {
       if (chanData.success) setChannelInfo(chanData.channels);
     } catch(e) { setError('Failed to load analytics'); }
     setLoading(false);
-  }, [activeBrandId, activeChannel]);
+  }, [brandProfileId, activeChannel]);
 
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
 
   const handleGeoTrack = async () => {
-    if (!activeBrandId) return;
+    if (!brandProfileId) return;
     setGeoTracking(true);
     try {
-      await fetch(`/api/geo/track/${activeBrandId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+      // Fire and forget — server responds immediately, processes in background
+      await fetch(`/api/geo/track/${brandProfileId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+
+      // Poll for up to 60s — stop when checked_at timestamps are fresher than start time
       const startTime = new Date();
       let attempts = 0;
       const poll = setInterval(async () => {
         attempts++;
         try {
-          const c = await fetch(`/api/geo/citations/${activeBrandId}`).then(r => r.json());
+          const c = await fetch(`/api/geo/citations/${brandProfileId}`).then(r => r.json());
           if (c.success) setGeoCitations(c.citations || []);
+          // Stop when we see data newer than our start time, or after 20 attempts (~60s)
           const hasNewData = (c.citations || []).some(
             (cit: any) => cit.lastChecked && new Date(cit.lastChecked) > startTime
           );
@@ -211,10 +277,10 @@ export default function PerformanceDashboardPage() {
   };
 
   const handleGscSync = async () => {
-    if (!activeBrandId) return;
+    if (!brandProfileId) return;
     setGscSyncing(true);
     try {
-      const r = await fetch(`/api/analytics/sync-gsc/${activeBrandId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ days: 28 }) });
+      const r = await fetch(`/api/analytics/sync-gsc/${brandProfileId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ days: 28 }) });
       const d = await r.json();
       if (d.success) {
         await loadDashboard();
@@ -224,30 +290,32 @@ export default function PerformanceDashboardPage() {
   };
 
   const handleGscConnect = async () => {
-    if (!activeBrandId) return;
-    const r = await fetch(`/api/gsc/auth?activeBrandId=${activeBrandId}`);
+    if (!brandProfileId) return;
+    const r = await fetch(`/api/gsc/auth?brandProfileId=${brandProfileId}`);
     const d = await r.json();
     if (d.authUrl) window.location.href = d.authUrl;
   };
 
   const resolveDecay = async (contentId: string) => {
-    if (!activeBrandId) return;
-    await fetch(`/api/analytics/decay/${activeBrandId}/resolve/${contentId}`, { method: 'POST' });
+    if (!brandProfileId) return;
+    await fetch(`/api/analytics/decay/${brandProfileId}/resolve/${contentId}`, { method: 'POST' });
     setDecayAlerts(prev => prev.filter(a => a.content_id !== contentId));
   };
 
   const handleExtract = async () => {
-    if (!activeBrandId) return;
+    if (!brandProfileId) return;
     setExtracting(true);
     setExtractResult('');
     try {
-      const r = await fetch(`/api/analytics/extract-patterns/${activeBrandId}`, { method: 'POST' });
+      const r = await fetch(`/api/analytics/extract-patterns/${brandProfileId}`, { method: 'POST' });
       const d = await r.json();
       if (d.success) {
         setPatterns(d.patterns || []);
         setMistakes(d.mistakes || []);
-        setExtractResult(`✓ Extracted ${d.patternsWritten || 0} patterns, ${d.mistakesWritten || 0} mistakes`);
-        setTimeout(() => setExtractResult(''), 5000);
+        if (d.meta) setExtractMeta(d.meta);
+        const metaStr = d.meta ? ` · ${d.meta.articlesAnalyzed} articles · ${d.meta.precogOutcomesUsed > 0 ? `${d.meta.precogOutcomesUsed} pre-cog outcomes` : 'no pre-cog data yet'}` : '';
+        setExtractResult(`✓ ${d.patternsWritten || 0} patterns · ${d.mistakesWritten || 0} mistakes${metaStr}`);
+        setTimeout(() => setExtractResult(''), 7000);
       } else {
         setExtractResult(`Error: ${d.error}`);
       }
@@ -259,10 +327,10 @@ export default function PerformanceDashboardPage() {
   };
 
   const handleSync = async () => {
-    if (!activeBrandId || syncing) return;
+    if (!brandProfileId || syncing) return;
     setSyncing(true); setSyncMsg('');
     try {
-      const res = await fetch(`/api/analytics/sync/${activeBrandId}`, {
+      const res = await fetch(`/api/analytics/sync/${brandProfileId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ channel: activeChannel })
@@ -278,7 +346,11 @@ export default function PerformanceDashboardPage() {
   };
 
   const sparkData = data?.trend?.map(t => t.impressions) || [];
-  const maxImpressions = data?.posts?.length ? Math.max(...data.posts.map(p => p.impressions), 1) : 1;
+  const maxReach = data?.posts?.length
+    ? activeChannel === 'ghost'
+      ? Math.max(...data.posts.map(p => p.clicks || 0), 1)
+      : Math.max(...data.posts.map(p => p.impressions || 0), 1)
+    : 1;
 
   return (
     <AppShell>
@@ -292,7 +364,7 @@ export default function PerformanceDashboardPage() {
           </div>
           <div className="perf-header-right">
             <div className="perf-sync-wrap">
-              <button className={`perf-sync-btn ${syncing ? 'syncing' : ''}`} onClick={handleSync} disabled={syncing || !activeBrandId}>
+              <button className={`perf-sync-btn ${syncing ? 'syncing' : ''}`} onClick={handleSync} disabled={syncing || !brandProfileId}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={syncing ? 'spin' : ''}>
                   <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
                   <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
@@ -335,13 +407,18 @@ export default function PerformanceDashboardPage() {
         ) : (
           <>
             {/* ── KPI Cards ── */}
-            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && activeChannel !== 'geo' && <div className="perf-kpis">
-              {[
+            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && activeChannel !== 'geo' && activeChannel !== 'predictions' && <div className="perf-kpis">
+              {(activeChannel === 'ghost' ? [
+                { label: 'Link Clicks', value: fmt(data?.totals?.clicks || 0), sub: 'Total tracked clicks', icon: 'click', spark: false },
+                { label: 'Avg Read Time', value: data?.totals?.avgReadingTime ? `${data.totals.avgReadingTime} min` : '—', sub: 'Minutes per article', icon: 'eye', spark: false },
+                { label: 'Positive Feedback', value: fmt(data?.totals?.positiveFeedback || 0), sub: 'Reader thumbs up', icon: 'heart', spark: false },
+                { label: 'Negative Feedback', value: fmt(data?.totals?.negativeFeedback || 0), sub: 'Reader thumbs down', icon: 'trend', spark: false },
+              ] : [
                 { label: 'Impressions', value: fmt(data?.totals?.impressions || 0), sub: 'Total views', icon: 'eye', spark: true },
                 { label: 'Link Clicks', value: fmt(data?.totals?.clicks || 0), sub: `${data?.totals?.avgCtr || '0'}% avg CTR`, icon: 'click', spark: false },
                 { label: 'Reactions', value: fmt(data?.totals?.reactions || 0), sub: `${data?.totals?.comments || 0} comments · ${data?.totals?.reposts || 0} reposts`, icon: 'heart', spark: false },
                 { label: 'Engagement Rate', value: `${data?.totals?.avgEngagementRate || '0'}%`, sub: `Across ${data?.totals?.posts || 0} posts`, icon: 'trend', spark: false },
-              ].map(kpi => (
+              ]).map(kpi => (
                 <div key={kpi.label} className="perf-kpi-card">
                   <div className="perf-kpi-top">
                     <span className="perf-kpi-label">{kpi.label}</span>
@@ -399,7 +476,7 @@ export default function PerformanceDashboardPage() {
                           <th className="num">Engagement</th>
                         </>)}
                         <th>Published</th>
-                        <th className="bar-col">Relative reach</th>
+                        <th className="bar-col">{activeChannel === 'ghost' ? 'Relative clicks' : 'Relative reach'}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -426,7 +503,7 @@ export default function PerformanceDashboardPage() {
                           <td className="perf-date">{post.published_at ? new Date(post.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}</td>
                           <td className="bar-col">
                             <div className="perf-bar-bg">
-                              <div className="perf-bar-fill" style={{ width: `${Math.round((post.impressions / maxImpressions) * 100)}%` }} />
+                              <div className="perf-bar-fill" style={{ width: `${Math.round(((activeChannel === 'ghost' ? post.clicks : post.impressions) / maxReach) * 100)}%` }} />
                             </div>
                           </td>
                         </tr>
@@ -445,7 +522,7 @@ export default function PerformanceDashboardPage() {
                     <h2 className="perf-section-title">GEO Citation Tracker</h2>
                     <p className="perf-section-sub">Track when your content is cited by ChatGPT, Perplexity, and other AI engines. Results write to Brain patterns.</p>
                   </div>
-                  <button className="perf-sync-btn perf-geo-track-btn" onClick={handleGeoTrack} disabled={geoTracking || !activeBrandId}>
+                  <button className="perf-sync-btn perf-geo-track-btn" onClick={handleGeoTrack} disabled={geoTracking || !brandProfileId}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={geoTracking ? 'spin' : ''}>
                       <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
                       <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
@@ -473,7 +550,7 @@ export default function PerformanceDashboardPage() {
                   const totalCited = geoCitations.reduce((a,c) => a + c.citations, 0);
                   const totalChecks = geoCitations.reduce((a,c) => a + c.totalChecks, 0);
                   const visibilityScore = Math.round(totalCited / Math.max(1, totalChecks) * 100);
-                  const enginesWithCitations = [...new Set(geoCitations.filter(c => c.citations > 0).map(c => c.engine))];
+                  const enginesWithCitations = [...new Set(geoCitations.filter(c => c.citations > 0).flatMap(c => c.engines || []))];
                   const articlesCited = [...new Set(geoCitations.filter(c => c.citations > 0).map(c => c.content_id))].length;
                   const allSections = geoCitations.flatMap(c => c.citedSections || []);
                   const topSection = allSections.length > 0
@@ -519,7 +596,7 @@ export default function PerformanceDashboardPage() {
                             {geoCitations.map((c, i) => (
                               <tr key={i} className={c.citations > 0 ? 'perf-geo-cited-row' : ''}>
                                 <td className="perf-title-cell"><span className="perf-post-title">{c.title}</span></td>
-                                <td><span className={`perf-geo-engine perf-geo-engine-${c.engine}`}>{c.engine}</span></td>
+                                <td>{(c.engines || []).map((e: string) => <span key={e} className={`perf-geo-engine perf-geo-engine-${e}`}>{e}</span>)}</td>
                                 <td className="num">{c.totalChecks}</td>
                                 <td className="num">
                                   {c.citations > 0
@@ -548,7 +625,7 @@ export default function PerformanceDashboardPage() {
                     </div>
                     <h3 className="perf-gsc-title">Connect Google Search Console</h3>
                     <p className="perf-gsc-desc">Pull organic search performance — clicks, impressions, CTR, and position — for every article on your domain. Works with BYO published articles too.</p>
-                    <button className="perf-gsc-btn" onClick={handleGscConnect} disabled={!activeBrandId}>
+                    <button className="perf-gsc-btn" onClick={handleGscConnect} disabled={!brandProfileId}>
                       Connect GSC
                     </button>
                   </div>
@@ -559,7 +636,7 @@ export default function PerformanceDashboardPage() {
                       {gscStatus.verifiedSites && gscStatus.verifiedSites.length > 0 && (
                         <span className="perf-gsc-sites">{gscStatus.verifiedSites.slice(0,3).join(', ')}{gscStatus.verifiedSites.length > 3 ? ` +${gscStatus.verifiedSites.length - 3} more` : ''}</span>
                       )}
-                      <button className="perf-sync-btn" onClick={handleGscSync} disabled={gscSyncing || !activeBrandId}>
+                      <button className="perf-sync-btn" onClick={handleGscSync} disabled={gscSyncing || !brandProfileId}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={gscSyncing ? 'spin' : ''}>
                           <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
                           <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
@@ -600,12 +677,7 @@ export default function PerformanceDashboardPage() {
                             <tbody>
                               {(data?.posts || []).map((post, i) => (
                                 <tr key={i}>
-                                  <td className="perf-title-cell">
-                                    {post.hero_image_url && (
-                                      <img src={post.hero_image_url} alt="" className="perf-thumb" loading="lazy" width="40" height="28" />
-                                    )}
-                                    <span className="perf-post-title">{post.title || (post as any).raw_data?.pageUrl || 'Unknown'}</span>
-                                  </td>
+                                  <td className="perf-title-cell"><span className="perf-post-title">{post.title || (post as any).raw_data?.pageUrl || 'Unknown'}</span></td>
                                   <td className="num">{fmt(post.clicks)}</td>
                                   <td className="num">{fmt(post.impressions)}</td>
                                   <td className="num">{post.ctr ? `${post.ctr}%` : '—'}</td>
@@ -679,19 +751,180 @@ export default function PerformanceDashboardPage() {
               </div>
             )}
 
+          {/* ── Predictions Tab ── */}
+            {activeChannel === 'predictions' && (
+              <div className="perf-predictions-wrap">
+                <div className="perf-section-header" style={{ marginBottom: 24 }}>
+                  <div>
+                    <h2 className="perf-section-title">Pre-cog Scores</h2>
+                    <p className="perf-section-sub">Predicted performance for each article relative to your brand's historical average. Powered by your Brain patterns and analytics data.</p>
+                    {accuracy && accuracy.totalPredictions > 0 && (
+                      <div className="perf-accuracy-banner">
+                        {accuracy.directionAccuracy !== null ? (
+                          <>
+                            <span className="perf-accuracy-stat">
+                              <span className="perf-accuracy-val" style={{ color: accuracy.directionAccuracy >= 70 ? '#22C55E' : accuracy.directionAccuracy >= 50 ? '#EAB308' : '#F97316' }}>
+                                {accuracy.directionAccuracy}%
+                              </span>
+                              directional accuracy
+                            </span>
+                            <span className="perf-accuracy-sep">·</span>
+                            {accuracy.rangeAccuracy !== null && (
+                              <>
+                                <span className="perf-accuracy-stat">
+                                  <span className="perf-accuracy-val">{accuracy.rangeAccuracy}%</span>
+                                  in predicted range
+                                </span>
+                                <span className="perf-accuracy-sep">·</span>
+                              </>
+                            )}
+                            <span className="perf-accuracy-stat">{accuracy.measuredCount} article{accuracy.measuredCount !== 1 ? 's' : ''} measured</span>
+                          </>
+                        ) : (
+                          <span className="perf-accuracy-stat perf-accuracy-building">
+                            Accuracy data building — {accuracy.measuredCount} of {accuracy.totalPredictions} article{accuracy.totalPredictions !== 1 ? 's' : ''} measured so far
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    className={`perf-extract-btn ${batchScoring ? 'extracting' : ''}`}
+                    onClick={handleBatchScore}
+                    disabled={batchScoring}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={batchScoring ? 'spin' : ''}>
+                      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/>
+                      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M16 8h5V3"/>
+                    </svg>
+                    {batchScoring ? 'Scoring...' : 'Score All'}
+                  </button>
+                </div>
+
+                {predictionsLoading ? (
+                  <div className="perf-skeleton-wrap">
+                    {[1,2,3].map(i => <div key={i} className="perf-skeleton-card" />)}
+                  </div>
+                ) : predictions.length === 0 ? (
+                  <div className="perf-predictions-empty">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.3, marginBottom: 12 }}>
+                      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                    </svg>
+                    <p>No scored articles yet.</p>
+                    <p className="perf-predictions-empty-sub">Hit "Score All" to run pre-cog scoring across your content library. Requires 3+ articles with synced analytics.</p>
+                  </div>
+                ) : (
+                  <div className="perf-predictions-list">
+                    {predictions.map((item: any) => {
+                      const bd = item.breakdown || {};
+                      const tier = bd.tier || item.tier;
+                      const score = bd.score ?? item.precog_score;
+                      const color = bd.color || '#64748B';
+                      const signals = bd.signals || [];
+                      const actions = bd.recommendedActions || [];
+                      const hist = bd.historicalContext || {};
+                      const insufficient = tier === 'insufficient_data';
+                      return (
+                        <div key={item.id} className={`perf-pred-card perf-pred-${tier}`}>
+                          <div className="perf-pred-top">
+                            <div className="perf-pred-left">
+                              <div className="perf-pred-title">{item.title || 'Untitled'}</div>
+                              <div className="perf-pred-meta">
+                                {item.precog_scored_at && (
+                                  <span>Scored {new Date(item.precog_scored_at).toLocaleDateString()}</span>
+                                )}
+                                {hist.totalArticles > 0 && (
+                                  <span>· Based on {hist.totalArticles} articles</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="perf-pred-score-block" style={{ '--pred-color': color } as React.CSSProperties}>
+                              {insufficient ? (
+                                <div className="perf-pred-insufficient">Not enough data</div>
+                              ) : (
+                                <>
+                                  <div className="perf-pred-score">{score}</div>
+                                  <div className="perf-pred-tier">{tier}</div>
+                                  {item.measured_at && item.direction_correct !== null && (
+                                    <div className={`perf-pred-direction ${item.direction_correct ? 'correct' : 'incorrect'}`}>
+                                      {item.direction_correct ? '✓ Correct' : '✗ Off'}
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          {!insufficient && (
+                            <>
+                              {bd.prediction && (
+                                <div className="perf-pred-prediction">{bd.prediction}</div>
+                              )}
+                              {bd.predictedImpressions && (
+                                <div className="perf-pred-range">
+                                  <span className="perf-pred-range-label">Predicted impressions</span>
+                                  <span className="perf-pred-range-val" style={{ color }}>{bd.predictedImpressions.low.toLocaleString()} – {bd.predictedImpressions.high.toLocaleString()}</span>
+                                  <span className="perf-pred-range-avg">(avg: {hist.avgImpressions?.toLocaleString()})</span>
+                                  {item.measured_at ? (
+                                    <span className="perf-pred-actual">
+                                      Actual: <strong>{(item.actual_impressions || 0).toLocaleString()}</strong>
+                                      {item.in_range === true && <span className="perf-pred-outcome perf-pred-outcome-hit">✓ in range</span>}
+                                      {item.in_range === false && <span className="perf-pred-outcome perf-pred-outcome-miss">✗ out of range</span>}
+                                    </span>
+                                  ) : item.actual_impressions === null ? (
+                                    <span className="perf-pred-pending">Awaiting analytics sync</span>
+                                  ) : null}
+                                </div>
+                              )}
+                              {signals.length > 0 && (
+                                <div className="perf-pred-signals">
+                                  {signals.slice(0, 4).map((s: any, i: number) => (
+                                    <div key={i} className={`perf-pred-signal perf-pred-signal-${s.impact}`}>
+                                      <span className="perf-pred-signal-dot" />
+                                      <span>{s.label}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {actions.length > 0 && (
+                                <div className="perf-pred-actions">
+                                  <span className="perf-pred-actions-label">Suggested:</span>
+                                  {actions.slice(0, 2).map((a: string, i: number) => (
+                                    <span key={i} className="perf-pred-action">{a}</span>
+                                  ))}
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
           {/* ── Pattern Dashboard ── */}
             <div className="perf-section perf-pattern-section">
               <div className="perf-section-header">
                 <div>
                   <h2 className="perf-section-title">Pattern Dashboard</h2>
-                  <p className="perf-section-sub">Extracted from analytics data — feeds Stage 8 Pattern Extractor.</p>
+                  <p className="perf-section-sub">Deep pattern analysis — content structure, pre-cog feedback loop, channel breakdown, topic momentum.</p>
+                  {extractMeta && (
+                    <div className="perf-extract-meta">
+                      <span>{extractMeta.articlesAnalyzed} articles analyzed</span>
+                      {extractMeta.precogOutcomesUsed > 0 && <><span className="perf-accuracy-sep">·</span><span>{extractMeta.precogOutcomesUsed} pre-cog outcomes used</span></>}
+                      {extractMeta.predictionAccuracy !== null && <><span className="perf-accuracy-sep">·</span><span>{extractMeta.predictionAccuracy}% prediction accuracy</span></>}
+                      {extractMeta.trendDirection !== 'insufficient_data' && <><span className="perf-accuracy-sep">·</span><span className={`perf-trend-dir ${extractMeta.trendDirection}`}>{extractMeta.trendDirection === 'improving' ? '↑ Trending up' : '↓ Trending down'}</span></>}
+                    </div>
+                  )}
                 </div>
                 <div className="perf-pattern-actions">
                   {extractResult && <span className="perf-extract-result">{extractResult}</span>}
                   <button
                     className={`perf-extract-btn ${extracting ? 'extracting' : ''}`}
                     onClick={handleExtract}
-                    disabled={extracting || !activeBrandId}
+                    disabled={extracting || !brandProfileId}
                   >
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={extracting ? 'spin' : ''}>
                       <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/>
@@ -713,9 +946,20 @@ export default function PerformanceDashboardPage() {
                   {patterns.length === 0 ? (
                     <div className="perf-pattern-empty">No patterns yet — run extraction after syncing analytics.</div>
                   ) : patterns.map((p, i) => (
-                    <div key={i} className="perf-pattern-item">
-                      <div className="perf-pattern-type">{p.pattern_type}</div>
+                    <div key={i} className={`perf-pattern-item ${p.pattern_type === 'prediction_correction' ? 'perf-pattern-correction' : ''}`}>
+                      <div className="perf-pattern-type-row">
+                        <span className="perf-pattern-type">{p.pattern_type?.replace(/_/g, ' ')}</span>
+                        {p.source_channel && <span className="perf-pattern-channel">{p.source_channel}</span>}
+                        {p.last_validated_at && <span className="perf-pattern-fresh">validated {new Date(p.last_validated_at).toLocaleDateString()}</span>}
+                      </div>
                       <div className="perf-pattern-desc">{p.description}</div>
+                      {Array.isArray(p.example_titles) && p.example_titles.length > 0 && (
+                        <div className="perf-pattern-examples">
+                          {p.example_titles.slice(0, 2).map((t: string, j: number) => (
+                            <span key={j} className="perf-pattern-example-title">"{t}"</span>
+                          ))}
+                        </div>
+                      )}
                       {p.confidence_score > 0 && (
                         <div className="perf-pattern-meta">
                           <span className="perf-confidence-bar">
