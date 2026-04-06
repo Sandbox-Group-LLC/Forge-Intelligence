@@ -1,7 +1,9 @@
-import { useState, useRef } from 'react';
-import { useApp } from '../context/AppContext';
+import { useState, useRef, useEffect } from 'react';
 import { AppShell } from '../layouts/AppShell';
 import './CampaignGeneratorPage.css';
+import { useApp } from '../context/AppContext';
+import GateModal from '../components/GateModal';
+import '../components/GateModal.css';
 
 // ── Inline icon components (lucide-react not available) ─────────────────────
 const Zap = ({ size = 16 }: { size?: number }) => (
@@ -31,6 +33,7 @@ const BookOpen = ({ size = 16 }: { size?: number }) => (
 );
 
 // ── Types ────────────────────────────────────────────────────────────────────
+interface Brain { id: string; brandName: string; brandUrl: string; }
 
 const FUNNEL_COLORS: Record<string, string> = {
   TOFU: '#3B82F6', MOFU: '#8B5CF6', BOFU: '#10B981',
@@ -82,9 +85,7 @@ function StreamProgress({ text }: { text: string }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 function CampaignGeneratorContent() {
-  // Use global activeBrand from AppContext - no local brain selection needed
-  const { activeBrand } = useApp();
-  const selectedBrainId = activeBrand?.id || '';
+  const [selectedBrainId, setSelectedBrainId] = useState('');
   const [step, setStep] = useState<'setup' | 'plan' | 'generating' | 'complete'>('setup');
   const [isPlanning, setIsPlanning] = useState(false);
   const [topicPrompt, setTopicPrompt] = useState('');
@@ -95,11 +96,24 @@ function CampaignGeneratorContent() {
   const [streamBuffer, setStreamBuffer] = useState('');
   const [error, setError] = useState('');
   const esRef = useRef<EventSource | null>(null);
+  const { historyEntries, activeBrand } = useApp();
 
+  const brains: Brain[] = historyEntries.map(e => ({ id: e.id, brandName: e.brandName, brandUrl: e.brandUrl }));
 
+  // Seed selected brain from active brand context
+  useEffect(() => {
+    const id = activeBrand?.id || localStorage.getItem('forge_active_brand_id') || '';
+    if (id) setSelectedBrainId(id);
+  }, []);
+
+  useEffect(() => {
+    if (activeBrand?.id && !selectedBrainId) setSelectedBrainId(activeBrand.id);
+  }, [activeBrand?.id]);
+
+  const selectedBrain = brains.find(b => b.id === selectedBrainId);
 
   const checkTopic = async () => {
-    if (!activeBrand?.id || !topicPrompt.trim()) { setPreflight({ status: 'idle' }); return; }
+    if (!selectedBrainId || !topicPrompt.trim()) { setPreflight({ status: 'idle' }); return; }
     setPreflight({ status: 'checking' });
     try {
       const r = await fetch('/api/content/topic-check', {
@@ -114,7 +128,7 @@ function CampaignGeneratorContent() {
   };
 
   const handlePlan = async () => {
-    if (!activeBrand?.id) return;
+    if (!selectedBrainId) return;
     setIsPlanning(true); setError('');
     try {
       const res = await fetch('/api/campaign/plan', {
@@ -129,7 +143,7 @@ function CampaignGeneratorContent() {
   };
 
   const handleGenerate = async () => {
-    if (!plan || !activeBrand?.id) return;
+    if (!plan || !selectedBrainId) return;
     setError('');
     try {
       const res = await fetch('/api/campaign/create', {
@@ -202,7 +216,20 @@ function CampaignGeneratorContent() {
 
       {step === 'setup' && (
         <div className="camp-setup">
-
+          <div className="camp-brand-display">
+            <select
+              className="geo-select"
+              value={selectedBrainId}
+              onChange={e => setSelectedBrainId(e.target.value)}
+              style={{ width: '100%', marginBottom: '4px' }}
+            >
+              <option value="">Select a Brain...</option>
+              {brains.map(b => <option key={b.id} value={b.id}>{b.brandName} — {b.brandUrl}</option>)}
+            </select>
+            <div className="camp-brand-sub">
+              {selectedBrain ? `${selectedBrain.brandName} · Angle diversity enforced` : 'Choose an existing brain to begin'}
+            </div>
+          </div>
           <div className="camp-stats">
             {[['8','Articles'],['4','Weeks'],['~$1.14','Total cost'],['~18min','Est. time']].map(([n,l]) => (
               <div key={l} className="camp-stat">
@@ -241,7 +268,7 @@ function CampaignGeneratorContent() {
               </div>
             )}
           </div>
-          <button className="camp-plan-btn" onClick={handlePlan} disabled={isPlanning || !activeBrand?.id}>
+          <button className="camp-plan-btn" onClick={handlePlan} disabled={isPlanning || !selectedBrainId}>
             {isPlanning ? <><span className="camp-spinner" />Planning angles...</> : <><Zap size={16} />Plan Campaign</>}
           </button>
           {error && <div className="geo-error">{error}</div>}
@@ -370,5 +397,21 @@ function CampaignGeneratorContent() {
 }
 
 export default function CampaignGeneratorPage() {
+  const { isPaid , brandLoading } = useApp();
+  if (brandLoading) return null;
+  if (!isPaid) {
+    return (
+      <AppShell pageTitle="Campaign Generator">
+        <div className="geo-gate-wrapper">
+          <GateModal
+            featureName="Campaign Generator"
+            onClose={() => window.location.href = '/app/context-hub'}
+            onUnlocked={() => {}}
+          />
+        </div>
+      </AppShell>
+    );
+  }
+
   return <AppShell pageTitle="Campaign Generator"><CampaignGeneratorContent /></AppShell>;
 }
