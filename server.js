@@ -7310,15 +7310,7 @@ async function verifyBrandAccess(brandProfileId, userId) {
 
 
 // ── Brand ownership verification ─────────────────────────────────────────────
-// Every authenticated endpoint that takes a brandProfileId MUST call this.
-async function verifyBrandAccess(brandProfileId, userId) {
-  if (!brandProfileId || !userId) return false;
-  const r = await pool.query(
-    'SELECT id FROM brand_profiles WHERE id = $1 AND clerk_user_id = $2',
-    [brandProfileId, userId]
-  );
-  return r.rows.length > 0;
-}
+
 
 async function requireAuth(req, res, next) {
   try {
