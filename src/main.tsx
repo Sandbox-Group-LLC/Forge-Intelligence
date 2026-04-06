@@ -83,24 +83,23 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/product" element={<Product />} />
 
-        {/* App — all product routes live under /app/ */}
-        <Route
-          path="/app/context-hub/*"
-          element={<AppProvider><ContextAgentPage /></AppProvider>}
-        />
-        <Route path="/app/geo-strategist" element={<AppProvider><RequirePaid featureName="Geo Strategist"><GeoStrategistPage /></RequirePaid></AppProvider>} />
-        <Route path="/app/authenticity-enricher" element={<AppProvider><RequirePaid featureName="Authenticity Enricher"><AuthenticityEnricherPage /></RequirePaid></AppProvider>} />
-        <Route path="/app/content-generator" element={<AppProvider><RequirePaid featureName="Content Generator"><ContentGeneratorPage /></RequirePaid></AppProvider>} />
-        <Route path="/app/campaign-generator" element={<AppProvider><RequirePaid featureName="Campaign Generator"><CampaignGeneratorPage /></RequirePaid></AppProvider>} />
-        <Route path="/app/compliance-gate" element={<AppProvider><RequirePaid featureName="Compliance Gate"><ComplianceGatePage /></RequirePaid></AppProvider>} />
-        <Route path="/app/integrations" element={<AppProvider><RequirePaid featureName="Integrations"><IntegrationsPage /></RequirePaid></AppProvider>} />
-        <Route path="/app/publishing-queue" element={<AppProvider><RequirePaid featureName="Publishing Queue"><PublishingQueuePage /></RequirePaid></AppProvider>} />
-        <Route path="/app/performance" element={<AppProvider><RequirePaid featureName="Performance Dashboard"><PerformanceDashboardPage /></RequirePaid></AppProvider>} />
-        <Route path="/app/content-library" element={<AppProvider><RequirePaid featureName="Content Library"><ContentLibraryPage /></RequirePaid></AppProvider>} />
-        <Route path="/app/content-import" element={<AppProvider><RequirePaid featureName="Content Import"><ContentImportPage /></RequirePaid></AppProvider>} />
-        <Route path="/app/admin" element={<AppProvider><RequirePaid featureName="Admin"><AdminPage /></RequirePaid></AppProvider>} />
-        <Route path="/app/topic-queue" element={<AppProvider><RequirePaid featureName="Topic Queue"><TopicQueuePage /></RequirePaid></AppProvider>} />
-        <Route path="/app/brand-settings" element={<AppProvider><RequirePaid featureName="Brand Settings"><BrandSettingsPage /></RequirePaid></AppProvider>} />
+        {/* App — all product routes gated by Clerk auth */}
+        <Route element={<AuthGate />}>
+          <Route path="/app/context-hub/*" element={<AppProvider><ContextAgentPage /></AppProvider>} />
+          <Route path="/app/geo-strategist" element={<AppProvider><RequirePaid featureName="Geo Strategist"><GeoStrategistPage /></RequirePaid></AppProvider>} />
+          <Route path="/app/authenticity-enricher" element={<AppProvider><RequirePaid featureName="Authenticity Enricher"><AuthenticityEnricherPage /></RequirePaid></AppProvider>} />
+          <Route path="/app/content-generator" element={<AppProvider><RequirePaid featureName="Content Generator"><ContentGeneratorPage /></RequirePaid></AppProvider>} />
+          <Route path="/app/campaign-generator" element={<AppProvider><RequirePaid featureName="Campaign Generator"><CampaignGeneratorPage /></RequirePaid></AppProvider>} />
+          <Route path="/app/compliance-gate" element={<AppProvider><RequirePaid featureName="Compliance Gate"><ComplianceGatePage /></RequirePaid></AppProvider>} />
+          <Route path="/app/integrations" element={<AppProvider><RequirePaid featureName="Integrations"><IntegrationsPage /></RequirePaid></AppProvider>} />
+          <Route path="/app/publishing-queue" element={<AppProvider><RequirePaid featureName="Publishing Queue"><PublishingQueuePage /></RequirePaid></AppProvider>} />
+          <Route path="/app/performance" element={<AppProvider><RequirePaid featureName="Performance Dashboard"><PerformanceDashboardPage /></RequirePaid></AppProvider>} />
+          <Route path="/app/content-library" element={<AppProvider><RequirePaid featureName="Content Library"><ContentLibraryPage /></RequirePaid></AppProvider>} />
+          <Route path="/app/content-import" element={<AppProvider><RequirePaid featureName="Content Import"><ContentImportPage /></RequirePaid></AppProvider>} />
+          <Route path="/app/admin" element={<AppProvider><RequirePaid featureName="Admin"><AdminPage /></RequirePaid></AppProvider>} />
+          <Route path="/app/topic-queue" element={<AppProvider><RequirePaid featureName="Topic Queue"><TopicQueuePage /></RequirePaid></AppProvider>} />
+          <Route path="/app/brand-settings" element={<AppProvider><RequirePaid featureName="Brand Settings"><BrandSettingsPage /></RequirePaid></AppProvider>} />
+        </Route>
 
         {/* Public article viewer — no AppProvider needed */}
         <Route path="/articles/:brandSlug/:articleSlug" element={<PublicArticlePage />} />
