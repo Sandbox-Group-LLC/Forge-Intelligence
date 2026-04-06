@@ -41,8 +41,8 @@ All 8 stages live. Auth, PayPal gate, full pipeline end-to-end.
 ### Phase 3 — Intelligence Loop 🔄 Active
 To be defined with Brian. Candidates:
 - HubSpot Track A (UTM → deal/campaign attribution)
-- Pre-cog accuracy tracking (predicted vs actual over time — surfaces in Predictions tab)
-- Deeper pattern analysis (cross-article trends beyond Haiku extraction)
+- Pre-cog accuracy tracking ✅ Done — `precog_outcomes` table, `updatePrecogOutcomes` runs after every analytics sync, accuracy banner + predicted vs actual in Predictions tab
+- Deeper pattern analysis (cross-article trends beyond Haiku extraction) 🔄 Active
 - LinkedIn impressions/clicks (⏳ blocked — MDP approval submitted and under review)
 
 ### Phase 4 — Scale Core (Year 2) 🔲 Not started
