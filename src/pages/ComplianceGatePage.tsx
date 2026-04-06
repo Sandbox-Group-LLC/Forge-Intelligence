@@ -108,7 +108,7 @@ export default function ComplianceGatePage() {
   useEffect(() => {
     const id = activeBrand?.id || localStorage.getItem('forge_active_brand_id') || '';
     if (id) { setBrandProfileId(id); loadArticles(id); }
-  }, [activeBrandId]);
+  }, [activeBrand?.id]);
 
   const loadArticles = async (bpId: string) => {
     if (!bpId) return;
