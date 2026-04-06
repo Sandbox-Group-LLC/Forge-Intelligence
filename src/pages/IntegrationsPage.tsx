@@ -150,7 +150,7 @@ const CHANNELS: ChannelDef[] = [
     description: 'Contact tracking + campaign attribution. Connects published article UTMs to HubSpot contacts.',
     color: '#FF7A59',
     logo: 'HS',
-    liveStatus: 'staged',
+    liveStatus: 'live',
     credentialFields: [
       { key: 'accessToken', label: 'Private App Token', placeholder: 'pat-na2-...', type: 'password' },
       { key: 'portalId', label: 'Portal ID', placeholder: '244954048' },
@@ -261,7 +261,7 @@ const CHANNELS: ChannelDef[] = [
     label: 'Ghost',
     description: 'Publish full articles to your Ghost site via Admin API. No OAuth — just an Admin API key from your Ghost integration settings.',
     color: '#15171A',
-    logo: '👻',
+    logo: 'GH',
     liveStatus: 'live',
     credentialFields: [
       { key: 'adminUrl', label: 'Admin URL', placeholder: 'https://yourblog.ghost.io' },
