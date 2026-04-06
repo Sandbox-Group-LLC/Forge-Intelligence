@@ -42,7 +42,7 @@ const CLERK_JWKS_URL = process.env.CLERK_JWKS_URL || 'https://clerk.forgeintelli
 const clerkJWKS = createRemoteJWKSet(new URL(CLERK_JWKS_URL));
 // Super Admin user IDs (Clerk) — full access to all brands
 const SUPER_ADMIN_IDS = [
-  'user_3Bxs9lQ5r9Bf6laluD6n7VsvtT3', // brian@sandbox-xm.com
+  'user_3BtC7nusm7CShN7EdUYaaLZcDwp', // brian@sandbox-xm.com
 ];
 
 
@@ -7411,7 +7411,7 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
       brand: result.rows[0] || null,
       allBrands: null,
       // Founder accounts always paid (fallback if super admin check misses)
-      isPaid: result.rows[0]?.is_paid || req.userId === 'user_3Bxs9lQ5r9Bf6laluD6n7VsvtT3',
+      isPaid: result.rows[0]?.is_paid || req.userId === 'user_3BtC7nusm7CShN7EdUYaaLZcDwp',
     });
   } catch(e) {
     res.status(500).json({ success: false, error: e.message });
