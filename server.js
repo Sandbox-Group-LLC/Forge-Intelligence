@@ -1732,6 +1732,62 @@ Extract 3-6 patterns and 2-4 mistakes. Be specific and actionable. Focus on cont
 // ══════════════════════════════════════════════════════════════════════════════
 
 // POST /api/precog/score — Calculate pre-cog score for a content item
+async function updatePrecogOutcomes(brandProfileId) {
+  try {
+    // Find outcomes awaiting measurement — join with content_analytics for actuals
+    const pending = await pool.query(`
+      SELECT po.id, po.predicted_signal, po.predicted_impressions_low,
+             po.predicted_impressions_high, po.avg_impressions_at_prediction,
+             ca.impressions AS actual_impressions, ca.clicks AS actual_clicks
+      FROM precog_outcomes po
+      INNER JOIN content_analytics ca
+        ON ca.content_id = po.content_id AND ca.brand_profile_id = po.brand_profile_id
+      WHERE po.brand_profile_id = $1
+        AND po.measured_at IS NULL
+        AND ca.impressions > 0
+    `, [brandProfileId]);
+
+    if (!pending.rows.length) return;
+
+    for (const row of pending.rows) {
+      const actual = parseInt(row.actual_impressions) || 0;
+      const avg    = parseFloat(row.avg_impressions_at_prediction) || 0;
+
+      // Directional accuracy
+      let directionCorrect = false;
+      if (row.predicted_signal === 'above_average') {
+        directionCorrect = avg > 0 ? actual >= avg : actual > 0;
+      } else if (row.predicted_signal === 'below_average') {
+        directionCorrect = avg > 0 ? actual < avg : false;
+      } else {
+        // 'average' — correct if within 40% of historical avg
+        directionCorrect = avg > 0
+          ? (actual >= avg * 0.6 && actual <= avg * 1.4)
+          : true;
+      }
+
+      // Range accuracy
+      const low  = parseInt(row.predicted_impressions_low)  || 0;
+      const high = parseInt(row.predicted_impressions_high) || 0;
+      const inRange = (low > 0 && high > 0) ? (actual >= low && actual <= high) : null;
+
+      await pool.query(`
+        UPDATE precog_outcomes SET
+          actual_impressions = $1,
+          actual_clicks = $2,
+          direction_correct = $3,
+          in_range = $4,
+          measured_at = NOW()
+        WHERE id = $5
+      `, [actual, parseInt(row.actual_clicks) || 0, directionCorrect, inRange, row.id]);
+    }
+
+    console.log(`[PRE-COG] Accuracy updated for ${pending.rows.length} outcome(s) — brand ${brandProfileId}`);
+  } catch(e) {
+    console.log('[PRE-COG] updatePrecogOutcomes error:', e.message);
+  }
+}
+
 app.post('/api/precog/score', async (req, res) => {
   const { brandProfileId, contentId } = req.body;
   if (!brandProfileId || !contentId) {
@@ -1974,6 +2030,65 @@ app.post('/api/precog/batch', async (req, res) => {
     res.json({ success: true, scored: scored.length, items: scored });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/precog/all/:brandProfileId', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.params;
+  if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+  try {
+    const safeId = brandProfileId.replace(/-/g, '_');
+    const contentTable = `generated_content_${safeId}`;
+    const result = await pool.query(`
+      SELECT gc.id, gc.title, gc.precog_score, gc.precog_breakdown, gc.precog_scored_at, gc.created_at,
+             po.actual_impressions, po.actual_clicks,
+             po.direction_correct, po.in_range, po.measured_at,
+             po.predicted_signal, po.predicted_impressions_low, po.predicted_impressions_high
+      FROM ${contentTable} gc
+      LEFT JOIN precog_outcomes po
+        ON po.content_id = gc.id AND po.brand_profile_id = $1
+      WHERE gc.precog_score IS NOT NULL
+        OR (gc.precog_breakdown IS NOT NULL AND gc.precog_breakdown->>'tier' = 'insufficient_data')
+      ORDER BY gc.created_at DESC
+      LIMIT 100
+    `, [brandProfileId]);
+    res.json({ success: true, items: result.rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/precog/accuracy/:brandProfileId', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.params;
+  if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+  try {
+    const r = await pool.query(`
+      SELECT
+        COUNT(*)                                                              AS total_predictions,
+        COUNT(*) FILTER (WHERE measured_at IS NOT NULL)                      AS measured_count,
+        COUNT(*) FILTER (WHERE measured_at IS NULL)                          AS pending_count,
+        COUNT(*) FILTER (WHERE direction_correct = true)                     AS direction_correct_count,
+        COUNT(*) FILTER (WHERE in_range = true)                              AS in_range_count
+      FROM precog_outcomes
+      WHERE brand_profile_id = $1
+    `, [brandProfileId]);
+
+    const s = r.rows[0];
+    const measured  = parseInt(s.measured_count)          || 0;
+    const pending   = parseInt(s.pending_count)           || 0;
+    const dirCorr   = parseInt(s.direction_correct_count) || 0;
+    const inRange   = parseInt(s.in_range_count)          || 0;
+
+    res.json({
+      success: true,
+      measuredCount: measured,
+      pendingCount: pending,
+      totalPredictions: parseInt(s.total_predictions) || 0,
+      directionAccuracy: measured >= 3 ? Math.round((dirCorr / measured) * 100) : null,
+      rangeAccuracy:     measured >= 3 ? Math.round((inRange / measured) * 100) : null,
+    });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 
@@ -8209,6 +8324,99 @@ app.post('/api/admin/relay', async (req, res) => {
     return res.status(400).json({ success: false, error: `Unknown action: ${action}` });
   } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
+
+app.post('/api/digest/send/:brandProfileId', requireAuth, async (req, res) => {
+  try {
+    const result = await sendDigestForBrand(req.params.brandProfileId);
+    res.json({ success: true, result });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+
+
+
+// POST /api/digest/send-all — EasyCron weekly trigger (admin password protected)
+app.post('/api/digest/send-all', async (req, res) => {
+  const { adminPassword } = req.body;
+  if (adminPassword !== process.env.ADMIN_PASSWORD) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const brands = await pool.query(
+      `SELECT id FROM brand_profiles WHERE is_paid = true AND is_active = true AND (digest_unsubscribed IS NULL OR digest_unsubscribed = false)`
+    );
+    const results = [];
+    for (const brand of brands.rows) {
+      try {
+        const result = await sendDigestForBrand(brand.id);
+        results.push({ id: brand.id, ...result });
+      } catch(e) {
+        results.push({ id: brand.id, error: e.message });
+      }
+      // Rate limit — Resend free tier is 2 req/sec
+      await new Promise(r => setTimeout(r, 600));
+    }
+    const sent = results.filter(r => r.sent).length;
+    const skipped = results.filter(r => r.skipped).length;
+    console.log(`[DIGEST] Batch complete — ${sent} sent, ${skipped} skipped`);
+    res.json({ success: true, sent, skipped, results });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /api/digest/unsubscribe/:token — one-click unsubscribe (no auth)
+app.get('/api/digest/unsubscribe/:token', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `UPDATE brand_profiles SET digest_unsubscribed = true WHERE digest_unsubscribe_token = $1 RETURNING brand_name, brand_url`,
+      [req.params.token]
+    );
+    if (!result.rows.length) {
+      return res.status(404).send('<p style="font-family:sans-serif;padding:40px;">Link not found or already unsubscribed.</p>');
+    }
+    const brand = result.rows[0];
+    res.send(`
+      <div style="font-family:Inter,sans-serif;max-width:480px;margin:80px auto;padding:40px;background:#0F172A;color:#F8FAFC;border-radius:12px;text-align:center;">
+        <span style="font-size:15px;font-weight:800;color:#3563FF;">⬡ Forge Intelligence</span>
+        <h2 style="margin:24px 0 12px;font-size:20px;">Unsubscribed</h2>
+        <p style="color:#94A3B8;font-size:14px;line-height:1.7;margin:0 0 24px;">
+          ${brand.brand_name || brand.brand_url} will no longer receive weekly digest emails.<br/>
+          You can re-enable this anytime in Brand Settings.
+        </p>
+        <a href="https://forgeintelligence.ai/app/brand-settings" style="display:inline-block;background:#1E293B;color:#94A3B8;padding:10px 20px;border-radius:8px;text-decoration:none;font-size:13px;">Back to Brand Settings</a>
+      </div>
+    `);
+  } catch(e) {
+    res.status(500).send('<p style="font-family:sans-serif;padding:40px;">Something went wrong. Please try again.</p>');
+  }
+});
+
+app.post('/api/utils/shorten-url', async (req, res) => {
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: 'url required' });
+  const BITLY_TOKEN = process.env.BITLY_ACCESS_TOKEN;
+  if (!BITLY_TOKEN) return res.status(500).json({ error: 'Bitly not configured' });
+  try {
+    const r = await fetch('https://api-ssl.bitly.com/v4/shorten', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${BITLY_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ long_url: url }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.message || 'Bitly error');
+    res.json({ shortUrl: d.link });
+  } catch(e) {
+    // Non-fatal — return original URL if Bitly fails
+    res.json({ shortUrl: url, fallback: true });
+  }
+});
+
 
 app.get('*', function (req, res) {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
