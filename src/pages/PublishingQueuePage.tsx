@@ -1,7 +1,7 @@
-import { useAuth } from '@clerk/clerk-react';
-import { useApp } from '../context/AppContext';
 import { useState, useEffect, useCallback } from 'react';
 import { AppShell } from '../layouts/AppShell';
+import GateModal from '../components/GateModal';
+import { useApp } from '../context/AppContext';
 import './PublishingQueuePage.css';
 
 // ── Icons ────────────────────────────────────────────────────────────────────
@@ -114,6 +114,24 @@ const CHANNEL_LABELS: Record<string, { label: string; color: string }> = {
 };
 const ALL_CHANNELS = Object.keys(CHANNEL_LABELS);
 
+// ── UTM token resolver ────────────────────────────────────────────────────────
+function resolveUtmTemplate(
+  template: Record<string, string>,
+  params: { campaignSlug: string; articleSlug: string; brandSlug: string; channel: string }
+): string {
+  const resolved: Record<string, string> = {};
+  for (const [k, v] of Object.entries(template)) {
+    resolved[k] = v
+      .replace(/\{campaign_slug\}/g, params.campaignSlug)
+      .replace(/\{article_slug\}/g,  params.articleSlug)
+      .replace(/\{brand_slug\}/g,    params.brandSlug)
+      .replace(/\{channel\}/g,       params.channel);
+  }
+  return Object.entries(resolved).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+}
+
+
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface QueueItem {
   id: string;
@@ -140,33 +158,39 @@ interface QueueItem {
   review_status?: string | null;
   review_comment?: string | null;
   review_actioned_at?: string | null;
-  precog_score?: number | null;
 }
 
 interface ConnectedChannel { channel: string; }
 
-interface UtmPreview {
-  item: QueueItem;
-  channels: Record<string, Record<string, string>>;
-}
-
 export default function PublishingQueuePage() {
-  const { getToken } = useAuth();
-  const { activeBrandId } = useApp();
+  const { isPaid, activeBrand , brandLoading } = useApp();
+  const activeBrandId = activeBrand?.id ?? null;
+  
+  if (brandLoading) return null;
+  if (!isPaid) {
+    return (
+      <AppShell>
+        <GateModal 
+          featureName="Publishing Queue" 
+          onClose={() => window.location.href = '/app/context-hub'} 
+          onUnlocked={() => {}} 
+        />
+      </AppShell>
+    );
+  }
+
   const [items, setItems] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [brands, setBrands] = useState<{ id: string; brandName?: string; brandUrl?: string }[]>([]);
   const [connectedChannels, setConnectedChannels] = useState<Record<string, string[]>>({});
   const [publishing, setPublishing] = useState<string | null>(null);
   const [scheduling, setScheduling] = useState<string | null>(null);
   const [scheduleDate, setScheduleDate] = useState<Record<string, string>>({});
   const [selectedChannels, setSelectedChannels] = useState<Record<string, string[]>>({});
-  const [utmPreview, setUtmPreview] = useState<UtmPreview | null>(null);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [contentPreview, setContentPreview] = useState<{ item: QueueItem; article: any; postCopy: Record<string, string> } | null>(null);
   const [editingField, setEditingField] = useState<string | null>(null);
-  const [exportModal, setExportModal] = useState<{ item: QueueItem; article: any; brandSettingsData?: any } | null>(null);
+  const [exportModal, setExportModal] = useState<{ item: QueueItem; article: any; brandSettingsData?: any; channelUtms?: Record<string, Record<string, string>> } | null>(null);
   const [customUtmBase, setCustomUtmBase] = useState<string>('');
   const [brandSettings, setBrandSettings] = useState<Record<string, { article_base_url?: string; article_url_suffix?: string; settings?: { siteTemplate?: any } }>>({});
   const [exportTab, setExportTab] = useState<'html' | 'markdown' | 'json' | 'link'>('html');
@@ -190,6 +214,7 @@ export default function PublishingQueuePage() {
   const [reviewUrl, setReviewUrl] = useState<string | null>(null);
   const [reviewCopied, setReviewCopied] = useState(false);
   const [editingTitleVal, setEditingTitleVal] = useState('');
+  const [precogScores, setPrecogScores] = useState<Record<string, { score: number | null; tier: string; color: string; prediction: string; signals?: any[]; recommendedActions?: string[]; dataPoints?: number }>>({});
   const [deleteChannelSelection, setDeleteChannelSelection] = useState<Record<string, boolean>>({});
   const [deleting, setDeleting] = useState(false);
 
@@ -272,39 +297,16 @@ export default function PublishingQueuePage() {
     } catch(e) { console.error('Archive failed', e); }
   };
 
-  // Sync with global brand selection from TopBar
-  // Sync with TopBar brain selection
-
   const loadQueue = useCallback(async () => {
+    if (!activeBrandId) return;
     setLoading(true);
     try {
-      // Fetch brands first, then load each brand's enriched queue
-      const token = await getToken();
-      const brandsRes = await fetch('/api/context-hub/brains', {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-      }).then(r => r.json());
-      const brandList = brandsRes.success ? (brandsRes.data || []) : [];
-      if (brandList.length > 0) setBrands(brandList);
-
-      // Use brand-scoped endpoints so campaign enrichment (week, publish_day, etc.) is included
+      // Load only the active brand's queue
       const allItems: QueueItem[] = [];
-      const brandIds = brandList.map((b: any) => b.id);
-
-      // If no brands yet, fall back to global endpoint
-      if (brandIds.length === 0) {
-        const r = await fetch('/api/publishing/queue');
-        const d = await r.json();
-        if (d.success) allItems.push(...d.items);
-      } else {
-        const results = await Promise.all(
-          brandIds.map((id: string) =>
-            fetch(`/api/publishing/queue/${id}`).then(r => r.json()).catch(() => ({ success: false, items: [] }))
-          )
-        );
-        for (const d of results) {
-          if (d.success) allItems.push(...d.items);
-        }
-      }
+      const r = await fetch(`/api/publishing/queue/${activeBrandId}`)
+        .then(r => r.json())
+        .catch(() => ({ success: false, items: [] }));
+      if (r.success) allItems.push(...r.items);
 
       setItems(allItems);
       setSelectedChannels(prev => {
@@ -328,11 +330,11 @@ export default function PublishingQueuePage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeBrandId]);
 
   useEffect(() => {
-    loadQueue(); // brands loaded inside loadQueue via brand-scoped queue endpoints
-  }, [loadQueue]);
+    if (activeBrandId) loadQueue();
+  }, [loadQueue, activeBrandId]);
 
   // Load reviewers when items load
   useEffect(() => {
@@ -537,20 +539,30 @@ export default function PublishingQueuePage() {
 
   const openExportModal = async (item: QueueItem) => {
     const safeId = item.brand_profile_id.replace(/-/g, '_');
-    const [artRes, settingsRes] = await Promise.all([
+    const [artRes, settingsRes, chRes] = await Promise.all([
       fetch(`/api/content/${safeId}/${item.content_id}`),
-      fetch(`/api/brand-settings/${item.brand_profile_id}`)
+      fetch(`/api/brand-settings/${item.brand_profile_id}`),
+      fetch(`/api/publishing/channels/${item.brand_profile_id}`).catch(() => null),
     ]);
-    const artData = await artRes.json();
+    const artData    = await artRes.json();
     const settingsData = await settingsRes.json();
+    const chData     = chRes ? await chRes.json().catch(() => ({ success: false, channels: [] })) : { success: false, channels: [] };
     const article = artData.success ? artData.article : null;
     if (settingsData.success) {
       setBrandSettings(prev => ({ ...prev, [item.brand_profile_id]: { ...settingsData.settings, settings: settingsData.settings.settings } }));
     }
+    // Build channelUtms — fall back to DEFAULT_UTM when stored template is null/empty
+    const channelUtms: Record<string, Record<string, string>> = {};
+    if (chData.success) {
+      for (const ch of chData.channels) {
+        const stored = ch.utm_template;
+        channelUtms[ch.channel] = (stored && Object.keys(stored).length > 0) ? stored : { utm_source: ch.channel, utm_medium: ['linkedin','x','facebook','reddit','medium'].includes(ch.channel) ? 'social' : 'organic', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' };
+      }
+    }
     setExportTab('html');
     setCopied('');
     setCustomUtmBase('');
-    setExportModal({ item, article, brandSettingsData: settingsData.success ? settingsData.settings : null });
+    setExportModal({ item, article, brandSettingsData: settingsData.success ? settingsData.settings : null, channelUtms });
   };
 
   const buildExportUrl = (item: QueueItem, article: any, settingsOverride?: any) => {
@@ -585,7 +597,7 @@ export default function PublishingQueuePage() {
     const hero = article?.hero_image_url || '';
     const wordCount = sections.reduce((acc: number, s: any) => acc + ((s.body || s.content || '').split(' ').length), 0);
     const readMin = Math.max(1, Math.round(wordCount / 200));
-    const brandName = item.brand_name || brands.find(b => b.id === item.brand_profile_id)?.brandName || item.brand_url || '';
+    const brandName = item.brand_name || item.brand_url || '';
 
     // Use scraped site template class names if available, otherwise generic
     const rawTmpl = exportModal?.brandSettingsData?.settings?.siteTemplate?.article
@@ -705,16 +717,7 @@ ${bodyHtml}
     });
   };
 
-  const openUtmPreview = async (item: QueueItem) => {
-    // Fetch UTM templates for this brand's connected channels
-    const r = await fetch(`/api/publishing/channels/${item.brand_profile_id}`);
-    const d = await r.json();
-    const channelMap: Record<string, Record<string, string>> = {};
-    if (d.success) {
-      for (const ch of d.channels) channelMap[ch.channel] = ch.utm_template || {};
-    }
-    setUtmPreview({ item, channels: channelMap });
-  };
+
 
   const saveArticleEdit = async (field: string, value: string, sectionIndex?: number) => {
     if (!contentPreview) return;
@@ -753,48 +756,91 @@ ${bodyHtml}
 
   const openContentPreview = async (item: QueueItem) => {
     try {
-      await fetch(`/api/publishing/channels/${item.brand_profile_id}`);
+      // Fetch channels for UTM templates + brand settings for article URL
+      const [chRes, bsRes] = await Promise.all([
+        fetch(`/api/publishing/channels/${item.brand_profile_id}`).then(r => r.json()).catch(() => ({ success: false, channels: [] })),
+        fetch(`/api/brand-settings/${item.brand_profile_id}`).then(r => r.json()).catch(() => ({ success: false })),
+      ]);
       const safeId = item.brand_profile_id.replace(/-/g, '_');
       const artRes = await fetch(`/api/content/${safeId}/${item.content_id}`);
       const artData = await artRes.json();
       const article = artData.success ? artData.article : null;
 
-      // Build default post copy — fetch AI-generated copy from server
+      // Build article URL using Brand Settings base URL
+      const bs = bsRes.success ? bsRes.settings : null;
       const sections = article?.article_json?.sections || [];
-      const liBrandSlug = (article?.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().split('-').slice(0,3).join('-') || item.brand_profile_id.slice(0,8);
-      const artSlug = (article?.title || item.title).toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 80);
-      const articleUrl = `https://forgeintelligence.ai/articles/${liBrandSlug}/${artSlug}`;
+      const articleBaseUrl = buildExportUrl(item, article, bs);
+      const articleSlug = (item.title || 'article').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      const brandSlug = (article?.brand_url || item.brand_url || 'brand').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
+      const campaignSlug = item.campaign_name
+        ? item.campaign_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 50)
+        : 'forge-content';
+
+      // Build channel UTM map — fall back to DEFAULT_UTM when stored template is null/empty
+      const channelUtmMap: Record<string, Record<string, string>> = {};
+      if (chRes.success) {
+        for (const ch of chRes.channels) {
+          const stored = ch.utm_template;
+          channelUtmMap[ch.channel] = (stored && Object.keys(stored).length > 0) ? stored : { utm_source: ch.channel, utm_medium: ['linkedin','x','facebook','reddit','medium'].includes(ch.channel) ? 'social' : 'organic', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' };
+        }
+      }
+
+      // Build article URL with UTMs per channel
+      const buildChannelUrl = (ch: string) => {
+        const tmpl = channelUtmMap[ch];
+        if (!tmpl || Object.keys(tmpl).length === 0) return articleBaseUrl;
+        const utmStr = resolveUtmTemplate(tmpl, { campaignSlug, articleSlug, brandSlug, channel: ch });
+        return `${articleBaseUrl}?${utmStr}`;
+      };
+
       const wordCount = sections.reduce((acc: number, s: any) => acc + ((s.body || s.content || '').split(' ').length), 0);
       const readMin = Math.max(2, Math.round(wordCount / 200));
       const headings = sections.slice(1, 5).map((s: any) => s.heading).filter(Boolean).join(', ');
+      const liUrl  = buildChannelUrl('linkedin');
+      const xUrl   = buildChannelUrl('x');
 
-      // Ask server to generate the LinkedIn copy
-      let liCopy = `${article?.title || item.title}\n\nRead more: ${articleUrl}`;
+      // Shorten URLs via Bitly for cleaner post copy
+      const shorten = async (url: string): Promise<string> => {
+        try {
+          const r = await fetch('/api/utils/shorten-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url })
+          });
+          const d = await r.json();
+          return d.shortUrl || url;
+        } catch { return url; }
+      };
+
+      const [liShort, xShort] = await Promise.all([shorten(liUrl), shorten(xUrl)]);
+
+      let liCopy = `${article?.title || item.title}\n\nRead more: ${liShort}`;
       try {
         const copyRes = await fetch('/api/publishing/generate-post-copy', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: article?.title || item.title, headings, readMinutes: readMin, articleUrl })
+          body: JSON.stringify({ title: article?.title || item.title, headings, readMinutes: readMin, articleUrl: liShort })
         });
         const copyData = await copyRes.json();
         if (copyData.copy) liCopy = copyData.copy;
       } catch(_) {}
 
+      // X: title capped at 240 chars to leave room for the short URL + newlines
+      const xTitle = (article?.title || item.title).slice(0, 240);
       const defaultCopy: Record<string, string> = {
         linkedin: liCopy,
-        x: `${(article?.title || item.title).slice(0, 200)}\n\nRead more: ${articleUrl}`,
+        x: `${xTitle}\n\nRead more: ${xShort}`,
         wordpress: article?.title || item.title,
         webflow: article?.title || item.title,
       };
       setContentPreview({ item, article, postCopy: defaultCopy });
-    } finally {
-    }
+    } finally {}
   };
 
   // Filter logic
   const archivedItems = items.filter(i => i.status === 'archived');
   const filteredItems = items.filter(item => {
-    if (activeBrandId !== 'all' && item.brand_profile_id !== activeBrandId) return false;
+    if (activeBrandId && item.brand_profile_id !== activeBrandId) return false;
     if (showArchived) return item.status === 'archived';
     return item.status !== 'archived';
   });
@@ -818,8 +864,34 @@ ${bodyHtml}
 
 
 
+  // Fetch pre-cog score for a single item (non-blocking)
+  const fetchPrecogScore = useCallback(async (item: QueueItem) => {
+    if (!item.brand_profile_id || precogScores[item.content_id]) return;
+    try {
+      const r = await fetch(`/api/precog/score/${item.brand_profile_id}/${item.content_id}`);
+      const d = await r.json();
+      if (d.success && d.tier) {
+        setPrecogScores(prev => ({ ...prev, [item.content_id]: {
+          score: d.score,
+          tier: d.tier,
+          color: d.color || '#64748B',
+          prediction: d.prediction || '',
+          signals: d.signals,
+          recommendedActions: d.recommendedActions,
+          dataPoints: d.dataPoints,
+        }}));
+      }
+    } catch { /* non-fatal */ }
+  }, [precogScores]);
+
+  // Load precog scores for visible items
+  useEffect(() => {
+    const staged = items.filter(i => i.status !== 'archived');
+    staged.forEach(item => fetchPrecogScore(item));
+  }, [items]);
+
   const brandName = (item: QueueItem) =>
-    item.brand_name || brands.find(b => b.id === item.brand_profile_id)?.brandName || item.brand_url || '—';
+    item.brand_name || item.brand_url || '—';
 
   return (
     <>
@@ -836,13 +908,10 @@ ${bodyHtml}
             <RefreshCw /> {loading ? 'Loading...' : 'Refresh'}
           </button>
         </div>
-
-        {/* Brand filter */}
-
         {error && <div className="geo-error">{error}</div>}
         {reviewUrl && (
           <div className="pq-review-toast">
-            <span>🔗 Review link {reviewCopied ? 'copied!' : 'ready'}:</span>
+            <span className="pq-review-link-label"><Link2 /> Review link {reviewCopied ? 'copied!' : 'ready'}:</span>
             <a href={reviewUrl} target="_blank" rel="noopener noreferrer" className="pq-review-link">{reviewUrl}</a>
           </div>
         )}
@@ -957,16 +1026,6 @@ ${bodyHtml}
                         <span className="pq-brand-tag">{brandName(item)}</span>
                         <span className="pq-dot">·</span>
                         <span className="pq-date">Staged {new Date(item.created_at).toLocaleDateString()}</span>
-                        {item.precog_score != null && (
-                          <>
-                            <span className="pq-dot">·</span>
-                            <span className="pq-precog-badge" style={{ 
-                              color: item.precog_score >= 80 ? '#22C55E' : item.precog_score >= 60 ? '#EAB308' : item.precog_score >= 40 ? '#F97316' : '#EF4444'
-                            }} title={`Pre-cog Score: ${item.precog_score} - ${item.precog_score >= 80 ? 'Likely to outperform' : item.precog_score >= 60 ? 'Near average' : item.precog_score >= 40 ? 'May underperform' : 'High risk'}`}>
-                              🔮 {item.precog_score}
-                            </span>
-                          </>
-                        )}
                         {item.scheduled_at && (
                           <>
                             <span className="pq-dot">·</span>
@@ -975,13 +1034,31 @@ ${bodyHtml}
                         )}
                       </div>
                     </div>
+                    {(() => {
+                      const ps = precogScores[item.content_id];
+                      if (!ps) return null;
+                      if (ps.tier === 'insufficient_data') return (
+                        <div className="pq-precog-badge pq-precog-insufficient" title="Not enough analytics data yet to score this article">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                          No data yet
+                        </div>
+                      );
+                      return (
+                        <div className="pq-precog-badge" style={{ '--precog-color': ps.color } as React.CSSProperties}
+                          title={ps.prediction + (ps.recommendedActions?.length ? '\n\nSuggested: ' + ps.recommendedActions[0] : '')}>
+                          <span className="pq-precog-dot" />
+                          <span className="pq-precog-score">{ps.score}</span>
+                          <span className="pq-precog-label">Pre-cog</span>
+                        </div>
+                      );
+                    })()}
                     <div className="pq-item-actions-top">
 
                       <button className="pq-icon-btn" title="Smart Export" onClick={() => openExportModal(item)}>
                         <Download />
                       </button>
                       {(() => {
-                        const brandUrl = item.brand_url || brands.find(b => b.id === item.brand_profile_id)?.brandUrl || '';
+                        const brandUrl = item.brand_url || '';
                         const bSlug = brandUrl.replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
                         const aSlug = (item.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
                         return (
@@ -995,9 +1072,7 @@ ${bodyHtml}
                       <button className="pq-icon-btn" title="Preview & Edit Post" onClick={() => openContentPreview(item)}>
                         <Eye />
                       </button>
-                      <button className="pq-icon-btn" title="UTM Preview" onClick={() => openUtmPreview(item)}>
-                        <Link2 />
-                      </button>
+
                       <div style={{ position: 'relative' }}>
                         <button className="pq-icon-btn" title="Send for Review"
                           onClick={() => setReviewDropdown(reviewDropdown === item.id ? null : item.id)}>
@@ -1021,7 +1096,7 @@ ${bodyHtml}
                             <div className="pq-reviewer-divider" />
                             <button className="pq-reviewer-option pq-reviewer-link-only"
                               onClick={() => sendForReview(item)}>
-                              <span className="pq-reviewer-avatar">🔗</span>
+                              <span className="pq-reviewer-avatar"><Link2 /></span>
                               <span><div className="pq-reviewer-rname">Copy link only</div></span>
                             </button>
                           </div>
@@ -1256,16 +1331,6 @@ return (
                         <span className="pq-brand-tag">{brandName(item)}</span>
                         <span className="pq-dot">·</span>
                         <span className="pq-date">Staged {new Date(item.created_at).toLocaleDateString()}</span>
-                        {item.precog_score != null && (
-                          <>
-                            <span className="pq-dot">·</span>
-                            <span className="pq-precog-badge" style={{ 
-                              color: item.precog_score >= 80 ? '#22C55E' : item.precog_score >= 60 ? '#EAB308' : item.precog_score >= 40 ? '#F97316' : '#EF4444'
-                            }} title={`Pre-cog Score: ${item.precog_score} - ${item.precog_score >= 80 ? 'Likely to outperform' : item.precog_score >= 60 ? 'Near average' : item.precog_score >= 40 ? 'May underperform' : 'High risk'}`}>
-                              🔮 {item.precog_score}
-                            </span>
-                          </>
-                        )}
                         {item.scheduled_at && (
                           <>
                             <span className="pq-dot">·</span>
@@ -1274,6 +1339,24 @@ return (
                         )}
                       </div>
                     </div>
+                    {(() => {
+                      const ps = precogScores[item.content_id];
+                      if (!ps) return null;
+                      if (ps.tier === 'insufficient_data') return (
+                        <div className="pq-precog-badge pq-precog-insufficient" title="Not enough analytics data yet to score this article">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                          No data yet
+                        </div>
+                      );
+                      return (
+                        <div className="pq-precog-badge" style={{ '--precog-color': ps.color } as React.CSSProperties}
+                          title={ps.prediction + (ps.recommendedActions?.length ? '\n\nSuggested: ' + ps.recommendedActions[0] : '')}>
+                          <span className="pq-precog-dot" />
+                          <span className="pq-precog-score">{ps.score}</span>
+                          <span className="pq-precog-label">Pre-cog</span>
+                        </div>
+                      );
+                    })()}
                     <div className="pq-item-actions-top">
 
                       <button className="pq-icon-btn" title="Smart Export" onClick={() => openExportModal(item)}>
@@ -1282,9 +1365,7 @@ return (
                       <button className="pq-icon-btn" title="Preview & Edit Post" onClick={() => openContentPreview(item)}>
                         <Eye />
                       </button>
-                      <button className="pq-icon-btn" title="UTM Preview" onClick={() => openUtmPreview(item)}>
-                        <Link2 />
-                      </button>
+
                       <div style={{ position: 'relative' }}>
                         <button className="pq-icon-btn" title="Send for Review"
                           onClick={() => setReviewDropdown(reviewDropdown === item.id ? null : item.id)}>
@@ -1308,7 +1389,7 @@ return (
                             <div className="pq-reviewer-divider" />
                             <button className="pq-reviewer-option pq-reviewer-link-only"
                               onClick={() => sendForReview(item)}>
-                              <span className="pq-reviewer-avatar">🔗</span>
+                              <span className="pq-reviewer-avatar"><Link2 /></span>
                               <span><div className="pq-reviewer-rname">Copy link only</div></span>
                             </button>
                           </div>
@@ -1496,44 +1577,6 @@ return (
         )}
       </div>
 
-      {/* UTM Preview Modal */}
-      {utmPreview && (
-        <div className="pq-modal-overlay" onClick={() => setUtmPreview(null)}>
-          <div className="pq-modal" onClick={e => e.stopPropagation()}>
-            <div className="pq-modal-header">
-              <div className="pq-modal-title">UTM Preview</div>
-              <div className="pq-modal-sub">{utmPreview.item.title}</div>
-              <button className="pq-modal-close" onClick={() => setUtmPreview(null)}><X /></button>
-            </div>
-            <div className="pq-modal-body">
-              {Object.keys(utmPreview.channels).length === 0 ? (
-                <p className="pq-modal-empty">No channels connected for this Brain yet.</p>
-              ) : (
-                Object.entries(utmPreview.channels).map(([ch, utm]) => {
-                  const utmStr = Object.entries(utm).map(([k, v]) => `${k}=${v}`).join('&');
-                  const previewUrl = `https://yoursite.com/article-slug?${utmStr}`;
-                  return (
-                    <div key={ch} className="pq-utm-block">
-                      <div className="pq-utm-channel" style={{ color: CHANNEL_LABELS[ch]?.color }}>
-                        {CHANNEL_LABELS[ch]?.label || ch}
-                      </div>
-                      <div className="pq-utm-params">
-                        {Object.entries(utm).map(([k, v]) => (
-                          <div key={k} className="pq-utm-param">
-                            <span className="pq-utm-k">{k}</span>
-                            <span className="pq-utm-v">{v}</span>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="pq-utm-preview-url">{previewUrl}</div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── Content Preview & Edit Modal ─────────────────────────────── */}
       {contentPreview && (() => {
@@ -1893,16 +1936,32 @@ return (
             {exportTab === 'link' ? (
               <div className="pq-export-link-wrap">
                 <p className="pq-export-link-desc">
-                  Paste your live article URL below to append UTM tracking params — or use the default Forge URL.
+                  Ready-to-use UTM links per channel, built from your saved templates in Integrations.
                 </p>
-                <input
-                  className="pq-utm-custom-input"
-                  placeholder={`${exportUrl} (default)`}
-                  value={customUtmBase}
-                  onChange={e => setCustomUtmBase(e.target.value)}
-                />
-                <div className="pq-utm-built-label">UTM URL</div>
-                <div className="pq-export-link-box">{(customUtmBase.trim() ? customUtmBase.trim().replace(/[?#].*$/, '') : exportUrl) + `?utm_source=export&utm_medium=byo&utm_campaign=${campaignSlug}&utm_content=${contentSlug}`}</div>
+                {Object.keys(exportModal?.channelUtms || {}).length === 0 ? (
+                  <p className="pq-utm-empty">No channels connected yet. Connect channels in Integrations to generate UTM links.</p>
+                ) : (
+                  <div className="pq-utm-channel-list">
+                    {Object.entries(exportModal?.channelUtms || {}).map(([ch, tmpl]) => {
+                      const utmStr = resolveUtmTemplate(tmpl, { campaignSlug, articleSlug: contentSlug, brandSlug: item.brand_profile_id.slice(0,8), channel: ch });
+                      const fullUrl = utmStr ? `${exportUrl}?${utmStr}` : exportUrl;
+                      return (
+                        <div key={ch} className="pq-utm-channel-row">
+                          <span className="pq-utm-channel-label" style={{ color: CHANNEL_LABELS[ch]?.color || 'inherit' }}>
+                            {CHANNEL_LABELS[ch]?.label || ch}
+                          </span>
+                          <div className="pq-utm-channel-url">{fullUrl}</div>
+                          <button
+                            className="pq-utm-copy-btn"
+                            onClick={() => handleCopy(fullUrl, `utm-${ch}`)}
+                          >
+                            {copied === `utm-${ch}` ? '✓' : 'Copy'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="pq-export-code-wrap">
