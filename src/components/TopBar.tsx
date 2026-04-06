@@ -98,7 +98,7 @@ export function TopBar() {
 
       <div className="topbar-right">
         {/* Super Admin Brand Switcher */}
-        {allBrands && allBrands.length > 0 && (
+        {allBrands && (
           <div style={{ position: 'relative' }}>
             <button
               onClick={() => setBrandMenuOpen(o => !o)}
