@@ -288,8 +288,8 @@ export function Sidebar() {
 
   const handleBrainItemClick = (id: ViewType, status: string) => {
     if (status === 'disabled') return;
-    // Pre-seed the URL field with the active brand URL so New Analysis always
-    // opens ready to re-scan their own brand, not blank/stale
+    // In production (single brand), pre-seed the URL field with the active brand URL
+    // so New Analysis always opens ready to re-scan their own brand, not blank/stale
     if (id === 'new-analysis' && activeBrand?.brandUrl) {
       setAnalysisInput({ ...analysisInput, brandUrl: activeBrand.brandUrl });
     }
