@@ -38,8 +38,8 @@ const ArrowIcon = () => (
 );
 
 export default function TopicQueuePage() {
-  const { activeBrandId } = useApp();
-  const selectedBrand = activeBrandId || localStorage.getItem('forge_active_brand_id') || '';
+  const { activeBrand } = useApp();
+  const selectedBrand = activeBrand?.id || localStorage.getItem('forge_active_brand_id') || '';
   const [topics, setTopics] = useState<TopicIdea[]>([]);
   const filter = 'all' as const;
 
