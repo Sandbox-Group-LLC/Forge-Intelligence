@@ -70,7 +70,7 @@ const pathTitles: Record<string, string> = {
 };
 
 export function TopBar() {
-  const { currentView, brandProfile, sidebarCollapsed, setSidebarCollapsed, isSuperAdmin, allBrands, switchBrand, activeBrandId } = useApp();
+  const { currentView, brandProfile, sidebarCollapsed, setSidebarCollapsed, allBrands, switchBrand, activeBrandId } = useApp();
   const { user } = useUser();
   const { openUserProfile } = useClerk();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -98,7 +98,7 @@ export function TopBar() {
 
       <div className="topbar-right">
         {/* Super Admin Brand Switcher */}
-        {isSuperAdmin && allBrands && allBrands.length > 0 && (
+        {allBrands && allBrands.length > 0 && (
           <div style={{ position: 'relative' }}>
             <button
               onClick={() => setBrandMenuOpen(o => !o)}
@@ -142,7 +142,7 @@ export function TopBar() {
                 onMouseLeave={() => setBrandMenuOpen(false)}
               >
                 <div style={{ padding: '8px 16px 10px', borderBottom: '1px solid rgba(255,255,255,0.08)', fontSize: '0.7rem', fontWeight: 600, color: 'rgba(99, 102, 241, 0.8)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  {icons.shield} Super Admin · {allBrands.length} Brands
+                  {allBrands.length} Brands
                 </div>
                 {allBrands.map(b => (
                   <button
