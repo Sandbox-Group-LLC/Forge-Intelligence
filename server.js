@@ -753,6 +753,51 @@ async function initDB() {
   } catch(e) { console.log('NeonDB: Brain tables note:', e.message); }
 
 
+  // ── Row Level Security — orphan brand prevention ─────────────────────────
+  const rlsTables = [
+    'publishing_queue', 'publishing_channels', 'content_analytics',
+    'brain_patterns', 'brain_mistakes', 'geo_briefs', 'geo_citations',
+    'decay_alerts', 'precog_outcomes', 'topic_ideas', 'reviewers', 'memories',
+  ];
+  for (const tbl of rlsTables) {
+    try {
+      await pool.query(`ALTER TABLE ${tbl} ENABLE ROW LEVEL SECURITY`);
+      await pool.query(`ALTER TABLE ${tbl} FORCE ROW LEVEL SECURITY`);
+      await pool.query(`DROP POLICY IF EXISTS no_orphan_brands ON ${tbl}`);
+      await pool.query(`
+        CREATE POLICY no_orphan_brands ON ${tbl}
+          USING (brand_profile_id IN (
+            SELECT id FROM brand_profiles WHERE clerk_user_id IS NOT NULL
+          ))
+      `);
+    } catch(e) { /* skip tables without brand_profile_id */ }
+  }
+  // publish_log — joins through queue
+  try {
+    await pool.query(`ALTER TABLE publish_log ENABLE ROW LEVEL SECURITY`);
+    await pool.query(`ALTER TABLE publish_log FORCE ROW LEVEL SECURITY`);
+    await pool.query(`DROP POLICY IF EXISTS no_orphan_brands ON publish_log`);
+    await pool.query(`
+      CREATE POLICY no_orphan_brands ON publish_log
+        USING (queue_item_id IN (
+          SELECT id FROM publishing_queue WHERE brand_profile_id IN (
+            SELECT id FROM brand_profiles WHERE clerk_user_id IS NOT NULL
+          )
+        ))
+    `);
+  } catch(e) { console.log('[RLS] publish_log:', e.message); }
+  console.log('[SECURITY] RLS policies applied');
+
+  // Purge orphaned brain data on every boot
+  try {
+    const [op, om] = await Promise.all([
+      pool.query(`DELETE FROM brain_patterns WHERE brand_profile_id NOT IN (SELECT id FROM brand_profiles WHERE clerk_user_id IS NOT NULL)`),
+      pool.query(`DELETE FROM brain_mistakes WHERE brand_profile_id NOT IN (SELECT id FROM brand_profiles WHERE clerk_user_id IS NOT NULL)`),
+    ]);
+    if (op.rowCount || om.rowCount) console.log(`[SECURITY] Purged orphans: ${op.rowCount} patterns, ${om.rowCount} mistakes`);
+  } catch(e) { console.log('[SECURITY] Orphan purge:', e.message); }
+
+
 initDB().catch(err => console.error('DB init error:', err));
 
 app.use(express.json());
@@ -869,7 +914,7 @@ app.get('/api/articles/:brandSlug/:articleSlug', async (req, res) => {
 
 // ── Sync publish status ───────────────────────────────────────────────────────
 // Checks live channel APIs and updates publish_log.live_status
-app.get('/api/publishing/sync/:queueItemId', async (req, res) => {
+app.get('/api/publishing/sync/:queueItemId', requireAuth, async (req, res) => {
   const { queueItemId } = req.params;
   try {
     // Only process the most recent log entry per channel — older entries are historical
@@ -1067,7 +1112,7 @@ app.post('/api/publishing/republish', async (req, res) => {
 });
 
 // ── Get publish log for a queue item ─────────────────────────────────────────
-app.get('/api/publishing/log/:queueItemId', async (req, res) => {
+app.get('/api/publishing/log/:queueItemId', requireAuth, async (req, res) => {
   try {
     const logRes = await pool.query(
       `SELECT DISTINCT ON (channel) id, channel, status, live_status, published_url, error_message, attempted_at, last_synced_at
@@ -1083,7 +1128,7 @@ app.get('/api/publishing/log/:queueItemId', async (req, res) => {
 
 
 // ── On-demand hero image regeneration ────────────────────────────────────────
-app.post('/api/content/regenerate-image/:contentId', async (req, res) => {
+app.post('/api/content/regenerate-image/:contentId', requireAuth, async (req, res) => {
   const { contentId } = req.params;
   const { brandProfileId } = req.body;
   if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
@@ -1340,7 +1385,7 @@ app.get('/api/context-hub/brains', softAuth, async (req, res) => {
   }
 });
 
-app.get('/api/context-hub/brains/:id', async (req, res) => {
+app.get('/api/context-hub/brains/:id', requireAuth, async (req, res) => {
   try {
     const result = await pool.query(`SELECT * FROM brand_profiles WHERE id = $1`, [req.params.id]);
     if (!result.rows.length) return res.status(404).json({ success: false, error: 'Not found' });
@@ -1356,7 +1401,7 @@ app.get('/api/context-hub/brains/:id', async (req, res) => {
 });
 
 // POST /api/brand-settings/:brandProfileId/scrape-template
-app.post('/api/brand-settings/:brandProfileId/scrape-template', async (req, res) => {
+app.post('/api/brand-settings/:brandProfileId/scrape-template', requireAuth, async (req, res) => {
   const { brandProfileId } = req.params;
   const { articleUrl, catalogUrl } = req.body;
   if (!articleUrl) return res.status(400).json({ error: 'articleUrl required' });
@@ -1439,7 +1484,7 @@ app.post('/api/brand-settings/:brandProfileId/scrape-template', async (req, res)
 });
 
 // POST /api/content/topic-check — pre-flight check topic against brain_patterns/mistakes
-app.post('/api/content/topic-check', async (req, res) => {
+app.post('/api/content/topic-check', requireAuth, async (req, res) => {
   const { brandProfileId, topic } = req.body;
   if (!brandProfileId || !topic) return res.status(400).json({ error: 'brandProfileId and topic required' });
   try {
@@ -1530,7 +1575,7 @@ app.patch('/api/publishing/queue/:id/title', async (req, res) => {
 });
 
 // POST /api/publishing/queue/:id/archive
-app.post('/api/publishing/queue/:id/archive', async (req, res) => {
+app.post('/api/publishing/queue/:id/archive', requireAuth, async (req, res) => {
   try {
     await pool.query(
       `UPDATE publishing_queue SET status = 'archived', updated_at = NOW() WHERE id = $1`,
@@ -1543,7 +1588,7 @@ app.post('/api/publishing/queue/:id/archive', async (req, res) => {
 });
 
 // POST /api/publishing/queue/:id/unarchive
-app.post('/api/publishing/queue/:id/unarchive', async (req, res) => {
+app.post('/api/publishing/queue/:id/unarchive', requireAuth, async (req, res) => {
   try {
     await pool.query(
       `UPDATE publishing_queue SET status = 'staged', updated_at = NOW() WHERE id = $1`,
@@ -1556,9 +1601,10 @@ app.post('/api/publishing/queue/:id/unarchive', async (req, res) => {
 });
 
 // GET /api/analytics/patterns/:brandProfileId
-app.get('/api/analytics/patterns/:brandProfileId', async (req, res) => {
+app.get('/api/analytics/patterns/:brandProfileId', requireAuth, async (req, res) => {
   const { brandProfileId } = req.params;
   try {
+    if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
     const [pRes, mRes] = await Promise.all([
       pool.query(
         'SELECT id, pattern_type, description, confidence_score, success_rate, tags, created_at FROM brain_patterns WHERE brand_profile_id = $1 ORDER BY confidence_score DESC, created_at DESC',
@@ -1577,9 +1623,10 @@ app.get('/api/analytics/patterns/:brandProfileId', async (req, res) => {
 
 // POST /api/analytics/extract-patterns/:brandProfileId
 // Analyzes content_analytics + publishing_queue to extract Brain Patterns and Mistakes
-app.post('/api/analytics/extract-patterns/:brandProfileId', async (req, res) => {
+app.post('/api/analytics/extract-patterns/:brandProfileId', requireAuth, async (req, res) => {
   const { brandProfileId } = req.params;
   try {
+    if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
     const safeId = brandProfileId.replace(/-/g, '_');
 
     // Fetch analytics data
@@ -1932,7 +1979,7 @@ app.post('/api/precog/batch', async (req, res) => {
 
 // -- GET /api/brand-profiles/list
 // GET /api/brand-settings/:brandProfileId
-app.get('/api/brand-settings/:brandProfileId', async (req, res) => {
+app.get('/api/brand-settings/:brandProfileId', requireAuth, async (req, res) => {
   const { brandProfileId } = req.params;
   try {
     const r = await pool.query(
@@ -2298,7 +2345,7 @@ function extractJSON(text, type = 'object') {
   return null;
 }
 
-app.get('/api/geo-strategist/briefs', async (req, res) => {
+app.get('/api/geo-strategist/briefs', requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT id, brand_profile_id, brand_url, brand_name, version, opportunity_score, brief_data, created_at, updated_at
@@ -2334,7 +2381,7 @@ app.get('/api/geo-strategist/briefs/:id', async (req, res) => {
   }
 });
 
-app.post('/api/geo-strategist/analyze', async (req, res) => {
+app.post('/api/geo-strategist/analyze', requireAuth, async (req, res) => {
   const { brandProfileId, topicFocus = '', additionalContext = '' } = req.body;
   if (!brandProfileId) {
     return res.status(400).json({ success: false, error: 'brandProfileId is required' });
@@ -2581,7 +2628,7 @@ Return ONLY valid JSON:
 
 // ── Authenticity Enricher API (Stage 3) ──────────────────────────────────────
 
-app.get('/api/authenticity-enricher/briefs', async (req, res) => {
+app.get('/api/authenticity-enricher/briefs', requireAuth, async (req, res) => {
   try {
     const { brandProfileId } = req.query;
     const query = brandProfileId
@@ -2603,7 +2650,7 @@ app.get('/api/authenticity-enricher/briefs', async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
-app.post('/api/authenticity-enricher/analyze', async (req, res) => {
+app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => {
   const { brandProfileId, geoBriefId, manualInputs = {}, force = false } = req.body;
   if (!brandProfileId) return res.status(400).json({ success: false, error: 'brandProfileId is required' });
   const startTime = Date.now();
@@ -3213,7 +3260,7 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
 // ── Campaign Generator ────────────────────────────────────────────────────────
 
 // POST /api/campaign/plan — generate 8 angle profiles
-app.post('/api/campaign/plan', async (req, res) => {
+app.post('/api/campaign/plan', requireAuth, async (req, res) => {
   const { brandProfileId, topicPrompt } = req.body;
   if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
 
@@ -3299,7 +3346,7 @@ app.get('/api/test/image', async (req, res) => {
   }
 });
 
-app.post('/api/campaign/create', async (req, res) => {
+app.post('/api/campaign/create', requireAuth, async (req, res) => {
   const { brandProfileId, plan } = req.body;
   if (!brandProfileId || !plan) return res.status(400).json({ error: 'brandProfileId and plan required' });
 
@@ -3361,7 +3408,7 @@ app.post('/api/campaign/create', async (req, res) => {
 });
 
 // GET /api/campaign/list/:brandProfileId
-app.get('/api/campaign/list/:brandProfileId', async (req, res) => {
+app.get('/api/campaign/list/:brandProfileId', requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT id, name, topic_cluster, status, created_at,
@@ -3619,8 +3666,9 @@ async function ensureComplianceColumns(tableName) {
 // ── Stage 5: Compliance Gate ─────────────────────────────────────────────
 
 // GET latest draft article for a brand
-app.get('/api/compliance/latest/:brandProfileId', async (req, res) => {
+app.get('/api/compliance/latest/:brandProfileId', requireAuth, async (req, res) => {
   const { brandProfileId } = req.params;
+    if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
   if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
   try {
     const safeId = brandProfileId.replace(/-/g, '_');
@@ -3636,7 +3684,7 @@ app.get('/api/compliance/latest/:brandProfileId', async (req, res) => {
 });
 
 // POST compliance critique — Claude reads article + brain mistakes, returns report
-app.post('/api/compliance/critique', async (req, res) => {
+app.post('/api/compliance/critique', requireAuth, async (req, res) => {
   const { brandProfileId, contentId } = req.body;
   if (!brandProfileId || !contentId) return res.status(400).json({ error: 'brandProfileId and contentId required' });
   try {
@@ -3722,7 +3770,7 @@ Return ONLY valid JSON in this exact structure:
 });
 
 // POST approve — save human edits, write mistakes to brain, mark approved
-app.post('/api/compliance/approve', async (req, res) => {
+app.post('/api/compliance/approve', requireAuth, async (req, res) => {
   const startTime = Date.now();
   const { brandProfileId, contentId, reviewMode, editedSections, decisions } = req.body;
   if (!brandProfileId || !contentId) return res.status(400).json({ error: 'brandProfileId and contentId required' });
@@ -3909,8 +3957,9 @@ app.get('/api/public/articles', async (req, res) => {
 });
 
 // GET /api/publishing/queue/:brandProfileId
-app.get('/api/publishing/queue/:brandProfileId', async (req, res) => {
+app.get('/api/publishing/queue/:brandProfileId', requireAuth, async (req, res) => {
   const { brandProfileId } = req.params;
+    if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
   try {
     // Base queue items
     const result = await pool.query(
@@ -4103,7 +4152,7 @@ app.post('/api/publishing/backfill-queue', async (req, res) => {
   }
 });
 
-app.get('/api/publishing/queue', async (req, res) => {
+app.get('/api/publishing/queue', requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT pq.*, bp.brand_name, bp.brand_url
@@ -4143,7 +4192,7 @@ app.patch('/api/publishing/queue/:itemId', async (req, res) => {
 });
 
 // DELETE /api/publishing/queue/:itemId — removes from Forge queue only
-app.delete('/api/publishing/queue/:itemId', async (req, res) => {
+app.delete('/api/publishing/queue/:itemId', requireAuth, async (req, res) => {
   const { itemId } = req.params;
   try {
     await pool.query('DELETE FROM publishing_queue WHERE id = $1', [itemId]);
@@ -4154,7 +4203,7 @@ app.delete('/api/publishing/queue/:itemId', async (req, res) => {
 });
 
 // POST /api/publishing/queue/:id/reset-channel — clear error state for one channel
-app.post('/api/publishing/queue/:id/reset-channel', async (req, res) => {
+app.post('/api/publishing/queue/:id/reset-channel', requireAuth, async (req, res) => {
   const { id } = req.params;
   const { channel } = req.body;
   if (!channel) return res.status(400).json({ error: 'channel required' });
@@ -4183,7 +4232,7 @@ app.post('/api/publishing/queue/:id/reset-channel', async (req, res) => {
 });
 
 // POST /api/publishing/unpublish — delete from live channel + optionally remove from queue
-app.post('/api/publishing/unpublish', async (req, res) => {
+app.post('/api/publishing/unpublish', requireAuth, async (req, res) => {
   const { queueItemId, channel, deleteFromChannel = true, removeFromQueue = false } = req.body;
   if (!queueItemId || !channel) return res.status(400).json({ error: 'queueItemId and channel required' });
 
@@ -4321,8 +4370,9 @@ app.post('/api/publishing/unpublish', async (req, res) => {
 });
 
 // GET /api/publishing/channels/:brandProfileId
-app.get('/api/publishing/channels/:brandProfileId', async (req, res) => {
+app.get('/api/publishing/channels/:brandProfileId', requireAuth, async (req, res) => {
   const { brandProfileId } = req.params;
+    if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
   try {
     const result = await pool.query(
       `SELECT id, brand_profile_id, channel, credentials, utm_template, is_active, last_tested_at, test_status, created_at, updated_at
@@ -4336,7 +4386,7 @@ app.get('/api/publishing/channels/:brandProfileId', async (req, res) => {
 });
 
 // POST /api/publishing/channels — upsert channel connection
-app.post('/api/publishing/channels', async (req, res) => {
+app.post('/api/publishing/channels', requireAuth, async (req, res) => {
   const { brandProfileId, channel, credentials, utmTemplate } = req.body;
   if (!brandProfileId || !channel) return res.status(400).json({ error: 'brandProfileId and channel required' });
   try {
@@ -4355,7 +4405,7 @@ app.post('/api/publishing/channels', async (req, res) => {
 });
 
 // DELETE /api/publishing/channels/:id
-app.delete('/api/publishing/channels/:id', async (req, res) => {
+app.delete('/api/publishing/channels/:id', requireAuth, async (req, res) => {
   try {
     await pool.query('DELETE FROM publishing_channels WHERE id = $1', [req.params.id]);
     res.json({ success: true });
@@ -4541,7 +4591,7 @@ app.get('/auth/linkedin/org/callback', async (req, res) => {
 });
 
 // ── LinkedIn: Switch posting target (personal vs company page) ───────────────
-app.post('/api/linkedin/select-target', async (req, res) => {
+app.post('/api/linkedin/select-target', requireAuth, async (req, res) => {
   const { brandProfileId, targetUrn } = req.body;
   if (!brandProfileId || !targetUrn) return res.status(400).json({ error: 'brandProfileId and targetUrn required' });
   try {
@@ -4833,7 +4883,7 @@ async function refreshHubSpotToken(brandProfileId) {
 }
 
 // ── HubSpot: Publish article to Knowledge Base ───────────────────────────────
-app.post('/api/hubspot/publish-article', async (req, res) => {
+app.post('/api/hubspot/publish-article', requireAuth, async (req, res) => {
   const { brandProfileId, articleId, title, body, slug } = req.body;
   if (!brandProfileId || !title || !body) {
     return res.status(400).json({ error: 'brandProfileId, title, and body required' });
@@ -4984,7 +5034,7 @@ app.post('/api/hubspot/log-engagement', async (req, res) => {
 
 
 // ── HubSpot: Switch publishing target (blog or KB) ──────────────────────────
-app.post('/api/hubspot/select-target', async (req, res) => {
+app.post('/api/hubspot/select-target', requireAuth, async (req, res) => {
   const { brandProfileId, targetType, targetId } = req.body;
   if (!brandProfileId || !targetType || !targetId) {
     return res.status(400).json({ error: 'brandProfileId, targetType, and targetId required' });
@@ -5023,7 +5073,7 @@ app.post('/api/hubspot/select-target', async (req, res) => {
 });
 
 // ── HubSpot: Refresh available targets ───────────────────────────────────────
-app.post('/api/hubspot/refresh-targets', async (req, res) => {
+app.post('/api/hubspot/refresh-targets', requireAuth, async (req, res) => {
   const { brandProfileId } = req.body;
   if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
   
@@ -5183,7 +5233,7 @@ app.get('/auth/webflow/callback', async (req, res) => {
 });
 
 // ── Webflow: Switch site/collection target ───────────────────────────────────
-app.post('/api/webflow/select-target', async (req, res) => {
+app.post('/api/webflow/select-target', requireAuth, async (req, res) => {
   const { brandProfileId, siteId, collectionId } = req.body;
   if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
   
@@ -5304,8 +5354,9 @@ async function refreshGSCToken(refreshToken) {
 }
 
 // POST /api/analytics/sync-gsc/:brandProfileId — pull GSC data for brand's domain
-app.post('/api/analytics/sync-gsc/:brandProfileId', async (req, res) => {
+app.post('/api/analytics/sync-gsc/:brandProfileId', requireAuth, async (req, res) => {
   const { brandProfileId } = req.params;
+    if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
   const { days = 28 } = req.body;
   try {
     // Get GSC credentials
@@ -5410,7 +5461,7 @@ app.post('/api/analytics/sync-gsc/:brandProfileId', async (req, res) => {
 });
 
 // GET /api/gsc/status/:brandProfileId — check connection status + verified sites
-app.get('/api/gsc/status/:brandProfileId', async (req, res) => {
+app.get('/api/gsc/status/:brandProfileId', requireAuth, async (req, res) => {
   try {
     const r = await pool.query(
       'SELECT credentials, updated_at FROM publishing_channels WHERE brand_profile_id = $1 AND channel = $2 AND is_active = true',
@@ -5455,7 +5506,7 @@ Output only the post text.` }]
   }
 });
 
-app.post('/api/publishing/publish', async (req, res) => {
+app.post('/api/publishing/publish', requireAuth, async (req, res) => {
   const startTime = Date.now();
   const { queueItemId, channels: selectedChannels } = req.body;
   if (!queueItemId) return res.status(400).json({ error: 'queueItemId required' });
@@ -6043,8 +6094,9 @@ function buildGhostJWT(apiKey) {
   return `${sigInput}.${sig}`;
 }
 
-app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
+app.post('/api/analytics/sync/:brandProfileId', requireAuth, async (req, res) => {
   const { brandProfileId } = req.params;
+    if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
   const { channel = 'linkedin' } = req.body;
   try {
     const safeId = brandProfileId.replace(/-/g, '_');
@@ -6433,8 +6485,9 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
 });
 
 // GET /api/analytics/dashboard/:brandProfileId — aggregated dashboard stats
-app.get('/api/analytics/dashboard/:brandProfileId', async (req, res) => {
+app.get('/api/analytics/dashboard/:brandProfileId', requireAuth, async (req, res) => {
   const { brandProfileId } = req.params;
+    if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
   const channel = req.query.channel || 'linkedin';
   try {
     const safeId = brandProfileId.replace(/-/g, '_');
@@ -6541,7 +6594,7 @@ app.get('/api/analytics/dashboard/:brandProfileId', async (req, res) => {
 });
 
 // GET /api/analytics/channels/:brandProfileId — which channels have analytics data
-app.get('/api/analytics/channels/:brandProfileId', async (req, res) => {
+app.get('/api/analytics/channels/:brandProfileId', requireAuth, async (req, res) => {
   const { brandProfileId } = req.params;
   try {
     const result = await pool.query(
@@ -6560,8 +6613,9 @@ app.get('/api/analytics/channels/:brandProfileId', async (req, res) => {
 // ── Campaign-level analytics ──────────────────────────────────────────────────
 // GET /api/analytics/campaigns/:brandProfileId
 // Returns per-campaign aggregated metrics across all channels.
-app.get('/api/analytics/campaigns/:brandProfileId', async (req, res) => {
+app.get('/api/analytics/campaigns/:brandProfileId', requireAuth, async (req, res) => {
   const { brandProfileId } = req.params;
+    if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
   try {
     // Aggregate content_analytics by campaign, join campaigns table for name/topic
     const result = await pool.query(
@@ -6747,7 +6801,7 @@ async function runScheduledPublishes() {
 // ── Pipedream Connect ─────────────────────────────────────────────────────────
 
 // POST /api/pipedream/token
-app.post('/api/pipedream/token', async (req, res) => {
+app.post('/api/pipedream/token', requireAuth, async (req, res) => {
   const { brandProfileId } = req.body;
   if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
   try {
@@ -6778,7 +6832,7 @@ app.post('/api/pipedream/token', async (req, res) => {
 });
 
 // POST /api/pipedream/account — store account_id after user connects via Pipedream
-app.post('/api/pipedream/account', async (req, res) => {
+app.post('/api/pipedream/account', requireAuth, async (req, res) => {
   const { brandProfileId, channel, accountId, appSlug } = req.body;
   if (!brandProfileId || !channel || !accountId) return res.status(400).json({ error: 'missing fields' });
   try {
@@ -6804,7 +6858,7 @@ app.get('/api/pipedream/config', (req, res) => {
 // ── Review Workflow ───────────────────────────────────────────────────────────
 
 // POST /api/publishing/queue/:id/request-review — generate review token + optionally email a reviewer
-app.post('/api/publishing/queue/:id/request-review', async (req, res) => {
+app.post('/api/publishing/queue/:id/request-review', requireAuth, async (req, res) => {
   const { reviewerId } = req.body;
   try {
     const token = randomBytes(24).toString('hex');
@@ -7092,7 +7146,7 @@ app.post('/api/admin/seed-brain', async (req, res) => {
 // ── Reviewers ─────────────────────────────────────────────────────────────────
 
 // GET /api/reviewers/:brandProfileId
-app.get('/api/reviewers/:brandProfileId', async (req, res) => {
+app.get('/api/reviewers/:brandProfileId', requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
       'SELECT * FROM reviewers WHERE brand_profile_id = $1 ORDER BY name ASC',
@@ -7128,7 +7182,31 @@ app.delete('/api/reviewers/:id', async (req, res) => {
 // ── Clerk Auth Middleware ─────────────────────────────────────────────────────
 
 // Verify Clerk JWT and attach userId to req
-async function requireAuth(req, res, next) {
+async 
+// ── Brand ownership verification ─────────────────────────────────────────────
+// Every authenticated endpoint that takes a brandProfileId MUST call this.
+async function verifyBrandAccess(brandProfileId, userId) {
+  if (!brandProfileId || !userId) return false;
+  const r = await pool.query(
+    'SELECT id FROM brand_profiles WHERE id = $1 AND clerk_user_id = $2',
+    [brandProfileId, userId]
+  );
+  return r.rows.length > 0;
+}
+
+
+// ── Brand ownership verification ─────────────────────────────────────────────
+// Every authenticated endpoint that takes a brandProfileId MUST call this.
+async function verifyBrandAccess(brandProfileId, userId) {
+  if (!brandProfileId || !userId) return false;
+  const r = await pool.query(
+    'SELECT id FROM brand_profiles WHERE id = $1 AND clerk_user_id = $2',
+    [brandProfileId, userId]
+  );
+  return r.rows.length > 0;
+}
+
+function requireAuth(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
@@ -7408,7 +7486,7 @@ app.post('/api/admin/reset-brand-paid', async (req, res) => {
 // ── Content Import (Bring Your Own Article) ──────────────────────────────────
 
 // POST /api/content/import — parse + score an externally written article
-app.post('/api/content/import', async (req, res) => {
+app.post('/api/content/import', requireAuth, async (req, res) => {
   const { brandProfileId, url, rawText, title: manualTitle } = req.body;
   if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
   if (!url && !rawText) return res.status(400).json({ error: 'url or rawText required' });
@@ -7567,7 +7645,7 @@ Return ONLY valid JSON:
 // ── Topic Ideas ───────────────────────────────────────────────────────────────
 
 // GET /api/topic-ideas/:brandProfileId
-app.get('/api/topic-ideas/:brandProfileId', async (req, res) => {
+app.get('/api/topic-ideas/:brandProfileId', requireAuth, async (req, res) => {
   try {
     const r = await pool.query(
       `SELECT * FROM topic_ideas WHERE brand_profile_id = $1 ORDER BY created_at DESC`,
@@ -7578,7 +7656,7 @@ app.get('/api/topic-ideas/:brandProfileId', async (req, res) => {
 });
 
 // POST /api/topic-ideas
-app.post('/api/topic-ideas', async (req, res) => {
+app.post('/api/topic-ideas', requireAuth, async (req, res) => {
   const { brandProfileId, topic, note } = req.body;
   if (!brandProfileId || !topic?.trim()) return res.status(400).json({ error: 'brandProfileId and topic required' });
   try {
@@ -7591,7 +7669,7 @@ app.post('/api/topic-ideas', async (req, res) => {
 });
 
 // PATCH /api/topic-ideas/:id — update status (idea → in_progress → generated)
-app.patch('/api/topic-ideas/:id', async (req, res) => {
+app.patch('/api/topic-ideas/:id', requireAuth, async (req, res) => {
   const { status, topic, note } = req.body;
   try {
     const updates = []; const params = []; let pi = 1;
@@ -7606,7 +7684,7 @@ app.patch('/api/topic-ideas/:id', async (req, res) => {
 });
 
 // DELETE /api/topic-ideas/:id
-app.delete('/api/topic-ideas/:id', async (req, res) => {
+app.delete('/api/topic-ideas/:id', requireAuth, async (req, res) => {
   try {
     await pool.query(`DELETE FROM topic_ideas WHERE id = $1`, [req.params.id]);
     res.json({ success: true });
@@ -7616,7 +7694,7 @@ app.delete('/api/topic-ideas/:id', async (req, res) => {
 // ── Content Library ───────────────────────────────────────────────────────────
 
 // GET /api/content-library — returns all generated content across all brands or filtered by brand
-app.get('/api/content-library', async (req, res) => {
+app.get('/api/content-library', requireAuth, async (req, res) => {
   const { brandProfileId, status, search, campaign, limit = 50, offset = 0 } = req.query;
   try {
     // Get all brands or just the requested one
@@ -7777,8 +7855,9 @@ app.get('/api/geo/debug/:brandProfileId', async (req, res) => {
 
 // POST /api/geo/track/:brandProfileId — fire-and-forget citation check
 // Responds immediately, processes in background to avoid Render timeout
-app.post('/api/geo/track/:brandProfileId', async (req, res) => {
+app.post('/api/geo/track/:brandProfileId', requireAuth, async (req, res) => {
   const { brandProfileId } = req.params;
+    if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
   const { contentId } = req.body;
 
   // Respond immediately — client polls /api/geo/citations for results
@@ -7896,9 +7975,10 @@ app.post('/api/geo/track/:brandProfileId', async (req, res) => {
 });
 
 // GET /api/geo/citations/:brandProfileId — get all citation results
-app.get('/api/geo/citations/:brandProfileId', async (req, res) => {
+app.get('/api/geo/citations/:brandProfileId', requireAuth, async (req, res) => {
   try {
     const { brandProfileId } = req.params;
+    if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
     const safeId = brandProfileId.replace(/-/g, '_');
 
     const r = await pool.query(
@@ -8053,7 +8133,7 @@ async function runDecayMonitoring() {
 }
 
 // GET /api/analytics/decay/:brandProfileId
-app.get('/api/analytics/decay/:brandProfileId', async (req, res) => {
+app.get('/api/analytics/decay/:brandProfileId', requireAuth, async (req, res) => {
   try {
     const r = await pool.query(
       `SELECT * FROM decay_alerts WHERE brand_profile_id = $1 AND status = 'active'
@@ -8065,7 +8145,7 @@ app.get('/api/analytics/decay/:brandProfileId', async (req, res) => {
 });
 
 // POST /api/analytics/decay/:brandProfileId/resolve/:contentId
-app.post('/api/analytics/decay/:brandProfileId/resolve/:contentId', async (req, res) => {
+app.post('/api/analytics/decay/:brandProfileId/resolve/:contentId', requireAuth, async (req, res) => {
   try {
     await pool.query(
       `UPDATE decay_alerts SET status='resolved', resolved_at=NOW()
