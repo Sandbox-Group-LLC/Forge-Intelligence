@@ -74,9 +74,9 @@ const MODES: { id: ReviewMode; label: string; sub: string; icon: React.ReactNode
 const tierColor = (tier: string) => tier === 'green' ? '#22C55E' : tier === 'yellow' ? '#F5B942' : '#EF4444';
 
 export default function ComplianceGatePage() {
-  const { isPaid, isAuthLoading, activeBrandId } = useApp();
+  const { isPaid, brandLoading, activeBrand } = useApp();
   // Gate check for direct URL access
-  if (isAuthLoading) return null;
+  if (brandLoading) return null;
   if (!isPaid) {
     return (
       <AppShell>
@@ -92,7 +92,7 @@ export default function ComplianceGatePage() {
   }
 
   const [mode, setMode] = useState<ReviewMode>('approve-to-ship');
-  const [brandProfileId, setBrandProfileId] = useState(activeBrandId || localStorage.getItem('forge_active_brand_id') || '');
+  const [brandProfileId, setBrandProfileId] = useState(activeBrand?.id || localStorage.getItem('forge_active_brand_id') || '');
   const [articles, setArticles] = useState<Article[]>([]);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [report, setReport] = useState<ComplianceReport | null>(null);
@@ -106,7 +106,7 @@ export default function ComplianceGatePage() {
 
   // Seed brandProfileId from active brand context
   useEffect(() => {
-    const id = activeBrandId || localStorage.getItem('forge_active_brand_id') || '';
+    const id = activeBrand?.id || localStorage.getItem('forge_active_brand_id') || '';
     if (id) { setBrandProfileId(id); loadArticles(id); }
   }, [activeBrandId]);
 
