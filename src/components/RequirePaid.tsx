@@ -1,4 +1,5 @@
 import { ReactNode, useState, useEffect } from 'react';
+import { useAuth } from '@clerk/clerk-react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import GateModal from './GateModal';
@@ -18,6 +19,9 @@ interface RequirePaidProps {
  */
 export function RequirePaid({ children, featureName = 'Premium Features' }: RequirePaidProps) {
   const { isAuthLoading, hasAccess, brandProfile } = useApp();
+  const { userId } = useAuth();
+  // Dev super admin — always through
+  if (userId === 'user_3BtC7nusm7CShN7EdUYaaLZcDwp') return <>{children}</>;
   const location = useLocation();
   const [showGate, setShowGate] = useState(false);
 
