@@ -7206,7 +7206,7 @@ async function verifyBrandAccess(brandProfileId, userId) {
   return r.rows.length > 0;
 }
 
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
