@@ -26,6 +26,29 @@ import { RequirePaid } from './components/RequirePaid';
 import './index.css';
 
 
+
+// ── Global fetch interceptor — auto-injects Clerk auth token on all /api/ calls ──
+const _origFetch = window.fetch.bind(window);
+(window as any).fetch = async (input: RequestInfo | URL, init: RequestInit = {}) => {
+  const url = typeof input === 'string' ? input
+    : input instanceof URL ? input.href
+    : (input as Request).url;
+  if (url.startsWith('/api/')) {
+    const token = (window as any).__forgeToken;
+    if (token) {
+      init = {
+        ...init,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(init.headers || {}),
+          'Authorization': `Bearer ${token}`,
+        },
+      };
+    }
+  }
+  return _origFetch(input, init);
+};
+
 // God mode bootstrap — runs before any route renders
 // Must happen here before AppContext initializes
 (() => {
