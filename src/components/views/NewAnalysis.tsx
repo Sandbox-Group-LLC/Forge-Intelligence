@@ -32,7 +32,7 @@ const icons = {
 };
 
 export function NewAnalysis() {
-  const { analysisInput, setAnalysisInput, startAnalysis } = useApp();
+  const { analysisInput, setAnalysisInput, startAnalysis, activeBrand, isPaid } = useApp();
   const [competitorInput, setCompetitorInput] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -50,6 +50,16 @@ export function NewAnalysis() {
 
   const canSubmit = analysisInput.brandUrl.trim().length > 0;
 
+  const daysSinceUpdate = activeBrand?.updatedAt
+    ? Math.floor((Date.now() - new Date(activeBrand.updatedAt).getTime()) / (1000 * 60 * 60 * 24))
+    : null;
+  const isStale = isPaid && daysSinceUpdate !== null && daysSinceUpdate > 30;
+
+  const handleRefresh = () => {
+    setAnalysisInput({ ...analysisInput, brandUrl: activeBrand?.brandUrl || analysisInput.brandUrl, checkBrainFirst: false });
+    setTimeout(() => startAnalysis(), 0);
+  };
+
   return (
     <div className="new-analysis">
       <div className="view-header">
@@ -59,6 +69,26 @@ export function NewAnalysis() {
           Drop in a URL. Forge discovers competitors, maps your ICP, and builds a full Brand Intelligence Profile — automatically.
         </p>
       </div>
+
+      {isStale && (
+        <div className="staleness-banner">
+          <div className="staleness-banner-left">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="staleness-icon">
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <span>
+              Your Brain was last analyzed <strong>{daysSinceUpdate} days ago</strong> — content published since then may not be reflected in generation.
+            </span>
+          </div>
+          <button className="staleness-refresh-btn" onClick={handleRefresh}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/>
+              <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M16 8h5V3"/>
+            </svg>
+            Refresh Brain
+          </button>
+        </div>
+      )}
 
       <div className="analysis-form">
 
@@ -89,8 +119,28 @@ export function NewAnalysis() {
               </button>
             </div>
             <div className="auto-discover-hint">
-              <span className="hint-icon">{icons.zap}</span>
-              Competitors and ICP are auto-discovered via Perplexity Sonar
+              <span className="hint-pipeline">
+                <span className="hint-step">
+                  <span className="hint-icon">{icons.zap}</span>
+                  <span><strong>Perplexity Sonar</strong> auto-discovers competitors &amp; maps your ICP</span>
+                </span>
+                <span className="hint-divider">·</span>
+                <span className="hint-step">
+                  <span className="hint-icon">{icons.zap}</span>
+                  <span><strong>LinkedIn</strong> company page scraped for operational voice signals</span>
+                </span>
+                <span className="hint-divider">·</span>
+                <span className="hint-step">
+                  <span className="hint-icon">{icons.zap}</span>
+                  <span><strong>G2 &amp; Capterra</strong> reviews mined for power phrases &amp; objection patterns</span>
+                </span>
+                <span className="hint-divider">·</span>
+                <span className="hint-step">
+                  <span className="hint-icon">{icons.zap}</span>
+                  <span><strong>Claude Opus</strong> synthesizes everything into a full Brand Intelligence Profile</span>
+                </span>
+              </span>
+              <span className="hint-free-badge">Free · No account required</span>
             </div>
           </div>
         </div>
