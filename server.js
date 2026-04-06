@@ -2039,20 +2039,26 @@ app.get('/api/precog/all/:brandProfileId', requireAuth, async (req, res) => {
   try {
     const safeId = brandProfileId.replace(/-/g, '_');
     const contentTable = `generated_content_${safeId}`;
-    const result = await pool.query(`
-      SELECT gc.id, gc.title, gc.precog_score, gc.precog_breakdown, gc.precog_scored_at, gc.created_at,
-             po.actual_impressions, po.actual_clicks,
-             po.direction_correct, po.in_range, po.measured_at,
-             po.predicted_signal, po.predicted_impressions_low, po.predicted_impressions_high
-      FROM ${contentTable} gc
-      LEFT JOIN precog_outcomes po
-        ON po.content_id = gc.id AND po.brand_profile_id = $1
-      WHERE gc.precog_score IS NOT NULL
-        OR (gc.precog_breakdown IS NOT NULL AND gc.precog_breakdown->>'tier' = 'insufficient_data')
-      ORDER BY gc.created_at DESC
-      LIMIT 100
-    `, [brandProfileId]);
-    res.json({ success: true, items: result.rows });
+    // Query separately to avoid RLS cross-table join issue on precog_outcomes
+    const [gcRes, poRes] = await Promise.all([
+      pool.query(`
+        SELECT id, title, precog_score, precog_breakdown, precog_scored_at, created_at
+        FROM ${contentTable}
+        WHERE precog_score IS NOT NULL
+           OR (precog_breakdown IS NOT NULL AND precog_breakdown->>'tier' = 'insufficient_data')
+        ORDER BY created_at DESC LIMIT 100
+      `),
+      pool.query(`
+        SELECT content_id, actual_impressions, actual_clicks, direction_correct, in_range,
+               measured_at, predicted_signal, predicted_impressions_low, predicted_impressions_high
+        FROM precog_outcomes WHERE brand_profile_id = $1
+      `, [brandProfileId])
+    ]);
+    // Merge outcomes onto content rows
+    const outcomesMap = {};
+    for (const po of poRes.rows) outcomesMap[po.content_id] = po;
+    const items = gcRes.rows.map(gc => ({ ...gc, ...( outcomesMap[gc.id] || {}) }));
+    res.json({ success: true, items });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
