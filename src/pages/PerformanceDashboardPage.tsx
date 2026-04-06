@@ -228,7 +228,7 @@ export default function PerformanceDashboardPage() {
     setLoading(true); setError('');
     try {
       const [dashRes, chanRes] = await Promise.all([
-        fetch(`/api/analytics/dashboard/${brandProfileId}?channel=${activeChannel}`),
+        fetch(`/api/analytics/dashboard/${brandProfileId}?channel=${activeChannel === 'predictions' ? 'all' : activeChannel}`),
         fetch(`/api/analytics/channels/${brandProfileId}`)
       ]);
       const dashData = await dashRes.json();
@@ -240,6 +240,20 @@ export default function PerformanceDashboardPage() {
   }, [brandProfileId, activeChannel]);
 
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
+
+  // Auto-spin sync on mount to cover token injection delay
+  useEffect(() => {
+    setSyncing(true);
+    const t = setTimeout(() => setSyncing(false), 15000);
+    return () => clearTimeout(t);
+  }, []);
+
+  // Re-fire dashboard load when token becomes available (handles race on initial page load)
+  useEffect(() => {
+    const onTokenReady = () => { loadDashboard(); };
+    window.addEventListener('forge:token-ready', onTokenReady);
+    return () => window.removeEventListener('forge:token-ready', onTokenReady);
+  }, [loadDashboard]);
 
   const handleGeoTrack = async () => {
     if (!brandProfileId) return;
