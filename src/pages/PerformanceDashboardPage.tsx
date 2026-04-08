@@ -142,7 +142,7 @@ export default function PerformanceDashboardPage() {
         if (d2.success) setPredictions(d2.items || []);
       }
     } catch { /* non-fatal */ } finally { clearTimeout(timeout); setBatchScoring(false); }
-  };  const [activeChannel, setActiveChannel] = useState('linkedin');
+  };  const [activeChannel, setActiveChannel] = useState('patterns');
   const [data, setData] = useState<DashboardData | null>(null);
   const [channelInfo, setChannelInfo] = useState<ChannelInfo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -367,6 +367,18 @@ export default function PerformanceDashboardPage() {
     setSyncing(false);
     setTimeout(() => setSyncMsg(''), 4000);
   };
+
+  // Early returns AFTER all hooks — React Rules of Hooks compliant
+  if (brandLoading) return null;
+  if (!isPaid) return (
+    <AppShell>
+      <GateModal
+        featureName="Performance Dashboard"
+        onClose={() => window.location.href = '/app/context-hub'}
+        onUnlocked={() => {}}
+      />
+    </AppShell>
+  );
 
   const sparkData = data?.trend?.map(t => t.impressions) || [];
   const maxReach = data?.posts?.length
