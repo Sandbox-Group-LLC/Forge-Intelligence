@@ -1052,13 +1052,11 @@ ${bodyHtml}
                       <div className="pq-item-sub">
                         <span className="pq-brand-tag">{brandName(item)}</span>
                         <span className="pq-dot">·</span>
-                        <span className="pq-date">Staged {new Date(item.created_at).toLocaleDateString()}</span>
-                        {item.scheduled_at && (
-                          <>
-                            <span className="pq-dot">·</span>
-                            <span className="pq-scheduled-tag"><Clock /> {new Date(item.scheduled_at).toLocaleString()}</span>
-                          </>
-                        )}
+                        <span className="pq-date">{
+                          item.scheduled_at && item.status !== 'staged'
+                            ? `${item.status === 'published' || item.status === 'partial' ? 'Published' : 'Scheduled'} ${new Date(item.scheduled_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · ${new Date(item.scheduled_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
+                            : `Staged ${new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                        }</span>
                       </div>
                     </div>
                     {(() => {
@@ -1357,13 +1355,11 @@ return (
                       <div className="pq-item-sub">
                         <span className="pq-brand-tag">{brandName(item)}</span>
                         <span className="pq-dot">·</span>
-                        <span className="pq-date">Staged {new Date(item.created_at).toLocaleDateString()}</span>
-                        {item.scheduled_at && (
-                          <>
-                            <span className="pq-dot">·</span>
-                            <span className="pq-scheduled-tag"><Clock /> {new Date(item.scheduled_at).toLocaleString()}</span>
-                          </>
-                        )}
+                        <span className="pq-date">{
+                          item.scheduled_at && item.status !== 'staged'
+                            ? `${item.status === 'published' || item.status === 'partial' ? 'Published' : 'Scheduled'} ${new Date(item.scheduled_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · ${new Date(item.scheduled_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
+                            : `Staged ${new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                        }</span>
                       </div>
                     </div>
                     {(() => {
