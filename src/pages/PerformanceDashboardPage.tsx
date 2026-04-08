@@ -326,27 +326,26 @@ export default function PerformanceDashboardPage() {
   };
 
   const handleExtract = async () => {
-    if (!brandProfileId) return;
+    if (!brandProfileId || extracting) return;
     setExtracting(true);
     setExtractResult('');
     try {
-      const r = await fetch(`/api/analytics/extract-patterns/${brandProfileId}`, { method: 'POST' });
+      const h: Record<string,string> = { 'Content-Type': 'application/json' };
+      const r = await fetch(`/api/brain/distill/${brandProfileId}`, { method: 'POST', headers: h });
       const d = await r.json();
       if (d.success) {
-        setPatterns(d.patterns || []);
-        setMistakes(d.mistakes || []);
-        if (d.meta) setExtractMeta(d.meta);
-        const metaStr = d.meta ? ` · ${d.meta.articlesAnalyzed} articles · ${d.meta.precogOutcomesUsed > 0 ? `${d.meta.precogOutcomesUsed} pre-cog outcomes` : 'no pre-cog data yet'}` : '';
-        const newThings = (d.patternsWritten || 0) + (d.mistakesWritten || 0);
-        setExtractResult(newThings > 0
-          ? `✓ ${d.patternsWritten || 0} new patterns · ${d.mistakesWritten || 0} new mistakes${metaStr}`
-          : d.message || `Brain up to date — ${(d.patterns || []).length} patterns · ${(d.mistakes || []).length} mistakes in Brain${metaStr}`);
-        setTimeout(() => setExtractResult(''), d.patternsWritten === 0 && d.mistakesWritten === 0 ? 15000 : 7000);
+        const rp = await fetch(`/api/analytics/patterns/${brandProfileId}`);
+        const dp = await rp.json();
+        if (dp.success) { setPatterns(dp.patterns || []); setMistakes(dp.mistakes || []); }
+        setExtractResult(d.ruleCount > 0
+          ? `Brain updated — ${d.ruleCount} writing rules distilled from ${d.editCount} editorial signals`
+          : d.message || 'No signals to distill yet');
+        setTimeout(() => setExtractResult(''), 12000);
       } else {
         setExtractResult(`Error: ${d.error}`);
       }
-    } catch(e) {
-      setExtractResult('Network error');
+    } catch {
+      setExtractResult('Update failed — try again');
     } finally {
       setExtracting(false);
     }
