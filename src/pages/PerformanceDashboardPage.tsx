@@ -204,24 +204,38 @@ export default function PerformanceDashboardPage() {
     setLoading(false);
   }, [brandProfileId, activeChannel]);
 
-  // Direct effect for patterns — same pattern as every other tab, no useCallback indirection
+  // authTokenRef — always current, updated every render without deps
+  const authTokenRef = useRef(authToken);
+  useEffect(() => { authTokenRef.current = authToken; });
+
+  // Patterns loader — retry loop bypasses React dep chain entirely
+  // Retries every 500ms until auth is ready and data loads
   useEffect(() => {
     if (activeChannel !== 'patterns' || !brandProfileId) return;
-    setPatternsLoading(true);
-    const token = authToken || (window as any).__forgeToken || '';
-    const h: Record<string,string> = token ? { 'Authorization': `Bearer ${token}` } : {};
-    fetch(`/api/analytics/patterns/${brandProfileId}`, { headers: h })
-      .then(r => r.json())
-      .then(d => {
-        if (d.success) {
-          setPatterns(d.patterns || []);
-          setMistakes(d.mistakes || []);
-          setPatternsLoading(false);
-        }
-        // 401/error: keep skeleton — this effect re-fires when authToken dep changes
-      })
-      .catch(() => {});
-  }, [activeChannel, brandProfileId, authToken]);
+    let cancelled = false;
+    let retries = 0;
+    const doFetch = () => {
+      if (cancelled || retries >= 20) return;
+      retries++;
+      const token = authTokenRef.current || (window as any).__forgeToken || '';
+      const h: Record<string,string> = token ? { 'Authorization': `Bearer ${token}` } : {};
+      fetch(`/api/analytics/patterns/${brandProfileId}`, { headers: h })
+        .then(r => r.json())
+        .then(d => {
+          if (cancelled) return;
+          if (d.success) {
+            setPatterns(d.patterns || []);
+            setMistakes(d.mistakes || []);
+            setPatternsLoading(false);
+          } else {
+            setTimeout(doFetch, 500);
+          }
+        })
+        .catch(() => { if (!cancelled) setTimeout(doFetch, 500); });
+    };
+    doFetch();
+    return () => { cancelled = true; };
+  }, [activeChannel, brandProfileId]);
 
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
 
