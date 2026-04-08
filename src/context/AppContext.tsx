@@ -47,6 +47,7 @@ interface AppContextType {
   setSidebarCollapsed: (collapsed: boolean) => void;
   startAnalysis: () => void;
   loadSampleData: () => void;
+  authToken: string;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -307,6 +308,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setIsProcessing(false);
     }
   };
+
+  const [authToken, setAuthToken] = useState<string>('');
+
+  // Keep token fresh — refresh every 55s
+  useEffect(() => {
+    if (!isSignedIn) { setAuthToken(''); return; }
+    const refresh = async () => {
+      const t = await getToken({ template: 'jwt-template-600' });
+      if (t) { setAuthToken(t); (window as any).__forgeToken = t; }
+    };
+    refresh();
+    const interval = setInterval(refresh, 55_000);
+    return () => clearInterval(interval);
+  }, [isSignedIn, getToken]);
 
   const loadSampleData = () => setAnalysisInput(sampleAnalysisInput);
 
