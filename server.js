@@ -4687,7 +4687,7 @@ app.delete('/api/publishing/channels/:id', requireAuth, async (req, res) => {
 // ── LinkedIn OAuth2 Flow ──────────────────────────────────────────────────────
 app.get('/api/linkedin/auth', (req, res) => {
   const clientId = process.env.LINKEDIN_CLIENT_ID;
-  const redirectUri = encodeURIComponent(process.env.LINKEDIN_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/linkedin/callback');
+  const redirectUri = encodeURIComponent(process.env.LINKEDIN_REDIRECT_URI || 'https://forgeintelligence.ai/auth/linkedin/callback');
   const brandProfileId = req.query.state?.split('|')[0] || req.query.brandProfileId || 'system';
   const nonce = randomBytes(16).toString('hex');
   // Embed brandProfileId in state so callback knows which brand to save to
@@ -4704,7 +4704,7 @@ app.get('/auth/linkedin/callback', async (req, res) => {
   try {
     const clientId     = process.env.LINKEDIN_CLIENT_ID;
     const clientSecret = process.env.LINKEDIN_CLIENT_SECRET;
-    const redirectUri  = process.env.LINKEDIN_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/linkedin/callback';
+    const redirectUri  = process.env.LINKEDIN_REDIRECT_URI || 'https://forgeintelligence.ai/auth/linkedin/callback';
     const tokenRes = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -4782,7 +4782,7 @@ app.get('/auth/linkedin/callback', async (req, res) => {
 app.get('/api/linkedin/org/auth', (req, res) => {
   const clientId = process.env.LINKEDIN_ORG_CLIENT_ID;
   if (!clientId) return res.status(500).json({ error: 'LINKEDIN_ORG_CLIENT_ID not configured' });
-  const redirectUri = encodeURIComponent(process.env.LINKEDIN_ORG_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/linkedin/org/callback');
+  const redirectUri = encodeURIComponent(process.env.LINKEDIN_ORG_REDIRECT_URI || 'https://forgeintelligence.ai/auth/linkedin/org/callback');
   const brandProfileId = req.query.state?.split('|')[0] || req.query.brandProfileId || 'system';
   const nonce = randomBytes(16).toString('hex');
   const state = `${brandProfileId}|${nonce}`;
@@ -4798,7 +4798,7 @@ app.get('/auth/linkedin/org/callback', async (req, res) => {
   try {
     const clientId = process.env.LINKEDIN_ORG_CLIENT_ID;
     const clientSecret = process.env.LINKEDIN_ORG_SECRET;
-    const redirectUri = process.env.LINKEDIN_ORG_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/linkedin/org/callback';
+    const redirectUri = process.env.LINKEDIN_ORG_REDIRECT_URI || 'https://forgeintelligence.ai/auth/linkedin/org/callback';
     
     const tokenRes = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
       method: 'POST',
