@@ -6402,10 +6402,7 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
 
       // Get LinkedIn credentials from publishing_channels (primary) or channel_credentials (legacy)
       const credRes = await pool.query(
-        `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'linkedin' AND is_active = true
-         UNION ALL
-         SELECT credentials FROM channel_credentials WHERE brand_profile_id = $1 AND channel = 'linkedin'
-         LIMIT 1`,
+        `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'linkedin' AND is_active = true LIMIT 1`,
         [brandProfileId]
       ).catch(() => ({ rows: [] }));
       const creds = credRes.rows[0]?.credentials || {};
