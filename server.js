@@ -1327,6 +1327,93 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
   }
 });
 
+
+// ── Dynamic Sitemap ───────────────────────────────────────────────────────────
+app.get('/sitemap.xml', async (req, res) => {
+  const BASE = 'https://forgeintelligence.ai';
+  const today = new Date().toISOString().slice(0, 10);
+  try {
+    // Fetch all published public articles across all brands
+    const articlesRes = await pool.query(`
+      SELECT pq.content_id, bp.brand_url, pq.published_at
+      FROM publishing_queue pq
+      JOIN brand_profiles bp ON bp.id = pq.brand_profile_id
+      WHERE pq.status = 'published'
+        AND pq.ghost_url IS NOT NULL
+        AND pq.ghost_url != ''
+      ORDER BY pq.published_at DESC
+    `).catch(() => ({ rows: [] }));
+
+    // Also get article slugs from publish_log for ghost posts
+    const slugRes = await pool.query(`
+      SELECT DISTINCT ON (pl.content_id)
+        pl.content_id,
+        pl.published_url,
+        pl.attempted_at
+      FROM publish_log pl
+      WHERE pl.channel = 'ghost'
+        AND pl.status = 'published'
+        AND pl.published_url IS NOT NULL
+      ORDER BY pl.content_id, pl.attempted_at DESC
+    `).catch(() => ({ rows: [] }));
+
+    // Build article URLs from publish_log ghost URLs → convert to /articles/ paths
+    const articleUrls = [];
+    for (const row of slugRes.rows) {
+      try {
+        const url = new URL(row.published_url);
+        const slug = url.pathname.replace(/\/$/, '').split('/').pop();
+        if (slug) {
+          // Try to match brand slug from brand_url
+          const brandRes = await pool.query(
+            `SELECT bp.brand_url FROM publish_log pl
+             JOIN publishing_queue pq ON pq.content_id = pl.content_id
+             JOIN brand_profiles bp ON bp.id = pq.brand_profile_id
+             WHERE pl.content_id = $1 LIMIT 1`,
+            [row.content_id]
+          ).catch(() => ({ rows: [] }));
+          const brandUrl = brandRes.rows[0]?.brand_url || '';
+          const brandSlug = brandUrl.replace(/^https?:\/\//, '').replace(/\/$/, '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+          if (brandSlug && slug) {
+            const lastmod = row.attempted_at ? new Date(row.attempted_at).toISOString().slice(0, 10) : today;
+            articleUrls.push({ loc: `${BASE}/articles/${brandSlug}/${slug}`, lastmod, priority: '0.8' });
+          }
+        }
+      } catch { /* skip malformed URLs */ }
+    }
+
+    const staticPages = [
+      { loc: `${BASE}/`,          lastmod: today, changefreq: 'weekly',  priority: '1.0' },
+      { loc: `${BASE}/product`,   lastmod: today, changefreq: 'monthly', priority: '0.8' },
+      { loc: `${BASE}/privacy`,   lastmod: today, changefreq: 'yearly',  priority: '0.3' },
+      { loc: `${BASE}/articles`,  lastmod: today, changefreq: 'daily',   priority: '0.9' },
+    ];
+
+    const toUrl = ({ loc, lastmod, changefreq, priority }: any) =>
+      `  <url>\n    <loc>${loc}</loc>\n    <lastmod>${lastmod}</lastmod>${changefreq ? `\n    <changefreq>${changefreq}</changefreq>` : ''}\n    <priority>${priority}</priority>\n  </url>`;
+
+    const xml = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+      '',
+      '  <!-- Core public pages -->',
+      ...staticPages.map(toUrl),
+      '',
+      '  <!-- Published articles -->',
+      ...articleUrls.map(toUrl),
+      '',
+      '</urlset>',
+    ].join('\n');
+
+    res.set('Content-Type', 'application/xml');
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.send(xml);
+  } catch(e) {
+    console.error('[SITEMAP]', e.message);
+    res.status(500).send('Sitemap generation failed');
+  }
+});
+
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // ── Content fetch for preview ─────────────────────────────────────────────────
