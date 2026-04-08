@@ -130,19 +130,18 @@ export default function PerformanceDashboardPage() {
   const handleBatchScore = async () => {
     if (!brandProfileId || batchScoring) return;
     setBatchScoring(true);
+    const timeout = setTimeout(() => setBatchScoring(false), 30_000);
     const headers: Record<string,string> = { 'Content-Type': 'application/json' };
     try {
       const r = await fetch('/api/precog/batch', { method: 'POST', headers, body: JSON.stringify({ brandProfileId }) });
       const d = await r.json();
       if (d.success) {
-        // Reload predictions
         const r2 = await fetch(`/api/precog/all/${brandProfileId}`, { headers });
         const d2 = await r2.json();
         if (d2.success) setPredictions(d2.items || []);
       }
-    } catch { /* non-fatal */ } finally { setBatchScoring(false); }
-  };
-  const [activeChannel, setActiveChannel] = useState('linkedin');
+    } catch { /* non-fatal */ } finally { clearTimeout(timeout); setBatchScoring(false); }
+  };  const [activeChannel, setActiveChannel] = useState('linkedin');
   const [data, setData] = useState<DashboardData | null>(null);
   const [channelInfo, setChannelInfo] = useState<ChannelInfo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -192,15 +191,10 @@ export default function PerformanceDashboardPage() {
     if (activeChannel === 'campaigns') loadCampaigns();
     if (activeChannel === 'predictions' && brandProfileId) {
       setPredictionsLoading(true);
-      // Fetch all scored content for this brand (auth injected by global fetch interceptor)
-      fetch(`/api/precog/all/${brandProfileId}`)
-        .then(r => r.json())
-        .then(d => { if (d.success) setPredictions(d.items || []); });
-      fetch(`/api/precog/accuracy/${brandProfileId}`)
-        .then(r => r.json())
-        .then(d => { if (d.success) setAccuracy(d); })
-        .catch(() => {})
-        .finally(() => setPredictionsLoading(false));
+      Promise.all([
+        fetch(`/api/precog/all/${brandProfileId}`).then(r => r.json()).then(d => { if (d.success) setPredictions(d.items || []); }).catch(() => {}),
+        fetch(`/api/precog/accuracy/${brandProfileId}`).then(r => r.json()).then(d => { if (d.success) setAccuracy(d); }).catch(() => {}),
+      ]).finally(() => setPredictionsLoading(false));
     }
     if (activeChannel === 'geo' && brandProfileId) {
       fetch(`/api/geo/citations/${brandProfileId}`)
