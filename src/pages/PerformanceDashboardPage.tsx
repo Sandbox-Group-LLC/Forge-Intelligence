@@ -213,9 +213,15 @@ export default function PerformanceDashboardPage() {
     const h: Record<string,string> = token ? { 'Authorization': `Bearer ${token}` } : {};
     fetch(`/api/analytics/patterns/${brandProfileId}`, { headers: h })
       .then(r => r.json())
-      .then(d => { if (d.success) { setPatterns(d.patterns || []); setMistakes(d.mistakes || []); } })
-      .catch(() => {})
-      .finally(() => setPatternsLoading(false));
+      .then(d => {
+        if (d.success) {
+          setPatterns(d.patterns || []);
+          setMistakes(d.mistakes || []);
+          setPatternsLoading(false); // only clear on confirmed success
+        }
+        // if d.success is false (401 etc) keep skeleton showing — will retry on authToken change
+      })
+      .catch(() => {}); // network error — keep skeleton, effect retries on authToken change
   }, [brandProfileId, authToken]);
 
   useEffect(() => {
