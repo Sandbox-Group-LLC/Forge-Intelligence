@@ -5750,19 +5750,23 @@ app.post('/api/publishing/generate-post-copy', async (req, res) => {
     const copyRes = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 400,
-      messages: [{ role: 'user', content: `Write a LinkedIn post to promote this B2B article. Give a compelling overview of what the reader will learn — NOT a quote from the intro paragraph.
+      messages: [{ role: 'user', content: `Write a LinkedIn post designed to drive link clicks to this B2B article. Goal: make the reader feel they MUST click to get the full answer. Do NOT summarize — create a curiosity gap.
 
 Article title: "${title}"
 Sections covered: ${headings || 'not provided'}
 Read time: ${readMinutes} min read
 Article URL: ${articleUrl}
 
-Rules:
-- 3-4 short paragraphs
-- Lead with the core insight or tension, not a question
-- No emojis, no hashtags
-- Every sentence must be complete — no ellipsis cutoffs
-- Last line must be exactly: Read more: ${articleUrl}
+Structure (follow exactly):
+Line 1: One punchy statement of the core tension or counterintuitive insight. Must hook in under 200 characters — this is what shows before 'see more'.
+Lines 2-4: 2-3 short lines that deepen the tension or name the specific problem. Do NOT resolve it — leave the answer in the article.
+Final line: Exactly this and nothing else: Read more: ${articleUrl}
+
+Hard rules:
+- Total post: 500-800 characters including the URL line
+- No emojis, no hashtags, no bullet points
+- No summarizing the article — create hunger for it
+- No ellipsis cutoffs — every sentence complete
 - Plain text only
 
 Output only the post text.` }]
@@ -5989,19 +5993,22 @@ app.post('/api/publishing/publish', requireAuth, async (req, res) => {
                 const copyRes = await anthropic.messages.create({
                   model: 'claude-haiku-4-5-20251001',
                   max_tokens: 400,
-                  messages: [{ role: 'user', content: `Write a LinkedIn post to promote this article. It should be a compelling overview (NOT the intro paragraph), end with a clear CTA, and the last line should be exactly "Read more: ${articleUrl}"
+                  messages: [{ role: 'user', content: `Write a LinkedIn post designed to drive link clicks to this B2B article. Goal: make the reader feel they MUST click to get the full answer. Do NOT summarize — create a curiosity gap.
 
 Article title: "${article.title}"
 Key sections covered: ${sectionHeadings}
 Read time: ${readMinutes} min read
 
-Rules:
-- 3-5 short paragraphs max
-- Lead with the core insight or tension, not a question
-- No emojis
-- No hashtags  
-- No ellipsis (...) cutoffs — complete every sentence
-- Last line must be exactly: Read more: ${articleUrl}
+Structure (follow exactly):
+Line 1: One punchy statement of the core tension or counterintuitive insight. Must hook in under 200 characters — this is what shows before 'see more'.
+Lines 2-4: 2-3 short lines that deepen the tension or name the specific problem. Do NOT resolve it — leave the answer in the article.
+Final line: Exactly this and nothing else: Read more: ${articleUrl}
+
+Hard rules:
+- Total post: 500-800 characters including the URL line
+- No emojis, no hashtags, no bullet points
+- No summarizing the article — create hunger for it
+- No ellipsis cutoffs — every sentence complete
 - Plain text only, no markdown
 
 Output only the post text.` }]
