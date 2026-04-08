@@ -1,49 +1,57 @@
 :root {
-  /* Base colors */
-  --color-bg-base: #050915;
-  --color-bg-card: #0b1220;
-  --color-bg-elevated: #111827;
-  --color-bg-hover: #22222c;
-  
+  /* Base colors — light blueberry foundation */
+  --color-bg-base: #EDF1FF;
+  --color-bg-card: #FFFFFF;
+  --color-bg-elevated: #F4F7FF;
+  --color-bg-hover: #EDF1FF;
+
+  /* Chrome — sidebar, topbar */
+  --color-bg-chrome: #FFFFFF;
+
   /* Border colors */
-  --color-border: #2a2a35;
-  --color-border-subtle: rgba(255, 255, 255, 0.06);
-  --color-border-input: rgba(255, 255, 255, 0.1);
-  
-  /* Text hierarchy */
-  --color-text-primary: #F8FAFC;
-  --color-text-secondary: #94A3B8;
-  --color-text-muted: #64748B;
-  
+  --color-border: #E2E8F0;
+  --color-border-subtle: rgba(53, 99, 255, 0.08);
+  --color-border-input: #CBD5E1;
+
+  /* Text hierarchy — dark slate, never black */
+  --color-text-primary: #1E293B;
+  --color-text-secondary: #475569;
+  --color-text-muted: #94A3B8;
+  --color-text-emphasis: #0F172A;  /* darker than primary — for titles/quotes on light bg */
+
   /* Accent - Intelligence Blue */
   --color-accent: #3563FF;
   --color-accent-hover: #2952e0;
-  --color-accent-muted: rgba(53, 99, 255, 0.15);
+  --color-accent-muted: rgba(53, 99, 255, 0.10);
   --color-accent-70: rgba(53, 99, 255, 0.7);
-  
-  /* Success - Teal/Green */
-  --color-success: #10b981;
-  --color-success-muted: rgba(16, 185, 129, 0.15);
-  
+
+  /* Success - Teal */
+  --color-success: #0EA572;
+  --color-success-muted: rgba(14, 165, 114, 0.12);
+
   /* Warning - Amber */
-  --color-warning: #f59e0b;
-  --color-warning-muted: rgba(245, 158, 11, 0.15);
-  
+  --color-warning: #D97706;
+  --color-warning-muted: rgba(217, 119, 6, 0.12);
+
   /* Error */
-  --color-error: #ef4444;
-  --color-error-muted: rgba(239, 68, 68, 0.15);
-  
+  --color-error: #DC2626;
+  --color-error-muted: rgba(220, 38, 38, 0.10);
+
   /* Radii */
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 12px;
-  
-  /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
-  
+
+  /* Shadows — blue-tinted outer glow */
+  --shadow-sm: 0 1px 3px rgba(53, 99, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-card: 0 0 0 1px rgba(53, 99, 255, 0.07), 0 4px 16px rgba(53, 99, 255, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 0 0 1px rgba(53, 99, 255, 0.07), 0 8px 24px rgba(53, 99, 255, 0.10), 0 2px 6px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 0 0 1px rgba(53, 99, 255, 0.08), 0 16px 40px rgba(53, 99, 255, 0.12), 0 4px 12px rgba(0, 0, 0, 0.08);
+
+  /* Chrome shadow — sidebar right + topbar bottom */
+  --shadow-chrome-x: 2px 0 16px rgba(53, 99, 255, 0.08), 1px 0 0 rgba(53, 99, 255, 0.06);
+  --shadow-chrome-y: 0 2px 16px rgba(53, 99, 255, 0.08), 0 1px 0 rgba(53, 99, 255, 0.06);
+
   /* Transitions */
   --transition-fast: 150ms ease;
   --transition-normal: 250ms ease;
@@ -67,10 +75,6 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-image: radial-gradient(circle at top left, rgba(53,99,255,0.22), transparent 55%),
-                    radial-gradient(circle at bottom right, rgba(20,184,166,0.12), transparent 55%);
-  background-size: 100% 100%, 100% 100%;
-  background-position: 0 0, 0 0;
 }
 
 a {
@@ -93,8 +97,8 @@ input, textarea, select {
 
 /* Scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -102,15 +106,15 @@ input, textarea, select {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border);
+  background: #CBD5E1;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-text-muted);
+  background: #94A3B8;
 }
 
-/* Utility classes for icons */
+/* Utility */
 .icon {
   display: inline-flex;
   align-items: center;
@@ -122,50 +126,19 @@ input, textarea, select {
   display: block;
 }
 
-/* Card base styles */
+/* Card base */
 .card {
   background: var(--color-bg-card);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: none;
   border-radius: var(--radius-lg);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-card);
 }
 
-/* Section label style */
+/* Section label */
 .section-label {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-text-muted);
-}
-
-/* Tag base styles */
-.tag {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 10px;
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  border-radius: 6px;
-}
-
-.tag-fresh {
-  background: var(--color-success-muted);
-  color: var(--color-success);
-}
-
-.tag-cached {
-  background: var(--color-bg-elevated);
-  color: var(--color-text-muted);
-}
-
-.tag-high-impact {
-  background: var(--color-accent-muted);
-  color: var(--color-accent);
-}
-
-.tag-medium-impact {
-  background: var(--color-warning-muted);
-  color: var(--color-warning);
 }
