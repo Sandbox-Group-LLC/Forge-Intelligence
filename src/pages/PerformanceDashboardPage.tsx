@@ -367,6 +367,7 @@ export default function PerformanceDashboardPage() {
           </div>
           <div className="perf-header-right">
             <div className="perf-sync-wrap">
+              <div className="perf-btn-group">
               <button className={`perf-sync-btn ${syncing ? 'syncing' : ''}`} onClick={handleSync} disabled={syncing || !brandProfileId}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={syncing ? 'spin' : ''}>
                   <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
@@ -374,6 +375,8 @@ export default function PerformanceDashboardPage() {
                 </svg>
                 {syncing ? 'Syncing…' : 'Sync'}
               </button>
+              <span className="perf-btn-hint">Pull latest post analytics from {activeChannel}</span>
+              </div>
               {data?.totals?.lastSynced && (
                 <span className="perf-last-sync">Last synced {timeAgo(data.totals.lastSynced)}</span>
               )}
@@ -525,6 +528,7 @@ export default function PerformanceDashboardPage() {
                     <h2 className="perf-section-title">GEO Citation Tracker</h2>
                     <p className="perf-section-sub">Track when your content is cited by ChatGPT, Perplexity, and other AI engines. Results write to Brain patterns.</p>
                   </div>
+                  <div className="perf-btn-group">
                   <button className="perf-sync-btn perf-geo-track-btn" onClick={handleGeoTrack} disabled={geoTracking || !brandProfileId}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={geoTracking ? 'spin' : ''}>
                       <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
@@ -532,6 +536,8 @@ export default function PerformanceDashboardPage() {
                     </svg>
                     {geoTracking ? 'Tracking...' : 'Run Citation Check'}
                   </button>
+                  <span className="perf-btn-hint">Checks if ChatGPT & Perplexity cite your articles — runs in background, takes ~30s</span>
+                  </div>
                 </div>
 
                 {geoTracking && (
@@ -639,6 +645,7 @@ export default function PerformanceDashboardPage() {
                       {gscStatus.verifiedSites && gscStatus.verifiedSites.length > 0 && (
                         <span className="perf-gsc-sites">{gscStatus.verifiedSites.slice(0,3).join(', ')}{gscStatus.verifiedSites.length > 3 ? ` +${gscStatus.verifiedSites.length - 3} more` : ''}</span>
                       )}
+                      <div className="perf-btn-group">
                       <button className="perf-sync-btn" onClick={handleGscSync} disabled={gscSyncing || !brandProfileId}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={gscSyncing ? 'spin' : ''}>
                           <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
@@ -646,6 +653,8 @@ export default function PerformanceDashboardPage() {
                         </svg>
                         {gscSyncing ? 'Syncing...' : 'Sync GSC'}
                       </button>
+                      <span className="perf-btn-hint">Pulls 28 days of search impressions & clicks from Google Search Console</span>
+                      </div>
                     </div>
 
                     {/* GSC KPI cards */}
