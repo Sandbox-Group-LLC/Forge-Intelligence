@@ -996,7 +996,7 @@ ${bodyHtml}
                 <div key={item.id} className={`pq-item status-${item.status}`}>
                   {item.week_number != null && (
                     <div className="pq-campaign-meta-row">
-                      <span className="pq-campaign-meta-week">Wk {item.week_number}{item.publish_day ? ` · ${item.publish_day}` : ''}</span>
+                      <span className="pq-campaign-meta-week">Wk {item.week_number}{item.scheduled_at ? ` · ${new Date(item.scheduled_at).toLocaleDateString('en-US', { weekday: 'long' })}` : item.publish_day ? ` · ${item.publish_day}` : ''}</span>
                       {item.content_type && <span className="pq-campaign-meta-type">{item.content_type}</span>}
                       {item.funnel_position && <span className={`pq-campaign-meta-funnel funnel-${(item.funnel_position||'').toLowerCase()}`}>{item.funnel_position}</span>}
                     </div>
@@ -1313,7 +1313,7 @@ return (
                 <div key={item.id} className={`pq-item status-${item.status}`}>
                   {item.week_number != null && (
                     <div className="pq-campaign-meta-row">
-                      <span className="pq-campaign-meta-week">Wk {item.week_number}{item.publish_day ? ` · ${item.publish_day}` : ''}</span>
+                      <span className="pq-campaign-meta-week">Wk {item.week_number}{item.scheduled_at ? ` · ${new Date(item.scheduled_at).toLocaleDateString('en-US', { weekday: 'long' })}` : item.publish_day ? ` · ${item.publish_day}` : ''}</span>
                       {item.content_type && <span className="pq-campaign-meta-type">{item.content_type}</span>}
                       {item.funnel_position && <span className={`pq-campaign-meta-funnel funnel-${(item.funnel_position||'').toLowerCase()}`}>{item.funnel_position}</span>}
                     </div>
