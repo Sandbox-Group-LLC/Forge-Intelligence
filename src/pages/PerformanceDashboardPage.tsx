@@ -211,10 +211,7 @@ export default function PerformanceDashboardPage() {
         .then(r => r.json())
         .then(d => { if (d.success) { setDecayAlerts(d.alerts || []); setDecayLoaded(true); } })
         .catch(() => {});
-      if (activeChannel === 'patterns') fetch(`/api/analytics/patterns/${brandProfileId}`)
-        .then(r => r.json())
-        .then(d => { if (d.success) { setPatterns(d.patterns || []); setMistakes(d.mistakes || []); } })
-        .catch(() => {});
+      // patterns loaded in dedicated effect below
     }
   }, [activeChannel, brandProfileId, loadCampaigns]);
 
@@ -233,6 +230,17 @@ export default function PerformanceDashboardPage() {
     } catch(e) { setError('Failed to load analytics'); }
     setLoading(false);
   }, [brandProfileId, activeChannel]);
+
+  // Dedicated effect: load patterns + mistakes when on patterns tab
+  // Depends on authToken so it re-fires when token arrives after first render
+  useEffect(() => {
+    if (activeChannel !== 'patterns' || !brandProfileId || !authToken) return;
+    const h = { 'Authorization': `Bearer ${authToken}` };
+    fetch(`/api/analytics/patterns/${brandProfileId}`, { headers: h })
+      .then(r => r.json())
+      .then(d => { if (d.success) { setPatterns(d.patterns || []); setMistakes(d.mistakes || []); } })
+      .catch(() => {});
+  }, [activeChannel, brandProfileId, authToken]);
 
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
 
@@ -1011,8 +1019,12 @@ export default function PerformanceDashboardPage() {
                       </div>
                       <div className="perf-pattern-desc">{(() => {
                         const desc = m.description || '';
-                        const cleaned = desc.replace(/^Section ["'"]?([^"']+)["'"]?:\s*/i, '').replace(/human reviewer edited content\.?/i, '').trim();
-                        return cleaned.length > 100 ? cleaned.slice(0, 100) + '…' : cleaned || desc.slice(0, 100);
+                        // For human_edit: extract section title as useful context
+                        if (m.mistake_type === 'human_edit') {
+                          const match = desc.match(/Section ["'"]([^"']+)["'"]/);
+                          if (match) { const t = match[1]; return t.length > 80 ? t.slice(0, 80) + '…' : t; }
+                        }
+                        return desc.length > 100 ? desc.slice(0, 100) + '…' : desc;
                       })()}</div>
                     </div>
                   ))}
