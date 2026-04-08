@@ -163,7 +163,7 @@ interface QueueItem {
 interface ConnectedChannel { channel: string; }
 
 export default function PublishingQueuePage() {
-  const { isPaid, activeBrand , brandLoading } = useApp();
+  const { isPaid, activeBrand, brandLoading, authToken } = useApp();
   const activeBrandId = activeBrand?.id ?? null;
   
   if (brandLoading) return null;
@@ -1631,7 +1631,7 @@ return (
                         onClick={async () => {
                           const r = await fetch(`/api/content/regenerate-image/${item.content_id}`, {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
                             body: JSON.stringify({ brandProfileId: item.brand_profile_id })
                           });
                           const d = await r.json();
@@ -1652,7 +1652,7 @@ return (
                         onClick={async () => {
                           const r = await fetch(`/api/content/regenerate-image/${item.content_id}`, {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
                             body: JSON.stringify({ brandProfileId: item.brand_profile_id })
                           });
                           const d = await r.json();
