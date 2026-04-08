@@ -146,7 +146,7 @@ const CHANNELS: ChannelDef[] = [
   {
     id: 'hubspot',
     label: 'HubSpot',
-    pipedreamApp: 'hubspot',
+    oauthFlow: true,
     description: 'Contact tracking + campaign attribution. Connects published article UTMs to HubSpot contacts.',
     color: '#FF7A59',
     logo: 'HS',
@@ -379,16 +379,24 @@ export default function IntegrationsPage() {
   const handleSave = async (channelId: ChannelId) => {
     const channel = CHANNELS.find(c => c.id === channelId);
 
-    // LinkedIn uses its own native OAuth — bypasses Pipedream entirely
-    if (channelId === 'linkedin' && channel?.oauthFlow) {
+    // Native OAuth channels — bypass Pipedream entirely
+    const nativeOAuthRoutes: Record<string, string> = {
+      linkedin: '/api/linkedin/auth',
+      hubspot:  '/api/hubspot/auth',
+      webflow:  '/api/webflow/auth',
+    };
+    if (channel?.oauthFlow && nativeOAuthRoutes[channelId]) {
       if (!selectedBrand) { setError('Select a Brain first'); return; }
       try {
-        const r = await fetch(`/api/linkedin/auth?brandProfileId=${selectedBrand}`);
+        const r = await fetch(`${nativeOAuthRoutes[channelId]}?brandProfileId=${selectedBrand}`);
         const d = await r.json();
         if (d.authUrl) { window.location.href = d.authUrl; return; }
-        throw new Error(d.error || 'Failed to start LinkedIn authorization');
+        // Some auth routes redirect directly (no JSON)
+        throw new Error(d.error || `Failed to start ${channel.label} authorization`);
       } catch(e: any) {
-        setError(`Could not connect LinkedIn: ${e.message}`);
+        if (!String(e.message).includes('JSON')) {
+          setError(`Could not connect ${channel.label}: ${e.message}`);
+        }
       }
       return;
     }
