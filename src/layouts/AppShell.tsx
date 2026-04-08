@@ -11,14 +11,14 @@ interface AppShellProps {
   showSidebar?: boolean;
 }
 
-export function AppShell({ children, showSidebar = true }: AppShellProps) {
+export function AppShell({ children, pageTitle, showSidebar = true }: AppShellProps) {
   const { sidebarCollapsed } = useApp();
 
   return (
     <div className={`app-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       {showSidebar && <Sidebar />}
       <div className="app-main">
-        <TopBar />
+        <TopBar pageTitle={pageTitle} />
         <ClerkTokenSync />
         <main className="app-content">
           <div className="view-container">
