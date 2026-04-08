@@ -963,7 +963,7 @@
   color: var(--color-accent);
 }
 
-.perf-mistake-item .perf-pattern-type { color: #F59E0B; }
+.perf-mistake-item .perf-pattern-type { color: #F59E0B; text-transform: capitalize; letter-spacing: 0.02em; }
 
 .perf-pattern-desc {
   font-size: 0.8125rem;
