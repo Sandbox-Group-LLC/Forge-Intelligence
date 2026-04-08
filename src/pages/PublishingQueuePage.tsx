@@ -212,6 +212,7 @@ export default function PublishingQueuePage() {
     preview: { id: string; title: string; week: number; day: string; scheduledAt: string }[];
   } | null>(null);
   const [schedCampaignChannel, setSchedCampaignChannel] = useState<string>('');
+  const [generatingImage, setGeneratingImage] = useState(false);
   const [reviewUrl, setReviewUrl] = useState<string | null>(null);
   const [reviewCopied, setReviewCopied] = useState(false);
   const [editingTitleVal, setEditingTitleVal] = useState('');
