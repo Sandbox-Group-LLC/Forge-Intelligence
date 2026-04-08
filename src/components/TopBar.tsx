@@ -69,7 +69,7 @@ const pathTitles: Record<string, string> = {
   '/app/content-import':         'Content Import',
 };
 
-export function TopBar() {
+export function TopBar({ pageTitle }: { pageTitle?: string } = {}) {
   const { currentView, brandProfile, sidebarCollapsed, setSidebarCollapsed, allBrands, switchBrand, activeBrandId } = useApp();
   const { user } = useUser();
   const { openUserProfile } = useClerk();
@@ -88,7 +88,7 @@ export function TopBar() {
         >
           {icons.menu}
         </button>
-        <h1 className="topbar-title">{Object.entries(pathTitles).find(([k]) => window.location.pathname.startsWith(k))?.[1] || viewTitles[currentView] || 'Forge Intelligence'}</h1>
+        <h1 className="topbar-title">{pageTitle || Object.entries(pathTitles).find(([k]) => window.location.pathname.startsWith(k))?.[1] || viewTitles[currentView] || 'Forge Intelligence'}</h1>
         {brandProfile && currentView === 'brand-profile' && (
           <span className="topbar-subtitle">
             {brandProfile.brandName} · v{brandProfile.version}
