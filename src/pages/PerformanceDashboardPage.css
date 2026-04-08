@@ -1351,3 +1351,22 @@
   line-height: 1.4;
   max-width: 320px;
 }
+
+/* Pattern tab skeleton loading */
+.perf-pattern-skeleton-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0;
+}
+.perf-pattern-skeleton {
+  height: 72px;
+  border-radius: 10px;
+  background: linear-gradient(90deg, var(--color-bg-elevated) 25%, var(--color-bg-card) 50%, var(--color-bg-elevated) 75%);
+  background-size: 200% 100%;
+  animation: perf-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes perf-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
