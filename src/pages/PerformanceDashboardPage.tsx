@@ -800,6 +800,7 @@ export default function PerformanceDashboardPage() {
                       </div>
                     )}
                   </div>
+                  <div className="perf-btn-group">
                   <button
                     className={`perf-extract-btn ${batchScoring ? 'extracting' : ''}`}
                     onClick={handleBatchScore}
@@ -811,6 +812,8 @@ export default function PerformanceDashboardPage() {
                     </svg>
                     {batchScoring ? 'Scoring...' : 'Score All'}
                   </button>
+                  <span className="perf-btn-hint">Runs Pre-cog predictions on all published articles — needs 3+ articles with analytics</span>
+                  </div>
                 </div>
 
                 {predictionsLoading ? (
@@ -933,6 +936,7 @@ export default function PerformanceDashboardPage() {
                 </div>
                 <div className="perf-pattern-actions">
                   {extractResult && <span className="perf-extract-result">{extractResult}</span>}
+                  <div className="perf-btn-group">
                   <button
                     className={`perf-extract-btn ${extracting ? 'extracting' : ''}`}
                     onClick={handleExtract}
@@ -944,6 +948,8 @@ export default function PerformanceDashboardPage() {
                     </svg>
                     {extracting ? 'Extracting...' : 'Run Extraction'}
                   </button>
+                  <span className="perf-btn-hint">Sends all analytics to AI for deep pattern analysis — writes results to Brain. Runs weekly via cron.</span>
+                  </div>
                 </div>
               </div>
 
