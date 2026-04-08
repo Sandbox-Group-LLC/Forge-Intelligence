@@ -69,7 +69,7 @@ const pathTitles: Record<string, string> = {
   '/app/content-import':         'Content Import',
 };
 
-export function TopBar({ pageTitle }: { pageTitle?: string } = {}) {
+export function TopBar({ pageTitle }: { pageTitle?: string }) {
   const { currentView, brandProfile, sidebarCollapsed, setSidebarCollapsed, allBrands, switchBrand, activeBrandId } = useApp();
   const { user } = useUser();
   const { openUserProfile } = useClerk();
