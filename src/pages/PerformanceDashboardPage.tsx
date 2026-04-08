@@ -211,7 +211,7 @@ export default function PerformanceDashboardPage() {
         .then(r => r.json())
         .then(d => { if (d.success) { setDecayAlerts(d.alerts || []); setDecayLoaded(true); } })
         .catch(() => {});
-      fetch(`/api/analytics/patterns/${brandProfileId}`)
+      if (activeChannel === 'patterns') fetch(`/api/analytics/patterns/${brandProfileId}`)
         .then(r => r.json())
         .then(d => { if (d.success) { setPatterns(d.patterns || []); setMistakes(d.mistakes || []); } })
         .catch(() => {});
