@@ -221,25 +221,38 @@ export default function PublishingQueuePage() {
   const buildSchedulePreview = (items: QueueItem[], startDate: string, publishTime: string) => {
     if (!startDate || !publishTime) return [];
     const base = new Date(`${startDate}T${publishTime}`);
-    const dayOffsets: Record<string, number> = {
-      monday: 0, tuesday: 1, wednesday: 2, thursday: 3, friday: 4, saturday: 5, sunday: 6
+    const dayOfWeekIndex: Record<string, number> = {
+      sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6
     };
-    return items
+    const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const sorted = items
       .filter(i => i.week_number)
-      .sort((a, b) => (a.week_number! - b.week_number!) || 0)
-      .map(item => {
-        const weekOffset = ((item.week_number || 1) - 1) * 7;
-        const dayOffset = dayOffsets[(item.publish_day || 'monday').toLowerCase()] ?? 0;
-        const d = new Date(base);
-        d.setDate(d.getDate() + weekOffset + dayOffset);
-        return {
-          id: item.id,
-          title: item.title,
-          week: item.week_number || 1,
-          day: item.publish_day || 'Monday',
-          scheduledAt: d.toISOString()
-        };
+      .sort((a, b) => (a.week_number! - b.week_number!) || 0);
+    const results: { id: string; title: string; week: number; day: string; scheduledAt: string }[] = [];
+    let prevDate = new Date(base);
+    sorted.forEach((item, idx) => {
+      let d: Date;
+      if (idx === 0) {
+        // Article 1 publishes on the exact chosen start date
+        d = new Date(base);
+      } else {
+        // Find the next occurrence of this article's target day-of-week after the previous article
+        const targetDay = dayOfWeekIndex[(item.publish_day || 'monday').toLowerCase()] ?? 1;
+        d = new Date(prevDate);
+        d.setDate(d.getDate() + 1); // start looking from the day after previous
+        while (d.getDay() !== targetDay) d.setDate(d.getDate() + 1);
+        d.setHours(base.getHours(), base.getMinutes(), 0, 0);
+      }
+      results.push({
+        id: item.id,
+        title: item.title,
+        week: item.week_number || 1,
+        day: DAY_NAMES[d.getDay()], // derive label from actual computed date
+        scheduledAt: d.toISOString()
       });
+      prevDate = new Date(d);
+    });
+    return results;
   };
 
   const scheduleCampaign = async () => {
