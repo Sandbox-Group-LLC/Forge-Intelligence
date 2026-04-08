@@ -140,11 +140,6 @@ export default function PerformanceDashboardPage() {
   const [geoLoaded, setGeoLoaded] = useState(false);
   const [gscStatus, setGscStatus] = useState<{ connected: boolean; verifiedSites?: string[] } | null>(null);
   const [extractResult, setExtractResult] = useState<string>('');
-  const [extractMeta, setExtractMeta] = useState<{
-    articlesAnalyzed: number; precogOutcomesUsed: number;
-    predictionAccuracy: number | null; trendDirection: string;
-    channelsAnalyzed: string[];
-  } | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
   const [error, setError] = useState('');
