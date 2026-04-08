@@ -343,6 +343,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     brandLoading,
     activeBrandId,
     refetchBrand,
+    authToken,
     brandProfile,
     setBrandProfile,
 
