@@ -378,6 +378,21 @@ export default function IntegrationsPage() {
 
   const handleSave = async (channelId: ChannelId) => {
     const channel = CHANNELS.find(c => c.id === channelId);
+
+    // LinkedIn uses its own native OAuth — bypasses Pipedream entirely
+    if (channelId === 'linkedin' && channel?.oauthFlow) {
+      if (!selectedBrand) { setError('Select a Brain first'); return; }
+      try {
+        const r = await fetch(`/api/linkedin/auth?brandProfileId=${selectedBrand}`);
+        const d = await r.json();
+        if (d.authUrl) { window.location.href = d.authUrl; return; }
+        throw new Error(d.error || 'Failed to start LinkedIn authorization');
+      } catch(e: any) {
+        setError(`Could not connect LinkedIn: ${e.message}`);
+      }
+      return;
+    }
+
     if (channel?.pipedreamApp) {
       if (!selectedBrand) { setError('Select a Brain first'); return; }
       try {
