@@ -259,17 +259,28 @@ export default function PublishingQueuePage() {
   const scheduleCampaign = async () => {
     if (!campaignScheduler) return;
     const { preview } = campaignScheduler;
-    await Promise.all(preview.map(p =>
-      fetch(`/api/publishing/schedule`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ queueItemId: p.id, scheduledAt: p.scheduledAt })
-      })
-    ));
-    setCampaignScheduler(null);
-    loadQueue();
-    setSuccessMsg(`Campaign scheduled — ${preview.length} articles queued`);
-    setTimeout(() => setSuccessMsg(''), 5000);
+    if (!schedCampaignChannel) { setError('Select a publish channel'); return; }
+    try {
+      const results = await Promise.all(preview.map(p =>
+        fetch(`/api/publishing/queue/${p.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scheduledAt: p.scheduledAt, channels: [schedCampaignChannel], status: 'scheduled' })
+        }).then(r => r.json())
+      ));
+      const failed = results.filter((r: any) => !r.success);
+      if (failed.length) {
+        setError(`${failed.length} article(s) failed to schedule`);
+      } else {
+        setCampaignScheduler(null);
+        setSchedCampaignChannel('');
+        loadQueue();
+        setSuccessMsg(`Campaign scheduled — ${preview.length} articles queued`);
+        setTimeout(() => setSuccessMsg(''), 5000);
+      }
+    } catch {
+      setError('Scheduling failed — please try again');
+    }
   };
 
   const saveTitle = async (item: QueueItem) => {
