@@ -234,13 +234,10 @@ export default function PerformanceDashboardPage() {
 
   // Re-fire dashboard load when token becomes available (handles race on initial page load)
   useEffect(() => {
-    const onTokenReady = () => {
-      loadDashboard();
-      if (activeChannel === 'patterns') loadPatterns();
-    };
+    const onTokenReady = () => { loadDashboard(); };
     window.addEventListener('forge:token-ready', onTokenReady);
     return () => window.removeEventListener('forge:token-ready', onTokenReady);
-  }, [loadDashboard, activeChannel, loadPatterns]);
+  }, [loadDashboard]);
 
   const handleBatchScore = async () => {
     if (!brandProfileId || batchScoring) return;
