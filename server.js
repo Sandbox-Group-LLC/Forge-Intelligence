@@ -8038,8 +8038,15 @@ app.post('/api/geo/track/:brandProfileId', requireAuth, async (req, res) => {
       await Promise.allSettled(articlesRes.rows.map(async article => {
         const sections = article.article_json?.sections || [];
         const title = article.title || 'Untitled';
-        const headings = sections.map(s => s.heading).filter(Boolean).slice(0, 2);
-        const probeQuestions = [title, ...headings.map(h => `${h} ${brandName}`), `What is ${brandName}?`].slice(0, 3);
+        // Extract meaningful topic keywords from title for natural GEO queries
+        const topicWords = title.replace(/[^a-zA-Z0-9 ]/g, '').split(' ')
+          .filter(w => w.length > 4 && !['about','using','your','with','that','this','from','have','will','what','when','where','which'].includes(w.toLowerCase()))
+          .slice(0, 5).join(' ');
+        const probeQuestions = [
+          title,                                                    // exact article title — tests direct citation
+          `${brandName} ${topicWords}`.trim(),                      // brand + topic — tests brand authority on this subject
+          `What is ${brandName}?`,                                  // brand awareness query
+        ].filter(Boolean).slice(0, 3);
 
         await Promise.allSettled(probeQuestions.map(async question => {
 
