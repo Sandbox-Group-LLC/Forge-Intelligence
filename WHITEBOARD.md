@@ -112,6 +112,7 @@ Every AI content tool today solves for production volume. None solve for **compo
 - Brand Scraper: Social included? (LinkedIn/X for voice signals)
 - Context refresh: Manual or scheduled cadence?
 - Third-Party Voice: G2 parsing depth? Reddit weight?
+- CRM: Required or optional for SMB tier?
 
 ---
 
@@ -421,8 +422,8 @@ Running Sandbox-XM, Sandbox-GTM, and Forge Intelligence simultaneously revealed 
 
 OAuth is not Forge's core product. Intelligence is. Every hour debugging LinkedIn redirect URIs is an hour not spent on Pre-cog scores and GEO Citation. Pipedream Connect handles the full OAuth flow for 2,700+ apps using pre-approved client IDs — token storage, refresh, rotation, sensitive scope reviews already cleared.
 
-**Channels on Pipedream Connect:** Facebook
-**Channels staying manual:** X (X asked Pipedream to remove), HubSpot, Webflow, Ghost (key-based), WordPress (app password), Medium (legacy), LinkedIn
+**Channels on Pipedream Connect:** LinkedIn, Facebook, HubSpot, Webflow
+**Channels staying manual:** X (X asked Pipedream to remove), Ghost (key-based), WordPress (app password), Medium (legacy)
 
 **Implementation:** `connect.html` iframe with token in query params + postMessage listener. Bypassed the SDK entirely — SDK token resolution was broken. The iframe URL is the ground truth.
 
@@ -523,6 +524,80 @@ Multi-tenant shared tables with `brand_profile_id` scoping is standard SaaS arch
 | `AppContext.tsx` | Single brand, Clerk auth | Multi-brand, `isSuperAdmin`, `allBrands`, `switchBrand` |
 | Auth | Clerk + `requireAuth` everywhere | Same + super admin `brian@sandbox-xm.com` |
 | Docs | Identical | Identical |
+
+---
+
+## Session Log — April 6, 2026 (continued)
+
+### Security & Auth Hardening
+- Brand hijacking via paid brand tether fixed — `auth/me` now blocks tethering any brand with an existing owner
+- Forge Intelligence brand retethered to brian@forgeintelligence.ai after admin@makemysandbox.com hijack
+- Landing page domain claimed wall — `/api/domain/check` endpoint + hard stop UI before any redirect
+- `brand_profiles` primary key added (was missing — just an indexed column, not PK)
+- GateModal contact message added for disputed brand ownership
+
+### Performance Dashboard
+- authToken exposed from AppContext — Clerk JWT in state, refreshed every 55s
+- PerformanceDashboardPage: all 17 fetches use authToken directly, no interceptor dependency
+- analytics/dashboard channel=all — aggregates across all channels for Predictions tab
+- precog/all split-query fix — RLS cross-table JOIN replaced with two separate queries merged in JS
+- brandProfileId added to useEffect deps — fixes empty Predictions on first load
+- One-shot prevTokenRef effect — loadDashboard fires once on token arrival, not every 55s refresh
+- handleSync gated on authToken — no more unauthenticated sync POSTs
+
+### Dev Branch
+- Brand dropdown always visible (no isSuperAdmin gate)
+- AuthGate layout route — single wrapper for all /app/* routes
+- verifyBrandAccess bypasses for super admin on dev
+- All Brian's dev brands marked paid in DB then reverted (only Intel + Mars stay paid)
+
+## Session Log — April 6, 2026
+
+### Branch Reconciliation — Production → Dev (main)
+
+**Group 1 — Direct ports (9 files):**
+- `src/Landing.tsx` — UTM fixes, privacy link, updated hero
+- `src/pages/PrivacyPage.tsx` — full privacy policy (new file)
+- `src/pages/ContextAgentPage.tsx`
+- `src/pages/GeoStrategistPage.tsx`
+- `src/pages/AuthenticityEnricherPage.tsx`
+- `src/pages/CampaignGeneratorPage.tsx`
+- `src/pages/BrandSettingsPage.tsx` — voice attrs panel, digest opt-out
+- `src/pages/PerformanceDashboardPage.tsx` — pre-cog, pattern dashboard
+- `src/pages/PublishingQueuePage.tsx` — UTM fix, Bitly, Smart Export, Lucide SVGs
+- express body-parser limit bumped to 500kb in production server.js (Brian patched directly)
+
+**Group 2 — Surgical patches (8 files):**
+- `src/main.tsx` — PrivacyPage import + /privacy route (preserved RequirePaid)
+- `src/components/TopBar.tsx` — 4 route labels added, Manage Account button (preserved brand switcher)
+- `src/pages/IntegrationsPage.tsx` — Webflow + HubSpot liveStatus → live, Ghost logo fix
+- `src/pages/ComplianceGatePage.tsx` — activeBrandId → activeBrand?.id
+- `src/pages/ContentImportPage.tsx` — activeBrandId → activeBrand?.id
+- `src/pages/TopicQueuePage.tsx` — activeBrandId → activeBrand?.id
+- `src/pages/ContentLibraryPage.tsx` — GateModal guard added
+- `src/components/Sidebar.tsx` — comment update
+
+**Group 3 — server.js ✅ Complete:**
+- `updatePrecogOutcomes` fn + `/api/precog/all` + `/api/precog/accuracy` routes added
+- `sendDigestForBrand` fn + 3 digest routes added
+- `/api/utils/shorten-url` (Bitly) added
+- Fixed: duplicate `verifyBrandAccess` declaration removed
+- Fixed: missing `sendDigestForBrand` function definition added (routes existed without the fn)
+- express body-parser limit raised to 500kb in production (Brian patched directly)
+
+**Group 4 — LinkedIn Insight Tag ✅ Complete:** ported dev `index.html` → production
+
+**Preserved in dev (do not touch):**
+- `src/context/AppContext.tsx` — multi-brand engine (isSuperAdmin, allBrands, switchBrand)
+- `src/components/TopBar.tsx` — Super Admin brand switcher
+- `src/main.tsx` — RequirePaid route wrapper
+
+**Bonus find:** dev/main `index.html` has LinkedIn Insight Tag (pid 8912978) that production doesn't — port to prod in Group 4.
+
+## Session Log — April 6, 2026
+
+- Added `/privacy` route — placeholder Privacy Policy page, on-brand styling, back link to `/`
+- Privacy Policy link added to landing page footer (after hello@forgeintelligence.ai, dot-divider pattern)
 
 ---
 
@@ -649,27 +724,119 @@ Stage 1 → 6 end-to-end complete.
 **On OAuth (internal):**
 > "OAuth is not our core product. Intelligence is. Every hour debugging LinkedIn redirect URIs is an hour not spent on Pre-cog scores and GEO Citation."
 
----
+## Session Log — April 7, 2026
 
-## Session Log — April 5, 2026 (continued — new Claude account)
+### Light Mode Redesign
+- Full token swap in index.css — blueberry base (#EDF1FF), white cards, blue-glow shadows
+- --color-text-emphasis (#0F172A) new token for titles/quotes needing extra contrast
+- Sidebar + TopBar: white bg, chrome shadow (no border)
+- WorkspaceLayout: content area uses --color-bg-base
+- Sign In button: solid blue CTA
+- Collapsed nav active item: left border (not bottom border)
+- Dark color sweep: GeoStrategistPage, AuthenticityEnricherPage, ContentGeneratorPage, CampaignGeneratorPage cards fixed
 
-### Anthropic Policy Change + Tooling Recovery
-Anthropic changed network policy today — bash shell in Claude.ai lost outbound network access, breaking the previous agentic coding workflow. Resolved via two mechanisms:
-- **Desktop Commander MCP** (Mac-only, session-level) — used for initial recovery
-- **AI Relay endpoint** (permanent, device-independent) — `POST /api/admin/relay` on both branches
+### Security
+- Landing page domain claimed gate — /api/domain/check + hard stop wall before redirect
+- brand_profiles PRIMARY KEY added
+- auth/me tethering hardened — never overwrites existing owner
+- Forge Intelligence brand retethered to brian@forgeintelligence.ai
 
-### AI Relay — `POST /api/admin/relay`
-Authenticated with `ADMIN_PASSWORD`. Three actions:
-- `sql` — `{ adminPassword, action: 'sql', query, values[] }` — run any query against Neon
-- `github-read` — `{ adminPassword, action: 'github-read', path, branch }` — read file + SHA
-- `github-write` — `{ adminPassword, action: 'github-write', path, content, message, branch }` — commit file
+### Performance Dashboard
+- authToken race fixed — one-shot prevTokenRef effect
+- analytics/dashboard isAll applied to top/trend/posts queries (was only on totals)
+- authToken removed from dep arrays — no more 55s re-fire flood
 
-Deployed to both main and production. Claude is now fully operational from any device.
+### Campaign Generator
+- Recent Campaigns list on setup screen
+- Load existing campaign — restores all 8 cards from DB
+- Resume Generation — resets frozen 'generating' articles to pending, picks up from exact article
+- authToken wired into plan/create fetches
+- as const fix for ArticleStatus literal type
+- Send All to Compliance Gate CTA when all 8 complete
+- New Campaign button clears state
+- imageLoading: false on restored articles
 
-### Brand Tether Cleanup (new Clerk account)
-- New Clerk ID `user_3Bxs9lQ5r9Bf6laluD6n7VsvtT3` — production marketing account
-- Tethered exclusively to `cde5feeb` (forgeintelligence.ai, is_paid: true)
-- `intel.com` brand (5ef57555) untethered (clerk_user_id set to NULL)
-- Old Clerk ID `user_3BtC7nusm7CShN7EdUYaaLZcDwp` remains super admin on main (dev only)
-- Production FOUNDER_ID unchanged — new account authenticates as normal paid user via DB
+### Content Generator → Compliance Gate Pipeline
+- Send to Compliance Gate green CTA after article completes
+- authToken wired into briefs + topic-check fetches
 
+### Compliance Gate
+- Selected article card visual state — accent border, blue bg, accent title
+- Accept Suggestion → AI Rewrite (Route B): POST /api/compliance/rewrite-section
+  - Uses claude-sonnet-4-5
+  - Removed silent fallback — surfaces real errors
+  - window.__forgeToken fallback for auth race
+  - 401 explicit guard
+  - Rewrite Applied blue badge on success, clears on failure
+- Inline flagged excerpt highlighting — HighlightedBody component
+  - Parses quoted text from flag.reason
+  - Red for factual_claim/legal_risk, amber for tone
+  - mark tags with colored underline
+- Flag type badge — color-coded pill (factual claim, tone, legal risk) + severity
+- Section tint background for yellow/red tier sections
+- loadArticles gated on authToken
+## Session Log — April 7, 2026 (continued)
+
+### Compliance Gate — Major Overhaul
+- Split into ComplianceGateContent + thin gate wrapper — permanent fix for React hooks violations
+- freshToken() + authFetch() helper — auto-retries on 401, gets fresh Clerk token at call time
+- Clerk JWT template extended to 600s (jwt-template-600) — eliminates token expiry window mid-session
+- All compliance fetches (critique, approve, find-sources, rewrite-section, latest) use authFetch
+- editedSections persisted to localStorage per article — survives refresh, clears on approve
+- Selected article card visual state — accent border, blue bg, accent title
+- Section footer — confidence + decision status, balances card layout
+- Top border replaces left border — cleaner section separation
+- Confidence score badge on article list cards — color-coded green/amber/red
+
+### Compliance Gate — AI Rewrite (Route B)
+- POST /api/compliance/rewrite-section — claude-sonnet-4-5 rewrites flagged section
+- Rewrite Applied blue badge on success, clears on failure
+- Accept Suggestion button disabled while rewriting
+
+### Compliance Gate — Find Sources
+- POST /api/compliance/find-sources — Perplexity sonar search
+- Uses search_results directly — no JSON parsing, no Claude extraction layer needed
+- Exponential backoff on 429 rate limits
+- 3 source candidates shown with title, snippet, year, URL
+- Source selection feeds into rewrite prompt — AI weaves citation naturally
+- Rewrite with Source button (purple) vs Accept Suggestion (green)
+- Sources clear after successful rewrite
+
+### Compliance Gate — Inline Highlights
+- HighlightedBody component — parses quoted text from flag.reason
+- Wraps matched phrases in mark tags — red for factual_claim/legal_risk, amber for tone
+- Flag type badge — color-coded pill + severity
+- Neutral flag card background — no harsh amber/red
+
+### Campaign Generator
+- Recent Campaigns list on setup screen with status badge
+- Load existing campaign — restores all 8 cards from DB
+- Resume Generation — resets frozen generating articles, picks up from correct article
+- Send All to Compliance Gate CTA when all 8 complete
+- New Campaign button clears state
+
+### Content Generator
+- Send to Compliance Gate CTA after article completes
+- authToken wired into briefs + topic-check fetches
+
+### Publishing Queue — Campaign Scheduler
+- Channel picker added — required field, uses connected channels
+- Date scheduling fixed — Article 1 publishes on exact chosen date/time
+- Subsequent articles find next occurrence of their target day-of-week after previous article
+- Writes channels + status:'scheduled' to DB — cron job now picks up and publishes
+- Was broken: channels was empty [], status was 'staged', nothing ever published
+
+### Performance Dashboard
+- analytics/dashboard isAll applied to top/trend/posts queries
+- One-shot prevTokenRef — loadDashboard fires once on token arrival
+
+### Auth / Token Architecture
+- Clerk JWT template jwt-template-600 — 600s lifetime set in Clerk dashboard
+- getToken({ template: 'jwt-template-600' }) used everywhere
+- authFetch pattern established for all authenticated fetches in Compliance Gate
+
+### Known Pending
+- Option B authToken rollout — remaining pages (PublishingQueuePage 25 fetches, etc.)
+- Full dark color sweep — PublishingQueuePage.css, PerformanceDashboardPage.css remaining
+- LinkedIn Insight Tag → production index.html
+- GSC dev callback URL in Google Cloud Console
