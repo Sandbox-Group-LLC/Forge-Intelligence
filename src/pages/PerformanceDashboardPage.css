@@ -1337,3 +1337,17 @@
   line-height: 1.6;
   margin: 0;
 }
+
+/* Button hint labels */
+.perf-btn-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+}
+.perf-btn-hint {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+  max-width: 320px;
+}
