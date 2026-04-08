@@ -840,3 +840,48 @@ Stage 1 → 6 end-to-end complete.
 - Full dark color sweep — PublishingQueuePage.css, PerformanceDashboardPage.css remaining
 - LinkedIn Insight Tag → production index.html
 - GSC dev callback URL in Google Cloud Console
+
+## Session Log — April 7, 2026 (Night)
+
+### Neon SQL Relay
+- Added `POST /api/admin/relay` endpoint to `server.js` (main only — dev tool)
+- Enables direct DB queries from Claude sessions via dev.forgeintelligence.ai
+- Password-gated via `ADMIN_PASSWORD` env var
+
+### Campaign Scheduler — Full Overhaul (both branches)
+- **Root cause:** `scheduleCampaign` was POSTing to `/api/publishing/schedule` which never existed. Silent 200, nothing written to DB, success toast fired anyway.
+- **Fix 1:** Switched to PATCH `/api/publishing/queue/:id` (the working endpoint individual items already use)
+- **Fix 2:** `preview` array initialized as `[]` and never updated — scheduler read stale state. Fixed to call `buildSchedulePreview()` fresh at click time
+- **Fix 3:** Added channel picker to campaign scheduler modal (missing on main, broken on production)
+- **Fix 4:** Proper error handling — try/catch, failed-count check, no unconditional success toast
+- **Fix 5:** `buildSchedulePreview` date math treated start date as Monday + raw day offsets. Fixed: Article 1 on exact start date, subsequent articles find next real occurrence of target day-of-week
+- **Fix 6:** Day labels derived from actual `scheduled_at` date, not `publish_day` from DB
+- Campaign 50108CCF reset in DB and successfully rescheduled — 8 articles on X, correct dates confirmed via relay
+
+### Publishing Queue — Light Mode CSS Sweep (both branches)
+- `pq-chip` hover + selected states: swapped hardcoded `#fff` / `rgba(255,255,255,...)` for CSS vars — chips were ghosting on white card backgrounds
+- Content preview modal: all hardcoded dark-mode colors replaced with CSS vars — modal was completely unreadable in light mode
+
+### Publishing Queue — UX Language (both branches)
+- `Staged {date}` + separate clock emoji → single context-aware label: `Generated Apr 7` / `Scheduled Apr 8 · 9:00 AM` / `Published Apr 8 · 9:00 AM`
+- "Staged" → "Generated" — matches product language (Content Generator, Campaign Generator)
+
+### Generate Image — Full Fix (both branches)
+- **Root cause:** All Claude model strings were invalid (`claude-haiku-4-5`, `claude-sonnet-4-5`, `claude-opus-4-5`) — Anthropic API throwing on every call platform-wide. 19 Sonnet hits in production alone.
+- **Fixed:** `claude-haiku-4-5-20251001`, `claude-sonnet-4-6`, `claude-opus-4-6`
+- `authToken` wired into Generate Image + Regenerate Image fetch calls — was hitting `requireAuth` with no token
+- Added `generatingImage` loading state — spinning ↺ + "Generating..." label, button disabled during fetch
+- `authToken` fully ported to main AppContext: `AppContextType`, `useState`, 55s refresh `useEffect` with `jwt-template-600`, context value
+
+### Image Generation Prompt — Brand-Driven Aesthetic (both branches)
+- **Problem:** `buildImagePrompt` hardcoded Wired/HBR/dark-cinematic aesthetic onto every brand. Forge's moody editorial style was force-fed to Intel, skincare brands, everyone.
+- **Fix:** Two-path logic — brands with Context Hub visual data get Haiku reasoning from their own `visualStyle` + `accentColor`; brands without get a neutral clean editorial fallback
+- Removes hardcoded "dark cinematic", "deep indigo/slate/amber" rules
+- Brand intelligence now actually drives image intelligence — consistent with core value prop
+
+### Known Pending
+- authToken rollout to remaining unauthenticated fetches in PublishingQueuePage
+- Full light mode sweep — PerformanceDashboardPage.css and remaining PublishingQueuePage.css sections
+- LinkedIn Insight Tag → production index.html
+- GSC dev callback URL in Google Cloud Console
+- Formal pen test before Agency tier launch
