@@ -258,8 +258,10 @@ export default function PublishingQueuePage() {
 
   const scheduleCampaign = async () => {
     if (!campaignScheduler) return;
-    const { preview } = campaignScheduler;
+    const { items, startDate, publishTime } = campaignScheduler;
     if (!schedCampaignChannel) { setError('Select a publish channel'); return; }
+    const preview = buildSchedulePreview(items, startDate, publishTime);
+    if (!preview.length) { setError('Set a start date before scheduling'); return; }
     try {
       const results = await Promise.all(preview.map(p =>
         fetch(`/api/publishing/queue/${p.id}`, {
