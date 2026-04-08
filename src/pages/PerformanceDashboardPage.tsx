@@ -235,9 +235,9 @@ export default function PerformanceDashboardPage() {
   // Uses window.__forgeToken fallback — set synchronously by AppContext even before React re-renders
   const loadPatterns = useCallback(() => {
     if (!brandProfileId) return;
-    const token = authToken || (window as any).__forgeToken;
-    if (!token) return;
-    fetch(`/api/analytics/patterns/${brandProfileId}`, { headers: { 'Authorization': `Bearer ${token}` } })
+    const token = authToken || (window as any).__forgeToken || '';
+    const h: Record<string,string> = token ? { 'Authorization': `Bearer ${token}` } : {};
+    fetch(`/api/analytics/patterns/${brandProfileId}`, { headers: h })
       .then(r => r.json())
       .then(d => { if (d.success) { setPatterns(d.patterns || []); setMistakes(d.mistakes || []); } })
       .catch(() => {});
