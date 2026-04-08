@@ -122,8 +122,8 @@ const CHANNELS: ChannelDef[] = [
   {
     id: 'webflow',
     label: 'Webflow',
-    pipedreamApp: 'webflow',
-    description: 'Create CMS items via Webflow Data API. Live publish in Stage 6.1.',
+    oauthFlow: true,
+    description: 'Publish articles to Webflow CMS collections via OAuth.',
     color: '#4353FF',
     logo: 'WF',
     liveStatus: 'staged',
