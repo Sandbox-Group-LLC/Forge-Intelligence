@@ -204,10 +204,9 @@ export default function PerformanceDashboardPage() {
     setLoading(false);
   }, [brandProfileId, activeChannel]);
 
-  // Dedicated effect: load patterns + mistakes when on patterns tab
-  // Uses window.__forgeToken fallback — set synchronously by AppContext even before React re-renders
-  const loadPatterns = useCallback(() => {
-    if (!brandProfileId) return;
+  // Direct effect for patterns — same pattern as every other tab, no useCallback indirection
+  useEffect(() => {
+    if (activeChannel !== 'patterns' || !brandProfileId) return;
     setPatternsLoading(true);
     const token = authToken || (window as any).__forgeToken || '';
     const h: Record<string,string> = token ? { 'Authorization': `Bearer ${token}` } : {};
@@ -217,16 +216,12 @@ export default function PerformanceDashboardPage() {
         if (d.success) {
           setPatterns(d.patterns || []);
           setMistakes(d.mistakes || []);
-          setPatternsLoading(false); // only clear on confirmed success
+          setPatternsLoading(false);
         }
-        // if d.success is false (401 etc) keep skeleton showing — will retry on authToken change
+        // 401/error: keep skeleton — this effect re-fires when authToken dep changes
       })
-      .catch(() => {}); // network error — keep skeleton, effect retries on authToken change
-  }, [brandProfileId, authToken]);
-
-  useEffect(() => {
-    if (activeChannel === 'patterns') loadPatterns();
-  }, [activeChannel, loadPatterns]);
+      .catch(() => {});
+  }, [activeChannel, brandProfileId, authToken]);
 
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
 
