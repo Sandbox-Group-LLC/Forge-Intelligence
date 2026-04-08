@@ -232,15 +232,20 @@ export default function PerformanceDashboardPage() {
   }, [brandProfileId, activeChannel]);
 
   // Dedicated effect: load patterns + mistakes when on patterns tab
-  // Depends on authToken so it re-fires when token arrives after first render
-  useEffect(() => {
-    if (activeChannel !== 'patterns' || !brandProfileId || !authToken) return;
-    const h = { 'Authorization': `Bearer ${authToken}` };
-    fetch(`/api/analytics/patterns/${brandProfileId}`, { headers: h })
+  // Uses window.__forgeToken fallback — set synchronously by AppContext even before React re-renders
+  const loadPatterns = useCallback(() => {
+    if (!brandProfileId) return;
+    const token = authToken || (window as any).__forgeToken;
+    if (!token) return;
+    fetch(`/api/analytics/patterns/${brandProfileId}`, { headers: { 'Authorization': `Bearer ${token}` } })
       .then(r => r.json())
       .then(d => { if (d.success) { setPatterns(d.patterns || []); setMistakes(d.mistakes || []); } })
       .catch(() => {});
-  }, [activeChannel, brandProfileId, authToken]);
+  }, [brandProfileId, authToken]);
+
+  useEffect(() => {
+    if (activeChannel === 'patterns') loadPatterns();
+  }, [activeChannel, loadPatterns]);
 
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
 
@@ -253,10 +258,13 @@ export default function PerformanceDashboardPage() {
 
   // Re-fire dashboard load when token becomes available (handles race on initial page load)
   useEffect(() => {
-    const onTokenReady = () => { loadDashboard(); };
+    const onTokenReady = () => {
+      loadDashboard();
+      if (activeChannel === 'patterns') loadPatterns();
+    };
     window.addEventListener('forge:token-ready', onTokenReady);
     return () => window.removeEventListener('forge:token-ready', onTokenReady);
-  }, [loadDashboard]);
+  }, [loadDashboard, activeChannel, loadPatterns]);
 
   const handleGeoTrack = async () => {
     if (!brandProfileId) return;
