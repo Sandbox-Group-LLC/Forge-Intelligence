@@ -829,7 +829,7 @@ async function buildImagePrompt(title, voiceProfile = {}, firstBody = '') {
   const bodySnippet = (firstBody || '').slice(0, 250);
 
   const res = await anthropic.messages.create({
-    model: 'claude-haiku-4-5',
+    model: 'claude-haiku-4-5-20251001',
     max_tokens: 200,
     messages: [{ role: 'user', content: `Write a single-sentence Flux image generation prompt for a B2B article hero image.
 
@@ -1201,7 +1201,7 @@ app.post('/api/articles/:brandSlug/:articleSlug/ensure-image', async (req, res) 
     const sections = aj.sections || [];
     const firstBody = (sections[0]?.body || sections[0]?.content || '').slice(0, 300);
     const imgPromptRes = await anthropic.messages.create({
-      model: 'claude-haiku-4-5',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 150,
       messages: [{ role: 'user', content: `Write a Flux image generation prompt for a B2B editorial hero image for this article: "${article.title}". Context: ${firstBody}. Output only the prompt, no quotes, no preamble. Professional photography style, 16:9, no text in image.` }]
     });
@@ -1521,7 +1521,7 @@ Evaluate the user's topic against this brand's performance data and return ONLY 
     const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 400, messages: [{ role: 'user', content: prompt }] })
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001-20251001', max_tokens: 400, messages: [{ role: 'user', content: prompt }] })
     });
     const aiData = await aiRes.json();
     const raw = aiData.content?.[0]?.text || '{}';
@@ -1680,7 +1680,7 @@ Extract 3-6 patterns and 2-4 mistakes. Be specific and actionable. Focus on cont
     const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 1500, messages: [{ role: 'user', content: prompt }] })
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001-20251001', max_tokens: 1500, messages: [{ role: 'user', content: prompt }] })
     });
 
     const aiData = await aiRes.json();
@@ -2318,7 +2318,7 @@ Return ONLY valid JSON (no markdown, no explanation):
 Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competitiveGaps, 4-6 strategicRecommendations. Use the ICP and market context provided to make personas and gaps highly specific. For visualStyle and accentColor: infer carefully from the brand website design, color palette, imagery, and overall aesthetic — these feed directly into AI hero image generation and must reflect the real brand identity. For industry, positioning, and targetPersona: be specific and commercially precise, not generic.`;
 
     const message = await anthropic.messages.create({
-      model: 'claude-opus-4-5',
+      model: 'claude-opus-4-6',
       max_tokens: 4096,
       messages: [{ role: 'user', content: prompt }]
     });
@@ -2576,7 +2576,7 @@ BRAIN MEMORIES (high performers): ${JSON.stringify(brainMemories)}`;
     // ── Tool 1: Topical Authority Mapper ─────────────────────────────────────
     console.log('[GEO] Tool 1: Topical Authority Mapper...');
     const topicalRes = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1500,
       messages: [{ role: 'user', content: `You are the Topical Authority Mapper for Forge Intelligence GEO Strategist.
 
@@ -2608,7 +2608,7 @@ Return ONLY the raw JSON array. No markdown. No backticks. No explanation. No ot
     // ── Tool 2: GEO Opportunity Scorer ────────────────────────────────────────
     console.log('[GEO] Tool 2: GEO Opportunity Scorer...');
     const scorerRes = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 2000,
       messages: [{ role: 'user', content: `You are the GEO Opportunity Scorer for Forge Intelligence.
 
@@ -2632,7 +2632,7 @@ Return ONLY a raw JSON array (no markdown, no explanation):
     // ── Tool 3: Entity & Schema Mapper ────────────────────────────────────────
     console.log('[GEO] Tool 3: Entity & Schema Mapper...');
     const entityRes = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1500,
       messages: [{ role: 'user', content: `You are the Entity & Schema Mapper for Forge Intelligence.
 
@@ -2658,7 +2658,7 @@ Return ONLY valid JSON array:
     const targetTopic = topicFocus || quickWins[0]?.topic || geoOpportunities[0]?.topic || whitespace || profile.brand_name + ' strategy';
 
     const briefRes = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 4000,
       messages: [{ role: 'user', content: `You are the GEO Brief Generator for Forge Intelligence.
 
@@ -2889,7 +2889,7 @@ Return empty arrays if not found. Be factual and accurate.`
     console.log('[ENRICH] Tool 2: E-E-A-T Confidence Scorer...');
 
     const scorerRes = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 2000,
       system: 'You are a JSON API. You must respond with valid JSON only — no markdown, no explanation, no code fences.',
       messages: [
@@ -2920,7 +2920,7 @@ Respond with this exact JSON structure:
     console.log('[ENRICH] Tool 3: Voice & Persona Injection Mapper...');
 
     const injectionRes = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 8096,
       system: 'You are a JSON API. You must respond with valid JSON only — no markdown, no explanation, no code fences.',
       messages: [
@@ -2949,7 +2949,7 @@ Respond with this exact JSON structure:
     console.log('[ENRICH] Tool 4: Enriched Brief Assembler...');
 
     const assemblerRes = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 8096,
       system: 'You are a JSON API. You must respond with valid JSON only — no markdown, no explanation, no code fences.',
       messages: [
@@ -3228,7 +3228,7 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
 
     let fullText = '';
     const stream = await client.messages.stream({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 8096,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }]
@@ -3431,7 +3431,7 @@ ${enrichedBrief ? trimTo(enrichedBrief, 4000) : 'Not available — infer from br
 Return ONLY valid JSON matching the output format. No markdown, no commentary.`;
 
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }]
@@ -3677,7 +3677,7 @@ Return ONLY valid JSON matching the content generator output format.`;
 
       let fullText = '';
       const stream = await anthropic.messages.stream({
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6',
         max_tokens: 16000,
         system: cgSystemPrompt,
         messages: [{ role: 'user', content: userPrompt }]
@@ -3857,7 +3857,7 @@ Return ONLY valid JSON in this exact structure:
       method: 'POST',
       headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6',
         max_tokens: 2000,
         system: systemPrompt,
         messages: [{ role: 'user', content: `Article to audit:\n\n${JSON.stringify(articleJson, null, 2)}` }]
@@ -5601,7 +5601,7 @@ app.post('/api/publishing/generate-post-copy', async (req, res) => {
   const { title, headings, readMinutes, articleUrl } = req.body;
   try {
     const copyRes = await anthropic.messages.create({
-      model: 'claude-haiku-4-5',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 400,
       messages: [{ role: 'user', content: `Write a LinkedIn post to promote this B2B article. Give a compelling overview of what the reader will learn — NOT a quote from the intro paragraph.
 
@@ -5675,7 +5675,7 @@ app.post('/api/publishing/publish', requireAuth, async (req, res) => {
         const sections = aj.sections || [];
         const firstBody = (sections[0]?.body || sections[0]?.content || '').slice(0, 300);
         const imgPromptRes = await anthropic.messages.create({
-          model: 'claude-haiku-4-5',
+          model: 'claude-haiku-4-5-20251001',
           max_tokens: 150,
           messages: [{ role: 'user', content: `Write a Flux image generation prompt for a B2B editorial hero image for this article: "${article.title}". Context: ${firstBody}. Output only the prompt, no quotes, no preamble. Professional photography style, 16:9, no text in image.` }]
         });
@@ -5840,7 +5840,7 @@ app.post('/api/publishing/publish', requireAuth, async (req, res) => {
               const sectionHeadings = sections.slice(1, 5).map(s => s.heading).filter(Boolean).join(', ');
               try {
                 const copyRes = await anthropic.messages.create({
-                  model: 'claude-haiku-4-5',
+                  model: 'claude-haiku-4-5-20251001',
                   max_tokens: 400,
                   messages: [{ role: 'user', content: `Write a LinkedIn post to promote this article. It should be a compelling overview (NOT the intro paragraph), end with a clear CTA, and the last line should be exactly "Read more: ${articleUrl}"
 
@@ -5944,7 +5944,7 @@ Output only the post text.` }]
           let fbMessage = `${item.title}\n\n${utmUrl}`;
           try {
             const haiku = await anthropic.messages.create({
-              model: 'claude-haiku-4-5-20251001',
+              model: 'claude-haiku-4-5-20251001-20251001',
               max_tokens: 600,
               messages: [{
                 role: 'user',
@@ -8218,7 +8218,7 @@ async function runDecayMonitoring() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
                 body: JSON.stringify({
-                  model: 'claude-haiku-4-5-20251001',
+                  model: 'claude-haiku-4-5-20251001-20251001',
                   max_tokens: 120,
                   messages: [{ role: 'user', content: `Article "${row.title || 'Untitled'}" on ${row.channel} has decayed ${Math.round(decayScore * 100)}% from peak engagement. In one sentence, recommend the best action: refresh content, change headline, republish on different channel, or add internal links. Be specific and actionable.` }]
                 })
