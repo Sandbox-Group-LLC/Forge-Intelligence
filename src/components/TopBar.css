@@ -5,8 +5,9 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  background: linear-gradient(90deg, rgba(15,23,42,0.90), rgba(15,23,42,0.85));
-  border-bottom: 1px solid rgba(148, 163, 184, 0.18); box-shadow: 0 10px 30px rgba(15,23,42,0.85);
+  background: var(--color-bg-chrome);
+  border-bottom: none;
+  box-shadow: var(--shadow-chrome-y);
 }
 
 .topbar-left {
