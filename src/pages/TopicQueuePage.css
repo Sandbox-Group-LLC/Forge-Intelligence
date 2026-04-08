@@ -196,3 +196,18 @@
   color: #EF4444;
   background: rgba(239,68,68,0.06);
 }
+
+/* Inline editing */
+.tq-row-content { cursor: pointer; flex: 1; min-width: 0; }
+.tq-row-content:hover .tq-topic { color: var(--color-accent); }
+
+.tq-row-editing { border-color: var(--color-accent); background: var(--color-bg-elevated); }
+
+.tq-edit-fields { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
+.tq-edit-topic { font-weight: 600; }
+.tq-edit-note { font-size: 0.8rem; }
+
+.tq-save-btn { border-color: var(--color-accent); color: var(--color-accent); font-weight: 600; }
+.tq-save-btn:hover:not(:disabled) { background: rgba(53,99,255,0.08); }
+.tq-save-btn:disabled { opacity: 0.4; cursor: default; }
+.tq-cancel-btn:hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
