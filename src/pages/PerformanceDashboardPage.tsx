@@ -366,7 +366,7 @@ export default function PerformanceDashboardPage() {
             <p className="geo-description">Content analytics across all channels and campaigns.</p>
           </div>
           <div className="perf-header-right">
-            <div className="perf-sync-wrap">
+            {!['geo', 'gsc', 'predictions'].includes(activeChannel) && <div className="perf-sync-wrap">
               <div className="perf-btn-group">
               <button className={`perf-sync-btn ${syncing ? 'syncing' : ''}`} onClick={handleSync} disabled={syncing || !brandProfileId}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={syncing ? 'spin' : ''}>
@@ -381,7 +381,7 @@ export default function PerformanceDashboardPage() {
                 <span className="perf-last-sync">Last synced {timeAgo(data.totals.lastSynced)}</span>
               )}
               {syncMsg && <span className={`perf-sync-msg ${syncMsg.startsWith('Error') ? 'error' : 'ok'}`}>{syncMsg}</span>}
-            </div>
+            </div>}
           </div>
         </div>
 
