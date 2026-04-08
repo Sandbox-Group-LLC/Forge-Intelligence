@@ -37,21 +37,21 @@
 
 ---
 
-## Platform Status (April 5, 2026)
+## Platform Status (April 7, 2026)
 
 ### All 8 Stages Live
 
 | Stage | Name | Status | Model |
 |-------|------|--------|-------|
-| 1 | Context Hub | ✅ LIVE | Claude Sonnet 4.5 |
-| 2 | GEO Strategist | ✅ LIVE | Claude Sonnet 4.5 |
-| 3 | Authenticity Enricher | ✅ LIVE | Claude Sonnet 4.5 |
-| 4 | Content Generator | ✅ LIVE | Claude Sonnet 4.5 |
-| 4.5 | Campaign Generator | ✅ LIVE | Claude Sonnet 4.5 |
-| 5 | Compliance Gate | ✅ LIVE | Claude Sonnet 4.5 |
+| 1 | Context Hub | ✅ LIVE | Claude Sonnet 4.6 |
+| 2 | GEO Strategist | ✅ LIVE | Claude Sonnet 4.6 |
+| 3 | Authenticity Enricher | ✅ LIVE | Claude Sonnet 4.6 |
+| 4 | Content Generator | ✅ LIVE | Claude Sonnet 4.6 |
+| 4.5 | Campaign Generator | ✅ LIVE | Claude Sonnet 4.6 |
+| 5 | Compliance Gate | ✅ LIVE | Claude Sonnet 4.6 |
 | 6 | Publishing & Distribution | ✅ LIVE | Queue + multi-channel |
 | 7 | Performance Intelligence | ✅ LIVE | LinkedIn + X + Ghost + GSC + GEO |
-| 8 | Feedback Loop | ✅ LIVE | Pattern Extractor (Claude Haiku) |
+| 8 | Feedback Loop | ✅ LIVE | Pattern Extractor (Claude Haiku 4.5) |
 
 ### Auth Architecture
 - **Clerk** — Google, GitHub, email/password
@@ -248,16 +248,16 @@ BEFORE generating:
 
 | Agent | Model | Reason |
 |-------|-------|--------|
-| Context Agent (Stage 1) | Claude Sonnet 4.5 | Structured JSON, brand reasoning |
-| GEO Strategist (Stage 2) | Claude Sonnet 4.5 | Multi-step competitive reasoning |
-| Authenticity Enricher (Stage 3) | Claude Sonnet 4.5 | E-E-A-T analysis |
-| Content Generator (Stage 4) | Claude Sonnet 4.5 | Long-form, Brain-First |
-| Campaign Generator (Stage 4.5) | Claude Sonnet 4.5 | 8-angle planner + article gen |
-| Compliance Gate (Stage 5) | Claude Sonnet 4.5 | Structured rule checking |
-| Pattern Extractor (Stage 8) | Claude Haiku | Fast, cheap, pattern analysis |
-| Post copy generation | Claude Haiku | LinkedIn/X/Facebook post copy |
-| Topic pre-flight check | Claude Haiku | Pattern/mistake signal check |
-| Image prompts | Claude Haiku + fal.ai Flux | Hero image generation |
+| Context Agent (Stage 1) | Claude Sonnet 4.6 | Structured JSON, brand reasoning |
+| GEO Strategist (Stage 2) | Claude Sonnet 4.6 | Multi-step competitive reasoning |
+| Authenticity Enricher (Stage 3) | Claude Sonnet 4.6 | E-E-A-T analysis |
+| Content Generator (Stage 4) | Claude Sonnet 4.6 | Long-form, Brain-First |
+| Campaign Generator (Stage 4.5) | Claude Sonnet 4.6 | 8-angle planner + article gen |
+| Compliance Gate (Stage 5) | Claude Sonnet 4.6 | Structured rule checking |
+| Pattern Extractor (Stage 8) | Claude Haiku 4.5 | Fast, cheap, pattern analysis |
+| Post copy generation | Claude Haiku 4.5 | LinkedIn/X/Facebook post copy |
+| Topic pre-flight check | Claude Haiku 4.5 | Pattern/mistake signal check |
+| Image prompts | Claude Haiku 4.5 + fal.ai Flux | Hero image generation |
 
 ---
 
@@ -268,8 +268,13 @@ BEFORE generating:
 | LinkedIn impressions/clicks | Medium | Requires MDP approval — reactions/comments live |
 | WordPress live API publish | Medium | Pending |
 | Webflow live API publish | Medium | Pipedream Connect wired, logic pending |
+| authToken rollout | Medium | Remaining unauthenticated fetches in PublishingQueuePage |
+| Full light mode CSS sweep | Medium | PerformanceDashboardPage.css + remaining PublishingQueue sections |
+| LinkedIn Insight Tag | Low | Port to production index.html |
+| GSC dev callback URL | Low | Add to Google Cloud Console |
 | Pre-cog Score Dashboard | Backlog | Voyage AI embeddings, pgvector — Phase 3 |
 | Agency Dashboard | Backlog | Cross-brand bird's-eye view |
+| Pen test | Backlog | Required before Agency tier launch |
 | Medium integration | Legacy | New tokens unavailable since early 2025 |
 
 ---
