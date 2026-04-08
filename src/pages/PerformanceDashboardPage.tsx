@@ -954,110 +954,166 @@ export default function PerformanceDashboardPage() {
               </div>
             )}
 
-          {/* ── Pattern Dashboard ── */}
-            {activeChannel === 'patterns' && <div className="perf-section perf-pattern-section">
-              <div className="perf-section-header">
-                <div>
-                  <h2 className="perf-section-title">Pattern Dashboard</h2>
-                  <p className="perf-section-sub">Deep pattern analysis — content structure, pre-cog feedback loop, channel breakdown, topic momentum.</p>
-                  {extractMeta && (
-                    <div className="perf-extract-meta">
-                      <span>{extractMeta.articlesAnalyzed} articles analyzed</span>
-                      {extractMeta.precogOutcomesUsed > 0 && <><span className="perf-accuracy-sep">·</span><span>{extractMeta.precogOutcomesUsed} pre-cog outcomes used</span></>}
-                      {extractMeta.predictionAccuracy !== null && <><span className="perf-accuracy-sep">·</span><span>{extractMeta.predictionAccuracy}% prediction accuracy</span></>}
-                      {extractMeta.trendDirection !== 'insufficient_data' && <><span className="perf-accuracy-sep">·</span><span className={`perf-trend-dir ${extractMeta.trendDirection}`}>{extractMeta.trendDirection === 'improving' ? '↑ Trending up' : '↓ Trending down'}</span></>}
-                    </div>
-                  )}
-                </div>
-                <div className="perf-pattern-actions">
-                  {extractResult && <span className="perf-extract-result">{extractResult}</span>}
-                  <div className="perf-btn-group">
-                  <button
-                    className={`perf-extract-btn ${extracting ? 'extracting' : ''}`}
-                    onClick={handleExtract}
-                    disabled={extracting || !brandProfileId}
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={extracting ? 'spin' : ''}>
-                      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/>
-                      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M16 8h5V3"/>
-                    </svg>
-                    {extracting ? 'Extracting...' : 'Run Extraction'}
-                  </button>
-                  <span className="perf-btn-hint">Sends all analytics to AI for deep pattern analysis — writes results to Brain. Runs weekly via cron.</span>
-                  </div>
-                </div>
-              </div>
+          {/* ── Brain Intelligence ── */}
+            {activeChannel === 'patterns' && (() => {
+              const brainRules = patterns.filter((p: any) => p.pattern_type === 'writing_rule');
+              const tryParse = (v: any, fallback: any) => { try { return JSON.parse(v); } catch { return fallback; } };
+              const analyticsArticleCount = channelInfo.reduce((a: number, c: any) => a + Number(c.post_count || 0), 0);
+              return (
+                <div className="brain-tab">
 
-              <div className="perf-pattern-grid">
-                {/* Patterns */}
-                <div className="perf-pattern-col">
-                  <div className="perf-pattern-col-header">
-                    <span className="perf-pattern-dot primary" />
-                    <span>What's Working</span>
-                    <span className="perf-pattern-count">{patternsLoading ? '—' : patterns.length}</span>
-                  </div>
-                  {patternsLoading ? (
-                    <div className="perf-pattern-skeleton-wrap"><div className="perf-pattern-skeleton" /><div className="perf-pattern-skeleton" /></div>
-                  ) : patterns.length === 0 ? (
-                    <div className="perf-pattern-empty">No patterns yet — Brain learns as you publish and sync analytics.</div>
-                  ) : patterns.map((p, i) => (
-                    <div key={i} className={`perf-pattern-item ${p.pattern_type === 'prediction_correction' ? 'perf-pattern-correction' : ''}`}>
-                      <div className="perf-pattern-type-row">
-                        <span className="perf-pattern-type">{p.pattern_type?.replace(/_/g, ' ')}</span>
-                        {p.source_channel && <span className="perf-pattern-channel">{p.source_channel}</span>}
-                        {p.last_validated_at && <span className="perf-pattern-fresh">validated {new Date(p.last_validated_at).toLocaleDateString()}</span>}
+                  {/* Header */}
+                  <div className="brain-header">
+                    <div className="brain-header-left">
+                      <h2 className="brain-title">Brain Intelligence</h2>
+                      <p className="brain-subtitle">Your editorial voice, captured. Every Compliance Gate review is a signal. Every signal becomes a rule.</p>
+                      <div className="brain-header-stats">
+                        <span className="brain-stats-pill">{brainRules.length} active rules</span>
+                        <span className="brain-stats-pill">{mistakes.length} editorial signals</span>
+                        <span className="brain-stats-pill">{analyticsArticleCount} articles tracked</span>
                       </div>
-                      <div className="perf-pattern-desc">{p.description}</div>
-                      {Array.isArray(p.example_titles) && p.example_titles.length > 0 && (
-                        <div className="perf-pattern-examples">
-                          {p.example_titles.slice(0, 2).map((t: string, j: number) => (
-                            <span key={j} className="perf-pattern-example-title">"{t}"</span>
-                          ))}
+                    </div>
+                    <div className="brain-header-right">
+                      {extractResult && (
+                        <div className={`brain-result-msg ${extractResult.startsWith('Error') || extractResult.startsWith('Update failed') ? 'brain-result-error' : 'brain-result-ok'}`}>
+                          {extractResult}
                         </div>
                       )}
-                      {p.confidence_score > 0 && (
-                        <div className="perf-pattern-meta">
-                          <span className="perf-confidence-bar">
-                            <span className="perf-confidence-fill" style={{ width: `${Math.min(p.confidence_score * 100, 100)}%` }} />
-                          </span>
-                          <span className="perf-confidence-label">{Math.round(p.confidence_score * 100)}% confidence</span>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                {/* Mistakes */}
-                <div className="perf-pattern-col">
-                  <div className="perf-pattern-col-header">
-                    <span className="perf-pattern-dot amber" />
-                    <span>What to Avoid</span>
-                    <span className="perf-pattern-count">{patternsLoading ? '—' : mistakes.length > 10 ? `10 of ${mistakes.length}` : mistakes.length}</span>
-                  </div>
-                  {patternsLoading ? (
-                    <div className="perf-pattern-skeleton-wrap"><div className="perf-pattern-skeleton" /><div className="perf-pattern-skeleton" /></div>
-                  ) : mistakes.length === 0 ? (
-                    <div className="perf-pattern-empty">No edits flagged yet — Compliance Gate reviews write here automatically.</div>
-                  ) : mistakes.slice(0, 10).map((m, i) => (
-                    <div key={i} className={`perf-pattern-item perf-mistake-item perf-severity-${m.severity || 'low'}`}>
-                      <div className="perf-pattern-type-row">
-                        <span className="perf-pattern-type">{m.mistake_type?.replace(/_/g, ' ')}</span>
-                        <span className={`perf-severity-tag perf-severity-${m.severity || 'low'}`}>{m.severity || 'low'}</span>
+                      <div className="perf-btn-group">
+                        <button
+                          className={`perf-extract-btn ${extracting ? 'extracting' : ''}`}
+                          onClick={handleExtract}
+                          disabled={extracting || !brandProfileId || mistakes.length === 0}
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={extracting ? 'spin' : ''}>
+                            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/>
+                            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M16 8h5V3"/>
+                          </svg>
+                          {extracting ? 'Updating Brain...' : 'Update Brain'}
+                        </button>
+                        <span className="perf-btn-hint">
+                          {mistakes.length > 0
+                            ? `Distills ${mistakes.length} editorial signals into writing rules`
+                            : 'Review AI content in Compliance Gate to build signals'}
+                        </span>
                       </div>
-                      <div className="perf-pattern-desc">{(() => {
-                        const desc = m.description || '';
-                        // For human_edit: extract section title as useful context
-                        if (m.mistake_type === 'human_edit') {
-                          const match = desc.match(/Section ["'"]([^"']+)["'"]/);
-                          if (match) { const t = match[1]; return t.length > 80 ? t.slice(0, 80) + '…' : t; }
-                        }
-                        return desc.length > 100 ? desc.slice(0, 100) + '…' : desc;
-                      })()}</div>
                     </div>
-                  ))}
+                  </div>
+
+                  {/* Writing Rules */}
+                  <div className="brain-section">
+                    <div className="brain-section-label">WRITING RULES</div>
+                    <p className="brain-section-desc">What the Brain has learned from your editorial decisions. Applied automatically to every future generation.</p>
+                    {patternsLoading ? (
+                      <div className="perf-pattern-skeleton-wrap">
+                        <div className="perf-pattern-skeleton" />
+                        <div className="perf-pattern-skeleton" />
+                        <div className="perf-pattern-skeleton" />
+                      </div>
+                    ) : brainRules.length === 0 ? (
+                      <div className="brain-empty">
+                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" style={{color:'var(--color-text-muted)',margin:'0 auto 12px',display:'block'}}>
+                          <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/>
+                          <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/>
+                        </svg>
+                        <h3 className="brain-empty-title">
+                          {mistakes.length > 0 ? 'Ready to distill' : 'Brain is listening'}
+                        </h3>
+                        <p className="brain-empty-body">
+                          {mistakes.length > 0
+                            ? `You have ${mistakes.length} editorial signals from Compliance Gate. Click "Update Brain" to distill them into writing rules.`
+                            : 'Every time you edit AI content in Compliance Gate, you teach the Brain your editorial voice. Those signals surface as rules here.'}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="brain-rules-grid">
+                        {brainRules.map((rule: any, i: number) => {
+                          const tags: string[] = Array.isArray(rule.tags) ? rule.tags : tryParse(rule.tags, []);
+                          const direction = tags.find((t: string) => t?.startsWith('direction:'))?.split(':')[1] || 'avoid';
+                          const rationale = tags.find((t: string) => t?.startsWith('rationale:'))?.split(':').slice(1).join(':') || '';
+                          const editCount = parseInt(tags.find((t: string) => t?.startsWith('edits:'))?.split(':')[1] || '1', 10);
+                          const examples: string[] = Array.isArray(rule.example_titles) ? rule.example_titles : tryParse(rule.example_titles, []);
+                          return (
+                            <div key={i} className={`brain-rule-card brain-rule-${direction}`}>
+                              <div className="brain-rule-header">
+                                <span className={`brain-rule-badge brain-rule-badge-${direction}`}>
+                                  {direction === 'avoid' ? 'Avoid' : 'Do'}
+                                </span>
+                                <span className="brain-rule-edits">{editCount} signal{editCount !== 1 ? 's' : ''}</span>
+                              </div>
+                              <div className="brain-rule-text">{rule.description}</div>
+                              {rationale && <div className="brain-rule-rationale">{rationale}</div>}
+                              {examples[0] && examples[1] && (
+                                <div className="brain-rule-examples">
+                                  <div className="brain-example brain-example-avoid">
+                                    <span className="brain-example-label">Instead of</span>
+                                    <span className="brain-example-text">"{examples[0].slice(0, 110)}{examples[0].length > 110 ? '…' : ''}"</span>
+                                  </div>
+                                  <div className="brain-example brain-example-prefer">
+                                    <span className="brain-example-label">Write</span>
+                                    <span className="brain-example-text">"{examples[1].slice(0, 110)}{examples[1].length > 110 ? '…' : ''}"</span>
+                                  </div>
+                                </div>
+                              )}
+                              {rule.confidence_score > 0 && (
+                                <div className="brain-rule-confidence">
+                                  <span className="perf-confidence-bar">
+                                    <span className="perf-confidence-fill" style={{ width: `${Math.min(rule.confidence_score * 100, 100)}%` }} />
+                                  </span>
+                                  <span className="brain-confidence-label">{Math.round(rule.confidence_score * 100)}% confidence</span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Content Signals */}
+                  <div className="brain-section">
+                    <div className="brain-section-label">CONTENT SIGNALS</div>
+                    <p className="brain-section-desc">Performance patterns from your published content. Unlocks at 3+ articles with analytics.</p>
+                    {analyticsArticleCount < 3 ? (
+                      <div className="brain-locked">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{color:'var(--color-text-muted)',margin:'0 auto 10px',display:'block'}}>
+                          <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/>
+                          <line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/>
+                        </svg>
+                        <p className="brain-locked-msg">
+                          Publish and sync analytics for {Math.max(0, 3 - analyticsArticleCount)} more article{3 - analyticsArticleCount !== 1 ? 's' : ''} to unlock content signal intelligence.
+                        </p>
+                        {analyticsArticleCount > 0 && (
+                          <p className="brain-locked-progress">{analyticsArticleCount} of 3 articles tracked</p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="brain-signal-cards">
+                        {channelInfo.map((ch: any) => (
+                          <div key={ch.channel} className="brain-signal-card">
+                            <div className="brain-signal-channel">{ch.channel.charAt(0).toUpperCase() + ch.channel.slice(1)}</div>
+                            <div className="brain-signal-stats">
+                              <div className="brain-signal-stat">
+                                <span className="brain-signal-value">{ch.post_count}</span>
+                                <span className="brain-signal-label">Articles</span>
+                              </div>
+                              <div className="brain-signal-stat">
+                                <span className="brain-signal-value">{Number(ch.impressions).toLocaleString()}</span>
+                                <span className="brain-signal-label">Impressions</span>
+                              </div>
+                            </div>
+                            {ch.last_synced && (
+                              <div className="brain-signal-synced">Synced {timeAgo(ch.last_synced)}</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                 </div>
-              </div>
-            </div>}
+              );
+            })()}
           </>
         )}
       </div>
