@@ -4894,7 +4894,7 @@ app.get('/api/hubspot/auth', (req, res) => {
   const clientId = process.env.HUBSPOT_CLIENT_ID;
   if (!clientId) return res.status(500).json({ error: 'HUBSPOT_CLIENT_ID not configured' });
   
-  const redirectUri = encodeURIComponent(process.env.HUBSPOT_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/hubspot/callback');
+  const redirectUri = encodeURIComponent(process.env.HUBSPOT_REDIRECT_URI || 'https://forgeintelligence.ai/auth/hubspot/callback');
   const brandProfileId = req.query.state?.split('|')[0] || req.query.brandProfileId || 'system';
   const nonce = randomBytes(16).toString('hex');
   const state = `${brandProfileId}|${nonce}`;
@@ -4924,7 +4924,7 @@ app.get('/auth/hubspot/callback', async (req, res) => {
   try {
     const clientId = process.env.HUBSPOT_CLIENT_ID;
     const clientSecret = process.env.HUBSPOT_CLIENT_SECRET;
-    const redirectUri = process.env.HUBSPOT_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/hubspot/callback';
+    const redirectUri = process.env.HUBSPOT_REDIRECT_URI || 'https://forgeintelligence.ai/auth/hubspot/callback';
     
     // Exchange code for tokens
     const tokenRes = await fetch('https://api.hubapi.com/oauth/v1/token', {
@@ -5405,7 +5405,7 @@ app.get('/api/webflow/auth', (req, res) => {
   const clientId = process.env.WEBFLOW_CLIENT_ID;
   if (!clientId) return res.status(500).json({ error: 'WEBFLOW_CLIENT_ID not configured' });
   
-  const redirectUri = encodeURIComponent(process.env.WEBFLOW_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/webflow/callback');
+  const redirectUri = encodeURIComponent(process.env.WEBFLOW_REDIRECT_URI || 'https://forgeintelligence.ai/auth/webflow/callback');
   const brandProfileId = req.query.state?.split('|')[0] || req.query.brandProfileId || 'system';
   const nonce = randomBytes(16).toString('hex');
   const state = `${brandProfileId}|${nonce}`;
@@ -5425,7 +5425,7 @@ app.get('/auth/webflow/callback', async (req, res) => {
   try {
     const clientId = process.env.WEBFLOW_CLIENT_ID;
     const clientSecret = process.env.WEBFLOW_CLIENT_SECRET;
-    const redirectUri = process.env.WEBFLOW_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/webflow/callback';
+    const redirectUri = process.env.WEBFLOW_REDIRECT_URI || 'https://forgeintelligence.ai/auth/webflow/callback';
     
     // Exchange code for token
     const tokenRes = await fetch('https://api.webflow.com/oauth/access_token', {
