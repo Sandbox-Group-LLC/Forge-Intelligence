@@ -1629,42 +1629,40 @@ return (
                       <img src={heroImageUrl} alt={item.title} className="pq-preview-hero" />
                       <button
                         className="pq-regen-image-overlay-btn"
+                        disabled={generatingImage}
                         onClick={async () => {
-                          const r = await fetch(`/api/content/regenerate-image/${item.content_id}`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
-                            body: JSON.stringify({ brandProfileId: item.brand_profile_id })
-                          });
-                          const d = await r.json();
-                          if (d.imageUrl) {
-                            setContentPreview(prev => prev ? {
-                              ...prev,
-                              article: { ...prev.article, hero_image_url: d.imageUrl }
-                            } : null);
-                          }
+                          setGeneratingImage(true);
+                          try {
+                            const r = await fetch(`/api/content/regenerate-image/${item.content_id}`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
+                              body: JSON.stringify({ brandProfileId: item.brand_profile_id })
+                            });
+                            const d = await r.json();
+                            if (d.imageUrl) setContentPreview(prev => prev ? { ...prev, article: { ...prev.article, hero_image_url: d.imageUrl } } : null);
+                          } finally { setGeneratingImage(false); }
                         }}
-                      >↺ Regenerate Image</button>
+                      >{generatingImage ? <span className="pq-spin">↺</span> : '↺'} {generatingImage ? 'Generating...' : 'Regenerate Image'}</button>
                     </div>
                   ) : (
                     <div className="pq-preview-no-image">
                       <span>No hero image generated</span>
                       <button
                         className="pq-regen-image-btn"
+                        disabled={generatingImage}
                         onClick={async () => {
-                          const r = await fetch(`/api/content/regenerate-image/${item.content_id}`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
-                            body: JSON.stringify({ brandProfileId: item.brand_profile_id })
-                          });
-                          const d = await r.json();
-                          if (d.imageUrl) {
-                            setContentPreview(prev => prev ? {
-                              ...prev,
-                              article: { ...prev.article, hero_image_url: d.imageUrl }
-                            } : null);
-                          }
+                          setGeneratingImage(true);
+                          try {
+                            const r = await fetch(`/api/content/regenerate-image/${item.content_id}`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
+                              body: JSON.stringify({ brandProfileId: item.brand_profile_id })
+                            });
+                            const d = await r.json();
+                            if (d.imageUrl) setContentPreview(prev => prev ? { ...prev, article: { ...prev.article, hero_image_url: d.imageUrl } } : null);
+                          } finally { setGeneratingImage(false); }
                         }}
-                      >↺ Generate Image</button>
+                      >{generatingImage ? <span className="pq-spin">↺</span> : '↺'} {generatingImage ? 'Generating...' : 'Generate Image'}</button>
                     </div>
                   )}
                   {editingField === 'title' ? (
