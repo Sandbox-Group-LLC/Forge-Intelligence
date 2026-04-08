@@ -417,7 +417,7 @@ export default function PerformanceDashboardPage() {
         ) : (
           <>
             {/* ── KPI Cards ── */}
-            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && activeChannel !== 'geo' && activeChannel !== 'predictions' && activeChannel !== 'predictions' && <div className="perf-kpis">
+            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && activeChannel !== 'geo' && activeChannel !== 'predictions' && activeChannel !== 'patterns' && <div className="perf-kpis">
               {(activeChannel === 'ghost' ? [
                 { label: 'Link Clicks', value: fmt(data?.totals?.clicks || 0), sub: 'Total tracked clicks', icon: 'click', spark: false },
                 { label: 'Avg Read Time', value: data?.totals?.avgReadingTime ? `${data.totals.avgReadingTime} min` : '—', sub: 'Minutes per article', icon: 'eye', spark: false },
@@ -444,7 +444,7 @@ export default function PerformanceDashboardPage() {
             </div>}
 
             {/* ── 30-Day Trend ── */}
-            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && activeChannel !== 'geo' && activeChannel !== 'predictions' && <div className="perf-section">
+            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && activeChannel !== 'geo' && activeChannel !== 'predictions' && activeChannel !== 'patterns' && <div className="perf-section">
               <div className="perf-section-header">
                 <h2 className="perf-section-title">30-Day Impressions</h2>
                 {(data?.trend?.length ?? 0) > 0 && (
@@ -457,7 +457,7 @@ export default function PerformanceDashboardPage() {
             </div>}
 
             {/* ── Posts Table ── */}
-            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && activeChannel !== 'geo' && activeChannel !== 'predictions' && <div className="perf-section">
+            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && activeChannel !== 'geo' && activeChannel !== 'predictions' && activeChannel !== 'patterns' && <div className="perf-section">
               <div className="perf-section-header">
                 <h2 className="perf-section-title">Published Posts</h2>
                 <span className="perf-section-meta">{data?.posts?.length || 0} tracked</span>
@@ -999,16 +999,21 @@ export default function PerformanceDashboardPage() {
                   <div className="perf-pattern-col-header">
                     <span className="perf-pattern-dot amber" />
                     <span>What to Avoid</span>
-                    <span className="perf-pattern-count">{mistakes.length}</span>
+                    <span className="perf-pattern-count">{mistakes.length > 10 ? `10 of ${mistakes.length}` : mistakes.length}</span>
                   </div>
                   {mistakes.length === 0 ? (
                     <div className="perf-pattern-empty">No mistakes logged yet — run extraction or flag content in Compliance Gate.</div>
                   ) : mistakes.slice(0, 10).map((m, i) => (
                     <div key={i} className={`perf-pattern-item perf-mistake-item perf-severity-${m.severity || 'low'}`}>
-                      <div className="perf-pattern-type">{m.mistake_type}</div>
-                      <div className="perf-pattern-desc">{m.description}</div>
-                      {m.human_feedback && <div className="perf-mistake-feedback">"{m.human_feedback}"</div>}
-                      <div className="perf-severity-tag">{m.severity || 'low'}</div>
+                      <div className="perf-pattern-type-row">
+                        <span className="perf-pattern-type">{m.mistake_type?.replace(/_/g, ' ')}</span>
+                        <span className={`perf-severity-tag perf-severity-${m.severity || 'low'}`}>{m.severity || 'low'}</span>
+                      </div>
+                      <div className="perf-pattern-desc">{(() => {
+                        const desc = m.description || '';
+                        const cleaned = desc.replace(/^Section ["'"]?([^"']+)["'"]?:\s*/i, '').replace(/human reviewer edited content\.?/i, '').trim();
+                        return cleaned.length > 100 ? cleaned.slice(0, 100) + '…' : cleaned || desc.slice(0, 100);
+                      })()}</div>
                     </div>
                   ))}
                 </div>
