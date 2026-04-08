@@ -828,24 +828,41 @@ async function buildImagePrompt(title, voiceProfile = {}, firstBody = '') {
 
   const bodySnippet = (firstBody || '').slice(0, 250);
 
-  const res = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 200,
-    messages: [{ role: 'user', content: `Write a single-sentence Flux image generation prompt for a B2B article hero image.
+  const hasBrandVisual = !!(visualStyle || accentColor);
+
+  const imagePromptInstruction = hasBrandVisual
+    ? `Write a single-sentence Flux image generation prompt for a B2B article hero image that authentically reflects this brand's visual identity and the article topic.
 
 Article title: "${title}"
 ${brandContext ? brandContext + '\n' : ''}${bodySnippet ? 'Article context: ' + bodySnippet : ''}
 
 Rules:
-- Directly reflect the article topic and brand identity above
-- Photorealistic editorial photography — Wired, HBR, or Fast Company cover energy
-- Abstract macro, architectural detail, natural textures, or environmental storytelling
-- Dark cinematic lighting with intentional shadows; muted palette with one accent color${accentColor ? ' (' + accentColor + ')' : ' (deep indigo, slate, or warm amber)'}
+- Let the brand's visual style and color palette drive the aesthetic — do not impose a generic look
+- Photorealistic editorial or commercial photography appropriate to this brand's industry and tone
 - NO floating UI elements, holographic screens, neon data walls, or sci-fi aesthetics
-- NO stock-photo clichés (handshakes, lightbulbs, generic offices)
+- NO stock-photo clichés (handshakes, lightbulbs, generic offices, people pointing at whiteboards)
 - 1 sentence only, no explanation, no quotes
 
-Output only the prompt.` }]
+Output only the prompt.`
+    : `Write a single-sentence Flux image generation prompt for a B2B article hero image.
+
+Article title: "${title}"
+${bodySnippet ? 'Article context: ' + bodySnippet : ''}
+
+Rules:
+- Photorealistic editorial photography — clean, high-contrast, professional
+- Abstract macro, architectural detail, natural textures, or environmental storytelling
+- Neutral palette with strong composition
+- NO floating UI elements, holographic screens, neon data walls, or sci-fi aesthetics
+- NO stock-photo clichés (handshakes, lightbulbs, generic offices, people pointing at whiteboards)
+- 1 sentence only, no explanation, no quotes
+
+Output only the prompt.`;
+
+  const res = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 200,
+    messages: [{ role: 'user', content: imagePromptInstruction }]
   });
 
   return res.content[0]?.type === 'text'
