@@ -131,6 +131,7 @@ export default function PerformanceDashboardPage() {
   } | null>(null);
   const [mistakes, setMistakes] = useState<any[]>([]);
   const [extracting, setExtracting] = useState(false);
+  const [patternsLoading, setPatternsLoading] = useState(true);
   const [decayAlerts, setDecayAlerts] = useState<any[]>([]);
   const [decayLoaded, setDecayLoaded] = useState(false);
   const [gscSyncing, setGscSyncing] = useState(false);
@@ -207,12 +208,14 @@ export default function PerformanceDashboardPage() {
   // Uses window.__forgeToken fallback — set synchronously by AppContext even before React re-renders
   const loadPatterns = useCallback(() => {
     if (!brandProfileId) return;
+    setPatternsLoading(true);
     const token = authToken || (window as any).__forgeToken || '';
     const h: Record<string,string> = token ? { 'Authorization': `Bearer ${token}` } : {};
     fetch(`/api/analytics/patterns/${brandProfileId}`, { headers: h })
       .then(r => r.json())
       .then(d => { if (d.success) { setPatterns(d.patterns || []); setMistakes(d.mistakes || []); } })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setPatternsLoading(false));
   }, [brandProfileId, authToken]);
 
   useEffect(() => {
@@ -326,7 +329,7 @@ export default function PerformanceDashboardPage() {
         setExtractResult(newThings > 0
           ? `✓ ${d.patternsWritten || 0} new patterns · ${d.mistakesWritten || 0} new mistakes${metaStr}`
           : d.message || `Brain up to date — ${(d.patterns || []).length} patterns · ${(d.mistakes || []).length} mistakes in Brain${metaStr}`);
-        setTimeout(() => setExtractResult(''), 7000);
+        setTimeout(() => setExtractResult(''), d.patternsWritten === 0 && d.mistakesWritten === 0 ? 15000 : 7000);
       } else {
         setExtractResult(`Error: ${d.error}`);
       }
@@ -979,10 +982,12 @@ export default function PerformanceDashboardPage() {
                   <div className="perf-pattern-col-header">
                     <span className="perf-pattern-dot primary" />
                     <span>What's Working</span>
-                    <span className="perf-pattern-count">{patterns.length}</span>
+                    <span className="perf-pattern-count">{patternsLoading ? '—' : patterns.length}</span>
                   </div>
-                  {patterns.length === 0 ? (
-                    <div className="perf-pattern-empty">No patterns yet — run extraction after syncing analytics.</div>
+                  {patternsLoading ? (
+                    <div className="perf-pattern-skeleton-wrap"><div className="perf-pattern-skeleton" /><div className="perf-pattern-skeleton" /></div>
+                  ) : patterns.length === 0 ? (
+                    <div className="perf-pattern-empty">No patterns yet — Brain learns as you publish and sync analytics.</div>
                   ) : patterns.map((p, i) => (
                     <div key={i} className={`perf-pattern-item ${p.pattern_type === 'prediction_correction' ? 'perf-pattern-correction' : ''}`}>
                       <div className="perf-pattern-type-row">
@@ -1015,10 +1020,12 @@ export default function PerformanceDashboardPage() {
                   <div className="perf-pattern-col-header">
                     <span className="perf-pattern-dot amber" />
                     <span>What to Avoid</span>
-                    <span className="perf-pattern-count">{mistakes.length > 10 ? `10 of ${mistakes.length}` : mistakes.length}</span>
+                    <span className="perf-pattern-count">{patternsLoading ? '—' : mistakes.length > 10 ? `10 of ${mistakes.length}` : mistakes.length}</span>
                   </div>
-                  {mistakes.length === 0 ? (
-                    <div className="perf-pattern-empty">No mistakes logged yet — run extraction or flag content in Compliance Gate.</div>
+                  {patternsLoading ? (
+                    <div className="perf-pattern-skeleton-wrap"><div className="perf-pattern-skeleton" /><div className="perf-pattern-skeleton" /></div>
+                  ) : mistakes.length === 0 ? (
+                    <div className="perf-pattern-empty">No edits flagged yet — Compliance Gate reviews write here automatically.</div>
                   ) : mistakes.slice(0, 10).map((m, i) => (
                     <div key={i} className={`perf-pattern-item perf-mistake-item perf-severity-${m.severity || 'low'}`}>
                       <div className="perf-pattern-type-row">
