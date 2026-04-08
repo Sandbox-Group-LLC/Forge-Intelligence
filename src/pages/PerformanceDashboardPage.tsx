@@ -113,36 +113,8 @@ function Sparkline({ data, key: _k }: { data: number[]; key?: string }) {
 export default function PerformanceDashboardPage() {
   const { isPaid, brandLoading, activeBrand, authToken } = useApp();
   
-  if (brandLoading) return null;
-  if (!isPaid) {
-    return (
-      <AppShell>
-        <GateModal 
-          featureName="Performance Dashboard" 
-          onClose={() => window.location.href = '/app/context-hub'} 
-          onUnlocked={() => {}} 
-        />
-      </AppShell>
-    );
-  }
-
-  const brandProfileId = activeBrand?.id ?? '';
-
-  const handleBatchScore = async () => {
-    if (!brandProfileId || batchScoring) return;
-    setBatchScoring(true);
-    const timeout = setTimeout(() => setBatchScoring(false), 30_000);
-    const headers: Record<string,string> = { 'Content-Type': 'application/json' };
-    try {
-      const r = await fetch('/api/precog/batch', { method: 'POST', headers, body: JSON.stringify({ brandProfileId }) });
-      const d = await r.json();
-      if (d.success) {
-        const r2 = await fetch(`/api/precog/all/${brandProfileId}`, { headers });
-        const d2 = await r2.json();
-        if (d2.success) setPredictions(d2.items || []);
-      }
-    } catch { /* non-fatal */ } finally { clearTimeout(timeout); setBatchScoring(false); }
-  };  const [activeChannel, setActiveChannel] = useState('patterns');
+  // brandProfileId computed before hooks — not a hook
+  const brandProfileId = activeBrand?.id ?? '';  const [activeChannel, setActiveChannel] = useState('patterns');
   const [data, setData] = useState<DashboardData | null>(null);
   const [channelInfo, setChannelInfo] = useState<ChannelInfo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -265,6 +237,22 @@ export default function PerformanceDashboardPage() {
     window.addEventListener('forge:token-ready', onTokenReady);
     return () => window.removeEventListener('forge:token-ready', onTokenReady);
   }, [loadDashboard, activeChannel, loadPatterns]);
+
+  const handleBatchScore = async () => {
+    if (!brandProfileId || batchScoring) return;
+    setBatchScoring(true);
+    const timeout = setTimeout(() => setBatchScoring(false), 30_000);
+    const headers: Record<string,string> = { 'Content-Type': 'application/json' };
+    try {
+      const r = await fetch('/api/precog/batch', { method: 'POST', headers, body: JSON.stringify({ brandProfileId }) });
+      const d = await r.json();
+      if (d.success) {
+        const r2 = await fetch(`/api/precog/all/${brandProfileId}`, { headers });
+        const d2 = await r2.json();
+        if (d2.success) setPredictions(d2.items || []);
+      }
+    } catch { /* non-fatal */ } finally { clearTimeout(timeout); setBatchScoring(false); }
+  };
 
   const handleGeoTrack = async () => {
     if (!brandProfileId) return;
