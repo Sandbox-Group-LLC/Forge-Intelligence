@@ -111,7 +111,7 @@ function Sparkline({ data, key: _k }: { data: number[]; key?: string }) {
 
 
 export default function PerformanceDashboardPage() {
-  const { isPaid, brandLoading, activeBrand } = useApp();
+  const { isPaid, brandLoading, activeBrand, authToken } = useApp();
   
   if (brandLoading) return null;
   if (!isPaid) {
