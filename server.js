@@ -1389,7 +1389,7 @@ app.get('/sitemap.xml', async (req, res) => {
       { loc: `${BASE}/articles`,  lastmod: today, changefreq: 'daily',   priority: '0.9' },
     ];
 
-    const toUrl = ({ loc, lastmod, changefreq, priority }: any) =>
+    const toUrl = ({ loc, lastmod, changefreq, priority }) =>
       `  <url>\n    <loc>${loc}</loc>\n    <lastmod>${lastmod}</lastmod>${changefreq ? `\n    <changefreq>${changefreq}</changefreq>` : ''}\n    <priority>${priority}</priority>\n  </url>`;
 
     const xml = [
