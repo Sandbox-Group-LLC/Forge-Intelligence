@@ -37,6 +37,107 @@ const PlusIcon = () => (
   </svg>
 );
 
+function TopicRow({ t, ah, onUpdate, onDelete, onSend }: {
+  t: TopicIdea;
+  ah: () => Record<string, string>;
+  onUpdate: (id: string, fields: Partial<TopicIdea>) => void;
+  onDelete: (id: string) => void;
+  onSend: (t: TopicIdea) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editTopic, setEditTopic] = useState(t.topic);
+  const [editNote, setEditNote] = useState(t.note || '');
+  const [saving, setSaving] = useState(false);
+  const topicRef = useRef<HTMLInputElement>(null);
+
+  const startEdit = () => {
+    setEditTopic(t.topic);
+    setEditNote(t.note || '');
+    setEditing(true);
+    setTimeout(() => topicRef.current?.focus(), 0);
+  };
+
+  const saveEdit = async () => {
+    if (!editTopic.trim() || saving) return;
+    setSaving(true);
+    await fetch(`/api/topic-ideas/${t.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...ah() },
+      body: JSON.stringify({ topic: editTopic.trim(), note: editNote.trim() || null }),
+    });
+    onUpdate(t.id, { topic: editTopic.trim(), note: editNote.trim() || null });
+    setSaving(false);
+    setEditing(false);
+  };
+
+  const cancelEdit = () => {
+    setEditTopic(t.topic);
+    setEditNote(t.note || '');
+    setEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') { e.preventDefault(); saveEdit(); }
+    if (e.key === 'Escape') cancelEdit();
+  };
+
+  return (
+    <div className={`tq-row ${editing ? 'tq-row-editing' : ''}`}>
+      <div className="tq-row-left">
+        {editing ? (
+          <div className="tq-edit-fields">
+            <input
+              ref={topicRef}
+              className="tq-input tq-edit-topic"
+              value={editTopic}
+              onChange={e => setEditTopic(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Topic..."
+            />
+            <input
+              className="tq-input tq-edit-note"
+              value={editNote}
+              onChange={e => setEditNote(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Notes, angle, target persona... (optional)"
+            />
+          </div>
+        ) : (
+          <div className="tq-row-content" onClick={startEdit} title="Click to edit">
+            <div className="tq-topic">{t.topic}</div>
+            {t.note && <div className="tq-note">{t.note}</div>}
+          </div>
+        )}
+      </div>
+
+      <div className="tq-row-right">
+        {editing ? (
+          <>
+            <button className="tq-action-btn tq-save-btn" onClick={saveEdit} disabled={!editTopic.trim() || saving}>
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+            <button className="tq-action-btn tq-cancel-btn" onClick={cancelEdit}>Cancel</button>
+          </>
+        ) : (
+          <>
+            <span className="tq-status" style={{ color: STATUS_COLOR[t.status] }}>
+              ● {STATUS_LABEL[t.status]}
+            </span>
+            {t.status !== 'generated' && (
+              <button className="tq-action-btn tq-send-btn" onClick={() => onSend(t)}>
+                Send to Generator <ArrowIcon />
+              </button>
+            )}
+            <button className="tq-action-btn tq-delete-btn" onClick={() => onDelete(t.id)}>
+              <TrashIcon />
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function TopicQueuePage() {
   const { activeBrand, authToken } = useApp();
   const brandProfileId = activeBrand?.id || '';
@@ -50,9 +151,9 @@ export default function TopicQueuePage() {
   const [adding, setAdding] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const ah = () => {
+  const ah = (): Record<string, string> => {
     const t = authTokenRef.current || authToken || '';
-    return t ? { 'Authorization': `Bearer ${t}` } : {} as Record<string, string>;
+    return t ? { 'Authorization': `Bearer ${t}` } : {};
   };
 
   useEffect(() => {
@@ -74,23 +175,12 @@ export default function TopicQueuePage() {
         body: JSON.stringify({ brandProfileId, topic: topic.trim(), note: note.trim() || null }),
       });
       const d = await r.json();
-      if (d.success) {
-        setTopics(prev => [d.idea, ...prev]);
-        setTopic('');
-        setNote('');
-      }
-    } finally {
-      setAdding(false);
-    }
+      if (d.success) { setTopics(prev => [d.idea, ...prev]); setTopic(''); setNote(''); }
+    } finally { setAdding(false); }
   };
 
-  const updateStatus = async (id: string, status: string) => {
-    await fetch(`/api/topic-ideas/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', ...ah() },
-      body: JSON.stringify({ status }),
-    });
-    setTopics(prev => prev.map(t => t.id === id ? { ...t, status: status as any } : t));
+  const handleUpdate = (id: string, fields: Partial<TopicIdea>) => {
+    setTopics(prev => prev.map(t => t.id === id ? { ...t, ...fields } : t));
   };
 
   const deleteTopic = async (id: string) => {
@@ -99,7 +189,12 @@ export default function TopicQueuePage() {
   };
 
   const sendToGenerator = (t: TopicIdea) => {
-    updateStatus(t.id, 'in_progress');
+    fetch(`/api/topic-ideas/${t.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...ah() },
+      body: JSON.stringify({ status: 'in_progress' }),
+    });
+    setTopics(prev => prev.map(x => x.id === t.id ? { ...x, status: 'in_progress' } : x));
     window.location.href = `/app/content-generator?topic=${encodeURIComponent(t.topic)}&brand=${t.brand_profile_id}`;
   };
 
@@ -122,7 +217,6 @@ export default function TopicQueuePage() {
           </div>
         </div>
 
-        {/* Add form */}
         <div className="tq-add-card">
           <div className="tq-add-inputs">
             <input
@@ -145,51 +239,25 @@ export default function TopicQueuePage() {
           </button>
         </div>
 
-        {/* Filter tabs */}
         <div className="tq-filters">
           {(['all', 'idea', 'in_progress', 'generated'] as Filter[]).map(f => (
-            <button
-              key={f}
-              className={`tq-filter-tab ${filter === f ? 'active' : ''}`}
-              onClick={() => setFilter(f)}
-            >
+            <button key={f} className={`tq-filter-tab ${filter === f ? 'active' : ''}`} onClick={() => setFilter(f)}>
               {f === 'all' ? 'All' : STATUS_LABEL[f]}
               <span className="tq-filter-count">{counts[f]}</span>
             </button>
           ))}
         </div>
 
-        {/* List */}
         {loading ? (
           <div className="tq-empty">Loading...</div>
         ) : filtered.length === 0 ? (
           <div className="tq-empty">
-            {filter === 'all'
-              ? 'No topics yet — add your first idea above.'
-              : `No ${STATUS_LABEL[filter]} topics.`}
+            {filter === 'all' ? 'No topics yet — add your first idea above.' : `No ${STATUS_LABEL[filter]} topics.`}
           </div>
         ) : (
           <div className="tq-list">
             {filtered.map(t => (
-              <div key={t.id} className="tq-row">
-                <div className="tq-row-left">
-                  <div className="tq-topic">{t.topic}</div>
-                  {t.note && <div className="tq-note">{t.note}</div>}
-                </div>
-                <div className="tq-row-right">
-                  <span className="tq-status" style={{ color: STATUS_COLOR[t.status] }}>
-                    ● {STATUS_LABEL[t.status]}
-                  </span>
-                  {t.status !== 'generated' && (
-                    <button className="tq-action-btn tq-send-btn" onClick={() => sendToGenerator(t)}>
-                      Send to Generator <ArrowIcon />
-                    </button>
-                  )}
-                  <button className="tq-action-btn tq-delete-btn" onClick={() => deleteTopic(t.id)}>
-                    <TrashIcon />
-                  </button>
-                </div>
-              </div>
+              <TopicRow key={t.id} t={t} ah={ah} onUpdate={handleUpdate} onDelete={deleteTopic} onSend={sendToGenerator} />
             ))}
           </div>
         )}
