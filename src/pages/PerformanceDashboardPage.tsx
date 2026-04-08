@@ -39,6 +39,7 @@ interface CampaignRow {
 }
 
 const CHANNELS = [
+  { id: 'patterns', label: 'Patterns', live: true },
   { id: 'predictions', label: 'Predictions', live: true },
   { id: 'linkedin', label: 'LinkedIn', live: true },
   { id: 'x', label: 'X (Twitter)', live: true },
@@ -317,7 +318,10 @@ export default function PerformanceDashboardPage() {
         setMistakes(d.mistakes || []);
         if (d.meta) setExtractMeta(d.meta);
         const metaStr = d.meta ? ` · ${d.meta.articlesAnalyzed} articles · ${d.meta.precogOutcomesUsed > 0 ? `${d.meta.precogOutcomesUsed} pre-cog outcomes` : 'no pre-cog data yet'}` : '';
-        setExtractResult(`✓ ${d.patternsWritten || 0} patterns · ${d.mistakesWritten || 0} mistakes${metaStr}`);
+        const newThings = (d.patternsWritten || 0) + (d.mistakesWritten || 0);
+        setExtractResult(newThings > 0
+          ? `✓ ${d.patternsWritten || 0} new patterns · ${d.mistakesWritten || 0} new mistakes${metaStr}`
+          : d.message || `Brain up to date — ${(d.patterns || []).length} patterns · ${(d.mistakes || []).length} mistakes in Brain${metaStr}`);
         setTimeout(() => setExtractResult(''), 7000);
       } else {
         setExtractResult(`Error: ${d.error}`);
@@ -920,7 +924,7 @@ export default function PerformanceDashboardPage() {
             )}
 
           {/* ── Pattern Dashboard ── */}
-            <div className="perf-section perf-pattern-section">
+            {activeChannel === 'patterns' && <div className="perf-section perf-pattern-section">
               <div className="perf-section-header">
                 <div>
                   <h2 className="perf-section-title">Pattern Dashboard</h2>
@@ -999,7 +1003,7 @@ export default function PerformanceDashboardPage() {
                   </div>
                   {mistakes.length === 0 ? (
                     <div className="perf-pattern-empty">No mistakes logged yet — run extraction or flag content in Compliance Gate.</div>
-                  ) : mistakes.map((m, i) => (
+                  ) : mistakes.slice(0, 10).map((m, i) => (
                     <div key={i} className={`perf-pattern-item perf-mistake-item perf-severity-${m.severity || 'low'}`}>
                       <div className="perf-pattern-type">{m.mistake_type}</div>
                       <div className="perf-pattern-desc">{m.description}</div>
@@ -1009,7 +1013,7 @@ export default function PerformanceDashboardPage() {
                   ))}
                 </div>
               </div>
-            </div>
+            </div>}
           </>
         )}
       </div>
