@@ -211,16 +211,16 @@
 
 /* Hover */
 .pq-chip:hover {
-  border-color: rgba(255,255,255,0.3);
-  color: #fff;
-  background: rgba(255,255,255,0.08);
+  border-color: var(--color-border-input);
+  color: var(--color-text-primary);
+  background: var(--color-bg-elevated);
 }
 
-/* Selected — bright white, about to publish */
+/* Selected — accent blue, about to publish */
 .pq-chip.selected {
-  background: rgba(255,255,255,0.12);
-  border-color: #fff;
-  color: #fff;
+  background: rgba(53,99,255,0.12);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
   font-weight: 700;
 }
 
