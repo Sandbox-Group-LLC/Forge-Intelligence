@@ -1640,10 +1640,20 @@ app.get('/api/analytics/patterns/:brandProfileId', requireAuth, async (req, res)
 
 // POST /api/analytics/extract-patterns/:brandProfileId
 // Analyzes content_analytics + publishing_queue to extract Brain Patterns and Mistakes
-app.post('/api/analytics/extract-patterns/:brandProfileId', requireAuth, async (req, res) => {
+app.post('/api/analytics/extract-patterns/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
+  // Allow cron/admin bypass with adminPassword, otherwise require Clerk JWT
+  const isCron = req.body?.adminPassword === process.env.ADMIN_PASSWORD;
+  if (!isCron) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+      const { payload } = await jwtVerify(authHeader.split(' ')[1], clerkJWKS, { algorithms: ['RS256'] });
+      req.userId = payload.sub;
+    } catch { return res.status(401).json({ error: 'Invalid token' }); }
+  }
   try {
-    if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+    if (!isCron && !(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
     const safeId = brandProfileId.replace(/-/g, '_');
 
     // Fetch analytics data
@@ -6232,8 +6242,18 @@ function buildGhostJWT(apiKey) {
   return `${sigInput}.${sig}`;
 }
 
-app.post('/api/analytics/sync/:brandProfileId', requireAuth, async (req, res) => {
+app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
+  // Allow cron/admin bypass with adminPassword, otherwise require Clerk JWT
+  const isCron = req.body?.adminPassword === process.env.ADMIN_PASSWORD;
+  if (!isCron) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+      const { payload } = await jwtVerify(authHeader.split(' ')[1], clerkJWKS, { algorithms: ['RS256'] });
+      req.userId = payload.sub;
+    } catch { return res.status(401).json({ error: 'Invalid token' }); }
+  }
     if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
   const { channel = 'linkedin' } = req.body;
   try {
@@ -8005,9 +8025,19 @@ app.get('/api/geo/debug/:brandProfileId', async (req, res) => {
 
 // POST /api/geo/track/:brandProfileId — fire-and-forget citation check
 // Responds immediately, processes in background to avoid Render timeout
-app.post('/api/geo/track/:brandProfileId', requireAuth, async (req, res) => {
+app.post('/api/geo/track/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
-    if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+  // Allow cron/admin bypass with adminPassword, otherwise require Clerk JWT
+  const isCron = req.body?.adminPassword === process.env.ADMIN_PASSWORD;
+  if (!isCron) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+      const { payload } = await jwtVerify(authHeader.split(' ')[1], clerkJWKS, { algorithms: ['RS256'] });
+      req.userId = payload.sub;
+    } catch { return res.status(401).json({ error: 'Invalid token' }); }
+  }
+  if (!isCron && !(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
   const { contentId } = req.body;
 
   // Respond immediately — client polls /api/geo/citations for results
