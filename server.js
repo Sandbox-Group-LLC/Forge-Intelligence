@@ -1638,6 +1638,126 @@ app.get('/api/analytics/patterns/:brandProfileId', requireAuth, async (req, res)
   }
 });
 
+
+// ── Brain Distill — convert human edits into writing rules ───────────────────
+app.post('/api/brain/distill/:brandProfileId', async (req, res) => {
+  const { brandProfileId } = req.params;
+  const isCron = req.body?.adminPassword === process.env.ADMIN_PASSWORD;
+  if (!isCron) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+      const { payload } = await jwtVerify(authHeader.split(' ')[1], clerkJWKS, { algorithms: ['RS256'] });
+      req.userId = payload.sub;
+    } catch { return res.status(401).json({ error: 'Invalid token' }); }
+    if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+  }
+  try {
+    // Read all human edits from brain_mistakes
+    const editsRes = await pool.query(
+      `SELECT description, human_feedback FROM brain_mistakes
+       WHERE brand_profile_id = $1 AND mistake_type = 'human_edit' AND human_feedback IS NOT NULL
+       ORDER BY created_at DESC LIMIT 40`,
+      [brandProfileId]
+    );
+
+    if (editsRes.rows.length === 0) {
+      return res.json({ success: true, rules: [], ruleCount: 0, editCount: 0,
+        message: 'No editorial signals yet. Review AI content in Compliance Gate — every edit teaches the Brain your voice.' });
+    }
+
+    // Format edits for Haiku (cap body to keep tokens manageable)
+    const editSummary = editsRes.rows.map((e, i) => {
+      const fb = e.human_feedback || '';
+      const avoidMatch = fb.match(/Avoid:\s*"([\s\S]{0,250})"/);
+      const preferMatch = fb.match(/prefer:\s*"([\s\S]{0,250})"/);
+      const avoid = avoidMatch?.[1]?.replace(/\n/g, ' ').trim() || '';
+      const prefer = preferMatch?.[1]?.replace(/\n/g, ' ').trim() || '';
+      if (!avoid && !prefer) return null;
+      return `Edit ${i + 1}:\nAvoid: "${avoid}"\nPrefer: "${prefer}"`;
+    }).filter(Boolean).join('\n\n');
+
+    const brandRes = await pool.query('SELECT brand_name FROM brand_profiles WHERE id = $1', [brandProfileId]);
+    const brandName = brandRes.rows[0]?.brand_name || 'this brand';
+
+    const prompt = `You are analyzing human editorial corrections made to AI-generated B2B marketing content for ${brandName}.
+
+Each correction shows: what the AI wrote (Avoid) and what the human reviewer preferred (Prefer).
+These corrections represent the editor's authentic voice and non-negotiable brand standards.
+
+Analyze these ${editsRes.rows.length} editorial corrections and distill them into 8-10 clear, actionable writing rules that the AI must follow on every future generation.
+
+EDITORIAL CORRECTIONS:
+${editSummary}
+
+Rules for your analysis:
+- Look for PATTERNS across multiple edits — what does the editor consistently change?
+- Each rule should be immediately actionable for an AI content generator
+- Prefer "avoid X, do Y" framing when direction is clear
+- Weight rules by how many edits support them
+- Be specific — "avoid named fictional case studies" is better than "be authentic"
+
+Return ONLY valid JSON, no explanation:
+{
+  "rules": [
+    {
+      "rule": "One clear, actionable directive sentence",
+      "rationale": "Why this rule exists — the pattern you observed across edits",
+      "direction": "avoid OR do",
+      "example_avoid": "Representative example of what to avoid (under 120 chars)",
+      "example_prefer": "Representative example of what to write instead (under 120 chars)",
+      "confidence": 0.0-1.0,
+      "edit_count": number
+    }
+  ]
+}`;
+
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 2000, messages: [{ role: 'user', content: prompt }] })
+    });
+    const aiData = await aiRes.json();
+    const rawText = aiData.content?.[0]?.text || '{}';
+    const clean = rawText.replace(/```json|```/g, '').trim();
+    let extracted = { rules: [] };
+    try { extracted = JSON.parse(sanitizeJson(clean)); } catch(e) { console.error('[BRAIN-DISTILL] JSON parse error:', e.message); }
+
+    const rules = extracted.rules || [];
+
+    // Replace existing writing_rule patterns for this brand
+    await pool.query(`DELETE FROM brain_patterns WHERE brand_profile_id = $1 AND pattern_type = 'writing_rule'`, [brandProfileId]);
+
+    for (const rule of rules) {
+      await pool.query(
+        `INSERT INTO brain_patterns
+           (brand_profile_id, pattern_type, description, confidence_score, tags, source_channel, example_titles, last_validated_at, updated_at)
+         VALUES ($1, 'writing_rule', $2, $3, $4, 'compliance_gate', $5, NOW(), NOW())`,
+        [
+          brandProfileId,
+          rule.rule || '',
+          rule.confidence || 0.7,
+          JSON.stringify([
+            `direction:${rule.direction || 'avoid'}`,
+            `rationale:${(rule.rationale || '').slice(0, 150)}`,
+            `edits:${rule.edit_count || 1}`
+          ]),
+          JSON.stringify([
+            (rule.example_avoid || '').slice(0, 200),
+            (rule.example_prefer || '').slice(0, 200)
+          ])
+        ]
+      );
+    }
+
+    console.log(`[BRAIN-DISTILL] ${rules.length} rules written for ${brandProfileId} from ${editsRes.rows.length} edits`);
+    res.json({ success: true, rules, ruleCount: rules.length, editCount: editsRes.rows.length });
+  } catch(e) {
+    console.error('[BRAIN-DISTILL]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // POST /api/analytics/extract-patterns/:brandProfileId
 // Analyzes content_analytics + publishing_queue to extract Brain Patterns and Mistakes
 app.post('/api/analytics/extract-patterns/:brandProfileId', async (req, res) => {
