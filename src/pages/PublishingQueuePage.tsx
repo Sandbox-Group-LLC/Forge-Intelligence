@@ -211,6 +211,7 @@ export default function PublishingQueuePage() {
     publishTime: string;
     preview: { id: string; title: string; week: number; day: string; scheduledAt: string }[];
   } | null>(null);
+  const [schedCampaignChannel, setSchedCampaignChannel] = useState<string>('');
   const [reviewUrl, setReviewUrl] = useState<string | null>(null);
   const [reviewCopied, setReviewCopied] = useState(false);
   const [editingTitleVal, setEditingTitleVal] = useState('');
@@ -2035,6 +2036,20 @@ return (
                     />
                     <span className="pq-sched-hint">Applied to all articles</span>
                   </div>
+                  <div className="pq-sched-field">
+                    <label className="pq-sched-label">Publish Channel</label>
+                    <select
+                      className="pq-sched-input"
+                      value={schedCampaignChannel}
+                      onChange={e => setSchedCampaignChannel(e.target.value)}
+                    >
+                      <option value="">Select a channel...</option>
+                      {(connectedChannels[items[0]?.brand_profile_id] || []).map(ch => (
+                        <option key={ch} value={ch}>{ch.charAt(0).toUpperCase() + ch.slice(1)}</option>
+                      ))}
+                    </select>
+                    <span className="pq-sched-hint">All articles publish to this channel</span>
+                  </div>
                 </div>
                 {livePreview.length > 0 ? (
                   <div className="pq-sched-preview">
@@ -2059,7 +2074,7 @@ return (
                 <button className="pq-cancel-btn" onClick={() => setCampaignScheduler(null)}>Cancel</button>
                 <button
                   className="pq-publish-now-btn"
-                  disabled={!startDate || livePreview.length === 0}
+                  disabled={!startDate || livePreview.length === 0 || !schedCampaignChannel}
                   onClick={scheduleCampaign}
                 >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:6}}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
