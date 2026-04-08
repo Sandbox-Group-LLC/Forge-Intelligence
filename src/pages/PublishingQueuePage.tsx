@@ -1055,7 +1055,7 @@ ${bodyHtml}
                         <span className="pq-date">{
                           item.scheduled_at && item.status !== 'staged'
                             ? `${item.status === 'published' || item.status === 'partial' ? 'Published' : 'Scheduled'} ${new Date(item.scheduled_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · ${new Date(item.scheduled_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
-                            : `Staged ${new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                            : `Generated ${new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
                         }</span>
                       </div>
                     </div>
@@ -1358,7 +1358,7 @@ return (
                         <span className="pq-date">{
                           item.scheduled_at && item.status !== 'staged'
                             ? `${item.status === 'published' || item.status === 'partial' ? 'Published' : 'Scheduled'} ${new Date(item.scheduled_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · ${new Date(item.scheduled_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
-                            : `Staged ${new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                            : `Generated ${new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
                         }</span>
                       </div>
                     </div>
