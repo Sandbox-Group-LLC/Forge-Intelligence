@@ -6347,7 +6347,7 @@ ${canonicalNote}`,
 
     // Strip transient fields before persisting — only store status + url for published/skipped channels
     const persistResults = Object.fromEntries(
-      Object.entries(results).map(([ch, r]: [string, any]) => [
+      Object.entries(results).map(([ch, r]) => [
         ch,
         (r.status === 'published' || r.skipped)
           ? { status: r.status, ...(r.url ? { url: r.url } : {}), ...(r.itemId ? { itemId: r.itemId } : {}) }
