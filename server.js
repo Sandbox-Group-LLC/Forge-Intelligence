@@ -5867,9 +5867,22 @@ app.post('/api/publishing/publish', async (req, res) => {
       }
     }
 
+    // Load existing publish_log entries for this queue item — used to skip already-published channels
+    const existingLogRes = await pool.query(
+      `SELECT channel FROM publish_log WHERE queue_item_id = $1 AND status = 'published'`,
+      [queueItemId]
+    ).catch(() => ({ rows: [] }));
+    const alreadyPublished = new Set(existingLogRes.rows.map(r => r.channel));
+
     for (const channel of targets) {
       const chConfig = channelMap[channel];
       if (!chConfig) { results[channel] = { status: 'error', error: 'Channel not connected' }; continue; }
+
+      // Skip channels already successfully published — prevents double-posting
+      if (alreadyPublished.has(channel)) {
+        results[channel] = { status: 'published', skipped: true, message: 'Already published to this channel' };
+        continue;
+      }
 
       // campaign_id is a UUID — derive a readable slug from the queue item's campaign_id
       // Fall back to the campaigns table name if we have it, otherwise use the UUID prefix
@@ -5976,8 +5989,8 @@ app.post('/api/publishing/publish', async (req, res) => {
           const wfSiteDomain = creds.selectedSite?.shortName 
             ? `${creds.selectedSite.shortName}.webflow.io`
             : (creds.selectedSite?.previewUrl?.replace(/^https?:\/\//, '').replace(/\/$/, '') || siteId);
-          const collectionSlug = creds.selectedCollection?.slug || 'blog';
-          const publishedUrl = `https://${wfSiteDomain}/${collectionSlug}/${slug}`;
+          // Webflow CMS URLs are just domain/article-slug — collection slug is internal, not in the URL
+          const publishedUrl = `https://${wfSiteDomain}/${slug}`;
           results[channel] = { status: 'published', url: publishedUrl, itemId: wfData.id, utmParams };
 
         } else if (channel === 'hubspot') {
