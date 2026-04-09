@@ -1721,7 +1721,7 @@ Return ONLY valid JSON, no explanation:
     const rawText = aiData.content?.[0]?.text || '{}';
     const clean = rawText.replace(/```json|```/g, '').trim();
     let extracted = { rules: [] };
-    try { extracted = JSON.parse(sanitizeJson(clean)); } catch(e) { console.error('[BRAIN-DISTILL] JSON parse error:', e.message); }
+    try { extracted = JSON.parse(clean); } catch(e) { console.error('[BRAIN-DISTILL] JSON parse error:', e.message, rawText.slice(0, 200)); }
 
     const rules = extracted.rules || [];
 
