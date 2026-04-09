@@ -406,7 +406,7 @@ export default function PerformanceDashboardPage() {
                 </svg>
                 {syncing ? 'Syncing…' : 'Sync'}
               </button>
-              <span className="perf-btn-hint">Pull latest post analytics from {activeChannel}</span>
+              <span className="perf-btn-hint">{activeChannel === 'campaigns' ? 'Syncs all channels and refreshes campaign data' : `Pull latest post analytics from ${activeChannel}`}</span>
               </div>
               {data?.totals?.lastSynced && (
                 <span className="perf-last-sync">Last synced {timeAgo(data.totals.lastSynced)}</span>
