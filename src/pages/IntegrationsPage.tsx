@@ -156,13 +156,11 @@ const CHANNELS: ChannelDef[] = [
       { key: 'portalId', label: 'Portal ID', placeholder: '244954048' },
     ],
     setupGuide: {
-      title: 'HubSpot Private App Token',
+      title: 'Connect HubSpot via OAuth',
       steps: [
-        { text: 'In HubSpot, go to Settings → Integrations → Private Apps.', url: 'https://developers.hubspot.com/docs/api/private-apps' },
-        { text: 'Click Create a private app. Give it a name like "Forge Intelligence".' },
-        { text: 'Under Scopes, enable: crm.objects.contacts.read, crm.objects.companies.read, timeline.write.' },
-        { text: 'Click Create app. Copy the access token (starts with pat-na2-).' },
-        { text: 'Your Portal ID is the number in your HubSpot URL: app.hubspot.com/contacts/XXXXXXXX.' },
+        { text: 'Click Connect above. You\'ll be redirected to HubSpot to authorize Forge Intelligence.' },
+        { text: 'Log in to HubSpot if prompted and select the account you want to connect.' },
+        { text: 'HubSpot will redirect you back automatically once authorized — no token or portal ID needed.' },
       ],
     },
   },
