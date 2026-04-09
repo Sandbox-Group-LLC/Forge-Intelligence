@@ -149,12 +149,14 @@ export default function PerformanceDashboardPage() {
     if (!brandProfileId) return;
     setCampaignsLoading(true);
     try {
-      const res = await fetch(`/api/analytics/campaigns/${brandProfileId}`);
+      const token = authTokenRef.current || authToken || '';
+      const h: Record<string,string> = token ? { 'Authorization': `Bearer ${token}` } : {};
+      const res = await fetch(`/api/analytics/campaigns/${brandProfileId}`, { headers: h });
       const d = await res.json();
       if (d.success) setCampaigns(d.campaigns || []);
     } catch { /* non-fatal */ }
     setCampaignsLoading(false);
-  }, [brandProfileId]);
+  }, [brandProfileId, authToken]);
 
   useEffect(() => {
     if (activeChannel === 'campaigns') loadCampaigns();
