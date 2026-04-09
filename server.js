@@ -6345,6 +6345,15 @@ ${canonicalNote}`,
     const anyError = targets.some(ch => results[ch]?.status === 'error');
     const newStatus = allPublished ? 'published' : anyError ? 'partial' : 'staged';
 
+    // Strip transient fields before persisting — only store status + url for published/skipped channels
+    const persistResults = Object.fromEntries(
+      Object.entries(results).map(([ch, r]: [string, any]) => [
+        ch,
+        (r.status === 'published' || r.skipped)
+          ? { status: r.status, ...(r.url ? { url: r.url } : {}), ...(r.itemId ? { itemId: r.itemId } : {}) }
+          : r  // keep error detail for genuinely failed channels
+      ])
+    );
     // Merge new results into existing publish_results — preserves prior channel results
     await pool.query(
       `UPDATE publishing_queue SET
@@ -6354,7 +6363,7 @@ ${canonicalNote}`,
          published_at = COALESCE($4, published_at),
          updated_at = NOW()
        WHERE id = $5`,
-      [newStatus, JSON.stringify(targets), JSON.stringify(results), allPublished ? new Date() : null, queueItemId]
+      [newStatus, JSON.stringify(targets), JSON.stringify(persistResults), allPublished ? new Date() : null, queueItemId]
     );
 
     // Write memory to Brain on any successful publish
