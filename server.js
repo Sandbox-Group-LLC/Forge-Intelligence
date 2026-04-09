@@ -6424,7 +6424,7 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
         try {
           const postId = row.response_data?.postId || row.response_data?.post_id || row.response_data?.id;
           if (!postId || !token) {
-            if (!token) errors.push({ contentId: row.content_id, error: 'no_linkedin_token' });
+            if (!token) continue; // LinkedIn not connected for this brand — skip
             continue;
           }
 
@@ -6535,7 +6535,7 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
           const tweetId = rd.tweetId || rd.id
             || (row.published_url?.match(/\/status\/(\d+)/)?.[1]);
           if (!tweetId || !xApiKey || !xAccessToken) {
-            if (!xApiKey || !xAccessToken) errors.push({ contentId: row.content_id, error: 'no_x_credentials' });
+            if (!xApiKey || !xAccessToken) continue // X not connected — skip;
             else if (!tweetId) errors.push({ contentId: row.content_id, error: 'no_tweet_id_in:' + row.published_url });
             continue;
           }
@@ -6621,7 +6621,7 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
       const ghostApiKey = ghostCreds.adminApiKey || process.env.GHOST_ADMIN_API_KEY;
       const ghostApiUrl = (ghostCreds.adminUrl || process.env.GHOST_API_URL || '').replace(/\/+$/, '');
       if (!ghostApiKey || !ghostApiUrl) {
-        errors.push({ channel: 'ghost', error: 'GHOST credentials not configured' });
+        // Ghost not configured for this brand — skip silently
       } else {
         const safeId = brandProfileId.replace(/-/g, '_');
         // Fetch all published posts directly from Ghost Admin API
