@@ -362,7 +362,7 @@ export default function PerformanceDashboardPage() {
       });
       const d = await res.json();
       setSyncMsg(d.success
-        ? `Synced ${d.synced} post${d.synced !== 1 ? 's' : ''}${d.errors > 0 ? ` (${d.errors} errors)` : ''}`
+        ? d.synced > 0 ? `Synced ${d.synced} post${d.synced !== 1 ? 's' : ''}` : 'Analytics up to date'
         : `Error: ${d.error}`);
       if (d.success) {
         if (activeChannel === 'campaigns') await loadCampaigns();
