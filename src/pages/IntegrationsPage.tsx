@@ -625,6 +625,20 @@ export default function IntegrationsPage() {
                       </div>
                     )}
 
+                    {/* OAuth reconnect for native OAuth channels */}
+                    {ch.oauthFlow && connected && (
+                      <div className="int-pipedream-section">
+                        <div className="int-pipedream-info">
+                          <div className="int-pipedream-badge">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
+                            Connected via OAuth
+                          </div>
+                          <span className="int-pipedream-sub">Authorized with {ch.label} · Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}</span>
+                          <button className="int-reauth-btn" onClick={() => handleSave(ch.id)}>Reconnect</button>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Manual credential fields for non-Pipedream, non-OAuth channels */}
                     {!ch.pipedreamApp && !ch.oauthFlow && (
                       <div className="int-form-section">
