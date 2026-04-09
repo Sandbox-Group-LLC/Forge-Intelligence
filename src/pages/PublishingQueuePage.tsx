@@ -142,7 +142,7 @@ interface QueueItem {
   status: 'staged' | 'scheduled' | 'publishing' | 'published' | 'partial' | 'failed' | 'archived';
   scheduled_at: string | null;
   published_at: string | null;
-  publish_results: Record<string, { status: string; url?: string; error?: string; message?: string }>;
+  publish_results: Record<string, { status: string; url?: string; error?: string; message?: string; skipped?: boolean }>;
   created_at: string;
   brand_name?: string;
   brand_url?: string;
