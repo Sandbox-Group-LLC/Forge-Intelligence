@@ -351,17 +351,23 @@ export default function PerformanceDashboardPage() {
   const handleSync = async () => {
     if (!brandProfileId || syncing) return;
     setSyncing(true); setSyncMsg('');
+    const syncChannel = activeChannel === 'campaigns' ? 'all' : activeChannel;
     try {
+      const token = authTokenRef.current || authToken || '';
+      const h: Record<string,string> = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
       const res = await fetch(`/api/analytics/sync/${brandProfileId}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channel: activeChannel })
+        headers: h,
+        body: JSON.stringify({ channel: syncChannel })
       });
       const d = await res.json();
       setSyncMsg(d.success
         ? `Synced ${d.synced} post${d.synced !== 1 ? 's' : ''}${d.errors > 0 ? ` (${d.errors} errors)` : ''}`
         : `Error: ${d.error}`);
-      if (d.success) await loadDashboard();
+      if (d.success) {
+        if (activeChannel === 'campaigns') await loadCampaigns();
+        else await loadDashboard();
+      }
     } catch(e) { setSyncMsg('Sync failed'); }
     setSyncing(false);
     setTimeout(() => setSyncMsg(''), 4000);
