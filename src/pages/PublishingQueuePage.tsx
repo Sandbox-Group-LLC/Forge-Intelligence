@@ -1293,8 +1293,8 @@ ${bodyHtml}
                               {republishing === repKey ? 'Resetting...' : '↺ Reset & Retry'}
                             </button>
                           )}
-                          {res.error && liveStatus !== 'error' && <span className="pq-result-error">{res.error}</span>}
-                          {res.message && <span className="pq-result-msg">{res.message}</span>}
+                          {res.error && liveStatus !== 'error' && liveStatus !== 'published' && <span className="pq-result-error">{res.error}</span>}
+                          {res.message && liveStatus !== 'published' && !res.skipped && <span className="pq-result-msg">{res.message}</span>}
                         </div>
                         );
                       })}
@@ -1584,8 +1584,8 @@ return (
                               {republishing === repKey ? 'Resetting...' : '↺ Reset & Retry'}
                             </button>
                           )}
-                          {res.error && liveStatus !== 'error' && <span className="pq-result-error">{res.error}</span>}
-                          {res.message && <span className="pq-result-msg">{res.message}</span>}
+                          {res.error && liveStatus !== 'error' && liveStatus !== 'published' && <span className="pq-result-error">{res.error}</span>}
+                          {res.message && liveStatus !== 'published' && !res.skipped && <span className="pq-result-msg">{res.message}</span>}
                         </div>
                         );
                       })}
