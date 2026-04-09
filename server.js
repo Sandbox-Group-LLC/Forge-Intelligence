@@ -5933,10 +5933,12 @@ app.post('/api/publishing/publish', async (req, res) => {
 
         } else if (channel === 'webflow') {
           // ── Real Webflow CMS publish ──
-          const webflowToken = creds.accessToken || creds.apiToken || process.env.WEBFLOW_API_TOKEN;
-          const siteId = creds.selectedSite?.id || creds.siteId || '69c715bf39ddf47aae9481b1';
-          const collectionId = creds.selectedCollection?.id || creds.collectionId || '69c7189df169a5faf671dba4';
-          if (!webflowToken) throw new Error('Missing Webflow API token - connect via OAuth');
+          const webflowToken = creds.accessToken || creds.apiToken;
+          const siteId = creds.selectedSite?.id || creds.siteId;
+          const collectionId = creds.selectedCollection?.id || creds.collectionId;
+          if (!webflowToken) throw new Error('Webflow not connected — visit Integrations to authorize via OAuth');
+          if (!siteId) throw new Error('Webflow site not selected — visit Integrations to pick a site');
+          if (!collectionId) throw new Error('Webflow collection not selected — visit Integrations to pick a collection');
 
           const articleJson = article.article_json || {};
           const sections = articleJson.sections || [];
