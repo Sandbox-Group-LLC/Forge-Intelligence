@@ -584,7 +584,7 @@ export default function IntegrationsPage() {
                           <button
                             className="int-connect-btn"
                             style={{ '--ch-color': ch.color } as React.CSSProperties}
-                            onClick={() => ch.pipedreamApp ? handleSave(ch.id) : setExpanded(isOpen ? null : ch.id)}
+                            onClick={() => (ch.pipedreamApp || ch.oauthFlow) ? handleSave(ch.id) : setExpanded(isOpen ? null : ch.id)}
                           >
                             {ch.pipedreamApp ? 'Connect' : (isOpen ? 'Cancel' : 'Connect')}
                           </button>
