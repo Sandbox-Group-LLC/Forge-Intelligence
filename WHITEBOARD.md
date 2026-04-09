@@ -6,6 +6,50 @@
 
 ---
 
+## Session — April 9, 2026
+
+### Bugs Fixed
+- **Patterns tab** — root cause was early `return null` before all hooks violating React Rules of Hooks; moved early returns after all hooks; default tab changed to `patterns`
+- **Patterns loading** — replaced `useCallback` chain with `authTokenRef` retry loop that bypasses React dep chain entirely
+- **Brain Intelligence tab** — wiped old patterns engine; rebuilt as writing rules distilled from human edits via Haiku; `patternsLoading` only clears on `d.success`
+- **extractMeta unused state** — removed, was causing TS build error
+- **LinkedIn Connect** — was routing through Pipedream (no credentials); now routes through native OAuth `/api/linkedin/auth`
+- **HubSpot / Webflow Connect** — `pipedreamApp` had been incorrectly added in commit `451aba64`; restored `oauthFlow: true` and native OAuth routing
+- **HubSpot auth endpoint** — was doing `res.redirect()` causing cross-origin fetch failure; changed to `res.json({ authUrl })` matching LinkedIn pattern
+- **HubSpot setup guide** — rewritten for OAuth flow; removed Private App Token instructions
+- **Card Connect button** — only routed `pipedreamApp` channels to `handleSave`; fixed to include `oauthFlow` channels
+- **Credential fields** — still showed for `oauthFlow` channels; gated on `!ch.oauthFlow`
+- **LinkedIn sync** — `UNION ALL` with non-existent `channel_credentials` table caused token lookup to silently fail; removed legacy table reference
+- **Scheduler self-call** — `/api/publishing/publish` had `requireAuth` blocking scheduler; added `adminPassword` bypass; campaign 50108CCF had 2 failed posts, both reset and republished
+- **Memory write error** — `gen_random_uuid()::text` into uuid column; removed `::text` cast
+- **BASE_DOMAIN = forge-os.ai** — old domain was in env vars causing article links to post wrong URL; corrected to `forgeintelligence.ai`; two X posts deleted and republished
+- **Admin page title** — showed "New Analysis" because `pageTitle` prop was dropped in AppShell destructure and TopBar didn't accept it; fixed full prop chain
+- **Render env var wipe** — PUT /env-vars is destructive; all future Render env var updates must GET → merge → PUT
+
+### Features Built
+- **Brain Intelligence tab** — full rebuild: writing rules distilled from Compliance Gate human edits via Haiku, confidence scores, Avoid/Do direction, before/after examples, Content Signals section locked until 3+ articles
+- **`/api/brain/distill`** — new endpoint; reads `brain_mistakes`, sends to Haiku, writes `writing_rule` brain_patterns; 10 rules distilled from 40 signals for Forge brand
+- **Topic Queue** — add form, filter tabs (All/Idea/In Progress/Generated), inline editing (click to edit, Enter/Escape), auth headers, persistent storage, send to generator
+- **Dynamic sitemap.xml** — server-generated, production URLs only, live Ghost articles from DB; static file deleted so server route wins
+- **Article CTA** — brand scan CTA above every article footer: "See what Forge Intelligence knows about your brand" → forgeintelligence.ai with UTM params
+- **LinkedIn post prompts** — rewritten for link-click CTR: hook + curiosity gap, 500-800 chars, no summarizing
+
+### Design
+- **Dev theme** — `index.css`, `Sidebar.css`, `TopBar.css` replaced with production versions; dev now mirrors production visually
+
+### Infrastructure
+- **`PIPEDREAM_PROJECT_ENVIRONMENT=production`** — added to Render env vars
+- **`BASE_URL=https://forgeintelligence.ai`** — added so scheduler self-calls route correctly  
+- **`BASE_DOMAIN=forgeintelligence.ai`** — corrected from `forge-os.ai`
+- **All OAuth redirect URIs** — set explicitly in Render: LinkedIn, LinkedIn Org, HubSpot, Webflow, GSC all pointing to production
+- **Safe Render env var rule** — always GET → merge → PUT; never PUT only new vars
+
+### Known Remaining
+- LinkedIn Org OAuth (`/auth/linkedin/org/callback`) — registered in portal but company page posting not tested
+- Facebook — Pipedream credentials now in production; needs real connect test
+- GSC dev callback URL — needs adding in Google Cloud Console for dev environment
+- LinkedIn MDP approval — impressions/clicks still blocked pending LinkedIn review
+
 ## Platform State — April 5, 2026
 
 - **Production:** `forgeintelligence.ai` — LIVE
