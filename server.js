@@ -5778,7 +5778,17 @@ Output only the post text.` }]
   }
 });
 
-app.post('/api/publishing/publish', requireAuth, async (req, res) => {
+app.post('/api/publishing/publish', async (req, res) => {
+  // Allow scheduler to call without user auth via adminPassword
+  const isCron = req.body?.adminPassword === process.env.ADMIN_PASSWORD;
+  if (!isCron) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+      const { payload } = await jwtVerify(authHeader.split(' ')[1], clerkJWKS, { algorithms: ['RS256'] });
+      req.userId = payload.sub;
+    } catch { return res.status(401).json({ error: 'Invalid token' }); }
+  }
   const startTime = Date.now();
   const { queueItemId, channels: selectedChannels } = req.body;
   if (!queueItemId) return res.status(400).json({ error: 'queueItemId required' });
@@ -7052,7 +7062,7 @@ async function runScheduledPublishes() {
         const publishRes = await fetch(`${baseUrl}/api/publishing/publish`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ queueItemId: item.id, channels: targets })
+          body: JSON.stringify({ queueItemId: item.id, channels: targets, adminPassword: process.env.ADMIN_PASSWORD })
         });
         const publishData = await publishRes.json();
 
