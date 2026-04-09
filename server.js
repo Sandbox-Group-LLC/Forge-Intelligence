@@ -5986,9 +5986,10 @@ app.post('/api/publishing/publish', async (req, res) => {
           const wfData = await wfRes.json();
           if (!wfRes.ok) throw new Error(wfData.message || JSON.stringify(wfData));
           // Build Webflow URL from site info or item response
-          const wfSiteDomain = creds.selectedSite?.shortName 
-            ? `${creds.selectedSite.shortName}.webflow.io`
-            : (creds.selectedSite?.previewUrl?.replace(/^https?:\/\//, '').replace(/\/$/, '') || siteId);
+          // Prefer explicit customDomain, then shortName, then fall back to site ID
+          const wfSiteDomain = creds.selectedSite?.customDomain
+            || (creds.selectedSite?.shortName ? `${creds.selectedSite.shortName}.webflow.io` : null)
+            || siteId;
           // Webflow CMS URLs are just domain/article-slug — collection slug is internal, not in the URL
           const publishedUrl = `https://${wfSiteDomain}/${slug}`;
           results[channel] = { status: 'published', url: publishedUrl, itemId: wfData.id, utmParams };
