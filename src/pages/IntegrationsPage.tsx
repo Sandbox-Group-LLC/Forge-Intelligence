@@ -158,7 +158,7 @@ const CHANNELS: ChannelDef[] = [
     setupGuide: {
       title: 'HubSpot Private App Token',
       steps: [
-        { text: 'In HubSpot, go to Settings → Integrations → Private Apps.', url: 'https://app.hubspot.com/private-apps' },
+        { text: 'In HubSpot, go to Settings → Integrations → Private Apps.', url: 'https://developers.hubspot.com/docs/api/private-apps' },
         { text: 'Click Create a private app. Give it a name like "Forge Intelligence".' },
         { text: 'Under Scopes, enable: crm.objects.contacts.read, crm.objects.companies.read, timeline.write.' },
         { text: 'Click Create app. Copy the access token (starts with pat-na2-).' },
