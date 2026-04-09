@@ -186,6 +186,24 @@ export default function PublicArticlePage() {
             </div>
           </div>
 
+                    {/* ── CTA ─── */}
+          <div className="pa-cta">
+            <div className="pa-cta-inner">
+              <div className="pa-cta-logo">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#3563FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2.7 10.3a2.41 2.41 0 0 0 0 3.41l7.59 7.59a2.41 2.41 0 0 0 3.41 0l7.59-7.59a2.41 2.41 0 0 0 0-3.41l-7.59-7.59a2.41 2.41 0 0 0-3.41 0Z"/>
+                </svg>
+              </div>
+              <div className="pa-cta-text">
+                <h3 className="pa-cta-headline">See what Forge Intelligence knows about your brand</h3>
+                <p className="pa-cta-sub">Drop your URL and get a free brand intelligence profile in seconds — audience signals, competitive gaps, and strategic recommendations.</p>
+              </div>
+              <a href="https://forgeintelligence.ai/?utm_source=article&utm_medium=cta&utm_campaign=forge-content" className="pa-cta-btn">
+                Scan your brand free →
+              </a>
+            </div>
+          </div>
+
           <footer className="pa-footer">
             <div className="pa-footer-divider" />
             <div className="pa-footer-row">
