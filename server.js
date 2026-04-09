@@ -6674,8 +6674,8 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
                 || titleMap[post.title?.toLowerCase().trim()]
                 || null;
 
-              // If no match, use Ghost post ID as synthetic content_id so we still record it
-              if (!contentId) contentId = `ghost_${post.id}`;
+              // If no match, skip — only track Ghost posts Forge published
+              if (!contentId) continue;
 
               await pool.query(
                 `INSERT INTO content_analytics
