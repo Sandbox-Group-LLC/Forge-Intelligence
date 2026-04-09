@@ -4913,7 +4913,7 @@ app.get('/api/hubspot/auth', (req, res) => {
   ].join('%20');
   
   const url = `https://app.hubspot.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scopes}&state=${encodeURIComponent(state)}`;
-  res.redirect(url);
+  res.json({ authUrl: url });
 });
 
 app.get('/auth/hubspot/callback', async (req, res) => {
@@ -5414,7 +5414,7 @@ app.get('/api/webflow/auth', (req, res) => {
   const scopes = 'sites:read cms:read cms:write';
   
   const url = `https://webflow.com/oauth/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&scope=${encodeURIComponent(scopes)}&state=${encodeURIComponent(state)}`;
-  res.redirect(url);
+  res.json({ authUrl: url });
 });
 
 app.get('/auth/webflow/callback', async (req, res) => {
