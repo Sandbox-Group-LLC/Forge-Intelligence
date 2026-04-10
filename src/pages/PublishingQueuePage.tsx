@@ -257,7 +257,7 @@ export default function PublishingQueuePage() {
     return results;
   };
 
-  const scheduleCampaign = async () => {
+  // ── Auth header helper — reads authToken at call time ─────────────────────
     if (!campaignScheduler) return;
     const { items, startDate, publishTime } = campaignScheduler;
     if (!schedCampaignChannel) { setError('Select a publish channel'); return; }
