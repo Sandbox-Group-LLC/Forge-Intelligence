@@ -237,8 +237,8 @@ export default function PerformanceDashboardPage() {
   }, [activeChannel, brandProfileId]);
 
   useEffect(() => {
-    // Clear stale data immediately on tab switch so KPI cards don't stick
-    if (!['patterns', 'predictions', 'campaigns', 'geo', 'gsc'].includes(activeChannel)) {
+    // Clear stale data immediately on tab switch — GSC included since it uses data state
+    if (!['patterns', 'predictions', 'campaigns', 'geo'].includes(activeChannel)) {
       setData(null as any);
     }
     loadDashboard();
