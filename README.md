@@ -272,7 +272,7 @@ BEFORE generating:
 | Full light mode CSS sweep | Medium | PerformanceDashboardPage.css + remaining PublishingQueue sections |
 | LinkedIn Insight Tag | Low | Port to production index.html |
 | GSC dev callback URL | Low | Add to Google Cloud Console |
-| Pre-cog Score Dashboard | Backlog | Voyage AI embeddings, pgvector — Phase 3 |
+| Pre-cog Score Dashboard | Backlog | Base implementation live (Haiku-powered, percentile-based, Predictions tab in Performance Dashboard). Phase 3 upgrade: Voyage AI embeddings + pgvector semantic similarity scoring — parked. |
 | Agency Dashboard | Backlog | Cross-brand bird's-eye view |
 | Pen test | Backlog | Required before Agency tier launch |
 | Medium integration | Legacy | New tokens unavailable since early 2025 |
