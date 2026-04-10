@@ -332,7 +332,7 @@ export default function PublishingQueuePage() {
     try {
       // Load only the active brand's queue
       const allItems: QueueItem[] = [];
-      const r = await fetch(`/api/publishing/queue/${activeBrandId}`)
+      const r = await fetch(`/api/publishing/queue/${activeBrandId}`, { headers: ah })
         .then(r => r.json())
         .catch(() => ({ success: false, items: [] }));
       if (r.success) allItems.push(...r.items);
@@ -349,7 +349,7 @@ export default function PublishingQueuePage() {
       // Load publish logs for items that have been published to at least one channel
       for (const item of allItems) {
         if (item.publish_results && Object.keys(item.publish_results).length > 0) {
-          fetch(`/api/publishing/log/${item.id}`)
+          fetch(`/api/publishing/log/${item.id}`, { headers: ah })
             .then(r => r.json())
             .then(ld => {
               if (ld.success) setPublishLog(prev => ({ ...prev, [item.id]: ld.log }));
@@ -370,7 +370,7 @@ export default function PublishingQueuePage() {
     if (!items.length) return;
     const brandId = items[0]?.brand_profile_id;
     if (!brandId) return;
-    fetch(`/api/reviewers/${brandId}`).then(r=>r.json()).then(d => {
+    fetch(`/api/reviewers/${brandId}`, { headers: ah }).then(r=>r.json()).then(d => {
       if (d.success) setReviewers(d.reviewers);
     });
   }, [items]);
@@ -380,7 +380,7 @@ export default function PublishingQueuePage() {
     const brandIds = [...new Set(items.map(i => i.brand_profile_id))];
     brandIds.forEach(bid => {
       if (connectedChannels[bid]) return;
-      fetch(`/api/publishing/channels/${bid}`)
+      fetch(`/api/publishing/channels/${bid}`, { headers: ah })
         .then(r => r.json())
         .then(d => {
           if (d.success) {
@@ -490,7 +490,7 @@ export default function PublishingQueuePage() {
         ));
       }
       if (removeFromQueue) {
-        await fetch(`/api/publishing/queue/${item.id}`, { method: 'DELETE' });
+        await fetch(`/api/publishing/queue/${item.id}`, { method: 'DELETE', headers: ah });
       }
       setDeleteModal(null);
       loadQueue();
@@ -504,11 +504,11 @@ export default function PublishingQueuePage() {
   const handleSync = async (itemId: string) => {
     setSyncing(itemId);
     try {
-      const r = await fetch(`/api/publishing/sync/${itemId}`);
+      const r = await fetch(`/api/publishing/sync/${itemId}`, { headers: ah });
       const d = await r.json();
       if (d.success) {
         // Refresh log
-        const ld = await fetch(`/api/publishing/log/${itemId}`).then(r => r.json());
+        const ld = await fetch(`/api/publishing/log/${itemId}`, { headers: ah }).then(r => r.json());
         if (ld.success) setPublishLog(prev => ({ ...prev, [itemId]: ld.log }));
         setSuccessMsg('Status synced with live channels');
         setTimeout(() => setSuccessMsg(''), 3000);
@@ -555,7 +555,7 @@ export default function PublishingQueuePage() {
         setSuccessMsg(`Re-published to ${CHANNEL_LABELS[channel]?.label || channel} ✓`);
         setTimeout(() => setSuccessMsg(''), 4000);
         // Refresh log
-        const ld = await fetch(`/api/publishing/log/${itemId}`).then(r => r.json());
+        const ld = await fetch(`/api/publishing/log/${itemId}`, { headers: ah }).then(r => r.json());
         if (ld.success) setPublishLog(prev => ({ ...prev, [itemId]: ld.log }));
         loadQueue();
       } else {
@@ -569,9 +569,9 @@ export default function PublishingQueuePage() {
   const openExportModal = async (item: QueueItem) => {
     const safeId = item.brand_profile_id.replace(/-/g, '_');
     const [artRes, settingsRes, chRes] = await Promise.all([
-      fetch(`/api/content/${safeId}/${item.content_id}`),
-      fetch(`/api/brand-settings/${item.brand_profile_id}`),
-      fetch(`/api/publishing/channels/${item.brand_profile_id}`).catch(() => null),
+      fetch(`/api/content/${safeId}/${item.content_id}`, { headers: ah }),
+      fetch(`/api/brand-settings/${item.brand_profile_id}`, { headers: ah }),
+      fetch(`/api/publishing/channels/${item.brand_profile_id}`, { headers: ah }).catch(() => null),
     ]);
     const artData    = await artRes.json();
     const settingsData = await settingsRes.json();
@@ -787,11 +787,11 @@ ${bodyHtml}
     try {
       // Fetch channels for UTM templates + brand settings for article URL
       const [chRes, bsRes] = await Promise.all([
-        fetch(`/api/publishing/channels/${item.brand_profile_id}`).then(r => r.json()).catch(() => ({ success: false, channels: [] })),
-        fetch(`/api/brand-settings/${item.brand_profile_id}`).then(r => r.json()).catch(() => ({ success: false })),
+        fetch(`/api/publishing/channels/${item.brand_profile_id}`, { headers: ah }).then(r => r.json()).catch(() => ({ success: false, channels: [] })),
+        fetch(`/api/brand-settings/${item.brand_profile_id}`, { headers: ah }).then(r => r.json()).catch(() => ({ success: false })),
       ]);
       const safeId = item.brand_profile_id.replace(/-/g, '_');
-      const artRes = await fetch(`/api/content/${safeId}/${item.content_id}`);
+      const artRes = await fetch(`/api/content/${safeId}/${item.content_id}`, { headers: ah });
       const artData = await artRes.json();
       const article = artData.success ? artData.article : null;
 
