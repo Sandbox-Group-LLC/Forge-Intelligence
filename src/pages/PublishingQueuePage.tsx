@@ -165,7 +165,7 @@ interface ConnectedChannel { channel: string; }
 export default function PublishingQueuePage() {
   const { isPaid, activeBrand, brandLoading, authToken } = useApp();
   const activeBrandId = activeBrand?.id ?? null;
-  const ah = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+  const ah: Record<string, string> = authToken ? { Authorization: `Bearer ${authToken}` } : {};
   
   if (brandLoading) return null;
   if (!isPaid) {
