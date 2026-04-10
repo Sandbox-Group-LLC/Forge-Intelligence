@@ -236,7 +236,13 @@ export default function PerformanceDashboardPage() {
     return () => { cancelled = true; };
   }, [activeChannel, brandProfileId]);
 
-  useEffect(() => { loadDashboard(); }, [loadDashboard]);
+  useEffect(() => {
+    // Clear stale data immediately on tab switch so KPI cards don't stick
+    if (!['patterns', 'predictions', 'campaigns', 'geo', 'gsc'].includes(activeChannel)) {
+      setData(null as any);
+    }
+    loadDashboard();
+  }, [loadDashboard]);
 
   // Auto-spin sync on mount to cover token injection delay
   useEffect(() => {
