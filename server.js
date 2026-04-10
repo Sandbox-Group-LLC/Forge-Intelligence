@@ -8835,6 +8835,112 @@ app.post('/api/utils/shorten-url', async (req, res) => {
 });
 
 
+
+// ── Outreach ───────────────────────────────────────────────────────────────────
+
+// POST /api/outreach/contacts — bulk insert contacts (admin only)
+app.post('/api/outreach/contacts', async (req, res) => {
+  if (req.body?.adminPassword !== process.env.ADMIN_PASSWORD) return res.status(401).json({ error: 'Unauthorized' });
+  const { contacts } = req.body;
+  if (!Array.isArray(contacts)) return res.status(400).json({ error: 'contacts array required' });
+  try {
+    let inserted = 0;
+    for (const c of contacts) {
+      await pool.query(
+        `INSERT INTO outreach_contacts (first_name, last_name, email, company, title, notes)
+         VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT (email) DO NOTHING`,
+        [c.first_name, c.last_name || null, c.email, c.company || null, c.title || null, c.notes || null]
+      );
+      inserted++;
+    }
+    res.json({ success: true, inserted });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// GET /api/outreach/contacts — list contacts (admin only)
+app.get('/api/outreach/contacts', async (req, res) => {
+  if (req.query?.adminPassword !== process.env.ADMIN_PASSWORD) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const r = await pool.query('SELECT * FROM outreach_contacts ORDER BY created_at DESC');
+    res.json({ success: true, contacts: r.rows });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// POST /api/outreach/send — cron-triggered send to all pending contacts
+app.post('/api/outreach/send', async (req, res) => {
+  if (req.body?.adminPassword !== process.env.ADMIN_PASSWORD) return res.status(401).json({ error: 'Unauthorized' });
+  const RESEND_API_KEY = process.env.RESEND_API_KEY;
+  if (!RESEND_API_KEY) return res.status(500).json({ error: 'RESEND_API_KEY not configured' });
+  try {
+    const pending = await pool.query(
+      `SELECT * FROM outreach_contacts WHERE status = 'pending' ORDER BY created_at ASC LIMIT 50`
+    );
+    if (!pending.rows.length) return res.json({ success: true, sent: 0, message: 'No pending contacts' });
+    const sent = []; const errors = [];
+    for (const contact of pending.rows) {
+      try {
+        const firstName = contact.first_name;
+        const unsubUrl = `https://forgeintelligence.ai/unsubscribe?email=${encodeURIComponent(contact.email)}`;
+        const html = `<div style="font-family:Inter,-apple-system,sans-serif;max-width:560px;margin:0 auto;padding:0;background:#ffffff;color:#1E293B">
+  <div style="padding:40px 0 8px"><img src="https://forgeintelligence.ai/forge-logo-black.png" alt="Forge Intelligence" height="28" style="display:block" /></div>
+  <div style="padding:32px 0;border-top:1px solid #E2E8F0;margin-top:24px">
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.7">Hi ${firstName},</p>
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.7">Most B2B marketing teams are operating on fragmented intelligence — competitive context in one tool, audience signals in another, content strategy in a third. None of it talks to each other, so nothing compounds.</p>
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.7">Forge Intelligence is the unified workspace that fixes that. Brand context, audience signals, content generation, compliance review, and performance analytics — one platform, one Brain that gets smarter with every publish cycle.</p>
+    <p style="margin:0 0 32px;font-size:15px;line-height:1.7">Drop your URL and get a free brand intelligence profile in about 60 seconds. No pitch call required.</p>
+    <a href="https://forgeintelligence.ai/?utm_source=outreach&utm_medium=email&utm_campaign=cold-outreach&utm_content=${encodeURIComponent(contact.email)}" style="display:inline-block;background:#3563FF;color:#ffffff;text-decoration:none;padding:13px 28px;border-radius:8px;font-size:14px;font-weight:600">Scan your brand free →</a>
+  </div>
+  <div style="padding:24px 0;border-top:1px solid #E2E8F0">
+    <p style="margin:0 0 4px;font-size:14px;color:#1E293B;font-weight:600">Brian</p>
+    <p style="margin:0 0 2px;font-size:13px;color:#475569">Founder, Forge Intelligence</p>
+    <a href="https://forgeintelligence.ai" style="font-size:13px;color:#3563FF;text-decoration:none">forgeintelligence.ai</a>
+  </div>
+  <div style="padding:16px 0;border-top:1px solid #E2E8F0">
+    <p style="margin:0;font-size:11px;color:#94A3B8">You're receiving this because you were identified as someone who might find Forge Intelligence relevant. <a href="${unsubUrl}" style="color:#94A3B8">Unsubscribe</a></p>
+  </div>
+</div>`;
+        const emailRes = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: 'Brian at Forge Intelligence <brian@forgeintelligence.ai>',
+            to: [contact.email],
+            reply_to: 'brian@forgeintelligence.ai',
+            subject: 'Your brand intelligence is scattered across 8 tools',
+            html
+          })
+        });
+        const emailData = await emailRes.json();
+        if (!emailRes.ok) throw new Error(emailData.message || JSON.stringify(emailData));
+        await pool.query(`UPDATE outreach_contacts SET status='sent', sent_at=NOW(), updated_at=NOW() WHERE id=$1`, [contact.id]);
+        await pool.query(`INSERT INTO outreach_log (contact_id, email, subject, resend_id, status, sent_at) VALUES ($1,$2,$3,$4,'sent',NOW())`,
+          [contact.id, contact.email, 'Your brand intelligence is scattered across 8 tools', emailData.id || null]);
+        sent.push(contact.email);
+        console.log(`[OUTREACH] Sent to ${contact.email}`);
+        await new Promise(r => setTimeout(r, 500));
+      } catch(e) {
+        console.error(`[OUTREACH] Failed for ${contact.email}:`, e.message);
+        await pool.query(`INSERT INTO outreach_log (contact_id, email, subject, status, error_message, sent_at) VALUES ($1,$2,$3,'error',$4,NOW())`,
+          [contact.id, contact.email, 'Your brand intelligence is scattered across 8 tools', e.message]);
+        errors.push({ email: contact.email, error: e.message });
+      }
+    }
+    console.log(`[OUTREACH] Done — ${sent.length} sent, ${errors.length} errors`);
+    res.json({ success: true, sent: sent.length, errors: errors.length, recipients: sent });
+  } catch(e) { console.error('[OUTREACH]', e.message); res.status(500).json({ success: false, error: e.message }); }
+});
+
+// GET /unsubscribe — one-click unsubscribe
+app.get('/unsubscribe', async (req, res) => {
+  const { email } = req.query;
+  if (!email) return res.status(400).send('Missing email');
+  try {
+    await pool.query(`UPDATE outreach_contacts SET status='unsubscribed', unsubscribed_at=NOW(), updated_at=NOW() WHERE email=$1`, [email]);
+    res.send('<html><body style="font-family:Inter,sans-serif;max-width:480px;margin:80px auto;text-align:center;color:#1E293B"><p style="font-size:18px;font-weight:600">You\'ve been unsubscribed.</p><p style="color:#475569">You won\'t receive any further emails from Forge Intelligence.</p><a href="https://forgeintelligence.ai" style="color:#3563FF">\u2190 forgeintelligence.ai</a></body></html>');
+  } catch(e) { res.status(500).send('Error processing unsubscribe'); }
+});
+
 app.get('*', function (req, res) {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
