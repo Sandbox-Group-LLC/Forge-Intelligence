@@ -740,7 +740,7 @@ export default function PerformanceDashboardPage() {
                                       : (() => {
                                           const rd = typeof (post as any).raw_data === 'string' ? JSON.parse((post as any).raw_data) : ((post as any).raw_data || {});
                                           const url = rd.pageUrl || (post as any).post_id || '';
-                                          try { return new URL(url).pathname || '/'; } catch { return url || 'Unknown'; }
+                                          try { const p = new URL(url).pathname; return p === '/' ? 'Homepage' : p; } catch { return url || 'Unknown'; }
                                         })()}
                                   </span></td>
                                   <td className="num">{fmt(post.clicks)}</td>
