@@ -165,6 +165,7 @@ interface ConnectedChannel { channel: string; }
 export default function PublishingQueuePage() {
   const { isPaid, activeBrand, brandLoading, authToken } = useApp();
   const activeBrandId = activeBrand?.id ?? null;
+  const ah = authToken ? { Authorization: `Bearer ${authToken}` } : {};
   
   if (brandLoading) return null;
   if (!isPaid) {
@@ -267,7 +268,7 @@ export default function PublishingQueuePage() {
       const results = await Promise.all(preview.map(p =>
         fetch(`/api/publishing/queue/${p.id}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...ah },
           body: JSON.stringify({ scheduledAt: p.scheduledAt, channels: [schedCampaignChannel], status: 'scheduled' })
         }).then(r => r.json())
       ));
@@ -293,7 +294,7 @@ export default function PublishingQueuePage() {
     try {
       await fetch(`/api/publishing/queue/${item.id}/title`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...ah },
         body: JSON.stringify({ title: editingTitleVal.trim() })
       });
       setItems(prev => prev.map(i => i.id === item.id ? { ...i, title: editingTitleVal.trim() } : i));
@@ -304,7 +305,7 @@ export default function PublishingQueuePage() {
     try {
       const r = await fetch(`/api/publishing/queue/${item.id}/request-review`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...ah },
         body: JSON.stringify({ reviewerId: reviewerId || null })
       });
       const d = await r.json();
@@ -411,7 +412,7 @@ export default function PublishingQueuePage() {
     try {
       const r = await fetch('/api/publishing/publish', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...ah },
         body: JSON.stringify({ queueItemId: item.id, channels })
       });
       const d = await r.json();
@@ -438,7 +439,7 @@ export default function PublishingQueuePage() {
     try {
       await fetch(`/api/publishing/queue/${item.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...ah },
         body: JSON.stringify({ scheduledAt: new Date(dt).toISOString(), channels, status: 'scheduled' })
       });
       setSuccessMsg(`"${item.title}" scheduled for ${new Date(dt).toLocaleString()}`);
@@ -483,7 +484,7 @@ export default function PublishingQueuePage() {
         await Promise.all(channelsToDelete.map(channel =>
           fetch('/api/publishing/unpublish', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...ah },
             body: JSON.stringify({ queueItemId: item.id, channel, deleteFromChannel: true, removeFromQueue: false })
           })
         ));
@@ -523,7 +524,7 @@ export default function PublishingQueuePage() {
     try {
       await fetch(`/api/publishing/queue/${itemId}/reset-channel`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...ah },
         body: JSON.stringify({ channel })
       });
       // Clear local publish log for this channel so chip resets immediately
@@ -546,7 +547,7 @@ export default function PublishingQueuePage() {
     try {
       const r = await fetch('/api/publishing/republish', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...ah },
         body: JSON.stringify({ queueItemId: itemId, channel })
       });
       const d = await r.json();
@@ -756,7 +757,7 @@ ${bodyHtml}
       updatedArticle.title = value;
       // Also update queue item title
       await fetch(`/api/publishing/queue/${item.id}/title`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        method: 'PATCH', headers: { 'Content-Type': 'application/json', ...ah },
         body: JSON.stringify({ title: value })
       });
     } else if (field === 'metaDescription') {
@@ -774,7 +775,7 @@ ${bodyHtml}
     // Persist to DB
     const safeId = item.brand_profile_id.replace(/-/g, '_');
     await fetch(`/api/content/${safeId}/${item.content_id}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', ...ah },
       body: JSON.stringify({ article_json: updatedArticle.article_json, title: updatedArticle.title })
     }).catch(() => {});
 
@@ -832,7 +833,7 @@ ${bodyHtml}
         try {
           const r = await fetch('/api/utils/shorten-url', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...ah },
             body: JSON.stringify({ url })
           });
           const d = await r.json();
@@ -846,7 +847,7 @@ ${bodyHtml}
       try {
         const copyRes = await fetch('/api/publishing/generate-post-copy', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...ah },
           body: JSON.stringify({ title: article?.title || item.title, headings, readMinutes: readMin, articleUrl: liShort })
         });
         const copyData = await copyRes.json();
@@ -896,7 +897,7 @@ ${bodyHtml}
   const fetchPrecogScore = useCallback(async (item: QueueItem) => {
     if (!item.brand_profile_id || precogScores[item.content_id]) return;
     try {
-      const r = await fetch(`/api/precog/score/${item.brand_profile_id}/${item.content_id}`);
+      const r = await fetch(`/api/precog/score/${item.brand_profile_id}/${item.content_id}`, { headers: ah });
       const d = await r.json();
       if (d.success && d.tier) {
         setPrecogScores(prev => ({ ...prev, [item.content_id]: {
@@ -1780,7 +1781,7 @@ return (
                         try {
                           const r = await fetch('/api/publishing/publish', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: { 'Content-Type': 'application/json', ...ah },
                             body: JSON.stringify({ queueItemId: item.id, channels: sel, postCopy: contentPreview.postCopy })
                           });
                           const d = await r.json();
