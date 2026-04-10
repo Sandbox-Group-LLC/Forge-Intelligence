@@ -186,7 +186,7 @@ export default function PerformanceDashboardPage() {
   }, [activeChannel, brandProfileId, loadCampaigns]);
 
   const loadDashboard = useCallback(async () => {
-    if (!brandProfileId || activeChannel === 'campaigns') return;
+    if (!brandProfileId || ['campaigns', 'geo', 'predictions', 'patterns'].includes(activeChannel)) return;
     setLoading(true); setError('');
     try {
       const token = authTokenRef.current || authToken || '';
@@ -737,11 +737,11 @@ export default function PerformanceDashboardPage() {
                                   <td className="perf-title-cell"><span className="perf-post-title" title={(post as any).raw_data?.pageUrl || post.title || ''}>
                                     {post.title
                                       ? post.title
-                                      : (post as any).raw_data?.pageUrl
-                                        ? (() => { try { return new URL((post as any).raw_data.pageUrl).pathname || '/'; } catch { return (post as any).raw_data.pageUrl; } })()
-                                        : (post as any).post_id
-                                          ? (() => { try { return new URL((post as any).post_id).pathname || '/'; } catch { return (post as any).post_id; } })()
-                                          : 'Unknown'}
+                                      : (() => {
+                                          const rd = typeof (post as any).raw_data === 'string' ? JSON.parse((post as any).raw_data) : ((post as any).raw_data || {});
+                                          const url = rd.pageUrl || (post as any).post_id || '';
+                                          try { return new URL(url).pathname || '/'; } catch { return url || 'Unknown'; }
+                                        })()}
                                   </span></td>
                                   <td className="num">{fmt(post.clicks)}</td>
                                   <td className="num">{fmt(post.impressions)}</td>
