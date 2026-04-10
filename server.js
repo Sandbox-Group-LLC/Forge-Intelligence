@@ -5693,6 +5693,12 @@ app.post('/api/analytics/sync-gsc/:brandProfileId', requireAuth, async (req, res
     // Match GSC pages to content_analytics by URL or publishing_queue by title slug
     for (const row of rows) {
       const pageUrl = row.keys[0];
+      // Only sync forgeintelligence.ai — skip other GSC properties and /app/ routes
+      try {
+        const u = new URL(pageUrl);
+        if (!u.hostname.includes('forgeintelligence.ai')) continue;
+        if (u.pathname.startsWith('/app/')) continue;
+      } catch { continue; }
       const clicks = Math.round(row.clicks || 0);
       const impressions = Math.round(row.impressions || 0);
       const ctr = parseFloat((row.ctr * 100).toFixed(2));
