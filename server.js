@@ -8877,6 +8877,8 @@ app.post('/api/outreach/send', async (req, res) => {
       `SELECT * FROM outreach_contacts WHERE status = 'pending' ORDER BY created_at ASC LIMIT 50`
     );
     if (!pending.rows.length) return res.json({ success: true, sent: 0, message: 'No pending contacts' });
+    // Respond immediately so EasyCron doesn't time out — sends happen in background
+    res.json({ success: true, queued: pending.rows.length, message: `Sending to ${pending.rows.length} contacts` });
     const sent = []; const errors = [];
     for (const contact of pending.rows) {
       try {
@@ -8918,7 +8920,7 @@ app.post('/api/outreach/send', async (req, res) => {
           [contact.id, contact.email, 'Your brand intelligence is scattered across 8 tools', emailData.id || null]);
         sent.push(contact.email);
         console.log(`[OUTREACH] Sent to ${contact.email}`);
-        await new Promise(r => setTimeout(r, 500));
+        await new Promise(r => setTimeout(r, 100));
       } catch(e) {
         console.error(`[OUTREACH] Failed for ${contact.email}:`, e.message);
         await pool.query(`INSERT INTO outreach_log (contact_id, email, subject, status, error_message, sent_at) VALUES ($1,$2,$3,'error',$4,NOW())`,
@@ -8927,8 +8929,7 @@ app.post('/api/outreach/send', async (req, res) => {
       }
     }
     console.log(`[OUTREACH] Done — ${sent.length} sent, ${errors.length} errors`);
-    res.json({ success: true, sent: sent.length, errors: errors.length, recipients: sent });
-  } catch(e) { console.error('[OUTREACH]', e.message); res.status(500).json({ success: false, error: e.message }); }
+  } catch(e) { console.error('[OUTREACH]', e.message); }
 });
 
 // GET /unsubscribe — one-click unsubscribe
