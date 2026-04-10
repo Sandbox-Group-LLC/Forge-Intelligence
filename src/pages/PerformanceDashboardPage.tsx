@@ -189,9 +189,11 @@ export default function PerformanceDashboardPage() {
     if (!brandProfileId || activeChannel === 'campaigns') return;
     setLoading(true); setError('');
     try {
+      const token = authTokenRef.current || authToken || '';
+      const h: Record<string,string> = token ? { Authorization: `Bearer ${token}` } : {};
       const [dashRes, chanRes] = await Promise.all([
-        fetch(`/api/analytics/dashboard/${brandProfileId}?channel=${activeChannel === 'predictions' ? 'all' : activeChannel}`),
-        fetch(`/api/analytics/channels/${brandProfileId}`)
+        fetch(`/api/analytics/dashboard/${brandProfileId}?channel=${activeChannel === 'predictions' ? 'all' : activeChannel}`, { cache: 'no-store', headers: h }),
+        fetch(`/api/analytics/channels/${brandProfileId}`, { cache: 'no-store', headers: h })
       ]);
       const dashData = await dashRes.json();
       const chanData = await chanRes.json();
