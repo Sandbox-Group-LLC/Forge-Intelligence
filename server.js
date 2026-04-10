@@ -8883,7 +8883,7 @@ app.post('/api/outreach/send', async (req, res) => {
         const firstName = contact.first_name;
         const unsubUrl = `https://forgeintelligence.ai/unsubscribe?email=${encodeURIComponent(contact.email)}`;
         const html = `<div style="font-family:Inter,-apple-system,sans-serif;max-width:560px;margin:0 auto;padding:0;background:#ffffff;color:#1E293B">
-  <div style="padding:40px 0 8px"><img src="https://forgeintelligence.ai/forge-logo-black.png" alt="Forge Intelligence" height="28" style="display:block" /></div>
+  <div style="padding:40px 0 8px;display:flex;align-items:center;gap:10px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3563FF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.7 10.3a2.41 2.41 0 0 0 0 3.41l7.59 7.59a2.41 2.41 0 0 0 3.41 0l7.59-7.59a2.41 2.41 0 0 0 0-3.41l-7.59-7.59a2.41 2.41 0 0 0-3.41 0Z"/></svg><span style="font-size:16px;font-weight:600;color:#1E293B;letter-spacing:-0.01em">Forge Intelligence</span></div>
   <div style="padding:32px 0;border-top:1px solid #E2E8F0;margin-top:24px">
     <p style="margin:0 0 20px;font-size:15px;line-height:1.7">Hi ${firstName},</p>
     <p style="margin:0 0 20px;font-size:15px;line-height:1.7">Most B2B marketing teams are operating on fragmented intelligence — competitive context in one tool, audience signals in another, content strategy in a third. None of it talks to each other, so nothing compounds.</p>
