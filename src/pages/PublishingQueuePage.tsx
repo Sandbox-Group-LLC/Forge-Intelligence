@@ -321,7 +321,7 @@ export default function PublishingQueuePage() {
 
   const archiveItem = async (item: QueueItem) => {
     try {
-      await fetch(`/api/publishing/queue/${item.id}/archive`, { method: 'POST' });
+      await fetch(`/api/publishing/queue/${item.id}/archive`, { method: 'POST', headers: ah });
       loadQueue();
     } catch(e) { console.error('Archive failed', e); }
   };
@@ -1636,7 +1636,7 @@ return (
                           try {
                             const r = await fetch(`/api/content/regenerate-image/${item.content_id}`, {
                               method: 'POST',
-                              headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
+                              headers: { 'Content-Type': 'application/json', ...ah },
                               body: JSON.stringify({ brandProfileId: item.brand_profile_id })
                             });
                             const d = await r.json();
@@ -1656,7 +1656,7 @@ return (
                           try {
                             const r = await fetch(`/api/content/regenerate-image/${item.content_id}`, {
                               method: 'POST',
-                              headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
+                              headers: { 'Content-Type': 'application/json', ...ah },
                               body: JSON.stringify({ brandProfileId: item.brand_profile_id })
                             });
                             const d = await r.json();
