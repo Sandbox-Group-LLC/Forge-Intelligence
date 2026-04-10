@@ -6832,7 +6832,7 @@ app.get('/api/analytics/dashboard/:brandProfileId', requireAuth, async (req, res
               ca.content_id, ca.impressions, ca.clicks, ca.reactions,
               ca.comments, ca.reposts, ca.ctr, ca.engagement_rate,
               ca.reading_time, ca.positive_feedback, ca.negative_feedback,
-              ca.synced_at AS published_at, ca.synced_at,
+              ca.synced_at AS published_at, ca.synced_at, ca.post_id, ca.raw_data,
               pl.published_url, pq.title, pq.hero_image_url
        FROM content_analytics ca
        LEFT JOIN LATERAL (
@@ -6868,7 +6868,7 @@ app.get('/api/analytics/dashboard/:brandProfileId', requireAuth, async (req, res
               ca.content_id, ca.impressions, ca.clicks, ca.reactions,
               ca.comments, ca.reposts, ca.ctr, ca.engagement_rate,
               ca.reading_time, ca.positive_feedback, ca.negative_feedback,
-              ca.synced_at AS published_at, ca.synced_at, ca.channel,
+              ca.synced_at AS published_at, ca.synced_at, ca.channel, ca.post_id, ca.raw_data,
               pl.published_url, pq.title, pq.hero_image_url
        FROM content_analytics ca
        LEFT JOIN LATERAL (
