@@ -1681,7 +1681,7 @@
 }
 
 .perf-accuracy-banner {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
@@ -1692,6 +1692,7 @@
   border-radius: 8px;
   font-size: 11px;
   color: var(--color-text-secondary);
+  align-self: flex-start;
 }
 
 .perf-accuracy-val {
