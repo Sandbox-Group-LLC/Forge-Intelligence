@@ -266,16 +266,26 @@ BEFORE generating:
 | Item | Priority | Notes |
 |------|----------|-------|
 | LinkedIn impressions/clicks | Medium | Requires MDP approval — reactions/comments live |
-| WordPress live API publish | Medium | Pending |
-| Webflow live API publish | Medium | Pipedream Connect wired, logic pending |
 | authToken rollout | Medium | Remaining unauthenticated fetches in PublishingQueuePage |
-| Full light mode CSS sweep | Medium | PerformanceDashboardPage.css + remaining PublishingQueue sections |
 | LinkedIn Insight Tag | Low | Port to production index.html |
 | GSC dev callback URL | Low | Add to Google Cloud Console |
-| Pre-cog Score Dashboard | Backlog | Base implementation live (Haiku-powered, percentile-based, Predictions tab in Performance Dashboard). Phase 3 upgrade: Voyage AI embeddings + pgvector semantic similarity scoring — parked. |
 | Agency Dashboard | Backlog | Cross-brand bird's-eye view |
 | Pen test | Backlog | Required before Agency tier launch |
 | Medium integration | Legacy | New tokens unavailable since early 2025 |
+
+### Recently Resolved
+| Item | Resolved | Notes |
+|------|----------|-------|
+| Full light mode CSS sweep | April 9, 2026 | Predictions tab cards, Publishing Queue, all major pages done |
+| WordPress live API publish | April 9, 2026 | Confirmed working |
+| Webflow live API publish | April 9, 2026 | Confirmed working |
+| Pre-cog Score Dashboard | April 9, 2026 | Compact card design, accuracy banner, `precog_outcomes` table live in production, migrations deployed |
+| LinkedIn Connect OAuth | April 9, 2026 | Native OAuth routing fixed — was incorrectly routing through Pipedream |
+| HubSpot / Webflow Connect | April 9, 2026 | Restored native OAuth routing, fixed auth endpoint response pattern |
+| Scheduler self-call auth | April 9, 2026 | `adminPassword` bypass added to `/api/publishing/publish` |
+| Brain Intelligence tab | April 9, 2026 | Full rebuild — writing rules distilled from human edits via Haiku |
+| Topic Queue | April 9, 2026 | Add, filter, inline edit, send to generator — fully live |
+| Dynamic sitemap.xml | April 9, 2026 | Server-generated, production URLs, live Ghost articles |
 
 ---
 
