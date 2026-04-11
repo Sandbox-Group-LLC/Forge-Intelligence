@@ -33,7 +33,7 @@ const IconCheck = () => (
 export default function BrandSettingsPage() {
   const { activeBrand } = useApp();
   const { getToken } = useAuth();
-  const selected = activeBrand?.id || localStorage.getItem('forge_active_brand_id') || '';
+  const selected = activeBrand?.id || (() => { try { return localStorage.getItem('forge_active_brand_id'); } catch(e) { return ''; } })() || new URLSearchParams(window.location.search).get('brand') || '';
 
   const [form, setForm] = useState<Partial<BrandSettings>>({});
   const [saving, setSaving] = useState(false);
