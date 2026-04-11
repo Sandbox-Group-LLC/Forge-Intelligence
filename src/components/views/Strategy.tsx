@@ -53,61 +53,42 @@ export function Strategy() {
 
   // Group recommendations by category
   const groupedRecs = brandProfile.strategicRecommendations.reduce((acc, rec) => {
-    if (!acc[rec.category]) {
-      acc[rec.category] = [];
-    }
+    if (!acc[rec.category]) acc[rec.category] = [];
     acc[rec.category].push(rec);
     return acc;
   }, {} as Record<string, typeof brandProfile.strategicRecommendations>);
 
-  // Derive additional strategic content from brand profile
+  // Derive messaging opportunities from real brand data — competitive gaps + tone attributes
   const messagingOpportunities = [
-    {
-      theme: 'Intelligence over Generation',
-      description: 'Position as the thinking layer that makes all marketing smarter, not just another content tool.',
-      source: 'Voice Profile Analysis'
-    },
-    {
-      theme: 'Context as Competitive Advantage',
-      description: 'Emphasize persistent brand memory as the key differentiator from stateless AI tools.',
-      source: 'Competitive Whitespace'
-    },
-    {
-      theme: 'Strategic Partner Positioning',
-      description: 'Communicate expertise and partnership rather than vendor relationships.',
-      source: 'Tone Attribute: Strategic (88/100)'
-    }
-  ];
+    ...(brandProfile.competitiveGaps || [])
+      .filter(g => g.priority === 'high' && !g.ownedBy)
+      .slice(0, 2)
+      .map(g => ({
+        theme: g.topic,
+        description: g.whitespaceOpportunity,
+        source: 'Competitive Whitespace'
+      })),
+    ...(brandProfile.voiceProfile?.toneAttributes || [])
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 1)
+      .map(attr => ({
+        theme: `Lead with ${attr.attribute}`,
+        description: attr.description,
+        source: `Tone Attribute: ${attr.attribute} (${attr.score}/100)`
+      }))
+  ].slice(0, 3);
 
+  // Content themes from competitive gaps and key phrases
   const contentThemes = [
-    'The hidden cost of brand inconsistency at scale',
-    'Why context matters more than content volume',
-    'Moving from reactive marketing to strategic positioning',
-    'Building brand equity in the age of AI'
-  ];
+    ...(brandProfile.competitiveGaps || []).map(g => g.topic),
+    ...(brandProfile.voiceProfile?.keyPhrases || []).slice(0, 2)
+  ].filter(Boolean).slice(0, 5);
 
-  const nextActions = [
-    {
-      action: 'Define category positioning',
-      priority: 'high',
-      description: 'Establish "Brand Intelligence" as a distinct category Forge owns'
-    },
-    {
-      action: 'Develop ICP-specific messaging',
-      priority: 'high',
-      description: 'Create tailored value propositions for each identified persona'
-    },
-    {
-      action: 'Create thought leadership content',
-      priority: 'medium',
-      description: 'Publish content series on brand consistency and strategic positioning'
-    },
-    {
-      action: 'Surface Brain as feature',
-      priority: 'medium',
-      description: 'Make persistent memory a visible, trustworthy product feature'
-    }
-  ];
+  // Next actions derived from high-impact recommendations
+  const nextActions = (brandProfile.strategicRecommendations || [])
+    .filter(r => r.impact === 'high')
+    .slice(0, 4)
+    .map(r => ({ action: r.title, priority: r.impact, description: r.description }));
 
   return (
     <div className="strategy">
@@ -152,32 +133,36 @@ export function Strategy() {
         </div>
       </section>
 
-      {/* Messaging Opportunities */}
-      <section className="strategy-section">
-        <h3 className="section-label">MESSAGING OPPORTUNITIES</h3>
-        <div className="messaging-grid">
-          {messagingOpportunities.map((opp, idx) => (
-            <div key={idx} className="messaging-card">
-              <div className="messaging-source">{opp.source}</div>
-              <h4 className="messaging-theme">{opp.theme}</h4>
-              <p className="messaging-description">{opp.description}</p>
-            </div>
-          ))}
-        </div>
-      </section>
+      {/* Messaging Opportunities — derived from competitive gaps + tone */}
+      {messagingOpportunities.length > 0 && (
+        <section className="strategy-section">
+          <h3 className="section-label">MESSAGING OPPORTUNITIES</h3>
+          <div className="messaging-grid">
+            {messagingOpportunities.map((opp, idx) => (
+              <div key={idx} className="messaging-card">
+                <div className="messaging-source">{opp.source}</div>
+                <h4 className="messaging-theme">{opp.theme}</h4>
+                <p className="messaging-description">{opp.description}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
-      {/* Content Themes */}
-      <section className="strategy-section">
-        <h3 className="section-label">SUGGESTED CONTENT THEMES</h3>
-        <div className="content-themes">
-          {contentThemes.map((theme, idx) => (
-            <div key={idx} className="theme-item">
-              <span className="theme-number">{String(idx + 1).padStart(2, '0')}</span>
-              <span className="theme-text">{theme}</span>
-            </div>
-          ))}
-        </div>
-      </section>
+      {/* Content Themes — from competitive gaps + key phrases */}
+      {contentThemes.length > 0 && (
+        <section className="strategy-section">
+          <h3 className="section-label">SUGGESTED CONTENT THEMES</h3>
+          <div className="content-themes">
+            {contentThemes.map((theme, idx) => (
+              <div key={idx} className="theme-item">
+                <span className="theme-number">{String(idx + 1).padStart(2, '0')}</span>
+                <span className="theme-text">{theme}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Recommendations by Category */}
       <section className="strategy-section">
@@ -202,26 +187,28 @@ export function Strategy() {
         </div>
       </section>
 
-      {/* Next Actions */}
-      <section className="strategy-section">
-        <h3 className="section-label">RECOMMENDED NEXT ACTIONS</h3>
-        <div className="actions-list">
-          {nextActions.map((action, idx) => (
-            <div key={idx} className={`action-item priority-${action.priority}`}>
-              <div className="action-number">{idx + 1}</div>
-              <div className="action-content">
-                <div className="action-header">
-                  <span className="action-name">{action.action}</span>
-                  <span className={`action-priority ${action.priority}`}>
-                    {action.priority}
-                  </span>
+      {/* Next Actions — high-impact recs only */}
+      {nextActions.length > 0 && (
+        <section className="strategy-section">
+          <h3 className="section-label">RECOMMENDED NEXT ACTIONS</h3>
+          <div className="actions-list">
+            {nextActions.map((action, idx) => (
+              <div key={idx} className={`action-item priority-${action.priority}`}>
+                <div className="action-number">{idx + 1}</div>
+                <div className="action-content">
+                  <div className="action-header">
+                    <span className="action-name">{action.action}</span>
+                    <span className={`action-priority ${action.priority}`}>
+                      {action.priority}
+                    </span>
+                  </div>
+                  <p className="action-description">{action.description}</p>
                 </div>
-                <p className="action-description">{action.description}</p>
               </div>
-            </div>
-          ))}
-        </div>
-      </section>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Export Section */}
       <div className="strategy-actions">
