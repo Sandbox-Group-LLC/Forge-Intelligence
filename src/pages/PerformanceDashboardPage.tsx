@@ -524,7 +524,7 @@ export default function PerformanceDashboardPage() {
             </div>}
 
             {/* ── 30-Day Trend ── */}
-            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && activeChannel !== 'geo' && activeChannel !== 'predictions' && activeChannel !== 'patterns' && <div className="perf-section">
+            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && activeChannel !== 'geo' && activeChannel !== 'predictions' && activeChannel !== 'patterns' && activeChannel !== 'pipeline' && <div className="perf-section">
               <div className="perf-section-header">
                 <h2 className="perf-section-title">30-Day Impressions</h2>
                 {(data?.trend?.length ?? 0) > 0 && (
