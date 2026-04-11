@@ -60,7 +60,7 @@ const scoreColor = (n: number) => n >= 75 ? '#10B981' : n >= 50 ? '#F59E0B' : '#
 
 export default function ContentImportPage() {
   const { activeBrand } = useApp();
-  const selectedBrand = activeBrand?.id || localStorage.getItem('forge_active_brand_id') || '';
+  const selectedBrand = activeBrand?.id || (() => { try { return localStorage.getItem('forge_active_brand_id'); } catch(e) { return ''; } })() || new URLSearchParams(window.location.search).get('brand') || '';
   const [mode, setMode] = useState<'url' | 'paste'>('url');
   const [url, setUrl] = useState('');
   const [rawText, setRawText] = useState('');
