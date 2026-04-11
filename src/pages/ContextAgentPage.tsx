@@ -66,8 +66,7 @@ function ContextAgentPage() {
           setProcessingStages(initialProcessingStages.map(s => ({ ...s, status: 'complete' as const })));
           setBrandProfile(d.data);
 
-          // Store brand in localStorage — domain IS the key, no session ID needed
-          // Returning users just type their domain again to resume within 24hrs
+          // Store brand in localStorage AND URL param — URL survives mobile Safari localStorage wipes
           const activeBrand = {
             id: d.data.id,
             brandUrl: d.data.brandUrl,
@@ -75,8 +74,10 @@ function ContextAgentPage() {
             expiresAt: d.data.expiresAt || null,
             isPaid: d.data.isPaid || false,
           };
-          localStorage.setItem('forge_active_brand', JSON.stringify(activeBrand));
-          localStorage.setItem('forge_active_brand_id', d.data.id);
+          try { localStorage.setItem('forge_active_brand', JSON.stringify(activeBrand)); } catch(e) {}
+          try { localStorage.setItem('forge_active_brand_id', d.data.id); } catch(e) {}
+          // Replace URL with brand ID so mobile users don't lose their scan on refresh
+          window.history.replaceState({}, '', `/app/context-hub?brand=${d.data.id}`);
         }
         setIsProcessing(false);
         setCurrentView('brand-profile');
