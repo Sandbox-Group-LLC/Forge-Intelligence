@@ -482,7 +482,7 @@ export default function PerformanceDashboardPage() {
               >
                 {ch.label}
                 {!ch.live && <span className="perf-soon-badge">Soon</span>}
-                {ch.live && (hasData || (ch.id === 'gsc' && gscStatus?.connected) || (ch.id === 'geo' && geoCitations.some(c => c.citations > 0))) && <span className="perf-data-dot" />}
+                {ch.live && (hasData || (ch.id === 'gsc' && gscStatus?.connected) || (ch.id === 'geo' && geoCitations.some(c => c.citations > 0)) || (ch.id === 'pipeline' && pipeline?.connected)) && <span className="perf-data-dot" />}
               </button>
             );
           })}
