@@ -66,6 +66,26 @@ export default function Landing() {
     setReturning(null);
   };
 
+  // E5: Domain lookup — allows mobile users with wiped localStorage to resume by typing their domain
+  const handleLookup = async (brandUrl: string) => {
+    if (!brandUrl.trim()) return;
+    const normalized = brandUrl.trim().startsWith('http') ? brandUrl.trim() : `https://${brandUrl.trim()}`;
+    try {
+      const res = await fetch('/api/context-hub/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brandUrl: normalized, checkBrainFirst: true, saveToBrain: false }),
+      });
+      const d = await res.json();
+      if (d.success && d.cached && d.data) {
+        // Found existing brain — restore it
+        const b = d.data;
+        try { localStorage.setItem('forge_active_brand', JSON.stringify({ id: b.id, brandUrl: b.brandUrl, brandName: b.brandName, expiresAt: b.expiresAt || null, isPaid: b.isPaid || false })); } catch(e) {}
+        setReturning({ brandUrl: b.brandUrl, brandName: b.brandName, expiresAt: b.expiresAt || null });
+      }
+    } catch { /* silent — user can just scan again */ }
+  };
+
   return (
     <div style={styles.root}>
       <div style={styles.gridOverlay} aria-hidden="true" />
@@ -130,6 +150,7 @@ export default function Landing() {
               </div>
               {error && <p style={styles.errorMsg}>{error}</p>}
               <p style={styles.formCaption}>No account needed. Enter your domain again within 24hrs to return to your brain.</p>
+              <p style={{ fontSize: '11px', color: '#475569', margin: 0 }}>Already scanned? Just enter your domain above to resume.</p>
             </form>
           )}
         </div>
