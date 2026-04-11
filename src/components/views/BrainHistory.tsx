@@ -100,7 +100,8 @@ export function BrainHistory() {
 
   const handleViewProfile = async (id: string) => {
     try {
-      const res = await fetch(`/api/context-hub/brains/${id}`);
+      const token = (window as any).__forgeToken || '';
+      const res = await fetch(`/api/context-hub/brains/${id}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       const data = await res.json();
       if (data.success && data.data) {
         setBrandProfile(data.data);
