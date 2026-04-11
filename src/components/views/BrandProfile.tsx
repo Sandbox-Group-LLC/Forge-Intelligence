@@ -248,7 +248,7 @@ export function BrandProfile() {
                 <span className="th-value">Value</span>
                 <span className="th-confidence">Confidence</span>
               </div>
-              {brandProfile.thirdPartySignals.map((signal, idx) => (
+              {brandProfile.thirdPartySignals.filter(s => s.value !== null && s.confidence > 0).map((signal, idx) => (
                 <div key={idx} className="table-row">
                   <span className="td-source">{signal.source}</span>
                   <span className="td-type">{signal.signalType}</span>
