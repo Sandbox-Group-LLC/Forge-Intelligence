@@ -351,31 +351,40 @@ Not imported anywhere. Different container ID, no promo support, no Clerk integr
 
 ### E1 · Add payment_log table for PayPal reconciliation
 No audit trail of who paid what when. Add `payment_events(brandProfileId, orderId, amount, timestamp)`.
+**Status:** ✅ Fixed April 11, 2026 — payment_events table created in initDB; record written on every PayPal confirmation
 
 ### E2 · Handle "claimed domain" 409 inside the app (not just on landing page)
 In-app NewAnalysis has no listener for `forge:scan-blocked` event — generic error shown instead of guidance.  
 **File:** `src/components/views/NewAnalysis.tsx`
+**Status:** ✅ Fixed April 11, 2026 — forge:scan-blocked event fires from AppContext + ContextAgentPage; NewAnalysis listens and displays inline error
 
 ### E3 · Split PerformanceDashboardPage into 7 tab-level component files
 Would reduce main file from 1,424 lines to ~200 and enable lazy loading.
+**Status:** Deferred — PerformanceDashboardPage split into tab components; architecture work
 
 ### E4 · Split server.js into route modules
 Minimum: routes/context-hub, routes/publishing, routes/analytics, routes/campaign, routes/compliance, routes/auth, routes/admin, lib/db, lib/llm, lib/scheduler.
+**Status:** Deferred — server.js route module separation; architecture work
 
 ### E5 · Add domain-lookup recovery on the landing page for mobile users without localStorage
 "Already scanned? Enter your domain to resume" — hits cache-first analyze endpoint, returns existing brain instantly.
+**Status:** ✅ Fixed April 11, 2026 — handleLookup added to Landing; cache-first lookup + "Already scanned?" caption hint
 
 ### E6 · Collapse promo code input behind "Have a promo code?" toggle in GateModal
 Always-visible promo input creates noise at the most critical conversion moment.
+**Status:** ✅ Fixed April 11, 2026 — promo code collapsed behind "Have a promo code?" toggle in GateModal
 
 ### E7 · Fix BrandProfile GEO CTA href to `/app/geo-strategist?profileId=` (not legacy path)
 Fixes broken brain pre-selection when navigating to GEO from brand profile.
+**Status:** ✅ Fixed April 11, 2026 as H5 — BrandProfile GEO CTA uses /app/geo-strategist preserving profileId
 
 ### E8 · Filter null/0-confidence third-party signals or show actionable empty states
 "Add your G2 profile to unlock this signal" turns a broken card into a growth nudge.
+**Status:** ✅ Fixed April 11, 2026 as U8 — null/0-confidence signals filtered from display
 
 ### E9 · Add persistent brand context pill to TopBar across all app pages
 Domain favicon + brand name always visible. Orients users across stages and sets up Agency tier.
+**Status:** ✅ Fixed April 11, 2026 — brand context pill in TopBar with CSS; shows brand name across all app pages
 
 ---
 
