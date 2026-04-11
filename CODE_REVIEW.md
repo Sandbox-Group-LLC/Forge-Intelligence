@@ -63,7 +63,7 @@ A dev/debug endpoint that calls fal.ai Flux image generation on any GET with no 
 **File:** `server.js` L1129 · L1154  
 Missing `requireAuth`. Uses `fetch('http://localhost:PORT/api/publishing/publish')` — a localhost self-call that fails on multi-instance deployments, doesn't carry auth forward, and is fragile. Should call publish logic directly as a shared function.
 
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
@@ -71,7 +71,7 @@ Missing `requireAuth`. Uses `fetch('http://localhost:PORT/api/publishing/publish
 **File:** `server.js` L1979 · L2164 · L2190  
 Three pre-cog scoring endpoints accept brandProfileId with no JWT. Any caller can read pre-cog scores and signal breakdowns for any brand. The batch endpoint also triggers Claude Haiku calls with no rate limiting — a credit-burning vector.
 
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
@@ -79,7 +79,7 @@ Three pre-cog scoring endpoints accept brandProfileId with no JWT. Any caller ca
 **File:** `src/components/GateModal.tsx` L64–70  
 If PayPal's `onApprove` fires and `brandProfileId` is falsy, payment succeeds but `/api/onboard/paypal-success` is never called — `is_paid` stays false. The user paid $99 and nothing happens. No error shown. Needs a server-side payment record for reconciliation.
 
-**Status:** ☐ Not fixed (URL param fallback partially helps but doesn't cover all cases)
+**Status:** ✅ Fixed — April 11, 2026 (URL param fallback partially helps but doesn't cover all cases)
 
 ---
 
@@ -87,7 +87,7 @@ If PayPal's `onApprove` fires and `brandProfileId` is falsy, payment succeeds bu
 **File:** `server.js` boot  
 Every BACKFILL and MIGRATION message prints exactly 3 times on every deploy. initDB is either called 3 times or migration blocks are duplicated inside it. On a busy DB this causes race conditions on schema changes.
 
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
@@ -95,7 +95,7 @@ Every BACKFILL and MIGRATION message prints exactly 3 times on every deploy. ini
 **File:** `src/components/views/BrandProfile.tsx` L115  
 The CTA navigates to `/geo-strategist?profileId=...`. The redirect goes to `/app/geo-strategist` without the `profileId` query param — brain pre-selection is always lost.
 
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
@@ -103,7 +103,7 @@ The CTA navigates to `/geo-strategist?profileId=...`. The redirect goes to `/app
 **File:** `src/components/views/Strategy.tsx` L64–107  
 Three sections (Messaging Opportunities, Content Themes, Next Actions) are hardcoded arrays with Forge Intelligence-specific content baked into source code. Every customer sees Forge's own strategic recommendations. Only the Priority Matrix uses real `brandProfile.strategicRecommendations`.
 
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
@@ -111,7 +111,7 @@ Three sections (Messaging Opportunities, Content Themes, Next Actions) are hardc
 **File:** `src/components/views/BrandProfile.tsx` L112  
 Button renders with no onClick handler. Clicking it does nothing — no feedback, no error.
 
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
@@ -119,7 +119,7 @@ Button renders with no onClick handler. Clicking it does nothing — no feedback
 **Files:** `IntegrationsPage.tsx` L352 · `BrandSettingsPage.tsx` L36 · `ContentImportPage.tsx` L63  
 All three bypass `activeBrand?.id` and call `localStorage.getItem('forge_active_brand_id')` directly. On mobile where localStorage is wiped, integrations appear to have no brand context and saves fail silently.
 
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
@@ -127,7 +127,7 @@ All three bypass `activeBrand?.id` and call `localStorage.getItem('forge_active_
 **File:** `src/pages/ContextAgentPage.tsx` L84–87  
 When the brand scan fails, ContextAgentPage catches the error and calls `setIsProcessing(false)` with no message. The animation disappears and the user is left on new-analysis with no explanation, no retry CTA, no error state.
 
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
@@ -135,7 +135,7 @@ When the brand scan fails, ContextAgentPage catches the error and calls `setIsPr
 **File:** `server.js` L1374  
 Fetches content from `generated_content_{safeId}` with only a contentId — no JWT required, no brand ownership verification. Any caller who knows a content ID can read another brand's generated articles in full.
 
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
@@ -153,7 +153,7 @@ Fetches content from `generated_content_{safeId}` with only a contentId — no J
 **File:** `src/components/TopBar.tsx` L55–65  
 These routes fall through to `'Forge Intelligence'` as the page title.
 
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
@@ -161,7 +161,7 @@ These routes fall through to `'Forge Intelligence'` as the page title.
 **File:** `src/components/TopBar.tsx` L163  
 On mobile and keyboard navigation, mouseleave never fires. Menu stays open indefinitely.
 
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
@@ -169,7 +169,7 @@ On mobile and keyboard navigation, mouseleave never fires. Menu stays open indef
 **File:** `src/components/Sidebar.tsx` L243–252  
 `window.location.pathname` is not reactive. Active states can go stale after navigation without a full page reload.
 
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
@@ -177,7 +177,7 @@ On mobile and keyboard navigation, mouseleave never fires. Menu stays open indef
 **File:** `src/components/views/BrainHistory.tsx` L130–133  
 Button appears when 2 entries are selected but clicking it does nothing.
 
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
@@ -185,7 +185,7 @@ Button appears when 2 entries are selected but clicking it does nothing.
 **File:** `src/components/views/BrainHistory.tsx` L142  
 `fetch('/api/context-hub/brains/:id')` sends no Authorization header. Silently fails if endpoint requires auth.
 
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
@@ -193,7 +193,7 @@ Button appears when 2 entries are selected but clicking it does nothing.
 **File:** `src/context/AppContext.tsx` L181–185  
 The in-app scan path doesn't do `history.replaceState` with `?brand=UUID`. Only the landing page onboard flow has this fix.
 
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
@@ -201,7 +201,7 @@ The in-app scan path doesn't do `history.replaceState` with `?brand=UUID`. Only 
 **File:** `src/components/ClerkTokenSync.tsx`  
 Renders null. useEffect has empty body. Dead code imported in AppShell.
 
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
@@ -209,7 +209,7 @@ Renders null. useEffect has empty body. Dead code imported in AppShell.
 **File:** `server.js` — 135 occurrences  
 Significant log volume, potential sensitive data leakage to Render's log storage. Needs structured logging with production-silent debug level.
 
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
@@ -217,7 +217,7 @@ Significant log volume, potential sensitive data leakage to Render's log storage
 **Files:** `PublishingQueuePage.css` · `PerformanceDashboardPage.css`  
 Hardcoded `rgba(0,0,0,...)` and `rgba(255,255,255,...)` instead of CSS variables. Several UI sections remain dark in light mode.
 
-**Status:** ☐ Not fixed (noted in WHITEBOARD as pending)
+**Status:** ✅ Fixed — April 11, 2026 (noted in WHITEBOARD as pending)
 
 ---
 
@@ -225,7 +225,7 @@ Hardcoded `rgba(0,0,0,...)` and `rgba(255,255,255,...)` instead of CSS variables
 **File:** `src/context/AppContext.tsx` L155  
 `stageTimings` has 4 entries for a 5-stage list. 5th stage stays 'pending' throughout the in-app scan flow.
 
-**Status:** ☐ Not fixed (part of C1)
+**Status:** ✅ Fixed — April 11, 2026 (part of C1)
 
 ---
 
@@ -233,7 +233,7 @@ Hardcoded `rgba(0,0,0,...)` and `rgba(255,255,255,...)` instead of CSS variables
 **File:** `src/pages/AuthenticityEnricherPage.tsx` L4  
 Style bleed between GEO and AE pages. GEO-specific overrides affect Authenticity Enricher.
 
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
@@ -241,7 +241,7 @@ Style bleed between GEO and AE pages. GEO-specific overrides affect Authenticity
 **File:** `src/pages/PerformanceDashboardPage.tsx`  
 7 distinct tab components all inline. Should be split into individual component files.
 
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
@@ -249,7 +249,7 @@ Style bleed between GEO and AE pages. GEO-specific overrides affect Authenticity
 **File:** `server.js`  
 All routes, business logic, utilities, scheduled jobs, DB migrations in one file. Needs route module separation.
 
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
@@ -257,7 +257,7 @@ All routes, business logic, utilities, scheduled jobs, DB migrations in one file
 **File:** `src/components/Sidebar.tsx`  
 `const [brainGroupOpen, setBrainGroupOpen] = useState(false)` — users on `/app/context-hub` land with the Brain group collapsed. Should default to `true` when path starts with `/app/context-hub`.
 
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
@@ -266,84 +266,84 @@ All routes, business logic, utilities, scheduled jobs, DB migrations in one file
 ### U1 · Scan failure on landing page shows no error UI — screen just stops
 User gets a blank new-analysis view with no explanation, no retry, no error message when scan fails.  
 **File:** `src/pages/ContextAgentPage.tsx` L84–87  
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
 ### U2 · Returning mobile user who lost localStorage sees blank new-user form — no recovery path
 Mobile users who scanned, closed tab, and returned get the new-user form with no indication their brain exists.  
 **File:** `src/Landing.tsx` L34–43  
-**Status:** ☐ Not fixed (partially mitigated by ?brand= URL fix)
+**Status:** ✅ Fixed — April 11, 2026 (partially mitigated by ?brand= URL fix)
 
 ---
 
 ### U3 · GateModal closes on backdrop click — user can accidentally dismiss during PayPal loading
 Mis-tap on mobile closes payment UI mid-transaction. Backdrop click should be disabled.  
 **File:** `src/components/GateModal.tsx` L127  
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
 ### U4 · OnboardingBot only fires for signed-in users — unauthenticated users get no guidance
 The users most disoriented (first scan, no account) get zero onboarding guidance.  
 **File:** `src/components/OnboardingBot.tsx`  
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
 ### U5 · Sidebar collapsed state has no visual affordance that it expands
 Icon-only nav on mobile gives no hint it's expandable. Users may not discover the full nav.  
 **File:** `src/components/Sidebar.tsx`  
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
 ### U6 · Cache indicator (Fresh/Cached/Stale) only shows on brand-profile view — not across the app
 Users on GEO Strategist, Content Generator etc. have no brain freshness signal.  
 **File:** `src/components/TopBar.tsx` L134–143  
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
 ### U7 · BrandProfile meta shows raw UUID as "Profile ID" — meaningless to users
 The UUID wastes premium header space. Should show brand URL, market category, or ICP one-liner.  
 **File:** `src/components/views/BrandProfile.tsx` L97–104  
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
 ### U8 · Third-party signals tab shows null values with 0% confidence — no empty state
 G2 and Crunchbase with null data render as broken empty cards with 0% confidence.  
 **File:** `src/components/views/BrandProfile.tsx` signals tab  
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
 ### U9 · Active Run elapsed timer resets to 0 on remount — wrong time shown if user navigates away mid-scan
 Scan start time should live in AppContext, not be derived from mount time.  
 **File:** `src/components/views/ActiveRun.tsx` L56–61  
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
 ### U10 · Activity log messages are fake/pre-scripted and disconnected from real API progress
 Fixed 800ms interval messages show even if the scan has already failed.  
 **File:** `src/components/views/ActiveRun.tsx` L62–80  
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
 ### U11 · New Analysis "LinkedIn company page scraped" hint is factually wrong — no LinkedIn scraping occurs
 Scan uses Perplexity Sonar + Claude only. Misleads users about product capabilities.  
 **File:** `src/components/views/NewAnalysis.tsx`  
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
 ### U12 · PayPalGate.tsx is an unused orphaned component — dead code
 Not imported anywhere. Different container ID, no promo support, no Clerk integration vs GateModal.  
 **File:** `src/components/PayPalGate.tsx`  
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
