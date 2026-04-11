@@ -309,6 +309,70 @@
 .int-save-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ── Gate note ───────────────────────────────────────────────────────────── */
+.int-section-header {
+  margin-bottom: 16px;
+}
+
+.int-section-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 0 4px;
+  letter-spacing: -0.01em;
+}
+
+.int-section-desc {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Pipeline attribution card — not a publishing channel, different treatment */
+.int-pipeline-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 20px 24px;
+}
+
+.int-pipeline-card-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  flex: 1;
+  min-width: 0;
+}
+
+.int-pipeline-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-top: 10px;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  line-height: 1.55;
+  background: var(--color-bg-base);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.int-pipeline-note svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--color-text-muted);
+}
+
+.int-pipeline-note strong {
+  color: var(--color-text-secondary);
+  font-weight: 600;
+}
+
 .int-gate-note {
   font-size: 12px;
   color: var(--color-text-muted);
