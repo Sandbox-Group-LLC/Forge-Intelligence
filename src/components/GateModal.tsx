@@ -17,6 +17,7 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
   const [ppLoading, setPpLoading] = useState(true);
   const [ppError, setPpError] = useState('');
   const [paid, setPaid] = useState(false);
+  const [showPromo, setShowPromo] = useState(false);
   const [promoCode, setPromoCode] = useState('');
   const [promoStatus, setPromoStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [promoMsg, setPromoMsg] = useState('');
@@ -133,8 +134,14 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
           <span className="gate-price-note">one-time · full suite · brain saved permanently</span>
         </div>
 
-        {/* Promo code */}
+        {/* Promo code — collapsed behind toggle */}
         <div style={{ marginBottom: 4 }}>
+          {!showPromo && promoStatus !== 'success' && (
+            <button onClick={() => setShowPromo(true)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.35)', fontSize: '0.75rem', cursor: 'pointer', padding: '4px 0', fontFamily: 'inherit', textDecoration: 'underline' }}>
+              Have a promo code?
+            </button>
+          )}
+          {(showPromo || promoStatus === 'success') && (<div>
           <div style={{ display: 'flex', gap: 8 }}>
             <input
               style={{ flex: 1, padding: '9px 14px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, color: '#F8FAFC', fontSize: '0.875rem', fontFamily: 'inherit', outline: 'none' }}
@@ -157,6 +164,7 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
               {promoStatus === 'success' ? '✓ ' : '✕ '}{promoMsg}
             </div>
           )}
+        </div>)}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '12px 0', color: 'rgba(255,255,255,0.25)', fontSize: '0.75rem' }}>
           <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.1)' }} />
