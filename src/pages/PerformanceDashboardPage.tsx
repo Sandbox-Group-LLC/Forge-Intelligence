@@ -222,10 +222,10 @@ export default function PerformanceDashboardPage() {
         .catch(() => {});
       // patterns loaded in dedicated effect below
     }
-  }, [activeChannel, brandProfileId, loadCampaigns]);
+  }, [activeChannel, brandProfileId, loadCampaigns, loadPipeline]);
 
   const loadDashboard = useCallback(async () => {
-    if (!brandProfileId || ['campaigns', 'geo', 'predictions', 'patterns'].includes(activeChannel)) return;
+    if (!brandProfileId || ['campaigns', 'geo', 'predictions', 'patterns', 'pipeline'].includes(activeChannel)) return;
     setLoading(true); setError('');
     try {
       const token = authTokenRef.current || authToken || '';
