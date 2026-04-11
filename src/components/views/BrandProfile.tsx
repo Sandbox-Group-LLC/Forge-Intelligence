@@ -87,8 +87,8 @@ export function BrandProfile() {
           <h2 className="profile-brand-name">{brandProfile.brandName}</h2>
           <div className="profile-meta">
             <span className="meta-item">
-              <span className="meta-label">Profile ID:</span>
-              <span className="meta-value">{brandProfile.id}</span>
+              <span className="meta-label">URL:</span>
+              <a className="meta-value" href={brandProfile.brandUrl} target="_blank" rel="noopener noreferrer" style={{color:'var(--color-accent)',textDecoration:'none'}}>{brandProfile.brandUrl.replace(/^https?:\/\//, '')}</a>
             </span>
             <span className="meta-divider">·</span>
             <span className="meta-item">
