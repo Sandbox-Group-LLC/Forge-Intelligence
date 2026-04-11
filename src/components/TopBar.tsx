@@ -62,6 +62,7 @@ const pathTitles: Record<string, string> = {
   '/app/publishing-queue':       'Publishing Queue',
   '/app/performance':            'Performance Dashboard',
   '/app/brand-settings':         'Brand Settings',
+  '/app/email-campaign':         'Email Campaign',
   '/app/context-hub':            'New Analysis',
   '/app/admin':                  'Admin',
   '/app/topic-queue':            'Topic Queue',
