@@ -807,6 +807,86 @@ export default function PerformanceDashboardPage() {
               </div>
             )}
 
+            {activeChannel === 'pipeline' && (
+              <div className="perf-pipeline-panel">
+                <div className="perf-geo-header">
+                  <div>
+                    <h2 className="perf-section-title">Pipeline Influence</h2>
+                    <p className="perf-section-sub">Raw pipeline value influenced by Forge-published content via HubSpot first-touch UTM attribution.</p>
+                  </div>
+                  {pipeline?.connected && (
+                    <div className="perf-btn-group">
+                      <button className={`perf-sync-btn ${pushingToHubSpot ? 'syncing' : ''}`} onClick={handlePushToHubSpot} disabled={pushingToHubSpot}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={pushingToHubSpot ? 'spin' : ''}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+                        {pushingToHubSpot ? 'Pushing...' : 'Push to HubSpot'}
+                      </button>
+                      <span className="perf-btn-hint">Sends latest content analytics to HubSpot campaign records</span>
+                    </div>
+                  )}
+                </div>
+                {pushMsg && <div className={`perf-sync-msg ${pushMsg.startsWith('Push failed') ? 'error' : 'ok'}`} style={{ marginBottom: 16 }}>{pushMsg}</div>}
+                {pipelineLoading ? (
+                  <div className="perf-skeleton-wrap">{[1,2,3,4].map(i => <div key={i} className="perf-skeleton-card" />)}</div>
+                ) : !pipeline || !pipeline.connected ? (
+                  <div className="perf-empty">
+                    <p>HubSpot not connected. <a href="/app/integrations" style={{ color: 'var(--color-accent)' }}>Connect in Integrations →</a></p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="perf-kpis">
+                      <div className="perf-kpi-card">
+                        <div className="perf-kpi-top"><span className="perf-kpi-label">Influenced Pipeline</span><KpiIcon type="trend" /></div>
+                        <div className="perf-kpi-value" style={{ color: pipeline.pipeline > 0 ? '#22C55E' : undefined }}>${pipeline.pipeline.toLocaleString()}</div>
+                        <div className="perf-kpi-sub">Open deals attributed to Forge content</div>
+                      </div>
+                      <div className="perf-kpi-card">
+                        <div className="perf-kpi-top"><span className="perf-kpi-label">Closed Won</span><KpiIcon type="heart" /></div>
+                        <div className="perf-kpi-value" style={{ color: pipeline.closedWon > 0 ? '#22C55E' : undefined }}>${pipeline.closedWon.toLocaleString()}</div>
+                        <div className="perf-kpi-sub">Revenue from Forge-influenced deals</div>
+                      </div>
+                      <div className="perf-kpi-card">
+                        <div className="perf-kpi-top"><span className="perf-kpi-label">Influenced Deals</span><KpiIcon type="click" /></div>
+                        <div className="perf-kpi-value">{pipeline.dealCount}</div>
+                        <div className="perf-kpi-sub">Deals with Forge UTM attribution</div>
+                      </div>
+                      <div className="perf-kpi-card">
+                        <div className="perf-kpi-top"><span className="perf-kpi-label">Content Synced</span><KpiIcon type="eye" /></div>
+                        <div className="perf-kpi-value">{pipeline.syncStats?.totalContentSynced || 0}</div>
+                        <div className="perf-kpi-sub">{pipeline.syncStats?.lastSynced ? `Last pushed ${timeAgo(pipeline.syncStats.lastSynced)}` : 'Never pushed — click Push to HubSpot'}</div>
+                      </div>
+                    </div>
+                    <div className="perf-pipeline-explainer">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                      <span>Attribution uses HubSpot's original source tracking. Deals where first touch was a Forge UTM link appear here. Requires HubSpot tracking code on your site and <strong>Marketing Hub Starter</strong> for campaign-level sync.</span>
+                    </div>
+                    {pipeline.deals.length > 0 ? (
+                      <div className="perf-section">
+                        <div className="perf-section-header"><h2 className="perf-section-title">Influenced Deals</h2><span className="perf-section-meta">First-touch UTM attribution from Forge content</span></div>
+                        <div className="perf-table-wrap">
+                          <table className="perf-table">
+                            <thead><tr><th>Deal</th><th>Source Channel</th><th className="num">Amount</th><th>Stage</th><th>Close Date</th></tr></thead>
+                            <tbody>
+                              {pipeline.deals.map(deal => (
+                                <tr key={deal.id}>
+                                  <td className="perf-title-cell"><span className="perf-post-title">{deal.name}</span></td>
+                                  <td><span style={{ color: CHANNEL_COLORS[deal.source] || 'var(--color-text-muted)', fontWeight: 500 }}>{deal.source}</span></td>
+                                  <td className="num" style={{ color: deal.stage === 'closedwon' ? '#22C55E' : undefined }}>${deal.amount.toLocaleString()}</td>
+                                  <td><span className={deal.stage === 'closedwon' ? 'perf-geo-cited' : ''}>{deal.stage.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase()}</span></td>
+                                  <td className="perf-date">{deal.closeDate ? new Date(deal.closeDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="perf-empty"><p>No influenced deals yet. Publish content with UTM links, ensure HubSpot tracking is on your site, and deals with first-touch from Forge content will appear here.</p></div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
             {activeChannel === 'campaigns' && (
               <CampaignsView
                 campaigns={campaigns}
