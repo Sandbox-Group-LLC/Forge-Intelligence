@@ -195,14 +195,14 @@ export function TopBar({ pageTitle }: { pageTitle?: string }) {
           </div>
         )}
 
-        {brandProfile && (
-          <div className={`cache-indicator ${brandProfile.cacheStatus}`}>
+        {brandProfile && activeBrand && (
+          <div className={`cache-indicator ${brandProfile.cacheStatus}`} title={`Brain last updated: ${new Date(brandProfile.updatedAt).toLocaleDateString()}`}>
             <span className="cache-icon">
               {brandProfile.cacheStatus === 'fresh' ? icons.zap : icons.clock}
             </span>
             <span className="cache-label">
-              {brandProfile.cacheStatus === 'fresh' ? 'Fresh' : 
-               brandProfile.cacheStatus === 'cached' ? 'Cached' : 'Stale'}
+              {brandProfile.cacheStatus === 'fresh' ? 'Brain Fresh' : 
+               brandProfile.cacheStatus === 'cached' ? 'Brain Cached' : 'Brain Stale'}
             </span>
           </div>
         )}
