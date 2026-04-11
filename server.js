@@ -37,27 +37,6 @@ function buildXOAuthHeader(method, url, apiKey, apiSecret, accessToken, accessSe
     .join(', ');
 }
 
-// ── sanitizeJson — strip control chars from Claude JSON responses ─────────────
-function sanitizeJson(str) {
-  str = str.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-  // First try: parse as-is
-  try { JSON.parse(str); return str; } catch(e) {}
-  // Second try: remove literal newlines between JSON tokens (outside strings)
-  // Replace \n with space everywhere, then fix any \n that were inside strings
-  // by using a simple state machine written in one clean pass
-  let out = '', inStr = false, esc = false;
-  for (let i = 0; i < str.length; i++) {
-    const c = str[i];
-    if (esc) { out += c; esc = false; continue; }
-    if (c === '\\') { out += c; esc = true; continue; }
-    if (c === '"') { inStr = !inStr; out += c; continue; }
-    if (inStr && c === '\n') { out += '\\n'; continue; }
-    if (inStr && c === '\r') { out += '\\r'; continue; }
-    if (inStr && c === '\t') { out += '\\t'; continue; }
-    out += c;
-  }
-  return out;
-}
 
 
 const PORT = process.env.PORT || 3000;
@@ -2497,7 +2476,7 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
     const raw = message.content[0].text;
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('Claude returned no valid JSON');
-    const profileData = JSON.parse(sanitizeJson(jsonMatch[0]));
+    const profileData = JSON.parse(jsonMatch[0]);
 
     // Inject discovered competitors into profile
     profileData.discoveredCompetitors = sonarCompetitors;
