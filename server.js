@@ -1333,7 +1333,7 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // ── Content fetch for preview ─────────────────────────────────────────────────
-app.get('/api/content/:safeId/:contentId', async (req, res) => {
+app.get('/api/content/:safeId/:contentId', requireAuth, async (req, res) => {
   try {
     const { safeId, contentId } = req.params;
     const tableName = `generated_content_${safeId}`;
@@ -2290,7 +2290,7 @@ app.patch('/api/brand-settings/:brandProfileId', async (req, res) => {
   }
 });
 
-app.get('/api/brand-profiles/list', async (req, res) => {
+app.get('/api/brand-profiles/list', requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT id, brand_url, brand_name, profile_data FROM brand_profiles WHERE is_active = true ORDER BY updated_at DESC`
@@ -3319,7 +3319,7 @@ async function ensureGeneratedContentTable(brandProfileId) {
   return tableName;
 }
 
-app.get('/api/content-generator/generate', async (req, res) => {
+app.get('/api/content-generator/generate', requireAuth, async (req, res) => {
   const { brandProfileId, enrichedBriefId, force, topicPrompt } = req.query;
   if (!brandProfileId) return res.status(400).json({ success: false, error: 'brandProfileId required' });
 
@@ -3628,23 +3628,6 @@ Return ONLY valid JSON matching the output format. No markdown, no commentary.`;
 });
 
 // POST /api/campaign/create — save campaign plan to DB
-// ── Test: image generation endpoint (no article needed) ──────────────────────
-app.get('/api/test/image', async (req, res) => {
-  try {
-    const title = req.query.title || 'The Future of B2B Marketing Intelligence';
-    const voiceProfile = { tone_summary: req.query.tone || 'Professional, strategic, data-driven' };
-    const fluxPrompt = await buildImagePrompt(title, voiceProfile, '');
-    const falRes = await fetch('https://fal.run/fal-ai/flux/schnell', {
-      method: 'POST',
-      headers: { 'Authorization': `Key ${process.env.FAL_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: fluxPrompt, image_size: 'landscape_16_9', num_inference_steps: 4, num_images: 1 })
-    });
-    const falData = await falRes.json();
-    res.json({ prompt: fluxPrompt, imageUrl: falData?.images?.[0]?.url, raw: falData });
-  } catch(e) {
-    res.status(500).json({ error: e.message });
-  }
-});
 
 app.post('/api/campaign/create', requireAuth, async (req, res) => {
   const { brandProfileId, plan } = req.body;
@@ -3737,7 +3720,7 @@ app.get('/api/campaign/:id', async (req, res) => {
 });
 
 // GET /api/campaign/generate/:id — SSE — generate all pending articles sequentially
-app.get('/api/campaign/generate/:id', async (req, res) => {
+app.get('/api/campaign/generate/:id', requireAuth, async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
