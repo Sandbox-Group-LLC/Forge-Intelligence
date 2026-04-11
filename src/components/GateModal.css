@@ -6,9 +6,11 @@
   backdrop-filter: blur(4px);
   z-index: 1000;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 24px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   animation: gateBackdropIn 3s ease;
 }
 
@@ -27,6 +29,18 @@
   width: 100%;
   position: relative;
   animation: gateModalIn 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  margin: auto;
+}
+
+@media (max-width: 540px) {
+  .gate-modal {
+    padding: 28px 24px;
+    border-radius: 12px;
+  }
+  .gate-backdrop {
+    padding: 16px;
+    align-items: flex-start;
+  }
 }
 
 @keyframes gateModalIn {
