@@ -7507,6 +7507,10 @@ app.post('/api/onboard/paypal-success', async (req, res) => {
       `UPDATE brand_profiles SET is_paid = true, expires_at = NULL, updated_at = NOW() WHERE id = $1`,
       [brandProfileId]
     );
+    await pool.query(
+      `INSERT INTO payment_events (brand_profile_id, order_id, amount, currency, source) VALUES ($1, $2, 99.00, 'USD', 'paypal')`,
+      [brandProfileId, orderId || null]
+    ).catch(() => {});
     console.log('[PAYPAL] Payment confirmed — brandProfileId:', brandProfileId, 'orderId:', orderId);
     res.json({ success: true, unlocked: true });
   } catch(e) {
