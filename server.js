@@ -39,30 +39,26 @@ function buildXOAuthHeader(method, url, apiKey, apiSecret, accessToken, accessSe
 
 // ── sanitizeJson — strip control chars from Claude JSON responses ─────────────
 function sanitizeJson(str) {
-  // Strip markdown fences first
   str = str.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-  // Escape bare newlines/tabs that appear inside JSON string values
-  // Strategy: walk char by char, track whether we're inside a string
-  let result = '';
-  let inString = false;
-  let escaped = false;
+  // First try: parse as-is
+  try { JSON.parse(str); return str; } catch(e) {}
+  // Second try: remove literal newlines between JSON tokens (outside strings)
+  // Replace \n with space everywhere, then fix any \n that were inside strings
+  // by using a simple state machine written in one clean pass
+  let out = '', inStr = false, esc = false;
   for (let i = 0; i < str.length; i++) {
-    const ch = str[i];
-    if (escaped) { result += ch; escaped = false; continue; }
-    if (ch === '\\') { result += ch; escaped = true; continue; }
-    if (ch === '"') { inString = !inString; result += ch; continue; }
-    if (inString) {
-      if (ch === '\n') { result += '\\n'; continue; }
-      if (ch === '\r') { result += '\\r'; continue; }
-      if (ch === '\t') { result += '\\t'; continue; }
-      // Strip other control chars inside strings
-      const code = ch.charCodeAt(0);
-      if (code < 0x20) continue;
-    }
-    result += ch;
+    const c = str[i];
+    if (esc) { out += c; esc = false; continue; }
+    if (c === '\\') { out += c; esc = true; continue; }
+    if (c === '"') { inStr = !inStr; out += c; continue; }
+    if (inStr && c === '\n') { out += '\\n'; continue; }
+    if (inStr && c === '\r') { out += '\\r'; continue; }
+    if (inStr && c === '\t') { out += '\\t'; continue; }
+    out += c;
   }
-  return result;
+  return out;
 }
+
 
 const PORT = process.env.PORT || 3000;
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
