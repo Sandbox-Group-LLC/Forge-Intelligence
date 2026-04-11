@@ -1,5 +1,5 @@
 import { useUser, useClerk, SignOutButton, SignedIn, SignedOut } from '@clerk/clerk-react';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import './TopBar.css';
 
@@ -74,6 +74,18 @@ export function TopBar({ pageTitle }: { pageTitle?: string }) {
   const { user } = useUser();
   const { openUserProfile } = useClerk();
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [menuOpen]);
   const [brandMenuOpen, setBrandMenuOpen] = useState(false);
 
   const currentBrand = allBrands?.find(b => b.id === activeBrandId) || allBrands?.[0];
@@ -194,7 +206,7 @@ export function TopBar({ pageTitle }: { pageTitle?: string }) {
             </span>
           </div>
         )}
-        <div className="user-area" style={{ position: 'relative' }}>
+        <div className="user-area" style={{ position: 'relative' }} ref={menuRef}>
           <SignedOut>
             <a href="https://accounts.forgeintelligence.ai/sign-in" style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.6)', textDecoration: 'none', fontWeight: 500, padding: '6px 12px', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8 }}>
               Sign In
@@ -215,7 +227,7 @@ export function TopBar({ pageTitle }: { pageTitle?: string }) {
           </button>
           {menuOpen && (
             <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: '#1a1f2e', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '8px 0', minWidth: 200, zIndex: 999, boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
-              onMouseLeave={() => setMenuOpen(false)}
+
             >
               <div style={{ padding: '8px 16px 10px', borderBottom: '1px solid rgba(255,255,255,0.08)', fontSize: '0.8rem', color: 'rgba(255,255,255,0.45)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {user?.primaryEmailAddress?.emailAddress || user?.firstName || 'Your account'}
