@@ -2473,7 +2473,7 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
     const raw = message.content[0].text;
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('Claude returned no valid JSON');
-    const profileData = JSON.parse(jsonMatch[0]);
+    const profileData = JSON.parse(sanitizeJson(jsonMatch[0]));
 
     // Inject discovered competitors into profile
     profileData.discoveredCompetitors = sonarCompetitors;
