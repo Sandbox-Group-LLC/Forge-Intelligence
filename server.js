@@ -4902,17 +4902,17 @@ app.get('/api/hubspot/auth', (req, res) => {
   // Scopes match exactly what is configured as Required in HubSpot app Auth settings
   const scopes = [
     'content',
-    'crm.objects.companies.read',
-    'crm.objects.companies.write',
-    'crm.objects.contacts.read',
+    'oauth',
+    'crm.objects.owners.read',
     'crm.objects.contacts.write',
+    'crm.objects.companies.write',
+    'crm.objects.companies.read',
     'crm.objects.deals.read',
     'crm.objects.deals.write',
-    'crm.objects.owners.read',
-    'oauth'
-  ].join('%20');
+    'crm.objects.contacts.read'
+  ].join('+');
   
-  const url = `https://app.hubspot.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scopes}&state=${encodeURIComponent(state)}`;
+  const url = `https://app-na2.hubspot.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scopes}&state=${encodeURIComponent(state)}`;
   res.json({ authUrl: url });
 });
 
