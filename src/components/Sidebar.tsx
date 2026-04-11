@@ -114,6 +114,11 @@ const icons = {
       <path d="M10 6.5V4"/><path d="M14 6.5V4"/>
     </svg>
   ),
+  mail: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+    </svg>
+  ),
   sendCloud: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <line x1="22" y1="2" x2="11" y2="13"/>
@@ -179,6 +184,7 @@ const NAV_ROUTES: Partial<Record<ViewType, string>> = {
   'brand-profile':        '/app/context-hub',
   'strategy':             '/app/context-hub',
   'brain-history':        '/app/context-hub',
+  'email-campaign':       '/app/email-campaign',
   'content-library':      '/app/content-library',
   'content-import':       '/app/content-import',
   'topic-queue':          '/app/topic-queue',
@@ -203,6 +209,7 @@ const topNavItems: TopNavItem[] = [
   { id: 'authenticity-enricher', label: 'Authenticity Enricher', icon: 'shieldCheck',href: '/app/authenticity-enricher' },
   { id: 'content-generator',     label: 'Content Generator',     icon: 'fileText',   href: '/app/content-generator' },
   { id: 'campaign-generator',    label: 'Campaign Generator',    icon: 'layers',     href: '/app/campaign-generator' },
+  { id: 'email-campaign',        label: 'Email Campaign',         icon: 'mail',       href: '/app/email-campaign' },
   { id: 'compliance-gate',       label: 'Compliance Gate',       icon: 'shieldCheck',href: '/app/compliance-gate' },
 
   { id: 'performance',           label: 'Performance',           icon: 'barChart2',  href: '/app/performance' },
@@ -215,7 +222,7 @@ export function Sidebar() {
     '/app/geo-strategist', '/app/authenticity-enricher', '/app/content-generator',
     '/app/campaign-generator', '/app/compliance-gate', '/app/publishing-queue',
     '/app/content-library', '/app/content-import', '/app/topic-queue',
-    '/app/performance', '/app/integrations', '/app/admin',
+    '/app/performance', '/app/integrations', '/app/admin', '/app/email-campaign',
   ];
   // Never gate while auth is still resolving — brandProfileId would be undefined
   const handleGatedClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string, label: string) => {
