@@ -7439,6 +7439,15 @@ pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS is_paid BOOLEAN 
     await pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS clerk_user_id TEXT`).catch(() => {});
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_bp_clerk ON brand_profiles(clerk_user_id)`).catch(() => {});
 pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS onboard_session_id TEXT`).catch(() => {});
+  await pool.query(`CREATE TABLE IF NOT EXISTS payment_events (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    brand_profile_id TEXT NOT NULL,
+    order_id TEXT,
+    amount NUMERIC(10,2) DEFAULT 99.00,
+    currency VARCHAR(10) DEFAULT 'USD',
+    source VARCHAR(50) DEFAULT 'paypal',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )`).catch(() => {});
 
 // POST /api/onboard/analyze — landing page entry point
 // Creates a UUID, seeds the brain, fires Context Agent, returns session
