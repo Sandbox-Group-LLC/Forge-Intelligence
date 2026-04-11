@@ -39,12 +39,29 @@ function buildXOAuthHeader(method, url, apiKey, apiSecret, accessToken, accessSe
 
 // ── sanitizeJson — strip control chars from Claude JSON responses ─────────────
 function sanitizeJson(str) {
-  // Strip markdown fences and non-printable control chars only
-  // Do NOT escape newlines — they are valid JSON structural whitespace
-  return str
-    .replace(/```json\s*/g, '')
-    .replace(/```\s*/g, '')
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
+  // Strip markdown fences first
+  str = str.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+  // Escape bare newlines/tabs that appear inside JSON string values
+  // Strategy: walk char by char, track whether we're inside a string
+  let result = '';
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    if (escaped) { result += ch; escaped = false; continue; }
+    if (ch === '\\') { result += ch; escaped = true; continue; }
+    if (ch === '"') { inString = !inString; result += ch; continue; }
+    if (inString) {
+      if (ch === '\n') { result += '\\n'; continue; }
+      if (ch === '\r') { result += '\\r'; continue; }
+      if (ch === '\t') { result += '\\t'; continue; }
+      // Strip other control chars inside strings
+      const code = ch.charCodeAt(0);
+      if (code < 0x20) continue;
+    }
+    result += ch;
+  }
+  return result;
 }
 
 const PORT = process.env.PORT || 3000;
@@ -2449,7 +2466,7 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
 
 Analyze the brand at: ${brandUrl}${competitorSection}${icpSection}${marketSection}${audienceSection}${strategicSection}${patternSection}${mistakeSection}
 
-Return ONLY valid JSON (no markdown, no explanation):
+Return ONLY valid JSON (no markdown, no explanation, no newlines inside string values — use spaces instead):
 {
   "voiceProfile": {
     "summary": "string",
