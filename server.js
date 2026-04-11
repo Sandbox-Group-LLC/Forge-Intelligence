@@ -39,13 +39,12 @@ function buildXOAuthHeader(method, url, apiKey, apiSecret, accessToken, accessSe
 
 // ── sanitizeJson — strip control chars from Claude JSON responses ─────────────
 function sanitizeJson(str) {
+  // Strip markdown fences and non-printable control chars only
+  // Do NOT escape newlines — they are valid JSON structural whitespace
   return str
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')  // control chars
-    .replace(/\n/g, '\\n')   // bare newlines inside strings
-    .replace(/\r/g, '\\r')   // bare carriage returns
-    .replace(/\t/g, '\\t')   // bare tabs
-    .replace(/\\n/g, '\\n')  // already escaped — leave alone (idempotent via re-escape is fine)
-    .replace(/```json\s*/g, '').replace(/```\s*/g, '');  // strip markdown fences
+    .replace(/```json\s*/g, '')
+    .replace(/```\s*/g, '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
 }
 
 const PORT = process.env.PORT || 3000;
