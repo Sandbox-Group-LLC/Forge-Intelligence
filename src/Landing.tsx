@@ -52,6 +52,7 @@ export default function Landing() {
     setStatus('loading');
     setError('');
     const brandUrl = trimmed.startsWith('http') ? trimmed : `https://${trimmed}`;
+    await handleLookup(brandUrl);
     sessionStorage.setItem('forge_onboard_url', brandUrl);
     window.location.href = '/app/context-hub?view=active-run';
   };
@@ -66,7 +67,7 @@ export default function Landing() {
     setReturning(null);
   };
 
-  // E5: Domain lookup — allows mobile users with wiped localStorage to resume by typing their domain
+  // E5: Domain lookup — allows mobile users with wiped localStorage to resume
   const handleLookup = async (brandUrl: string) => {
     if (!brandUrl.trim()) return;
     const normalized = brandUrl.trim().startsWith('http') ? brandUrl.trim() : `https://${brandUrl.trim()}`;
