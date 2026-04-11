@@ -249,6 +249,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const stages = initialProcessingStages.map(s => ({ ...s, status: 'pending' as const }));
     setProcessingStages(stages);
 
+    // Fire API call immediately — runs concurrently with the stage animation
     const analyzePromise = fetch('/api/context-hub/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -265,34 +266,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
         checkBrainFirst: analysisInput.checkBrainFirst,
         saveToBrain: analysisInput.saveToBrain,
       }),
+    }).then(async r => {
+      if (r.status === 409) {
+        const errData = await r.json();
+        window.dispatchEvent(new CustomEvent('forge:scan-blocked', { detail: { message: errData.message } }));
+        throw new Error('domain-claimed');
+      }
+      return r.json();
     });
 
-    const stageTimings = [2000, 3000, 4000, 3000];
-    for (let i = 0; i < stageTimings.length; i++) {
-      setProcessingStages(prev => prev.map((s, idx) =>
-        idx === i ? { ...s, status: 'running' as const, startTime: Date.now() } : s
-      ));
-      await new Promise(r => setTimeout(r, stageTimings[i]));
-      setProcessingStages(prev => prev.map((s, idx) =>
-        idx === i ? { ...s, status: 'complete' as const, endTime: Date.now() } : s
-      ));
-    }
-
-    setProcessingStages(prev => prev.map((s, idx) =>
-      idx === stages.length - 1 ? { ...s, status: 'running' as const, startTime: Date.now() } : s
-    ));
+    // Drive all 5 stages with 75s total timing — matches landing page onboard flow
+    const stageTimings = [12500, 15500, 19000, 15500, 12500];
+    let cancelled = false;
+    const driveStages = async () => {
+      for (let i = 0; i < stageTimings.length; i++) {
+        if (cancelled) break;
+        setProcessingStages(prev => prev.map((s, idx) =>
+          idx === i ? { ...s, status: 'running' as const, startTime: Date.now() } : s
+        ));
+        await new Promise(r => setTimeout(r, stageTimings[i]));
+        if (cancelled) break;
+        setProcessingStages(prev => prev.map((s, idx) =>
+          idx === i ? { ...s, status: 'complete' as const, endTime: Date.now() } : s
+        ));
+      }
+    };
+    driveStages();
 
     try {
-      const res = await analyzePromise;
-      const data = await res.json();
+      const data = await analyzePromise;
+      cancelled = true;
       if (!data.success) throw new Error(data.error);
 
-      setProcessingStages(prev => prev.map(s => ({ ...s, status: 'complete' as const, endTime: Date.now() })));
+      setProcessingStages(initialProcessingStages.map(s => ({ ...s, status: 'complete' as const, endTime: Date.now() })));
       setBrandProfile(data.data as BrandProfile);
 
-      // Persist brand ID across route changes so GateModal always has it
+      // Persist brand ID in localStorage AND URL param — URL survives mobile Safari localStorage wipes
       const scannedId = (data.data as any)?.id || (data.data as any)?.brandProfileId;
-      if (scannedId) localStorage.setItem(ACTIVE_BRAND_KEY, scannedId);
+      if (scannedId) {
+        try { localStorage.setItem(ACTIVE_BRAND_KEY, scannedId); } catch(e) {}
+        try { localStorage.setItem('forge_active_brand', JSON.stringify({
+          id: data.data.id, brandUrl: data.data.brandUrl, brandName: data.data.brandName,
+          expiresAt: data.data.expiresAt || null, isPaid: data.data.isPaid || false,
+        })); } catch(e) {}
+        window.history.replaceState({}, '', `/app/context-hub?brand=${scannedId}`);
+      }
 
       const token = isSignedIn ? await getToken() : null;
       fetchBrains(token).then(setHistoryEntries).catch(() => {});
@@ -300,6 +318,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setIsProcessing(false);
       setCurrentView('brand-profile');
     } catch (err) {
+      cancelled = true;
+      if (err instanceof Error && err.message === 'domain-claimed') {
+        setProcessingStages(prev => prev.map((s, idx) =>
+          idx === 0 ? { ...s, status: 'error' as const, endTime: Date.now() } : s
+        ));
+        setIsProcessing(false);
+        setCurrentView('new-analysis');
+        return;
+      }
       setProcessingStages(prev => prev.map((s, idx) =>
         idx === stages.length - 1
           ? { ...s, status: 'error' as const, message: err instanceof Error ? err.message : 'Analysis failed' }
