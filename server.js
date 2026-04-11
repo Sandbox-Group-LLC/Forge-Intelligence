@@ -36,6 +36,18 @@ function buildXOAuthHeader(method, url, apiKey, apiSecret, accessToken, accessSe
     .map(([k, v]) => `${encodeURIComponent(k)}="${encodeURIComponent(v)}"`)
     .join(', ');
 }
+
+// ── sanitizeJson — strip control chars from Claude JSON responses ─────────────
+function sanitizeJson(str) {
+  return str
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')  // control chars
+    .replace(/\n/g, '\\n')   // bare newlines inside strings
+    .replace(/\r/g, '\\r')   // bare carriage returns
+    .replace(/\t/g, '\\t')   // bare tabs
+    .replace(/\\n/g, '\\n')  // already escaped — leave alone (idempotent via re-escape is fine)
+    .replace(/```json\s*/g, '').replace(/```\s*/g, '');  // strip markdown fences
+}
+
 const PORT = process.env.PORT || 3000;
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const CLERK_JWKS_URL = process.env.CLERK_JWKS_URL || 'https://clerk.forgeintelligence.ai/.well-known/jwks.json';
