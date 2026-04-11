@@ -8727,7 +8727,20 @@ app.get('/api/hubspot/pipeline/:brandProfileId', requireAuth, async (req, res) =
   const { brandProfileId } = req.params;
   if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
   try {
-    const accessToken = await refreshHubSpotToken(brandProfileId).catch(() => null);
+    // Check if HubSpot channel exists at all
+    const chanCheck = await pool.query(
+      `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'hubspot' AND is_active = true LIMIT 1`,
+      [brandProfileId]
+    );
+    if (!chanCheck.rows.length) return res.json({ success: true, connected: false, message: 'HubSpot not connected' });
+
+    let accessToken;
+    try {
+      accessToken = await refreshHubSpotToken(brandProfileId);
+    } catch(refreshErr) {
+      // Channel exists but token is expired/invalid — distinguish from "not connected"
+      return res.json({ success: true, connected: true, tokenExpired: true, pipeline: 0, closedWon: 0, dealCount: 0, deals: [], syncStats: { totalContentSynced: 0, lastSynced: null, totalImpressions: 0, totalClicks: 0 } });
+    }
     if (!accessToken) return res.json({ success: true, connected: false, message: 'HubSpot not connected' });
 
     const dealsRes = await fetch(
