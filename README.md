@@ -48,6 +48,7 @@
 | 3 | Authenticity Enricher | ✅ LIVE | Claude Sonnet 4.6 |
 | 4 | Content Generator | ✅ LIVE | Claude Sonnet 4.6 |
 | 4.5 | Campaign Generator | ✅ LIVE | Claude Sonnet 4.6 |
+| 4.6 | Email Campaign Generator | ✅ LIVE | Claude Sonnet 4.6 |
 | 5 | Compliance Gate | ✅ LIVE | Claude Sonnet 4.6 |
 | 6 | Publishing & Distribution | ✅ LIVE | Queue + multi-channel |
 | 7 | Performance Intelligence | ✅ LIVE | LinkedIn + X + Ghost + GSC + GEO |
@@ -178,6 +179,7 @@ Page-level CSS classes (`.cl-page`, `.ci-page`, etc.) must NOT add their own pad
 | 3 | `/app/authenticity-enricher` | E-E-A-T signals, SME injection map, author schema |
 | 4 | `/app/content-generator` | Full article (SSE stream), confidence tiers, hero image |
 | 4.5 | `/app/campaign-generator` | 8-article campaign plan + generation |
+| 4.6 | `/app/email-campaign` | Brief-driven email sequences, 3 subject variants, HubSpot push |
 | 5 | `/app/compliance-gate` | AI critique + human refinement → brain_mistakes write |
 | 6 | `/app/publishing-queue` | Multi-channel publish, UTM, schedule, Smart Export |
 | 7 | `/app/performance` | LinkedIn/X/Ghost/GSC analytics, decay alerts, GEO citations, pattern dashboard |
