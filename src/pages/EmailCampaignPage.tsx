@@ -209,7 +209,6 @@ export default function EmailCampaignPage() {
   const [brief, setBrief] = useState<Brief>(EMPTY_BRIEF);
   const [campaignId, setCampaignId] = useState('');
   const [emails, setEmails] = useState<EmailRecord[]>([]);
-  const [generating, setGenerating] = useState(false);
   const [genStatus, setGenStatus] = useState('');
   const [genProgress, setGenProgress] = useState(0);
   const [error, setError] = useState('');
@@ -219,7 +218,6 @@ export default function EmailCampaignPage() {
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [pushing, setPushing] = useState(false);
   const [pushResult, setPushResult] = useState('');
-  const [copied, setCopied] = useState('');
   const [sequenceNotes, setSequenceNotes] = useState('');
   const esRef = useRef<EventSource | null>(null);
 
@@ -238,7 +236,6 @@ export default function EmailCampaignPage() {
   const handleGenerate = async () => {
     if (!activeBrandId) return;
     setError('');
-    setGenerating(true);
     setStep('generating');
     setEmails([]);
     setGenProgress(0);
@@ -275,8 +272,7 @@ export default function EmailCampaignPage() {
         const campRes = await fetch(`/api/email-campaign/${newCampaignId}`, { headers: ah });
         const campData = await campRes.json();
         if (campData.success) setEmails(campData.emails);
-        setGenerating(false);
-        setStep('results');
+          setStep('results');
         // Refresh campaigns list
         fetch(`/api/email-campaign/list/${activeBrandId}`, { headers: ah }).then(r => r.json()).then(d => {
           if (d.success) setCampaigns(d.campaigns);
@@ -284,13 +280,11 @@ export default function EmailCampaignPage() {
       });
       es.addEventListener('error', (e) => {
         try { const d = JSON.parse((e as any).data); setError(d.message); } catch {}
-        setGenerating(false);
-        setStep('brief');
+          setStep('brief');
         es.close();
       });
     } catch (err: any) {
       setError(err.message);
-      setGenerating(false);
       setStep('brief');
     }
   };
