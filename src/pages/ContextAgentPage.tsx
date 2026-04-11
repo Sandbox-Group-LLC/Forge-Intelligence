@@ -82,9 +82,14 @@ function ContextAgentPage() {
         setIsProcessing(false);
         setCurrentView('brand-profile');
       })
-      .catch(() => {
+      .catch((err) => {
         cancelled = true;
         setIsProcessing(false);
+        setCurrentView('new-analysis');
+        // Surface error via custom event so NewAnalysis can show it
+        window.dispatchEvent(new CustomEvent('forge:scan-error', {
+          detail: { message: err?.message || 'Analysis failed. Please try again.' }
+        }));
       });
   }, []);
 
