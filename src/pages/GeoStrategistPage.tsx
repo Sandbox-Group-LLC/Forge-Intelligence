@@ -57,7 +57,7 @@ function GeoStrategistContent() {
     if (profileId) {
       setSelectedBrainId(profileId);
     } else {
-      const id = activeBrand?.id || localStorage.getItem('forge_active_brand_id') || '';
+      const id = activeBrand?.id || (() => { try { return localStorage.getItem('forge_active_brand_id'); } catch(e) { return ''; } })() || new URLSearchParams(window.location.search).get('brand') || '';
       if (id) setSelectedBrainId(id);
     }
   }, []);
