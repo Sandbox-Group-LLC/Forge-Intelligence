@@ -58,7 +58,7 @@ const stageMessages: Record<string, string[]> = {
 };
 
 export function ActiveRun() {
-  const { processingStages, analysisInput } = useApp();
+  const { processingStages, analysisInput, isProcessing } = useApp();
   const [elapsedTime, setElapsedTime] = useState(0);
   const [activityLog, setActivityLog] = useState<{ time: number; message: string }[]>([]);
 
@@ -67,13 +67,21 @@ export function ActiveRun() {
   const progress = (completedCount / processingStages.length) * 100;
 
   useEffect(() => {
-    const startTime = Date.now();
+    // Use sessionStorage to persist start time across remounts
+    const key = 'forge_run_start';
+    if (!sessionStorage.getItem(key)) sessionStorage.setItem(key, String(Date.now()));
+    const startTime = Number(sessionStorage.getItem(key));
     const timer = setInterval(() => {
       setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
     }, 1000);
-
     return () => clearInterval(timer);
   }, []);
+
+  // Clear stored start time when processing completes
+  const allComplete = processingStages.every(s => s.status === 'complete' || s.status === 'error');
+  useEffect(() => {
+    if (allComplete) sessionStorage.removeItem('forge_run_start');
+  }, [allComplete]);
 
   useEffect(() => {
     if (currentStage) {
