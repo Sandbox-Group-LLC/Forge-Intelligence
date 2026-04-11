@@ -262,7 +262,7 @@ export default function PerformanceDashboardPage() {
     if (!brandProfileId || batchScoring) return;
     setBatchScoring(true);
     const timeout = setTimeout(() => setBatchScoring(false), 30_000);
-    const headers: Record<string,string> = { 'Content-Type': 'application/json' };
+    const tok = authTokenRef.current || authToken || '';
     try {
       const r = await fetch('/api/precog/batch', { method: 'POST', headers, body: JSON.stringify({ brandProfileId }) });
       const d = await r.json();
