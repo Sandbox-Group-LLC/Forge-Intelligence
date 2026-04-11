@@ -1422,3 +1422,50 @@ function TrendChart({ data, onSync: _onSync }: { data: TrendPoint[]; onSync?: ()
 }
 
 // ── Semantic Score Panel ──────────────────────────────────────────────────────
+function SemanticScorePanel({ signals, prediction, recommendedActions, color: _color }: {
+  signals: any[];
+  prediction?: string;
+  recommendedActions: string[];
+  color: string;
+}) {
+  if (!signals || signals.length === 0) return null;
+  const pos = signals.filter(s => s.impact === 'positive').length;
+  const neg = signals.filter(s => s.impact === 'negative').length;
+  const neu = signals.filter(s => s.impact === 'neutral').length;
+  const maxStrength = Math.max(...signals.map(s => s.strength ?? 0.5), 0.01);
+  return (
+    <div className="ssp-wrap">
+      <div className="ssp-header">
+        <span className="ssp-label">Signal Breakdown</span>
+        <div className="ssp-counts">
+          {pos > 0 && <span className="ssp-count ssp-count-pos">+{pos}</span>}
+          {neg > 0 && <span className="ssp-count ssp-count-neg">-{neg}</span>}
+          {neu > 0 && <span className="ssp-count ssp-count-neu">{neu}</span>}
+        </div>
+      </div>
+      <div className="ssp-signals">
+        {signals.slice(0, 5).map((s: any, i: number) => (
+          <div key={i} className={`ssp-signal ssp-signal-${s.impact}`}>
+            <span className="ssp-signal-dot" />
+            <span className="ssp-signal-text">{s.label}</span>
+            <div className="ssp-signal-bar-wrap">
+              <span className="ssp-signal-bar" style={{
+                width: `${Math.round(((s.strength ?? 0.5) / maxStrength) * 100)}%`,
+                background: s.impact === 'positive' ? '#22C55E' : s.impact === 'negative' ? '#EF4444' : '#94A3B8',
+              }} />
+            </div>
+          </div>
+        ))}
+      </div>
+      {prediction && <div className="ssp-prediction">{prediction}</div>}
+      {recommendedActions.length > 0 && (
+        <div className="ssp-actions">
+          <span className="ssp-actions-label">Actions:</span>
+          {recommendedActions.slice(0, 2).map((a: string, i: number) => (
+            <span key={i} className="ssp-action-chip">{a}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
