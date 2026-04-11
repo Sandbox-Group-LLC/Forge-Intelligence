@@ -276,6 +276,13 @@ BEFORE generating:
 ### Recently Resolved
 | Item | Resolved | Notes |
 |------|----------|-------|
+| HubSpot Pipeline tab — 30-Day Impressions + Published Posts showing | April 10, 2026 | Added `pipeline` to exclusion lists on both sections — both branches |
+| HubSpot OAuth callback blank screen | April 10, 2026 | `HUBSPOT_REDIRECT_URI` corrected to `https://dev.forgeintelligence.ai/auth/hubspot/callback` |
+| HubSpot client_id mismatch | April 10, 2026 | `HUBSPOT_CLIENT_ID` in Render corrected to match HubSpot app portal |
+
+### Recently Resolved
+| Item | Resolved | Notes |
+|------|----------|-------|
 | Full light mode CSS sweep | April 9, 2026 | Predictions tab cards, Publishing Queue, all major pages done |
 | WordPress live API publish | April 9, 2026 | Confirmed working |
 | Webflow live API publish | April 9, 2026 | Confirmed working |
