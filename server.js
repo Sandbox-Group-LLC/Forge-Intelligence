@@ -4899,15 +4899,15 @@ app.get('/api/hubspot/auth', (req, res) => {
   const nonce = randomBytes(16).toString('hex');
   const state = `${brandProfileId}|${nonce}`;
   
-  // Scopes must match exactly what is configured as Required in HubSpot app Auth settings
+  // Scopes match exactly what is configured as Required in HubSpot app Auth settings
   const scopes = [
-    'cms.knowledge_base.articles.publish',
-    'cms.knowledge_base.articles.read',
-    'cms.knowledge_base.articles.write',
+    'content',
     'crm.objects.companies.read',
     'crm.objects.companies.write',
     'crm.objects.contacts.read',
     'crm.objects.contacts.write',
+    'crm.objects.deals.read',
+    'crm.objects.deals.write',
     'crm.objects.owners.read',
     'oauth'
   ].join('%20');
