@@ -944,7 +944,7 @@ export default function PerformanceDashboardPage() {
                                   ) : null}
                                 </div>
                               )}
-                              {signals.length > 0 && (
+                              <SemanticScorePanel signals={signals} prediction={bd.prediction} recommendedActions={actions} color={color} />
                                 <div className="perf-pred-signals">
                                   {signals.slice(0, 4).map((s: any, i: number) => (
                                     <div key={i} className={`perf-pred-signal perf-pred-signal-${s.impact}`}>
