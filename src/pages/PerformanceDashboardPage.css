@@ -1672,3 +1672,386 @@
   .brain-header-right { align-items: flex-start; }
   .brain-rules-grid { grid-template-columns: 1fr; }
 }
+
+/* ── Predictions Tab ─────────────────────────────────────────────────────── */
+.perf-predictions-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.perf-accuracy-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding: 8px 14px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.perf-accuracy-val {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.perf-accuracy-sep { color: var(--color-border); }
+
+.perf-accuracy-building {
+  font-style: italic;
+  color: var(--color-text-muted);
+}
+
+.perf-predictions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.perf-predictions-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 32px;
+  text-align: center;
+  color: var(--color-text-muted);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.perf-predictions-empty p { margin: 0; font-size: 0.9rem; }
+.perf-predictions-empty-sub {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  margin-top: 8px !important;
+  max-width: 40ch;
+  line-height: 1.6;
+}
+
+/* Prediction card */
+.perf-pred-card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition-normal);
+}
+
+.perf-pred-card:hover { box-shadow: var(--shadow-md); }
+
+.perf-pred-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.perf-pred-left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.perf-pred-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  line-height: 1.35;
+}
+
+.perf-pred-meta {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.perf-pred-score-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  min-width: 72px;
+}
+
+.perf-pred-score {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--pred-color, var(--color-accent));
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.perf-pred-tier {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--pred-color, var(--color-text-muted));
+  opacity: 0.8;
+}
+
+.perf-pred-insufficient {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+  text-align: center;
+}
+
+.perf-pred-direction {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  margin-top: 2px;
+}
+.perf-pred-direction.correct   { background: rgba(34,197,94,0.12);  color: #22C55E; }
+.perf-pred-direction.incorrect { background: rgba(239,68,68,0.12);  color: #EF4444; }
+
+.perf-pred-prediction {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  line-height: 1.55;
+  padding: 10px 14px;
+  background: var(--color-bg-elevated);
+  border-radius: 8px;
+  border-left: 3px solid var(--pred-color, var(--color-accent));
+}
+
+.perf-pred-range {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 0.8125rem;
+}
+
+.perf-pred-range-label {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.perf-pred-range-val {
+  font-weight: 700;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.perf-pred-range-avg {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.perf-pred-actual {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.perf-pred-pending {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.perf-pred-outcome {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+.perf-pred-outcome-hit  { background: rgba(34,197,94,0.12); color: #22C55E; }
+.perf-pred-outcome-miss { background: rgba(239,68,68,0.12); color: #EF4444; }
+
+.perf-pred-signals {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.perf-pred-signal {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+
+.perf-pred-signal-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.perf-pred-signal-positive .perf-pred-signal-dot { background: #22C55E; }
+.perf-pred-signal-negative .perf-pred-signal-dot { background: #EF4444; }
+.perf-pred-signal-neutral  .perf-pred-signal-dot { background: #94A3B8; }
+
+.perf-pred-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.perf-pred-actions-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+
+.perf-pred-action {
+  font-size: 0.75rem;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-subtle);
+  color: var(--color-text-secondary);
+}
+
+/* ── Semantic Score Panel ────────────────────────────────────────────────── */
+.ssp-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--color-bg-elevated);
+  border-radius: 8px;
+  border: 1px solid var(--color-border-subtle);
+}
+
+.ssp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ssp-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+}
+
+.ssp-counts {
+  display: flex;
+  gap: 6px;
+}
+
+.ssp-count {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+.ssp-count-pos { background: rgba(34,197,94,0.12);  color: #22C55E; }
+.ssp-count-neg { background: rgba(239,68,68,0.12);  color: #EF4444; }
+.ssp-count-neu { background: var(--color-bg-card);  color: var(--color-text-muted); }
+
+.ssp-signals {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.ssp-signal {
+  display: grid;
+  grid-template-columns: 8px 1fr 80px;
+  align-items: center;
+  gap: 8px;
+}
+
+.ssp-signal-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.ssp-signal-positive .ssp-signal-dot { background: #22C55E; }
+.ssp-signal-negative .ssp-signal-dot { background: #EF4444; }
+.ssp-signal-neutral  .ssp-signal-dot { background: #94A3B8; }
+
+.ssp-signal-text {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+}
+
+.ssp-signal-bar-wrap {
+  height: 5px;
+  background: var(--color-border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.ssp-signal-bar {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.5s ease;
+}
+
+.ssp-prediction {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  font-style: italic;
+  padding-top: 6px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.ssp-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 6px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.ssp-actions-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+
+.ssp-action-chip {
+  font-size: 0.75rem;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-subtle);
+  color: var(--color-text-secondary);
+}
+
+/* ── Accuracy banner stat ────────────────────────────────────────────────── */
+.perf-accuracy-stat {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
