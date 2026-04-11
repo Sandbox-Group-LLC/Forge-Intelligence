@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { AppShell } from '../layouts/AppShell';
 import { useApp } from '../context/AppContext';
-import './GeoStrategistPage.css';
+import './GeoStrategistPage.css'; // TODO M11: create AuthenticityEnricherPage.css
 import GateModal from '../components/GateModal';
 import '../components/GateModal.css';
 // Inline SVG icon components (no lucide-react dependency)
