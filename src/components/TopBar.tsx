@@ -195,7 +195,7 @@ export function TopBar({ pageTitle }: { pageTitle?: string }) {
           </div>
         )}
 
-        {brandProfile && activeBrand && (
+        {brandProfile && activeBrandId && (
           <div className={`cache-indicator ${brandProfile.cacheStatus}`} title={`Brain last updated: ${new Date(brandProfile.updatedAt).toLocaleDateString()}`}>
             <span className="cache-icon">
               {brandProfile.cacheStatus === 'fresh' ? icons.zap : icons.clock}
