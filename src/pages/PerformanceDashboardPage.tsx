@@ -144,10 +144,10 @@ export default function PerformanceDashboardPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
   const [error, setError] = useState('');
-  const [pipeline, setPipeline] = useState<{ connected: boolean; pipeline: number; closedWon: number; dealCount: number; deals: { id: string; name: string; amount: number; stage: string; source: string; closeDate: string | null }[]; syncStats: { totalContentSynced: number; lastSynced: string | null; totalImpressions: number; totalClicks: number }; message?: string } | null>(null);
-  const [pipelineLoading, setPipelineLoading] = useState(false);
-  const [pushingToHubSpot, setPushingToHubSpot] = useState(false);
-  const [pushMsg, setPushMsg] = useState('');
+  const [_pipeline, _setPipeline] = useState<null>(null);
+  const [_pipelineLoading, _setPipelineLoading] = useState(false);
+  const [_pushingToHubSpot, _setPushingToHubSpot] = useState(false);
+  const [_pushMsg, _setPushMsg] = useState('');
 
   const loadCampaigns = useCallback(async () => {
     if (!brandProfileId) return;
