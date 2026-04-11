@@ -107,12 +107,8 @@ export function BrandProfile() {
             <span className="btn-icon">{icons.download}</span>
             Export JSON
           </button>
-          <button className="btn-action primary">
-            <span className="btn-icon">{icons.save}</span>
-            Save Version
-          </button>
           <a
-            href={`/geo-strategist?profileId=${brandProfile.id}`}
+            href={`/app/geo-strategist?profileId=${brandProfile.id}`}
             className="btn-action geo-cta"
           >
             <span className="btn-icon">{icons.zap}</span>
