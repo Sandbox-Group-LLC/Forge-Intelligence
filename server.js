@@ -7697,11 +7697,14 @@ async function verifyBrandAccess(brandProfileId, userId) {
 
 async function requireAuth(req, res, next) {
   try {
+    // Accept token from Authorization header OR ?token= query param (needed for EventSource SSE)
     const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
+    const queryToken = req.query?.token;
+    const rawToken = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : queryToken;
+    if (!rawToken) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
-    const token = authHeader.split(' ')[1];
+    const token = rawToken;
     if (!clerkJWKS) return res.status(500).json({ error: 'Auth not configured' });
     const { payload } = await jwtVerify(token, clerkJWKS, { algorithms: ['RS256'] });
     req.userId = payload.sub;
