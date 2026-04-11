@@ -450,7 +450,7 @@ export default function PerformanceDashboardPage() {
             <p className="geo-description">Content analytics across all channels and campaigns.</p>
           </div>
           <div className="perf-header-right">
-            {!['geo', 'gsc', 'predictions', 'patterns'].includes(activeChannel) && <div className="perf-sync-wrap">
+            {!['geo', 'gsc', 'predictions', 'patterns', 'pipeline'].includes(activeChannel) && <div className="perf-sync-wrap">
               <div className="perf-btn-group">
               <button className={`perf-sync-btn ${syncing ? 'syncing' : ''}`} onClick={handleSync} disabled={syncing || !brandProfileId}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={syncing ? 'spin' : ''}>
