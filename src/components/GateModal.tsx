@@ -100,7 +100,7 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
   if (paid) return null;
 
   return (
-    <div className="gate-backdrop" onClick={onClose}>
+    <div className="gate-backdrop">
       <div className="gate-modal" onClick={e => e.stopPropagation()}>
         <button className="gate-close" onClick={onClose}>✕</button>
 
