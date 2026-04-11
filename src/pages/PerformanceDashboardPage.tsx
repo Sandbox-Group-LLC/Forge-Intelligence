@@ -37,6 +37,12 @@ interface CampaignRow {
   channels: CampaignChannelBreakdown[];
   top_articles: CampaignTopArticle[];
 }
+interface PipelineData {
+  connected: boolean; pipeline: number; closedWon: number; dealCount: number;
+  deals: { id: string; name: string; amount: number; stage: string; source: string; closeDate: string | null }[];
+  syncStats: { totalContentSynced: number; lastSynced: string | null; totalImpressions: number; totalClicks: number };
+  message?: string;
+}
 
 const CHANNELS = [
   { id: 'patterns', label: 'Patterns', live: true },
