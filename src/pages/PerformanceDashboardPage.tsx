@@ -831,6 +831,10 @@ export default function PerformanceDashboardPage() {
                   <div className="perf-empty">
                     <p>HubSpot not connected. <a href="/app/integrations" style={{ color: 'var(--color-accent)' }}>Connect in Integrations →</a></p>
                   </div>
+                ) : (pipeline as any).tokenExpired ? (
+                  <div className="perf-empty">
+                    <p>HubSpot token expired. <a href="/app/integrations" style={{ color: 'var(--color-accent)' }}>Reconnect in Integrations →</a></p>
+                  </div>
                 ) : (
                   <>
                     <div className="perf-kpis">
