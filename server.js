@@ -8567,6 +8567,227 @@ app.post('/api/admin/relay', async (req, res) => {
 // Scheduled: POST /api/digest/send-all (EasyCron, admin key)
 // Or per-brand:               POST /api/digest/send/:brandProfileId (requireAuth)
 
+// ══════════════════════════════════════════════════════════════════════════════
+// ── HubSpot Track A — Campaign Attribution & Pipeline Influence ───────────────
+// ══════════════════════════════════════════════════════════════��═══════════════
+
+// DB migrations for Track A
+pool.query(`CREATE TABLE IF NOT EXISTS hubspot_sync_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  brand_profile_id TEXT NOT NULL,
+  hubspot_campaign_id TEXT,
+  content_id TEXT,
+  impressions INTEGER DEFAULT 0,
+  clicks INTEGER DEFAULT 0,
+  synced_at TIMESTAMPTZ DEFAULT NOW()
+)`).catch(() => {});
+pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS hubspot_campaign_id TEXT`).catch(() => {});
+pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS hubspot_synced_at TIMESTAMPTZ`).catch(() => {});
+
+// Helper: create or update a HubSpot Campaign object for a Forge campaign
+// Requires Marketing Hub Starter. Silently returns null if not available.
+async function syncCampaignToHubSpot(brandProfileId, campaignId) {
+  try {
+    const accessToken = await refreshHubSpotToken(brandProfileId);
+    const campRes = await pool.query('SELECT * FROM campaigns WHERE id = $1', [campaignId]);
+    if (!campRes.rows.length) return null;
+    const campaign = campRes.rows[0];
+
+    if (campaign.hubspot_campaign_id) {
+      const patchRes = await fetch(`https://api.hubapi.com/marketing/v3/campaigns/${campaign.hubspot_campaign_id}`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: `${campaign.name} — Forge Intelligence` })
+      });
+      if (patchRes.status === 403) { console.log('[HS-TRACK-A] Marketing Hub Starter required'); return null; }
+      return campaign.hubspot_campaign_id;
+    }
+
+    const createRes = await fetch('https://api.hubapi.com/marketing/v3/campaigns', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: `${campaign.name} — Forge Intelligence`,
+        startDate: new Date(campaign.created_at).toISOString().split('T')[0],
+        utmParameters: {
+          source: 'forge',
+          medium: 'content',
+          campaign: campaign.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 50),
+        }
+      })
+    });
+    if (createRes.status === 403) { console.log('[HS-TRACK-A] Marketing Hub Starter required for campaign API'); return null; }
+    if (!createRes.ok) { console.log('[HS-TRACK-A] Create campaign failed:', createRes.status); return null; }
+    const created = await createRes.json();
+    const hsCampaignId = created.id;
+    await pool.query('UPDATE campaigns SET hubspot_campaign_id = $1, hubspot_synced_at = NOW() WHERE id = $2', [hsCampaignId, campaignId]);
+    console.log(`[HS-TRACK-A] Campaign created in HubSpot: ${hsCampaignId}`);
+    return hsCampaignId;
+  } catch(e) {
+    console.error('[HS-TRACK-A] syncCampaignToHubSpot error:', e.message);
+    return null;
+  }
+}
+
+// POST /api/hubspot/sync-campaign/:brandProfileId
+app.post('/api/hubspot/sync-campaign/:brandProfileId', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.params;
+  const { campaignId } = req.body;
+  if (!campaignId) return res.status(400).json({ error: 'campaignId required' });
+  if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+  try {
+    const hsCampaignId = await syncCampaignToHubSpot(brandProfileId, campaignId);
+    if (!hsCampaignId) return res.json({ success: false, message: 'HubSpot campaign sync skipped — Marketing Hub Starter required or HubSpot not connected' });
+    res.json({ success: true, hubspotCampaignId: hsCampaignId });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/hubspot/sync-performance/:brandProfileId
+// Pushes recent content_analytics into HubSpot as marketing event interactions.
+// Called manually from the Pipeline tab or after analytics sync.
+app.post('/api/hubspot/sync-performance/:brandProfileId', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.params;
+  if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+  try {
+    const accessToken = await refreshHubSpotToken(brandProfileId).catch(() => null);
+    if (!accessToken) return res.json({ success: false, message: 'HubSpot not connected' });
+
+    const analyticsRes = await pool.query(`
+      SELECT ca.content_id, ca.channel, ca.impressions, ca.clicks,
+             ca.reactions, ca.engagement_rate, ca.synced_at,
+             pq.title, pq.campaign_id,
+             c.name AS campaign_name, c.hubspot_campaign_id
+      FROM content_analytics ca
+      LEFT JOIN publishing_queue pq ON pq.content_id = ca.content_id
+      LEFT JOIN campaigns c ON c.id = pq.campaign_id
+      WHERE ca.brand_profile_id = $1
+        AND ca.impressions > 0
+        AND ca.synced_at > NOW() - INTERVAL '48 hours'
+      ORDER BY ca.synced_at DESC
+    `, [brandProfileId]);
+
+    if (!analyticsRes.rows.length) return res.json({ success: true, synced: 0, message: 'No recent analytics to push' });
+
+    let synced = 0;
+    for (const row of analyticsRes.rows) {
+      try {
+        let hsCampaignId = row.hubspot_campaign_id;
+        if (row.campaign_id && !hsCampaignId) {
+          hsCampaignId = await syncCampaignToHubSpot(brandProfileId, row.campaign_id);
+        }
+
+        const eventBody = {
+          externalEventId: `forge_${row.content_id}_${row.channel}`,
+          externalAccountId: brandProfileId,
+          eventName: row.title || 'Forge Content',
+          eventOrganizer: 'Forge Intelligence',
+          eventType: 'WEBINAR',
+          startDateTime: new Date(row.synced_at).toISOString(),
+          endDateTime: new Date(row.synced_at).toISOString(),
+          customProperties: [
+            { name: 'forge_channel', value: row.channel },
+            { name: 'forge_impressions', value: String(row.impressions || 0) },
+            { name: 'forge_clicks', value: String(row.clicks || 0) },
+            { name: 'forge_engagement_rate', value: String(row.engagement_rate || 0) },
+            { name: 'forge_content_id', value: row.content_id },
+            ...(hsCampaignId ? [{ name: 'hs_campaign_id', value: hsCampaignId }] : []),
+          ]
+        };
+
+        const eventRes = await fetch('https://api.hubapi.com/marketing/v3/marketing-events/events/upsert', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ inputs: [eventBody] })
+        });
+        if (eventRes.status === 403) { console.log('[HS-TRACK-A] Marketing Hub Starter required for marketing events'); break; }
+
+        await pool.query(
+          `INSERT INTO hubspot_sync_log (brand_profile_id, hubspot_campaign_id, content_id, impressions, clicks, synced_at)
+           VALUES ($1, $2, $3, $4, $5, NOW())`,
+          [brandProfileId, hsCampaignId || null, row.content_id, row.impressions || 0, row.clicks || 0]
+        );
+        synced++;
+      } catch(e) {
+        console.log('[HS-TRACK-A] Event push error:', e.message);
+      }
+    }
+
+    res.json({ success: true, synced, total: analyticsRes.rows.length });
+  } catch(e) {
+    console.error('[HS-TRACK-A] sync-performance error:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /api/hubspot/pipeline/:brandProfileId
+// Pulls influenced deal data from HubSpot CRM — raw pipeline $ from Forge UTM attribution.
+app.get('/api/hubspot/pipeline/:brandProfileId', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.params;
+  if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+  try {
+    const accessToken = await refreshHubSpotToken(brandProfileId).catch(() => null);
+    if (!accessToken) return res.json({ success: true, connected: false, message: 'HubSpot not connected' });
+
+    const dealsRes = await fetch(
+      'https://api.hubapi.com/crm/v3/objects/deals?properties=dealname,amount,dealstage,closedate,hs_analytics_source,hs_analytics_source_data_1,hs_analytics_source_data_2&limit=100',
+      { headers: { 'Authorization': `Bearer ${accessToken}` } }
+    );
+
+    if (!dealsRes.ok) {
+      if (dealsRes.status === 403) return res.json({ success: true, connected: true, pipeline: 0, deals: [], message: 'Deal read access not granted — ensure crm.objects.deals.read scope is authorized' });
+      throw new Error(`HubSpot API ${dealsRes.status}`);
+    }
+
+    const dealsData = await dealsRes.json();
+    const allDeals = dealsData.results || [];
+
+    // Filter to deals where first touch was a Forge-published UTM source
+    const forgeSources = new Set(['linkedin', 'x', 'ghost', 'wordpress', 'webflow', 'facebook', 'reddit', 'medium', 'forge']);
+    const forgeDeals = allDeals.filter(d => {
+      const src = d.properties?.hs_analytics_source_data_1?.toLowerCase() || '';
+      return forgeSources.has(src);
+    });
+
+    const totalPipeline = forgeDeals.reduce((sum, d) => sum + (parseFloat(d.properties?.amount || '0') || 0), 0);
+    const closedWon = forgeDeals.filter(d => d.properties?.dealstage === 'closedwon');
+    const closedWonValue = closedWon.reduce((sum, d) => sum + (parseFloat(d.properties?.amount || '0') || 0), 0);
+
+    const syncLog = await pool.query(`
+      SELECT COUNT(*) as total_synced, MAX(synced_at) as last_synced,
+             SUM(impressions) as total_impressions, SUM(clicks) as total_clicks
+      FROM hubspot_sync_log WHERE brand_profile_id = $1
+    `, [brandProfileId]);
+    const logStats = syncLog.rows[0] || {};
+
+    res.json({
+      success: true,
+      connected: true,
+      pipeline: Math.round(totalPipeline),
+      closedWon: Math.round(closedWonValue),
+      dealCount: forgeDeals.length,
+      deals: forgeDeals.slice(0, 10).map(d => ({
+        id: d.id,
+        name: d.properties?.dealname || 'Unnamed Deal',
+        amount: parseFloat(d.properties?.amount || '0') || 0,
+        stage: d.properties?.dealstage || 'unknown',
+        source: d.properties?.hs_analytics_source_data_1 || 'unknown',
+        closeDate: d.properties?.closedate || null,
+      })),
+      syncStats: {
+        totalContentSynced: parseInt(logStats.total_synced) || 0,
+        lastSynced: logStats.last_synced || null,
+        totalImpressions: parseInt(logStats.total_impressions) || 0,
+        totalClicks: parseInt(logStats.total_clicks) || 0,
+      }
+    });
+  } catch(e) {
+    console.error('[HS-TRACK-A] pipeline error:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 const sendDigestForBrand = async (brandProfileId) => {
   const safeId = brandProfileId.replace(/-/g, '_');
 
