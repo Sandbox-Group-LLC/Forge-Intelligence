@@ -6,6 +6,29 @@
 
 ---
 
+## Session — April 9, 2026 (continued)
+
+### Pre-cog Predictions — UI Overhaul
+- Compact card design — matches Compliance Gate card density (13px titles, 12px padding, inline score+tier)
+- Score displayed inline with tier badge (colored pill with color-mix background) — no more stacked 32px number
+- Title truncated to single line with ellipsis — clean list at any length
+- Accuracy banner changed to `inline-flex` + `align-self: flex-start` — no longer stretches full width
+- Hover state: subtle bg lift + border color change (matches comp gate pattern)
+- Ported to production branch (CSS only — no auth or brand-switcher code touched)
+
+### Pre-cog Backend — Production Migrations
+- `precog_outcomes` table — was referenced in RLS policies but never created in `initDB`; accuracy tracking was silently failing in production; now created on boot
+- `brain_patterns` extended columns — `source_channel`, `example_titles`, `last_validated_at`, `success_rate` added via `ALTER TABLE IF NOT EXISTS`
+- `precog_score`, `precog_breakdown`, `precog_scored_at` — migrated onto all existing `generated_content_*` tables at boot
+- All migrations idempotent — safe on repeated deploys
+
+### README Updates
+- Platform status date updated to April 9, 2026
+- Known Issues backlog cleaned — resolved items moved to "Recently Resolved" table
+- WordPress, Webflow, LinkedIn OAuth, HubSpot, scheduler auth, Brain Intelligence tab, Topic Queue, sitemap all marked resolved
+
+---
+
 ## Session — April 9, 2026
 
 ### Bugs Fixed
