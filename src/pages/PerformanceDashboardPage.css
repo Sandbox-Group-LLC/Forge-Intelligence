@@ -1790,8 +1790,8 @@
 }
 
 .perf-pred-score {
-  font-size: 2rem;
-  font-weight: 800;
+  font-size: 1.25rem;
+  font-weight: 700;
   color: var(--pred-color, var(--color-accent));
   line-height: 1;
   font-variant-numeric: tabular-nums;
