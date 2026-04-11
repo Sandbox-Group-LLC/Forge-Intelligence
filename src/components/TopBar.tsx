@@ -101,9 +101,9 @@ export function TopBar({ pageTitle }: { pageTitle?: string }) {
           {icons.menu}
         </button>
         <h1 className="topbar-title">{pageTitle || Object.entries(pathTitles).find(([k]) => window.location.pathname.startsWith(k))?.[1] || viewTitles[currentView] || 'Forge Intelligence'}</h1>
-        {activeBrand && (
-          <span className="topbar-brand-pill" title={activeBrand.brandUrl}>
-            {activeBrand.brandName || activeBrand.brandUrl.replace(/^https?:\/\//, '').replace(/^www\./, '')}
+        {activeBrandId && (
+          <span className="topbar-brand-pill" title={allBrands?.find(b => b.id === activeBrandId)?.brandUrl || ''}>
+            {allBrands?.find(b => b.id === activeBrandId)?.brandName || activeBrandId}
             {brandProfile && currentView === 'brand-profile' && (
               <span style={{ opacity: 0.5, marginLeft: 4, fontWeight: 400 }}>· v{brandProfile.version}</span>
             )}
