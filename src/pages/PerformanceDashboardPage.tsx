@@ -163,7 +163,7 @@ export default function PerformanceDashboardPage() {
     if (activeChannel === 'predictions' && brandProfileId) {
       setPredictionsLoading(true);
       Promise.all([
-        fetch(`/api/precog/all/${brandProfileId}`).then(r => r.json()).then(d => { if (d.success) setPredictions(d.items || []); }).catch(() => {}),
+        fetch(`/api/precog/all/${brandProfileId}`, { headers: authTokenRef.current ? { Authorization: `Bearer ${authTokenRef.current}` } : {} }).then(r => r.json()).then(d => { if (d.success) setPredictions(d.items || []); }).catch(() => {}),
         fetch(`/api/precog/accuracy/${brandProfileId}`).then(r => r.json()).then(d => { if (d.success) setAccuracy(d); }).catch(() => {}),
       ]).finally(() => setPredictionsLoading(false));
     }
