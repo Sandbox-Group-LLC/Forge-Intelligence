@@ -224,7 +224,7 @@ export function Sidebar() {
       setGateFeature(label);
     }
   };
-  const [brainGroupOpen, setBrainGroupOpen] = useState(false);
+  const [brainGroupOpen, setBrainGroupOpen] = useState(() => window.location.pathname.startsWith('/app/context-hub'));
   const [publishingGroupOpen, setPublishingGroupOpen] = useState(() => ['/app/publishing-queue','/app/content-library','/app/content-import','/app/topic-queue'].some(r => window.location.pathname.startsWith(r)));
   const [settingsGroupOpen, setSettingsGroupOpen] = useState(() => ['/app/brand-settings','/app/integrations','/app/admin'].some(r => window.location.pathname.startsWith(r)));
   const [mobileExpanded, setMobileExpanded] = useState(false);
@@ -269,6 +269,19 @@ export function Sidebar() {
   };
 
   const [path, setPath] = useState(window.location.pathname);
+
+  // M3: Update path state on SPA navigation (pushState/popState)
+  useEffect(() => {
+    const onNav = () => setPath(window.location.pathname);
+    window.addEventListener('popstate', onNav);
+    // Also patch pushState to fire an event
+    const origPush = history.pushState.bind(history);
+    history.pushState = (...args) => { origPush(...args); onNav(); };
+    return () => {
+      window.removeEventListener('popstate', onNav);
+      history.pushState = origPush;
+    };
+  }, []);
   const isBrainViewActive = path.startsWith('/app/context-hub');
 
   const getBrainItemStatus = (id: ViewType): 'active' | 'available' | 'disabled' => {
