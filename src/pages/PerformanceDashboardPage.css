@@ -1686,17 +1686,17 @@
   gap: 8px;
   flex-wrap: wrap;
   margin-top: 10px;
-  padding: 8px 14px;
+  padding: 6px 12px;
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border-subtle);
   border-radius: 8px;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--color-text-secondary);
 }
 
 .perf-accuracy-val {
   font-weight: 700;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .perf-accuracy-sep { color: var(--color-border); }
@@ -1709,7 +1709,7 @@
 .perf-predictions-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   margin-top: 4px;
 }
 
@@ -1718,7 +1718,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 64px 32px;
+  padding: 48px 32px;
   text-align: center;
   color: var(--color-text-muted);
   background: var(--color-bg-card);
@@ -1726,11 +1726,11 @@
   border-radius: var(--radius-lg);
 }
 
-.perf-predictions-empty p { margin: 0; font-size: 0.9rem; }
+.perf-predictions-empty p { margin: 0; font-size: 0.875rem; }
 .perf-predictions-empty-sub {
-  font-size: 0.8rem;
+  font-size: 0.775rem;
   color: var(--color-text-muted);
-  margin-top: 8px !important;
+  margin-top: 6px !important;
   max-width: 40ch;
   line-height: 1.6;
 }
@@ -1738,42 +1738,47 @@
 /* Prediction card */
 .perf-pred-card {
   background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: 20px 24px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  box-shadow: var(--shadow-sm);
-  transition: box-shadow var(--transition-normal);
+  gap: 8px;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
 }
 
-.perf-pred-card:hover { box-shadow: var(--shadow-md); }
+.perf-pred-card:hover {
+  background: var(--color-bg-elevated);
+  border-color: var(--color-border);
+}
 
 .perf-pred-top {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
+  align-items: center;
+  gap: 12px;
 }
 
 .perf-pred-left {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 3px;
   flex: 1;
   min-width: 0;
 }
 
 .perf-pred-title {
-  font-size: 0.9375rem;
+  font-size: 13px;
   font-weight: 600;
   color: var(--color-text-primary);
   line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .perf-pred-meta {
-  font-size: 0.75rem;
+  font-size: 11px;
   color: var(--color-text-muted);
   display: flex;
   gap: 6px;
@@ -1782,18 +1787,15 @@
 
 .perf-pred-score-block {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 3px;
+  gap: 8px;
   flex-shrink: 0;
-  min-width: 72px;
 }
 
 .perf-pred-score {
-  font-size: 1.25rem;
+  font-size: 1rem;
   font-weight: 700;
   color: var(--pred-color, var(--color-accent));
-  line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1801,48 +1803,49 @@
   font-size: 0.65rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.07em;
   color: var(--pred-color, var(--color-text-muted));
-  opacity: 0.8;
+  opacity: 0.85;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--pred-color, var(--color-accent)) 10%, transparent);
 }
 
 .perf-pred-insufficient {
-  font-size: 0.75rem;
+  font-size: 11px;
   color: var(--color-text-muted);
   font-style: italic;
-  text-align: center;
 }
 
 .perf-pred-direction {
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   font-weight: 700;
-  padding: 2px 7px;
+  padding: 2px 6px;
   border-radius: 4px;
-  margin-top: 2px;
 }
 .perf-pred-direction.correct   { background: rgba(34,197,94,0.12);  color: #22C55E; }
 .perf-pred-direction.incorrect { background: rgba(239,68,68,0.12);  color: #EF4444; }
 
 .perf-pred-prediction {
-  font-size: 0.875rem;
+  font-size: 12px;
   color: var(--color-text-secondary);
-  line-height: 1.55;
-  padding: 10px 14px;
+  line-height: 1.5;
+  padding: 7px 10px;
   background: var(--color-bg-elevated);
-  border-radius: 8px;
-  border-left: 3px solid var(--pred-color, var(--color-accent));
+  border-radius: 6px;
+  border-left: 2px solid var(--pred-color, var(--color-accent));
 }
 
 .perf-pred-range {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
-  font-size: 0.8125rem;
+  font-size: 11px;
 }
 
 .perf-pred-range-label {
-  font-size: 0.75rem;
+  font-size: 10px;
   color: var(--color-text-muted);
   font-weight: 600;
   text-transform: uppercase;
@@ -1851,17 +1854,18 @@
 
 .perf-pred-range-val {
   font-weight: 700;
-  font-size: 0.9rem;
+  font-size: 12px;
+  color: var(--pred-color, var(--color-accent));
   font-variant-numeric: tabular-nums;
 }
 
 .perf-pred-range-avg {
-  font-size: 0.75rem;
+  font-size: 11px;
   color: var(--color-text-muted);
 }
 
 .perf-pred-actual {
-  font-size: 0.8rem;
+  font-size: 11px;
   color: var(--color-text-secondary);
   display: flex;
   align-items: center;
@@ -1869,15 +1873,15 @@
 }
 
 .perf-pred-pending {
-  font-size: 0.75rem;
+  font-size: 11px;
   color: var(--color-text-muted);
   font-style: italic;
 }
 
 .perf-pred-outcome {
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   font-weight: 700;
-  padding: 2px 7px;
+  padding: 1px 6px;
   border-radius: 4px;
 }
 .perf-pred-outcome-hit  { background: rgba(34,197,94,0.12); color: #22C55E; }
@@ -1886,20 +1890,20 @@
 .perf-pred-signals {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .perf-pred-signal {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 0.8125rem;
+  gap: 7px;
+  font-size: 12px;
   color: var(--color-text-secondary);
 }
 
 .perf-pred-signal-dot {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
 }
@@ -1910,12 +1914,12 @@
 .perf-pred-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
 .perf-pred-actions-label {
-  font-size: 0.7rem;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -1923,8 +1927,8 @@
 }
 
 .perf-pred-action {
-  font-size: 0.75rem;
-  padding: 3px 10px;
+  font-size: 11px;
+  padding: 2px 8px;
   border-radius: 999px;
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border-subtle);
