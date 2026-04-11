@@ -315,7 +315,7 @@ export function Sidebar() {
         <GateModal
           featureName={gateFeature}
           onClose={() => setGateFeature(null)}
-          brandProfileId={activeBrand?.id || (brandProfile as any)?.id || localStorage.getItem('forge_active_brand_id') || undefined}
+          brandProfileId={activeBrand?.id || (brandProfile as any)?.id || (() => { try { return localStorage.getItem('forge_active_brand_id'); } catch(e) { return null; } })() || new URLSearchParams(window.location.search).get('brand') || undefined}
           onUnlocked={() => { setGateFeature(null); refetchBrand(); }}
         />
       )}
