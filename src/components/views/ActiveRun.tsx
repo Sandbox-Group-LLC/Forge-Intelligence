@@ -58,7 +58,7 @@ const stageMessages: Record<string, string[]> = {
 };
 
 export function ActiveRun() {
-  const { processingStages, analysisInput, isProcessing } = useApp();
+  const { processingStages, analysisInput } = useApp();
   const [elapsedTime, setElapsedTime] = useState(0);
   const [activityLog, setActivityLog] = useState<{ time: number; message: string }[]>([]);
 
