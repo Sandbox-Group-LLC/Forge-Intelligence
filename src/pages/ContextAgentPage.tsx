@@ -24,7 +24,7 @@ function ContextAgentPage() {
     setIsProcessing(true);
     setAnalysisInput({ brandUrl: onboardUrl, competitorUrls: [], audienceNotes: '', strategicNotes: '', checkBrainFirst: true, saveToBrain: true });
 
-    const stageTimings = [8000, 10000, 12000, 10000, 8000];
+    const stageTimings = [12500, 15500, 19000, 15500, 12500];
     let cancelled = false;
     let stages: ProcessingStage[] = initialProcessingStages.map(s => ({ ...s, status: 'pending' as const }));
 
