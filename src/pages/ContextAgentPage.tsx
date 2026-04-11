@@ -99,6 +99,28 @@ function ContextAgentPage() {
     }
   }, [currentView, activeBrand?.brandUrl]);
 
+  // URL-based brand recovery — handles mobile Safari localStorage wipes
+  // If ?brand=UUID is in the URL and we have no active brand, fetch it from the DB
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const brandId = params.get('brand');
+    if (!brandId) return;
+    // Already have a brand loaded — no need to recover
+    try { const stored = localStorage.getItem('forge_active_brand'); if (stored) return; } catch(e) {}
+    // Fetch brand from DB by ID
+    fetch(`/api/context-hub/brand/${brandId}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.success && d.data) {
+          setBrandProfile(d.data);
+          const activeBrand = { id: d.data.id, brandUrl: d.data.brandUrl, brandName: d.data.brandName, expiresAt: d.data.expiresAt || null, isPaid: d.data.isPaid || false };
+          try { localStorage.setItem('forge_active_brand', JSON.stringify(activeBrand)); } catch(e) {}
+          setCurrentView('brand-profile');
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const renderView = () => {
     switch (currentView) {
       case 'new-analysis': return <NewAnalysis />;
