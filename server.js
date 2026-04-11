@@ -4899,8 +4899,11 @@ app.get('/api/hubspot/auth', (req, res) => {
   const nonce = randomBytes(16).toString('hex');
   const state = `${brandProfileId}|${nonce}`;
   
-  // CRM scopes only — knowledge_base scopes require CMS Hub approval and are not used
+  // Scopes must match exactly what is configured as Required in HubSpot app Auth settings
   const scopes = [
+    'cms.knowledge_base.articles.publish',
+    'cms.knowledge_base.articles.read',
+    'cms.knowledge_base.articles.write',
     'crm.objects.companies.read',
     'crm.objects.companies.write',
     'crm.objects.contacts.read',
