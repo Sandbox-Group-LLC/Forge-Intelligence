@@ -1878,7 +1878,7 @@ Extract 3-6 patterns and 2-4 mistakes. Be specific and actionable. Focus on cont
 // ── Pre-cog Score — Predictive Performance Scoring ────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
 
-// POST /api/precog/score — Calculate pre-cog score for a content item
+// ── Voyage AI embedding helper ────────────────────────────────────────────────
 async function updatePrecogOutcomes(brandProfileId) {
   try {
     // Find outcomes awaiting measurement — join with content_analytics for actuals
