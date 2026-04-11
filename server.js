@@ -2537,6 +2537,28 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
 });
 
 
+
+// GET /api/context-hub/brand/:brandId — fetch brand profile by ID (unauthenticated, for URL-based recovery)
+app.get('/api/context-hub/brand/:brandId', async (req, res) => {
+  const { brandId } = req.params;
+  try {
+    const r = await pool.query(
+      `SELECT * FROM brand_profiles WHERE id = $1 AND (expires_at IS NULL OR expires_at > NOW()) LIMIT 1`,
+      [brandId]
+    );
+    if (!r.rows.length) return res.status(404).json({ success: false, error: 'Brand not found or expired' });
+    const row = r.rows[0];
+    res.json({ success: true, data: {
+      id: row.id, brandUrl: row.brand_url, brandName: row.brand_name,
+      version: row.version, isActive: row.is_active, cacheStatus: row.cache_status,
+      expiresAt: row.expires_at, createdAt: row.created_at, isPaid: !!row.clerk_user_id,
+      ...row.profile_data
+    }});
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // ── GEO data normalizer — shared by fresh + cached responses ─────────────────
 function normalizeGeoData(briefData, topicalMap, geoOpportunities, entitySchema, profile) {
   const gaps = (topicalMap && topicalMap.gapsByCluster) || [];
