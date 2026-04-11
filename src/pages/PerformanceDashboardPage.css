@@ -2060,3 +2060,34 @@
   align-items: center;
   gap: 4px;
 }
+
+/* ── Pipeline Influence Tab ──────────────────────────────────────────────── */
+.perf-pipeline-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 8px 0;
+}
+
+.perf-pipeline-explainer {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+.perf-pipeline-explainer strong {
+  color: var(--color-text-secondary);
+}
+
+.perf-pipeline-link {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+.perf-pipeline-link:hover { text-decoration: underline; }
