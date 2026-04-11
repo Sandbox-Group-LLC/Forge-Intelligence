@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import './NewAnalysis.css';
 
@@ -35,6 +35,19 @@ export function NewAnalysis() {
   const { analysisInput, setAnalysisInput, startAnalysis, activeBrand, isPaid } = useApp();
   const [competitorInput, setCompetitorInput] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [scanError, setScanError] = useState('');
+
+  // Listen for scan errors from ContextAgentPage and AppContext
+  useEffect(() => {
+    const onError = (e: Event) => setScanError((e as CustomEvent).detail?.message || 'Analysis failed. Please try again.');
+    const onBlocked = (e: Event) => setScanError((e as CustomEvent).detail?.message || 'This domain already has a Brain. Sign in to access it.');
+    window.addEventListener('forge:scan-error', onError);
+    window.addEventListener('forge:scan-blocked', onBlocked);
+    return () => {
+      window.removeEventListener('forge:scan-error', onError);
+      window.removeEventListener('forge:scan-blocked', onBlocked);
+    };
+  }, []);
 
   const handleAddCompetitor = () => {
     const val = competitorInput.trim();
@@ -118,6 +131,12 @@ export function NewAnalysis() {
                 Run Analysis
               </button>
             </div>
+            {scanError && (
+              <p style={{ fontSize: '0.8125rem', color: 'var(--color-error, #EF4444)', margin: '6px 0 0', lineHeight: 1.5 }}>
+                {scanError}{" "}
+                <button onClick={() => setScanError("")} style={{ background: 'none', border: 'none', color: 'inherit', textDecoration: 'underline', cursor: 'pointer', fontSize: 'inherit', padding: 0, fontFamily: 'inherit' }}>Try again</button>
+              </p>
+            )}
             <div className="auto-discover-hint">
               <span className="hint-pipeline">
                 <span className="hint-step">
