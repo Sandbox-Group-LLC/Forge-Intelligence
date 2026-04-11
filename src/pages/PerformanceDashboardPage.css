@@ -363,7 +363,7 @@
 }
 
 .perf-table tbody tr:nth-child(even) {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--color-bg-elevated);
 }
 
 .perf-table tbody tr:last-child { border-bottom: none; }
@@ -1482,7 +1482,7 @@
   gap: 10px;
   transition: box-shadow var(--transition-fast);
 }
-.brain-rule-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.brain-rule-card:hover { box-shadow: 0 2px 8px var(--color-bg-elevated); }
 .brain-rule-avoid { border-left-color: #F59E0B; }
 .brain-rule-do { border-left-color: var(--color-accent); }
 
