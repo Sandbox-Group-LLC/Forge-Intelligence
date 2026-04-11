@@ -198,6 +198,7 @@ export default function PerformanceDashboardPage() {
 
   useEffect(() => {
     if (activeChannel === 'campaigns') loadCampaigns();
+    if (activeChannel === 'pipeline' && brandProfileId) loadPipeline();
     if (activeChannel === 'predictions' && brandProfileId) {
       setPredictionsLoading(true);
       Promise.all([
