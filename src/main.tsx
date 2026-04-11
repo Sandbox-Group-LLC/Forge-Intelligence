@@ -23,6 +23,7 @@ import AdminPage from './pages/AdminPage';
 import TopicQueuePage from './pages/TopicQueuePage';
 import ReviewPage from './pages/ReviewPage';
 import PrivacyPage from './pages/PrivacyPage';
+import EmailCampaignPage from './pages/EmailCampaignPage';
 import { RequirePaid } from './components/RequirePaid';
 import './index.css';
 
