@@ -2423,6 +2423,301 @@ app.get('/api/context-hub/brand/:brandId', async (req, res) => {
   }
 });
 
+
+// ── Email Campaign Tables ──────────────────────────────────────────────────
+// Created in initDB — see payment_events block above
+
+// ── Stage 4.6 — Email Campaign Generator ──────────────────────────────────
+
+// POST /api/email-campaign/create — save brief + create campaign record
+app.post('/api/email-campaign/create', requireAuth, async (req, res) => {
+  const { brandProfileId, brief } = req.body;
+  if (!brandProfileId || !brief) return res.status(400).json({ error: 'brandProfileId and brief required' });
+
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS email_campaigns (
+      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      brand_profile_id TEXT NOT NULL,
+      brief JSONB NOT NULL,
+      status VARCHAR(30) DEFAULT 'pending',
+      sequence_notes TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`).catch(() => {});
+
+    await pool.query(`CREATE TABLE IF NOT EXISTS email_campaign_emails (
+      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      campaign_id TEXT NOT NULL,
+      email_index INTEGER NOT NULL,
+      job TEXT,
+      send_day INTEGER DEFAULT 0,
+      subject_lines JSONB,
+      preview_text TEXT,
+      body TEXT,
+      cta_text TEXT,
+      cta_url_placeholder TEXT,
+      ps TEXT,
+      confidence_score INTEGER,
+      confidence_reason TEXT,
+      flags JSONB DEFAULT '[]',
+      status VARCHAR(30) DEFAULT 'pending',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`).catch(() => {});
+
+    const result = await pool.query(
+      `INSERT INTO email_campaigns (brand_profile_id, brief, status) VALUES ($1, $2, 'pending') RETURNING id`,
+      [brandProfileId, JSON.stringify(brief)]
+    );
+    const campaignId = result.rows[0].id;
+    res.json({ success: true, campaignId });
+  } catch (err) {
+    console.error('[EMAIL CAMPAIGN] Create error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/email-campaign/list/:brandProfileId — list saved campaigns
+app.get('/api/email-campaign/list/:brandProfileId', requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, brief, status, sequence_notes, created_at FROM email_campaigns WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 20`,
+      [req.params.brandProfileId]
+    );
+    res.json({ success: true, campaigns: result.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/email-campaign/:id — get campaign + emails
+app.get('/api/email-campaign/:id', requireAuth, async (req, res) => {
+  try {
+    const [camp, emails] = await Promise.all([
+      pool.query(`SELECT * FROM email_campaigns WHERE id = $1`, [req.params.id]),
+      pool.query(`SELECT * FROM email_campaign_emails WHERE campaign_id = $1 ORDER BY email_index`, [req.params.id])
+    ]);
+    if (!camp.rows.length) return res.status(404).json({ error: 'Campaign not found' });
+    res.json({ success: true, campaign: camp.rows[0], emails: emails.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/email-campaign/generate/:id — SSE — generate all emails sequentially
+app.get('/api/email-campaign/generate/:id', requireAuth, async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  const keepalive = setInterval(() => res.write(': ping\n\n'), 30000);
+  req.on('close', () => clearInterval(keepalive));
+
+  try {
+    const campRes = await pool.query(`SELECT * FROM email_campaigns WHERE id = $1`, [req.params.id]);
+    if (!campRes.rows.length) { send('error', { message: 'Campaign not found' }); return res.end(); }
+    const campaign = campRes.rows[0];
+    const brief = campaign.brief;
+
+    const profileRes = await pool.query(`SELECT * FROM brand_profiles WHERE id = $1`, [campaign.brand_profile_id]);
+    if (!profileRes.rows.length) { send('error', { message: 'Brand profile not found' }); return res.end(); }
+    const profileData = profileRes.rows[0].profile_data || profileRes.rows[0];
+
+    const [patternsRes, mistakesRes] = await Promise.all([
+      pool.query(`SELECT pattern_type, description, confidence_score FROM brain_patterns WHERE brand_profile_id = $1 ORDER BY confidence_score DESC LIMIT 6`, [campaign.brand_profile_id]).catch(() => ({ rows: [] })),
+      pool.query(`SELECT mistake_type, description, severity FROM brain_mistakes WHERE brand_profile_id = $1 ORDER BY severity DESC LIMIT 5`, [campaign.brand_profile_id]).catch(() => ({ rows: [] }))
+    ]);
+
+    const systemPrompt = fs.readFileSync(
+      path.join(__dirname, 'src/agents/stage46_email_campaign/system_prompt.md'), 'utf8'
+    );
+
+    const trimTo = (obj, max = 3000) => {
+      const s = typeof obj === 'string' ? obj : JSON.stringify(obj);
+      return s.length > max ? s.substring(0, max) + '...[truncated]' : s;
+    };
+
+    const numEmails = brief.num_emails || 5;
+    const userPrompt = `Generate a ${numEmails}-email ${brief.campaign_type || 'nurture'} sequence using the following brief and brand brain.
+
+CAMPAIGN BRIEF:
+- Business Problem: ${brief.business_problem}
+- SMART Goal: ${brief.smart_goal}
+- Single-Minded Proposition: ${brief.smp}
+- UVP: ${brief.uvp}
+- Pain Point Being Solved: ${brief.pain_point}
+- Target Persona: ${brief.target_persona}
+- Current Mindset: ${brief.current_mindset}
+- Desired Mindset After Reading: ${brief.desired_mindset}
+- Direct Competitor: ${brief.competitor || 'Not specified'}
+- Mandatories: ${brief.mandatories || 'None'}
+
+BRAND VOICE PROFILE:
+${trimTo(profileData?.voiceProfile || profileData?.voice_profile || {}, 2000)}
+
+PERSONAS:
+${trimTo(profileData?.personas || [], 1500)}
+
+BRAIN PATTERNS (what has worked — lean into these):
+${patternsRes.rows.map(p => `- [${p.pattern_type}] ${p.description}`).join('\n') || 'None yet'}
+
+BRAIN MISTAKES (what has failed — avoid unconditionally):
+${mistakesRes.rows.map(m => `- [${m.severity}] ${m.mistake_type}: ${m.description}`).join('\n') || 'None yet'}
+
+Generate exactly ${numEmails} emails. Return ONLY valid JSON matching the output format.`;
+
+    await pool.query(`UPDATE email_campaigns SET status = 'generating', updated_at = NOW() WHERE id = $1`, [req.params.id]);
+    send('status', { message: 'Brain loaded. Generating sequence...' });
+
+    const message = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 8000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }]
+    });
+
+    const raw = message.content[0].text;
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonMatch ? jsonMatch[0] : raw);
+    } catch(e) {
+      // Fallback: strip newlines inside strings
+      const fixed = (jsonMatch ? jsonMatch[0] : raw).replace(/:\s*"([\s\S]*?)"/g, (m, val) => ': "' + val.replace(/\n/g, ' ').replace(/\r/g, ' ') + '"');
+      parsed = JSON.parse(fixed);
+    }
+
+    // Save campaign-level metadata
+    await pool.query(
+      `UPDATE email_campaigns SET status = 'complete', sequence_notes = $1, updated_at = NOW() WHERE id = $2`,
+      [parsed.sequence_notes || '', req.params.id]
+    );
+
+    // Save each email
+    for (const email of parsed.emails || []) {
+      await pool.query(
+        `INSERT INTO email_campaign_emails (campaign_id, email_index, job, send_day, subject_lines, preview_text, body, cta_text, cta_url_placeholder, ps, confidence_score, confidence_reason, flags, status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'complete')
+         ON CONFLICT DO NOTHING`,
+        [
+          req.params.id, email.index, email.job || '', email.send_day || 0,
+          JSON.stringify(email.subject_lines || {}), email.preview_text || '',
+          email.body || '', email.cta_text || '', email.cta_url_placeholder || '{{cta_url}}',
+          email.ps || null, email.confidence_score || 80, email.confidence_reason || '',
+          JSON.stringify(email.flags || [])
+        ]
+      ).catch(() => {});
+      send('email', { index: email.index, job: email.job, confidence_score: email.confidence_score, flags: email.flags || [] });
+    }
+
+    send('complete', { campaignId: req.params.id, emailCount: parsed.emails?.length || 0, sequenceNotes: parsed.sequence_notes });
+    clearInterval(keepalive);
+    res.end();
+  } catch (err) {
+    console.error('[EMAIL CAMPAIGN] Generate error:', err.message);
+    send('error', { message: err.message });
+    clearInterval(keepalive);
+    res.end();
+  }
+});
+
+// POST /api/email-campaign/push-to-hubspot — push email sequence to HubSpot as draft campaign
+app.post('/api/email-campaign/push-to-hubspot', requireAuth, async (req, res) => {
+  const { brandProfileId, campaignId } = req.body;
+  if (!brandProfileId || !campaignId) return res.status(400).json({ error: 'brandProfileId and campaignId required' });
+
+  try {
+    const accessToken = await refreshHubSpotToken(brandProfileId);
+
+    const [camp, emails] = await Promise.all([
+      pool.query(`SELECT * FROM email_campaigns WHERE id = $1`, [campaignId]),
+      pool.query(`SELECT * FROM email_campaign_emails WHERE campaign_id = $1 ORDER BY email_index`, [campaignId])
+    ]);
+    if (!camp.rows.length) return res.status(404).json({ error: 'Campaign not found' });
+    const brief = camp.rows[0].brief;
+    const campaignName = `${brief.smp || 'Email Campaign'} — ${new Date().toLocaleDateString()}`;
+
+    // Create a HubSpot campaign object to group the emails
+    const hsRes = await fetch('https://api.hubapi.com/marketing/v3/campaigns', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: campaignName, startDate: new Date().toISOString() })
+    }).catch(() => null);
+
+    const hsCampaign = hsRes?.ok ? await hsRes.json() : null;
+    const hsCampaignId = hsCampaign?.id || null;
+
+    // Push each email as a draft marketing email in HubSpot
+    const results = [];
+    for (const email of emails.rows) {
+      const subjects = email.subject_lines || {};
+      const primarySubject = subjects.benefit || subjects.curiosity || 'New Email';
+      const emailRes = await fetch('https://api.hubapi.com/marketing/v3/emails', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: `[${email.email_index}] ${primarySubject}`,
+          subject: primarySubject,
+          previewText: email.preview_text || '',
+          content: { body: (email.body || '').replace(/\n/g, '<br>') },
+          state: 'DRAFT',
+          campaign: hsCampaignId ? { id: hsCampaignId } : undefined
+        })
+      }).catch(() => null);
+
+      if (emailRes?.ok) {
+        const hsEmail = await emailRes.json();
+        results.push({ index: email.email_index, hsEmailId: hsEmail.id, status: 'pushed' });
+      } else {
+        results.push({ index: email.email_index, status: 'failed' });
+      }
+    }
+
+    res.json({ success: true, hsCampaignId, results, campaignName });
+  } catch (err) {
+    console.error('[EMAIL CAMPAIGN] HubSpot push error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/email-campaign/save-brief-template — save reusable brief
+app.post('/api/email-campaign/save-brief-template', requireAuth, async (req, res) => {
+  const { brandProfileId, name, brief } = req.body;
+  if (!brandProfileId || !name || !brief) return res.status(400).json({ error: 'brandProfileId, name, and brief required' });
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS email_brief_templates (
+      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      brand_profile_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      brief JSONB NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`).catch(() => {});
+    const result = await pool.query(
+      `INSERT INTO email_brief_templates (brand_profile_id, name, brief) VALUES ($1, $2, $3) RETURNING id`,
+      [brandProfileId, name, JSON.stringify(brief)]
+    );
+    res.json({ success: true, templateId: result.rows[0].id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/email-campaign/brief-templates/:brandProfileId
+app.get('/api/email-campaign/brief-templates/:brandProfileId', requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, name, brief, created_at FROM email_brief_templates WHERE brand_profile_id = $1 ORDER BY created_at DESC`,
+      [req.params.brandProfileId]
+    ).catch(() => ({ rows: [] }));
+    res.json({ success: true, templates: result.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── GEO data normalizer — shared by fresh + cached responses ─────────────────
 function normalizeGeoData(briefData, topicalMap, geoOpportunities, entitySchema, profile) {
   const gaps = (topicalMap && topicalMap.gapsByCluster) || [];
