@@ -126,3 +126,22 @@
     display: none;
   }
 }
+
+/* ── Brand context pill — persistent across all app pages ── */
+.topbar-brand-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-elevated);
+  border: 0.5px solid var(--color-border);
+  border-radius: 6px;
+  padding: 3px 10px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-left: 8px;
+}
