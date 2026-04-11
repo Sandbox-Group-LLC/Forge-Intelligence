@@ -127,7 +127,7 @@ export function NewAnalysis() {
                 <span className="hint-divider">·</span>
                 <span className="hint-step">
                   <span className="hint-icon">{icons.zap}</span>
-                  <span><strong>LinkedIn</strong> company page scraped for operational voice signals</span>
+                  <span><strong>Claude Opus</strong> synthesizes voice, personas, and competitive positioning</span>
                 </span>
                 <span className="hint-divider">·</span>
                 <span className="hint-step">
