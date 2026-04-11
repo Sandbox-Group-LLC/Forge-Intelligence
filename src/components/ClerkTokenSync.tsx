@@ -1,12 +1,10 @@
 import { useEffect } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 
-// Keeps Clerk session alive — no-op component, auth state managed by useAuth() hooks
+// Token freshness is handled by AppContext (55s refresh interval).
+// This component is retained as a no-op to avoid breaking imports.
 export function ClerkTokenSync() {
   const { isSignedIn } = useAuth();
-  useEffect(() => {
-    // Token freshness handled by Clerk SDK internally
-    // useActiveBrand calls getToken() on each render
-  }, [isSignedIn]);
+  useEffect(() => {}, [isSignedIn]);
   return null;
 }
