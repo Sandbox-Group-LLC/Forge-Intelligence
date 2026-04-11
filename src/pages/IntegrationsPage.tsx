@@ -147,7 +147,7 @@ const CHANNELS: ChannelDef[] = [
     id: 'hubspot',
     label: 'HubSpot',
     oauthFlow: true,
-    description: 'Contact tracking + campaign attribution. Connects published article UTMs to HubSpot contacts.',
+    description: 'Push content analytics to HubSpot as campaign activity. Track pipeline influence from Forge-published content. Connects via OAuth — no token needed.',
     color: '#FF7A59',
     logo: 'HS',
     liveStatus: 'live',
