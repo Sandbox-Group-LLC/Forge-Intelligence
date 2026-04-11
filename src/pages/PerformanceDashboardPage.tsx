@@ -150,10 +150,38 @@ export default function PerformanceDashboardPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
   const [error, setError] = useState('');
-  const [_pipeline, _setPipeline] = useState<null>(null);
-  const [_pipelineLoading, _setPipelineLoading] = useState(false);
-  const [_pushingToHubSpot, _setPushingToHubSpot] = useState(false);
-  const [_pushMsg, _setPushMsg] = useState('');
+  const [pipeline, setPipeline] = useState<PipelineData | null>(null);
+  const [pipelineLoading, setPipelineLoading] = useState(false);
+  const [pushingToHubSpot, setPushingToHubSpot] = useState(false);
+  const [pushMsg, setPushMsg] = useState('');
+
+  const loadPipeline = useCallback(async () => {
+    if (!brandProfileId) return;
+    setPipelineLoading(true);
+    try {
+      const token = authTokenRef.current || authToken || '';
+      const h: Record<string,string> = token ? { Authorization: `Bearer ${token}` } : {};
+      const r = await fetch(`/api/hubspot/pipeline/${brandProfileId}`, { headers: h });
+      const d = await r.json();
+      if (d.success) setPipeline(d);
+    } catch { /* non-fatal */ }
+    setPipelineLoading(false);
+  }, [brandProfileId, authToken]);
+
+  const handlePushToHubSpot = async () => {
+    if (!brandProfileId || pushingToHubSpot) return;
+    setPushingToHubSpot(true); setPushMsg('');
+    try {
+      const token = authTokenRef.current || authToken || '';
+      const h: Record<string,string> = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+      const r = await fetch(`/api/hubspot/sync-performance/${brandProfileId}`, { method: 'POST', headers: h });
+      const d = await r.json();
+      setPushMsg(d.success ? `Pushed ${d.synced} content records to HubSpot` : (d.message || d.error || 'Push failed'));
+      if (d.success) await loadPipeline();
+    } catch { setPushMsg('Push failed — try again'); }
+    setPushingToHubSpot(false);
+    setTimeout(() => setPushMsg(''), 6000);
+  };
 
   const loadCampaigns = useCallback(async () => {
     if (!brandProfileId) return;
