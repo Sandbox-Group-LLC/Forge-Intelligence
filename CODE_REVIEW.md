@@ -29,7 +29,7 @@ Two completely separate code paths execute a brand scan:
 
 Returning paid users who rescan inside the app get a 12-second animation that finishes before the API call does, then abruptly jumps. The 5th stage stays 'pending' permanently. These need to be a single shared function.
 
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
@@ -37,7 +37,7 @@ Returning paid users who rescan inside the app get a 12-second animation that fi
 **File:** `server.js` L2331–2345  
 Returns every active brand profile (id, brandUrl, brandName, profile_data) with zero authentication. Any person can enumerate every customer on the platform. Needs `requireAuth` immediately.
 
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
@@ -45,7 +45,7 @@ Returns every active brand profile (id, brandUrl, brandName, profile_data) with 
 **File:** `server.js` L3360 · L3778  
 Both SSE streaming endpoints require only `brandProfileId` as a query param — no JWT, no ownership check. Anyone who guesses or finds a UUID can consume unlimited Anthropic credits generating content against any brand. These are the most expensive endpoints in the system.
 
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
@@ -53,7 +53,7 @@ Both SSE streaming endpoints require only `brandProfileId` as a query param — 
 **File:** `server.js` L3670–3685  
 A dev/debug endpoint that calls fal.ai Flux image generation on any GET with no authentication. Should be removed from production entirely.
 
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
@@ -143,7 +143,7 @@ Fetches content from `generated_content_{safeId}` with only a contentId — no J
 **File:** `src/pages/GeoStrategistPage.tsx` L52  
 `localStorage.getItem('forge_active_brand_id')` as fallback. On mobile with wiped localStorage, selectedBrainId stays empty and GEO Strategist shows no brain selected with no explanation.
 
-**Status:** ☐ Not fixed
+**Status:** ✅ Fixed — April 11, 2026
 
 ---
 
