@@ -595,18 +595,7 @@ function ComplianceGateContent() {
                         />
                       </div>
                     ) : (
-                      <div>
-                        <p className="comp-section-body">{section.body || section.content}</p>
-                        <span
-                          className="comp-manual-edit-link"
-                          onClick={() => {
-                            setManualEditSections(p => ({ ...p, [idx]: true }));
-                            setEditedSections(p => ({ ...p, [idx]: section.body || section.content || '' }));
-                          }}
-                        >
-                          Make edits
-                        </span>
-                      </div>
+                      <p className="comp-section-body">{section.body || section.content}</p>
                     )}
                     {/* Section footer — confidence + decision status */}
                     <div className="comp-section-footer">
