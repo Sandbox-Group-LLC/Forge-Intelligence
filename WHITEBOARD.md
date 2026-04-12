@@ -8,6 +8,39 @@
 
 ## Session — April 12, 2026
 
+
+### Compliance Gate — Overhaul (QA passed, ported to production)
+- **Brain data fix:** Was querying empty `mistakes` table — switched to `brain_mistakes WHERE brand_profile_id = $1` (61 signals now visible)
+- **Voice profile path:** `brand?.voice_profile` → `brand?.profile_data?.voice_profile` (was always undefined)
+- **Brand identity in prompt:** AI now knows which brand it's auditing — no more Forge/Sandbox-GTM confusion
+- **Anti-hallucination guardrails:** Must only flag text explicitly present in the article, must include `flaggedExcerpt` with exact quote
+- **Auto-approve logic:** No flags = auto-approved regardless of confidence tier (was green-only)
+- **"Make edits" pill button:** Auto-approved sections now have a subtle pill button to opt into editing — edits still write to brain_mistakes
+- **Scoring tooltip:** "How scoring works" explainer in the page header
+- **Topic check reframe:** Split into topic (tappable sub-card) + rationale (context below)
+- **Topic check model fix:** `claude-haiku-4-5-20251001-20251001` → `claude-haiku-4-5-20251001` (doubled date suffix)
+- **Topic check empty guard:** Returns graceful message if AI response has no signal field
+
+### safeParseLLM v2
+- Step 0: Strip BOM, zero-width chars, non-breaking spaces
+- Step 5 (nuclear): Re-slice from raw between outermost braces, kill all non-printable
+- Diagnostic logging on total failure (first 300 chars)
+- Markdown fence strip was already Step 0, now includes invisible char classes
+
+### LinkedIn Auth
+- `res.redirect()` → `res.json({ authUrl })` — frontend was fetching the auth endpoint, redirect caused CORS failure
+- Diagnostic logging added to LinkedIn analytics sync (socialActions + shareStatistics errors no longer swallowed)
+
+### Branch Strategy
+- Main reset to match production (33 files synced, 2 deleted) — branches now identical
+- New workflow: main first → QA on dev → surgical port to production
+- README updated to reflect new branch strategy
+- Never git merge — surgical file-level commits only
+
+### Sandbox-GTM
+- Event ROI Calculator committed (`/event-roi-calculator` route, public, no auth)
+- "9 Things Every B2B Event Marketer Must Know" article published to The Sandbox with calculator CTA
+
 ### Infrastructure — Env Var Recovery
 - Rogue Claude agent wiped ~30 env vars from Render services before being vanished
 - `ANTHROPIC_API_KEY` missing from both services — root cause of Campaign Generator auth error ("Could not resolve authentication method")
