@@ -230,7 +230,7 @@ function AuthenticityEnricherContent() {
         {result && !isRunning && (
           <button
             onClick={() => runAnalysis(false, true)}
-            style={{ background: 'transparent', border: '1px solid #334155', borderRadius: '8px', padding: '8px 14px', color: 'var(--color-text-secondary)', fontSize: '13px', cursor: 'pointer', marginLeft: '8px' }}
+            style={{ background: 'transparent', border: '1px solid var(--color-border)', borderRadius: '8px', padding: '8px 14px', color: 'var(--color-text-secondary)', fontSize: '13px', cursor: 'pointer', marginLeft: '8px' }}
           >
             Force Fresh
           </button>
@@ -287,7 +287,7 @@ function AuthenticityEnricherContent() {
                         <Info size={13} />
                       </button>
                       {activeTooltip === `gap-${i}` && (
-                        <div style={{ position: 'absolute', right: 0, top: '20px', background: 'var(--color-bg-base)', border: '1px solid #1E293B', borderRadius: '8px', padding: '10px 12px', width: '220px', zIndex: 10 }}>
+                        <div style={{ position: 'absolute', right: 0, top: '20px', background: 'var(--color-bg-base)', border: '1px solid var(--color-bg-card)', borderRadius: '8px', padding: '10px 12px', width: '220px', zIndex: 10 }}>
                           <p style={{ fontSize: '12px', color: 'var(--color-text-muted)', margin: '0 0 6px' }}>{gap.tooltip}</p>
                           <p style={{ fontSize: '11px', color: '#3563FF', margin: 0 }}>💡 {gap.whyItMatters}</p>
                         </div>
@@ -299,7 +299,7 @@ function AuthenticityEnricherContent() {
                     value={manualInputs[gap.gapType] || ''}
                     onChange={e => setManualInputs(prev => ({ ...prev, [gap.gapType]: e.target.value }))}
                     style={{
-                      width: '100%', background: 'var(--color-bg-base)', border: '1px solid #334155',
+                      width: '100%', background: 'var(--color-bg-base)', border: '1px solid var(--color-border)',
                       borderRadius: '6px', padding: '8px 10px', color: 'var(--color-text-primary)',
                       fontSize: '12px', resize: 'vertical', minHeight: '60px',
                       fontFamily: 'Inter, system-ui, sans-serif', boxSizing: 'border-box'
@@ -319,7 +319,7 @@ function AuthenticityEnricherContent() {
             </button>
             <button
               onClick={() => setShowManualForm(false)}
-              style={{ background: 'transparent', border: '1px solid #334155', borderRadius: '8px', padding: '8px 16px', color: 'var(--color-text-muted)', fontSize: '13px', cursor: 'pointer' }}
+              style={{ background: 'transparent', border: '1px solid var(--color-border)', borderRadius: '8px', padding: '8px 16px', color: 'var(--color-text-muted)', fontSize: '13px', cursor: 'pointer' }}
             >
               Skip — use what you found
             </button>
@@ -536,7 +536,7 @@ function AuthenticityEnricherContent() {
                 )}
               </div>
 
-              <div style={{ background: 'var(--color-bg-base)', border: '1px solid #1E293B', borderRadius: '10px', padding: '16px' }}>
+              <div style={{ background: 'var(--color-bg-base)', border: '1px solid var(--color-bg-card)', borderRadius: '10px', padding: '16px' }}>
                 <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '10px' }}>Schema Markup Preview</div>
                 <pre style={{ fontSize: '11px', color: 'var(--color-text-secondary)', margin: 0, overflowX: 'auto', lineHeight: 1.7 }}>
                   {JSON.stringify(result.authorSchemaMarkup || { '@context': 'https://schema.org', '@type': 'Person', ...result.authorSchema }, null, 2)}
