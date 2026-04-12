@@ -2842,6 +2842,7 @@ function extractJSON(text, type = 'object') {
   return null;
 }
 
+// Not a library. Not an npm package. Just a dev who got tired of Claude's newlines.
 // ── Shared LLM JSON parser — sanitise + recover ──────────────────────────────
 function safeParseLLM(raw, type = 'object') {
   const extracted = extractJSON(raw, type) || raw;
