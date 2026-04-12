@@ -1,7 +1,7 @@
-import GateModal from '../components/GateModal';
-import { useApp } from '../context/AppContext';
 import { useState, useEffect, useCallback } from 'react';
 import { AppShell } from '../layouts/AppShell';
+import GateModal from '../components/GateModal';
+import { useApp } from '../context/AppContext';
 import './ContentLibraryPage.css';
 
 interface LibraryItem {
@@ -25,7 +25,6 @@ interface LibraryItem {
   meta_description: string | null;
 }
 
-
 const statusColor: Record<string, string> = {
   published: '#10B981',
   staged:    '#3563FF',
@@ -47,20 +46,21 @@ const timeAgo = (date: string) => {
 };
 
 export default function ContentLibraryPage() {
-    const { isPaid, activeBrand, brandLoading } = useApp();
+  const { isPaid, activeBrand , brandLoading } = useApp();
+  const activeBrandId = activeBrand?.id ?? '';
+  
   if (brandLoading) return null;
   if (!isPaid) {
     return (
       <AppShell>
-        <GateModal
-          featureName="Content Library"
-          onClose={() => window.location.href = '/app/context-hub'}
-          onUnlocked={() => {}}
+        <GateModal 
+          featureName="Content Library" 
+          onClose={() => window.location.href = '/app/context-hub'} 
+          onUnlocked={() => {}} 
         />
       </AppShell>
     );
   }
-
 
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -71,9 +71,8 @@ export default function ContentLibraryPage() {
   const [page, setPage] = useState(0);
   const LIMIT = 24;
 
-  // Brain selection handled by TopBar
-
   const load = useCallback(async (brandId: string, q: string, status: string, pg: number) => {
+    if (!brandId) return; // Wait until active brand is known
     setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -89,12 +88,12 @@ export default function ContentLibraryPage() {
   }, []);
 
   useEffect(() => {
-    load(activeBrand?.id || '', search, statusFilter, page);
-  }, [activeBrand?.id, statusFilter, page, load]);
+    load(activeBrandId, search, statusFilter, page);
+  }, [activeBrandId, statusFilter, page, load]);
 
   // Debounce search
   useEffect(() => {
-    const t = setTimeout(() => { setPage(0); load(activeBrand?.id || '', search, statusFilter, 0); }, 350);
+    const t = setTimeout(() => { setPage(0); load(activeBrandId, search, statusFilter, 0); }, 350);
     return () => clearTimeout(t);
   }, [search]);
 
@@ -114,12 +113,6 @@ export default function ContentLibraryPage() {
             <div className="geo-eyebrow">Publishing</div>
             <h1 className="geo-title">Content Library</h1>
             <p className="geo-description">Every article generated across all brands — searchable, filterable, actionable.</p>
-          </div>
-          {/* Current brand from TopBar */}
-          <div className="cl-brand-filter">
-            <div className="geo-select" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              {activeBrand ? <><span style={{ color: '#10B981' }}>✓</span> {activeBrand.brandName}</> : <span style={{ opacity: 0.5 }}>All articles</span>}
-            </div>
           </div>
         </div>
 
