@@ -1443,12 +1443,16 @@ Evaluate the user's topic against this brand's performance data and return ONLY 
     const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001-20251001', max_tokens: 400, messages: [{ role: 'user', content: prompt }] })
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 400, messages: [{ role: 'user', content: prompt }] })
     });
     const aiData = await aiRes.json();
     const raw = aiData.content?.[0]?.text || '{}';
     const clean = raw.replace(/```json|```/g, '').trim();
     const parsed = safeParseLLM(clean);
+    // Guard: if Anthropic returned an error, parsed will be empty — don't send a blank card
+    if (!parsed.signal) {
+      return res.json({ success: true, signal: 'strong', confidence: 'Check unavailable', reason: 'Could not evaluate topic against brain data right now. Proceed with generation.', reframe: null });
+    }
     res.json({ success: true, ...parsed });
   } catch(e) {
     console.error('[TOPIC-CHECK]', e.message);
@@ -1732,7 +1736,7 @@ Extract 3-6 patterns and 2-4 mistakes. Be specific and actionable. Focus on cont
     const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001-20251001', max_tokens: 1500, messages: [{ role: 'user', content: prompt }] })
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 1500, messages: [{ role: 'user', content: prompt }] })
     });
 
     const aiData = await aiRes.json();
@@ -6487,7 +6491,7 @@ Output only the post text.` }]
           let fbMessage = `${item.title}\n\n${utmUrl}`;
           try {
             const haiku = await anthropic.messages.create({
-              model: 'claude-haiku-4-5-20251001-20251001',
+              model: 'claude-haiku-4-5-20251001',
               max_tokens: 600,
               messages: [{
                 role: 'user',
@@ -8810,7 +8814,7 @@ async function runDecayMonitoring() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
                 body: JSON.stringify({
-                  model: 'claude-haiku-4-5-20251001-20251001',
+                  model: 'claude-haiku-4-5-20251001',
                   max_tokens: 120,
                   messages: [{ role: 'user', content: `Article "${row.title || 'Untitled'}" on ${row.channel} has decayed ${Math.round(decayScore * 100)}% from peak engagement. In one sentence, recommend the best action: refresh content, change headline, republish on different channel, or add internal links. Be specific and actionable.` }]
                 })
