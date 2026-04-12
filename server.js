@@ -4256,17 +4256,70 @@ Return ONLY valid JSON in this exact structure:
     try {
       report = JSON.parse(jsonStr);
     } catch(e) {
-      // Claude sometimes emits literal newlines inside string values — sanitize and retry
       const sanitized = jsonStr.replace(/:\s*"([\s\S]*?)"/g, (m, val) =>
         ': "' + val.replace(/\n/g, ' ').replace(/\r/g, ' ').replace(/\t/g, ' ') + '"'
       );
       try {
         report = JSON.parse(sanitized);
       } catch(e2) {
-        // Last resort — return a safe default so the UI doesn't crash
         report = { overallScore: 50, brandVoiceScore: 50, factualConfidence: 50, autoApprovable: false, summary: 'Critique parse error — please retry.', flags: [], mistakesApplied: [] };
       }
     }
+
+    // ── Normalise schema — system prompt uses overallVoiceScore, endpoint expects overallScore
+    if (report.overallVoiceScore !== undefined && report.overallScore === undefined) {
+      report.overallScore = report.overallVoiceScore;
+    }
+    // Map old severity labels to yellow/red
+    if (report.flags) {
+      report.flags = report.flags.map(f => ({
+        ...f,
+        severity: f.severity === 'critical' ? 'red' : f.severity === 'warning' ? 'yellow' : (f.severity || 'yellow'),
+        type: f.type || f.flagType || 'factual_claim',
+      }));
+    }
+
+    // ── Server-side pre-scan: guarantee placeholder flags regardless of Claude output
+    const placeholderRx = /\[NEEDS[_ ]?CITATION[^\]]*\]|\[CITATION[^\]]*\]|\[SOURCE[^\]]*\]|\[INSERT[^\]]*\]|\[TBD[^\]]*\]/gi;
+    const sections = articleJson?.sections || [];
+    const guaranteedFlags = [];
+    sections.forEach((section, idx) => {
+      const body = section.body || section.content || '';
+      const matches = body.match(placeholderRx);
+      if (matches) {
+        // Check if Claude already flagged this section
+        const alreadyFlagged = (report.flags || []).some(f => f.sectionIndex === idx && f.type === 'placeholder');
+        if (!alreadyFlagged) {
+          guaranteedFlags.push({
+            sectionIndex: idx,
+            sectionHeading: section.heading || `Section ${idx + 1}`,
+            severity: 'red',
+            type: 'placeholder',
+            reason: `Contains ${matches.length} unresolved placeholder(s): ${matches.slice(0, 3).join(', ')}`,
+            suggestion: 'Replace each placeholder with verified data, a real citation, or remove the claim entirely before publishing.'
+          });
+        }
+      }
+    });
+    if (guaranteedFlags.length > 0) {
+      report.flags = [...(report.flags || []), ...guaranteedFlags];
+    }
+
+    // ── Enforce scoring rules server-side — Claude cannot override these
+    const placeholderCount = sections.reduce((n, s) => {
+      const b = s.body || s.content || '';
+      return n + (b.match(placeholderRx) || []).length;
+    }, 0);
+    const redFlagCount = (report.flags || []).filter(f => f.severity === 'red').length;
+
+    // Deduct from factualConfidence per placeholder
+    if (placeholderCount > 0) {
+      report.factualConfidence = Math.max(0, (report.factualConfidence || 70) - (placeholderCount * 15));
+    }
+    // Recalculate overallScore
+    report.overallScore = Math.round(((report.brandVoiceScore || 70) + (report.factualConfidence || 70)) / 2);
+    // autoApprovable: must be >= 80 AND zero red flags AND zero placeholders
+    report.autoApprovable = report.overallScore >= 80 && redFlagCount === 0 && placeholderCount === 0;
 
     // Normalise sectionIndex to 0-based — Claude sometimes returns 1-based
     if (report.flags?.length && articleJson?.sections?.length) {
