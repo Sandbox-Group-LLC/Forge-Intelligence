@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { useApp } from '../context/AppContext';
 import { AppShell } from '../layouts/AppShell';
+import { useApp } from '../context/AppContext';
 import './ContentGeneratorPage.css';
 
 const ShieldCheck = ({ size = 16 }: { size?: number }) => (
@@ -19,6 +19,7 @@ const Zap = ({ size = 16 }: { size?: number }) => (
   </svg>
 );
 
+interface Brain { id: string; brandName: string; brandUrl: string; }
 interface EnrichedBrief { id: string; brandName: string; confidenceScore: number; createdAt: string; }
 
 interface ArticleSection {
@@ -41,14 +42,6 @@ interface GeneratedArticle {
   authorBlock: { suggestedByline: string; schemaMarkup: object };
   citationOpportunities: string[];
   brainMatchScore: number;
-  contentId?: string;
-}
-
-interface PrecogScore {
-  score: number;
-  tier: 'high' | 'medium' | 'low' | 'risk';
-  prediction: string;
-  color: string;
 }
 
 
@@ -87,16 +80,12 @@ function StreamProgress({ text }: { text: string }) {
 }
 
 function ContentGeneratorContent() {
-    const { activeBrand, authToken } = useApp();
-
   const [briefs, setBriefs] = useState<EnrichedBrief[]>([]);
-
+  const [selectedBrainId, setSelectedBrainId] = useState('');
   const [selectedBriefId, setSelectedBriefId] = useState('');
   const [isRunning, setIsRunning] = useState(false);
   const [streamText, setStreamText] = useState('');
   const [article, setArticle] = useState<GeneratedArticle | null>(null);
-  const [precogScore, setPrecogScore] = useState<PrecogScore | null>(null);
-  const [precogLoading, setPrecogLoading] = useState(false);
   const [articleImageUrl, setArticleImageUrl] = useState<string | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
   const [error, setError] = useState('');
@@ -110,28 +99,35 @@ function ContentGeneratorContent() {
   const [savingIdea, setSavingIdea] = useState(false);
   const [preflight, setPreflight] = useState<{ status: string; signal?: string; confidence?: string; reframe?: string; reason?: string }>({ status: 'idle' });
 
-  // Sync with TopBar brain selection
+  const { historyEntries, activeBrand, authToken } = useApp();
+  const brains: Brain[] = historyEntries.map(e => ({ id: e.id, brandName: e.brandName, brandUrl: e.brandUrl }));
 
-  // Brain selection now handled by TopBar
-
-
+  // Seed selected brain from active brand context
+  useEffect(() => {
+    const id = activeBrand?.id || localStorage.getItem('forge_active_brand_id') || '';
+    if (id) setSelectedBrainId(id);
+  }, []);
 
   useEffect(() => {
-    if (!activeBrand?.id) { setBriefs([]); setSelectedBriefId(''); return; }
-    loadIdeas(activeBrand?.id);
-    fetch(`/api/authenticity-enricher/briefs?brandProfileId=${activeBrand?.id}`)
-      .then(r => r.json())
-      .then(d => { if (d.success) setBriefs(d.data); });
+    if (activeBrand?.id && !selectedBrainId) setSelectedBrainId(activeBrand.id);
   }, [activeBrand?.id]);
 
+  useEffect(() => {
+    if (!selectedBrainId) { setBriefs([]); setSelectedBriefId(''); return; }
+    loadIdeas(selectedBrainId);
+    fetch(`/api/authenticity-enricher/briefs?brandProfileId=${selectedBrainId}`, { headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {} })
+      .then(r => r.json())
+      .then(d => { if (d.success) setBriefs(d.data); });
+  }, [selectedBrainId]);
+
   const checkTopic = async () => {
-    if (!activeBrand?.id || !topicPrompt.trim()) { setPreflight({ status: 'idle' }); return; }
+    if (!selectedBrainId || !topicPrompt.trim()) { setPreflight({ status: 'idle' }); return; }
     setPreflight({ status: 'checking' });
     try {
       const r = await fetch('/api/content/topic-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brandProfileId: activeBrand?.id, topic: topicPrompt })
+        body: JSON.stringify({ brandProfileId: selectedBrainId, topic: topicPrompt })
       });
       const d = await r.json();
       if (d.success) setPreflight({ status: 'done', ...d });
@@ -141,17 +137,17 @@ function ContentGeneratorContent() {
 
   const loadIdeas = async (brandId: string) => {
     if (!brandId) return;
-    const d = await fetch(`/api/topic-ideas/${brandId}`).then(r => r.json());
+    const d = await fetch(`/api/topic-ideas/${brandId}`, { headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {} }).then(r => r.json());
     if (d.success) setIdeas(d.ideas);
   };
 
   const saveIdea = async () => {
-    if (!newIdea.trim() || !activeBrand?.id) return;
+    if (!newIdea.trim() || !selectedBrainId) return;
     setSavingIdea(true);
     try {
       const d = await fetch('/api/topic-ideas', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brandProfileId: activeBrand?.id, topic: newIdea.trim(), note: newIdeaNote.trim() || null })
+        body: JSON.stringify({ brandProfileId: selectedBrainId, topic: newIdea.trim(), note: newIdeaNote.trim() || null })
       }).then(r => r.json());
       if (d.success) { setIdeas(prev => [d.idea, ...prev]); setNewIdea(''); setNewIdeaNote(''); }
     } finally { setSavingIdea(false); }
@@ -174,17 +170,16 @@ function ContentGeneratorContent() {
   };
 
   const runGeneration = () => {
-    if (!activeBrand?.id) return;
+    if (!selectedBrainId) return;
     setIsRunning(true);
     setStreamText('');
     setArticle(null);
     setArticleImageUrl(null);
-    setPrecogScore(null);
     setImageLoading(true);
     setError('');
 
     const es = new EventSource(
-      `/api/content-generator/generate?brandProfileId=${activeBrand?.id}${selectedBriefId ? `&enrichedBriefId=${selectedBriefId}` : ''}${topicPrompt.trim() ? `&topicPrompt=${encodeURIComponent(topicPrompt.trim())}` : ''}&token=${authToken}`
+      `/api/content-generator/generate?brandProfileId=${selectedBrainId}${selectedBriefId ? `&enrichedBriefId=${selectedBriefId}` : ''}${topicPrompt.trim() ? `&topicPrompt=${encodeURIComponent(topicPrompt.trim())}` : ''}&token=${authToken}`
     );
     streamRef.current = es;
 
@@ -199,22 +194,6 @@ function ContentGeneratorContent() {
         setArticle(parsed);
         setStreamText('');
         setImageLoading(true);
-        
-        // Trigger Pre-cog score calculation
-        if (parsed.contentId && activeBrand?.id) {
-          setPrecogLoading(true);
-          fetch('/api/precog/score', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ brandProfileId: activeBrand?.id, contentId: parsed.contentId })
-          })
-            .then(r => r.json())
-            .then(data => {
-              if (data.success) setPrecogScore({ score: data.score, tier: data.tier, prediction: data.prediction, color: data.color });
-            })
-            .catch(() => {})
-            .finally(() => setPrecogLoading(false));
-        }
       } catch {
         es.close();
         setError('Failed to parse generated article. Raw output preserved.');
@@ -261,23 +240,10 @@ function ContentGeneratorContent() {
           </p>
         </div>
         {article && (
-          <>
-            <div className="geo-score-badge">
-              <div className="score-value">{article.overallConfidence}</div>
-              <div className="score-label">Confidence</div>
-            </div>
-            {precogLoading ? (
-              <div className="geo-score-badge" style={{ opacity: 0.5 }}>
-                <div className="score-value">...</div>
-                <div className="score-label">Pre-cog</div>
-              </div>
-            ) : precogScore && (
-              <div className="geo-score-badge" style={{ borderColor: precogScore.color }} title={precogScore.prediction}>
-                <div className="score-value" style={{ color: precogScore.color }}>🔮 {precogScore.score}</div>
-                <div className="score-label">Pre-cog</div>
-              </div>
-            )}
-          </>
+          <div className="geo-score-badge">
+            <div className="score-value">{article.overallConfidence}</div>
+            <div className="score-label">Confidence</div>
+          </div>
         )}
       </div>
 
@@ -285,13 +251,10 @@ function ContentGeneratorContent() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <div className="geo-input-bar">
             <div className="geo-select-wrap" style={{ flex: 1, minWidth: '220px' }}>
-              <div className="geo-select" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                {activeBrand ? (
-                  <><span style={{ color: '#10B981' }}>✓</span> {activeBrand.brandName}</>
-                ) : (
-                  <span style={{ opacity: 0.5 }}>Select a brain from TopBar</span>
-                )}
-              </div>
+              <select className="geo-select" value={selectedBrainId} onChange={e => setSelectedBrainId(e.target.value)}>
+                <option value="">Select a Brain...</option>
+                {brains.map(b => <option key={b.id} value={b.id}>{b.brandName} — {b.brandUrl}</option>)}
+              </select>
             </div>
             {briefs.length > 0 && (
               <div className="geo-select-wrap" style={{ flex: 1, minWidth: '220px' }}>
@@ -332,7 +295,7 @@ function ContentGeneratorContent() {
               </div>
             )}
           </div>
-          <button className="geo-run-btn" onClick={runGeneration} disabled={!activeBrand?.id}>
+          <button className="geo-run-btn" onClick={runGeneration} disabled={!selectedBrainId}>
             <FileText size={14} /> Generate Article
           </button>
           </div>
@@ -438,6 +401,13 @@ function ContentGeneratorContent() {
             <button className="geo-run-btn" onClick={() => { setArticle(null); setStreamText(''); }}>
               <FileText size={14} /> Generate Again
             </button>
+            <button
+              className="geo-run-btn"
+              style={{ background: '#10b981' }}
+              onClick={() => window.location.href = '/app/compliance-gate'}
+            >
+              <ShieldCheck size={14} /> Send to Compliance Gate
+            </button>
           </div>
         </>
       )}
@@ -472,10 +442,10 @@ function ContentGeneratorContent() {
               onChange={e => setNewIdeaNote(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') saveIdea(); }}
             />
-            <button className="cg-idea-save-btn" onClick={saveIdea} disabled={savingIdea || !newIdea.trim() || !activeBrand?.id}>
+            <button className="cg-idea-save-btn" onClick={saveIdea} disabled={savingIdea || !newIdea.trim() || !selectedBrainId}>
               {savingIdea ? 'Saving...' : 'Save Idea'}
             </button>
-            {!activeBrand?.id && <p className="cg-idea-warn">Select a brain from TopBar first.</p>}
+            {!selectedBrainId && <p className="cg-idea-warn">Select a Brain first.</p>}
           </div>
           {ideas.length > 0 && (
             <div className="cg-idea-list">
@@ -494,7 +464,7 @@ function ContentGeneratorContent() {
               ))}
             </div>
           )}
-          {ideas.length === 0 && activeBrand?.id && (
+          {ideas.length === 0 && selectedBrainId && (
             <p className="cg-idea-empty">No ideas yet — type one above ↑</p>
           )}
         </div>
