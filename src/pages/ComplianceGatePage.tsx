@@ -410,7 +410,7 @@ function ComplianceGateContent() {
                 const flag = report?.flags?.find(f => f.sectionIndex === idx);
                 const sectionText = section.body || section.content || '';
                 const hasPlaceholder = /\[NEEDS[_ ]?CITATION[^\]]*\]|\[CITATION[^\]]*\]|\[INSERT[^\]]*\]/i.test(sectionText);
-                const isEditing = section.confidenceTier !== 'green' || mode === 'full-review' || hasPlaceholder;
+                const isEditing = section.confidenceTier !== 'green' || !!flag || mode === 'full-review' || hasPlaceholder;
                 const editVal = editedSections[idx] ?? (section.body || section.content || '');
 
                 return (
@@ -423,7 +423,7 @@ function ComplianceGateContent() {
                           {section.confidence}%
                         </span>
                       </div>
-                      {section.confidenceTier === 'green' && mode !== 'full-review' && (
+                      {section.confidenceTier === 'green' && mode !== 'full-review' && !flag && (
                         <span className="comp-green-approve">✓ Auto-approved</span>
                       )}
                       {section.confidenceTier === 'red' && (
@@ -569,7 +569,7 @@ function ComplianceGateContent() {
                     )}
                     {/* Section footer — confidence + decision status */}
                     <div className="comp-section-footer">
-                      <span>{section.confidenceTier === 'green' ? 'Auto-approved' : decisions[idx] === 'approved' ? 'Approved' : decisions[idx] === 'rejected' ? 'Rejected' : 'Pending review'}</span>
+                      <span>{(section.confidenceTier === 'green' && !flag) ? 'Auto-approved' : decisions[idx] === 'approved' ? 'Approved' : decisions[idx] === 'rejected' ? 'Rejected' : 'Pending review'}</span>
                       <span>{section.confidence}% confidence · {flag ? flag.type.replace(/_/g, ' ') : 'No flags'}</span>
                     </div>
                   </div>
