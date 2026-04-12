@@ -6149,6 +6149,87 @@ app.post('/api/analytics/sync-gsc/:brandProfileId', requireAuth, async (req, res
   }
 });
 
+// GET /api/analytics/webflow-seo/:brandProfileId — Webflow content performance via GSC
+app.get('/api/analytics/webflow-seo/:brandProfileId', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.params;
+  if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+  try {
+    // 1. Get all Webflow-published URLs
+    const wfRes = await pool.query(
+      `SELECT pl.content_id, pl.published_url, pl.attempted_at, pl.response_data,
+              ct.title, ct.hero_image_url
+       FROM publish_log pl
+       LEFT JOIN generated_content_${brandProfileId.replace(/-/g, '_')} ct ON ct.id::text = pl.content_id
+       WHERE pl.brand_profile_id = $1 AND pl.channel = 'webflow' AND pl.status = 'published'
+       ORDER BY pl.attempted_at DESC`,
+      [brandProfileId]
+    ).catch(() => ({ rows: [] }));
+
+    if (!wfRes.rows.length) {
+      return res.json({ success: true, articles: [], totals: { published: 0, impressions: 0, clicks: 0, avgCtr: 0, avgPosition: 0 }, gscConnected: false });
+    }
+
+    // 2. Check GSC connection
+    const gscCred = await pool.query(
+      'SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = $2 AND is_active = true LIMIT 1',
+      [brandProfileId, 'gsc']
+    ).catch(() => ({ rows: [] }));
+    const gscConnected = gscCred.rows.length > 0;
+
+    // 3. Get GSC data for all pages
+    const gscRes = await pool.query(
+      `SELECT content_id, post_id AS page_url, impressions, clicks, ctr, engagement_rate AS position, raw_data
+       FROM content_analytics
+       WHERE brand_profile_id = $1 AND channel = 'gsc'`,
+      [brandProfileId]
+    ).catch(() => ({ rows: [] }));
+
+    // Build URL lookup from GSC data
+    const gscByUrl = {};
+    for (const row of gscRes.rows) {
+      if (row.page_url) gscByUrl[row.page_url] = row;
+    }
+
+    // 4. Match Webflow articles to GSC data by URL
+    const articles = wfRes.rows.map(wf => {
+      const url = wf.published_url || wf.response_data?.url || '';
+      // Try exact match, then slug match
+      let gsc = gscByUrl[url] || gscByUrl[url.replace(/\/$/, '')] || null;
+      if (!gsc && url) {
+        const slug = url.replace(/\/$/, '').split('/').pop();
+        gsc = Object.values(gscByUrl).find(g => g.page_url && g.page_url.includes(slug)) || null;
+      }
+      return {
+        content_id: wf.content_id,
+        title: wf.title || 'Untitled',
+        hero_image_url: wf.hero_image_url || null,
+        url,
+        published_at: wf.attempted_at,
+        impressions: gsc ? (gsc.impressions || 0) : 0,
+        clicks: gsc ? (gsc.clicks || 0) : 0,
+        ctr: gsc ? (gsc.ctr || 0) : 0,
+        position: gsc ? (gsc.position || 0) : 0,
+        hasGscData: !!gsc,
+      };
+    });
+
+    // 5. Compute totals
+    const withData = articles.filter(a => a.hasGscData);
+    const totals = {
+      published: articles.length,
+      impressions: articles.reduce((s, a) => s + a.impressions, 0),
+      clicks: articles.reduce((s, a) => s + a.clicks, 0),
+      avgCtr: withData.length ? parseFloat((withData.reduce((s, a) => s + a.ctr, 0) / withData.length).toFixed(2)) : 0,
+      avgPosition: withData.length ? parseFloat((withData.reduce((s, a) => s + a.position, 0) / withData.length).toFixed(1)) : 0,
+    };
+
+    res.json({ success: true, articles, totals, gscConnected });
+  } catch(e) {
+    console.error('[WEBFLOW-SEO]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // GET /api/gsc/status/:brandProfileId — check connection status + verified sites
 app.get('/api/gsc/status/:brandProfileId', requireAuth, async (req, res) => {
   try {
