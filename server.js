@@ -1448,7 +1448,7 @@ Evaluate the user's topic against this brand's performance data and return ONLY 
     const aiData = await aiRes.json();
     const raw = aiData.content?.[0]?.text || '{}';
     const clean = raw.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(clean);
+    const parsed = safeParseLLM(clean);
     res.json({ success: true, ...parsed });
   } catch(e) {
     console.error('[TOPIC-CHECK]', e.message);
@@ -1626,7 +1626,7 @@ Return ONLY valid JSON, no explanation:
     const rawText = aiData.content?.[0]?.text || '{}';
     const clean = rawText.replace(/```json|```/g, '').trim();
     let extracted = { rules: [] };
-    try { extracted = JSON.parse(clean); } catch(e) { console.error('[BRAIN-DISTILL] JSON parse error:', e.message, rawText.slice(0, 200)); }
+    try { extracted = safeParseLLM(clean); } catch(e) { console.error('[BRAIN-DISTILL] JSON parse error:', e.message, rawText.slice(0, 200)); }
 
     const rules = extracted.rules || [];
 
@@ -1740,7 +1740,7 @@ Extract 3-6 patterns and 2-4 mistakes. Be specific and actionable. Focus on cont
     let extracted = { patterns: [], mistakes: [] };
     try {
       const clean = rawText.replace(/```json|```/g, '').trim();
-      extracted = JSON.parse(clean);
+      extracted = safeParseLLM(clean);
     } catch(e) { console.error('[EXTRACT-PATTERNS] JSON parse error:', e.message); }
 
     // Write patterns to brain_patterns
@@ -2380,7 +2380,7 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
     if (!jsonMatch) throw new Error('Claude returned no valid JSON');
     let profileData;
     try {
-      profileData = JSON.parse(jsonMatch[0]);
+      profileData = safeParseLLM(jsonMatch[0]);
     } catch(parseErr) {
       // Claude embedded bare newlines in string values — fix by replacing \n inside strings
       const fixed = jsonMatch[0].replace(/:\s*"([\s\S]*?)"/g, (m, val) => ': "' + val.replace(/\n/g, ' ').replace(/\r/g, ' ') + '"');
@@ -2621,7 +2621,7 @@ Generate exactly ${numEmails} emails. Return ONLY valid JSON matching the output
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     let parsed;
     try {
-      parsed = JSON.parse(jsonMatch ? jsonMatch[0] : raw);
+      parsed = safeParseLLM(jsonMatch ? jsonMatch[0] : raw);
     } catch(e) {
       // Fallback: strip newlines inside strings
       const fixed = (jsonMatch ? jsonMatch[0] : raw).replace(/:\s*"([\s\S]*?)"/g, (m, val) => ': "' + val.replace(/\n/g, ' ').replace(/\r/g, ' ') + '"');
@@ -2840,6 +2840,30 @@ function extractJSON(text, type = 'object') {
     try { JSON.parse(partial); return partial; } catch(e) { /* unrecoverable */ }
   }
   return null;
+}
+
+// ── Shared LLM JSON parser — sanitise + recover ──────────────────────────────
+function safeParseLLM(raw, type = 'object') {
+  const extracted = extractJSON(raw, type) || raw;
+  try { return JSON.parse(extracted); } catch(_) {}
+  try {
+    const sanitized = extracted
+      .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, ' ')
+      .replace(/(?<!\\)\n(?=(?:[^"]*"[^"]*")*[^"]*"[^"]*$)/g, '\\n')
+      .replace(/,\s*([\]\}])/g, '$1');
+    return JSON.parse(sanitized);
+  } catch(_) {}
+  try {
+    const brute = extracted
+      .replace(/\r/g, '')
+      .replace(/\n/g, '\\n')
+      .replace(/\t/g, '\\t')
+      .replace(/[\x00-\x1f]/g, ' ')
+      .replace(/,\s*([\]\}])/g, '$1');
+    return JSON.parse(brute);
+  } catch(e) {
+    throw new Error(`LLM JSON parse failed after recovery: ${e.message}`);
+  }
 }
 
 app.get('/api/geo-strategist/briefs', requireAuth, async (req, res) => {
@@ -3815,7 +3839,7 @@ Return ONLY valid JSON matching the output format. No markdown, no commentary.`;
 
     const raw = message.content[0].text;
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    const plan = JSON.parse(jsonMatch ? jsonMatch[0] : raw);
+    const plan = safeParseLLM(jsonMatch ? jsonMatch[0] : raw);
 
     res.json({ success: true, plan });
   } catch (err) {
