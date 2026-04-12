@@ -4,7 +4,7 @@
   width: 100%;
   overflow: hidden;
   position: relative;
-  background: transparent;
+  background: var(--color-bg-base);
 }
 
 .app-main {
@@ -20,7 +20,7 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  background: transparent;
+  background: var(--color-bg-base);
   position: relative;
 }
 
