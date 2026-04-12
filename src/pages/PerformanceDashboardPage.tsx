@@ -17,6 +17,7 @@ interface PostRow {
   reactions: number; comments: number; reposts: number; ctr: number;
   engagement_rate: number; published_at: string; hero_image_url?: string; channel: string;
   reading_time?: number; positive_feedback?: number; negative_feedback?: number;
+  source?: string; published_url?: string;
 }
 interface DashboardData {
   totals: AnalyticsTotals; trend: TrendPoint[]; posts: PostRow[]; topPosts: PostRow[];
@@ -42,6 +43,10 @@ interface PipelineData {
   deals: { id: string; name: string; amount: number; stage: string; source: string; closeDate: string | null }[];
   syncStats: { totalContentSynced: number; lastSynced: string | null; totalImpressions: number; totalClicks: number };
   message?: string;
+}
+interface ManualEntryForm {
+  postUrl: string; impressions: string; clicks: string;
+  reactions: string; comments: string; reposts: string; publishedAt: string;
 }
 
 const CHANNELS = [
@@ -113,15 +118,11 @@ function Sparkline({ data, key: _k }: { data: number[]; key?: string }) {
   );
 }
 
-// ── Trend Chart (30-day line, inline SVG) ──────────────────────────────────────────────────
-
-
-
 export default function PerformanceDashboardPage() {
   const { isPaid, brandLoading, activeBrand, authToken } = useApp();
-  
-  // brandProfileId computed before hooks — not a hook
-  const brandProfileId = activeBrand?.id ?? '';  const [activeChannel, setActiveChannel] = useState('patterns');
+  const brandProfileId = activeBrand?.id ?? '';
+
+  const [activeChannel, setActiveChannel] = useState('patterns');
   const [data, setData] = useState<DashboardData | null>(null);
   const [channelInfo, setChannelInfo] = useState<ChannelInfo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -154,6 +155,18 @@ export default function PerformanceDashboardPage() {
   const [pipelineLoading, setPipelineLoading] = useState(false);
   const [pushingToHubSpot, setPushingToHubSpot] = useState(false);
   const [pushMsg, setPushMsg] = useState('');
+
+  // Manual entry + CSV import state
+  const [showManualEntry, setShowManualEntry] = useState<string | null>(null); // contentId or 'new'
+  const [manualForm, setManualForm] = useState<ManualEntryForm>({ postUrl: '', impressions: '', clicks: '', reactions: '', comments: '', reposts: '', publishedAt: '' });
+  const [manualSubmitting, setManualSubmitting] = useState(false);
+  const [manualMsg, setManualMsg] = useState('');
+  const [csvImporting, setCsvImporting] = useState(false);
+  const [csvMsg, setCsvMsg] = useState('');
+
+  // authTokenRef — always current, updated every render without deps
+  const authTokenRef = useRef(authToken);
+  useEffect(() => { authTokenRef.current = authToken; });
 
   const loadPipeline = useCallback(async () => {
     if (!brandProfileId) return;
@@ -220,7 +233,6 @@ export default function PerformanceDashboardPage() {
         .then(r => r.json())
         .then(d => { if (d.success) { setDecayAlerts(d.alerts || []); setDecayLoaded(true); } })
         .catch(() => {});
-      // patterns loaded in dedicated effect below
     }
   }, [activeChannel, brandProfileId, loadCampaigns, loadPipeline]);
 
@@ -242,12 +254,7 @@ export default function PerformanceDashboardPage() {
     setLoading(false);
   }, [brandProfileId, activeChannel]);
 
-  // authTokenRef — always current, updated every render without deps
-  const authTokenRef = useRef(authToken);
-  useEffect(() => { authTokenRef.current = authToken; });
-
   // Patterns loader — retry loop bypasses React dep chain entirely
-  // Retries every 500ms until auth is ready and data loads
   useEffect(() => {
     if (activeChannel !== 'patterns' || !brandProfileId) return;
     let cancelled = false;
@@ -276,21 +283,18 @@ export default function PerformanceDashboardPage() {
   }, [activeChannel, brandProfileId]);
 
   useEffect(() => {
-    // Clear stale data immediately on tab switch — GSC included since it uses data state
     if (!['patterns', 'predictions', 'campaigns', 'geo'].includes(activeChannel)) {
       setData(null as any);
     }
     loadDashboard();
   }, [loadDashboard]);
 
-  // Auto-spin sync on mount to cover token injection delay
   useEffect(() => {
     setSyncing(true);
     const t = setTimeout(() => setSyncing(false), 15000);
     return () => clearTimeout(t);
   }, []);
 
-  // Re-fire dashboard load when token becomes available (handles race on initial page load)
   useEffect(() => {
     const onTokenReady = () => { loadDashboard(); };
     window.addEventListener('forge:token-ready', onTokenReady);
@@ -317,10 +321,7 @@ export default function PerformanceDashboardPage() {
     if (!brandProfileId) return;
     setGeoTracking(true);
     try {
-      // Fire and forget — server responds immediately, processes in background
       await fetch(`/api/geo/track/${brandProfileId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
-
-      // Poll for up to 60s — stop when checked_at timestamps are fresher than start time
       const startTime = new Date();
       let attempts = 0;
       const poll = setInterval(async () => {
@@ -328,7 +329,6 @@ export default function PerformanceDashboardPage() {
         try {
           const c = await fetch(`/api/geo/citations/${brandProfileId}`).then(r => r.json());
           if (c.success) setGeoCitations(c.citations || []);
-          // Stop when we see data newer than our start time, or after 20 attempts (~60s)
           const hasNewData = (c.citations || []).some(
             (cit: any) => cit.lastChecked && new Date(cit.lastChecked) > startTime
           );
@@ -403,8 +403,7 @@ export default function PerformanceDashboardPage() {
       const token = authTokenRef.current || authToken || '';
       const h: Record<string,string> = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
       const res = await fetch(`/api/analytics/sync/${brandProfileId}`, {
-        method: 'POST',
-        headers: h,
+        method: 'POST', headers: h,
         body: JSON.stringify({ channel: syncChannel })
       });
       const d = await res.json();
@@ -420,7 +419,67 @@ export default function PerformanceDashboardPage() {
     setTimeout(() => setSyncMsg(''), 4000);
   };
 
-  // Early returns AFTER all hooks — React Rules of Hooks compliant
+  const handleManualEntry = async (contentId?: string) => {
+    if (!brandProfileId || manualSubmitting) return;
+    setManualSubmitting(true); setManualMsg('');
+    try {
+      const token = authTokenRef.current || authToken || '';
+      const h: Record<string,string> = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+      const r = await fetch('/api/analytics/manual-entry', {
+        method: 'POST', headers: h,
+        body: JSON.stringify({
+          brandProfileId,
+          contentId: contentId || undefined,
+          channel: 'linkedin',
+          postUrl: manualForm.postUrl || undefined,
+          impressions: parseInt(manualForm.impressions) || 0,
+          clicks: parseInt(manualForm.clicks) || 0,
+          reactions: parseInt(manualForm.reactions) || 0,
+          comments: parseInt(manualForm.comments) || 0,
+          reposts: parseInt(manualForm.reposts) || 0,
+          publishedAt: manualForm.publishedAt || undefined,
+        })
+      });
+      const d = await r.json();
+      if (d.success) {
+        setManualMsg('Performance logged');
+        setShowManualEntry(null);
+        setManualForm({ postUrl: '', impressions: '', clicks: '', reactions: '', comments: '', reposts: '', publishedAt: '' });
+        await loadDashboard();
+      } else {
+        setManualMsg(d.error || 'Failed to log');
+      }
+    } catch { setManualMsg('Failed — try again'); }
+    setManualSubmitting(false);
+    setTimeout(() => setManualMsg(''), 5000);
+  };
+
+  const handleCsvImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !brandProfileId) return;
+    setCsvImporting(true); setCsvMsg('');
+    try {
+      const csvData = await file.text();
+      const token = authTokenRef.current || authToken || '';
+      const h: Record<string,string> = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+      const r = await fetch('/api/analytics/import-linkedin-csv', {
+        method: 'POST', headers: h,
+        body: JSON.stringify({ brandProfileId, csvData })
+      });
+      const d = await r.json();
+      if (d.success) {
+        setCsvMsg(`Imported ${d.imported} row${d.imported !== 1 ? 's' : ''} from CSV`);
+        await loadDashboard();
+      } else {
+        setCsvMsg(d.error || 'Import failed');
+      }
+    } catch { setCsvMsg('Import failed — try again'); }
+    setCsvImporting(false);
+    e.target.value = '';
+    setTimeout(() => setCsvMsg(''), 8000);
+  };
+
+  // Early returns AFTER all hooks
   if (brandLoading) return null;
   if (!isPaid) return (
     <AppShell>
@@ -450,22 +509,24 @@ export default function PerformanceDashboardPage() {
             <p className="geo-description">Content analytics across all channels and campaigns.</p>
           </div>
           <div className="perf-header-right">
-            {!['geo', 'gsc', 'predictions', 'patterns', 'pipeline'].includes(activeChannel) && <div className="perf-sync-wrap">
-              <div className="perf-btn-group">
-              <button className={`perf-sync-btn ${syncing ? 'syncing' : ''}`} onClick={handleSync} disabled={syncing || !brandProfileId}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={syncing ? 'spin' : ''}>
-                  <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
-                  <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
-                </svg>
-                {syncing ? 'Syncing…' : 'Sync'}
-              </button>
-              <span className="perf-btn-hint">{activeChannel === 'campaigns' ? 'Syncs all channels and refreshes campaign data' : `Pull latest post analytics from ${activeChannel}`}</span>
+            {!['geo', 'gsc', 'predictions', 'patterns', 'pipeline'].includes(activeChannel) && (
+              <div className="perf-sync-wrap">
+                <div className="perf-btn-group">
+                  <button className={`perf-sync-btn ${syncing ? 'syncing' : ''}`} onClick={handleSync} disabled={syncing || !brandProfileId}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={syncing ? 'spin' : ''}>
+                      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
+                      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
+                    </svg>
+                    {syncing ? 'Syncing…' : 'Sync'}
+                  </button>
+                  <span className="perf-btn-hint">{activeChannel === 'campaigns' ? 'Syncs all channels and refreshes campaign data' : `Pull latest post analytics from ${activeChannel}`}</span>
+                </div>
+                {data?.totals?.lastSynced && (
+                  <span className="perf-last-sync">Last synced {timeAgo(data.totals.lastSynced)}</span>
+                )}
+                {syncMsg && <span className={`perf-sync-msg ${syncMsg.startsWith('Error') ? 'error' : 'ok'}`}>{syncMsg}</span>}
               </div>
-              {data?.totals?.lastSynced && (
-                <span className="perf-last-sync">Last synced {timeAgo(data.totals.lastSynced)}</span>
-              )}
-              {syncMsg && <span className={`perf-sync-msg ${syncMsg.startsWith('Error') ? 'error' : 'ok'}`}>{syncMsg}</span>}
-            </div>}
+            )}
           </div>
         </div>
 
@@ -488,6 +549,33 @@ export default function PerformanceDashboardPage() {
           })}
         </div>
 
+        {/* ── LinkedIn: CSV import + manual entry toolbar ── */}
+        {activeChannel === 'linkedin' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '8px 0 16px', flexWrap: 'wrap' }}>
+            <label className="perf-sync-btn" style={{ cursor: csvImporting ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={csvImporting ? 'spin' : ''}>
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              {csvImporting ? 'Importing…' : 'Import CSV'}
+              <input type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={handleCsvImport} disabled={csvImporting || !brandProfileId} />
+            </label>
+            <button
+              className="perf-sync-btn"
+              onClick={() => { setShowManualEntry('new'); setManualForm({ postUrl: '', impressions: '', clicks: '', reactions: '', comments: '', reposts: '', publishedAt: '' }); }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Log Performance
+            </button>
+            {csvMsg && <span className={`perf-sync-msg ${csvMsg.startsWith('Import failed') || csvMsg.startsWith('Could not') ? 'error' : 'ok'}`}>{csvMsg}</span>}
+            {manualMsg && <span className="perf-sync-msg ok">{manualMsg}</span>}
+            <span className="perf-btn-hint" style={{ marginLeft: 4 }}>LinkedIn blocks API analytics until MDP approval — use CSV export or manual entry in the meantime</span>
+          </div>
+        )}
+
         {error && <div className="perf-error">{error}</div>}
 
         {loading && !data ? (
@@ -497,114 +585,146 @@ export default function PerformanceDashboardPage() {
         ) : (
           <>
             {/* ── KPI Cards ── */}
-            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && activeChannel !== 'geo' && activeChannel !== 'predictions' && activeChannel !== 'patterns' && activeChannel !== 'pipeline' && <div className="perf-kpis">
-              {(activeChannel === 'ghost' ? [
-                { label: 'Link Clicks', value: fmt(data?.totals?.clicks || 0), sub: 'Total tracked clicks', icon: 'click', spark: false },
-                { label: 'Avg Read Time', value: data?.totals?.avgReadingTime ? `${data.totals.avgReadingTime} min` : '—', sub: 'Minutes per article', icon: 'eye', spark: false },
-                { label: 'Positive Feedback', value: fmt(data?.totals?.positiveFeedback || 0), sub: 'Reader thumbs up', icon: 'heart', spark: false },
-                { label: 'Negative Feedback', value: fmt(data?.totals?.negativeFeedback || 0), sub: 'Reader thumbs down', icon: 'trend', spark: false },
-              ] : [
-                { label: 'Impressions', value: fmt(data?.totals?.impressions || 0), sub: 'Total views', icon: 'eye', spark: true },
-                { label: 'Link Clicks', value: fmt(data?.totals?.clicks || 0), sub: `${data?.totals?.avgCtr || '0'}% avg CTR`, icon: 'click', spark: false },
-                { label: 'Reactions', value: fmt(data?.totals?.reactions || 0), sub: `${data?.totals?.comments || 0} comments · ${data?.totals?.reposts || 0} reposts`, icon: 'heart', spark: false },
-                { label: 'Engagement Rate', value: `${data?.totals?.avgEngagementRate || '0'}%`, sub: `Across ${data?.totals?.posts || 0} posts`, icon: 'trend', spark: false },
-              ]).map(kpi => (
-                <div key={kpi.label} className="perf-kpi-card">
-                  <div className="perf-kpi-top">
-                    <span className="perf-kpi-label">{kpi.label}</span>
-                    <KpiIcon type={kpi.icon} />
+            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && activeChannel !== 'geo' && activeChannel !== 'predictions' && activeChannel !== 'patterns' && activeChannel !== 'pipeline' && (
+              <div className="perf-kpis">
+                {(activeChannel === 'ghost' ? [
+                  { label: 'Link Clicks', value: fmt(data?.totals?.clicks || 0), sub: 'Total tracked clicks', icon: 'click', spark: false },
+                  { label: 'Avg Read Time', value: data?.totals?.avgReadingTime ? `${data.totals.avgReadingTime} min` : '—', sub: 'Minutes per article', icon: 'eye', spark: false },
+                  { label: 'Positive Feedback', value: fmt(data?.totals?.positiveFeedback || 0), sub: 'Reader thumbs up', icon: 'heart', spark: false },
+                  { label: 'Negative Feedback', value: fmt(data?.totals?.negativeFeedback || 0), sub: 'Reader thumbs down', icon: 'trend', spark: false },
+                ] : [
+                  { label: 'Impressions', value: fmt(data?.totals?.impressions || 0), sub: 'Total views', icon: 'eye', spark: true },
+                  { label: 'Link Clicks', value: fmt(data?.totals?.clicks || 0), sub: `${data?.totals?.avgCtr || '0'}% avg CTR`, icon: 'click', spark: false },
+                  { label: 'Reactions', value: fmt(data?.totals?.reactions || 0), sub: `${data?.totals?.comments || 0} comments · ${data?.totals?.reposts || 0} reposts`, icon: 'heart', spark: false },
+                  { label: 'Engagement Rate', value: `${data?.totals?.avgEngagementRate || '0'}%`, sub: `Across ${data?.totals?.posts || 0} posts`, icon: 'trend', spark: false },
+                ]).map(kpi => (
+                  <div key={kpi.label} className="perf-kpi-card">
+                    <div className="perf-kpi-top">
+                      <span className="perf-kpi-label">{kpi.label}</span>
+                      <KpiIcon type={kpi.icon} />
+                    </div>
+                    <div className="perf-kpi-value">{kpi.value}</div>
+                    <div className="perf-kpi-sub">{kpi.sub}</div>
+                    {kpi.spark && sparkData.length > 1 && (
+                      <div className="perf-kpi-spark"><Sparkline data={sparkData} /></div>
+                    )}
                   </div>
-                  <div className="perf-kpi-value">{kpi.value}</div>
-                  <div className="perf-kpi-sub">{kpi.sub}</div>
-                  {kpi.spark && sparkData.length > 1 && (
-                    <div className="perf-kpi-spark"><Sparkline data={sparkData} /></div>
-                  )}
-                </div>
-              ))}
-            </div>}
+                ))}
+              </div>
+            )}
 
             {/* ── 30-Day Trend ── */}
-            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && activeChannel !== 'geo' && activeChannel !== 'predictions' && activeChannel !== 'patterns' && activeChannel !== 'pipeline' && <div className="perf-section">
-              <div className="perf-section-header">
-                <h2 className="perf-section-title">30-Day Impressions</h2>
-                {(data?.trend?.length ?? 0) > 0 && (
-                  <span className="perf-section-meta">{data?.trend?.length} data points</span>
-                )}
+            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && activeChannel !== 'geo' && activeChannel !== 'predictions' && activeChannel !== 'patterns' && activeChannel !== 'pipeline' && (
+              <div className="perf-section">
+                <div className="perf-section-header">
+                  <h2 className="perf-section-title">30-Day Impressions</h2>
+                  {(data?.trend?.length ?? 0) > 0 && (
+                    <span className="perf-section-meta">{data?.trend?.length} data points</span>
+                  )}
+                </div>
+                <div className="perf-trend-card">
+                  <TrendChart data={data?.trend || []} onSync={handleSync} />
+                </div>
               </div>
-              <div className="perf-trend-card">
-                <TrendChart data={data?.trend || []} onSync={handleSync} />
-              </div>
-            </div>}
+            )}
 
             {/* ── Posts Table ── */}
-            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && activeChannel !== 'geo' && activeChannel !== 'predictions' && activeChannel !== 'patterns' && <div className="perf-section">
-              <div className="perf-section-header">
-                <h2 className="perf-section-title">Published Posts</h2>
-                <span className="perf-section-meta">{data?.posts?.length || 0} tracked</span>
-              </div>
-              {!data?.posts?.length ? (
-                <div className="perf-empty">
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>
-                  <p>No analytics data yet for {activeChannel}. Publish articles and hit Sync to start tracking.</p>
+            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && activeChannel !== 'geo' && activeChannel !== 'predictions' && activeChannel !== 'patterns' && activeChannel !== 'pipeline' && (
+              <div className="perf-section">
+                <div className="perf-section-header">
+                  <h2 className="perf-section-title">Published Posts</h2>
+                  <span className="perf-section-meta">{data?.posts?.length || 0} tracked</span>
                 </div>
-              ) : (
-                <div className="perf-table-wrap">
-                  <table className="perf-table">
-                    <thead>
-                      <tr>
-                        <th>Article</th>
-                        {activeChannel === 'ghost' ? (<>
-                          <th className="num">Clicks</th>
-                          <th className="num">Read Time</th>
-                          <th className="num">👍 Feedback</th>
-                          <th className="num">👎 Feedback</th>
-                        </>) : (<>
-                          <th className="num">Impressions</th>
-                          <th className="num">Clicks</th>
-                          <th className="num">CTR</th>
-                          <th className="num">Reactions</th>
-                          <th className="num">Engagement</th>
-                        </>)}
-                        <th>Published</th>
-                        <th className="bar-col">{activeChannel === 'ghost' ? 'Relative clicks' : 'Relative reach'}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.posts.map(post => (
-                        <tr key={post.content_id}>
-                          <td className="perf-title-cell">
-                            {post.hero_image_url && (
-                              <img src={post.hero_image_url} alt="" className="perf-thumb" loading="lazy" width="40" height="28" />
-                            )}
-                            <span className="perf-post-title">{post.title || 'Untitled'}</span>
-                          </td>
+                {!data?.posts?.length ? (
+                  <div className="perf-empty">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>
+                    <p>No analytics data yet for {activeChannel}. Publish articles and hit Sync to start tracking.</p>
+                  </div>
+                ) : (
+                  <div className="perf-table-wrap">
+                    <table className="perf-table">
+                      <thead>
+                        <tr>
+                          <th>Article</th>
                           {activeChannel === 'ghost' ? (<>
-                            <td className="num">{fmt(post.clicks)}</td>
-                            <td className="num">{post.reading_time ? `${post.reading_time} min` : '—'}</td>
-                            <td className="num">{fmt(post.positive_feedback ?? 0)}</td>
-                            <td className="num">{fmt(post.negative_feedback ?? 0)}</td>
+                            <th className="num">Clicks</th>
+                            <th className="num">Read Time</th>
+                            <th className="num">Feedback +</th>
+                            <th className="num">Feedback -</th>
                           </>) : (<>
-                            <td className="num">{fmt(post.impressions)}</td>
-                            <td className="num">{fmt(post.clicks)}</td>
-                            <td className="num">{post.ctr ? `${post.ctr}%` : '—'}</td>
-                            <td className="num">{fmt(post.reactions)}</td>
-                            <td className="num">{post.engagement_rate ? `${post.engagement_rate}%` : '—'}</td>
+                            <th className="num">Impressions</th>
+                            <th className="num">Clicks</th>
+                            <th className="num">CTR</th>
+                            <th className="num">Reactions</th>
+                            <th className="num">Engagement</th>
                           </>)}
-                          <td className="perf-date">{post.published_at ? new Date(post.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}</td>
-                          <td className="bar-col">
-                            <div className="perf-bar-bg">
-                              <div className="perf-bar-fill" style={{ width: `${Math.round(((activeChannel === 'ghost' ? post.clicks : post.impressions) / maxReach) * 100)}%` }} />
-                            </div>
-                          </td>
+                          <th>Published</th>
+                          <th className="bar-col">{activeChannel === 'ghost' ? 'Relative clicks' : 'Relative reach'}</th>
+                          {activeChannel === 'linkedin' && <th></th>}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>}
+                      </thead>
+                      <tbody>
+                        {data.posts.map(post => (
+                          <tr key={post.content_id}>
+                            <td className="perf-title-cell">
+                              {post.hero_image_url && (
+                                <img src={post.hero_image_url} alt="" className="perf-thumb" loading="lazy" width="40" height="28" />
+                              )}
+                              <span className="perf-post-title">{post.title || 'Untitled'}</span>
+                              {post.source === 'manual' && (
+                                <span style={{ fontSize: '10px', fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: 'color-mix(in srgb, #F59E0B 15%, transparent)', color: '#F59E0B', marginLeft: 6, letterSpacing: '0.04em' }}>manual</span>
+                              )}
+                            </td>
+                            {activeChannel === 'ghost' ? (<>
+                              <td className="num">{fmt(post.clicks)}</td>
+                              <td className="num">{post.reading_time ? `${post.reading_time} min` : '—'}</td>
+                              <td className="num">{fmt(post.positive_feedback ?? 0)}</td>
+                              <td className="num">{fmt(post.negative_feedback ?? 0)}</td>
+                            </>) : (<>
+                              <td className="num">{fmt(post.impressions)}</td>
+                              <td className="num">{fmt(post.clicks)}</td>
+                              <td className="num">{post.ctr ? `${post.ctr}%` : '—'}</td>
+                              <td className="num">{fmt(post.reactions)}</td>
+                              <td className="num">{post.engagement_rate ? `${post.engagement_rate}%` : '—'}</td>
+                            </>)}
+                            <td className="perf-date">{post.published_at ? new Date(post.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}</td>
+                            <td className="bar-col">
+                              <div className="perf-bar-bg">
+                                <div className="perf-bar-fill" style={{ width: `${Math.round(((activeChannel === 'ghost' ? post.clicks : post.impressions) / maxReach) * 100)}%` }} />
+                              </div>
+                            </td>
+                            {activeChannel === 'linkedin' && (
+                              <td>
+                                <button
+                                  className="perf-sync-btn"
+                                  style={{ fontSize: '11px', padding: '3px 8px', whiteSpace: 'nowrap' }}
+                                  onClick={() => {
+                                    setShowManualEntry(post.content_id);
+                                    setManualForm({
+                                      postUrl: post.published_url || '',
+                                      impressions: String(post.impressions || ''),
+                                      clicks: String(post.clicks || ''),
+                                      reactions: String(post.reactions || ''),
+                                      comments: String(post.comments || ''),
+                                      reposts: String(post.reposts || ''),
+                                      publishedAt: post.published_at ? new Date(post.published_at).toISOString().split('T')[0] : '',
+                                    });
+                                  }}
+                                >
+                                  Update
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
 
-            {/* ── Campaigns Tab ── */}
+            {/* ── GEO Tab ── */}
             {activeChannel === 'geo' && (
               <div className="perf-geo-panel">
                 <div className="perf-geo-header">
@@ -613,24 +733,22 @@ export default function PerformanceDashboardPage() {
                     <p className="perf-section-sub">Track when your content is cited by ChatGPT, Perplexity, and other AI engines. Results write to Brain patterns.</p>
                   </div>
                   <div className="perf-btn-group">
-                  <button className="perf-sync-btn perf-geo-track-btn" onClick={handleGeoTrack} disabled={geoTracking || !brandProfileId}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={geoTracking ? 'spin' : ''}>
-                      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
-                      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
-                    </svg>
-                    {geoTracking ? 'Tracking...' : 'Run Citation Check'}
-                  </button>
-                  <span className="perf-btn-hint">Checks if ChatGPT & Perplexity cite your articles — runs in background, takes ~30s</span>
+                    <button className="perf-sync-btn perf-geo-track-btn" onClick={handleGeoTrack} disabled={geoTracking || !brandProfileId}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={geoTracking ? 'spin' : ''}>
+                        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
+                        <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
+                      </svg>
+                      {geoTracking ? 'Tracking...' : 'Run Citation Check'}
+                    </button>
+                    <span className="perf-btn-hint">Checks if ChatGPT & Perplexity cite your articles — runs in background, takes ~30s</span>
                   </div>
                 </div>
-
                 {geoTracking && (
                   <div className="perf-geo-scanning">
                     <div className="perf-geo-scan-dot" />
                     <span>Querying AI engines — Perplexity, ChatGPT... this takes ~30 seconds</span>
                   </div>
                 )}
-
                 {geoLoaded && geoCitations.length === 0 && !geoTracking && (
                   <div className="perf-geo-empty">
                     <div className="perf-geo-empty-icon">◈</div>
@@ -638,10 +756,9 @@ export default function PerformanceDashboardPage() {
                     <p className="perf-geo-empty-sub">Hit Run Citation Check above — Forge will query Perplexity and ChatGPT with your article topics and tell you if your content is being cited by AI engines.</p>
                   </div>
                 )}
-
                 {geoCitations.length > 0 && (() => {
-                  const totalCited = geoCitations.reduce((a,c) => a + c.citations, 0);
                   const totalChecks = geoCitations.reduce((a,c) => a + c.totalChecks, 0);
+                  const totalCited = geoCitations.reduce((a,c) => a + c.citations, 0);
                   const visibilityScore = Math.round(totalCited / Math.max(1, totalChecks) * 100);
                   const enginesWithCitations = [...new Set(geoCitations.filter(c => c.citations > 0).flatMap(c => c.engines || []))];
                   const articlesCited = [...new Set(geoCitations.filter(c => c.citations > 0).map(c => c.content_id))].length;
@@ -650,65 +767,62 @@ export default function PerformanceDashboardPage() {
                     ? Object.entries(allSections.reduce((a: Record<string,number>, s) => { a[s] = (a[s]||0)+1; return a; }, {})).sort((a,b) => b[1]-a[1])[0][0]
                     : null;
                   return (
-                  <div className="perf-geo-results">
-                    <div className="perf-kpis" style={{ marginTop: '16px' }}>
-                      <div className="perf-kpi-card">
-                        <div className="perf-kpi-top"><span className="perf-kpi-label">AI Visibility</span></div>
-                        <div className="perf-kpi-value" style={{ color: visibilityScore > 20 ? '#10B981' : visibilityScore > 5 ? '#F59E0B' : 'inherit' }}>{visibilityScore}%</div>
-                        <div className="perf-kpi-sub">Of topic queries where you appeared</div>
+                    <div className="perf-geo-results">
+                      <div className="perf-kpis" style={{ marginTop: '16px' }}>
+                        <div className="perf-kpi-card">
+                          <div className="perf-kpi-top"><span className="perf-kpi-label">AI Visibility</span></div>
+                          <div className="perf-kpi-value" style={{ color: visibilityScore > 20 ? '#10B981' : visibilityScore > 5 ? '#F59E0B' : 'inherit' }}>{visibilityScore}%</div>
+                          <div className="perf-kpi-sub">Of topic queries where you appeared</div>
+                        </div>
+                        <div className="perf-kpi-card">
+                          <div className="perf-kpi-top"><span className="perf-kpi-label">Engines Citing You</span></div>
+                          <div className="perf-kpi-value">{enginesWithCitations.length > 0 ? enginesWithCitations.join(', ') : '—'}</div>
+                          <div className="perf-kpi-sub">{enginesWithCitations.length === 0 ? 'Not yet cited' : 'Active citation sources'}</div>
+                        </div>
+                        <div className="perf-kpi-card">
+                          <div className="perf-kpi-top"><span className="perf-kpi-label">Articles Referenced</span></div>
+                          <div className="perf-kpi-value">{articlesCited} <span style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>/ {[...new Set(geoCitations.map(c => c.content_id))].length}</span></div>
+                          <div className="perf-kpi-sub">Of your published articles</div>
+                        </div>
+                        <div className="perf-kpi-card">
+                          <div className="perf-kpi-top"><span className="perf-kpi-label">Top Cited Section</span></div>
+                          <div className="perf-kpi-value" style={{ fontSize: topSection && topSection.length > 12 ? '0.9rem' : '1.5rem' }}>{topSection || '—'}</div>
+                          <div className="perf-kpi-sub">{topSection ? 'Most quoted section' : 'Run check to discover'}</div>
+                        </div>
                       </div>
-                      <div className="perf-kpi-card">
-                        <div className="perf-kpi-top"><span className="perf-kpi-label">Engines Citing You</span></div>
-                        <div className="perf-kpi-value">{enginesWithCitations.length > 0 ? enginesWithCitations.join(', ') : '—'}</div>
-                        <div className="perf-kpi-sub">{enginesWithCitations.length === 0 ? 'Not yet cited' : 'Active citation sources'}</div>
-                      </div>
-                      <div className="perf-kpi-card">
-                        <div className="perf-kpi-top"><span className="perf-kpi-label">Articles Referenced</span></div>
-                        <div className="perf-kpi-value">{articlesCited} <span style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>/ {[...new Set(geoCitations.map(c => c.content_id))].length}</span></div>
-                        <div className="perf-kpi-sub">Of your published articles</div>
-                      </div>
-                      <div className="perf-kpi-card">
-                        <div className="perf-kpi-top"><span className="perf-kpi-label">Top Cited Section</span></div>
-                        <div className="perf-kpi-value" style={{ fontSize: topSection && topSection.length > 12 ? '0.9rem' : '1.5rem' }}>{topSection || '—'}</div>
-                        <div className="perf-kpi-sub">{topSection ? 'Most quoted section' : 'Run check to discover'}</div>
-                      </div>
-                    </div>
-
-                    {/* Citation table */}
-                    <div className="perf-section" style={{ marginTop: '24px' }}>
-                      <div className="perf-table-wrap">
-                        <table className="perf-table">
-                          <thead><tr>
-                            <th>Article</th>
-                            <th>Engine</th>
-                            <th className="num">Checks</th>
-                            <th className="num">Citations</th>
-                            <th>Cited Section</th>
-                          </tr></thead>
-                          <tbody>
-                            {geoCitations.map((c, i) => (
-                              <tr key={i} className={c.citations > 0 ? 'perf-geo-cited-row' : ''}>
-                                <td className="perf-title-cell"><span className="perf-post-title">{c.title}</span></td>
-                                <td>{(c.engines || []).map((e: string) => <span key={e} className={`perf-geo-engine perf-geo-engine-${e}`}>{e}</span>)}</td>
-                                <td className="num">{c.totalChecks}</td>
-                                <td className="num">
-                                  {c.citations > 0
-                                    ? <span className="perf-geo-cited">✓ {c.citations}</span>
-                                    : <span className="perf-geo-notcited">—</span>}
-                                </td>
-                                <td className="perf-geo-section">{c.citedSections?.[0] || '—'}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                      <div className="perf-section" style={{ marginTop: '24px' }}>
+                        <div className="perf-table-wrap">
+                          <table className="perf-table">
+                            <thead><tr>
+                              <th>Article</th><th>Engine</th>
+                              <th className="num">Checks</th><th className="num">Citations</th>
+                              <th>Cited Section</th>
+                            </tr></thead>
+                            <tbody>
+                              {geoCitations.map((c, i) => (
+                                <tr key={i} className={c.citations > 0 ? 'perf-geo-cited-row' : ''}>
+                                  <td className="perf-title-cell"><span className="perf-post-title">{c.title}</span></td>
+                                  <td>{(c.engines || []).map((e: string) => <span key={e} className={`perf-geo-engine perf-geo-engine-${e}`}>{e}</span>)}</td>
+                                  <td className="num">{c.totalChecks}</td>
+                                  <td className="num">
+                                    {c.citations > 0
+                                      ? <span className="perf-geo-cited">✓ {c.citations}</span>
+                                      : <span className="perf-geo-notcited">—</span>}
+                                  </td>
+                                  <td className="perf-geo-section">{c.citedSections?.[0] || '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
                     </div>
-                  </div>
                   );
                 })()}
               </div>
             )}
 
+            {/* ── GSC Tab ── */}
             {activeChannel === 'gsc' && (
               <div className="perf-gsc-panel">
                 {!gscStatus?.connected ? (
@@ -718,9 +832,7 @@ export default function PerformanceDashboardPage() {
                     </div>
                     <h3 className="perf-gsc-title">Connect Google Search Console</h3>
                     <p className="perf-gsc-desc">Pull organic search performance — clicks, impressions, CTR, and position — for every article on your domain. Works with BYO published articles too.</p>
-                    <button className="perf-gsc-btn" onClick={handleGscConnect} disabled={!brandProfileId}>
-                      Connect GSC
-                    </button>
+                    <button className="perf-gsc-btn" onClick={handleGscConnect} disabled={!brandProfileId}>Connect GSC</button>
                   </div>
                 ) : (
                   <div className="perf-gsc-connected">
@@ -730,18 +842,16 @@ export default function PerformanceDashboardPage() {
                         <span className="perf-gsc-sites">{gscStatus.verifiedSites.slice(0,3).join(', ')}{gscStatus.verifiedSites.length > 3 ? ` +${gscStatus.verifiedSites.length - 3} more` : ''}</span>
                       )}
                       <div className="perf-btn-group">
-                      <button className="perf-sync-btn" onClick={handleGscSync} disabled={gscSyncing || !brandProfileId}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={gscSyncing ? 'spin' : ''}>
-                          <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
-                          <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
-                        </svg>
-                        {gscSyncing ? 'Syncing...' : 'Sync GSC'}
-                      </button>
-                      <span className="perf-btn-hint">Pulls 28 days of search impressions & clicks from Google Search Console</span>
+                        <button className="perf-sync-btn" onClick={handleGscSync} disabled={gscSyncing || !brandProfileId}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={gscSyncing ? 'spin' : ''}>
+                            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
+                            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
+                          </svg>
+                          {gscSyncing ? 'Syncing...' : 'Sync GSC'}
+                        </button>
+                        <span className="perf-btn-hint">Pulls 28 days of search impressions & clicks from Google Search Console</span>
                       </div>
                     </div>
-
-                    {/* GSC KPI cards */}
                     <div className="perf-kpis" style={{ marginTop: '16px' }}>
                       {[
                         { label: 'Total Clicks', value: fmt(data?.totals?.clicks || 0), sub: 'Organic search clicks', icon: 'click' },
@@ -756,31 +866,25 @@ export default function PerformanceDashboardPage() {
                         </div>
                       ))}
                     </div>
-
-                    {/* GSC pages table */}
                     {(data?.posts?.length ?? 0) > 0 && (
                       <div className="perf-section" style={{ marginTop: '24px' }}>
                         <div className="perf-section-header"><h2 className="perf-section-title">Pages</h2></div>
                         <div className="perf-table-wrap">
                           <table className="perf-table">
                             <thead><tr>
-                              <th>Page</th>
-                              <th className="num">Clicks</th>
-                              <th className="num">Impressions</th>
-                              <th className="num">CTR</th>
+                              <th>Page</th><th className="num">Clicks</th>
+                              <th className="num">Impressions</th><th className="num">CTR</th>
                               <th className="num">Position</th>
                             </tr></thead>
                             <tbody>
                               {(data?.posts || []).map((post, i) => (
                                 <tr key={i}>
                                   <td className="perf-title-cell"><span className="perf-post-title" title={(post as any).raw_data?.pageUrl || post.title || ''}>
-                                    {post.title
-                                      ? post.title
-                                      : (() => {
-                                          const rd = typeof (post as any).raw_data === 'string' ? JSON.parse((post as any).raw_data) : ((post as any).raw_data || {});
-                                          const url = rd.pageUrl || (post as any).post_id || '';
-                                          try { const p = new URL(url).pathname; return p === '/' ? 'Homepage' : p; } catch { return url || 'Unknown'; }
-                                        })()}
+                                    {post.title ? post.title : (() => {
+                                      const rd = typeof (post as any).raw_data === 'string' ? JSON.parse((post as any).raw_data) : ((post as any).raw_data || {});
+                                      const url = rd.pageUrl || (post as any).post_id || '';
+                                      try { const p = new URL(url).pathname; return p === '/' ? 'Homepage' : p; } catch { return url || 'Unknown'; }
+                                    })()}
                                   </span></td>
                                   <td className="num">{fmt(post.clicks)}</td>
                                   <td className="num">{fmt(post.impressions)}</td>
@@ -793,7 +897,6 @@ export default function PerformanceDashboardPage() {
                         </div>
                       </div>
                     )}
-
                     {(data?.posts?.length ?? 0) === 0 && (
                       <div className="perf-empty" style={{ marginTop: '24px' }}>
                         <p>No GSC data yet. Hit Sync GSC to pull organic search performance for your domain.</p>
@@ -807,6 +910,7 @@ export default function PerformanceDashboardPage() {
               </div>
             )}
 
+            {/* ── Pipeline Tab ── */}
             {activeChannel === 'pipeline' && (
               <div className="perf-pipeline-panel">
                 <div className="perf-geo-header">
@@ -900,7 +1004,7 @@ export default function PerformanceDashboardPage() {
               />
             )}
 
-          {/* ── Decay Monitoring ── */}
+            {/* ── Decay Monitoring ── */}
             {decayLoaded && decayAlerts.length > 0 && (
               <div className="perf-section perf-decay-section">
                 <div className="perf-section-header">
@@ -939,7 +1043,7 @@ export default function PerformanceDashboardPage() {
               </div>
             )}
 
-          {/* ── Predictions Tab ── */}
+            {/* ── Predictions Tab ── */}
             {activeChannel === 'predictions' && (
               <div className="perf-predictions-wrap">
                 <div className="perf-section-header" style={{ marginBottom: 24 }}>
@@ -977,25 +1081,18 @@ export default function PerformanceDashboardPage() {
                     )}
                   </div>
                   <div className="perf-btn-group">
-                  <button
-                    className={`perf-extract-btn ${batchScoring ? 'extracting' : ''}`}
-                    onClick={handleBatchScore}
-                    disabled={batchScoring}
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={batchScoring ? 'spin' : ''}>
-                      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/>
-                      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M16 8h5V3"/>
-                    </svg>
-                    {batchScoring ? 'Scoring...' : 'Score All'}
-                  </button>
-                  <span className="perf-btn-hint">Runs Pre-cog predictions on all published articles — needs 3+ articles with analytics</span>
+                    <button className={`perf-extract-btn ${batchScoring ? 'extracting' : ''}`} onClick={handleBatchScore} disabled={batchScoring}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={batchScoring ? 'spin' : ''}>
+                        <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/>
+                        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M16 8h5V3"/>
+                      </svg>
+                      {batchScoring ? 'Scoring...' : 'Score All'}
+                    </button>
+                    <span className="perf-btn-hint">Runs Pre-cog predictions on all published articles — needs 3+ articles with analytics</span>
                   </div>
                 </div>
-
                 {predictionsLoading ? (
-                  <div className="perf-skeleton-wrap">
-                    {[1,2,3].map(i => <div key={i} className="perf-skeleton-card" />)}
-                  </div>
+                  <div className="perf-skeleton-wrap">{[1,2,3].map(i => <div key={i} className="perf-skeleton-card" />)}</div>
                 ) : predictions.length === 0 ? (
                   <div className="perf-predictions-empty">
                     <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.3, marginBottom: 12 }}>
@@ -1021,12 +1118,8 @@ export default function PerformanceDashboardPage() {
                             <div className="perf-pred-left">
                               <div className="perf-pred-title">{item.title || 'Untitled'}</div>
                               <div className="perf-pred-meta">
-                                {item.precog_scored_at && (
-                                  <span>Scored {new Date(item.precog_scored_at).toLocaleDateString()}</span>
-                                )}
-                                {hist.totalArticles > 0 && (
-                                  <span>· Based on {hist.totalArticles} articles</span>
-                                )}
+                                {item.precog_scored_at && <span>Scored {new Date(item.precog_scored_at).toLocaleDateString()}</span>}
+                                {hist.totalArticles > 0 && <span>· Based on {hist.totalArticles} articles</span>}
                               </div>
                             </div>
                             <div className="perf-pred-score-block" style={{ '--pred-color': color } as React.CSSProperties}>
@@ -1045,12 +1138,9 @@ export default function PerformanceDashboardPage() {
                               )}
                             </div>
                           </div>
-
                           {!insufficient && (
                             <>
-                              {bd.prediction && (
-                                <div className="perf-pred-prediction">{bd.prediction}</div>
-                              )}
+                              {bd.prediction && <div className="perf-pred-prediction">{bd.prediction}</div>}
                               {bd.predictedImpressions && (
                                 <div className="perf-pred-range">
                                   <span className="perf-pred-range-label">Predicted impressions</span>
@@ -1086,15 +1176,13 @@ export default function PerformanceDashboardPage() {
               </div>
             )}
 
-          {/* ── Brain Intelligence ── */}
+            {/* ── Brain Intelligence ── */}
             {activeChannel === 'patterns' && (() => {
               const brainRules = patterns.filter((p: any) => p.pattern_type === 'writing_rule');
               const tryParse = (v: any, fallback: any) => { try { return JSON.parse(v); } catch { return fallback; } };
               const analyticsArticleCount = channelInfo.reduce((a: number, c: any) => a + Number(c.post_count || 0), 0);
               return (
                 <div className="brain-tab">
-
-                  {/* Header */}
                   <div className="brain-header">
                     <div className="brain-header-left">
                       <h2 className="brain-title">Brain Intelligence</h2>
@@ -1124,23 +1212,17 @@ export default function PerformanceDashboardPage() {
                           {extracting ? 'Updating Brain...' : 'Update Brain'}
                         </button>
                         <span className="perf-btn-hint">
-                          {mistakes.length > 0
-                            ? `Distills ${mistakes.length} editorial signals into writing rules`
-                            : 'Review AI content in Compliance Gate to build signals'}
+                          {mistakes.length > 0 ? `Distills ${mistakes.length} editorial signals into writing rules` : 'Review AI content in Compliance Gate to build signals'}
                         </span>
                       </div>
                     </div>
                   </div>
-
-                  {/* Writing Rules */}
                   <div className="brain-section">
                     <div className="brain-section-label">WRITING RULES</div>
                     <p className="brain-section-desc">What the Brain has learned from your editorial decisions. Applied automatically to every future generation.</p>
                     {patternsLoading ? (
                       <div className="perf-pattern-skeleton-wrap">
-                        <div className="perf-pattern-skeleton" />
-                        <div className="perf-pattern-skeleton" />
-                        <div className="perf-pattern-skeleton" />
+                        <div className="perf-pattern-skeleton" /><div className="perf-pattern-skeleton" /><div className="perf-pattern-skeleton" />
                       </div>
                     ) : brainRules.length === 0 ? (
                       <div className="brain-empty">
@@ -1148,9 +1230,7 @@ export default function PerformanceDashboardPage() {
                           <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/>
                           <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/>
                         </svg>
-                        <h3 className="brain-empty-title">
-                          {mistakes.length > 0 ? 'Ready to distill' : 'Brain is listening'}
-                        </h3>
+                        <h3 className="brain-empty-title">{mistakes.length > 0 ? 'Ready to distill' : 'Brain is listening'}</h3>
                         <p className="brain-empty-body">
                           {mistakes.length > 0
                             ? `You have ${mistakes.length} editorial signals from Compliance Gate. Click "Update Brain" to distill them into writing rules.`
@@ -1168,9 +1248,7 @@ export default function PerformanceDashboardPage() {
                           return (
                             <div key={i} className={`brain-rule-card brain-rule-${direction}`}>
                               <div className="brain-rule-header">
-                                <span className={`brain-rule-badge brain-rule-badge-${direction}`}>
-                                  {direction === 'avoid' ? 'Avoid' : 'Do'}
-                                </span>
+                                <span className={`brain-rule-badge brain-rule-badge-${direction}`}>{direction === 'avoid' ? 'Avoid' : 'Do'}</span>
                                 <span className="brain-rule-edits">{editCount} signal{editCount !== 1 ? 's' : ''}</span>
                               </div>
                               <div className="brain-rule-text">{rule.description}</div>
@@ -1201,8 +1279,6 @@ export default function PerformanceDashboardPage() {
                       </div>
                     )}
                   </div>
-
-                  {/* Content Signals */}
                   <div className="brain-section">
                     <div className="brain-section-label">CONTENT SIGNALS</div>
                     <p className="brain-section-desc">Performance patterns from your published content. Unlocks at 3+ articles with analytics.</p>
@@ -1215,9 +1291,7 @@ export default function PerformanceDashboardPage() {
                         <p className="brain-locked-msg">
                           Publish and sync analytics for {Math.max(0, 3 - analyticsArticleCount)} more article{3 - analyticsArticleCount !== 1 ? 's' : ''} to unlock content signal intelligence.
                         </p>
-                        {analyticsArticleCount > 0 && (
-                          <p className="brain-locked-progress">{analyticsArticleCount} of 3 articles tracked</p>
-                        )}
+                        {analyticsArticleCount > 0 && <p className="brain-locked-progress">{analyticsArticleCount} of 3 articles tracked</p>}
                       </div>
                     ) : (
                       <div className="brain-signal-cards">
@@ -1234,40 +1308,100 @@ export default function PerformanceDashboardPage() {
                                 <span className="brain-signal-label">Impressions</span>
                               </div>
                             </div>
-                            {ch.last_synced && (
-                              <div className="brain-signal-synced">Synced {timeAgo(ch.last_synced)}</div>
-                            )}
+                            {ch.last_synced && <div className="brain-signal-synced">Synced {timeAgo(ch.last_synced)}</div>}
                           </div>
                         ))}
                       </div>
                     )}
                   </div>
-
                 </div>
               );
             })()}
           </>
         )}
       </div>
+
+      {/* ── Manual Performance Entry Modal ── */}
+      {showManualEntry && (
+        <div className="pq-modal-overlay" onClick={() => setShowManualEntry(null)}>
+          <div className="pq-modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+            <div className="pq-modal-header">
+              <div>
+                <div className="pq-modal-title">Log LinkedIn Performance</div>
+                <div className="pq-modal-sub" style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginTop: 2 }}>
+                  Enter stats from your LinkedIn post analytics page
+                </div>
+              </div>
+              <button className="pq-modal-close" onClick={() => setShowManualEntry(null)}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+            <div style={{ padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-muted)', display: 'block', marginBottom: 4 }}>LinkedIn Post URL (optional)</label>
+                <input
+                  className="pq-sched-input"
+                  style={{ width: '100%' }}
+                  placeholder="https://www.linkedin.com/feed/update/..."
+                  value={manualForm.postUrl}
+                  onChange={e => setManualForm(p => ({ ...p, postUrl: e.target.value }))}
+                />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                {(['impressions', 'clicks', 'reactions', 'comments', 'reposts'] as (keyof ManualEntryForm)[]).map(key => (
+                  <div key={key}>
+                    <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-muted)', display: 'block', marginBottom: 4, textTransform: 'capitalize' }}>{key}</label>
+                    <input
+                      className="pq-sched-input"
+                      type="number"
+                      min="0"
+                      style={{ width: '100%' }}
+                      placeholder="0"
+                      value={manualForm[key]}
+                      onChange={e => setManualForm(p => ({ ...p, [key]: e.target.value }))}
+                    />
+                  </div>
+                ))}
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-muted)', display: 'block', marginBottom: 4 }}>Published Date</label>
+                  <input
+                    className="pq-sched-input"
+                    type="date"
+                    style={{ width: '100%' }}
+                    value={manualForm.publishedAt}
+                    onChange={e => setManualForm(p => ({ ...p, publishedAt: e.target.value }))}
+                  />
+                </div>
+              </div>
+              {manualMsg && <span className="perf-sync-msg ok" style={{ fontSize: '12px' }}>{manualMsg}</span>}
+            </div>
+            <div style={{ padding: '12px 24px 20px', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="pq-cancel-btn" onClick={() => setShowManualEntry(null)}>Cancel</button>
+              <button
+                className="perf-sync-btn"
+                style={{ background: 'var(--color-accent)', color: '#fff', padding: '8px 20px', fontWeight: 600 }}
+                disabled={manualSubmitting}
+                onClick={() => handleManualEntry(showManualEntry === 'new' ? undefined : showManualEntry)}
+              >
+                {manualSubmitting ? 'Saving…' : 'Save Performance'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }
 
 // ── Campaigns View ─────────────────────────────────────────────────────────────
-function CampaignsView({
-  campaigns, loading, expanded, setExpanded
-}: {
-  campaigns: CampaignRow[];
-  loading: boolean;
-  expanded: string | null;
-  setExpanded: (id: string | null) => void;
+function CampaignsView({ campaigns, loading, expanded, setExpanded }: {
+  campaigns: CampaignRow[]; loading: boolean; expanded: string | null; setExpanded: (id: string | null) => void;
 }) {
   if (loading) return (
-    <div className="perf-skeleton-wrap">
-      {[1,2,3].map(i => <div key={i} className="perf-skeleton-card" style={{ height: 160 }} />)}
-    </div>
+    <div className="perf-skeleton-wrap">{[1,2,3].map(i => <div key={i} className="perf-skeleton-card" style={{ height: 160 }} />)}</div>
   );
-
   if (!campaigns.length) return (
     <div className="perf-empty">
       <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -1276,104 +1410,54 @@ function CampaignsView({
       <p>No campaign analytics yet. Generate a campaign, publish all 8 articles, then sync.</p>
     </div>
   );
-
-  // Summary KPIs across all campaigns
   const totalImpressions = campaigns.reduce((s, c) => s + Number(c.total_impressions), 0);
   const totalClicks      = campaigns.reduce((s, c) => s + Number(c.total_clicks), 0);
   const totalReactions   = campaigns.reduce((s, c) => s + Number(c.total_reactions), 0);
   const bestCampaign     = [...campaigns].sort((a, b) => Number(b.total_impressions) - Number(a.total_impressions))[0];
   const avgCtr           = totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100).toFixed(2) : '0';
-  const avgEng           = campaigns.length
-    ? (campaigns.reduce((s, c) => s + Number(c.avg_engagement_rate), 0) / campaigns.length).toFixed(2)
-    : '0';
-
+  const avgEng           = campaigns.length ? (campaigns.reduce((s, c) => s + Number(c.avg_engagement_rate), 0) / campaigns.length).toFixed(2) : '0';
   return (
     <div className="camp-analytics-wrap">
-      {/* Cross-campaign summary KPIs */}
       <div className="perf-kpis">
         {[
-          {
-            label: 'Total Campaign Reach',
-            value: fmt(totalImpressions),
-            sub: `Across ${campaigns.length} campaign${campaigns.length !== 1 ? 's' : ''}`,
-            icon: 'eye',
-          },
-          {
-            label: 'Total Link Clicks',
-            value: fmt(totalClicks),
-            sub: `${avgCtr}% blended CTR`,
-            icon: 'click',
-          },
-          {
-            label: 'Total Reactions',
-            value: fmt(totalReactions),
-            sub: `${avgEng}% avg engagement`,
-            icon: 'heart',
-          },
-          {
-            label: 'Top Campaign',
-            value: bestCampaign ? fmt(Number(bestCampaign.total_impressions)) : '—',
-            sub: bestCampaign ? bestCampaign.campaign_name : 'No data yet',
-            icon: 'trend',
-          },
+          { label: 'Total Campaign Reach', value: fmt(totalImpressions), sub: `Across ${campaigns.length} campaign${campaigns.length !== 1 ? 's' : ''}`, icon: 'eye' },
+          { label: 'Total Link Clicks', value: fmt(totalClicks), sub: `${avgCtr}% blended CTR`, icon: 'click' },
+          { label: 'Total Reactions', value: fmt(totalReactions), sub: `${avgEng}% avg engagement`, icon: 'heart' },
+          { label: 'Top Campaign', value: bestCampaign ? fmt(Number(bestCampaign.total_impressions)) : '—', sub: bestCampaign ? bestCampaign.campaign_name : 'No data yet', icon: 'trend' },
         ].map(kpi => (
           <div key={kpi.label} className="perf-kpi-card">
-            <div className="perf-kpi-top">
-              <span className="perf-kpi-label">{kpi.label}</span>
-              <KpiIcon type={kpi.icon} />
-            </div>
+            <div className="perf-kpi-top"><span className="perf-kpi-label">{kpi.label}</span><KpiIcon type={kpi.icon} /></div>
             <div className="perf-kpi-value">{kpi.value}</div>
             <div className="perf-kpi-sub">{kpi.sub}</div>
           </div>
         ))}
       </div>
-
-      {/* Per-campaign cards */}
       <div className="camp-cards">
         {campaigns.map(c => {
           const isOpen = expanded === c.campaign_id;
           const bestChannel = [...(c.channels || [])].sort((a, b) => Number(b.impressions) - Number(a.impressions))[0];
-          const publishProgress = c.article_count; // articles with analytics data = published + synced
           const ctr = Number(c.avg_ctr);
           const eng = Number(c.avg_engagement_rate);
-
           return (
             <div key={c.campaign_id} className={`camp-analytics-card ${isOpen ? 'open' : ''}`}>
-              {/* Card header — always visible */}
-              <button
-                className="camp-analytics-header"
-                onClick={() => setExpanded(isOpen ? null : c.campaign_id)}
-              >
+              <button className="camp-analytics-header" onClick={() => setExpanded(isOpen ? null : c.campaign_id)}>
                 <div className="camp-analytics-header-left">
                   <div className="camp-analytics-name">{c.campaign_name}</div>
                   <div className="camp-analytics-cluster">{c.topic_cluster}</div>
                 </div>
                 <div className="camp-analytics-header-right">
                   <div className="camp-analytics-pills">
-                    <span className="camp-analytics-pill impressions">
-                      {fmt(Number(c.total_impressions))} reach
-                    </span>
-                    <span className="camp-analytics-pill clicks">
-                      {fmt(Number(c.total_clicks))} clicks
-                    </span>
-                    <span className="camp-analytics-pill articles">
-                      {publishProgress} article{publishProgress !== 1 ? 's' : ''} tracked
-                    </span>
+                    <span className="camp-analytics-pill impressions">{fmt(Number(c.total_impressions))} reach</span>
+                    <span className="camp-analytics-pill clicks">{fmt(Number(c.total_clicks))} clicks</span>
+                    <span className="camp-analytics-pill articles">{c.article_count} article{c.article_count !== 1 ? 's' : ''} tracked</span>
                   </div>
-                  <svg
-                    width="14" height="14" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" strokeWidth="2"
-                    className={`camp-analytics-chevron ${isOpen ? 'open' : ''}`}
-                  >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`camp-analytics-chevron ${isOpen ? 'open' : ''}`}>
                     <polyline points="6 9 12 15 18 9"/>
                   </svg>
                 </div>
               </button>
-
-              {/* Expanded detail */}
               {isOpen && (
                 <div className="camp-analytics-body">
-                  {/* 4 meaningful KPIs for this campaign */}
                   <div className="camp-analytics-kpi-row">
                     <div className="camp-analytics-kpi">
                       <span className="camp-analytics-kpi-label">Total Impressions</span>
@@ -1395,37 +1479,28 @@ function CampaignsView({
                       <span className="camp-analytics-kpi-value" style={{ color: CHANNEL_COLORS[bestChannel?.channel] || 'var(--color-accent)', fontSize: '1rem' }}>
                         {bestChannel ? bestChannel.channel.charAt(0).toUpperCase() + bestChannel.channel.slice(1) : '—'}
                       </span>
-                      <span className="camp-analytics-kpi-sub">
-                        {bestChannel ? `${fmt(Number(bestChannel.impressions))} impressions` : 'No data'}
-                      </span>
+                      <span className="camp-analytics-kpi-sub">{bestChannel ? `${fmt(Number(bestChannel.impressions))} impressions` : 'No data'}</span>
                     </div>
                   </div>
-
-                  {/* Channel breakdown bar chart */}
                   {c.channels.length > 0 && (
                     <div className="camp-channel-breakdown">
                       <div className="camp-breakdown-label">Channel breakdown</div>
-                      {[...c.channels]
-                        .sort((a, b) => Number(b.impressions) - Number(a.impressions))
-                        .map(ch => {
-                          const maxImpr = Math.max(...c.channels.map(x => Number(x.impressions)), 1);
-                          const pct = Math.round((Number(ch.impressions) / maxImpr) * 100);
-                          const color = CHANNEL_COLORS[ch.channel] || 'var(--color-accent)';
-                          return (
-                            <div key={ch.channel} className="camp-breakdown-row">
-                              <span className="camp-breakdown-ch">{ch.channel}</span>
-                              <div className="camp-breakdown-bar-wrap">
-                                <div className="camp-breakdown-bar" style={{ width: `${pct}%`, background: color }} />
-                              </div>
-                              <span className="camp-breakdown-val">{fmt(Number(ch.impressions))}</span>
-                              <span className="camp-breakdown-clicks">{fmt(Number(ch.clicks))} clicks</span>
+                      {[...c.channels].sort((a, b) => Number(b.impressions) - Number(a.impressions)).map(ch => {
+                        const maxImpr = Math.max(...c.channels.map(x => Number(x.impressions)), 1);
+                        const pct = Math.round((Number(ch.impressions) / maxImpr) * 100);
+                        return (
+                          <div key={ch.channel} className="camp-breakdown-row">
+                            <span className="camp-breakdown-ch">{ch.channel}</span>
+                            <div className="camp-breakdown-bar-wrap">
+                              <div className="camp-breakdown-bar" style={{ width: `${pct}%`, background: CHANNEL_COLORS[ch.channel] || 'var(--color-accent)' }} />
                             </div>
-                          );
-                        })}
+                            <span className="camp-breakdown-val">{fmt(Number(ch.impressions))}</span>
+                            <span className="camp-breakdown-clicks">{fmt(Number(ch.clicks))} clicks</span>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
-
-                  {/* Top articles leaderboard */}
                   {c.top_articles.length > 0 && (
                     <div className="camp-top-articles">
                       <div className="camp-breakdown-label">Top articles in this campaign</div>
@@ -1435,19 +1510,15 @@ function CampaignsView({
                           <span className="camp-top-title">
                             {a.published_url
                               ? <a href={a.published_url} target="_blank" rel="noopener noreferrer" className="camp-top-link">{a.title || 'Untitled'}</a>
-                              : (a.title || 'Untitled')
-                            }
+                              : (a.title || 'Untitled')}
                           </span>
-                          <span className="camp-top-ch" style={{ color: CHANNEL_COLORS[a.channel] || 'var(--color-text-muted)' }}>
-                            {a.channel}
-                          </span>
+                          <span className="camp-top-ch" style={{ color: CHANNEL_COLORS[a.channel] || 'var(--color-text-muted)' }}>{a.channel}</span>
                           <span className="camp-top-impr">{fmt(Number(a.impressions))} impr.</span>
                           <span className="camp-top-clicks">{fmt(Number(a.clicks))} clicks</span>
                         </div>
                       ))}
                     </div>
                   )}
-
                   <div className="camp-analytics-footer">
                     Campaign started {new Date(c.campaign_created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     {c.last_synced && <> · Last synced {timeAgo(c.last_synced)}</>}
@@ -1462,7 +1533,6 @@ function CampaignsView({
   );
 }
 
-
 function KpiIcon({ type }: { type: string }) {
   const icons: Record<string, JSX.Element> = {
     eye: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
@@ -1476,7 +1546,6 @@ function KpiIcon({ type }: { type: string }) {
 function TrendChart({ data, onSync: _onSync }: { data: TrendPoint[]; onSync?: () => void }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = React.useState(900);
-
   React.useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -1488,13 +1557,11 @@ function TrendChart({ data, onSync: _onSync }: { data: TrendPoint[]; onSync?: ()
     setContainerWidth(el.clientWidth || 900);
     return () => obs.disconnect();
   }, []);
-
   if (!data || data.length === 0) return (
     <div ref={containerRef} style={{ width: '100%', height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <span style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>No data yet</span>
     </div>
   );
-
   const w = containerWidth, h = 260, padX = 8, padY = 20, padBottom = 32;
   const chartH = h - padY - padBottom;
   const maxVal = Math.max(...data.map(d => d.impressions), 1);
@@ -1506,7 +1573,6 @@ function TrendChart({ data, onSync: _onSync }: { data: TrendPoint[]; onSync?: ()
   const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
   const areaPath = `${linePath} L${pts[pts.length-1].x.toFixed(1)},${(padY + chartH).toFixed(1)} L${pts[0].x.toFixed(1)},${(padY + chartH).toFixed(1)} Z`;
   const labels = [0, Math.floor(data.length / 2), data.length - 1].map(i => data[i]);
-
   return (
     <div ref={containerRef} style={{ width: '100%' }}>
       <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="trend-chart" style={{ display: 'block' }}>
@@ -1522,9 +1588,7 @@ function TrendChart({ data, onSync: _onSync }: { data: TrendPoint[]; onSync?: ()
         })}
         <path d={areaPath} fill="url(#tg)" />
         <path d={linePath} fill="none" stroke="#3563FF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-        {pts.map((p, i) => (
-          <circle key={i} cx={p.x} cy={p.y} r="3.5" fill="#3563FF" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" />
-        ))}
+        {pts.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r="3.5" fill="#3563FF" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" />)}
         {labels.map((label, i) => (
           <text key={i} x={Math.max(30, Math.min(w - 30, pts[[0, Math.floor(data.length / 2), data.length - 1][i]].x))} y={h - 8} textAnchor="middle" fontSize="11" fill="rgba(255,255,255,0.35)">
             {new Date(label.day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
@@ -1535,12 +1599,8 @@ function TrendChart({ data, onSync: _onSync }: { data: TrendPoint[]; onSync?: ()
   );
 }
 
-// ── Semantic Score Panel ──────────────────────────────────────────────────────
 function SemanticScorePanel({ signals, prediction, recommendedActions, color: _color }: {
-  signals: any[];
-  prediction?: string;
-  recommendedActions: string[];
-  color: string;
+  signals: any[]; prediction?: string; recommendedActions: string[]; color: string;
 }) {
   if (!signals || signals.length === 0) return null;
   const pos = signals.filter(s => s.impact === 'positive').length;
