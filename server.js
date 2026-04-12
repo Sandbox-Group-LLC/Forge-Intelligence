@@ -4192,6 +4192,4797 @@ app.get('/api/compliance/latest/:brandProfileId', requireAuth, async (req, res) 
 // POST compliance critique — Claude reads article + brain mistakes, returns report
 
 
+app.post('/api/compliance/rewrite-section', requireAuth, async (req, res) => {
+  const { sectionBody, suggestion, brandProfileId } = req.body;
+  if (!sectionBody || !suggestion) return res.status(400).json({ error: 'sectionBody and suggestion required' });
+  try {
+    const profileRes = brandProfileId
+      ? await pool.query('SELECT profile_data FROM brand_profiles WHERE id = $1', [brandProfileId])
+      : { rows: [] };
+    const voiceHint = profileRes.rows[0]?.profile_data?.voice_profile?.tone
+      ? `Brand tone: ${profileRes.rows[0].profile_data.voice_profile.tone}.`
+      : '';
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: `You are an editorial AI. Rewrite the following article section to incorporate the editorial suggestion. Preserve the author's voice and intent. Return only the rewritten section body — no commentary, no preamble, no labels.\n\n${voiceHint}\n\nORIGINAL SECTION:\n${sectionBody}\n\nEDITORIAL SUGGESTION:\n${suggestion}\n\nREWRITTEN SECTION:` }]
+    });
+    const rewritten = response.content[0]?.text?.trim();
+    if (!rewritten) return res.status(500).json({ success: false, error: 'AI returned empty response' });
+    res.json({ success: true, rewritten });
+  } catch (e) {
+    console.error('[REWRITE-SECTION]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+app.post('/api/compliance/critique', requireAuth, async (req, res) => {
+  const { brandProfileId, contentId } = req.body;
+  if (!brandProfileId || !contentId) return res.status(400).json({ error: 'brandProfileId and contentId required' });
+  try {
+    const safeId = brandProfileId.replace(/-/g, '_');
+    const tableName = `generated_content_${safeId}`;
+
+    await ensureComplianceColumns(tableName);
+    // Load article
+    const articleRes = await pool.query(`SELECT * FROM ${tableName} WHERE id = $1`, [contentId]);
+    if (!articleRes.rows.length) return res.status(404).json({ error: 'Article not found' });
+    const article = articleRes.rows[0];
+    const articleJson = article.article_json;
+
+    // Load brand profile + brain mistakes
+    const brandRes = await pool.query('SELECT * FROM brand_profiles WHERE id = $1', [brandProfileId]);
+    const brand = brandRes.rows[0];
+    const mistakesRes = await pool.query(`SELECT * FROM mistakes ORDER BY created_at DESC LIMIT 20`).catch(() => ({ rows: [] }));
+    const mistakes = mistakesRes.rows;
+
+    const systemPrompt = `You are a compliance and brand voice auditor. Analyze this article against the brand profile and known mistakes. Return a JSON compliance report.
+
+Brand Voice Profile:
+${JSON.stringify(brand?.voice_profile || {}, null, 2)}
+
+Known Mistakes to Avoid:
+${mistakes.map(m => `- ${m.mistake_type}: ${m.human_feedback}`).join('\n') || 'None recorded yet'}
+
+Return ONLY valid JSON in this exact structure:
+{
+  "overallScore": <0-100>,
+  "brandVoiceScore": <0-100>,
+  "factualConfidence": <0-100>,
+  "autoApprovable": <true if all sections green>,
+  "summary": "<2 sentence overall assessment>",
+  "flags": [
+    {
+      "sectionIndex": <zero-based index of the section in the sections array — first section is 0, second is 1, etc>,
+      "sectionHeading": "<heading>",
+      "severity": "yellow" | "red",
+      "type": "brand_voice" | "factual_claim" | "legal_risk" | "sme_required",
+      "reason": "<why flagged>",
+      "suggestion": "<recommended fix>"
+    }
+  ],
+  "mistakesApplied": ["<list of mistake patterns that influenced this critique>"]
+}`;
+
+    const critiqueRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 2000,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: `Article to audit:\n\n${JSON.stringify(articleJson, null, 2)}` }]
+      })
+    });
+    const critiqueData = await critiqueRes.json();
+    const rawText = critiqueData.content?.[0]?.text || '{}';
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    const report = JSON.parse(sanitizeJson(jsonMatch ? jsonMatch[0] : rawText));
+
+    // Normalise sectionIndex to 0-based — Claude sometimes returns 1-based
+    if (report.flags?.length && articleJson?.sections?.length) {
+      const maxIdx = articleJson.sections.length - 1;
+      const anyExceedsBounds = report.flags.some(f => f.sectionIndex > maxIdx);
+      if (anyExceedsBounds) {
+        report.flags = report.flags.map(f => ({ ...f, sectionIndex: Math.max(0, f.sectionIndex - 1) }));
+      }
+    }
+
+    // Persist compliance report to article record
+    await pool.query(
+      `UPDATE ${tableName} SET compliance_report = $1, compliance_status = 'reviewed', updated_at = NOW() WHERE id = $2`,
+      [JSON.stringify(report), contentId]
+    );
+
+    res.json({ success: true, report });
+  } catch (err) {
+    console.error('[COMPLIANCE] Critique error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST approve — save human edits, write mistakes to brain, mark approved
+app.post('/api/compliance/approve', requireAuth, async (req, res) => {
+  const { brandProfileId, contentId, reviewMode, editedSections, decisions } = req.body;
+  if (!brandProfileId || !contentId) return res.status(400).json({ error: 'brandProfileId and contentId required' });
+  const startTime = Date.now();
+  try {
+    const safeId = brandProfileId.replace(/-/g, '_');
+    const tableName = `generated_content_${safeId}`;
+
+    await ensureComplianceColumns(tableName);
+    // Load original article
+    const articleRes = await pool.query(`SELECT * FROM ${tableName} WHERE id = $1`, [contentId]);
+    if (!articleRes.rows.length) return res.status(404).json({ error: 'Article not found' });
+    const article = articleRes.rows[0];
+    let articleJson = article.article_json;
+
+    // Apply human edits to article sections
+    if (editedSections && Array.isArray(editedSections)) {
+      editedSections.forEach(edit => {
+        if (articleJson.sections && articleJson.sections[edit.sectionIndex]) {
+          const section = articleJson.sections[edit.sectionIndex];
+          const orig = section.body || section.content || '';
+          if (orig !== edit.content) {
+            // Write to brain_mistakes (brand-scoped)
+            pool.query(
+              `INSERT INTO brain_mistakes (brand_profile_id, mistake_type, description, human_feedback, severity)
+               VALUES ($1, 'human_edit', $2, $3, 'medium')`,
+              [
+                brandProfileId,
+                `Section "${section.heading || 'untitled'}": human reviewer edited content`,
+                `Avoid: "${orig.substring(0, 200)}" — prefer: "${edit.content.substring(0, 200)}"`
+              ]
+            ).catch(e => console.error('[COMPLIANCE] Mistake write error:', e.message));
+            // Update whichever field exists
+            if (section.body !== undefined) {
+              articleJson.sections[edit.sectionIndex].body = edit.content;
+            } else {
+              articleJson.sections[edit.sectionIndex].content = edit.content;
+            }
+          }
+        }
+      });
+    }
+
+    // Handle red section decisions
+    const finalStatus = reviewMode === 'auto-ship' ? 'approved' :
+      decisions && Object.values(decisions).some(d => d === 'rejected') ? 'rejected' : 'approved';
+
+    await pool.query(
+      `UPDATE ${tableName} SET article_json = $1, compliance_status = $2, review_mode = $3, reviewed_at = NOW(), updated_at = NOW() WHERE id = $4`,
+      [JSON.stringify(articleJson), finalStatus, reviewMode || 'approve-to-ship', contentId]
+    );
+
+    // Auto-stage into publishing queue on approval
+    if (finalStatus === 'approved') {
+      const articleTitle = articleJson.title || article.title || 'Untitled Article';
+      pool.query(
+        `INSERT INTO publishing_queue (brand_profile_id, content_id, title, status, created_at, updated_at)
+         VALUES ($1, $2, $3, 'staged', NOW(), NOW())
+         ON CONFLICT (content_id) DO UPDATE SET
+           title = EXCLUDED.title,
+           updated_at = NOW()
+         WHERE publishing_queue.status = 'staged'`,
+        [brandProfileId, contentId, articleTitle]
+      ).catch(e => console.error('[QUEUE] Auto-stage error:', e.message));
+    }
+
+        await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata) VALUES ($1,$2,$3,$4,$5,$6)', ['stage5_compliance_gate', brandProfileId, 'success', 0, Date.now()-startTime, JSON.stringify({ contentId, status: finalStatus })]).catch(e => console.error('[ACTIVITY LOG]', e.message));
+        res.json({ success: true, status: finalStatus, contentId });
+  } catch (err) {
+    console.error('[COMPLIANCE] Approve error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
+// ── Stage 6: Publishing & Distribution ───────────────────────────────────────
+
+// Resolve UTM tokens against article + brand context
+function resolveUtmParams(template, ctx) {
+  const resolved = {};
+  for (const [k, v] of Object.entries(template)) {
+    resolved[k] = v
+      .replace('{campaign_slug}', ctx.campaignSlug || 'forge')
+      .replace('{article_slug}', ctx.articleSlug || 'article')
+      .replace('{brand_slug}', ctx.brandSlug || 'brand')
+      .replace('{channel}', ctx.channel || k);
+  }
+  return resolved;
+}
+
+function buildUtmString(params) {
+  return Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+}
+
+
+// GET /api/public/articles — list published articles (for public library)
+app.get('/api/public/articles', async (req, res) => {
+  const { brandSlug } = req.query;
+  try {
+    let brandFilter = '';
+    let brandName = '';
+    let values = [];
+
+    if (brandSlug) {
+      // Find the brand by slug (derived from brand_url)
+      const brandRes = await pool.query(`
+        SELECT id, brand_name, brand_url FROM brand_profiles 
+        WHERE LOWER(REGEXP_REPLACE(brand_url, '[^a-zA-Z0-9]', '-', 'g')) LIKE $1
+        OR LOWER(REGEXP_REPLACE(COALESCE(brand_name, ''), '[^a-zA-Z0-9]', '-', 'g')) LIKE $1
+        LIMIT 1
+      `, [`%${brandSlug.toLowerCase()}%`]);
+      
+      if (brandRes.rows.length > 0) {
+        brandFilter = 'AND pq.brand_profile_id = $1';
+        values = [brandRes.rows[0].id];
+        brandName = brandRes.rows[0].brand_name || brandRes.rows[0].brand_url;
+      }
+    }
+
+    // Get published articles from publishing_queue with status 'published'
+    const articlesRes = await pool.query(`
+      SELECT 
+        pq.id,
+        pq.content_id,
+        pq.title,
+        pq.brand_profile_id,
+        pq.published_at,
+        pq.hero_image_url,
+        bp.brand_name,
+        bp.brand_url
+      FROM publishing_queue pq
+      LEFT JOIN brand_profiles bp ON bp.id = pq.brand_profile_id
+      WHERE pq.status = 'published' ${brandFilter}
+      ORDER BY pq.published_at DESC NULLS LAST, pq.created_at DESC
+      LIMIT 50
+    `, values);
+
+    const articles = await Promise.all(articlesRes.rows.map(async (row) => {
+      // Build slugs
+      const brandSlugVal = (row.brand_url || row.brand_name || 'brand')
+        .replace(/https?:\/\//i, '')
+        .replace(/[^a-z0-9]/gi, '-')
+        .toLowerCase()
+        .replace(/^-+|-+$/g, '');
+      
+      const articleSlug = (row.title || 'article')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 80);
+
+      // Try to get meta description from generated content
+      let metaDescription = '';
+      if (row.content_id && row.brand_profile_id) {
+        try {
+          const safeId = row.brand_profile_id.replace(/-/g, '_');
+          const contentRes = await pool.query(
+            `SELECT article_json FROM generated_content_${safeId} WHERE id = $1`,
+            [row.content_id]
+          );
+          if (contentRes.rows.length > 0) {
+            const articleJson = contentRes.rows[0].article_json || {};
+            metaDescription = articleJson.metaDescription || '';
+          }
+        } catch {}
+      }
+
+      return {
+        id: row.id,
+        title: row.title,
+        metaDescription,
+        brandSlug: brandSlugVal,
+        articleSlug,
+        brandName: row.brand_name || row.brand_url || 'Unknown',
+        publishedAt: row.published_at,
+        heroImageUrl: row.hero_image_url
+      };
+    }));
+
+    res.json({ success: true, articles, brandName });
+  } catch (err) {
+    console.error('[Public Articles]', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
+// GET /api/publishing/queue/:brandProfileId
+app.get('/api/publishing/queue/:brandProfileId', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.params;
+    if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+  try {
+    // Base queue items
+    const result = await pool.query(
+      `SELECT pq.*,
+              c.name        AS campaign_name,
+              c.topic_cluster AS campaign_topic,
+              c.status      AS campaign_status,
+              bp.brand_url  AS brand_url,
+              bp.brand_name AS brand_name
+       FROM publishing_queue pq
+       LEFT JOIN campaigns c ON c.id = pq.campaign_id
+       LEFT JOIN brand_profiles bp ON bp.id = pq.brand_profile_id
+       WHERE pq.brand_profile_id = $1
+       ORDER BY pq.campaign_id NULLS LAST, pq.created_at ASC`,
+      [brandProfileId]
+    );
+
+    const items = result.rows;
+
+    // For campaign articles, enrich with week/publish_day/angle from generated_content + campaign_articles
+    const safeId = brandProfileId.replace(/-/g, '_');
+    const campaignItemIds = items
+      .filter(i => i.campaign_id && i.content_id)
+      .map(i => i.content_id);
+
+    let angleMap = {};
+    if (campaignItemIds.length > 0) {
+      // Get campaign_article_index from generated_content
+      const gcRes = await pool.query(
+        `SELECT id::text, campaign_article_index FROM generated_content_${safeId}
+         WHERE id::text = ANY($1) AND campaign_article_index IS NOT NULL`,
+        [campaignItemIds]
+      ).catch(() => ({ rows: [] }));
+
+      // Build a map of content_id -> article_index
+      const indexMap = {};
+      for (const row of gcRes.rows) indexMap[row.id] = row.campaign_article_index;
+
+      // For each campaign, get angle_profiles from campaign_articles
+      const campaignIds = [...new Set(items.filter(i => i.campaign_id).map(i => i.campaign_id))];
+      for (const campId of campaignIds) {
+        const caRes = await pool.query(
+          `SELECT article_index, angle_profile, week_number FROM campaign_articles WHERE campaign_id = $1`,
+          [campId]
+        ).catch(() => ({ rows: [] }));
+        for (const ca of caRes.rows) {
+          angleMap[`${campId}:${ca.article_index}`] = {
+            week_number: ca.week_number,
+            angle: ca.angle_profile
+          };
+        }
+      }
+
+      // Attach angle data to each item
+      for (const item of items) {
+        if (item.campaign_id && item.content_id) {
+          const idx = indexMap[item.content_id];
+          if (idx !== undefined) {
+            const key = `${item.campaign_id}:${idx}`;
+            const meta = angleMap[key];
+            if (meta) {
+              item.campaign_article_index = idx;
+              item.week_number = meta.week_number;
+              item.publish_day = meta.angle?.publish_day || null;
+              item.content_type = meta.angle?.content_type || null;
+              item.funnel_position = meta.angle?.funnel_position || null;
+              item.primary_persona = meta.angle?.primary_persona || null;
+            }
+          }
+        }
+      }
+    }
+
+    res.json({ success: true, items });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/publishing/queue (all brands — for global queue view)
+// POST /api/publishing/backfill-queue — manually stage all approved articles not yet in the queue
+app.post('/api/publishing/backfill-queue', async (req, res) => {
+  try {
+    const bpRows = await pool.query(`SELECT id FROM brand_profiles WHERE is_active = true`);
+    let totalStaged = 0;
+    for (const bp of bpRows.rows) {
+      const safeId = bp.id.replace(/-/g, '_');
+      const tableName = `generated_content_${safeId}`;
+      const tableExists = await pool.query(
+        `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name=$1`,
+        [tableName]
+      );
+      if (!tableExists.rows.length) continue;
+      const approved = await pool.query(
+        `SELECT id, title FROM ${tableName} WHERE compliance_status = 'approved'`
+      ).catch(() => ({ rows: [] }));
+      for (const art of approved.rows) {
+        const r = await pool.query(
+          `INSERT INTO publishing_queue (brand_profile_id, content_id, title, status, created_at, updated_at)
+           VALUES ($1, $2, $3, 'staged', NOW(), NOW())
+           ON CONFLICT (content_id) DO NOTHING`,
+          [bp.id, art.id, art.title || 'Untitled']
+        ).catch(() => ({ rowCount: 0 }));
+        if (r.rowCount > 0) totalStaged++;
+      }
+    }
+    res.json({ success: true, staged: totalStaged });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/publishing/backfill-queue — manually stage all approved articles not yet in the queue
+app.post('/api/publishing/backfill-queue', async (req, res) => {
+  try {
+    const bpRows = await pool.query(`SELECT id FROM brand_profiles WHERE is_active = true`);
+    let totalStaged = 0;
+    for (const bp of bpRows.rows) {
+      const safeId = bp.id.replace(/-/g, '_');
+      const tableName = `generated_content_${safeId}`;
+      const tableExists = await pool.query(
+        `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name=$1`,
+        [tableName]
+      );
+      if (!tableExists.rows.length) continue;
+      const approved = await pool.query(
+        `SELECT id, title FROM ${tableName} WHERE compliance_status = 'approved'`
+      ).catch(() => ({ rows: [] }));
+      for (const art of approved.rows) {
+        const r = await pool.query(
+          `INSERT INTO publishing_queue (brand_profile_id, content_id, title, status, created_at, updated_at)
+           VALUES ($1, $2, $3, 'staged', NOW(), NOW())
+           ON CONFLICT (content_id) DO NOTHING`,
+          [bp.id, art.id, art.title || 'Untitled']
+        ).catch(() => ({ rowCount: 0 }));
+        if (r.rowCount > 0) totalStaged++;
+      }
+    }
+    res.json({ success: true, staged: totalStaged });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/publishing/backfill-queue — manually stage all approved articles not yet in the queue
+app.post('/api/publishing/backfill-queue', async (req, res) => {
+  try {
+    const bpRows = await pool.query(`SELECT id FROM brand_profiles WHERE is_active = true`);
+    let totalStaged = 0;
+    for (const bp of bpRows.rows) {
+      const safeId = bp.id.replace(/-/g, '_');
+      const tableName = `generated_content_${safeId}`;
+      const tableExists = await pool.query(
+        `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name=$1`,
+        [tableName]
+      );
+      if (!tableExists.rows.length) continue;
+      const approved = await pool.query(
+        `SELECT id, title FROM ${tableName} WHERE compliance_status = 'approved'`
+      ).catch(() => ({ rows: [] }));
+      for (const art of approved.rows) {
+        const r = await pool.query(
+          `INSERT INTO publishing_queue (brand_profile_id, content_id, title, status, created_at, updated_at)
+           VALUES ($1, $2, $3, 'staged', NOW(), NOW())
+           ON CONFLICT (content_id) DO NOTHING`,
+          [bp.id, art.id, art.title || 'Untitled']
+        ).catch(() => ({ rowCount: 0 }));
+        if (r.rowCount > 0) totalStaged++;
+      }
+    }
+    res.json({ success: true, staged: totalStaged });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+app.get('/api/publishing/queue', requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT pq.*, bp.brand_name, bp.brand_url
+       FROM publishing_queue pq
+       LEFT JOIN brand_profiles bp ON bp.id = pq.brand_profile_id
+       ORDER BY pq.created_at DESC LIMIT 100`
+    );
+    res.json({ success: true, items: result.rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PATCH /api/publishing/queue/:itemId
+app.patch('/api/publishing/queue/:itemId', async (req, res) => {
+  const { itemId } = req.params;
+  const { channels, scheduledAt, status, publishResults } = req.body;
+  try {
+    const fields = [];
+    const vals = [];
+    let i = 1;
+    if (channels !== undefined) { fields.push(`channels = $${i++}`); vals.push(JSON.stringify(channels)); }
+    if (scheduledAt !== undefined) { fields.push(`scheduled_at = $${i++}`); vals.push(scheduledAt || null); }
+    if (status !== undefined) { fields.push(`status = $${i++}`); vals.push(status); }
+    if (publishResults !== undefined) {
+      // Merge into existing publish_results, not overwrite
+      fields.push(`publish_results = COALESCE(publish_results, '{}'::jsonb) || $${i++}::jsonb`);
+      vals.push(JSON.stringify(publishResults));
+    }
+    fields.push(`updated_at = NOW()`);
+    vals.push(itemId);
+    await pool.query(`UPDATE publishing_queue SET ${fields.join(', ')} WHERE id = $${i}`, vals);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE /api/publishing/queue/:itemId — removes from Forge queue only
+app.delete('/api/publishing/queue/:itemId', requireAuth, async (req, res) => {
+  const { itemId } = req.params;
+  try {
+    await pool.query('DELETE FROM publishing_queue WHERE id = $1', [itemId]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/publishing/queue/:id/reset-channel — clear error state for one channel
+app.post('/api/publishing/queue/:id/reset-channel', requireAuth, async (req, res) => {
+  const { id } = req.params;
+  const { channel } = req.body;
+  if (!channel) return res.status(400).json({ error: 'channel required' });
+  try {
+    // Remove this channel from publish_results so the card goes back to staged
+    const row = await pool.query('SELECT publish_results, brand_profile_id FROM publishing_queue WHERE id = $1', [id]);
+    if (!row.rows.length) return res.status(404).json({ error: 'Not found' });
+    const results = row.rows[0].publish_results || {};
+    delete results[channel];
+    // If no channels left, reset status to staged
+    const hasAnyPublished = Object.values(results).some((r) => r && r.status === 'published');
+    const newStatus = hasAnyPublished ? 'partial' : 'staged';
+    await pool.query(
+      'UPDATE publishing_queue SET publish_results = $1, status = $2, updated_at = NOW() WHERE id = $3',
+      [JSON.stringify(results), newStatus, id]
+    );
+    // Clear from publish_log — single shared table
+    await pool.query(
+      'DELETE FROM publish_log WHERE queue_item_id = $1 AND channel = $2',
+      [id, channel]
+    ).catch(() => {});
+    res.json({ success: true });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/publishing/unpublish — delete from live channel + optionally remove from queue
+app.post('/api/publishing/unpublish', requireAuth, async (req, res) => {
+  const { queueItemId, channel, deleteFromChannel = true, removeFromQueue = false } = req.body;
+  if (!queueItemId || !channel) return res.status(400).json({ error: 'queueItemId and channel required' });
+
+  try {
+    // Load publish log entry for this channel
+    const logRes = await pool.query(
+      'SELECT pl.*, pc.credentials FROM publish_log pl LEFT JOIN publishing_channels pc ON pc.brand_profile_id = pl.brand_profile_id AND pc.channel = pl.channel WHERE pl.queue_item_id = $1 AND pl.channel = $2 ORDER BY pl.attempted_at DESC LIMIT 1',
+      [queueItemId, channel]
+    );
+    if (!logRes.rows.length) return res.status(404).json({ error: 'No publish log entry found for this channel' });
+    const row = logRes.rows[0];
+    const creds = row.credentials || {};
+    let channelResult = { deleted: false, message: 'Not attempted' };
+
+    if (deleteFromChannel) {
+      try {
+        if (channel === 'linkedin') {
+          const postId = row.response_data?.postId || row.published_url?.split('/').pop();
+          const token = creds.accessToken || process.env.LINKEDIN_ACCESS_TOKEN;
+          if (!postId || !token) throw new Error('Missing LinkedIn post ID or token');
+          const encodedId = encodeURIComponent(postId);
+          const delRes = await fetch(`https://api.linkedin.com/v2/ugcPosts/${encodedId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}`, 'X-Restli-Protocol-Version': '2.0.0' }
+          });
+          if (!delRes.ok && delRes.status !== 404) throw new Error(`LinkedIn delete failed: ${delRes.status}`);
+          channelResult = { deleted: true, message: 'Deleted from LinkedIn' };
+
+        } else if (channel === 'x') {
+          const tweetId = row.response_data?.tweetId
+            || (row.published_url?.match(/\/status\/(\d+)/)?.[1]);
+          const { accessToken, accessSecret } = creds;
+          const apiKey    = creds.apiKey    || process.env.X_OAUTH1CONSUMER_KEY;
+          const apiSecret = creds.apiSecret || process.env.X_OAUTH1CONSUMER_SECRET;
+          if (!tweetId) throw new Error('No tweet ID found');
+          if (!apiKey || !apiSecret || !accessToken || !accessSecret) throw new Error('Missing X credentials');
+
+          // OAuth 1.0a signature for DELETE
+          const tweetUrl = `https://api.twitter.com/2/tweets/${tweetId}`;
+          const authHeader = buildXOAuthHeader('DELETE', tweetUrl, apiKey, apiSecret, accessToken, accessSecret);
+
+          const xDelRes = await fetch(tweetUrl, {
+            method: 'DELETE',
+            headers: { 'Authorization': authHeader }
+          });
+          if (!xDelRes.ok && xDelRes.status !== 404) throw new Error(`X delete failed: ${xDelRes.status}`);
+          channelResult = { deleted: true, message: 'Deleted from X' };
+
+        } else if (channel === 'ghost') {
+          const postId = row.response_data?.postId;
+          const { adminUrl, adminApiKey } = creds;
+          if (!postId || !adminUrl || !adminApiKey) throw new Error('Missing Ghost post ID or credentials');
+          const [keyId, keySecret] = adminApiKey.split(':');
+          const now = Math.floor(Date.now() / 1000);
+          const h = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT', kid: keyId })).toString('base64url');
+          const p = Buffer.from(JSON.stringify({ iat: now, exp: now + 300, aud: '/admin/' })).toString('base64url');
+          const sig = createHmac('sha256', Buffer.from(keySecret, 'hex')).update(`${h}.${p}`).digest('base64url');
+          const jwt = `${h}.${p}.${sig}`;
+          const ghostBase = adminUrl.replace(/\/+$/, '');
+          const delRes = await fetch(`${ghostBase}/ghost/api/admin/posts/${postId}/`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Ghost ${jwt}`, 'Accept-Version': 'v5.0' }
+          });
+          if (!delRes.ok && delRes.status !== 404) throw new Error(`Ghost delete failed: ${delRes.status}`);
+          channelResult = { deleted: true, message: 'Deleted from Ghost' };
+
+        } else if (channel === 'wordpress') {
+          const postId = row.response_data?.postId;
+          const { siteUrl, username, appPassword } = creds;
+          if (!postId || !siteUrl) throw new Error('Missing WordPress post ID or credentials');
+          const wpUrl = siteUrl.replace(/\/+$/, '');
+          const basicAuth = Buffer.from(`${username}:${appPassword}`).toString('base64');
+          const delRes = await fetch(`${wpUrl}/wp-json/wp/v2/posts/${postId}?force=true`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Basic ${basicAuth}` }
+          });
+          if (!delRes.ok && delRes.status !== 404) throw new Error(`WordPress delete failed: ${delRes.status}`);
+          channelResult = { deleted: true, message: 'Deleted from WordPress' };
+
+        } else if (channel === 'facebook') {
+          const postId = row.response_data?.postId;
+          const { pageAccessToken } = creds;
+          if (!postId || !pageAccessToken) throw new Error('Missing Facebook post ID or token');
+          const delRes = await fetch(`https://graph.facebook.com/v21.0/${postId}?access_token=${pageAccessToken}`, {
+            method: 'DELETE'
+          });
+          if (!delRes.ok && delRes.status !== 404) throw new Error(`Facebook delete failed: ${delRes.status}`);
+          channelResult = { deleted: true, message: 'Deleted from Facebook' };
+
+        } else {
+          channelResult = { deleted: false, message: `Channel ${channel} does not support remote delete` };
+        }
+      } catch (delErr) {
+        channelResult = { deleted: false, message: delErr.message };
+      }
+    }
+
+    // Update publish_log status — if user explicitly requested delete, mark deleted
+    // regardless of whether the API call succeeded (expired token etc.)
+    // This prevents sync from seeing 'published' and re-checking a post we've intentionally removed
+    const finalStatus = deleteFromChannel ? 'deleted' : (channelResult.deleted ? 'deleted' : 'published');
+    await pool.query(
+      `UPDATE publish_log SET live_status = $1, last_synced_at = NOW()
+       WHERE id = (
+         SELECT id FROM publish_log
+         WHERE queue_item_id = $2 AND channel = $3
+         ORDER BY attempted_at DESC LIMIT 1
+       )`,
+      [finalStatus, queueItemId, channel]
+    );
+
+    // Recompute queue status from remaining live publish_log entries
+    // Don't blindly set 'staged' — if other channels are still live, it's 'partial'
+    const remainingLog = await pool.query(
+      `SELECT live_status FROM publish_log WHERE queue_item_id = $1 AND (live_status IS NULL OR live_status != 'deleted')`,
+      [queueItemId]
+    ).catch(() => ({ rows: [] }));
+    const anyStillLive = remainingLog.rows.some(r => !r.live_status || r.live_status === 'published');
+    const recomputedStatus = anyStillLive ? 'partial' : 'staged';
+    await pool.query(
+      `UPDATE publishing_queue SET status = $1, updated_at = NOW() WHERE id = $2`,
+      [recomputedStatus, queueItemId]
+    ).catch(() => {});
+
+    // If remove from queue entirely
+    if (removeFromQueue) {
+      await pool.query('DELETE FROM publishing_queue WHERE id = $1', [queueItemId]);
+    }
+
+    res.json({ success: true, channel, ...channelResult });
+  } catch (err) {
+    console.error('[UNPUBLISH]', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/publishing/channels/:brandProfileId
+app.get('/api/publishing/channels/:brandProfileId', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.params;
+    if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+  try {
+    const result = await pool.query(
+      `SELECT id, brand_profile_id, channel, credentials, utm_template, is_active, last_tested_at, test_status, created_at, updated_at
+       FROM publishing_channels WHERE brand_profile_id = $1 ORDER BY channel`,
+      [brandProfileId]
+    );
+    res.json({ success: true, channels: result.rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/publishing/channels — upsert channel connection
+app.post('/api/publishing/channels', requireAuth, async (req, res) => {
+  const { brandProfileId, channel, credentials, utmTemplate } = req.body;
+  if (!brandProfileId || !channel) return res.status(400).json({ error: 'brandProfileId and channel required' });
+  try {
+    const result = await pool.query(
+      `INSERT INTO publishing_channels (brand_profile_id, channel, credentials, utm_template, updated_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (brand_profile_id, channel)
+       DO UPDATE SET credentials = $3, utm_template = $4, updated_at = NOW()
+       RETURNING id`,
+      [brandProfileId, channel, JSON.stringify(credentials || {}), JSON.stringify(utmTemplate || {})]
+    );
+    res.json({ success: true, id: result.rows[0].id });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE /api/publishing/channels/:id
+app.delete('/api/publishing/channels/:id', requireAuth, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM publishing_channels WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/publishing/publish — publish a queue item to selected channels
+
+// ── LinkedIn OAuth2 Flow ──────────────────────────────────────────────────────
+app.get('/api/linkedin/auth', (req, res) => {
+  const clientId = process.env.LINKEDIN_CLIENT_ID;
+  const redirectUri = encodeURIComponent(process.env.LINKEDIN_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/linkedin/callback');
+  const brandProfileId = req.query.brandProfileId || 'system';
+  const nonce = randomBytes(16).toString('hex');
+  // Embed brandProfileId in state so callback knows which brand to save to
+  const state = `${brandProfileId}|${nonce}`;
+  const scopes = 'openid profile email w_member_social';
+  const url = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&state=${encodeURIComponent(state)}&scope=${encodeURIComponent(scopes)}`;
+  res.json({ authUrl: url, state });
+});
+
+app.get('/auth/linkedin/callback', async (req, res) => {
+  const { code, state, error } = req.query;
+  if (error) return res.redirect(`/app/integrations?linkedin_error=${error}`);
+  if (!code) return res.redirect('/app/integrations?linkedin_error=no_code');
+  try {
+    const clientId     = process.env.LINKEDIN_CLIENT_ID;
+    const clientSecret = process.env.LINKEDIN_CLIENT_SECRET;
+    const redirectUri  = process.env.LINKEDIN_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/linkedin/callback';
+    const tokenRes = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirectUri, client_id: clientId, client_secret: clientSecret })
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) throw new Error(tokenData.error_description || 'Token exchange failed');
+
+    // Get LinkedIn member profile (sub = member URN for posting)
+    const profileRes = await fetch('https://api.linkedin.com/v2/userinfo', {
+      headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+    });
+    const profile = await profileRes.json();
+    const authorUrn = `urn:li:person:${profile.sub}`;
+
+    // Parse brandProfileId from state param
+    const stateDecoded = decodeURIComponent(state || '');
+    const brandProfileId = stateDecoded.includes('|') ? stateDecoded.split('|')[0] : 'system';
+
+    await pool.query(`
+      INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active, updated_at)
+      VALUES ($1, 'linkedin', $2, true, NOW())
+      ON CONFLICT (brand_profile_id, channel) DO UPDATE
+        SET credentials = $2, is_active = true, updated_at = NOW()
+    `, [brandProfileId, JSON.stringify({ accessToken: tokenData.access_token, expiresIn: tokenData.expires_in, authorUrn, name: profile.name })]);
+
+    res.redirect('/app/integrations?linkedin_connected=true');
+  } catch (err) {
+    console.error('LinkedIn callback error:', err);
+    res.redirect(`/app/integrations?linkedin_error=${encodeURIComponent(err.message)}`);
+  }
+});
+// ─────────────────────────────────────────────────────────────────────────────
+
+
+// ── LinkedIn ORG OAuth (Company Pages - separate app required by LinkedIn) ───
+app.get('/api/linkedin/org/auth', (req, res) => {
+  const clientId = process.env.LINKEDIN_ORG_CLIENT_ID;
+  if (!clientId) return res.status(500).json({ error: 'LINKEDIN_ORG_CLIENT_ID not configured' });
+  const redirectUri = encodeURIComponent(process.env.LINKEDIN_ORG_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/linkedin/org/callback');
+  const brandProfileId = req.query.state?.split('|')[0] || req.query.brandProfileId || 'system';
+  const nonce = randomBytes(16).toString('hex');
+  const state = `${brandProfileId}|${nonce}`;
+  const scopes = 'w_organization_social_feed r_organization_social_feed';
+  const url = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&state=${encodeURIComponent(state)}&scope=${encodeURIComponent(scopes)}`;
+  res.redirect(url);
+});
+
+app.get('/auth/linkedin/org/callback', async (req, res) => {
+  const { code, state, error } = req.query;
+  if (error) return res.redirect(`/app/integrations?linkedin_error=${error}`);
+  if (!code) return res.redirect('/app/integrations?linkedin_error=no_code');
+  try {
+    const clientId = process.env.LINKEDIN_ORG_CLIENT_ID;
+    const clientSecret = process.env.LINKEDIN_ORG_SECRET;
+    const redirectUri = process.env.LINKEDIN_ORG_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/linkedin/org/callback';
+    
+    const tokenRes = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirectUri, client_id: clientId, client_secret: clientSecret })
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) throw new Error(tokenData.error_description || 'Token exchange failed');
+
+    // Fetch company pages user is admin of
+    const orgsRes = await fetch('https://api.linkedin.com/v2/organizationalEntityAcls?q=roleAssignee&role=ADMINISTRATOR&projection=(elements*(organizationalTarget~))', {
+      headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+    });
+    if (!orgsRes.ok) throw new Error('Failed to fetch organizations');
+    
+    const orgsData = await orgsRes.json();
+    const companyPages = (orgsData.elements || []).map(el => {
+      const org = el['organizationalTarget~'] || {};
+      const orgUrn = el.organizationalTarget;
+      return {
+        type: 'company',
+        urn: orgUrn,
+        name: org.localizedName || org.name || 'Company Page',
+        vanityName: org.vanityName || null,
+        logoUrl: org.logoV2?.['original~']?.elements?.[0]?.identifiers?.[0]?.identifier || null
+      };
+    });
+
+    if (companyPages.length === 0) {
+      return res.redirect('/app/integrations?linkedin_error=no_company_pages');
+    }
+
+    const stateDecoded = decodeURIComponent(state || '');
+    const brandProfileId = stateDecoded.includes('|') ? stateDecoded.split('|')[0] : 'system';
+
+    // Default to first company page
+    const selectedTarget = companyPages[0];
+
+    await pool.query(`
+      INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active, updated_at)
+      VALUES ($1, 'linkedin_org', $2, true, NOW())
+      ON CONFLICT (brand_profile_id, channel) DO UPDATE
+        SET credentials = $2, is_active = true, updated_at = NOW()
+    `, [brandProfileId, JSON.stringify({
+      accessToken: tokenData.access_token,
+      expiresIn: tokenData.expires_in,
+      connectedAt: new Date().toISOString(),
+      authorUrn: selectedTarget.urn,
+      availableTargets: companyPages,
+      selectedTarget: selectedTarget
+    })]);
+
+    res.redirect('/app/integrations?linkedin_org_connected=true');
+  } catch (err) {
+    console.error('LinkedIn Org callback error:', err);
+    res.redirect(`/app/integrations?linkedin_error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+// ── LinkedIn: Switch posting target (personal vs company page) ───────────────
+app.post('/api/linkedin/select-target', requireAuth, async (req, res) => {
+  const { brandProfileId, targetUrn } = req.body;
+  if (!brandProfileId || !targetUrn) return res.status(400).json({ error: 'brandProfileId and targetUrn required' });
+  try {
+    const existing = await pool.query(
+      `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'linkedin'`,
+      [brandProfileId]
+    );
+    if (!existing.rows.length) return res.status(404).json({ error: 'LinkedIn not connected' });
+    
+    const creds = existing.rows[0].credentials;
+    const target = (creds.availableTargets || []).find(t => t.urn === targetUrn);
+    if (!target) return res.status(400).json({ error: 'Invalid target URN' });
+
+    creds.authorUrn = targetUrn;
+    creds.selectedTarget = target;
+    
+    await pool.query(
+      `UPDATE publishing_channels SET credentials = $1, updated_at = NOW() WHERE brand_profile_id = $2 AND channel = 'linkedin'`,
+      [JSON.stringify(creds), brandProfileId]
+    );
+    
+    res.json({ success: true, selectedTarget: target });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+// ─────────────────────────────────────────────────────────────────────────────
+
+
+// ── HubSpot OAuth ────────────────────────────────────────────────────────────
+app.get('/api/hubspot/auth', (req, res) => {
+  const clientId = process.env.HUBSPOT_CLIENT_ID;
+  if (!clientId) return res.status(500).json({ error: 'HUBSPOT_CLIENT_ID not configured' });
+  
+  const redirectUri = encodeURIComponent(process.env.HUBSPOT_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/hubspot/callback');
+  const brandProfileId = req.query.state?.split('|')[0] || req.query.brandProfileId || 'system';
+  const nonce = randomBytes(16).toString('hex');
+  const state = `${brandProfileId}|${nonce}`;
+  
+  // Full CRM + CMS scopes
+  const scopes = [
+    'cms.knowledge_base.articles.publish',
+    'cms.knowledge_base.articles.read', 
+    'cms.knowledge_base.articles.write',
+    'crm.objects.companies.read',
+    'crm.objects.companies.write',
+    'crm.objects.contacts.read',
+    'crm.objects.contacts.write',
+    'crm.objects.owners.read',
+    'oauth'
+  ].join('%20');
+  
+  const url = `https://app.hubspot.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scopes}&state=${encodeURIComponent(state)}`;
+  res.redirect(url);
+});
+
+app.get('/auth/hubspot/callback', async (req, res) => {
+  const { code, state, error } = req.query;
+  if (error) return res.redirect(`/app/integrations?hubspot_error=${error}`);
+  if (!code) return res.redirect('/app/integrations?hubspot_error=no_code');
+  
+  try {
+    const clientId = process.env.HUBSPOT_CLIENT_ID;
+    const clientSecret = process.env.HUBSPOT_CLIENT_SECRET;
+    const redirectUri = process.env.HUBSPOT_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/hubspot/callback';
+    
+    // Exchange code for tokens
+    const tokenRes = await fetch('https://api.hubapi.com/oauth/v1/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: redirectUri,
+        client_id: clientId,
+        client_secret: clientSecret
+      })
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) throw new Error(tokenData.message || 'Token exchange failed');
+
+    // Get account info (portal ID, hub domain)
+    const accountRes = await fetch('https://api.hubapi.com/oauth/v1/access-tokens/' + tokenData.access_token);
+    const accountInfo = await accountRes.json();
+
+    // Fetch available blogs (for publishing)
+    let blogs = [];
+    try {
+      const blogsRes = await fetch('https://api.hubapi.com/cms/v3/blogs/posts?limit=1', {
+        headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+      });
+      // If we can access blogs API, fetch the actual blog list
+      if (blogsRes.ok) {
+        const contentGroupsRes = await fetch('https://api.hubapi.com/content/api/v2/blogs', {
+          headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+        });
+        if (contentGroupsRes.ok) {
+          const blogsData = await contentGroupsRes.json();
+          blogs = (blogsData.objects || []).map(b => ({
+            id: b.id,
+            name: b.name,
+            slug: b.slug,
+            absoluteUrl: b.absolute_url
+          }));
+        }
+      }
+    } catch (e) { console.log('[HubSpot] Could not fetch blogs:', e.message); }
+
+    // Fetch available knowledge bases
+    let knowledgeBases = [];
+    try {
+      const kbRes = await fetch('https://api.hubapi.com/cms/v3/knowledge-base-articles?limit=1', {
+        headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+      });
+      if (kbRes.ok) {
+        // Knowledge base access confirmed - would need separate API for KB list
+        knowledgeBases = [{ id: 'default', name: 'Default Knowledge Base' }];
+      }
+    } catch (e) { console.log('[HubSpot] Could not fetch KB:', e.message); }
+
+    // Parse brandProfileId from state
+    const stateDecoded = decodeURIComponent(state || '');
+    const brandProfileId = stateDecoded.includes('|') ? stateDecoded.split('|')[0] : 'system';
+
+    // Build available targets
+    const availableTargets = {
+      blogs: blogs,
+      knowledgeBases: knowledgeBases
+    };
+    const selectedBlog = blogs.length > 0 ? blogs[0] : null;
+    const selectedKB = knowledgeBases.length > 0 ? knowledgeBases[0] : null;
+
+    await pool.query(`
+      INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active, updated_at)
+      VALUES ($1, 'hubspot', $2, true, NOW())
+      ON CONFLICT (brand_profile_id, channel) DO UPDATE
+        SET credentials = $2, is_active = true, updated_at = NOW()
+    `, [brandProfileId, JSON.stringify({
+      accessToken: tokenData.access_token,
+      refreshToken: tokenData.refresh_token,
+      expiresIn: tokenData.expires_in,
+      expiresAt: Date.now() + (tokenData.expires_in * 1000),
+      connectedAt: new Date().toISOString(),
+      portalId: accountInfo.hub_id,
+      hubDomain: accountInfo.hub_domain,
+      appId: accountInfo.app_id,
+      userId: accountInfo.user_id,
+      userEmail: accountInfo.user,
+      availableTargets: availableTargets,
+      selectedBlog: selectedBlog,
+      selectedKB: selectedKB
+    })]);
+
+    res.redirect('/app/integrations?hubspot_connected=true');
+  } catch (err) {
+    console.error('HubSpot callback error:', err);
+    res.redirect(`/app/integrations?hubspot_error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+// HubSpot token refresh helper
+// ── HubSpot: Sync Clerk user to HubSpot CRM (for Forge's own tracking) ───────
+async function syncUserToHubSpot(clerkUserId) {
+  try {
+    // Get system-level HubSpot connection
+    const hubspot = await pool.query(
+      `SELECT credentials FROM publishing_channels WHERE brand_profile_id = 'system' AND channel = 'hubspot'`
+    );
+    if (!hubspot.rows.length) {
+      console.log('[HubSpot Sync] No system HubSpot connection');
+      return null;
+    }
+    
+    // Fetch user details from Clerk
+    const clerkRes = await fetch(`https://api.clerk.com/v1/users/${clerkUserId}`, {
+      headers: { 'Authorization': `Bearer ${process.env.CLERK_SECRET_KEY}` }
+    });
+    if (!clerkRes.ok) {
+      console.log('[HubSpot Sync] Could not fetch Clerk user:', clerkUserId);
+      return null;
+    }
+    const clerkUser = await clerkRes.json();
+    
+    const email = clerkUser.email_addresses?.[0]?.email_address;
+    if (!email) {
+      console.log('[HubSpot Sync] No email for user:', clerkUserId);
+      return null;
+    }
+    
+    // Get fresh HubSpot token
+    const accessToken = await refreshHubSpotToken('system');
+    
+    // Check if contact exists
+    const searchRes = await fetch('https://api.hubapi.com/crm/v3/objects/contacts/search', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        filterGroups: [{
+          filters: [{ propertyName: 'email', operator: 'EQ', value: email }]
+        }]
+      })
+    });
+    const searchData = await searchRes.json();
+    
+    // Build properties
+    const firstName = clerkUser.first_name || '';
+    const lastName = clerkUser.last_name || '';
+    const company = clerkUser.public_metadata?.company || clerkUser.unsafe_metadata?.company || '';
+    
+    const properties = {
+      email,
+      firstname: firstName,
+      lastname: lastName,
+      ...(company && { company }),
+      forge_clerk_id: clerkUserId,
+      forge_signup_date: clerkUser.created_at ? new Date(clerkUser.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+    };
+    
+    if (searchData.results?.length > 0) {
+      // Update existing contact
+      const contactId = searchData.results[0].id;
+      await fetch(`https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ properties })
+      });
+      console.log(`[HubSpot Sync] Updated contact ${contactId} for ${email}`);
+      return { action: 'updated', contactId, email };
+    } else {
+      // Create new contact
+      const createRes = await fetch('https://api.hubapi.com/crm/v3/objects/contacts', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ properties })
+      });
+      const created = await createRes.json();
+      console.log(`[HubSpot Sync] Created contact ${created.id} for ${email}`);
+      return { action: 'created', contactId: created.id, email };
+    }
+  } catch (err) {
+    console.error('[HubSpot Sync] Error:', err.message);
+    return null;
+  }
+}
+
+async function refreshHubSpotToken(brandProfileId) {
+  const result = await pool.query(
+    `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'hubspot'`,
+    [brandProfileId]
+  );
+  if (!result.rows.length) throw new Error('HubSpot not connected');
+  
+  const creds = result.rows[0].credentials;
+  if (Date.now() < creds.expiresAt - 300000) return creds.accessToken; // Still valid (5 min buffer)
+  
+  const tokenRes = await fetch('https://api.hubapi.com/oauth/v1/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: creds.refreshToken,
+      client_id: process.env.HUBSPOT_CLIENT_ID,
+      client_secret: process.env.HUBSPOT_CLIENT_SECRET
+    })
+  });
+  const tokenData = await tokenRes.json();
+  if (!tokenData.access_token) throw new Error('Token refresh failed');
+  
+  creds.accessToken = tokenData.access_token;
+  creds.refreshToken = tokenData.refresh_token;
+  creds.expiresIn = tokenData.expires_in;
+  creds.expiresAt = Date.now() + (tokenData.expires_in * 1000);
+  
+  await pool.query(
+    `UPDATE publishing_channels SET credentials = $1, updated_at = NOW() WHERE brand_profile_id = $2 AND channel = 'hubspot'`,
+    [JSON.stringify(creds), brandProfileId]
+  );
+  
+  return creds.accessToken;
+}
+
+// ── HubSpot: Publish article to Knowledge Base ───────────────────────────────
+app.post('/api/hubspot/publish-article', requireAuth, async (req, res) => {
+  const { brandProfileId, articleId, title, body, slug } = req.body;
+  if (!brandProfileId || !title || !body) {
+    return res.status(400).json({ error: 'brandProfileId, title, and body required' });
+  }
+  
+  try {
+    const accessToken = await refreshHubSpotToken(brandProfileId);
+    
+    // Create knowledge base article
+    const articleRes = await fetch('https://api.hubapi.com/cms/v3/blogs/posts', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: title,
+        slug: slug || title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        postBody: body,
+        state: 'DRAFT' // Start as draft, can be published separately
+      })
+    });
+    
+    const article = await articleRes.json();
+    if (article.status === 'error') throw new Error(article.message || 'Failed to create article');
+    
+    res.json({ success: true, articleId: article.id, url: article.url });
+  } catch (err) {
+    console.error('HubSpot publish error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── HubSpot: Create/update contact ───────────────────────────────────────────
+app.post('/api/hubspot/upsert-contact', async (req, res) => {
+  const { brandProfileId, email, properties } = req.body;
+  if (!brandProfileId || !email) {
+    return res.status(400).json({ error: 'brandProfileId and email required' });
+  }
+  
+  try {
+    const accessToken = await refreshHubSpotToken(brandProfileId);
+    
+    // Try to get existing contact
+    const searchRes = await fetch('https://api.hubapi.com/crm/v3/objects/contacts/search', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        filterGroups: [{
+          filters: [{ propertyName: 'email', operator: 'EQ', value: email }]
+        }]
+      })
+    });
+    const searchData = await searchRes.json();
+    
+    if (searchData.results?.length > 0) {
+      // Update existing contact
+      const contactId = searchData.results[0].id;
+      const updateRes = await fetch(`https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ properties: properties || {} })
+      });
+      const updated = await updateRes.json();
+      res.json({ success: true, contactId, action: 'updated', contact: updated });
+    } else {
+      // Create new contact
+      const createRes = await fetch('https://api.hubapi.com/crm/v3/objects/contacts', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ properties: { email, ...properties } })
+      });
+      const created = await createRes.json();
+      res.json({ success: true, contactId: created.id, action: 'created', contact: created });
+    }
+  } catch (err) {
+    console.error('HubSpot contact error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── HubSpot: Log content engagement (for attribution) ───────────────────────
+app.post('/api/hubspot/log-engagement', async (req, res) => {
+  const { brandProfileId, email, articleUrl, articleTitle, utmParams } = req.body;
+  if (!brandProfileId || !email || !articleUrl) {
+    return res.status(400).json({ error: 'brandProfileId, email, and articleUrl required' });
+  }
+  
+  try {
+    const accessToken = await refreshHubSpotToken(brandProfileId);
+    
+    // Find contact by email
+    const searchRes = await fetch('https://api.hubapi.com/crm/v3/objects/contacts/search', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        filterGroups: [{
+          filters: [{ propertyName: 'email', operator: 'EQ', value: email }]
+        }]
+      })
+    });
+    const searchData = await searchRes.json();
+    
+    if (!searchData.results?.length) {
+      return res.status(404).json({ error: 'Contact not found in HubSpot' });
+    }
+    
+    const contactId = searchData.results[0].id;
+    
+    // Log engagement as a note/activity
+    const noteRes = await fetch('https://api.hubapi.com/crm/v3/objects/notes', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        properties: {
+          hs_note_body: `📖 Content Engagement: Viewed "${articleTitle || articleUrl}"\n\nURL: ${articleUrl}\n${utmParams ? `UTM: ${JSON.stringify(utmParams)}` : ''}`,
+          hs_timestamp: Date.now()
+        },
+        associations: [{
+          to: { id: contactId },
+          types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 202 }] // Note to Contact
+        }]
+      })
+    });
+    const note = await noteRes.json();
+    
+    res.json({ success: true, contactId, noteId: note.id });
+  } catch (err) {
+    console.error('HubSpot engagement error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// ── HubSpot: Switch publishing target (blog or KB) ──────────────────────────
+app.post('/api/hubspot/select-target', requireAuth, async (req, res) => {
+  const { brandProfileId, targetType, targetId } = req.body;
+  if (!brandProfileId || !targetType || !targetId) {
+    return res.status(400).json({ error: 'brandProfileId, targetType, and targetId required' });
+  }
+  
+  try {
+    const existing = await pool.query(
+      `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'hubspot'`,
+      [brandProfileId]
+    );
+    if (!existing.rows.length) return res.status(404).json({ error: 'HubSpot not connected' });
+    
+    const creds = existing.rows[0].credentials;
+    
+    if (targetType === 'blog') {
+      const blog = (creds.availableTargets?.blogs || []).find(b => b.id === targetId);
+      if (!blog) return res.status(400).json({ error: 'Invalid blog ID' });
+      creds.selectedBlog = blog;
+    } else if (targetType === 'kb') {
+      const kb = (creds.availableTargets?.knowledgeBases || []).find(k => k.id === targetId);
+      if (!kb) return res.status(400).json({ error: 'Invalid KB ID' });
+      creds.selectedKB = kb;
+    } else {
+      return res.status(400).json({ error: 'targetType must be "blog" or "kb"' });
+    }
+    
+    await pool.query(
+      `UPDATE publishing_channels SET credentials = $1, updated_at = NOW() WHERE brand_profile_id = $2 AND channel = 'hubspot'`,
+      [JSON.stringify(creds), brandProfileId]
+    );
+    
+    res.json({ success: true, selectedBlog: creds.selectedBlog, selectedKB: creds.selectedKB });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── HubSpot: Refresh available targets ───────────────────────────────────────
+app.post('/api/hubspot/refresh-targets', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.body;
+  if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
+  
+  try {
+    const accessToken = await refreshHubSpotToken(brandProfileId);
+    
+    // Fetch blogs
+    let blogs = [];
+    try {
+      const contentGroupsRes = await fetch('https://api.hubapi.com/content/api/v2/blogs', {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      if (contentGroupsRes.ok) {
+        const blogsData = await contentGroupsRes.json();
+        blogs = (blogsData.objects || []).map(b => ({
+          id: b.id,
+          name: b.name,
+          slug: b.slug,
+          absoluteUrl: b.absolute_url
+        }));
+      }
+    } catch (e) { console.log('[HubSpot] Could not fetch blogs:', e.message); }
+
+    // Fetch knowledge bases
+    let knowledgeBases = [];
+    try {
+      const kbRes = await fetch('https://api.hubapi.com/cms/v3/knowledge-base-articles?limit=1', {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      if (kbRes.ok) {
+        knowledgeBases = [{ id: 'default', name: 'Default Knowledge Base' }];
+      }
+    } catch (e) { console.log('[HubSpot] Could not fetch KB:', e.message); }
+
+    // Update stored credentials
+    const existing = await pool.query(
+      `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'hubspot'`,
+      [brandProfileId]
+    );
+    if (existing.rows.length) {
+      const creds = existing.rows[0].credentials;
+      creds.availableTargets = { blogs, knowledgeBases };
+      if (!creds.selectedBlog && blogs.length > 0) creds.selectedBlog = blogs[0];
+      if (!creds.selectedKB && knowledgeBases.length > 0) creds.selectedKB = knowledgeBases[0];
+      
+      await pool.query(
+        `UPDATE publishing_channels SET credentials = $1, updated_at = NOW() WHERE brand_profile_id = $2 AND channel = 'hubspot'`,
+        [JSON.stringify(creds), brandProfileId]
+      );
+    }
+
+    res.json({ success: true, blogs, knowledgeBases });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// ── Webflow OAuth ────────────────────────────────────────────────────────────
+app.get('/api/webflow/auth', (req, res) => {
+  const clientId = process.env.WEBFLOW_CLIENT_ID;
+  if (!clientId) return res.status(500).json({ error: 'WEBFLOW_CLIENT_ID not configured' });
+  
+  const redirectUri = encodeURIComponent(process.env.WEBFLOW_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/webflow/callback');
+  const brandProfileId = req.query.state?.split('|')[0] || req.query.brandProfileId || 'system';
+  const nonce = randomBytes(16).toString('hex');
+  const state = `${brandProfileId}|${nonce}`;
+  
+  // Scopes for Data API
+  const scopes = 'sites:read cms:read cms:write';
+  
+  const url = `https://webflow.com/oauth/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&scope=${encodeURIComponent(scopes)}&state=${encodeURIComponent(state)}`;
+  res.redirect(url);
+});
+
+app.get('/auth/webflow/callback', async (req, res) => {
+  const { code, state, error } = req.query;
+  if (error) return res.redirect(`/app/integrations?webflow_error=${error}`);
+  if (!code) return res.redirect('/app/integrations?webflow_error=no_code');
+  
+  try {
+    const clientId = process.env.WEBFLOW_CLIENT_ID;
+    const clientSecret = process.env.WEBFLOW_CLIENT_SECRET;
+    const redirectUri = process.env.WEBFLOW_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/webflow/callback';
+    
+    // Exchange code for token
+    const tokenRes = await fetch('https://api.webflow.com/oauth/access_token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        grant_type: 'authorization_code',
+        redirect_uri: redirectUri
+      })
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) throw new Error(tokenData.error || 'Token exchange failed');
+
+    // Fetch available sites
+    const sitesRes = await fetch('https://api.webflow.com/v2/sites', {
+      headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+    });
+    const sitesData = await sitesRes.json();
+    const sites = (sitesData.sites || []).map(s => ({
+      id: s.id,
+      name: s.displayName || s.shortName,
+      shortName: s.shortName,
+      previewUrl: s.previewUrl
+    }));
+
+    // Fetch collections for each site
+    const sitesWithCollections = await Promise.all(sites.map(async (site) => {
+      try {
+        const collRes = await fetch(`https://api.webflow.com/v2/sites/${site.id}/collections`, {
+          headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+        });
+        const collData = await collRes.json();
+        site.collections = (collData.collections || []).map(c => ({
+          id: c.id,
+          name: c.displayName || c.slug,
+          slug: c.slug
+        }));
+      } catch {
+        site.collections = [];
+      }
+      return site;
+    }));
+
+    // Parse brandProfileId from state
+    const stateDecoded = decodeURIComponent(state || '');
+    const brandProfileId = stateDecoded.includes('|') ? stateDecoded.split('|')[0] : 'system';
+
+    // Default to first site and its first collection
+    const selectedSite = sitesWithCollections[0] || null;
+    const selectedCollection = selectedSite?.collections?.[0] || null;
+
+    await pool.query(`
+      INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active, updated_at)
+      VALUES ($1, 'webflow', $2, true, NOW())
+      ON CONFLICT (brand_profile_id, channel) DO UPDATE
+        SET credentials = $2, is_active = true, updated_at = NOW()
+    `, [brandProfileId, JSON.stringify({
+      accessToken: tokenData.access_token,
+      connectedAt: new Date().toISOString(),
+      sites: sitesWithCollections,
+      selectedSite: selectedSite,
+      selectedCollection: selectedCollection
+    })]);
+
+    res.redirect('/app/integrations?webflow_connected=true');
+  } catch (err) {
+    console.error('Webflow callback error:', err);
+    res.redirect(`/app/integrations?webflow_error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+// ── Webflow: Switch site/collection target ───────────────────────────────────
+app.post('/api/webflow/select-target', requireAuth, async (req, res) => {
+  const { brandProfileId, siteId, collectionId } = req.body;
+  if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
+  
+  try {
+    const existing = await pool.query(
+      `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'webflow'`,
+      [brandProfileId]
+    );
+    if (!existing.rows.length) return res.status(404).json({ error: 'Webflow not connected' });
+    
+    const creds = existing.rows[0].credentials;
+    
+    if (siteId) {
+      const site = (creds.sites || []).find(s => s.id === siteId);
+      if (!site) return res.status(400).json({ error: 'Invalid site ID' });
+      creds.selectedSite = site;
+      // Auto-select first collection of new site
+      creds.selectedCollection = site.collections?.[0] || null;
+    }
+    
+    if (collectionId) {
+      const collection = (creds.selectedSite?.collections || []).find(c => c.id === collectionId);
+      if (!collection) return res.status(400).json({ error: 'Invalid collection ID' });
+      creds.selectedCollection = collection;
+    }
+    
+    await pool.query(
+      `UPDATE publishing_channels SET credentials = $1, updated_at = NOW() WHERE brand_profile_id = $2 AND channel = 'webflow'`,
+      [JSON.stringify(creds), brandProfileId]
+    );
+    
+    res.json({ success: true, selectedSite: creds.selectedSite, selectedCollection: creds.selectedCollection });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// ── Google Search Console OAuth ──────────────────────────────────────────────
+
+// GET /api/gsc/auth — initiate OAuth flow
+app.get('/api/gsc/auth', (req, res) => {
+  const clientId = process.env.GSC_CLIENT_ID;
+  if (!clientId) return res.status(500).json({ error: 'GOOGLE_CLIENT_ID not configured' });
+  const brandProfileId = req.query.brandProfileId || 'system';
+  const nonce = randomBytes(16).toString('hex');
+  const state = `${brandProfileId}|${nonce}`;
+  const redirectUri = encodeURIComponent(process.env.GSC_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/gsc/callback');
+  const scope = encodeURIComponent('https://www.googleapis.com/auth/webmasters.readonly');
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}&state=${encodeURIComponent(state)}&access_type=offline&prompt=consent`;
+  res.json({ authUrl: url });
+});
+
+// GET /auth/gsc/callback — handle OAuth callback, exchange code for tokens
+app.get('/auth/gsc/callback', async (req, res) => {
+  const { code, state, error } = req.query;
+  if (error) return res.redirect(`/app/integrations?gsc_error=${error}`);
+  if (!code) return res.redirect('/app/integrations?gsc_error=no_code');
+  try {
+    const clientId     = process.env.GSC_CLIENT_ID;
+    const clientSecret = process.env.GSC_CLIENT_SECRET;
+    const redirectUri  = process.env.GSC_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/gsc/callback';
+
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirectUri, client_id: clientId, client_secret: clientSecret })
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) throw new Error(tokenData.error_description || 'Token exchange failed');
+
+    // Fetch list of verified GSC properties for this user
+    const sitesRes = await fetch('https://www.googleapis.com/webmasters/v3/sites', {
+      headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+    });
+    const sitesData = await sitesRes.json();
+    const sites = (sitesData.siteEntry || []).map(s => s.siteUrl);
+
+    const stateDecoded = decodeURIComponent(state || '');
+    const brandProfileId = stateDecoded.includes('|') ? stateDecoded.split('|')[0] : 'system';
+
+    // Store tokens + verified sites in publishing_channels
+    await pool.query(`
+      INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active, updated_at)
+      VALUES ($1, 'gsc', $2, true, NOW())
+      ON CONFLICT (brand_profile_id, channel) DO UPDATE
+        SET credentials = $2, is_active = true, updated_at = NOW()
+    `, [brandProfileId, JSON.stringify({
+      accessToken:  tokenData.access_token,
+      refreshToken: tokenData.refresh_token,
+      expiresIn:    tokenData.expires_in,
+      tokenType:    tokenData.token_type,
+      verifiedSites: sites,
+      connectedAt:  new Date().toISOString()
+    })]);
+
+    res.redirect(`/app/integrations?gsc_connected=true`);
+  } catch(err) {
+    console.error('[GSC callback]', err.message);
+    res.redirect(`/app/integrations?gsc_error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+// Helper: refresh GSC access token using refresh token
+async function refreshGSCToken(refreshToken) {
+  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      client_id: process.env.GSC_CLIENT_ID,
+      client_secret: process.env.GSC_CLIENT_SECRET
+    })
+  });
+  const data = await tokenRes.json();
+  if (!data.access_token) throw new Error('GSC token refresh failed');
+  return data.access_token;
+}
+
+// POST /api/analytics/sync-gsc/:brandProfileId — pull GSC data for brand's domain
+app.post('/api/analytics/sync-gsc/:brandProfileId', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.params;
+    if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+  const { days = 28 } = req.body;
+  try {
+    // Get GSC credentials
+    const credRes = await pool.query(
+      'SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = $2 AND is_active = true LIMIT 1',
+      [brandProfileId, 'gsc']
+    );
+    if (!credRes.rows.length) return res.status(400).json({ error: 'GSC not connected for this brand' });
+    let creds = credRes.rows[0].credentials;
+
+    // Get brand domain from brand_profiles
+    const brandRes = await pool.query('SELECT brand_url, article_base_url FROM brand_profiles WHERE id = $1', [brandProfileId]);
+    const brand = brandRes.rows[0];
+    if (!brand) return res.status(404).json({ error: 'Brand not found' });
+
+    // Determine which GSC property to query
+    const brandDomain = (brand.brand_url || brand.article_base_url || '').replace(/https?:\/\//, '').replace(/\/.*/, '').replace(/^www\./, '');
+    const verifiedSites = creds.verifiedSites || [];
+    const siteUrl = verifiedSites.find(s => s.includes(brandDomain))
+      || verifiedSites.find(s => s.includes('sc-domain:'))
+      || verifiedSites[0];
+
+    if (!siteUrl) return res.status(400).json({ error: `No verified GSC property found for ${brandDomain}. Verify site ownership in Google Search Console first.` });
+
+    // Refresh token if needed
+    let accessToken = creds.accessToken;
+    try {
+      // Try a test call — if it fails, refresh
+      const testRes = await fetch(`https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      if (testRes.status === 401 && creds.refreshToken) {
+        accessToken = await refreshGSCToken(creds.refreshToken);
+        // Update stored token
+        await pool.query(
+          'UPDATE publishing_channels SET credentials = credentials || $1 WHERE brand_profile_id = $2 AND channel = $3',
+          [JSON.stringify({ accessToken }), brandProfileId, 'gsc']
+        );
+      }
+    } catch(e) { console.log('[GSC] Token test error:', e.message); }
+
+    // Date range
+    const endDate = new Date().toISOString().split('T')[0];
+    const startDate = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
+
+    // Query GSC Search Analytics — by page, last N days
+    const gscRes = await fetch(
+      `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
+      {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          startDate, endDate,
+          dimensions: ['page'],
+          rowLimit: 500,
+          dataState: 'all'
+        })
+      }
+    );
+    const gscData = await gscRes.json();
+    if (gscData.error) throw new Error(gscData.error.message);
+
+    const rows = gscData.rows || [];
+    let synced = 0;
+
+    // Match GSC pages to content_analytics by URL or publishing_queue by title slug
+    for (const row of rows) {
+      const pageUrl = row.keys[0];
+      const clicks = Math.round(row.clicks || 0);
+      const impressions = Math.round(row.impressions || 0);
+      const ctr = parseFloat((row.ctr * 100).toFixed(2));
+      const position = parseFloat((row.position || 0).toFixed(1));
+
+      // Try to find matching content_id from publishing_queue by URL slug match
+      const urlSlug = pageUrl.replace(/\/$/, '').split('/').pop()?.replace(/\.html$/, '') || '';
+      const queueRes = await pool.query(
+        `SELECT content_id FROM publishing_queue WHERE brand_profile_id = $1 AND LOWER(REPLACE(REPLACE(title, ' ', '-'), ',', '')) LIKE $2 LIMIT 1`,
+        [brandProfileId, `%${urlSlug.slice(0, 20)}%`]
+      ).catch(() => ({ rows: [] }));
+
+      const contentId = queueRes.rows[0]?.content_id || `gsc_${Buffer.from(pageUrl).toString('base64').slice(0, 16)}`;
+
+      await pool.query(
+        `INSERT INTO content_analytics
+          (brand_profile_id, content_id, channel, post_id, impressions, clicks, ctr, engagement_rate,
+           reactions, comments, reposts, raw_data, published_at, synced_at)
+         VALUES ($1,$2,'gsc',$3,$4,$5,$6,$7,0,0,0,$8,NOW(),NOW())
+         ON CONFLICT (brand_profile_id, content_id, channel)
+         DO UPDATE SET impressions=$4, clicks=$5, ctr=$6, engagement_rate=$7,
+           raw_data=$8, synced_at=NOW()`,
+        [brandProfileId, contentId, pageUrl, impressions, clicks, ctr, position,
+         JSON.stringify({ pageUrl, clicks, impressions, ctr, position, startDate, endDate, siteUrl })]
+      );
+      synced++;
+    }
+
+    // Update pre-cog accuracy with fresh GSC data
+    updatePrecogOutcomes(brandProfileId).catch(() => {});
+    res.json({ success: true, synced, siteUrl, dateRange: { startDate, endDate }, totalRows: rows.length });
+  } catch(err) {
+    console.error('[GSC-SYNC]', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/gsc/status/:brandProfileId — check connection status + verified sites
+app.get('/api/gsc/status/:brandProfileId', requireAuth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      'SELECT credentials, updated_at FROM publishing_channels WHERE brand_profile_id = $1 AND channel = $2 AND is_active = true',
+      [req.params.brandProfileId, 'gsc']
+    );
+    if (!r.rows.length) return res.json({ connected: false });
+    const creds = r.rows[0].credentials;
+    res.json({ connected: true, verifiedSites: creds.verifiedSites || [], connectedAt: creds.connectedAt, updatedAt: r.rows[0].updated_at });
+  } catch(e) {
+    res.status(500).json({ connected: false, error: e.message });
+  }
+});
+
+// ── Generate LinkedIn post copy preview ───────────────────────────────────────
+app.post('/api/publishing/generate-post-copy', async (req, res) => {
+  const { title, headings, readMinutes, articleUrl } = req.body;
+  try {
+    const copyRes = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 400,
+      messages: [{ role: 'user', content: `Write a LinkedIn post to promote this B2B article. Give a compelling overview of what the reader will learn — NOT a quote from the intro paragraph.
+
+Article title: "${title}"
+Sections covered: ${headings || 'not provided'}
+Read time: ${readMinutes} min read
+Article URL: ${articleUrl}
+
+Rules:
+- 3-4 short paragraphs
+- Lead with the core insight or tension, not a question
+- No emojis, no hashtags
+- Every sentence must be complete — no ellipsis cutoffs
+- Last line must be exactly: Read more: ${articleUrl}
+- Plain text only
+
+Output only the post text.` }]
+    });
+    const copy = copyRes.content[0]?.type === 'text' ? copyRes.content[0].text.trim() : '';
+    res.json({ success: true, copy });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/publishing/publish', requireAuth, async (req, res) => {
+  const { queueItemId, channels: selectedChannels } = req.body;
+  if (!queueItemId) return res.status(400).json({ error: 'queueItemId required' });
+  try {
+    const startTime = Date.now();
+    // Load queue item + article
+    const queueRes = await pool.query('SELECT * FROM publishing_queue WHERE id = $1', [queueItemId]);
+    if (!queueRes.rows.length) return res.status(404).json({ error: 'Queue item not found' });
+    const item = queueRes.rows[0];
+
+    const safeId = item.brand_profile_id.replace(/-/g, '_');
+    const contentTable = `generated_content_${safeId}`;
+    const contentRes = await pool.query(`SELECT * FROM ${contentTable} WHERE id = $1`, [item.content_id]);
+    if (!contentRes.rows.length) return res.status(404).json({ error: 'Article not found' });
+    const article = contentRes.rows[0];
+
+    // Load brand profile
+    const brandRes = await pool.query('SELECT * FROM brand_profiles WHERE id = $1', [item.brand_profile_id]);
+    const brand = brandRes.rows[0] || {};
+    const brandSlug = (brand.brand_url || 'brand').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
+    const articleSlug = (article.title || 'article').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    // Use BYO domain if configured, otherwise default to Forge article URL
+    const articleBaseDomain = process.env.BASE_DOMAIN || 'forgeintelligence.ai';
+    const articleBaseUrl = brand.article_base_url
+      ? brand.article_base_url.replace(/\/+$/, '')
+      : `https://${articleBaseDomain}/articles/${brandSlug}`;
+    const articleUrlSuffix = (brand.article_url_suffix || '').trim();
+    const forgeArticleUrl = `${articleBaseUrl}/${articleSlug}${articleUrlSuffix}`;
+
+    // Load channel connections for this brand
+    const channelsRes = await pool.query(
+      'SELECT * FROM publishing_channels WHERE brand_profile_id = $1',
+      [item.brand_profile_id]
+    );
+    const channelMap = {};
+    for (const ch of channelsRes.rows) channelMap[ch.channel] = ch;
+
+    const targets = selectedChannels || item.channels || [];
+    const results = {};
+
+    // ── Ensure hero image exists before publishing ────────────────────────────
+    // Campaign generator doesn't pre-generate images — create one now if missing
+    if (!article.hero_image_url) {
+      try {
+        const aj = article.article_json || {};
+        const sections = aj.sections || [];
+        const firstBody = (sections[0]?.body || sections[0]?.content || '').slice(0, 300);
+        const imgPromptRes = await anthropic.messages.create({
+          model: 'claude-sonnet-4-5',
+          max_tokens: 150,
+          messages: [{ role: 'user', content: `Write a Flux image generation prompt for a B2B editorial hero image for this article: "${article.title}". Context: ${firstBody}. Output only the prompt, no quotes, no preamble. Professional photography style, 16:9, no text in image.` }]
+        });
+        const fluxPrompt = imgPromptRes.content[0]?.type === 'text'
+          ? imgPromptRes.content[0].text.trim()
+          : `Professional B2B editorial hero image for: ${article.title}`;
+
+        const falRes = await fetch('https://fal.run/fal-ai/flux/schnell', {
+          method: 'POST',
+          headers: { 'Authorization': `Key ${process.env.FAL_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: fluxPrompt, image_size: 'landscape_16_9', num_inference_steps: 4, num_images: 1 })
+        });
+        if (falRes.ok) {
+          const falData = await falRes.json();
+          const imageUrl = falData?.images?.[0]?.url;
+          if (imageUrl) {
+            await pool.query(
+              `UPDATE ${contentTable} SET hero_image_url = $1, hero_image_prompt = $2, updated_at = NOW() WHERE id = $3`,
+              [imageUrl, fluxPrompt, article.id]
+            );
+            article.hero_image_url = imageUrl;
+            console.log(`[PUBLISH] Generated hero image for "${article.title}"`);
+          }
+        }
+      } catch (imgErr) {
+        console.warn('[PUBLISH] Hero image generation failed, continuing without:', imgErr.message);
+        // Non-fatal — publish continues without image
+      }
+    }
+
+    for (const channel of targets) {
+      const chConfig = channelMap[channel];
+      if (!chConfig) { results[channel] = { status: 'error', error: 'Channel not connected' }; continue; }
+
+      // campaign_id is a UUID — derive a readable slug from the queue item's campaign_id
+      // Fall back to the campaigns table name if we have it, otherwise use the UUID prefix
+      let campaignSlug = 'forge-content';
+      if (item.campaign_id) {
+        try {
+          const campRow = await pool.query('SELECT name FROM campaigns WHERE id = $1', [item.campaign_id]);
+          campaignSlug = campRow.rows[0]?.name
+            ? campRow.rows[0].name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 50)
+            : item.campaign_id.split('-')[0];
+        } catch { campaignSlug = item.campaign_id.split('-')[0]; }
+      }
+      const utmCtx = { channel, brandSlug, articleSlug, campaignSlug };
+      // Default UTM template if channel has none configured
+      const defaultUtmTemplate = {
+        utm_source: '{channel}',
+        utm_medium: 'social',
+        utm_campaign: '{campaign_slug}',
+        utm_content: '{article_slug}'
+      };
+      // utm_template may come back as a string from DB — parse if needed
+      let rawTemplate = chConfig.utm_template;
+      if (typeof rawTemplate === 'string') {
+        try { rawTemplate = JSON.parse(rawTemplate); } catch { rawTemplate = {}; }
+      }
+      const utmTemplate = (rawTemplate && Object.keys(rawTemplate).length > 0)
+        ? rawTemplate
+        : defaultUtmTemplate;
+      const utmParams = resolveUtmParams(utmTemplate, utmCtx);
+      const utmString = buildUtmString(utmParams);
+
+      const creds = chConfig.credentials || {};
+
+      try {
+        if (channel === 'wordpress') {
+          // ── Real WordPress REST API publish ──
+          const wpUrl = creds.siteUrl?.replace(/\/+$/, '');
+          if (!wpUrl || !creds.username || !creds.appPassword) throw new Error('Missing WordPress credentials');
+
+          const articleJson = article.article_json || {};
+          const sections = articleJson.sections || [];
+          const htmlContent = sections.map(s =>
+            `${s.heading ? `<h2>${s.heading}</h2>` : ''}<p>${s.body || s.content || ''}</p>`
+          ).join('\n');
+
+          const authHeader = 'Basic ' + Buffer.from(`${creds.username}:${creds.appPassword}`).toString('base64');
+          const wpRes = await fetch(`${wpUrl}/wp-json/wp/v2/posts`, {
+            method: 'POST',
+            headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: article.title,
+              content: htmlContent + (utmString ? `\n<!-- UTM: ${utmString} -->` : ''),
+              status: 'publish',
+              excerpt: sections[0]?.content?.slice(0, 160) || '',
+              meta: { forge_utm: utmString, forge_brain: item.brand_profile_id }
+            })
+          });
+          const wpData = await wpRes.json();
+          if (!wpRes.ok) throw new Error(wpData.message || 'WordPress publish failed');
+          results[channel] = { status: 'published', url: wpData.link, postId: wpData.id, utmParams };
+
+        } else if (channel === 'webflow') {
+          // ── Real Webflow CMS publish ──
+          const webflowToken = creds.apiToken || process.env.WEBFLOW_API_TOKEN;
+          const siteId = creds.siteId || '69c715bf39ddf47aae9481b1';
+          const collectionId = creds.collectionId || '69c7189df169a5faf671dba4';
+          if (!webflowToken) throw new Error('Missing Webflow API token');
+
+          const articleJson = article.article_json || {};
+          const sections = articleJson.sections || [];
+          const bodyHtml = sections.map(s =>
+            `${s.heading ? `<h2>${s.heading}</h2>` : ''}<p>${s.body || s.content || ''}</p>`
+          ).join('\n');
+          const excerpt = (sections[0]?.body || sections[0]?.content || '').slice(0, 160);
+          const slug = (article.title || 'article').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 60);
+
+          const wfRes = await fetch(`https://api.webflow.com/v2/collections/${collectionId}/items`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${webflowToken}`,
+              'Content-Type': 'application/json',
+              'accept-version': '1.0.0'
+            },
+            body: JSON.stringify({
+              isArchived: false,
+              isDraft: false,
+              fieldData: {
+                name: article.title || 'Untitled',
+                slug,
+                excerpt,
+                body: bodyHtml,
+                'published-on': new Date().toISOString(),
+                category: articleJson.category || 'Thought Leadership',
+                'forge-utm': utmString,
+                'forge-brain-id': item.brand_profile_id,
+              }
+            })
+          });
+          const wfData = await wfRes.json();
+          if (!wfRes.ok) throw new Error(wfData.message || JSON.stringify(wfData));
+          const publishedUrl = `https://${brand.brand_url || siteId}/articles/${slug}`;
+          results[channel] = { status: 'published', url: publishedUrl, itemId: wfData.id, utmParams };
+
+        } else if (channel === 'hubspot') {
+          results[channel] = { status: 'staged', message: 'HubSpot: credentials saved, live API wired in Stage 6.1', utmParams };
+
+        } else if (channel === 'linkedin') {
+          // ── Real LinkedIn share via UGC Posts API ──
+          const liToken   = creds.accessToken || process.env.LINKEDIN_ACCESS_TOKEN;
+          const authorUrn = creds.authorUrn   || process.env.LINKEDIN_AUTHOR_URN;
+          if (!liToken || !authorUrn) {
+            results[channel] = { status: 'staged', message: 'LinkedIn not yet authorized — visit /app/integrations to connect', utmParams };
+          } else {
+            const articleJson = article.article_json || {};
+            const sections = articleJson.sections || [];
+            const postCopyOverride = (req.body.postCopy || {})[channel];
+            const articleUrl = `${forgeArticleUrl}${utmString ? '?' + utmString : ''}`;
+
+            // Generate or use provided post copy
+            let postText = postCopyOverride;
+            if (!postText) {
+              const wordCount = sections.reduce((acc, s) => acc + ((s.body || s.content || '').split(' ').length), 0);
+              const readMinutes = Math.max(2, Math.round(wordCount / 200));
+              const sectionHeadings = sections.slice(1, 5).map(s => s.heading).filter(Boolean).join(', ');
+              try {
+                const copyRes = await anthropic.messages.create({
+                  model: 'claude-sonnet-4-5',
+                  max_tokens: 400,
+                  messages: [{ role: 'user', content: `Write a LinkedIn post to promote this article. It should be a compelling overview (NOT the intro paragraph), end with a clear CTA, and the last line should be exactly "Read more: ${articleUrl}"
+
+Article title: "${article.title}"
+Key sections covered: ${sectionHeadings}
+Read time: ${readMinutes} min read
+
+Rules:
+- 3-5 short paragraphs max
+- Lead with the core insight or tension, not a question
+- No emojis
+- No hashtags  
+- No ellipsis (...) cutoffs — complete every sentence
+- Last line must be exactly: Read more: ${articleUrl}
+- Plain text only, no markdown
+
+Output only the post text.` }]
+                });
+                postText = copyRes.content[0]?.type === 'text' ? copyRes.content[0].text.trim() : '';
+              } catch(e) {
+                const wordCount2 = sections.reduce((acc, s) => acc + ((s.body || s.content || '').split(' ').length), 0);
+                const readMin = Math.max(2, Math.round(wordCount2 / 200));
+                postText = `${article.title}\n\n${sections.slice(0,3).map(s => s.heading).filter(Boolean).join(' · ')}\n\n${readMin} min read\n\nRead more: ${articleUrl}`;
+              }
+            }
+
+            const liRes = await fetch('https://api.linkedin.com/v2/ugcPosts', {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${liToken}`, 'Content-Type': 'application/json', 'X-Restli-Protocol-Version': '2.0.0' },
+              body: JSON.stringify({
+                author: authorUrn,
+                lifecycleState: 'PUBLISHED',
+                specificContent: {
+                  'com.linkedin.ugc.ShareContent': {
+                    shareCommentary: { text: postText },
+                    shareMediaCategory: 'ARTICLE',
+                    media: [{ status: 'READY', originalUrl: articleUrl, title: { text: article.title || 'New Article' } }]
+                  }
+                },
+                visibility: { 'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC' }
+              })
+            });
+            const liData = await liRes.json();
+            if (!liRes.ok) throw new Error(liData.message || JSON.stringify(liData));
+            const postId = liData.id?.replace('urn:li:ugcPost:', '');
+            const postUrl = `https://www.linkedin.com/feed/update/${liData.id}/`;
+            results[channel] = { status: 'published', url: postUrl, postId: liData.id, utmParams };
+          }
+
+        } else if (channel === 'x') {
+          // ── Real X (Twitter) API v2 publish via OAuth 1.0a ──
+          const xApiKey       = creds.apiKey       || process.env.X_OAUTH1CONSUMER_KEY;
+          const xApiSecret    = creds.apiSecret    || process.env.X_OAUTH1CONSUMER_SECRET;
+          const xAccessToken  = creds.accessToken  || process.env.X_OAUTH1ACCESS_TOKEN;
+          const xAccessSecret = creds.accessSecret || process.env.X_OAUTH1ACCESS_SECRET;
+          if (!xApiKey || !xApiSecret || !xAccessToken || !xAccessSecret) throw new Error('Missing X credentials');
+
+          const articleJson = article.article_json || {};
+          const sections = articleJson.sections || [];
+          const articleUrl = forgeArticleUrl;
+          const fullTweetUrl = `${articleUrl}${utmString ? '?' + utmString : ''}`;
+          // Twitter counts any URL as 23 chars regardless of length — never slice the URL
+          const excerpt = (sections[0]?.content || sections[0]?.body || article.title || '').slice(0, 250);
+          const tweetText = `${excerpt}...\n\n${fullTweetUrl}`;
+
+          // Build OAuth 1.0a signature
+          const tweetUrl = 'https://api.twitter.com/2/tweets';
+          const authHeader = buildXOAuthHeader('POST', tweetUrl, xApiKey, xApiSecret, xAccessToken, xAccessSecret);
+
+          const xRes = await fetch(tweetUrl, {
+            method: 'POST',
+            headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: tweetText })
+          });
+          const xData = await xRes.json();
+          if (!xRes.ok) throw new Error(xData.detail || xData.title || JSON.stringify(xData));
+          const tweetId = xData.data?.id;
+          // Look up authenticated user's handle to build the correct tweet URL
+          let twitterHandle = 'i';
+          try {
+            const meRes = await fetch('https://api.twitter.com/2/users/me', {
+              headers: { 'Authorization': authHeader }
+            });
+            if (meRes.ok) {
+              const meData = await meRes.json();
+              twitterHandle = meData.data?.username || 'i';
+            }
+          } catch(e) { /* fall back to /i/status/ path */ }
+          const tweetUrl2 = `https://x.com/${twitterHandle}/status/${tweetId}`;
+          results[channel] = { status: 'published', url: tweetUrl2, tweetId, utmParams };
+
+        } else if (channel === 'facebook') {
+          // ── Facebook Page API publish ──
+          const { pageId, pageAccessToken } = chConfig.credentials || {};
+          if (!pageId || !pageAccessToken) throw new Error('Facebook Page ID and Page Access Token are required');
+
+          const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
+          const utmUrl = articleUrl + '?' + new URLSearchParams({ ...utmCtx, utm_source: 'facebook', utm_medium: 'social' }).toString();
+
+          // Generate FB post copy via Claude Haiku (reuse generate-post-copy logic inline)
+          let fbMessage = `${item.title}\n\n${utmUrl}`;
+          try {
+            const haiku = await anthropic.messages.create({
+              model: 'claude-sonnet-4-5',
+              max_tokens: 600,
+              messages: [{
+                role: 'user',
+                content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant hashtags at the end. End with: Read more: ${utmUrl}\n\nArticle title: ${item.title}`
+              }]
+            });
+            fbMessage = haiku.content[0]?.text || fbMessage;
+          } catch (e) {
+            console.warn('[FB] Haiku post copy failed, using fallback:', e.message);
+          }
+
+          const fbRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}/feed`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: fbMessage, link: utmUrl, access_token: pageAccessToken })
+          });
+          const fbData = await fbRes.json();
+          if (!fbRes.ok || fbData.error) throw new Error(fbData.error?.message || 'Facebook publish failed');
+
+          const fbPostUrl = `https://www.facebook.com/${fbData.id?.replace('_', '/posts/')}`;
+          results[channel] = { status: 'published', url: fbPostUrl, postId: fbData.id, utmParams };
+
+        } else if (channel === 'reddit') {
+          // ── Reddit API publish to company subreddit ──
+          const { subreddit, accessToken: redditToken, refreshToken, clientId: redditClientId, clientSecret } = chConfig.credentials || {};
+          if (!subreddit || !redditToken) throw new Error('Subreddit name and Reddit access token are required');
+
+          const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
+          const utmUrl = articleUrl + '?' + new URLSearchParams({ ...utmCtx, utm_source: 'reddit', utm_medium: 'social' }).toString();
+
+          // Helper: attempt token refresh if needed
+          const tryRefresh = async (token) => {
+            if (!refreshToken || !redditClientId || !clientSecret) return token;
+            try {
+              const r = await fetch('https://www.reddit.com/api/v1/access_token', {
+                method: 'POST',
+                headers: {
+                  'Authorization': 'Basic ' + Buffer.from(`${redditClientId}:${clientSecret}`).toString('base64'),
+                  'Content-Type': 'application/x-www-form-urlencoded',
+                  'User-Agent': 'ForgeIntelligence/1.0'
+                },
+                body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken })
+              });
+              const rData = await r.json();
+              return rData.access_token || token;
+            } catch { return token; }
+          };
+
+          let activeToken = redditToken;
+          const submitReddit = async (tok) => fetch('https://oauth.reddit.com/api/submit', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${tok}`,
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'User-Agent': 'ForgeIntelligence/1.0'
+            },
+            body: new URLSearchParams({
+              sr: subreddit.replace(/^r\//, ''),
+              kind: 'link',
+              title: item.title,
+              url: utmUrl,
+              resubmit: 'true',
+              nsfw: 'false',
+              spoiler: 'false'
+            })
+          });
+
+          let rdRes = await submitReddit(activeToken);
+          // If 401, try refresh once
+          if (rdRes.status === 401 && refreshToken) {
+            activeToken = await tryRefresh(activeToken);
+            rdRes = await submitReddit(activeToken);
+          }
+          const rdData = await rdRes.json();
+          const rdErrors = rdData?.json?.errors;
+          if (rdErrors && rdErrors.length > 0) throw new Error(rdErrors[0][1] || 'Reddit submit failed');
+          if (!rdRes.ok) throw new Error(`Reddit API error: ${rdRes.status}`);
+
+          const rdPostUrl = rdData?.json?.data?.url || `https://www.reddit.com/r/${subreddit.replace(/^r\//, '')}`;
+          results[channel] = { status: 'published', url: rdPostUrl, postId: rdData?.json?.data?.id, utmParams };
+
+        } else if (channel === 'medium') {
+          // ── Medium API publish ──
+          const { integrationToken } = chConfig.credentials || {};
+          if (!integrationToken) throw new Error('Medium integration token is required');
+
+          // Get the authenticated user's Medium ID
+          const meRes = await fetch('https://api.medium.com/v1/me', {
+            headers: { 'Authorization': `Bearer ${integrationToken}`, 'Content-Type': 'application/json' }
+          });
+          if (!meRes.ok) throw new Error('Medium token invalid or expired');
+          const meData = await meRes.json();
+          const authorId = meData.data?.id;
+          if (!authorId) throw new Error('Could not retrieve Medium author ID');
+
+          const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
+          const utmUrl = articleUrl + '?' + new URLSearchParams({ ...utmCtx, utm_source: 'medium', utm_medium: 'social' }).toString();
+
+          // Build HTML content from article sections
+          const articleJson = article.article_json || {};
+          const sections = articleJson.sections || [];
+          const htmlBody = sections.map(s =>
+            `<h2>${s.heading || ''}</h2><p>${(s.body || '').split('\n').join('</p><p>')}</p>`
+          ).join('\n');
+
+          const canonicalNote = `<p><em>Originally published at <a href="${utmUrl}">${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}</a></em></p>`;
+
+          const medRes = await fetch(`https://api.medium.com/v1/users/${authorId}/posts`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${integrationToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: article.title,
+              contentFormat: 'html',
+              content: `<h1>${article.title}</h1>
+${htmlBody}
+${canonicalNote}`,
+              canonicalUrl: utmUrl,
+              publishStatus: 'public',
+              notifyFollowers: true,
+            })
+          });
+          const medData = await medRes.json();
+          if (!medRes.ok || medData.errors) throw new Error(medData.errors?.[0]?.message || 'Medium publish failed');
+
+          results[channel] = { status: 'published', url: medData.data?.url, postId: medData.data?.id, utmParams };
+
+        } else if (channel === 'ghost') {
+          // ── Ghost Admin API publish ──
+          // Ghost uses JWT auth derived from the Admin API key (format: id:secret)
+          const { adminUrl, adminApiKey } = chConfig.credentials || {};
+          if (!adminUrl || !adminApiKey) throw new Error('Ghost Admin URL and Admin API Key are required');
+
+          const [keyId, keySecret] = adminApiKey.split(':');
+          if (!keyId || !keySecret) throw new Error('Admin API Key must be in format id:secret — copy it directly from Ghost Admin');
+
+          // Build JWT — Ghost uses HS256 with the hex secret decoded to bytes
+          const now = Math.floor(Date.now() / 1000);
+          const header  = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT', kid: keyId })).toString('base64url');
+          const payload = Buffer.from(JSON.stringify({ iat: now, exp: now + 300, aud: '/admin/' })).toString('base64url');
+          const secretBytes = Buffer.from(keySecret, 'hex');
+          const sig = createHmac('sha256', secretBytes)
+            .update(`${header}.${payload}`)
+            .digest('base64url');
+          const ghostJwt = `${header}.${payload}.${sig}`;
+
+          const ghostBase = adminUrl.replace(/\/+$/, '');
+          const articleUrl = forgeArticleUrl;
+          // Use resolved utmParams (utm_source, utm_medium, utm_campaign, utm_content) not raw utmCtx tokens
+          const utmUrl = utmParams && Object.keys(utmParams).length > 0
+            ? articleUrl + '?' + buildUtmString(utmParams)
+            : articleUrl;
+
+          // Build HTML from article sections — Ghost v5 accepts HTML via ?source=html
+          const articleJson = article.article_json || {};
+          const sections = articleJson.sections || [];
+          const htmlBody = sections.map(s =>
+            `<h2>${s.heading || ''}</h2>\n${(s.body || '').split('\n').filter(Boolean).map(p => `<p>${p}</p>`).join('\n')}`
+          ).join('\n\n');
+          const canonicalNote = `<p><em>Originally published at <a href="${utmUrl}">${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}</a></em></p>`;
+          const htmlContent = `${htmlBody}\n\n${canonicalNote}`;
+
+          // feature_image: Ghost v5 accepts external URLs directly
+          const ghostFeatureImageUrl = article.hero_image_url || null;
+          console.log('[GHOST] feature_image:', ghostFeatureImageUrl || '(none)', '| hero_image_url:', article.hero_image_url || '(null)');
+
+          const ghostRes = await fetch(`${ghostBase}/ghost/api/admin/posts/?source=html`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Ghost ${ghostJwt}`,
+              'Content-Type': 'application/json',
+              'Accept-Version': 'v5.0'
+            },
+            body: JSON.stringify({
+              posts: [{
+                title: article.title,
+                html: htmlContent,
+                status: 'published',
+                canonical_url: utmUrl,
+                meta_title: article.title,
+                meta_description: (articleJson.metaDescription || '').slice(0, 300),
+                ...(ghostFeatureImageUrl && { feature_image: ghostFeatureImageUrl }),
+              }]
+            })
+          });
+
+          const ghostData = await ghostRes.json();
+          if (!ghostRes.ok || ghostData.errors) {
+            throw new Error(ghostData.errors?.[0]?.message || `Ghost API error ${ghostRes.status}`);
+          }
+
+          const ghostPost = ghostData.posts?.[0];
+          results[channel] = { status: 'published', url: ghostPost?.url, postId: ghostPost?.id, utmParams };
+
+        } else {
+          results[channel] = { status: 'error', error: `Unknown channel: ${channel}` };
+        }
+      } catch (chErr) {
+        results[channel] = { status: 'error', error: chErr.message };
+      }
+
+      // Write publish log
+      await pool.query(
+        `INSERT INTO publish_log (queue_item_id, brand_profile_id, content_id, channel, status, response_data, utm_params, published_url, error_message)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          queueItemId, item.brand_profile_id, item.content_id, channel,
+          results[channel].status,
+          JSON.stringify(results[channel]),
+          JSON.stringify(utmParams),
+          results[channel].url || null,
+          results[channel].error || null
+        ]
+      );
+    }
+
+    // Update queue item status
+    const allPublished = targets.every(ch => results[ch]?.status === 'published');
+    const anyError = targets.some(ch => results[ch]?.status === 'error');
+    const newStatus = allPublished ? 'published' : anyError ? 'partial' : 'staged';
+
+    // Merge new results into existing publish_results — preserves prior channel results
+    await pool.query(
+      `UPDATE publishing_queue SET
+         status = $1,
+         channels = $2,
+         publish_results = COALESCE(publish_results, '{}'::jsonb) || $3::jsonb,
+         published_at = COALESCE($4, published_at),
+         updated_at = NOW()
+       WHERE id = $5`,
+      [newStatus, JSON.stringify(targets), JSON.stringify(results), allPublished ? new Date() : null, queueItemId]
+    );
+
+    // Write memory to Brain on any successful publish
+    const successfulChannels = targets.filter(ch => results[ch]?.status === 'published' || results[ch]?.status === 'staged');
+    if (successfulChannels.length > 0) {
+      pool.query(
+        `INSERT INTO memories (id, raw_content, metadata, created_at)
+         VALUES (gen_random_uuid()::text, $1, $2, NOW())`,
+        [
+          `Published: ${article.title}`,
+          JSON.stringify({ contentId: item.content_id, channels: successfulChannels, brandProfileId: item.brand_profile_id, publishedAt: new Date(), utmResults: results })
+        ]
+      ).catch(e => console.error('[MEMORY] Write error:', e.message));
+    }
+
+        await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata) VALUES ($1,$2,$3,$4,$5,$6)', ['stage6_publisher', item?.brand_profile_id||null, 'success', 0, Date.now()-startTime, JSON.stringify({ channels: selectedChannels, status: newStatus })]).catch(e => console.error('[ACTIVITY LOG]', e.message));
+        res.json({ success: true, status: newStatus, results });
+  } catch (err) {
+    console.error('[PUBLISH] Error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── Analytics API ─────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+// POST /api/analytics/sync/:brandProfileId — pull stats from channels, upsert into content_analytics
+// Ghost Admin JWT builder
+function buildGhostJWT(apiKey) {
+  const [keyId, secret] = apiKey.split(':');
+  const secretBytes = Buffer.from(secret, 'hex');
+  const now = Math.floor(Date.now() / 1000);
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT', kid: keyId })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({ iat: now, exp: now + 300, aud: '/admin/' })).toString('base64url');
+  const sigInput = `${header}.${payload}`;
+  const sig = createHmac('sha256', secretBytes).update(sigInput).digest('base64url');
+  return `${sigInput}.${sig}`;
+}
+
+app.post('/api/analytics/sync/:brandProfileId', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.params;
+    if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+  const { channel = 'linkedin' } = req.body;
+  try {
+    const safeId = brandProfileId.replace(/-/g, '_');
+    const synced = [];
+    const errors = [];
+
+    if (channel === 'linkedin' || channel === 'all') {
+      // Get all LinkedIn published posts from publish_log
+      const logRes = await pool.query(
+        `SELECT pl.content_id, pl.response_data, pl.attempted_at AS published_at,
+                ct.title, ct.campaign_id
+         FROM publish_log pl
+         LEFT JOIN generated_content_${safeId} ct ON ct.id::text = pl.content_id
+         WHERE pl.brand_profile_id = $1 AND pl.channel = 'linkedin' AND pl.status = 'published'
+         ORDER BY pl.attempted_at DESC`,
+        [brandProfileId]
+      ).catch(() => ({ rows: [] }));
+
+      // Get LinkedIn credentials from publishing_channels (primary) or channel_credentials (legacy)
+      const credRes = await pool.query(
+        `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'linkedin' AND is_active = true
+         UNION ALL
+         SELECT credentials FROM channel_credentials WHERE brand_profile_id = $1 AND channel = 'linkedin'
+         LIMIT 1`,
+        [brandProfileId]
+      ).catch(() => ({ rows: [] }));
+      const creds = credRes.rows[0]?.credentials || {};
+      const token = creds.accessToken || process.env.LINKEDIN_ACCESS_TOKEN;
+
+      for (const row of logRes.rows) {
+        try {
+          const postId = row.response_data?.postId || row.response_data?.post_id || row.response_data?.id;
+          if (!postId || !token) {
+            if (!token) errors.push({ contentId: row.content_id, error: 'no_linkedin_token' });
+            continue;
+          }
+
+          let impressions = 0, clicks = 0, reactions = 0, comments = 0, reposts = 0;
+          let rawData = {};
+          let dataSource = 'none';
+
+          // Step 1: Always try socialActions first — available with w_member_social (no MDP needed)
+          // Returns likes + comments for both personal and org posts
+          try {
+            const actRes = await fetch(
+              `https://api.linkedin.com/v2/socialActions/${encodeURIComponent(postId)}?projection=(likesSummary,commentsSummary,shareSummary)`,
+              { headers: { 'Authorization': `Bearer ${token}`, 'X-Restli-Protocol-Version': '2.0.0' } }
+            );
+            if (actRes.ok) {
+              const actData = await actRes.json();
+              reactions = actData?.likesSummary?.totalLikes || 0;
+              comments  = actData?.commentsSummary?.totalFirstLevelComments || 0;
+              reposts   = actData?.shareSummary?.totalShares || 0;
+              rawData   = { ...rawData, socialActions: actData };
+              dataSource = 'socialActions';
+            }
+          } catch(e) { /* socialActions unavailable — continue */ }
+
+          // Step 2: Try shareStatistics — requires LinkedIn Marketing Developer Platform approval
+          // Will return impressions + clicks once MDP is granted; silently skipped until then
+          try {
+            const encodedPostId = encodeURIComponent(postId);
+            const statsRes = await fetch(
+              `https://api.linkedin.com/v2/shareStatistics?q=shares&shares[0]=${encodedPostId}&projection=(elements*(totalShareStatistics))`,
+              { headers: { 'Authorization': `Bearer ${token}`, 'X-Restli-Protocol-Version': '2.0.0', 'LinkedIn-Version': '202401' } }
+            );
+            if (statsRes.ok) {
+              const statsData = await statsRes.json();
+              const stats = statsData?.elements?.[0]?.totalShareStatistics || {};
+              // Only use if MDP data is actually present (non-zero impressions)
+              if (stats.impressionCount > 0) {
+                impressions = stats.impressionCount || 0;
+                clicks      = stats.clickCount     || 0;
+                // Use MDP reactions if higher (more accurate than socialActions)
+                reactions   = Math.max(reactions, stats.likeCount  || 0);
+                comments    = Math.max(comments,  stats.commentCount || 0);
+                reposts     = Math.max(reposts,   stats.shareCount  || 0);
+                rawData     = { ...rawData, shareStatistics: stats };
+                dataSource  = 'shareStatistics';
+              }
+            }
+          } catch(e) { /* MDP not yet approved — expected */ }
+
+          // Engagement rate: use impressions if available, else use total engagements as proxy
+          const totalEngagement = reactions + comments + reposts + clicks;
+          const ctr = impressions > 0 ? parseFloat((clicks / impressions * 100).toFixed(2)) : 0;
+          const engagementRate = impressions > 0
+            ? parseFloat((totalEngagement / impressions * 100).toFixed(2))
+            : 0;
+
+          await pool.query(
+            `INSERT INTO content_analytics
+               (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at, campaign_id)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),$14)
+             ON CONFLICT (content_id, channel) DO UPDATE SET
+               impressions=EXCLUDED.impressions, clicks=EXCLUDED.clicks,
+               reactions=EXCLUDED.reactions, comments=EXCLUDED.comments,
+               reposts=EXCLUDED.reposts, ctr=EXCLUDED.ctr,
+               engagement_rate=EXCLUDED.engagement_rate,
+               raw_data=EXCLUDED.raw_data, synced_at=NOW(),
+               campaign_id=COALESCE(EXCLUDED.campaign_id, content_analytics.campaign_id)`,
+            [brandProfileId, row.content_id, 'linkedin', postId,
+             impressions, clicks, reactions, comments, reposts, ctr, engagementRate,
+             JSON.stringify(rawData), row.published_at, row.campaign_id || null]
+          );
+          synced.push({ contentId: row.content_id, title: row.title, postId, reactions, comments, reposts, impressions, dataSource });
+        } catch(e) {
+          errors.push({ contentId: row.content_id, error: e.message });
+        }
+      }
+    }
+
+    // ── X (Twitter) analytics ──────────────────────────────────────────────
+    if (channel === 'x' || channel === 'all') {
+      const xLogRes = await pool.query(
+        `SELECT pl.content_id, pl.response_data, pl.attempted_at AS published_at,
+                pl.published_url, ct.campaign_id
+         FROM publish_log pl
+         LEFT JOIN generated_content_${safeId} ct ON ct.id::text = pl.content_id
+         WHERE pl.brand_profile_id = $1 AND pl.channel = 'x' AND pl.status = 'published'
+           AND (pl.live_status IS NULL OR pl.live_status != 'deleted')
+         ORDER BY pl.attempted_at DESC`,
+        [brandProfileId]
+      );
+
+      const xCredRes = await pool.query(
+        `SELECT credentials FROM publishing_channels
+         WHERE brand_profile_id = $1 AND channel = 'x' AND is_active = true
+         LIMIT 1`,
+        [brandProfileId]
+      ).catch(() => ({ rows: [] }));
+      const xCreds = xCredRes.rows[0]?.credentials || {};
+      const xApiKey       = xCreds.apiKey       || process.env.X_OAUTH1CONSUMER_KEY;
+      const xApiSecret    = xCreds.apiSecret    || process.env.X_OAUTH1CONSUMER_SECRET;
+      const xAccessToken  = xCreds.accessToken  || process.env.X_OAUTH1ACCESS_TOKEN;
+      const xAccessSecret = xCreds.accessSecret || process.env.X_OAUTH1ACCESS_SECRET;
+
+      for (const row of xLogRes.rows) {
+        try {
+          // Extract tweetId — from response_data, queue publish_results, or parse from published_url
+          const rd = row.response_data || row.queue_results?.x || {};
+          const tweetId = rd.tweetId || rd.id
+            || (row.published_url?.match(/\/status\/(\d+)/)?.[1]);
+          if (!tweetId || !xApiKey || !xAccessToken) {
+            if (!xApiKey || !xAccessToken) errors.push({ contentId: row.content_id, error: 'no_x_credentials' });
+            else if (!tweetId) errors.push({ contentId: row.content_id, error: 'no_tweet_id_in:' + row.published_url });
+            continue;
+          }
+
+          // Build OAuth 1.0a header for GET request
+          const endpoint = `https://api.twitter.com/2/tweets/${tweetId}`;
+          const oauthParams = {
+            oauth_consumer_key: xApiKey,
+            oauth_nonce: randomBytes(16).toString('hex'),
+            oauth_signature_method: 'HMAC-SHA1',
+            oauth_timestamp: String(Math.floor(Date.now() / 1000)),
+            oauth_token: xAccessToken,
+            oauth_version: '1.0',
+          };
+          // Request public + non_public metrics
+          const queryString = 'tweet.fields=public_metrics,non_public_metrics,created_at,author_id';
+          const authHeader = buildXOAuthHeader('GET', endpoint, xApiKey, xApiSecret, xAccessToken, xAccessSecret,
+            Object.fromEntries(new URLSearchParams(queryString)));
+
+          const tweetRes = await fetch(`${endpoint}?${queryString}`, {
+            headers: { 'Authorization': authHeader }
+          });
+
+          let impressions = 0, clicks = 0, reactions = 0, comments = 0, reposts = 0;
+          let rawData = {};
+
+          if (tweetRes.ok) {
+            const tweetData = await tweetRes.json();
+            const pub  = tweetData.data?.public_metrics     || {};
+            const priv = tweetData.data?.non_public_metrics || {};
+            impressions = pub.impression_count || 0;
+            reactions   = pub.like_count       || 0;
+            comments    = pub.reply_count      || 0;
+            reposts     = (pub.retweet_count || 0) + (pub.quote_count || 0);
+            // url_link_clicks lives in non_public_metrics — falls back gracefully if unavailable
+            clicks      = priv.url_link_clicks || priv.user_profile_clicks || 0;
+            rawData     = { public_metrics: pub, non_public_metrics: priv };
+          } else {
+            const errBody = await tweetRes.json().catch(() => ({}));
+            errors.push({ contentId: row.content_id, error: errBody?.detail || errBody?.title || `HTTP ${tweetRes.status}` });
+            continue;
+          }
+
+          const ctr = impressions > 0 ? parseFloat((clicks / impressions * 100).toFixed(2)) : 0;
+          const engagementRate = impressions > 0
+            ? parseFloat(((reactions + comments + reposts + clicks) / impressions * 100).toFixed(2))
+            : 0;
+
+          await pool.query(
+            `INSERT INTO content_analytics
+               (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at, campaign_id)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),$14)
+             ON CONFLICT (content_id, channel) DO UPDATE SET
+               post_id=EXCLUDED.post_id,
+               impressions=GREATEST(content_analytics.impressions, EXCLUDED.impressions),
+               clicks=GREATEST(content_analytics.clicks, EXCLUDED.clicks),
+               reactions=GREATEST(content_analytics.reactions, EXCLUDED.reactions),
+               comments=GREATEST(content_analytics.comments, EXCLUDED.comments),
+               reposts=GREATEST(content_analytics.reposts, EXCLUDED.reposts),
+               ctr=EXCLUDED.ctr,
+               engagement_rate=EXCLUDED.engagement_rate,
+               raw_data=EXCLUDED.raw_data, synced_at=NOW(),
+               campaign_id=COALESCE(EXCLUDED.campaign_id, content_analytics.campaign_id)`,
+            [brandProfileId, row.content_id, 'x', tweetId,
+             impressions, clicks, reactions, comments, reposts, ctr, engagementRate,
+             JSON.stringify(rawData), row.published_at, row.campaign_id || null]
+          );
+          synced.push({ contentId: row.content_id, title: row.title, tweetId, impressions, reactions, comments, reposts, clicks });
+        } catch(e) {
+          errors.push({ contentId: row.content_id, error: e.message });
+        }
+      }
+    }
+
+    // Ghost sync
+    if (channel === 'ghost' || channel === 'all') {
+      // Prefer per-brand credentials from publishing_channels, fall back to env vars
+      const ghostCredRes = await pool.query(
+        `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'ghost' AND is_active = true LIMIT 1`,
+        [brandProfileId]
+      ).catch(() => ({ rows: [] }));
+      const ghostCreds  = ghostCredRes.rows[0]?.credentials || {};
+      const ghostApiKey = ghostCreds.adminApiKey || process.env.GHOST_ADMIN_API_KEY;
+      const ghostApiUrl = (ghostCreds.adminUrl || process.env.GHOST_API_URL || '').replace(/\/+$/, '');
+      if (!ghostApiKey || !ghostApiUrl) {
+        errors.push({ channel: 'ghost', error: 'GHOST credentials not configured' });
+      } else {
+        const safeId = brandProfileId.replace(/-/g, '_');
+        // Fetch all published posts directly from Ghost Admin API
+        const jwt = buildGhostJWT(ghostApiKey);
+        const ghostListRes = await fetch(
+          `${ghostApiUrl}/ghost/api/admin/posts/?limit=all&filter=status:published&fields=id,title,slug,published_at,reading_time&include=count.clicks,count.positive_feedback,count.negative_feedback`,
+          { headers: { 'Authorization': `Ghost ${jwt}`, 'Accept-Version': 'v5.0' } }
+        );
+        if (!ghostListRes.ok) {
+          errors.push({ channel: 'ghost', error: `ghost_list_api_${ghostListRes.status}` });
+        } else {
+          const ghostListData = await ghostListRes.json();
+          const ghostPosts = ghostListData.posts || [];
+
+          // Build title->content_id map from publishing_queue
+          const queueRes = await pool.query(
+            `SELECT content_id, title FROM publishing_queue WHERE brand_profile_id = $1`,
+            [brandProfileId]
+          ).catch(() => ({ rows: [] }));
+          const titleMap = {};
+          for (const r of queueRes.rows) {
+            if (r.title) titleMap[r.title.toLowerCase().trim()] = r.content_id;
+          }
+
+          // Also check publish_log for ghostPostId matches
+          const logRes = await pool.query(
+            `SELECT pl.content_id, pl.response_data, pl.attempted_at AS published_at
+             FROM publish_log pl
+             WHERE pl.brand_profile_id = $1 AND pl.channel = 'ghost'
+             ORDER BY pl.attempted_at DESC`,
+            [brandProfileId]
+          ).catch(() => ({ rows: [] }));
+          const postIdMap = {};
+          for (const r of logRes.rows) {
+            const gid = r.response_data?.ghostPostId || r.response_data?.id;
+            if (gid) postIdMap[gid] = r.content_id;
+          }
+
+          for (const post of ghostPosts) {
+            try {
+              const count = post.count || {};
+              const clicks           = count.clicks || 0;
+              const positiveFeedback = count.positive_feedback || 0;
+              const negativeFeedback = count.negative_feedback || 0;
+              const readingTime      = post.reading_time || 0;
+              const publishedAt      = post.published_at;
+
+              // Match Ghost post to a content_id — try postIdMap first, then title match
+              let contentId = postIdMap[post.id]
+                || titleMap[post.title?.toLowerCase().trim()]
+                || null;
+
+              // If no match, use Ghost post ID as synthetic content_id so we still record it
+              if (!contentId) contentId = `ghost_${post.id}`;
+
+              await pool.query(
+                `INSERT INTO content_analytics
+                  (brand_profile_id, content_id, channel, post_id, clicks, positive_feedback, negative_feedback,
+                   reading_time, impressions, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at)
+                 VALUES ($1,$2,'ghost',$3,$4,$5,$6,$7,0,0,0,0,0,0,$8,$9,NOW())
+                 ON CONFLICT (brand_profile_id, content_id, channel)
+                 DO UPDATE SET clicks=$4, positive_feedback=$5, negative_feedback=$6,
+                   reading_time=$7, raw_data=$8, published_at=$9, synced_at=NOW()`,
+                [brandProfileId, contentId, post.id, clicks, positiveFeedback,
+                 negativeFeedback, readingTime, JSON.stringify({ count, ghost_title: post.title }), publishedAt]
+              );
+              synced.push({ contentId, ghostPostId: post.id, title: post.title, clicks, positiveFeedback, negativeFeedback, readingTime });
+            } catch(e) {
+              errors.push({ ghostPostId: post.id, channel: 'ghost', error: e.message });
+            }
+          }
+        }
+      }
+    }
+
+    res.json({ success: true, channel, synced: synced.length, errors: errors.length, data: synced, errs: errors });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /api/analytics/dashboard/:brandProfileId — aggregated dashboard stats
+app.get('/api/analytics/dashboard/:brandProfileId', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.params;
+    if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+  const channel = req.query.channel || 'linkedin';
+  const isAll = channel === 'all';
+  try {
+    const safeId = brandProfileId.replace(/-/g, '_');
+
+    // Totals
+    const totals = await pool.query(
+      isAll
+        ? `SELECT
+             COUNT(*) as total_posts,
+             COALESCE(SUM(impressions),0) as total_impressions,
+             COALESCE(SUM(clicks),0) as total_clicks,
+             COALESCE(SUM(reactions),0) as total_reactions,
+             COALESCE(SUM(comments),0) as total_comments,
+             COALESCE(SUM(reposts),0) as total_reposts,
+             COALESCE(AVG(NULLIF(ctr,0)),0) as avg_ctr,
+             COALESCE(AVG(NULLIF(engagement_rate,0)),0) as avg_engagement_rate,
+             COALESCE(SUM(positive_feedback),0) as total_positive_feedback,
+             COALESCE(SUM(negative_feedback),0) as total_negative_feedback,
+             COALESCE(AVG(NULLIF(reading_time,0)),0) as avg_reading_time,
+             MAX(synced_at) as last_synced
+           FROM content_analytics
+           WHERE brand_profile_id=$1`
+        : `SELECT
+             COUNT(*) as total_posts,
+             COALESCE(SUM(impressions),0) as total_impressions,
+             COALESCE(SUM(clicks),0) as total_clicks,
+             COALESCE(SUM(reactions),0) as total_reactions,
+             COALESCE(SUM(comments),0) as total_comments,
+             COALESCE(SUM(reposts),0) as total_reposts,
+             COALESCE(AVG(NULLIF(ctr,0)),0) as avg_ctr,
+             COALESCE(AVG(NULLIF(engagement_rate,0)),0) as avg_engagement_rate,
+             COALESCE(SUM(positive_feedback),0) as total_positive_feedback,
+             COALESCE(SUM(negative_feedback),0) as total_negative_feedback,
+             COALESCE(AVG(NULLIF(reading_time,0)),0) as avg_reading_time,
+             MAX(synced_at) as last_synced
+           FROM content_analytics
+           WHERE brand_profile_id=$1 AND channel=$2`,
+      isAll ? [brandProfileId] : [brandProfileId, channel]
+    );
+
+    // Top 5 posts by impressions — DISTINCT on content_id, latest non-deleted publish_log entry
+    const top = await pool.query(
+      `SELECT DISTINCT ON (ca.content_id)
+              ca.content_id, ca.impressions, ca.clicks, ca.reactions,
+              ca.comments, ca.reposts, ca.ctr, ca.engagement_rate,
+              ca.reading_time, ca.positive_feedback, ca.negative_feedback,
+              ca.synced_at AS published_at, ca.synced_at,
+              pl.published_url, pq.title
+       FROM content_analytics ca
+       LEFT JOIN LATERAL (
+         SELECT published_url FROM publish_log
+         WHERE content_id = ca.content_id AND channel = ca.channel
+           AND status = 'published' AND (live_status IS NULL OR live_status != 'deleted')
+         ORDER BY attempted_at DESC LIMIT 1
+       ) pl ON true
+       LEFT JOIN publishing_queue pq ON pq.content_id = ca.content_id
+       WHERE ca.brand_profile_id=$1 ${isAll ? '' : 'AND ca.channel=$2'}
+       ORDER BY ca.content_id, ca.impressions DESC, ca.reactions DESC
+       LIMIT 5`,
+      isAll ? [brandProfileId] : [brandProfileId, channel]
+    );
+
+    // 30-day trend (daily impressions)
+    const trend = await pool.query(
+      `SELECT DATE_TRUNC('day', synced_at) as day,
+              SUM(impressions) as impressions,
+              SUM(clicks) as clicks,
+              SUM(reactions) as reactions
+       FROM content_analytics
+       WHERE brand_profile_id=$1 ${isAll ? '' : 'AND channel=$2'}
+         AND synced_at > NOW() - INTERVAL '30 days'
+       GROUP BY DATE_TRUNC('day', synced_at)
+       ORDER BY day ASC`,
+      isAll ? [brandProfileId] : [brandProfileId, channel]
+    ).catch(() => ({ rows: [] }));
+
+    // All posts for table — DISTINCT on content_id, latest non-deleted publish_log entry
+    const posts = await pool.query(
+      `SELECT DISTINCT ON (ca.content_id)
+              ca.content_id, ca.impressions, ca.clicks, ca.reactions,
+              ca.comments, ca.reposts, ca.ctr, ca.engagement_rate,
+              ca.reading_time, ca.positive_feedback, ca.negative_feedback,
+              ca.synced_at AS published_at, ca.synced_at, ca.channel,
+              pl.published_url, pq.title
+       FROM content_analytics ca
+       LEFT JOIN LATERAL (
+         SELECT published_url FROM publish_log
+         WHERE content_id = ca.content_id AND channel = ca.channel
+           AND status = 'published' AND (live_status IS NULL OR live_status != 'deleted')
+         ORDER BY attempted_at DESC LIMIT 1
+       ) pl ON true
+       LEFT JOIN publishing_queue pq ON pq.content_id = ca.content_id
+       WHERE ca.brand_profile_id=$1 ${isAll ? '' : 'AND ca.channel=$2'}
+       ORDER BY ca.content_id, ca.impressions DESC, ca.synced_at DESC`,
+      isAll ? [brandProfileId] : [brandProfileId, channel]
+    );
+
+    const t = totals.rows[0];
+    res.json({
+      success: true,
+      channel,
+      totals: {
+        posts: parseInt(t.total_posts),
+        impressions: parseInt(t.total_impressions),
+        clicks: parseInt(t.total_clicks),
+        reactions: parseInt(t.total_reactions),
+        comments: parseInt(t.total_comments),
+        reposts: parseInt(t.total_reposts),
+        avgCtr: parseFloat(t.avg_ctr).toFixed(2),
+        avgEngagementRate: parseFloat(t.avg_engagement_rate).toFixed(2),
+        positiveFeedback: parseInt(t.total_positive_feedback) || 0,
+        negativeFeedback: parseInt(t.total_negative_feedback) || 0,
+        avgReadingTime: Math.round(parseFloat(t.avg_reading_time) || 0),
+        lastSynced: t.last_synced
+      },
+      trend: trend.rows.map(r => ({
+        day: r.day, impressions: parseInt(r.impressions),
+        clicks: parseInt(r.clicks), reactions: parseInt(r.reactions)
+      })),
+      topPosts: top.rows,
+      posts: posts.rows
+    });
+    // Update pre-cog accuracy with fresh analytics data
+    updatePrecogOutcomes(brandProfileId).catch(() => {});
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /api/analytics/channels/:brandProfileId — which channels have analytics data
+app.get('/api/analytics/channels/:brandProfileId', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.params;
+  try {
+    const result = await pool.query(
+      `SELECT channel, COUNT(*) as post_count, SUM(impressions) as impressions, MAX(synced_at) as last_synced
+       FROM content_analytics WHERE brand_profile_id=$1
+       GROUP BY channel`,
+      [brandProfileId]
+    );
+    res.json({ success: true, channels: result.rows });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+
+// ── Campaign-level analytics ──────────────────────────────────────────────────
+// GET /api/analytics/campaigns/:brandProfileId
+// Returns per-campaign aggregated metrics across all channels.
+app.get('/api/analytics/campaigns/:brandProfileId', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.params;
+    if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+  try {
+    // Aggregate content_analytics by campaign, join campaigns table for name/topic
+    const result = await pool.query(
+      `SELECT
+         ca.campaign_id,
+         c.name              AS campaign_name,
+         c.topic_cluster,
+         c.created_at        AS campaign_created_at,
+         COUNT(DISTINCT ca.content_id)              AS article_count,
+         COUNT(DISTINCT ca.channel)                 AS channel_count,
+         SUM(ca.impressions)                        AS total_impressions,
+         SUM(ca.clicks)                             AS total_clicks,
+         SUM(ca.reactions)                          AS total_reactions,
+         SUM(ca.comments)                           AS total_comments,
+         SUM(ca.reposts)                            AS total_reposts,
+         CASE WHEN SUM(ca.impressions) > 0
+              THEN ROUND((SUM(ca.clicks)::numeric / SUM(ca.impressions) * 100), 2)
+              ELSE 0 END                            AS avg_ctr,
+         CASE WHEN SUM(ca.impressions) > 0
+              THEN ROUND(((SUM(ca.reactions)+SUM(ca.comments)+SUM(ca.reposts)+SUM(ca.clicks))::numeric
+                          / SUM(ca.impressions) * 100), 2)
+              ELSE 0 END                            AS avg_engagement_rate,
+         MAX(ca.synced_at)                          AS last_synced
+       FROM content_analytics ca
+       LEFT JOIN campaigns c ON c.id = ca.campaign_id
+       WHERE ca.brand_profile_id = $1
+         AND ca.campaign_id IS NOT NULL
+       GROUP BY ca.campaign_id, c.name, c.topic_cluster, c.created_at
+       ORDER BY total_impressions DESC`,
+      [brandProfileId]
+    );
+
+    // Per-campaign breakdown by channel (for channel comparison within a campaign)
+    const breakdown = await pool.query(
+      `SELECT
+         campaign_id,
+         channel,
+         COUNT(DISTINCT content_id)  AS article_count,
+         SUM(impressions)            AS impressions,
+         SUM(clicks)                 AS clicks,
+         SUM(reactions)              AS reactions,
+         SUM(reposts)                AS reposts
+       FROM content_analytics
+       WHERE brand_profile_id = $1 AND campaign_id IS NOT NULL
+       GROUP BY campaign_id, channel
+       ORDER BY campaign_id, impressions DESC`,
+      [brandProfileId]
+    );
+
+    // Per-campaign article leaderboard (top article per campaign by impressions)
+    const safeId = brandProfileId.replace(/-/g, '_');
+    const leaderboard = await pool.query(
+      `SELECT
+         ca.campaign_id,
+         ca.content_id,
+         ca.channel,
+         ca.impressions,
+         ca.clicks,
+         ca.reactions,
+         pq.title,
+         pl.published_url
+       FROM content_analytics ca
+       LEFT JOIN publishing_queue pq ON pq.content_id = ca.content_id::text
+       LEFT JOIN LATERAL (
+         SELECT published_url FROM publish_log
+         WHERE content_id = ca.content_id::text AND status = 'published'
+           AND (live_status IS NULL OR live_status != 'deleted')
+         ORDER BY attempted_at DESC LIMIT 1
+       ) pl ON true
+       WHERE ca.brand_profile_id = $1 AND ca.campaign_id IS NOT NULL
+       ORDER BY ca.campaign_id, ca.impressions DESC`,
+      [brandProfileId]
+    ).catch(() => ({ rows: [] }));
+
+    // Group breakdown and leaderboard by campaign_id for easy frontend consumption
+    const breakdownByCampaign = {};
+    for (const row of breakdown.rows) {
+      const id = row.campaign_id;
+      if (!breakdownByCampaign[id]) breakdownByCampaign[id] = [];
+      breakdownByCampaign[id].push(row);
+    }
+    const leaderboardByCampaign = {};
+    for (const row of leaderboard.rows) {
+      const id = row.campaign_id;
+      if (!leaderboardByCampaign[id]) leaderboardByCampaign[id] = [];
+      if (leaderboardByCampaign[id].length < 3) leaderboardByCampaign[id].push(row); // top 3 per campaign
+    }
+
+    const campaigns = result.rows.map(r => ({
+      ...r,
+      channels: breakdownByCampaign[r.campaign_id] || [],
+      top_articles: leaderboardByCampaign[r.campaign_id] || [],
+    }));
+
+    res.json({ success: true, campaigns });
+  } catch(e) {
+    console.error('[ANALYTICS/CAMPAIGNS]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+app.listen(PORT, '0.0.0.0', function () {
+  console.log('Forge Intelligence running on port ' + PORT);
+});
+
+// ── Scheduled publish runner ──────────────────────────────────────────────────
+// Polls every 60 seconds for queue items due to be published.
+// Fires the same publish logic as the manual "Publish Now" button.
+async function runScheduledPublishes() {
+  try {
+    const due = await pool.query(
+      `SELECT * FROM publishing_queue
+       WHERE status = 'scheduled'
+         AND scheduled_at IS NOT NULL
+         AND scheduled_at <= NOW()
+       ORDER BY scheduled_at ASC
+       LIMIT 10`
+    );
+    if (!due.rows.length) return;
+
+    console.log(`[SCHEDULER] ${due.rows.length} item(s) due for publish`);
+
+    for (const item of due.rows) {
+      try {
+        // Mark as publishing so concurrent ticks don't double-fire
+        await pool.query(
+          `UPDATE publishing_queue SET status = 'publishing', updated_at = NOW() WHERE id = $1 AND status = 'scheduled'`,
+          [item.id]
+        );
+
+        // Load channel connections
+        const channelsRes = await pool.query(
+          'SELECT * FROM publishing_channels WHERE brand_profile_id = $1',
+          [item.brand_profile_id]
+        );
+        const channelMap = {};
+        for (const ch of channelsRes.rows) channelMap[ch.channel] = ch;
+
+        const targets = item.channels || [];
+        if (!targets.length) {
+          await pool.query(
+            `UPDATE publishing_queue SET status = 'failed', updated_at = NOW() WHERE id = $1`,
+            [item.id]
+          );
+          console.warn('[SCHEDULER] No channels set on item', item.id);
+          continue;
+        }
+
+        // Use the existing publish endpoint internally via a fetch to itself
+        // This reuses all the channel logic (LinkedIn, X, Ghost, etc.) without duplicating it
+        const baseUrl = process.env.BASE_URL || `http://localhost:${PORT}`;
+        const publishRes = await fetch(`${baseUrl}/api/publishing/publish`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ queueItemId: item.id, channels: targets })
+        });
+        const publishData = await publishRes.json();
+
+        if (publishData.success) {
+          console.log(`[SCHEDULER] Published item ${item.id} to ${targets.join(', ')} — status: ${publishData.status}`);
+        } else {
+          console.error(`[SCHEDULER] Publish failed for item ${item.id}:`, publishData.error);
+          await pool.query(
+            `UPDATE publishing_queue SET status = 'failed', updated_at = NOW() WHERE id = $1`,
+            [item.id]
+          );
+        }
+      } catch (itemErr) {
+        console.error(`[SCHEDULER] Error processing item ${item.id}:`, itemErr.message);
+        await pool.query(
+          `UPDATE publishing_queue SET status = 'failed', updated_at = NOW() WHERE id = $1`,
+          [item.id]
+        ).catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.error('[SCHEDULER] Poll error:', err.message);
+  }
+}
+
+
+
+// ── Pipedream Connect ─────────────────────────────────────────────────────────
+
+// POST /api/pipedream/token
+app.post('/api/pipedream/token', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.body;
+  if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
+  try {
+    const clientId = process.env.PIPEDREAM_CLIENT_ID;
+    const clientSecret = process.env.PIPEDREAM_CLIENT_SECRET;
+    const projectId = process.env.PIPEDREAM_PROJECT_ID;
+    if (!clientId || !clientSecret || !projectId) return res.status(500).json({ error: 'Pipedream not configured' });
+    const authRes = await fetch('https://api.pipedream.com/v1/oauth/token', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ grant_type: 'client_credentials', client_id: clientId, client_secret: clientSecret })
+    });
+    const authData = await authRes.json();
+    if (!authData.access_token) throw new Error('Pipedream auth failed');
+    const environment = process.env.PIPEDREAM_PROJECT_ENVIRONMENT || 'development';
+    const tokenRes = await fetch(`https://api.pipedream.com/v1/connect/${projectId}/tokens`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${authData.access_token}`,
+        'Content-Type': 'application/json',
+        'x-pd-environment': environment
+      },
+      body: JSON.stringify({ external_user_id: brandProfileId, allowed_origins: ['https://dev.forgeintelligence.ai', 'https://forgeintelligence.ai', 'http://localhost:5173'] })
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenData.token) throw new Error(JSON.stringify(tokenData));
+    res.json({ token: tokenData.token, expiresAt: tokenData.expires_at });
+  } catch(e) { console.error('[PD-TOKEN]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/pipedream/account — store account_id after user connects via Pipedream
+app.post('/api/pipedream/account', requireAuth, async (req, res) => {
+  const { brandProfileId, channel, accountId, appSlug } = req.body;
+  if (!brandProfileId || !channel || !accountId) return res.status(400).json({ error: 'missing fields' });
+  try {
+    await pool.query(`
+      INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active, updated_at)
+      VALUES ($1, $2, $3, true, NOW())
+      ON CONFLICT (brand_profile_id, channel) DO UPDATE SET credentials = $3, is_active = true, updated_at = NOW()
+    `, [brandProfileId, channel, JSON.stringify({ pipedream_account_id: accountId, app_slug: appSlug, connected_via: 'pipedream_connect' })]);
+    res.json({ success: true });
+  } catch(e) { console.error('[PD-ACCOUNT]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/pipedream/config — send project config to frontend SDK
+app.get('/api/pipedream/config', (req, res) => {
+  res.json({
+    projectId: process.env.PIPEDREAM_PROJECT_ID,
+    environment: process.env.PIPEDREAM_PROJECT_ENVIRONMENT || 'development'
+  });
+});
+
+
+
+// ── Review Workflow ───────────────────────────────────────────────────────────
+
+// POST /api/publishing/queue/:id/request-review — generate review token + optionally email a reviewer
+app.post('/api/publishing/queue/:id/request-review', requireAuth, async (req, res) => {
+  const { reviewerId } = req.body;
+  try {
+    const token = randomBytes(24).toString('hex');
+
+    // Get article title for the email
+    const qItem = await pool.query(
+      'SELECT title, brand_profile_id FROM publishing_queue WHERE id = $1',
+      [req.params.id]
+    );
+    const item = qItem.rows[0];
+
+    await pool.query(
+      `UPDATE publishing_queue
+       SET review_token = $1, review_status = 'pending', review_requested_at = NOW(),
+           reviewer_id = $3, updated_at = NOW()
+       WHERE id = $2`,
+      [token, req.params.id, reviewerId || null]
+    );
+
+    const reviewUrl = `https://dev.forgeintelligence.ai/review/${token}`;
+
+    // Send email if reviewer specified
+    if (reviewerId && RESEND_API_KEY) {
+      const reviewer = await pool.query('SELECT * FROM reviewers WHERE id = $1', [reviewerId]);
+      const r = reviewer.rows[0];
+      if (r) {
+        const emailRes = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: 'Forge Intelligence <hello@forgeintelligence.ai>',
+            to: r.email,
+            subject: `Review requested: ${item?.title || 'Article'}`,
+            html: `
+              <div style="font-family: Inter, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 24px; background: #0F172A; color: #F8FAFC; border-radius: 12px;">
+                <div style="margin-bottom: 32px;">
+                  <span style="font-family: Inter, sans-serif; font-size: 16px; font-weight: 800; color: #3563FF; letter-spacing: -0.02em;">⬡ Forge Intelligence</span>
+                </div>
+                <h1 style="font-size: 22px; font-weight: 700; margin-bottom: 8px; color: #F8FAFC;">Review requested</h1>
+                <p style="color: #94A3B8; margin-bottom: 24px;">Hi ${r.name}, you've been asked to review an article before it goes live.</p>
+                <div style="background: #1E293B; border-radius: 8px; padding: 20px 24px; margin-bottom: 28px; border-left: 3px solid #3563FF;">
+                  <p style="font-size: 16px; font-weight: 600; color: #F8FAFC; margin: 0;">${item?.title || 'Article for Review'}</p>
+                </div>
+                <a href="${reviewUrl}" style="display: inline-block; background: #3563FF; color: #fff; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 15px;">Review Article →</a>
+                <p style="color: #475569; font-size: 12px; margin-top: 32px;">This link is unique to you and expires after your review is submitted. Powered by Forge Intelligence.</p>
+              </div>
+            `
+          })
+        });
+        const emailData = await emailRes.json();
+        console.log('[REVIEW EMAIL]', emailRes.status, JSON.stringify(emailData));
+      }
+    }
+
+    res.json({ success: true, token, reviewUrl });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /api/review/:token — load article for reviewer (no auth required)
+app.get('/api/review/:token', async (req, res) => {
+  try {
+    const qRes = await pool.query(
+      `SELECT pq.*, bp.brand_name, bp.brand_url
+       FROM publishing_queue pq
+       LEFT JOIN brand_profiles bp ON bp.id = pq.brand_profile_id
+       WHERE pq.review_token = $1`,
+      [req.params.token]
+    );
+    if (!qRes.rows.length) return res.status(404).json({ error: 'Review link not found or expired' });
+    const item = qRes.rows[0];
+
+    // Load article content
+    const safeId = item.brand_profile_id.replace(/-/g, '_');
+    const artRes = await pool.query(
+      `SELECT title, article_json, hero_image_url, overall_confidence, created_at
+       FROM generated_content_${safeId} WHERE id = $1`,
+      [item.content_id]
+    ).catch(() => ({ rows: [] }));
+
+    const article = artRes.rows[0] || {};
+    res.json({
+      success: true,
+      queueId: item.id,
+      title: item.title,
+      brandName: item.brand_name,
+      brandUrl: item.brand_url,
+      heroImageUrl: item.hero_image_url || article.hero_image_url,
+      articleJson: article.article_json,
+      confidence: article.overall_confidence,
+      createdAt: item.created_at,
+      reviewStatus: item.review_status,
+      reviewComment: item.review_comment,
+      reviewRequestedAt: item.review_requested_at,
+    });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/review/:token — reviewer submits decision
+app.post('/api/review/:token', async (req, res) => {
+  const { decision, comment } = req.body; // decision: 'approved' | 'changes_requested'
+  if (!['approved', 'changes_requested'].includes(decision)) {
+    return res.status(400).json({ error: 'Invalid decision' });
+  }
+  try {
+    const result = await pool.query(
+      `UPDATE publishing_queue
+       SET review_status = $1, review_comment = $2, review_actioned_at = NOW(), updated_at = NOW()
+       WHERE review_token = $3
+       RETURNING id, title, brand_profile_id`,
+      [decision, comment || null, req.params.token]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Review link not found' });
+    res.json({ success: true, decision });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
+
+
+// ── Admin Dashboard ───────────────────────────────────────────────────────────
+
+// Ensure agent_activity_log table exists
+pool.query(`CREATE TABLE IF NOT EXISTS agent_activity_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_name TEXT NOT NULL,
+  brand_profile_id TEXT,
+  status TEXT DEFAULT 'success',
+  tokens_used INTEGER DEFAULT 0,
+  latency_ms INTEGER DEFAULT 0,
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+)`).catch(() => {});
+
+// GET /api/admin/activity — recent agent activity log
+app.get('/api/admin/activity', async (req, res) => {
+  const limit = parseInt(req.query.limit) || 50;
+  const offset = parseInt(req.query.offset) || 0;
+  const agentFilter = req.query.agent || null;
+  const brandFilter = req.query.brand || null;
+  try {
+    let query = `SELECT a.* FROM agent_activity_log a WHERE 1=1`;
+    const params = [];
+    let pi = 1;
+    if (agentFilter) { query += ` AND a.agent_name = $${pi++}`; params.push(agentFilter); }
+    if (brandFilter) { query += ` AND a.brand_profile_id = $${pi++}`; params.push(brandFilter); }
+    query += ` ORDER BY a.created_at DESC LIMIT $${pi++} OFFSET $${pi++}`;
+    params.push(limit, offset);
+    const result = await pool.query(query, params);
+    const countResult = await pool.query(
+      `SELECT COUNT(*) FROM agent_activity_log${agentFilter ? ` WHERE agent_name = '${agentFilter}'` : ''}`,
+    );
+    res.json({ success: true, activity: result.rows, total: parseInt(countResult.rows[0].count) });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /api/admin/stats — scoped to authenticated user's brands
+app.get('/api/admin/stats', requireAuth, async (req, res) => {
+  try {
+    const userBrands = await pool.query(
+      `SELECT id FROM brand_profiles WHERE clerk_user_id = $1 AND is_active = true`,
+      [req.userId]
+    );
+    const brandIds = userBrands.rows;
+    const brandIdList = brandIds.map(b => b.id);
+
+    if (!brandIdList.length) {
+      return res.json({ success: true, stats: {
+        totalBrands: 0, totalReach: 0, totalContent: 0,
+        totalQueued: 0, totalPublished: 0, avgConfidence: 0,
+        last30Days: { totalCalls: 0, totalTokens: 0, avgLatency: 0, errorCount: 0, activeBrands: 0 },
+        agentBreakdown: []
+      }});
+    }
+
+    const ph = brandIdList.map((_, i) => `$${i + 1}`).join(',');
+
+    const [activity, queue] = await Promise.all([
+      pool.query(`
+        SELECT COUNT(*) as total_calls, SUM(tokens_used) as total_tokens,
+               AVG(latency_ms) as avg_latency,
+               COUNT(CASE WHEN status = 'error' THEN 1 END) as error_count,
+               COUNT(DISTINCT brand_profile_id) as active_brands
+        FROM agent_activity_log
+        WHERE brand_profile_id IN (${ph}) AND created_at > NOW() - INTERVAL '30 days'`,
+        brandIdList),
+      pool.query(`
+        SELECT COUNT(*), COUNT(CASE WHEN status = 'published' THEN 1 END) as published
+        FROM publishing_queue WHERE brand_profile_id IN (${ph})`,
+        brandIdList),
+    ]);
+
+    let totalContent = 0;
+    for (const b of brandIds) {
+      const safeId = b.id.replace(/-/g, '_');
+      const cnt = await pool.query(`SELECT COUNT(*) FROM generated_content_${safeId}`)
+        .catch(() => ({ rows: [{ count: 0 }] }));
+      totalContent += parseInt(cnt.rows[0].count);
+    }
+
+    const reach = await pool.query(
+      `SELECT COALESCE(SUM(impressions),0) as total FROM content_analytics WHERE brand_profile_id IN (${ph})`,
+      brandIdList
+    ).catch(() => ({ rows: [{ total: 0 }] }));
+
+    let confTotal = 0, confCount = 0;
+    for (const b of brandIds) {
+      const s = b.id.replace(/-/g, '_');
+      const r = await pool.query(
+        `SELECT AVG(overall_confidence) as avg FROM generated_content_${s} WHERE overall_confidence IS NOT NULL`
+      ).catch(() => ({ rows: [{ avg: null }] }));
+      if (r.rows[0].avg) { confTotal += parseFloat(r.rows[0].avg); confCount++; }
+    }
+
+    const agentBreakdown = await pool.query(`
+      SELECT agent_name, COUNT(*) as calls, SUM(tokens_used) as tokens, AVG(latency_ms) as avg_latency
+      FROM agent_activity_log
+      WHERE brand_profile_id IN (${ph}) AND created_at > NOW() - INTERVAL '30 days'
+      GROUP BY agent_name ORDER BY calls DESC`, brandIdList);
+
+    res.json({ success: true, stats: {
+      totalBrands: brandIdList.length,
+      totalReach: parseInt(reach.rows[0].total) || 0,
+      avgConfidence: confCount ? confTotal / confCount : 0,
+      totalContent,
+      totalQueued: parseInt(queue.rows[0].count),
+      totalPublished: parseInt(queue.rows[0].published),
+      last30Days: {
+        totalCalls: parseInt(activity.rows[0].total_calls) || 0,
+        totalTokens: parseInt(activity.rows[0].total_tokens) || 0,
+        avgLatency: Math.round(parseFloat(activity.rows[0].avg_latency) || 0),
+        errorCount: parseInt(activity.rows[0].error_count) || 0,
+        activeBrands: parseInt(activity.rows[0].active_brands) || 0,
+      },
+      agentBreakdown: agentBreakdown.rows,
+    }});
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+
+// POST /api/admin/seed-brain — pre-seed a brand brain from a URL
+app.post('/api/admin/seed-brain', async (req, res) => {
+  const { url, brandName } = req.body;
+  if (!url) return res.status(400).json({ error: 'url required' });
+  try {
+    // 1. Create brand profile
+    const brandInsert = await pool.query(
+      `INSERT INTO brand_profiles (id, brand_url, brand_name, version, is_active, cache_status, profile_data, created_at, updated_at)
+       VALUES (gen_random_uuid()::text, $1, $2, 1, true, 'fresh', '{}'::jsonb, NOW(), NOW()) RETURNING id`,
+      [url, brandName || url.replace(/https?:\/\//, '').split('/')[0]]
+    );
+    const brandProfileId = brandInsert.rows[0].id;
+    const safeId = brandProfileId.replace(/-/g, '_');
+
+    // 2. Provision brand tables
+    await pool.query(`CREATE TABLE IF NOT EXISTS generated_content_${safeId} (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      brand_profile_id TEXT NOT NULL,
+      enriched_brief_id TEXT,
+      title TEXT,
+      article_json JSONB DEFAULT '{}',
+      overall_confidence INTEGER,
+      brain_match_score INTEGER,
+      status VARCHAR(30) DEFAULT 'draft',
+      review_mode TEXT DEFAULT 'approve-to-ship',
+      compliance_status TEXT DEFAULT 'pending',
+      compliance_report JSONB,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+
+    // 3. Trigger a Context Hub analysis to seed the brain
+    const contextRes = await fetch(`https://${req.headers.host}/api/context-hub/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ brandProfileId, url, autoSave: true })
+    });
+    const contextData = await contextRes.json().catch(() => ({}));
+
+    res.json({
+      success: true,
+      brandProfileId,
+      brandName: brandName || url,
+      contextTriggered: contextRes.ok,
+      message: contextRes.ok
+        ? 'Brand created and brain analysis triggered'
+        : 'Brand created — trigger Context Hub analysis manually'
+    });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+
+// ── Reviewers ─────────────────────────────────────────────────────────────────
+
+// GET /api/reviewers/:brandProfileId
+app.get('/api/reviewers/:brandProfileId', requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM reviewers WHERE brand_profile_id = $1 ORDER BY name ASC',
+      [req.params.brandProfileId]
+    );
+    res.json({ success: true, reviewers: result.rows });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// POST /api/reviewers — add reviewer
+app.post('/api/reviewers', async (req, res) => {
+  const { brandProfileId, name, email, title } = req.body;
+  if (!brandProfileId || !name || !email) return res.status(400).json({ error: 'brandProfileId, name, email required' });
+  try {
+    const result = await pool.query(
+      'INSERT INTO reviewers (brand_profile_id, name, email, title) VALUES ($1,$2,$3,$4) RETURNING *',
+      [brandProfileId, name, email, title || '']
+    );
+    res.json({ success: true, reviewer: result.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// DELETE /api/reviewers/:id
+app.delete('/api/reviewers/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM reviewers WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+
+
+// ── Clerk Auth Middleware ─────────────────────────────────────────────────────
+
+// Verify Clerk JWT and attach userId to req
+// ── Brand ownership verification ─────────────────────────────────────────────
+// Every authenticated endpoint that takes a brandProfileId MUST call this.
+async function verifyBrandAccess(brandProfileId, userId) {
+  if (!brandProfileId || !userId) return false;
+  const r = await pool.query(
+    'SELECT id FROM brand_profiles WHERE id = $1 AND clerk_user_id = $2',
+    [brandProfileId, userId]
+  );
+  return r.rows.length > 0;
+}
+
+async function requireAuth(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const token = authHeader.split(' ')[1];
+    if (!clerkJWKS) return res.status(500).json({ error: 'Auth not configured' });
+    const { payload } = await jwtVerify(token, clerkJWKS, { algorithms: ['RS256'] });
+    req.userId = payload.sub;
+    next();
+  } catch(e) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+}
+
+// Soft auth — attaches userId if present, continues either way (for public + authed routes)
+async function softAuth(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      if (clerkJWKS) {
+        const { payload } = await jwtVerify(token, clerkJWKS, { algorithms: ['RS256'] });
+        req.userId = payload.sub;
+      }
+    }
+  } catch { /* no-op */ }
+  next();
+}
+
+// ── Onboarding / GTM Flow ─────────────────────────────────────────────────────
+
+// Add expires_at to brand_profiles for free trial brains
+pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ`).catch(() => {});
+pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS is_paid BOOLEAN DEFAULT false`).catch(() => {});
+    await pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS clerk_user_id TEXT`).catch(() => {});
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_bp_clerk ON brand_profiles(clerk_user_id)`).catch(() => {});
+pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS onboard_session_id TEXT`).catch(() => {});
+
+// POST /api/domain/check — lightweight pre-check before scan, no auth needed
+app.post('/api/domain/check', async (req, res) => {
+  const { url } = req.body;
+  if (!url) return res.json({ claimed: false });
+  const brandUrl = url.startsWith('http') ? url : `https://${url}`;
+  const bare = brandUrl.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '');
+  try {
+    const result = await pool.query(
+      `SELECT id FROM brand_profiles
+       WHERE (brand_url = $1 OR brand_url = $2 OR brand_url = $3)
+         AND clerk_user_id IS NOT NULL
+         AND is_paid = true
+         AND is_active = true
+       LIMIT 1`,
+      [brandUrl, bare, `https://${bare}`]
+    );
+    res.json({ claimed: result.rows.length > 0 });
+  } catch {
+    res.json({ claimed: false });
+  }
+});
+
+// POST /api/onboard/analyze — landing page entry point
+// Creates a UUID, seeds the brain, fires Context Agent, returns session
+app.post('/api/onboard/analyze', async (req, res) => {
+  const { url, sessionId } = req.body;
+  if (!url) return res.status(400).json({ error: 'url required' });
+
+  try {
+    // Normalise URL
+    const brandUrl = url.startsWith('http') ? url : `https://${url}`;
+    const brandName = brandUrl.replace(/https?:\/\//, '').split('/')[0].replace(/^www\./, '');
+
+    // One domain, one brain — if a claimed (owned) brand exists for this URL, reject
+    const domainCheck = await pool.query(
+      `SELECT id FROM brand_profiles
+       WHERE (brand_url = $1 OR brand_url = $2)
+         AND clerk_user_id IS NOT NULL
+         AND is_active = true
+       LIMIT 1`,
+      [brandUrl, brandUrl.replace(/^https?:\/\//, '').replace(/^www\./, '')]
+    );
+    if (domainCheck.rows.length > 0) {
+      return res.status(409).json({
+        error: 'domain_claimed',
+        message: 'A brain already exists for this domain. If this is your brand, sign in to access it.'
+      });
+    }
+
+    // Create brand profile with 24hr expiry + session ID for persistence
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const brandInsert = await pool.query(
+      `INSERT INTO brand_profiles (id, brand_url, brand_name, version, is_active, cache_status, profile_data, expires_at, is_paid, onboard_session_id, created_at, updated_at)
+       VALUES (gen_random_uuid()::text, $1, $2, 1, true, 'fresh', '{}'::jsonb, $3, false, $4, NOW(), NOW()) RETURNING id`,
+      [brandUrl, brandName, expiresAt, sessionId || null]
+    );
+    const brandProfileId = brandInsert.rows[0].id;
+    const safeId = brandProfileId.replace(/-/g, '_');
+
+    // Provision content table
+    await pool.query(`CREATE TABLE IF NOT EXISTS generated_content_${safeId} (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      brand_profile_id TEXT NOT NULL,
+      enriched_brief_id TEXT,
+      title TEXT,
+      article_json JSONB DEFAULT '{}',
+      overall_confidence INTEGER,
+      brain_match_score INTEGER,
+      status VARCHAR(30) DEFAULT 'draft',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`).catch(() => {});
+
+    res.json({ success: true, brandProfileId, brandName, brandUrl, expiresAt });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /api/onboard/brain/:brandProfileId — check if brain exists and is still valid
+app.get('/api/onboard/brain/:brandProfileId', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, brand_name, brand_url, expires_at, is_paid FROM brand_profiles WHERE id = $1',
+      [req.params.brandProfileId]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Brain not found' });
+    const brain = result.rows[0];
+    const expired = !brain.is_paid && brain.expires_at && new Date(brain.expires_at) < new Date();
+    res.json({ success: true, brain: { ...brain, expired } });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/onboard/paypal-success — called after PayPal payment confirmed
+// Removes expiry, marks as paid, unlocks all stages
+app.post('/api/onboard/paypal-success', async (req, res) => {
+  const { brandProfileId, orderId } = req.body;
+  if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
+  try {
+    await pool.query(
+      `UPDATE brand_profiles SET is_paid = true, expires_at = NULL, updated_at = NOW() WHERE id = $1`,
+      [brandProfileId]
+    );
+    console.log('[PAYPAL] Payment confirmed — brandProfileId:', brandProfileId, 'orderId:', orderId);
+    res.json({ success: true, unlocked: true });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+
+
+// ── Weekly Brain Digest ───────────────────────────────────────────────────────
+// Called by EasyCron weekly: POST /api/digest/send-all (admin key)
+// Or per-brand:               POST /api/digest/send/:brandProfileId (requireAuth)
+
+const sendDigestForBrand = async (brandProfileId) => {
+  const safeId = brandProfileId.replace(/-/g, '_');
+
+  // Load brand + check opt-out
+  const brandRes = await pool.query(
+    `SELECT * FROM brand_profiles WHERE id = $1`, [brandProfileId]
+  );
+  if (!brandRes.rows.length) return { skipped: 'brand_not_found' };
+  const brand = brandRes.rows[0];
+  if (brand.digest_unsubscribed) return { skipped: 'unsubscribed' };
+  if (!brand.is_paid) return { skipped: 'not_paid' };
+  if (!brand.clerk_user_id) return { skipped: 'no_clerk_user' };
+
+  // Get user email from Clerk
+  const clerkRes = await fetch(`https://api.clerk.com/v1/users/${brand.clerk_user_id}`, {
+    headers: { 'Authorization': `Bearer ${process.env.CLERK_SECRET_KEY}` }
+  });
+  if (!clerkRes.ok) return { skipped: 'clerk_fetch_failed' };
+  const clerkUser = await clerkRes.json();
+  const email = clerkUser.email_addresses?.[0]?.email_address;
+  if (!email) return { skipped: 'no_email' };
+
+  const RESEND_API_KEY = process.env.RESEND_API_KEY;
+  if (!RESEND_API_KEY) return { skipped: 'resend_not_configured' };
+
+  const brandName = brand.brand_name || brand.brand_url || 'Your Brand';
+  const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  // ── Gather digest data ──────────────────────────────────────────────────────
+
+  // 1. Brain activity this week
+  const patternsAdded = await pool.query(
+    `SELECT COUNT(*) FROM brain_patterns WHERE brand_profile_id = $1 AND created_at > $2`,
+    [brandProfileId, oneWeekAgo]
+  ).catch(() => ({ rows: [{ count: 0 }] }));
+  const mistakesLogged = await pool.query(
+    `SELECT COUNT(*) FROM brain_mistakes WHERE brand_profile_id = $1 AND created_at > $2`,
+    [brandProfileId, oneWeekAgo]
+  ).catch(() => ({ rows: [{ count: 0 }] }));
+  const newPatterns = parseInt(patternsAdded.rows[0].count) || 0;
+  const newMistakes = parseInt(mistakesLogged.rows[0].count) || 0;
+
+  // 2. Top performer this week
+  const topPerformer = await pool.query(
+    `SELECT ca.content_id, pq.title, ca.impressions, ca.clicks, ca.engagement_rate, ca.channel
+     FROM content_analytics ca
+     LEFT JOIN publishing_queue pq ON pq.content_id = ca.content_id
+     WHERE ca.brand_profile_id = $1 AND ca.synced_at > $2 AND ca.impressions > 0
+     ORDER BY ca.impressions DESC LIMIT 1`,
+    [brandProfileId, oneWeekAgo]
+  ).catch(() => ({ rows: [] }));
+  const top = topPerformer.rows[0] || null;
+
+  // 3. Decay alerts this week
+  const decayAlerts = await pool.query(
+    `SELECT COUNT(*) FROM decay_alerts WHERE brand_profile_id = $1 AND status = 'active' AND detected_at > $2`,
+    [brandProfileId, oneWeekAgo]
+  ).catch(() => ({ rows: [{ count: 0 }] }));
+  const decayCount = parseInt(decayAlerts.rows[0].count) || 0;
+
+  // 4. Pipeline CTA — what should they do next?
+  const stagedCount = await pool.query(
+    `SELECT COUNT(*) FROM publishing_queue WHERE brand_profile_id = $1 AND status = 'staged'`,
+    [brandProfileId]
+  ).catch(() => ({ rows: [{ count: 0 }] }));
+  const staged = parseInt(stagedCount.rows[0].count) || 0;
+
+  // Total articles ever generated — useful for new users
+  const totalContent = await pool.query(
+    `SELECT COUNT(*) FROM generated_content_${safeId}`
+  ).catch(() => ({ rows: [{ count: 0 }] }));
+  const totalArticles = parseInt(totalContent.rows[0].count) || 0;
+
+  // Brand age — always send in first 30 days regardless of activity
+  const brandAge = (Date.now() - new Date(brand.created_at).getTime()) / (1000 * 60 * 60 * 24);
+  const isNewBrand = brandAge <= 30;
+
+  // Skip only if truly nothing to say AND not a new brand
+  const hasActivity = newPatterns > 0 || newMistakes > 0 || top || decayCount > 0 || staged > 0 || totalArticles > 0;
+  if (!hasActivity && !isNewBrand) {
+    return { skipped: 'nothing_to_report' };
+  }
+
+  // Ensure unsubscribe token exists
+  if (!brand.digest_unsubscribe_token) {
+    const token = randomBytes(24).toString('hex');
+    await pool.query(`UPDATE brand_profiles SET digest_unsubscribe_token = $1 WHERE id = $2`, [token, brandProfileId]);
+    brand.digest_unsubscribe_token = token;
+  }
+
+  const baseDomain = process.env.BASE_DOMAIN ? `https://${process.env.BASE_DOMAIN}` : 'https://forgeintelligence.ai';
+  const unsubUrl = `${baseDomain}/api/digest/unsubscribe/${brand.digest_unsubscribe_token}`;
+  const appUrl = `${baseDomain}/app`;
+
+  // ── Build email HTML ────────────────────────────────────────────────────────
+  const fmt = (n) => n >= 1000 ? `${(n/1000).toFixed(1)}K` : String(n);
+
+  const brainSection = (newPatterns > 0 || newMistakes > 0) ? `
+    <div style="background:#1E293B;border-radius:10px;padding:20px 24px;margin-bottom:20px;border-left:3px solid #3563FF;">
+      <p style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#64748B;margin:0 0 12px;">Brain Activity This Week</p>
+      <table cellpadding="0" cellspacing="0" border="0"><tr>
+        ${newPatterns > 0 ? `<td style="padding-right:32px;vertical-align:top;"><span style="font-size:28px;font-weight:700;color:#3563FF;letter-spacing:-0.02em;display:block;">${newPatterns}</span><span style="font-size:12px;color:#94A3B8;display:block;margin-top:2px;">new pattern${newPatterns !== 1 ? 's' : ''} learned</span></td>` : ''}
+        ${newMistakes > 0 ? `<td style="vertical-align:top;"><span style="font-size:28px;font-weight:700;color:#F59E0B;letter-spacing:-0.02em;display:block;">${newMistakes}</span><span style="font-size:12px;color:#94A3B8;display:block;margin-top:2px;">mistake${newMistakes !== 1 ? 's' : ''} logged</span></td>` : ''}
+      </tr></table>
+    </div>` : '';
+
+  const topSection = top ? `
+    <div style="background:#1E293B;border-radius:10px;padding:20px 24px;margin-bottom:20px;border-left:3px solid #22C55E;">
+      <p style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#64748B;margin:0 0 12px;">Top Performer</p>
+      <p style="font-size:14px;font-weight:600;color:#F8FAFC;margin:0 0 8px;">${top.title || 'Untitled'}</p>
+      <p style="font-size:12px;color:#94A3B8;margin:6px 0 0;line-height:1.6;">
+        ${[top.impressions ? `${fmt(top.impressions)} impressions` : '', top.clicks ? `${fmt(top.clicks)} clicks` : '', top.engagement_rate ? `${parseFloat(top.engagement_rate).toFixed(1)}% engagement` : ''].filter(Boolean).join(' &nbsp;&middot;&nbsp; ')}
+      </p>
+    </div>` : '';
+
+  const decaySection = decayCount > 0 ? `
+    <div style="background:#1E293B;border-radius:10px;padding:20px 24px;margin-bottom:20px;border-left:3px solid #EF4444;">
+      <p style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#64748B;margin:0 0 8px;">Decay Alerts</p>
+      <p style="font-size:14px;color:#F8FAFC;margin:0;">${decayCount} article${decayCount !== 1 ? 's' : ''} dropped 50%+ in engagement — <a href="${appUrl}/performance" style="color:#3563FF;text-decoration:none;">review in Performance →</a></p>
+    </div>` : '';
+
+  let ctaText, ctaHref, ctaLabel;
+  if (staged > 0) {
+    ctaText = `You have ${staged} article${staged !== 1 ? 's' : ''} staged and ready for review.`;
+    ctaHref = `${appUrl}/compliance-gate`;
+    ctaLabel = `Review in Compliance Gate →`;
+  } else if (totalArticles === 0) {
+    ctaText = `Your Brain is ready. Run your first content generation to see it in action.`;
+    ctaHref = `${appUrl}/content-generator`;
+    ctaLabel = `Generate your first article →`;
+  } else if (!top) {
+    ctaText = `Sync your analytics after publishing to keep your Brain learning.`;
+    ctaHref = `${appUrl}/performance`;
+    ctaLabel = `Open Performance Dashboard →`;
+  } else {
+    ctaText = `Keep the loop going — publish, sync, and let your Brain compound.`;
+    ctaHref = `${appUrl}/performance`;
+    ctaLabel = `Open Performance Dashboard →`;
+  }
+
+  const html = `
+    <div style="font-family:Inter,system-ui,sans-serif;max-width:600px;margin:0 auto;padding:40px 24px;background:#0F172A;color:#F8FAFC;border-radius:12px;">
+      <div style="margin-bottom:28px;">
+        <img src="https://forgeintelligence.ai/forge-logo-white.png" alt="Forge Intelligence" style="height:28px;width:auto;" />
+      </div>
+      <h1 style="font-size:22px;font-weight:700;margin:0 0 6px;color:#F8FAFC;letter-spacing:-0.02em;">Your Brain — Weekly Report</h1>
+      <p style="color:#64748B;font-size:13px;margin:0 0 28px;">${brandName} · Week ending ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+
+      ${brainSection}
+      ${topSection}
+      ${decaySection}
+
+      <div style="background:#1E293B;border-radius:10px;padding:20px 24px;margin-bottom:28px;">
+        <p style="font-size:13px;color:#94A3B8;margin:0 0 14px;">${ctaText}</p>
+        <a href="${ctaHref}" style="display:inline-block;background:#3563FF;color:#fff;padding:10px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;">${ctaLabel}</a>
+      </div>
+
+      <p style="color:#334155;font-size:11px;margin:0;line-height:1.6;">
+        You're receiving this because you have an active Forge Intelligence subscription. &nbsp;
+        <a href="${unsubUrl}" style="color:#475569;text-decoration:underline;">Unsubscribe from weekly digest</a>
+      </p>
+    </div>
+  `;
+
+  const emailRes = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: 'Forge Intelligence <hello@forgeintelligence.ai>',
+      to: email,
+      subject: `Your Forge Brain — Weekly Intelligence Report`,
+      html
+    })
+  });
+  const emailData = await emailRes.json();
+  if (!emailRes.ok) throw new Error(`Resend error: ${JSON.stringify(emailData)}`);
+
+  console.log(`[DIGEST] Sent to ${email} for brand ${brandProfileId}`);
+  return { sent: true, email };
+};
+
+// POST /api/digest/send/:brandProfileId — manual send (requireAuth)
+app.post('/api/digest/send/:brandProfileId', requireAuth, async (req, res) => {
+  try {
+    const result = await sendDigestForBrand(req.params.brandProfileId);
+    res.json({ success: true, result });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+
+
+
+// POST /api/digest/send-all — EasyCron weekly trigger (admin password protected)
+app.post('/api/digest/send-all', async (req, res) => {
+  const { adminPassword } = req.body;
+  if (adminPassword !== process.env.ADMIN_PASSWORD) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const brands = await pool.query(
+      `SELECT id FROM brand_profiles WHERE is_paid = true AND is_active = true AND (digest_unsubscribed IS NULL OR digest_unsubscribed = false)`
+    );
+    const results = [];
+    for (const brand of brands.rows) {
+      try {
+        const result = await sendDigestForBrand(brand.id);
+        results.push({ id: brand.id, ...result });
+      } catch(e) {
+        results.push({ id: brand.id, error: e.message });
+      }
+      // Rate limit — Resend free tier is 2 req/sec
+      await new Promise(r => setTimeout(r, 600));
+    }
+    const sent = results.filter(r => r.sent).length;
+    const skipped = results.filter(r => r.skipped).length;
+    console.log(`[DIGEST] Batch complete — ${sent} sent, ${skipped} skipped`);
+    res.json({ success: true, sent, skipped, results });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /api/digest/unsubscribe/:token — one-click unsubscribe (no auth)
+app.get('/api/digest/unsubscribe/:token', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `UPDATE brand_profiles SET digest_unsubscribed = true WHERE digest_unsubscribe_token = $1 RETURNING brand_name, brand_url`,
+      [req.params.token]
+    );
+    if (!result.rows.length) {
+      return res.status(404).send('<p style="font-family:sans-serif;padding:40px;">Link not found or already unsubscribed.</p>');
+    }
+    const brand = result.rows[0];
+    res.send(`
+      <div style="font-family:Inter,sans-serif;max-width:480px;margin:80px auto;padding:40px;background:#0F172A;color:#F8FAFC;border-radius:12px;text-align:center;">
+        <span style="font-size:15px;font-weight:800;color:#3563FF;">⬡ Forge Intelligence</span>
+        <h2 style="margin:24px 0 12px;font-size:20px;">Unsubscribed</h2>
+        <p style="color:#94A3B8;font-size:14px;line-height:1.7;margin:0 0 24px;">
+          ${brand.brand_name || brand.brand_url} will no longer receive weekly digest emails.<br/>
+          You can re-enable this anytime in Brand Settings.
+        </p>
+        <a href="https://forgeintelligence.ai/app/brand-settings" style="display:inline-block;background:#1E293B;color:#94A3B8;padding:10px 20px;border-radius:8px;text-decoration:none;font-size:13px;">Back to Brand Settings</a>
+      </div>
+    `);
+  } catch(e) {
+    res.status(500).send('<p style="font-family:sans-serif;padding:40px;">Something went wrong. Please try again.</p>');
+  }
+});
+
+// PATCH /api/digest/preference — toggle digest opt-in/out (requireAuth)
+app.patch('/api/digest/preference', requireAuth, async (req, res) => {
+  const { brandProfileId, unsubscribed } = req.body;
+  if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
+  try {
+    await pool.query(
+      `UPDATE brand_profiles SET digest_unsubscribed = $1 WHERE id = $2 AND clerk_user_id = $3`,
+      [!!unsubscribed, brandProfileId, req.userId]
+    );
+    res.json({ success: true });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/utils/shorten-url — Bitly URL shortener proxy
+app.post('/api/utils/shorten-url', async (req, res) => {
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: 'url required' });
+  const BITLY_TOKEN = process.env.BITLY_ACCESS_TOKEN;
+  if (!BITLY_TOKEN) return res.status(500).json({ error: 'Bitly not configured' });
+  try {
+    const r = await fetch('https://api-ssl.bitly.com/v4/shorten', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${BITLY_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ long_url: url }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.message || 'Bitly error');
+    res.json({ shortUrl: d.link });
+  } catch(e) {
+    // Non-fatal — return original URL if Bitly fails
+    res.json({ shortUrl: url, fallback: true });
+  }
+});
+
+
+// GET /api/auth/me — returns the authenticated user's brand profile
+// Optional ?brand_id=xxx — tethers a brand to this user (always wins if brand is paid)
+app.get('/api/auth/me', requireAuth, async (req, res) => {
+  try {
+    const brandId = req.query.brand_id || null;
+
+    if (brandId) {
+      // Check if the incoming brand is paid
+      const brandCheck = await pool.query(
+        `SELECT id, is_paid FROM brand_profiles WHERE id = $1`,
+        [brandId]
+      );
+      if (brandCheck.rows.length) {
+        // Only tether if brand has no current owner — never steal an owned brand
+        if (!brandCheck.rows[0].clerk_user_id) {
+          await pool.query(
+            `UPDATE brand_profiles SET clerk_user_id = $1, updated_at = NOW()
+             WHERE id = $2 AND clerk_user_id IS NULL`,
+            [req.userId, brandId]
+          );
+          console.log(`[AUTH] Tethered brand ${brandId} to user ${req.userId}`);
+        } else if (brandCheck.rows[0].clerk_user_id === req.userId) {
+          // Already owned by this user — no-op, correct state
+        } else {
+          console.log(`[AUTH] Brand ${brandId} already owned by another user — tether blocked`);
+        }
+      }
+    }
+
+    // Fetch user's brand — prefer paid brands if multiple exist
+    let result = await pool.query(
+      `SELECT * FROM brand_profiles WHERE clerk_user_id = $1 AND is_active = true ORDER BY is_paid DESC, updated_at DESC LIMIT 1`,
+      [req.userId]
+    );
+
+    // No tethered brand — fall back to most recent paid brand and auto-tether
+    if (!result.rows.length) {
+      result = await pool.query(
+        `SELECT * FROM brand_profiles WHERE is_active = true ORDER BY is_paid DESC, updated_at DESC LIMIT 1`
+      );
+      if (result.rows.length) {
+        await pool.query(
+          `UPDATE brand_profiles SET clerk_user_id = $1, updated_at = NOW() WHERE id = $2`,
+          [req.userId, result.rows[0].id]
+        );
+        console.log(`[AUTH] Auto-tethered brand ${result.rows[0].id} to user ${req.userId}`);
+      }
+    }
+
+    const brand = result.rows[0] || null;
+    const FOUNDER_ID = 'user_3BtC7nusm7CShN7EdUYaaLZcDwp';
+
+    // Clerk auth = paid. Authenticate once = mark brand paid permanently in DB.
+    // This keeps DB truthful and eliminates client-side timing hacks.
+    if (brand && !brand.is_paid) {
+      await pool.query(
+        `UPDATE brand_profiles SET is_paid = true, expires_at = NULL, updated_at = NOW() WHERE id = $1`,
+        [brand.id]
+      );
+      brand.is_paid = true;
+    }
+
+    res.json({
+      success: true,
+      userId: req.userId,
+      brand,
+      isPaid: brand?.is_paid || req.userId === FOUNDER_ID,
+    });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+
+// ── Promo Codes ───────────────────────────────────────────────────────────────
+
+// Promo redemptions table
+pool.query(`CREATE TABLE IF NOT EXISTS promo_redemptions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code TEXT NOT NULL,
+  brand_profile_id TEXT NOT NULL,
+  redeemed_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(code, brand_profile_id)
+)`).catch(() => {});
+
+// Promo codes stored server-side — never expose to client
+const PROMO_CODES = new Map([
+  ['FORGEFRIEND',   { discount: 100, description: 'Friend of Forge' }],
+  ['EARLYBIRD',     { discount: 100, description: 'Early Access' }],
+  ['SANDBOX100',    { discount: 100, description: 'Sandbox Group Internal' }],
+]);
+
+// POST /api/promo/validate — validate a promo code (unlimited use)
+app.post('/api/promo/validate', async (req, res) => {
+  const { code, brandProfileId } = req.body;
+  if (!code) return res.status(400).json({ error: 'code required' });
+
+  const normalised = code.trim().toUpperCase();
+  const promo = PROMO_CODES.get(normalised);
+  if (!promo) return res.json({ valid: false, message: 'Invalid promo code' });
+
+  // Apply — mark brand as paid
+  if (promo.discount === 100 && brandProfileId) {
+    await pool.query(
+      `UPDATE brand_profiles SET is_paid = true, expires_at = NULL, updated_at = NOW() WHERE id = $1`,
+      [brandProfileId]
+    );
+    console.log(`[PROMO] ${normalised} applied to brand ${brandProfileId} — ${promo.description}`);
+  }
+
+  res.json({ valid: true, discount: promo.discount, message: `Code applied — ${promo.description}` });
+});
+
+
+
+// POST /api/admin/reset-brand-paid — dev only, resets is_paid for testing
+app.post('/api/admin/reset-brand-paid', async (req, res) => {
+  if (process.env.NODE_ENV === 'production' && !req.body.adminPassword === process.env.ADMIN_PASSWORD) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const { brandProfileId, adminPassword } = req.body;
+  if (adminPassword !== process.env.ADMIN_PASSWORD) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    await pool.query(
+      `UPDATE brand_profiles SET is_paid = false, expires_at = NOW() + INTERVAL '24 hours', clerk_user_id = NULL, updated_at = NOW() WHERE id = $1`,
+      [brandProfileId]
+    );
+    await pool.query(
+      `DELETE FROM promo_redemptions WHERE brand_profile_id = $1`,
+      [brandProfileId]
+    );
+    res.json({ success: true, message: 'Brand reset to free tier + promo redemptions cleared' });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Content Import (Bring Your Own Article) ──────────────────────────────────
+
+// POST /api/content/import — parse + score an externally written article
+app.post('/api/content/import', requireAuth, async (req, res) => {
+  const { brandProfileId, url, rawText, title: manualTitle } = req.body;
+  if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
+  if (!url && !rawText) return res.status(400).json({ error: 'url or rawText required' });
+
+  try {
+    const safeId = brandProfileId.replace(/-/g, '_');
+    const tableName = `generated_content_${safeId}`;
+
+    // 1. Get content — scrape URL or use raw text
+    let rawContent = rawText || '';
+    let sourceTitle = manualTitle || '';
+
+    if (url && !rawText) {
+      try {
+        const fetchRes = await fetch(url, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ForgeIntelligence/1.0)' },
+          signal: AbortSignal.timeout(8000)
+        });
+        const html = await fetchRes.text();
+        // Strip HTML tags, extract readable text
+        rawContent = html
+          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/\s{3,}/g, '\n\n')
+          .trim()
+          .slice(0, 12000);
+
+        // Try to extract title from <title> tag
+        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+        if (titleMatch) sourceTitle = titleMatch[1].replace(/\s*(\||\u2013|\u2014|-).*$/, '').trim();
+      } catch(e) {
+        return res.status(400).json({ error: `Could not fetch URL: ${e.message}` });
+      }
+    }
+
+    // 2. Load brand profile for Brain context
+    const brandRes = await pool.query(
+      'SELECT brand_name, brand_url, voice_profile, personas, competitive_gaps FROM brand_profiles WHERE id = $1',
+      [brandProfileId]
+    );
+    const brand = brandRes.rows[0];
+    if (!brand) return res.status(404).json({ error: 'Brand not found' });
+
+    // 3. Load brain patterns + mistakes
+    const patternsRes = await pool.query(
+      'SELECT pattern_type, description, confidence_score FROM brain_patterns WHERE brand_profile_id = $1 ORDER BY confidence_score DESC LIMIT 8',
+      [brandProfileId]
+    ).catch(() => ({ rows: [] }));
+    const mistakesRes = await pool.query(
+      'SELECT mistake_type, description, severity FROM brain_mistakes WHERE brand_profile_id = $1 ORDER BY severity DESC LIMIT 6',
+      [brandProfileId]
+    ).catch(() => ({ rows: [] }));
+
+    // 4. Claude Sonnet: parse + audit the article against the Brain
+    const auditPrompt = `You are the Forge Intelligence Brain Auditor. An article was written OUTSIDE of Forge and is being imported for scoring.
+
+BRAND: ${brand.brand_name} (${brand.brand_url})
+VOICE PROFILE: ${JSON.stringify(brand.voice_profile || {}).slice(0, 500)}
+BRAIN PATTERNS (what works): ${patternsRes.rows.map(p => p.description).join('; ').slice(0, 600)}
+BRAIN MISTAKES (what fails): ${mistakesRes.rows.map(m => m.description).join('; ').slice(0, 400)}
+
+IMPORTED ARTICLE TITLE: ${sourceTitle || 'Unknown'}
+
+IMPORTED CONTENT:
+${rawContent.slice(0, 6000)}
+
+Your job:
+1. Parse this article into structured sections
+2. Score it against the brand brain
+3. Identify voice deviations, missing depth, and structural issues
+4. Be honest. This was written outside the system. Show it.
+
+Return ONLY valid JSON:
+{
+  "title": "article title",
+  "metaDescription": "one sentence summary",
+  "overallConfidence": 0-100,
+  "brainMatchScore": 0-100,
+  "voiceDeviationScore": 0-100,
+  "importVerdict": "brief honest verdict (1-2 sentences)",
+  "sections": [
+    {
+      "heading": "section heading",
+      "body": "section body text",
+      "confidence": 0-100,
+      "flags": ["flag1", "flag2"]
+    }
+  ],
+  "brainFlags": ["top-level issues the brain detected"],
+  "suggestions": ["concrete improvements the brain recommends"]
+}`;
+
+    const auditRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4000,
+        messages: [{ role: 'user', content: auditPrompt }]
+      })
+    });
+    const auditData = await auditRes.json();
+    const auditText = auditData.content?.[0]?.text || '';
+    const parsed = JSON.parse(auditText.replace(/```json|```/g, '').trim());
+
+    // 5. Insert into generated_content as 'imported' status
+    const insertRes = await pool.query(
+      `INSERT INTO ${tableName} (brand_profile_id, title, article_json, overall_confidence, brain_match_score, status, review_mode, compliance_status)
+       VALUES ($1, $2, $3, $4, $5, 'staged', 'approve-to-ship', 'pending') RETURNING id`,
+      [
+        brandProfileId,
+        parsed.title || sourceTitle || 'Imported Article',
+        JSON.stringify({
+          ...parsed,
+          importedFrom: url || 'manual',
+          importedAt: new Date().toISOString()
+        }),
+        parsed.overallConfidence || 50,
+        parsed.brainMatchScore || 50
+      ]
+    );
+    const contentId = insertRes.rows[0].id;
+
+    // 6. Stage in publishing queue
+    await pool.query(
+      `INSERT INTO publishing_queue (brand_profile_id, content_id, title, status, created_at, updated_at)
+       VALUES ($1, $2, $3, 'staged', NOW(), NOW())
+       ON CONFLICT (content_id) DO NOTHING`,
+      [brandProfileId, contentId, parsed.title || sourceTitle]
+    );
+
+    res.json({
+      success: true,
+      contentId,
+      title: parsed.title || sourceTitle,
+      overallConfidence: parsed.overallConfidence,
+      brainMatchScore: parsed.brainMatchScore,
+      voiceDeviationScore: parsed.voiceDeviationScore,
+      importVerdict: parsed.importVerdict,
+      brainFlags: parsed.brainFlags || [],
+      suggestions: parsed.suggestions || [],
+      sectionCount: parsed.sections?.length || 0
+    });
+
+  } catch(e) {
+    console.error('[CONTENT-IMPORT]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ── Topic Ideas ───────────────────────────────────────────────────────────────
+
+// GET /api/topic-ideas/:brandProfileId
+app.get('/api/topic-ideas/:brandProfileId', requireAuth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT * FROM topic_ideas WHERE brand_profile_id = $1 ORDER BY created_at DESC`,
+      [req.params.brandProfileId]
+    );
+    res.json({ success: true, ideas: r.rows });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// POST /api/topic-ideas
+app.post('/api/topic-ideas', requireAuth, async (req, res) => {
+  const { brandProfileId, topic, note } = req.body;
+  if (!brandProfileId || !topic?.trim()) return res.status(400).json({ error: 'brandProfileId and topic required' });
+  try {
+    const r = await pool.query(
+      `INSERT INTO topic_ideas (brand_profile_id, topic, note) VALUES ($1, $2, $3) RETURNING *`,
+      [brandProfileId, topic.trim(), note?.trim() || null]
+    );
+    res.json({ success: true, idea: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// PATCH /api/topic-ideas/:id — update status (idea → in_progress → generated)
+app.patch('/api/topic-ideas/:id', requireAuth, async (req, res) => {
+  const { status, topic, note } = req.body;
+  try {
+    const updates = []; const params = []; let pi = 1;
+    if (status) { updates.push(`status = $${pi++}`); params.push(status); }
+    if (topic) { updates.push(`topic = $${pi++}`); params.push(topic); }
+    if (note !== undefined) { updates.push(`note = $${pi++}`); params.push(note); }
+    updates.push(`updated_at = NOW()`);
+    params.push(req.params.id);
+    await pool.query(`UPDATE topic_ideas SET ${updates.join(', ')} WHERE id = $${pi}`, params);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// DELETE /api/topic-ideas/:id
+app.delete('/api/topic-ideas/:id', requireAuth, async (req, res) => {
+  try {
+    await pool.query(`DELETE FROM topic_ideas WHERE id = $1`, [req.params.id]);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// ── Content Library ───────────────────────────────────────────────────────────
+
+// GET /api/content-library — returns all generated content across all brands or filtered by brand
+app.get('/api/content-library', requireAuth, async (req, res) => {
+  const { brandProfileId, status, search, campaign, limit = 50, offset = 0 } = req.query;
+  try {
+    // Get all brands or just the requested one
+    const brandsRes = brandProfileId
+      ? await pool.query('SELECT id, brand_name, brand_url FROM brand_profiles WHERE id = $1', [brandProfileId])
+      : await pool.query('SELECT id, brand_name, brand_url FROM brand_profiles WHERE is_active = true ORDER BY created_at DESC');
+
+    const brands = brandsRes.rows;
+    const allItems = [];
+
+    for (const brand of brands) {
+      const safeId = brand.id.replace(/-/g, '_');
+      const tableName = `generated_content_${safeId}`;
+
+      // Check table exists
+      const tableExists = await pool.query(
+        `SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = $1)`,
+        [tableName]
+      );
+      if (!tableExists.rows[0].exists) continue;
+
+      // Build query with filters
+      const conditions = ['1=1'];
+      const params = [];
+      let pi = 1;
+
+      if (status && status !== 'all') {
+        conditions.push(`COALESCE(pq.status, 'draft') = $${pi++}`);
+        params.push(status);
+      }
+      if (search) {
+        conditions.push(`gc.title ILIKE $${pi++}`);
+        params.push(`%${search}%`);
+      }
+      if (campaign) {
+        conditions.push(`gc.campaign_id = $${pi++}`);
+        params.push(campaign);
+      }
+
+      const rows = await pool.query(`
+        SELECT
+          gc.id,
+          gc.title,
+          gc.overall_confidence,
+          gc.brain_match_score,
+          gc.compliance_status,
+          gc.hero_image_url,
+          gc.campaign_id,
+          gc.created_at,
+          gc.updated_at,
+          gc.article_json->>'metaDescription' AS meta_description,
+          COALESCE(pq.status, 'draft') AS queue_status,
+          pq.published_at,
+          pq.id AS queue_id,
+          ARRAY_AGG(DISTINCT pl.channel) FILTER (WHERE pl.live_status = 'published') AS published_channels,
+          ARRAY_AGG(DISTINCT pl.published_url) FILTER (WHERE pl.published_url IS NOT NULL) AS live_urls,
+          MAX(ca.impressions) AS impressions,
+          MAX(ca.clicks) AS clicks,
+          '${brand.id}' AS brand_profile_id,
+          '${brand.brand_name || brand.brand_url}' AS brand_name,
+          '${brand.brand_url}' AS brand_url
+        FROM ${tableName} gc
+        LEFT JOIN publishing_queue pq ON pq.content_id = gc.id::text
+        LEFT JOIN publish_log pl ON pl.content_id = gc.id::text
+        LEFT JOIN content_analytics ca ON ca.content_id = gc.id::text AND ca.brand_profile_id = '${brand.id}'
+        WHERE ${conditions.join(' AND ')}
+        GROUP BY gc.id, gc.title, gc.overall_confidence, gc.brain_match_score,
+          gc.compliance_status, gc.hero_image_url, gc.campaign_id,
+          gc.created_at, gc.updated_at, gc.article_json,
+          pq.status, pq.published_at, pq.id
+        ORDER BY gc.created_at DESC
+      `, params).catch(() => ({ rows: [] }));
+
+      allItems.push(...rows.rows);
+    }
+
+    // Sort all by created_at desc, apply pagination
+    allItems.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const total = allItems.length;
+    const paginated = allItems.slice(Number(offset), Number(offset) + Number(limit));
+
+    res.json({ success: true, items: paginated, total, limit: Number(limit), offset: Number(offset) });
+  } catch(e) {
+    console.error('[CONTENT-LIBRARY]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ── GEO Citation Tracker ──────────────────────────────────────────────────────
+
+// DB table for citations
+// Created in initDB — added below to migration
+
+// GET /api/geo/debug/:brandProfileId — diagnostic endpoint, remove after debugging
+app.get('/api/geo/debug/:brandProfileId', async (req, res) => {
+  const { brandProfileId } = req.params;
+  const out = { brandProfileId, env: {}, db: {}, apiTest: {} };
+
+  // Check env vars
+  out.env.hasOpenAI = !!process.env.OPENAI_API_KEY;
+  out.env.hasPerplexity = !!process.env.PERPLEXITY_API_KEY;
+
+  // Check geo_citations rows
+  try {
+    const r = await pool.query(
+      'SELECT engine, query, is_cited, checked_at FROM geo_citations WHERE brand_profile_id = $1 ORDER BY checked_at DESC LIMIT 10',
+      [brandProfileId]
+    );
+    out.db.rowCount = r.rows.length;
+    out.db.recentRows = r.rows;
+  } catch(e) { out.db.error = e.message; }
+
+  // Check brand + articles
+  try {
+    const brandRes = await pool.query('SELECT id, brand_name, brand_url, article_base_url FROM brand_profiles WHERE id = $1', [brandProfileId]);
+    out.brand = brandRes.rows[0] || null;
+    if (out.brand) {
+      const safeId = brandProfileId.replace(/-/g, '_');
+      const artRes = await pool.query(`SELECT id, title FROM generated_content_${safeId} ORDER BY created_at DESC LIMIT 3`).catch(() => ({ rows: [] }));
+      out.db.recentArticles = artRes.rows;
+    }
+  } catch(e) { out.brand = { error: e.message }; }
+
+  // Test one OpenAI call
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 12000);
+      const oRes = await fetch('https://api.openai.com/v1/responses', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'gpt-4o-mini', tools: [{ type: 'web_search_preview' }], input: 'What is Forge Intelligence?' }),
+        signal: controller.signal
+      });
+      const oData = await oRes.json();
+      out.apiTest.openai = { status: oRes.status, hasOutput: !!oData.output, error: oData.error || null, rawKeys: Object.keys(oData) };
+    } catch(e) { out.apiTest.openai = { error: e.message }; }
+  }
+
+  // Test one Perplexity call
+  if (process.env.PERPLEXITY_API_KEY) {
+    try {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 12000);
+      const pRes = await fetch('https://api.perplexity.ai/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'sonar', messages: [{ role: 'user', content: 'What is Forge Intelligence?' }], max_tokens: 100 }),
+        signal: controller.signal
+      });
+      const pData = await pRes.json();
+      out.apiTest.perplexity = { status: pRes.status, hasContent: !!pData.choices?.[0]?.message?.content, error: pData.error || null };
+    } catch(e) { out.apiTest.perplexity = { error: e.message }; }
+  }
+
+  res.json(out);
+});
+
+// POST /api/geo/track/:brandProfileId — fire-and-forget citation check
+// Responds immediately, processes in background to avoid Render timeout
+app.post('/api/geo/track/:brandProfileId', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.params;
+    if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+  const { contentId } = req.body;
+
+  // Respond immediately — client polls /api/geo/citations for results
+  res.json({ success: true, status: 'running' });
+
+  // Process in background
+  (async () => {
+    try {
+      const brandRes = await pool.query('SELECT * FROM brand_profiles WHERE id = $1', [brandProfileId]);
+      if (!brandRes.rows.length) return;
+      const brand = brandRes.rows[0];
+      const brandDomain = (brand.brand_url || brand.article_base_url || '').replace(/https?:\/\//, '').replace(/\/.*/, '').replace(/^www\./, '');
+      const brandName = brand.brand_name || brand.brand_url;
+
+      const safeId = brandProfileId.replace(/-/g, '_');
+      const artQuery = contentId
+        ? `SELECT id, title, article_json FROM generated_content_${safeId} WHERE id = $1`
+        : `SELECT id, title, article_json FROM generated_content_${safeId} ORDER BY created_at DESC LIMIT 5`;
+      const artParams = contentId ? [contentId] : [];
+      const articlesRes = await pool.query(artQuery, artParams).catch(() => ({ rows: [] }));
+
+      const fetchWithTimeout = (url, opts, ms = 12000) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), ms);
+        return fetch(url, { ...opts, signal: controller.signal }).finally(() => clearTimeout(timer));
+      };
+
+      await Promise.allSettled(articlesRes.rows.map(async article => {
+        const sections = article.article_json?.sections || [];
+        const title = article.title || 'Untitled';
+        const headings = sections.map(s => s.heading).filter(Boolean).slice(0, 2);
+        const probeQuestions = [title, ...headings.map(h => `${h} ${brandName}`), `What is ${brandName}?`].slice(0, 3);
+
+        await Promise.allSettled(probeQuestions.map(async question => {
+
+          // ── Perplexity Sonar ──────────────────────────────────────────────
+          if (process.env.PERPLEXITY_API_KEY) {
+            try {
+              const pRes = await fetchWithTimeout('https://api.perplexity.ai/chat/completions', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: 'sonar', messages: [{ role: 'user', content: question }], max_tokens: 400 })
+              });
+              const pData = await pRes.json();
+              const pText = pData.choices?.[0]?.message?.content || '';
+              const citations = pData.citations || [];
+              const isCited = citations.some(u => u.includes(brandDomain)) || pText.toLowerCase().includes(brandDomain.toLowerCase());
+              let citedSection = null;
+              if (isCited) {
+                for (const s of sections) {
+                  const body = (s.body || s.content || '').toLowerCase();
+                  if (pText.toLowerCase().split(' ').filter(w => w.length > 6 && body.includes(w)).length > 3) { citedSection = s.heading; break; }
+                }
+              }
+              await pool.query(
+                `INSERT INTO geo_citations (brand_profile_id, content_id, engine, query, is_cited, cited_url, cited_section, response_snippet, raw_citations, checked_at)
+                 VALUES ($1,$2,'perplexity',$3,$4,$5,$6,$7,$8,NOW())
+                 ON CONFLICT (brand_profile_id, content_id, engine, query)
+                 DO UPDATE SET is_cited=$4, cited_url=$5, cited_section=$6, response_snippet=$7, raw_citations=$8, checked_at=NOW()`,
+                [brandProfileId, article.id, question, isCited,
+                 citations.find(u => u.includes(brandDomain)) || null,
+                 citedSection, pText.slice(0, 300), JSON.stringify(citations)]
+              ).catch(() => {});
+            } catch(e) { console.error('[GEO-PERPLEXITY]', e.message); }
+          }
+
+          // ── OpenAI web search ─────────────────────────────────────────────
+          if (process.env.OPENAI_API_KEY) {
+            try {
+              const oRes = await fetchWithTimeout('https://api.openai.com/v1/responses', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  model: 'gpt-4o-mini',
+                  tools: [{ type: 'web_search_preview' }],
+                  input: question
+                })
+              });
+              const oData = await oRes.json();
+              // Responses API: find message item in output array, extract text + annotations
+              const msgItem = oData.output?.find(o => o.type === 'message');
+              const textContent = msgItem?.content?.find(c => c.type === 'output_text');
+              const outputText = textContent?.text || oData.output_text || '';
+              const annotations = textContent?.annotations || [];
+              const urlCitations = annotations
+                .filter(a => a.type === 'url_citation')
+                .map(a => a.url || a.url_citation?.url || '');
+              const isCited = urlCitations.some(u => u.includes(brandDomain)) || outputText.toLowerCase().includes(brandDomain.toLowerCase());
+              let citedSection = null;
+              if (isCited) {
+                for (const s of sections) {
+                  const body = (s.body || s.content || '').toLowerCase();
+                  if (outputText.toLowerCase().split(' ').filter(w => w.length > 6 && body.includes(w)).length > 3) { citedSection = s.heading; break; }
+                }
+              }
+              await pool.query(
+                `INSERT INTO geo_citations (brand_profile_id, content_id, engine, query, is_cited, cited_url, cited_section, response_snippet, raw_citations, checked_at)
+                 VALUES ($1,$2,'chatgpt',$3,$4,$5,$6,$7,$8,NOW())
+                 ON CONFLICT (brand_profile_id, content_id, engine, query)
+                 DO UPDATE SET is_cited=$4, cited_url=$5, cited_section=$6, response_snippet=$7, raw_citations=$8, checked_at=NOW()`,
+                [brandProfileId, article.id, question, isCited,
+                 urlCitations.find(u => u.includes(brandDomain)) || null,
+                 citedSection, outputText.slice(0, 300), JSON.stringify(urlCitations)]
+              ).catch(e => console.error('[GEO-DB]', e.message));
+            } catch(e) { console.error('[GEO-OPENAI]', e.message); }
+          }
+        }));
+      }));
+
+      console.log(`[GEO-TRACK] Complete for ${brandProfileId} — ${articlesRes.rows.length} articles checked`);
+    } catch(e) {
+      console.error('[GEO-TRACK] Background error:', e.message);
+    }
+  })();
+});
+
+// GET /api/geo/citations/:brandProfileId — get all citation results
+app.get('/api/geo/citations/:brandProfileId', requireAuth, async (req, res) => {
+  try {
+    const { brandProfileId } = req.params;
+    if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+    const safeId = brandProfileId.replace(/-/g, '_');
+
+    const r = await pool.query(
+      `SELECT gc.*, pq.title as queue_title
+       FROM geo_citations gc
+       LEFT JOIN publishing_queue pq ON pq.content_id = gc.content_id
+       WHERE gc.brand_profile_id = $1
+       ORDER BY gc.checked_at DESC`,
+      [brandProfileId]
+    );
+
+    // Build a title map from generated_content table (covers articles not yet in queue)
+    const contentIds = [...new Set(r.rows.map(row => row.content_id))];
+    const titleMap = {};
+    if (contentIds.length) {
+      const placeholders = contentIds.map((_, i) => `$${i + 1}`).join(',');
+      const titleRes = await pool.query(
+        `SELECT id, title FROM generated_content_${safeId} WHERE id IN (${placeholders})`,
+        contentIds
+      ).catch(() => ({ rows: [] }));
+      for (const row of titleRes.rows) titleMap[row.id] = row.title;
+    }
+
+    // Aggregate by content_id only — one row per article across all engines
+    const summary = {};
+    for (const row of r.rows) {
+      const key = row.content_id;
+      const title = row.queue_title || titleMap[row.content_id] || 'Untitled';
+      if (!summary[key]) {
+        summary[key] = {
+          content_id: row.content_id,
+          title,
+          engines: [],
+          totalChecks: 0,
+          citations: 0,
+          citedSections: [],
+          lastChecked: row.checked_at,
+          citedUrls: []
+        };
+      }
+      summary[key].totalChecks++;
+      if (!summary[key].engines.includes(row.engine)) summary[key].engines.push(row.engine);
+      if (row.is_cited) {
+        summary[key].citations++;
+        if (row.cited_section && !summary[key].citedSections.includes(row.cited_section))
+          summary[key].citedSections.push(row.cited_section);
+        if (row.cited_url && !summary[key].citedUrls.includes(row.cited_url))
+          summary[key].citedUrls.push(row.cited_url);
+      }
+    }
+
+    res.json({ success: true, citations: Object.values(summary), raw: r.rows });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ── Decay Monitoring Agent ───────────────────────────────────────────────────
+async function runDecayMonitoring() {
+  try {
+    // Get all brands
+    const brandsRes = await pool.query('SELECT id FROM brand_profiles WHERE is_active = true');
+    for (const brand of brandsRes.rows) {
+      const brandProfileId = brand.id;
+      try {
+        // Get all articles with analytics, published 14+ days ago, with at least 1 impression
+        const articlesRes = await pool.query(
+          `SELECT ca.content_id, ca.channel, ca.impressions, ca.clicks, ca.reactions,
+                  ca.synced_at, ca.published_at, pq.title
+           FROM content_analytics ca
+           LEFT JOIN publishing_queue pq ON pq.content_id = ca.content_id
+           WHERE ca.brand_profile_id = $1
+             AND ca.published_at < NOW() - INTERVAL '14 days'
+             AND (ca.impressions > 0 OR ca.clicks > 0)
+           ORDER BY ca.content_id, ca.channel`,
+          [brandProfileId]
+        ).catch(() => ({ rows: [] }));
+
+        for (const row of articlesRes.rows) {
+          // Get historical peak for this article/channel
+          const peakRes = await pool.query(
+            `SELECT MAX(impressions) as peak_imp, MAX(clicks) as peak_clicks
+             FROM content_analytics
+             WHERE content_id = $1 AND channel = $2`,
+            [row.content_id, row.channel]
+          ).catch(() => ({ rows: [{}] }));
+
+          const peakImpressions = parseInt(peakRes.rows[0]?.peak_imp || 0);
+          const peakClicks = parseInt(peakRes.rows[0]?.peak_clicks || 0);
+          const currentImpressions = row.impressions || 0;
+          const currentClicks = row.clicks || 0;
+
+          // Calculate decay score (0 = no decay, 1 = full decay)
+          const impDecay = peakImpressions > 0 ? 1 - (currentImpressions / peakImpressions) : 0;
+          const clickDecay = peakClicks > 0 ? 1 - (currentClicks / peakClicks) : 0;
+          const decayScore = Math.max(impDecay, clickDecay);
+
+          // Flag if decay > 50% and article is older than 14 days
+          if (decayScore >= 0.5) {
+            // Generate recommended action via Haiku
+            let recommendedAction = 'Refresh and republish — engagement has dropped significantly.';
+            try {
+              const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+                body: JSON.stringify({
+                  model: 'claude-sonnet-4-5',
+                  max_tokens: 120,
+                  messages: [{ role: 'user', content: `Article "${row.title || 'Untitled'}" on ${row.channel} has decayed ${Math.round(decayScore * 100)}% from peak engagement. In one sentence, recommend the best action: refresh content, change headline, republish on different channel, or add internal links. Be specific and actionable.` }]
+                })
+              });
+              const aiData = await aiRes.json();
+              if (aiData.content?.[0]?.text) recommendedAction = aiData.content[0].text.trim();
+            } catch(e) { /* use default */ }
+
+            // Upsert decay alert
+            await pool.query(
+              `INSERT INTO decay_alerts
+                (brand_profile_id, content_id, channel, title, peak_impressions, peak_clicks,
+                 current_impressions, current_clicks, decay_score, status, recommended_action, detected_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'active',$10,NOW())
+               ON CONFLICT (content_id, channel) DO UPDATE SET
+                 current_impressions=$7, current_clicks=$8, decay_score=$9,
+                 recommended_action=$10, detected_at=NOW(), status='active'`,
+              [brandProfileId, row.content_id, row.channel, row.title || 'Untitled',
+               peakImpressions, peakClicks, currentImpressions, currentClicks,
+               decayScore, recommendedAction]
+            ).catch(() => {});
+
+            // Write to brain_mistakes so pattern extractor learns
+            await pool.query(
+              `INSERT INTO brain_mistakes (brand_profile_id, mistake_type, description, severity)
+               VALUES ($1, 'content_decay', $2, $3)
+               ON CONFLICT DO NOTHING`,
+              [brandProfileId,
+               `"${row.title || 'Untitled'}" decayed ${Math.round(decayScore * 100)}% on ${row.channel} after 14 days`,
+               decayScore >= 0.8 ? 'high' : 'medium']
+            ).catch(() => {});
+          } else {
+            // Mark as resolved if previously flagged
+            await pool.query(
+              `UPDATE decay_alerts SET status='resolved', resolved_at=NOW()
+               WHERE content_id=$1 AND channel=$2 AND status='active'`,
+              [row.content_id, row.channel]
+            ).catch(() => {});
+          }
+        }
+        console.log(`[DECAY] Checked ${articlesRes.rows.length} articles for ${brandProfileId}`);
+      } catch(e) { console.error('[DECAY] Brand error:', e.message); }
+    }
+  } catch(e) { console.error('[DECAY] Run error:', e.message); }
+}
+
+// GET /api/analytics/decay/:brandProfileId
+app.get('/api/analytics/decay/:brandProfileId', requireAuth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT * FROM decay_alerts WHERE brand_profile_id = $1 AND status = 'active'
+       ORDER BY decay_score DESC`,
+      [req.params.brandProfileId]
+    );
+    res.json({ success: true, alerts: r.rows });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// POST /api/analytics/decay/:brandProfileId/resolve/:contentId
+app.post('/api/analytics/decay/:brandProfileId/resolve/:contentId', requireAuth, async (req, res) => {
+  try {
+    await pool.query(
+      `UPDATE decay_alerts SET status='resolved', resolved_at=NOW()
+       WHERE brand_profile_id=$1 AND content_id=$2`,
+      [req.params.brandProfileId, req.params.contentId]
+    );
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// Start scheduler — runs 30s after boot then every 60s
+setTimeout(() => {
+  runScheduledPublishes();
+  setInterval(runScheduledPublishes, 60 * 1000);
+  // Decay monitoring runs every 6 hours
+  runDecayMonitoring();
+  setInterval(runDecayMonitoring, 6 * 60 * 60 * 1000);
+}, 30 * 1000);
+
+console.log('[SCHEDULER] Scheduled publish runner active — polling every 60s');
+console.log('[SCHEDULER] Decay monitoring active — running every 6 hours');
+
+
+
+// ── AI Relay GET — read-only access via web_fetch ────────────────────────────
+app.get('/api/admin/relay', async (req, res) => {
+  const { adminPassword, action, path, branch = 'main', query, values } = req.query;
+  if (adminPassword !== process.env.ADMIN_PASSWORD) {
+    return res.status(403).json({ success: false, error: 'Unauthorized' });
+  }
+  try {
+    if (action === 'github-read') {
+      const r = await fetch(`https://api.github.com/repos/Sandbox-Group-LLC/Forge-Intelligence/contents/${path}?ref=${branch}`, {
+        headers: { Authorization: `token ${process.env.GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json' }
+      });
+      const data = await r.json();
+      if (!r.ok) return res.status(r.status).json({ success: false, error: data.message });
+      return res.json({ success: true, content: Buffer.from(data.content, 'base64').toString('utf8'), sha: data.sha, size: data.size });
+    }
+    if (action === 'sql') {
+      const result = await pool.query(query, values ? JSON.parse(values) : []);
+      return res.json({ success: true, rows: result.rows, rowCount: result.rowCount });
+    }
+    return res.status(400).json({ success: false, error: `Unknown action: ${action}` });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// ── AI Relay — device-independent Claude access ──────────────────────────────
+app.post('/api/admin/relay', async (req, res) => {
+  const { adminPassword, action, ...params } = req.body;
+  if (adminPassword !== process.env.ADMIN_PASSWORD) {
+    return res.status(403).json({ success: false, error: 'Unauthorized' });
+  }
+  try {
+    if (action === 'sql') {
+      const { query, values = [] } = params;
+      const result = await pool.query(query, values);
+      return res.json({ success: true, rows: result.rows, rowCount: result.rowCount });
+    }
+    if (action === 'github-read') {
+      const { path, branch = 'main' } = params;
+      const r = await fetch(`https://api.github.com/repos/Sandbox-Group-LLC/Forge-Intelligence/contents/${path}?ref=${branch}`, {
+        headers: { Authorization: `token ${process.env.GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json' }
+      });
+      const data = await r.json();
+      if (!r.ok) return res.status(r.status).json({ success: false, error: data.message });
+      return res.json({ success: true, content: Buffer.from(data.content, 'base64').toString('utf8'), sha: data.sha, size: data.size });
+    }
+    if (action === 'github-write') {
+      const { path, content, message, branch = 'main' } = params;
+      const check = await fetch(`https://api.github.com/repos/Sandbox-Group-LLC/Forge-Intelligence/contents/${path}?ref=${branch}`, {
+        headers: { Authorization: `token ${process.env.GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json' }
+      });
+      const checkData = await check.json();
+      const body = { message, content: Buffer.from(content).toString('base64'), branch };
+      if (check.ok) body.sha = checkData.sha;
+      const r = await fetch(`https://api.github.com/repos/Sandbox-Group-LLC/Forge-Intelligence/contents/${path}`, {
+        method: 'PUT',
+        headers: { Authorization: `token ${process.env.GITHUB_TOKEN}`, 'Content-Type': 'application/json', Accept: 'application/vnd.github.v3+json' },
+        body: JSON.stringify(body)
+      });
+      const data = await r.json();
+      if (!r.ok) return res.status(r.status).json({ success: false, error: data.message });
+      return res.json({ success: true, sha: data.commit.sha, url: data.commit.html_url });
+    }
+    return res.status(400).json({ success: false, error: `Unknown action: ${action}` });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+app.get('*', function (req, res) {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
+
+
+
 app.post('/api/compliance/find-sources', requireAuth, async (req, res) => {
   const { claim, sectionBody } = req.body;
   if (!claim && !sectionBody) return res.status(400).json({ error: 'claim or sectionBody required' });
