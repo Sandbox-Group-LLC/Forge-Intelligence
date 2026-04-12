@@ -99,13 +99,19 @@
 - **activeBrand from useApp()** is the only source of brandProfileId — no direct brains fetches from pages
 - GitHub Contents API commits require a freshly fetched SHA — stale SHAs fail
 
-### Branch Differences
+### Branch Strategy (April 12, 2026)
 
-| Component | Production | Main (Dev) |
-|-----------|-----------|------------|
-| `TopBar.tsx` | Brand switcher (super admin only) | Multi-brand dropdown |
-| `AppContext.tsx` | Single brand default, super admin can switch | Multi-brand, isSuperAdmin, allBrands, switchBrand |
-| Auth pattern | Clerk + requireAuth everywhere | Same + super admin brian@sandbox-xm.com |
+**Branches are now identical.** Main was reset to match production on April 12, 2026.
+
+| Branch | Role |
+|--------|------|
+| `main` | Staging — new features built and tested on `dev.forgeintelligence.ai` |
+| `production` | Live — validated work ported via surgical patches only |
+
+**Rules:**
+- Never `git merge main → production` — surgical patches only
+- Both branches share the same architecture (super admin brand switcher, single brand for regular users)
+- Test on dev first, port to production when validated
 
 ---
 
