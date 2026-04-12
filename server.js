@@ -2859,21 +2859,24 @@ function extractJSON(text, type = 'object') {
 // Not a library. Not an npm package. Just a dev who got tired of Claude's newlines.
 // ── Shared LLM JSON parser — sanitise + recover ──────────────────────────────
 function safeParseLLM(raw, type = 'object') {
-  // Step 0: strip markdown code fences Claude loves to wrap JSON in
-  const stripped = raw.replace(/```(?:json)?\s*/g, '').trim();
+  // Step 0: strip markdown fences, BOM, zero-width chars, and other invisible garbage
+  const stripped = raw
+    .replace(/```(?:json)?\s*/g, '')
+    .replace(/[\uFEFF\u200B\u200C\u200D\u2060\u00A0]/g, '')
+    .trim();
   // Step 1: extract clean JSON block
   const extracted = extractJSON(stripped, type) || stripped;
-  // Step 2: try raw parse first (fast path)
+  // Step 2: try raw parse (fast path)
   try { return JSON.parse(extracted); } catch(_) {}
-  // Step 3: sanitise bare control chars inside string values
+  // Step 3: sanitise control chars + trailing commas
   try {
     const sanitized = extracted
       .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, ' ')
       .replace(/(?<!\\)\n(?=(?:[^"]*"[^"]*")*[^"]*"[^"]*$)/g, '\\n')
-      .replace(/,\s*([\]\}])/g, '$1');  // trailing commas
+      .replace(/,\s*([\]\}])/g, '$1');
     return JSON.parse(sanitized);
   } catch(_) {}
-  // Step 4: brute-force — escape all newlines, strip control chars
+  // Step 4: brute-force — escape all newlines/tabs/control chars
   try {
     const brute = extracted
       .replace(/\r/g, '')
@@ -2882,9 +2885,25 @@ function safeParseLLM(raw, type = 'object') {
       .replace(/[\x00-\x1f]/g, ' ')
       .replace(/,\s*([\]\}])/g, '$1');
     return JSON.parse(brute);
-  } catch(e) {
-    throw new Error(`LLM JSON parse failed after recovery: ${e.message}`);
-  }
+  } catch(_) {}
+  // Step 5: nuclear — re-slice from raw, kill everything non-printable
+  try {
+    const open = type === 'array' ? '[' : '{';
+    const close = type === 'array' ? ']' : '}';
+    const first = stripped.indexOf(open);
+    const last = stripped.lastIndexOf(close);
+    if (first !== -1 && last > first) {
+      const sliced = stripped.slice(first, last + 1)
+        .replace(/[\x00-\x1f]/g, ' ')
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '')
+        .replace(/\t/g, '\\t')
+        .replace(/,\s*([\]\}])/g, '$1');
+      return JSON.parse(sliced);
+    }
+  } catch(_) {}
+  console.error('[safeParseLLM] All recovery failed. First 300 chars:', stripped.slice(0, 300));
+  throw new Error('LLM JSON parse failed after recovery — response was not valid JSON');
 }
 
 app.get('/api/geo-strategist/briefs', requireAuth, async (req, res) => {
