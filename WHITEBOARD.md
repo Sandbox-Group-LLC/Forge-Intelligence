@@ -6,6 +6,46 @@
 
 ---
 
+## Session — April 12, 2026
+
+### Infrastructure — Env Var Recovery
+- Rogue Claude agent wiped ~30 env vars from Render services before being vanished
+- `ANTHROPIC_API_KEY` missing from both services — root cause of Campaign Generator auth error ("Could not resolve authentication method")
+- Recovered 5 vars from orphan env groups (ADMIN_PASSWORD, PIPEDREAM_CLIENT_ID/SECRET/ENV/PROJECT_ID)
+- Recovered 4 vars from dev service (HUBSPOT_CLIENT_SECRET, NEON_AUTH_JWKS_URL, WEBFLOW_CLIENT_ID/SECRET)
+- Set BASE_URL + all OAuth redirect URIs (LinkedIn, HubSpot, Webflow, GSC) — deterministic from server.js fallbacks
+- Brian manually restored remaining 7 vars via Render dashboard into linked env group
+- Final state: ~52 effective vars (service-level + linked env group) — back to target
+- LinkedIn org OAuth vars shelved — pending MDP approval
+- **Critical rule added:** NEVER use Render PUT /env-vars API — it replaces ALL vars and causes race condition wipes. All env var changes go through Render dashboard manually.
+
+### Database Relay
+- `/api/admin/relay` endpoint already existed in server.js (SQL relay via POST with adminPassword)
+- Set ADMIN_PASSWORD on both services: `zp3wlGP0uft-KRjZDtf6Er6Fn6U3RaSPgBzWK_L3Vtg`
+- Removed dead duplicate "AI Relay" at line 8857 (same route, never reached) — both branches
+
+### Compliance Gate — JSON Parse Hardening
+- Root cause: compliance critique endpoint had naked `JSON.parse()` — no sanitization, no recovery
+- Rogue agent had apparently added then removed a `sanitizeJson` function, leaving bare parses everywhere
+- Built `safeParseLLM()` — shared utility for all LLM JSON parsing:
+  - Step 0: Strip markdown code fences (` ```json `)
+  - Step 1: `extractJSON()` for clean block extraction
+  - Step 2: Regex sanitize control chars + trailing commas
+  - Step 3: Brute-force escape all newlines/tabs/control chars
+  - Graceful error if all recovery fails
+- Replaced 7 naked `JSON.parse` calls across: topic-check, brain-distill, extract-patterns, context-hub, email-campaign, campaign-plan, compliance critique
+- `sanitizeJson` references in README are aspirational — function never existed. `extractJSON` + `safeParseLLM` are the actual utilities.
+
+### Data Cleanup
+- Wiped stuck Sandbox-GTM campaign "Event-to-Pipeline Attribution: Full-Funnel Authority Campaign"
+  - Deleted: 1 campaign, 8 campaign_articles, 8 generated_content, 8 publishing_queue (all staged/draft)
+  - Zero brain_mistakes linked — clean wipe
+
+### README
+- Fixed date typo: April 12 → April 11 in Platform Status header and Updated footer (both branches)
+
+---
+
 ## Session — April 9, 2026 (continued)
 
 ### Pre-cog Predictions — UI Overhaul
