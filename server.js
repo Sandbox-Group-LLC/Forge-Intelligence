@@ -2226,6 +2226,15 @@ app.post('/api/context-hub/analyze', softAuth, async (req, res) => {
   if (!brandUrl) {
     return res.status(400).json({ success: false, error: 'brandUrl is required' });
   }
+  // Validate domain format — block gibberish / bot submissions
+  const domainCleaned = brandUrl.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].split('?')[0];
+  if (!domainCleaned.includes('.') || !/^[a-zA-Z0-9.-]+$/.test(domainCleaned)) {
+    return res.status(400).json({ success: false, error: 'Invalid domain format' });
+  }
+  const tld = domainCleaned.split('.').pop();
+  if (!tld || tld.length < 2 || !/^[a-zA-Z]+$/.test(tld)) {
+    return res.status(400).json({ success: false, error: 'Invalid domain — must have a valid TLD (e.g. .com, .io)' });
+  }
 
   const domainToName = (url) => {
     const clean = url.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].split('.')[0];
@@ -2845,17 +2854,21 @@ function extractJSON(text, type = 'object') {
 // Not a library. Not an npm package. Just a dev who got tired of Claude's newlines.
 // ── Shared LLM JSON parser — sanitise + recover ──────────────────────────────
 function safeParseLLM(raw, type = 'object') {
-  // Strip markdown code fences Claude loves to wrap JSON in
+  // Step 0: strip markdown code fences Claude loves to wrap JSON in
   const stripped = raw.replace(/```(?:json)?\s*/g, '').trim();
+  // Step 1: extract clean JSON block
   const extracted = extractJSON(stripped, type) || stripped;
+  // Step 2: try raw parse first (fast path)
   try { return JSON.parse(extracted); } catch(_) {}
+  // Step 3: sanitise bare control chars inside string values
   try {
     const sanitized = extracted
       .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, ' ')
       .replace(/(?<!\\)\n(?=(?:[^"]*"[^"]*")*[^"]*"[^"]*$)/g, '\\n')
-      .replace(/,\s*([\]\}])/g, '$1');
+      .replace(/,\s*([\]\}])/g, '$1');  // trailing commas
     return JSON.parse(sanitized);
   } catch(_) {}
+  // Step 4: brute-force — escape all newlines, strip control chars
   try {
     const brute = extracted
       .replace(/\r/g, '')
@@ -4357,29 +4370,7 @@ Return ONLY valid JSON in this exact structure:
     const critiqueData = await critiqueRes.json();
     const rawText = critiqueData.content?.[0]?.text || '{}';
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-    // Sanitise control chars inside JSON strings + recovery
-    let report;
-    try {
-      const extracted = extractJSON(rawText, 'object') || (jsonMatch ? jsonMatch[0] : rawText);
-      const sanitized = extracted.replace(/(?<=":[ ]*"(?:[^"\\]|\\.)*)([\x00-\x1f])/g, (m, ch) => {
-        if (ch === '\n') return '\\n';
-        if (ch === '\t') return '\\t';
-        if (ch === '\r') return '';
-        return '';
-      });
-      report = JSON.parse(sanitized);
-    } catch(parseErr) {
-      try {
-        const brute = (jsonMatch ? jsonMatch[0] : rawText)
-          .replace(/[\x00-\x09\x0b\x0c\x0e-\x1f]/g, ' ')
-          .replace(/\n/g, '\\n')
-          .replace(/\r/g, '');
-        report = JSON.parse(brute);
-      } catch(e2) {
-        console.error('[COMPLIANCE] JSON recovery failed:', parseErr.message);
-        return res.status(500).json({ success: false, error: 'AI returned malformed JSON — please retry' });
-      }
-    }
+    const report = safeParseLLM(rawText);
 
     // Normalise sectionIndex to 0-based — Claude sometimes returns 1-based
     if (report.flags?.length && articleJson?.sections?.length) {
