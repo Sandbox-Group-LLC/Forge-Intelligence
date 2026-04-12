@@ -2774,9 +2774,8 @@ function normalizeGeoData(briefData, topicalMap, geoOpportunities, entitySchema,
 
 // Extracts the first complete JSON object or array from a string — handles trailing text/markdown
 function extractJSON(text, type = 'object') {
-  const open = type === 'array' ? '[' : '{';
-  const close = type === 'array' ? ']' : '}';
-  const start = text.indexOf(open);
+  // Strip markdown code fences Claude sometimes wraps JSON in
+  text = text.replace(/^
   if (start === -1) return null;
   let depth = 0;
   for (let i = start; i < text.length; i++) {
