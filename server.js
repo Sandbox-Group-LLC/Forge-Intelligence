@@ -1448,7 +1448,7 @@ Evaluate the user's topic against this brand's performance data and return ONLY 
     const aiData = await aiRes.json();
     const raw = aiData.content?.[0]?.text || '{}';
     const clean = raw.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(clean);
+    let parsed; try { parsed = JSON.parse(clean); } catch(e) { const s = clean.replace(/:\s*"([\s\S]*?)"/g, (m,v) => ': "' + v.replace(/\n/g,' ').replace(/\r/g,' ') + '"'); try { parsed = JSON.parse(s); } catch(e2) { parsed = { signal: 'strong', confidence: 'Check unavailable', reason: 'Parse error — proceed with generation.', reframe: null }; } }
     res.json({ success: true, ...parsed });
   } catch(e) {
     console.error('[TOPIC-CHECK]', e.message);
@@ -3815,7 +3815,8 @@ Return ONLY valid JSON matching the output format. No markdown, no commentary.`;
 
     const raw = message.content[0].text;
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    const plan = JSON.parse(jsonMatch ? jsonMatch[0] : raw);
+    const jsonStr3818 = jsonMatch ? jsonMatch[0] : raw;
+    let plan; try { plan = JSON.parse(jsonStr3818); } catch(e) { const s = jsonStr3818.replace(/:\s*"([\s\S]*?)"/g, (m,v) => ': "' + v.replace(/\n/g,' ').replace(/\r/g,' ') + '"'); try { plan = JSON.parse(s); } catch(e2) { return res.status(500).json({ error: 'Claude returned unparseable JSON — please retry.' }); } }
 
     res.json({ success: true, plan });
   } catch (err) {
@@ -8198,7 +8199,8 @@ Return ONLY valid JSON:
     });
     const auditData = await auditRes.json();
     const auditText = auditData.content?.[0]?.text || '';
-    const parsed = JSON.parse(auditText.replace(/```json|```/g, '').trim());
+    const auditClean = auditText.replace(/```json|```/g, '').trim();
+    let parsed; try { parsed = JSON.parse(auditClean); } catch(e) { const s = auditClean.replace(/:\s*"([\s\S]*?)"/g, (m,v) => ': "' + v.replace(/\n/g,' ').replace(/\r/g,' ') + '"'); try { parsed = JSON.parse(s); } catch(e2) { return res.status(500).json({ error: 'Audit parse error — please retry.' }); } }
 
     // 5. Insert into generated_content as 'imported' status
     const insertRes = await pool.query(
