@@ -64,7 +64,7 @@
 ### Brand Scoping (Critical)
 - **Every page** reads `activeBrand` from `useApp()` — the single source of truth for `brandProfileId`
 - No page fetches `/api/context-hub/brains` without an auth token
-- No page renders a brand picker dropdown (production is single-brand per user)
+- Brand picker dropdown visible only to super admin — regular users see their single brand only
 - All API endpoints that touch brand data require `requireAuth`
 - Admin stats scoped to `WHERE clerk_user_id = $1` — no cross-user data
 
@@ -103,8 +103,8 @@
 
 | Component | Production | Main (Dev) |
 |-----------|-----------|------------|
-| `TopBar.tsx` | No brand switcher | Multi-brand dropdown |
-| `AppContext.tsx` | Single brand, Clerk auth | Multi-brand, isSuperAdmin, allBrands, switchBrand |
+| `TopBar.tsx` | Brand switcher (super admin only) | Multi-brand dropdown |
+| `AppContext.tsx` | Single brand default, super admin can switch | Multi-brand, isSuperAdmin, allBrands, switchBrand |
 | Auth pattern | Clerk + requireAuth everywhere | Same + super admin brian@sandbox-xm.com |
 
 ---
