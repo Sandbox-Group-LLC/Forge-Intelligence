@@ -9241,6 +9241,172 @@ app.get('/api/digest/unsubscribe/:token', async (req, res) => {
   }
 });
 
+// ── Manual Analytics Entry ────────────────────────────────────────────────────
+// POST /api/analytics/manual-entry — lets users log performance data for posts published outside Forge
+app.post('/api/analytics/manual-entry', requireAuth, async (req, res) => {
+  const { brandProfileId, contentId, channel, postUrl, impressions, clicks, reactions, comments, reposts, publishedAt } = req.body;
+  if (!brandProfileId || !channel) return res.status(400).json({ error: 'brandProfileId and channel required' });
+  if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+  try {
+    // If contentId provided, verify it belongs to this brand
+    let resolvedContentId = contentId;
+    if (!resolvedContentId) {
+      // Create a synthetic content_id from the post URL or generate one
+      resolvedContentId = `manual_${channel}_${randomBytes(8).toString('hex')}`;
+    }
+    const imp = parseInt(impressions) || 0;
+    const clk = parseInt(clicks) || 0;
+    const rea = parseInt(reactions) || 0;
+    const com = parseInt(comments) || 0;
+    const rep = parseInt(reposts) || 0;
+    const totalEng = rea + com + rep + clk;
+    const ctr = imp > 0 ? parseFloat((clk / imp * 100).toFixed(2)) : 0;
+    const engRate = imp > 0 ? parseFloat((totalEng / imp * 100).toFixed(2)) : 0;
+
+    await pool.query(`ALTER TABLE content_analytics ADD COLUMN IF NOT EXISTS source VARCHAR(20) DEFAULT 'api'`).catch(() => {});
+
+    await pool.query(
+      `INSERT INTO content_analytics
+         (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts,
+          ctr, engagement_rate, raw_data, published_at, synced_at, source)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),'manual')
+       ON CONFLICT (brand_profile_id, content_id, channel) DO UPDATE SET
+         impressions=EXCLUDED.impressions, clicks=EXCLUDED.clicks,
+         reactions=EXCLUDED.reactions, comments=EXCLUDED.comments, reposts=EXCLUDED.reposts,
+         ctr=EXCLUDED.ctr, engagement_rate=EXCLUDED.engagement_rate,
+         raw_data=EXCLUDED.raw_data, synced_at=NOW(), source='manual'`,
+      [
+        brandProfileId, resolvedContentId, channel, postUrl || null,
+        imp, clk, rea, com, rep, ctr, engRate,
+        JSON.stringify({ postUrl, manualEntry: true, enteredAt: new Date().toISOString() }),
+        publishedAt || null
+      ]
+    );
+
+    // If a postUrl was provided and it's a LinkedIn URL, also write to publish_log so it shows in the queue
+    if (postUrl && channel === 'linkedin' && contentId) {
+      await pool.query(
+        `INSERT INTO publish_log (queue_item_id, brand_profile_id, content_id, channel, status, published_url, response_data)
+         SELECT id, brand_profile_id, content_id, 'linkedin', 'published', $1, $2
+         FROM publishing_queue WHERE content_id = $3 AND brand_profile_id = $4
+         ON CONFLICT DO NOTHING`,
+        [postUrl, JSON.stringify({ postUrl, manualEntry: true }), contentId, brandProfileId]
+      ).catch(() => {});
+    }
+
+    res.json({ success: true, contentId: resolvedContentId, channel, impressions: imp, clicks: clk, reactions: rea });
+  } catch(e) {
+    console.error('[MANUAL-ENTRY]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/analytics/import-linkedin-csv — parse LinkedIn Company Page analytics export
+// LinkedIn exports a CSV with columns: Post, Date, Impressions, Clicks, CTR, Likes, Comments, Reposts, Engagement Rate
+app.post('/api/analytics/import-linkedin-csv', requireAuth, async (req, res) => {
+  const { brandProfileId, csvData } = req.body;
+  if (!brandProfileId || !csvData) return res.status(400).json({ error: 'brandProfileId and csvData required' });
+  if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+  try {
+    await pool.query(`ALTER TABLE content_analytics ADD COLUMN IF NOT EXISTS source VARCHAR(20) DEFAULT 'api'`).catch(() => {});
+
+    const lines = csvData.trim().split('\n');
+    if (lines.length < 2) return res.status(400).json({ error: 'CSV must have at least a header row and one data row' });
+
+    // Parse header — LinkedIn exports are inconsistent, so we do fuzzy column matching
+    const header = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/[^a-z0-9]/g, ''));
+    const col = (names) => {
+      for (const name of names) {
+        const idx = header.findIndex(h => h.includes(name));
+        if (idx !== -1) return idx;
+      }
+      return -1;
+    };
+
+    const colPost        = col(['post', 'url', 'link', 'title', 'content']);
+    const colDate        = col(['date', 'publishdate', 'published']);
+    const colImpressions = col(['impression', 'views', 'reach']);
+    const colClicks      = col(['click']);
+    const colLikes       = col(['like', 'reaction', 'thumbs']);
+    const colComments    = col(['comment']);
+    const colReposts     = col(['repost', 'share', 'reshare']);
+    const colCtr         = col(['ctr', 'clickthrough', 'clickrate']);
+    const colEngRate     = col(['engagementrate', 'engagement']);
+
+    if (colImpressions === -1 && colClicks === -1) {
+      return res.status(400).json({ error: 'Could not find impressions or clicks columns. Make sure you\'re uploading a LinkedIn analytics export CSV.' });
+    }
+
+    const parseNum = (val) => {
+      if (!val) return 0;
+      const clean = String(val).replace(/[^0-9.%]/g, '').replace(/%$/, '');
+      return parseFloat(clean) || 0;
+    };
+
+    let imported = 0;
+    const rows = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      // Handle quoted CSV fields
+      const cols = line.match(/(".*?"|[^,]+)(?=\s*,|\s*$)/g)?.map(c => c.replace(/^"|"$/g, '').trim()) || line.split(',').map(c => c.trim());
+
+      const postUrl   = colPost !== -1 ? cols[colPost] || null : null;
+      const dateStr   = colDate !== -1 ? cols[colDate] || null : null;
+      const imp       = colImpressions !== -1 ? parseNum(cols[colImpressions]) : 0;
+      const clk       = colClicks !== -1 ? parseNum(cols[colClicks]) : 0;
+      const rea       = colLikes !== -1 ? parseNum(cols[colLikes]) : 0;
+      const com       = colComments !== -1 ? parseNum(cols[colComments]) : 0;
+      const rep       = colReposts !== -1 ? parseNum(cols[colReposts]) : 0;
+      const ctr       = colCtr !== -1 ? parseNum(cols[colCtr]) : (imp > 0 ? parseFloat((clk / imp * 100).toFixed(2)) : 0);
+      const engRate   = colEngRate !== -1 ? parseNum(cols[colEngRate]) : (imp > 0 ? parseFloat(((rea + com + rep + clk) / imp * 100).toFixed(2)) : 0);
+
+      if (imp === 0 && clk === 0 && rea === 0) continue; // skip empty rows
+
+      // Try to match post URL to a content_id in publishing_queue or publish_log
+      let contentId = `csv_linkedin_${randomBytes(6).toString('hex')}`;
+      if (postUrl) {
+        const logMatch = await pool.query(
+          `SELECT pl.content_id FROM publish_log pl WHERE pl.brand_profile_id = $1 AND pl.published_url LIKE $2 LIMIT 1`,
+          [brandProfileId, `%${postUrl.split('/').pop()}%`]
+        ).catch(() => ({ rows: [] }));
+        if (logMatch.rows.length) contentId = logMatch.rows[0].content_id;
+      }
+
+      let publishedAt = null;
+      if (dateStr) {
+        try { publishedAt = new Date(dateStr).toISOString(); } catch { /* keep null */ }
+      }
+
+      await pool.query(
+        `INSERT INTO content_analytics
+           (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts,
+            ctr, engagement_rate, raw_data, published_at, synced_at, source)
+         VALUES ($1,$2,'linkedin',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW(),'manual')
+         ON CONFLICT (brand_profile_id, content_id, channel) DO UPDATE SET
+           impressions=GREATEST(content_analytics.impressions, EXCLUDED.impressions),
+           clicks=GREATEST(content_analytics.clicks, EXCLUDED.clicks),
+           reactions=GREATEST(content_analytics.reactions, EXCLUDED.reactions),
+           comments=GREATEST(content_analytics.comments, EXCLUDED.comments),
+           reposts=GREATEST(content_analytics.reposts, EXCLUDED.reposts),
+           ctr=EXCLUDED.ctr, engagement_rate=EXCLUDED.engagement_rate,
+           raw_data=EXCLUDED.raw_data, synced_at=NOW(), source='manual'`,
+        [brandProfileId, contentId, postUrl, imp, clk, rea, com, rep, ctr, engRate,
+         JSON.stringify({ postUrl, date: dateStr, csvImport: true, importedAt: new Date().toISOString() }),
+         publishedAt]
+      );
+      imported++;
+      rows.push({ contentId, postUrl, impressions: imp, clicks: clk, reactions: rea });
+    }
+
+    res.json({ success: true, imported, rows });
+  } catch(e) {
+    console.error('[CSV-IMPORT]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 app.post('/api/utils/shorten-url', async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: 'url required' });
