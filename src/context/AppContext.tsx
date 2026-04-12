@@ -163,13 +163,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
+      console.log('[Auth] /api/auth/me →', { success: data.success, isSuperAdmin: data.isSuperAdmin, allBrandsCount: data.allBrands?.length, brandId: data.brand?.id });
 
       if (data.success) {
         setIsSuperAdmin(data.isSuperAdmin || false);
 
-        if (data.allBrands) {
-          setAllBrands(data.allBrands);
-        }
+        // Always set allBrands from API response — even empty array keeps switcher visible
+        setAllBrands(data.allBrands || []);
 
         if (data.brand) {
           const brand: BrandMini = {
@@ -184,9 +184,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         const brains = await fetchBrains(token);
         setHistoryEntries(brains);
+      } else {
+        console.warn('[Auth] /api/auth/me returned success=false:', data);
       }
     } catch (err) {
-      console.error('[AppContext] Auth load failed:', err);
+      console.error('[Auth] loadAuth failed:', err);
     } finally {
       setIsAuthLoading(false);
     }

@@ -71,23 +71,27 @@ const pathTitles: Record<string, string> = {
 };
 
 export function TopBar({ pageTitle }: { pageTitle?: string }) {
-  const { currentView, brandProfile, sidebarCollapsed, setSidebarCollapsed, allBrands, switchBrand, activeBrandId } = useApp();
+  const { currentView, brandProfile, sidebarCollapsed, setSidebarCollapsed, allBrands, switchBrand, activeBrandId, isSuperAdmin } = useApp();
   const { user } = useUser();
   const { openUserProfile } = useClerk();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [brandMenuOpen, setBrandMenuOpen] = useState(false);
+  const brandMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!menuOpen) return;
+    if (!menuOpen && !brandMenuOpen) return;
     const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      if (menuOpen && menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
+      }
+      if (brandMenuOpen && brandMenuRef.current && !brandMenuRef.current.contains(e.target as Node)) {
+        setBrandMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [menuOpen]);
-  const [brandMenuOpen, setBrandMenuOpen] = useState(false);
+  }, [menuOpen, brandMenuOpen]);
 
   const currentBrand = allBrands?.find(b => b.id === activeBrandId) || allBrands?.[0];
 
@@ -114,8 +118,8 @@ export function TopBar({ pageTitle }: { pageTitle?: string }) {
 
       <div className="topbar-right">
         {/* Super Admin Brand Switcher */}
-        {allBrands && (
-          <div style={{ position: 'relative' }}>
+        {allBrands && allBrands.length > 0 && (
+          <div style={{ position: 'relative' }} ref={brandMenuRef}>
             <button
               onClick={() => setBrandMenuOpen(o => !o)}
               style={{
@@ -155,7 +159,6 @@ export function TopBar({ pageTitle }: { pageTitle?: string }) {
                   zIndex: 999,
                   boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
                 }}
-                onMouseLeave={() => setBrandMenuOpen(false)}
               >
                 <div style={{ padding: '8px 16px 10px', borderBottom: '1px solid rgba(255,255,255,0.08)', fontSize: '0.7rem', fontWeight: 600, color: 'rgba(99, 102, 241, 0.8)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   {allBrands.length} Brands
