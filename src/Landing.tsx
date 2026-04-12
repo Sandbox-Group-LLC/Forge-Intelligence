@@ -26,6 +26,7 @@ export default function Landing() {
   const [url, setUrl] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [error, setError] = useState('');
+  const [claimed, setClaimed] = useState(false);
   const [returning, setReturning] = useState<{ brandUrl: string; brandName: string; expiresAt: string | null } | null>(null);
 
   // Check for existing unexpired brain on mount
@@ -45,13 +46,52 @@ export default function Landing() {
     } catch { /* silent */ }
   }, []);
 
+  useEffect(() => {
+    const onBlocked = (e: Event) => {
+      const msg = (e as CustomEvent).detail?.message || 'This domain already has a Brain. Sign in to access it.';
+      setError(msg);
+      setStatus('idle');
+    };
+    window.addEventListener('forge:scan-blocked', onBlocked);
+    return () => window.removeEventListener('forge:scan-blocked', onBlocked);
+  }, []);
+
+  const isValidDomain = (input: string): boolean => {
+    const cleaned = input.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].split('?')[0];
+    if (!cleaned.includes('.')) return false;
+    if (!/^[a-zA-Z0-9.-]+$/.test(cleaned)) return false;
+    const parts = cleaned.split('.');
+    const tld = parts[parts.length - 1];
+    if (tld.length < 2 || !/^[a-zA-Z]+$/.test(tld)) return false;
+    for (const part of parts) {
+      if (!part || part.startsWith('-') || part.endsWith('-')) return false;
+    }
+    return true;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = url.trim();
     if (!trimmed) { setError('Enter your website URL to get started.'); return; }
+    if (!isValidDomain(trimmed)) { setError('Please enter a valid domain (e.g. yourcompany.com).'); return; }
     setStatus('loading');
     setError('');
     const brandUrl = trimmed.startsWith('http') ? trimmed : `https://${trimmed}`;
+    // Check if domain is already claimed before going any further
+    try {
+      const check = await fetch('/api/domain/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: brandUrl }),
+      });
+      const data = await check.json();
+      if (data.claimed) {
+        setClaimed(true);
+        setStatus('idle');
+        return;
+      }
+    } catch { /* non-fatal — let Context Hub handle it */ }
+
     await handleLookup(brandUrl);
     sessionStorage.setItem('forge_onboard_url', brandUrl);
     window.location.href = '/app/context-hub?view=active-run';
@@ -103,7 +143,31 @@ export default function Landing() {
             Enter your URL. We'll read your brand to filth — voice profile, audience signals, competitive gaps — in under 10 minutes. Free.
           </p>
 
-          {returning ? (
+          {claimed ? (
+            <div style={{ textAlign: 'center', padding: '32px 0' }}>
+              <div style={{ fontSize: 32, marginBottom: 16 }}>
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+                </svg>
+              </div>
+              <h2 style={{ color: '#F8FAFC', fontSize: '1.25rem', fontWeight: 700, marginBottom: 8 }}>This domain is already claimed.</h2>
+              <p style={{ color: '#94A3B8', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: 20 }}>
+                A brand profile for this domain exists and is tied to another account.<br />
+                If this is your brand, sign in to access it.
+              </p>
+              <a href="https://accounts.forgeintelligence.ai/sign-in" style={{ display: 'inline-block', padding: '10px 28px', background: '#3563FF', color: '#fff', borderRadius: 8, fontSize: '0.875rem', fontWeight: 600, textDecoration: 'none', marginBottom: 16 }}>
+                Sign In to Your Account
+              </a>
+              <p style={{ color: '#64748B', fontSize: '0.75rem', lineHeight: 1.6 }}>
+                Believe this is a mistake?{' '}
+                <a href="mailto:hello@forgeintelligence.ai" style={{ color: '#64748B', textDecoration: 'underline' }}>Contact us</a>
+                {' '}with proof of domain ownership and we'll make it right.
+              </p>
+              <button onClick={() => { setClaimed(false); setUrl(''); }} style={{ marginTop: 12, background: 'none', border: 'none', color: '#64748B', fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'underline' }}>
+                Try a different domain
+              </button>
+            </div>
+          ) : returning ? (
             // Returning user — brain still alive
             <div style={styles.returningCard}>
               <div style={styles.returningDot} />
