@@ -5,30 +5,6 @@ import { fileURLToPath } from 'url';
 import pkg from 'pg';
 import Anthropic from '@anthropic-ai/sdk';
 import { randomUUID, randomBytes, createHmac } from 'crypto';
-
-// ── Shared utility: sanitize LLM JSON output before parsing ─────────────────
-// Claude sometimes emits literal newlines/tabs inside string values.
-// Walk char-by-char, escape bare control chars inside strings only.
-function sanitizeJson(str) {
-  let result = '';
-  let inString = false;
-  let escape = false;
-  for (let i = 0; i < str.length; i++) {
-    const ch = str[i];
-    if (escape) { result += ch; escape = false; continue; }
-    if (ch === '\\') { escape = true; result += ch; continue; }
-    if (ch === '"') { inString = !inString; result += ch; continue; }
-    if (inString) {
-      if (ch === '\n') { result += '\\n'; continue; }
-      if (ch === '\r') { result += '\\r'; continue; }
-      if (ch === '\t') { result += '\\t'; continue; }
-      if (ch.charCodeAt(0) < 32) continue;
-    }
-    result += ch;
-  }
-  return result;
-}
-
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
 const { Pool } = pkg;
@@ -60,10 +36,18 @@ function buildXOAuthHeader(method, url, apiKey, apiSecret, accessToken, accessSe
     .map(([k, v]) => `${encodeURIComponent(k)}="${encodeURIComponent(v)}"`)
     .join(', ');
 }
+
+
+
 const PORT = process.env.PORT || 3000;
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const CLERK_JWKS_URL = process.env.CLERK_JWKS_URL || 'https://clerk.forgeintelligence.ai/.well-known/jwks.json';
 const clerkJWKS = createRemoteJWKSet(new URL(CLERK_JWKS_URL));
+// Super Admin user IDs (Clerk) — full access to all brands
+const SUPER_ADMIN_IDS = [
+  'user_3BtC7nusm7CShN7EdUYaaLZcDwp', // brian@sandbox-xm.com
+];
+
 
 const pool = new Pool({ connectionString: process.env.NEON_DATABASE_URL });
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 1200000 }); // 20min
@@ -313,51 +297,6 @@ async function initDB() {
   } catch(e) {
     console.log('NeonDB: enriched_briefs init note:', e.message);
   }
-  // ── Row Level Security — orphan brand prevention ─────────────────────────
-  const rlsTables = [
-    'publishing_queue', 'publishing_channels', 'content_analytics',
-    'brain_patterns', 'brain_mistakes', 'geo_briefs', 'geo_citations',
-    'decay_alerts', 'precog_outcomes', 'topic_ideas', 'reviewers', 'memories',
-  ];
-  for (const tbl of rlsTables) {
-    try {
-      await pool.query(`ALTER TABLE ${tbl} ENABLE ROW LEVEL SECURITY`);
-      await pool.query(`ALTER TABLE ${tbl} FORCE ROW LEVEL SECURITY`);
-      await pool.query(`DROP POLICY IF EXISTS no_orphan_brands ON ${tbl}`);
-      await pool.query(`
-        CREATE POLICY no_orphan_brands ON ${tbl}
-          USING (brand_profile_id IN (
-            SELECT id FROM brand_profiles WHERE clerk_user_id IS NOT NULL
-          ))
-      `);
-    } catch(e) { /* skip tables without brand_profile_id */ }
-  }
-  // publish_log — joins through queue
-  try {
-    await pool.query(`ALTER TABLE publish_log ENABLE ROW LEVEL SECURITY`);
-    await pool.query(`ALTER TABLE publish_log FORCE ROW LEVEL SECURITY`);
-    await pool.query(`DROP POLICY IF EXISTS no_orphan_brands ON publish_log`);
-    await pool.query(`
-      CREATE POLICY no_orphan_brands ON publish_log
-        USING (queue_item_id IN (
-          SELECT id FROM publishing_queue WHERE brand_profile_id IN (
-            SELECT id FROM brand_profiles WHERE clerk_user_id IS NOT NULL
-          )
-        ))
-    `);
-  } catch(e) { console.log('[RLS] publish_log:', e.message); }
-  console.log('[SECURITY] RLS policies applied');
-
-  // Purge orphaned brain data on every boot
-  try {
-    const [op, om] = await Promise.all([
-      pool.query(`DELETE FROM brain_patterns WHERE brand_profile_id NOT IN (SELECT id FROM brand_profiles WHERE clerk_user_id IS NOT NULL)`),
-      pool.query(`DELETE FROM brain_mistakes WHERE brand_profile_id NOT IN (SELECT id FROM brand_profiles WHERE clerk_user_id IS NOT NULL)`),
-    ]);
-    if (op.rowCount || om.rowCount) console.log(`[SECURITY] Purged orphans: ${op.rowCount} patterns, ${om.rowCount} mistakes`);
-  } catch(e) { console.log('[SECURITY] Orphan purge:', e.message); }
-
-
 }
 
   // ── geo_briefs: add opportunity_score column if missing ─────────────────────
@@ -531,31 +470,6 @@ async function initDB() {
 
 
 
-    // Backfill: stage any approved articles that aren't in the queue yet
-    try {
-      const bpRows = await pool.query(`SELECT id FROM brand_profiles WHERE is_active = true`);
-      for (const bp of bpRows.rows) {
-        const safeId = bp.id.replace(/-/g, '_');
-        const tableName = `generated_content_${safeId}`;
-        const tableExists = await pool.query(
-          `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name=$1`,
-          [tableName]
-        );
-        if (!tableExists.rows.length) continue;
-        const approved = await pool.query(
-          `SELECT id, title FROM ${tableName} WHERE compliance_status = 'approved'`
-        ).catch(() => ({ rows: [] }));
-        for (const art of approved.rows) {
-          await pool.query(
-            `INSERT INTO publishing_queue (brand_profile_id, content_id, title, status, created_at, updated_at)
-             VALUES ($1, $2, $3, 'staged', NOW(), NOW())
-             ON CONFLICT (content_id) DO NOTHING`,
-            [bp.id, art.id, art.title || 'Untitled']
-          ).catch(() => {});
-        }
-        if (approved.rows.length > 0) console.log(`[BACKFILL] Staged ${approved.rows.length} approved article(s) for brand ${bp.id}`);
-      }
-    } catch(e) { console.log('[BACKFILL] Note:', e.message); }
 
 
 
@@ -563,31 +477,8 @@ async function initDB() {
 
 
 
-    // Backfill: stage any approved articles that aren't in the queue yet
-    try {
-      const bpRows = await pool.query(`SELECT id FROM brand_profiles WHERE is_active = true`);
-      for (const bp of bpRows.rows) {
-        const safeId = bp.id.replace(/-/g, '_');
-        const tableName = `generated_content_${safeId}`;
-        const tableExists = await pool.query(
-          `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name=$1`,
-          [tableName]
-        );
-        if (!tableExists.rows.length) continue;
-        const approved = await pool.query(
-          `SELECT id, title FROM ${tableName} WHERE compliance_status = 'approved'`
-        ).catch(() => ({ rows: [] }));
-        for (const art of approved.rows) {
-          await pool.query(
-            `INSERT INTO publishing_queue (brand_profile_id, content_id, title, status, created_at, updated_at)
-             VALUES ($1, $2, $3, 'staged', NOW(), NOW())
-             ON CONFLICT (content_id) DO NOTHING`,
-            [bp.id, art.id, art.title || 'Untitled']
-          ).catch(() => {});
-        }
-        if (approved.rows.length > 0) console.log(`[BACKFILL] Staged ${approved.rows.length} approved article(s) for brand ${bp.id}`);
-      }
-    } catch(e) { console.log('[BACKFILL] Note:', e.message); }
+
+
 
 
 
@@ -609,6 +500,44 @@ async function initDB() {
     )`);
     console.log('NeonDB: Publishing tables ensured');
 
+
+    // ── precog_outcomes table ──────────────────────────────────────────────────
+    await pool.query(`CREATE TABLE IF NOT EXISTS precog_outcomes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      brand_profile_id TEXT NOT NULL,
+      content_id TEXT NOT NULL,
+      predicted_signal TEXT,
+      predicted_impressions_low INTEGER,
+      predicted_impressions_high INTEGER,
+      avg_impressions_at_prediction FLOAT,
+      actual_impressions INTEGER,
+      actual_clicks INTEGER,
+      direction_correct BOOLEAN,
+      in_range BOOLEAN,
+      measured_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(brand_profile_id, content_id)
+    )`).catch(() => {});
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_precog_brand ON precog_outcomes(brand_profile_id)`).catch(() => {});
+
+    // ── brain_patterns extended columns ────────────────────────────────────────
+    await pool.query(`ALTER TABLE brain_patterns ADD COLUMN IF NOT EXISTS source_channel TEXT`).catch(() => {});
+    await pool.query(`ALTER TABLE brain_patterns ADD COLUMN IF NOT EXISTS example_titles JSONB DEFAULT '[]'`).catch(() => {});
+    await pool.query(`ALTER TABLE brain_patterns ADD COLUMN IF NOT EXISTS last_validated_at TIMESTAMPTZ`).catch(() => {});
+    await pool.query(`ALTER TABLE brain_patterns ADD COLUMN IF NOT EXISTS success_rate FLOAT DEFAULT 0`).catch(() => {});
+
+    // ── precog columns on generated_content tables ─────────────────────────────
+    try {
+      const gcTables2 = await pool.query(`
+        SELECT table_name FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name LIKE 'generated_content_%'
+      `);
+      for (const row of gcTables2.rows) {
+        await pool.query(`ALTER TABLE ${row.table_name} ADD COLUMN IF NOT EXISTS precog_score INTEGER`).catch(() => {});
+        await pool.query(`ALTER TABLE ${row.table_name} ADD COLUMN IF NOT EXISTS precog_breakdown JSONB`).catch(() => {});
+        await pool.query(`ALTER TABLE ${row.table_name} ADD COLUMN IF NOT EXISTS precog_scored_at TIMESTAMPTZ`).catch(() => {});
+      }
+    } catch(e) { console.log('[MIGRATION] precog cols note:', e.message); }
 
     // Reviewers table
     await pool.query(`CREATE TABLE IF NOT EXISTS reviewers (
@@ -729,69 +658,54 @@ async function initDB() {
   } catch(e) { console.log('NeonDB: Brain tables note:', e.message); }
 
 
-  // precog_outcomes — prediction + actual side by side for accuracy tracking
+  // ── Row Level Security — orphan brand prevention ─────────────────────────
+  const rlsTables = [
+    'publishing_queue', 'publishing_channels', 'content_analytics',
+    'brain_patterns', 'brain_mistakes', 'geo_briefs', 'geo_citations',
+    'decay_alerts', 'precog_outcomes', 'topic_ideas', 'reviewers', 'memories',
+  ];
+  for (const tbl of rlsTables) {
+    try {
+      await pool.query(`ALTER TABLE ${tbl} ENABLE ROW LEVEL SECURITY`);
+      await pool.query(`ALTER TABLE ${tbl} FORCE ROW LEVEL SECURITY`);
+      await pool.query(`DROP POLICY IF EXISTS no_orphan_brands ON ${tbl}`);
+      await pool.query(`
+        CREATE POLICY no_orphan_brands ON ${tbl}
+          USING (brand_profile_id IN (
+            SELECT id FROM brand_profiles WHERE clerk_user_id IS NOT NULL
+          ))
+      `);
+    } catch(e) { /* skip tables without brand_profile_id */ }
+  }
+  // publish_log — joins through queue
   try {
+    await pool.query(`ALTER TABLE publish_log ENABLE ROW LEVEL SECURITY`);
+    await pool.query(`ALTER TABLE publish_log FORCE ROW LEVEL SECURITY`);
+    await pool.query(`DROP POLICY IF EXISTS no_orphan_brands ON publish_log`);
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS precog_outcomes (
-        id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-        brand_profile_id TEXT NOT NULL,
-        content_id TEXT NOT NULL,
-        predicted_score INTEGER NOT NULL,
-        predicted_tier TEXT NOT NULL,
-        predicted_impressions_low INTEGER,
-        predicted_impressions_high INTEGER,
-        predicted_signal TEXT NOT NULL,
-        avg_impressions_at_prediction FLOAT,
-        scored_at TIMESTAMPTZ DEFAULT NOW(),
-        actual_impressions INTEGER,
-        actual_clicks INTEGER,
-        direction_correct BOOLEAN,
-        in_range BOOLEAN,
-        measured_at TIMESTAMPTZ,
-        UNIQUE(brand_profile_id, content_id)
-      )
+      CREATE POLICY no_orphan_brands ON publish_log
+        USING (queue_item_id IN (
+          SELECT id FROM publishing_queue WHERE brand_profile_id IN (
+            SELECT id FROM brand_profiles WHERE clerk_user_id IS NOT NULL
+          )
+        ))
     `);
-    await pool.query(`CREATE INDEX IF NOT EXISTS precog_outcomes_brand_idx ON precog_outcomes(brand_profile_id)`);
-  } catch(e) { console.log('[MIGRATION] precog_outcomes note:', e.message); }
+  } catch(e) { console.log('[RLS] publish_log:', e.message); }
+  console.log('[SECURITY] RLS policies applied');
 
-  // Migration: add last_validated_at + source_channel to brain_patterns
+  // Purge orphaned brain data on every boot
   try {
-    await pool.query(`ALTER TABLE brain_patterns ADD COLUMN IF NOT EXISTS last_validated_at TIMESTAMPTZ`).catch(() => {});
-    await pool.query(`ALTER TABLE brain_patterns ADD COLUMN IF NOT EXISTS source_channel TEXT`).catch(() => {});
-    await pool.query(`ALTER TABLE brain_patterns ADD COLUMN IF NOT EXISTS example_titles JSONB DEFAULT '[]'`).catch(() => {});
-  } catch(e) { console.log('[MIGRATION] brain_patterns columns note:', e.message); }
-
-  // Migration: ensure precog columns exist on all generated_content_* tables
-  try {
-    const gcTables2 = await pool.query(`
-      SELECT table_name FROM information_schema.tables
-      WHERE table_schema = 'public' AND table_name LIKE 'generated_content_%'
-    `);
-    for (const row of gcTables2.rows) {
-      await pool.query(`ALTER TABLE ${row.table_name} ADD COLUMN IF NOT EXISTS precog_score INTEGER`).catch(() => {});
-      await pool.query(`ALTER TABLE ${row.table_name} ADD COLUMN IF NOT EXISTS precog_breakdown JSONB`).catch(() => {});
-      await pool.query(`ALTER TABLE ${row.table_name} ADD COLUMN IF NOT EXISTS precog_scored_at TIMESTAMPTZ`).catch(() => {});
-    }
-    if (gcTables2.rows.length > 0) console.log(`[MIGRATION] precog columns ensured on ${gcTables2.rows.length} generated_content table(s)`);
-  } catch(e) { console.log('[MIGRATION] precog cols note:', e.message); }
-
-  // Migration: digest opt-out + unsubscribe token on brand_profiles
-  try {
-    await pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS digest_unsubscribed BOOLEAN DEFAULT false`).catch(() => {});
-    await pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS digest_unsubscribe_token TEXT`).catch(() => {});
-    // Backfill tokens for existing paid brands
-    const needsToken = await pool.query(`SELECT id FROM brand_profiles WHERE digest_unsubscribe_token IS NULL AND is_paid = true`).catch(() => ({ rows: [] }));
-    for (const row of needsToken.rows) {
-      const token = randomBytes(24).toString('hex');
-      await pool.query(`UPDATE brand_profiles SET digest_unsubscribe_token = $1 WHERE id = $2`, [token, row.id]).catch(() => {});
-    }
-    if (needsToken.rows.length > 0) console.log(`[MIGRATION] digest tokens backfilled for ${needsToken.rows.length} brands`);
-  } catch(e) { console.log('[MIGRATION] digest columns note:', e.message); }
+    const [op, om] = await Promise.all([
+      pool.query(`DELETE FROM brain_patterns WHERE brand_profile_id NOT IN (SELECT id FROM brand_profiles WHERE clerk_user_id IS NOT NULL)`),
+      pool.query(`DELETE FROM brain_mistakes WHERE brand_profile_id NOT IN (SELECT id FROM brand_profiles WHERE clerk_user_id IS NOT NULL)`),
+    ]);
+    if (op.rowCount || om.rowCount) console.log(`[SECURITY] Purged orphans: ${op.rowCount} patterns, ${om.rowCount} mistakes`);
+  } catch(e) { console.log('[SECURITY] Orphan purge:', e.message); }
 
 
 initDB().catch(err => console.error('DB init error:', err));
 
-app.use(express.json({ limit: '500kb' }));
+app.use(express.json());
 
 // ── Shared: Build brand-voice-aware Flux image prompt ────────────────────────
 async function buildImagePrompt(title, voiceProfile = {}, firstBody = '') {
@@ -819,24 +733,41 @@ async function buildImagePrompt(title, voiceProfile = {}, firstBody = '') {
 
   const bodySnippet = (firstBody || '').slice(0, 250);
 
-  const res = await anthropic.messages.create({
-    model: 'claude-haiku-4-5',
-    max_tokens: 200,
-    messages: [{ role: 'user', content: `Write a single-sentence Flux image generation prompt for a B2B article hero image.
+  const hasBrandVisual = !!(visualStyle || accentColor);
+
+  const imagePromptInstruction = hasBrandVisual
+    ? `Write a single-sentence Flux image generation prompt for a B2B article hero image that authentically reflects this brand's visual identity and the article topic.
 
 Article title: "${title}"
 ${brandContext ? brandContext + '\n' : ''}${bodySnippet ? 'Article context: ' + bodySnippet : ''}
 
 Rules:
-- Directly reflect the article topic and brand identity above
-- Photorealistic editorial photography — Wired, HBR, or Fast Company cover energy
-- Abstract macro, architectural detail, natural textures, or environmental storytelling
-- Dark cinematic lighting with intentional shadows; muted palette with one accent color${accentColor ? ' (' + accentColor + ')' : ' (deep indigo, slate, or warm amber)'}
+- Let the brand's visual style and color palette drive the aesthetic — do not impose a generic look
+- Photorealistic editorial or commercial photography appropriate to this brand's industry and tone
 - NO floating UI elements, holographic screens, neon data walls, or sci-fi aesthetics
-- NO stock-photo clichés (handshakes, lightbulbs, generic offices)
+- NO stock-photo clichés (handshakes, lightbulbs, generic offices, people pointing at whiteboards)
 - 1 sentence only, no explanation, no quotes
 
-Output only the prompt.` }]
+Output only the prompt.`
+    : `Write a single-sentence Flux image generation prompt for a B2B article hero image.
+
+Article title: "${title}"
+${bodySnippet ? 'Article context: ' + bodySnippet : ''}
+
+Rules:
+- Photorealistic editorial photography — clean, high-contrast, professional
+- Abstract macro, architectural detail, natural textures, or environmental storytelling
+- Neutral palette with strong composition
+- NO floating UI elements, holographic screens, neon data walls, or sci-fi aesthetics
+- NO stock-photo clichés (handshakes, lightbulbs, generic offices, people pointing at whiteboards)
+- 1 sentence only, no explanation, no quotes
+
+Output only the prompt.`;
+
+  const res = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 200,
+    messages: [{ role: 'user', content: imagePromptInstruction }]
   });
 
   return res.content[0]?.type === 'text'
@@ -1059,7 +990,7 @@ app.get('/api/publishing/sync/:queueItemId', requireAuth, async (req, res) => {
 });
 
 // ── Republish to a specific channel ──────────────────────────────────────────
-app.post('/api/publishing/republish', async (req, res) => {
+app.post('/api/publishing/republish', requireAuth, async (req, res) => {
   const { queueItemId, channel } = req.body;
   if (!queueItemId || !channel) return res.status(400).json({ error: 'queueItemId and channel required' });
   try {
@@ -1084,7 +1015,7 @@ app.post('/api/publishing/republish', async (req, res) => {
     );
 
     // Forward to main publish route
-    const publishRes = await fetch(`http://localhost:${process.env.PORT || 3000}/api/publishing/publish`, {
+    const publishRes = await fetch(`${process.env.BASE_URL || 'http://localhost:' + (process.env.PORT || 3000)}/api/publishing/publish`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ queueItemId, channels: [channel] })
@@ -1192,7 +1123,7 @@ app.post('/api/articles/:brandSlug/:articleSlug/ensure-image', async (req, res) 
     const sections = aj.sections || [];
     const firstBody = (sections[0]?.body || sections[0]?.content || '').slice(0, 300);
     const imgPromptRes = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 150,
       messages: [{ role: 'user', content: `Write a Flux image generation prompt for a B2B editorial hero image for this article: "${article.title}". Context: ${firstBody}. Output only the prompt, no quotes, no preamble. Professional photography style, 16:9, no text in image.` }]
     });
@@ -1304,7 +1235,7 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // ── Content fetch for preview ─────────────────────────────────────────────────
-app.get('/api/content/:safeId/:contentId', async (req, res) => {
+app.get('/api/content/:safeId/:contentId', requireAuth, async (req, res) => {
   try {
     const { safeId, contentId } = req.params;
     const tableName = `generated_content_${safeId}`;
@@ -1329,7 +1260,7 @@ app.get('/api/context-hub/brains', softAuth, async (req, res) => {
       }
       const sessResult = await pool.query(
         `SELECT id, brand_url, brand_name, version, is_active, cache_status,
-                created_at, updated_at, profile_data, is_paid
+                created_at, updated_at, profile_data
          FROM brand_profiles 
          WHERE is_active = true 
            AND onboard_session_id = $1 
@@ -1340,20 +1271,25 @@ app.get('/api/context-hub/brains', softAuth, async (req, res) => {
       const sessData = sessResult.rows.map(r => ({
         id: r.id, brandUrl: r.brand_url, brandName: r.brand_name,
         version: r.version, isActive: r.is_active, cacheStatus: r.cache_status,
-        createdAt: r.created_at, updatedAt: r.updated_at, is_paid: r.is_paid, ...r.profile_data
+        createdAt: r.created_at, updatedAt: r.updated_at, ...r.profile_data
       }));
       return res.json({ success: true, data: sessData });
     }
     
-    // Authenticated: filter by clerk_user_id
-    const result = await pool.query(
-      `SELECT id, brand_url, brand_name, version, is_active, cache_status,
-              created_at, updated_at, profile_data, is_paid
-       FROM brand_profiles 
-       WHERE is_active = true AND clerk_user_id = $1 
-       ORDER BY updated_at DESC`,
-      [req.userId]
-    );
+    // Authenticated: show user's brains (super admins see all)
+    const isSuperAdmin = SUPER_ADMIN_IDS.includes(req.userId);
+    const result = isSuperAdmin
+      ? await pool.query(
+          `SELECT id, brand_url, brand_name, version, is_active, cache_status,
+                  created_at, updated_at, profile_data
+           FROM brand_profiles WHERE is_active = true ORDER BY updated_at DESC`
+        )
+      : await pool.query(
+          `SELECT id, brand_url, brand_name, version, is_active, cache_status,
+                  created_at, updated_at, profile_data
+           FROM brand_profiles WHERE is_active = true AND clerk_user_id = $1 ORDER BY updated_at DESC`,
+          [req.userId]
+        );
     const data = result.rows.map(r => ({
       id: r.id,
       brandUrl: r.brand_url,
@@ -1363,7 +1299,6 @@ app.get('/api/context-hub/brains', softAuth, async (req, res) => {
       cacheStatus: r.cache_status,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
-      is_paid: r.is_paid,
       ...r.profile_data
     }));
     res.json({ success: true, data });
@@ -1508,7 +1443,7 @@ Evaluate the user's topic against this brand's performance data and return ONLY 
     const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: 400, messages: [{ role: 'user', content: prompt }] })
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001-20251001', max_tokens: 400, messages: [{ role: 'user', content: prompt }] })
     });
     const aiData = await aiRes.json();
     const raw = aiData.content?.[0]?.text || '{}';
@@ -1608,158 +1543,196 @@ app.get('/api/analytics/patterns/:brandProfileId', requireAuth, async (req, res)
   }
 });
 
-// POST /api/analytics/extract-patterns/:brandProfileId
-// Deep pattern analysis — cross-article trends, pre-cog feedback loop, structure correlation, channel patterns
-app.post('/api/analytics/extract-patterns/:brandProfileId', requireAuth, async (req, res) => {
+
+// ── Brain Distill — convert human edits into writing rules ───────────────────
+app.post('/api/brain/distill/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
-  try {
+  const isCron = req.body?.adminPassword === process.env.ADMIN_PASSWORD;
+  if (!isCron) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+      const { payload } = await jwtVerify(authHeader.split(' ')[1], clerkJWKS, { algorithms: ['RS256'] });
+      req.userId = payload.sub;
+    } catch { return res.status(401).json({ error: 'Invalid token' }); }
     if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
-    const safeId = brandProfileId.replace(/-/g, '_');
+  }
+  try {
+    // Read all human edits from brain_mistakes
+    const editsRes = await pool.query(
+      `SELECT description, human_feedback FROM brain_mistakes
+       WHERE brand_profile_id = $1 AND mistake_type = 'human_edit' AND human_feedback IS NOT NULL
+       ORDER BY created_at DESC LIMIT 40`,
+      [brandProfileId]
+    );
 
-    // ── Gather all data sources in parallel ─────────────────────────────────
-    const [analyticsRes, precogRes, monthlyRes] = await Promise.all([
-
-      // Core analytics with content structure
-      pool.query(`
-        SELECT ca.content_id, ca.channel, ca.impressions, ca.clicks, ca.reactions,
-               ca.ctr, ca.engagement_rate, ca.reading_time, ca.positive_feedback,
-               ca.negative_feedback, ca.synced_at,
-               pq.title, pq.campaign_name,
-               gc.article_json->'sections' AS sections,
-               jsonb_array_length(COALESCE(gc.article_json->'sections', '[]'::jsonb)) AS section_count,
-               length(gc.article_json::text) AS content_length
-        FROM content_analytics ca
-        LEFT JOIN publishing_queue pq ON pq.content_id = ca.content_id AND pq.brand_profile_id = ca.brand_profile_id
-        LEFT JOIN ${`generated_content_${safeId}`} gc ON gc.id = ca.content_id
-        WHERE ca.brand_profile_id = $1
-          AND (ca.impressions > 0 OR ca.clicks > 0 OR ca.reactions > 0 OR ca.reading_time > 0)
-        ORDER BY ca.impressions DESC, ca.clicks DESC
-      `, [brandProfileId]).catch(() => ({ rows: [] })),
-
-      // Pre-cog accuracy outcomes
-      pool.query(`
-        SELECT po.content_id, po.predicted_signal, po.predicted_score,
-               po.actual_impressions, po.direction_correct, po.in_range,
-               po.avg_impressions_at_prediction, po.predicted_impressions_low,
-               po.predicted_impressions_high, pq.title
-        FROM precog_outcomes po
-        LEFT JOIN publishing_queue pq ON pq.content_id = po.content_id AND pq.brand_profile_id = po.brand_profile_id
-        WHERE po.brand_profile_id = $1 AND po.measured_at IS NOT NULL
-        ORDER BY po.measured_at DESC
-        LIMIT 30
-      `, [brandProfileId]).catch(() => ({ rows: [] })),
-
-      // Monthly performance trend
-      pool.query(`
-        SELECT DATE_TRUNC('month', synced_at) AS month,
-               COUNT(DISTINCT content_id)     AS articles,
-               AVG(impressions)               AS avg_impressions,
-               AVG(engagement_rate)           AS avg_engagement,
-               AVG(clicks)                    AS avg_clicks
-        FROM content_analytics
-        WHERE brand_profile_id = $1
-          AND (impressions > 0 OR clicks > 0 OR reactions > 0 OR reading_time > 0)
-        GROUP BY DATE_TRUNC('month', synced_at)
-        ORDER BY month ASC
-      `, [brandProfileId]).catch(() => ({ rows: [] })),
-    ]);
-
-    if (analyticsRes.rows.length === 0) {
-      return res.json({ success: true, patternsWritten: 0, mistakesWritten: 0, patterns: [], mistakes: [], message: 'No analytics data found. Publish content and sync analytics first.' });
+    if (editsRes.rows.length === 0) {
+      return res.json({ success: true, rules: [], ruleCount: 0, editCount: 0,
+        message: 'No editorial signals yet. Review AI content in Compliance Gate — every edit teaches the Brain your voice.' });
     }
 
-    const rows = analyticsRes.rows;
-    const avgImpressions = rows.reduce((a, r) => a + (parseFloat(r.impressions) || 0), 0) / rows.length;
-    const avgCtr = rows.reduce((a, r) => a + (parseFloat(r.ctr) || 0), 0) / rows.length;
-    const topPosts = rows.slice(0, 12);
-    const bottomPosts = rows.slice(-6);
+    // Format edits for Haiku (cap body to keep tokens manageable)
+    const editSummary = editsRes.rows.map((e, i) => {
+      const fb = e.human_feedback || '';
+      const avoidMatch = fb.match(/Avoid:\s*"([\s\S]{0,250})"/);
+      const preferMatch = fb.match(/prefer:\s*"([\s\S]{0,250})"/);
+      const avoid = avoidMatch?.[1]?.replace(/\n/g, ' ').trim() || '';
+      const prefer = preferMatch?.[1]?.replace(/\n/g, ' ').trim() || '';
+      if (!avoid && !prefer) return null;
+      return `Edit ${i + 1}:\nAvoid: "${avoid}"\nPrefer: "${prefer}"`;
+    }).filter(Boolean).join('\n\n');
 
-    // Content structure stats
-    const withSections = rows.filter(r => r.section_count > 0);
-    const longFormRows  = withSections.filter(r => r.section_count >= 8);
-    const shortFormRows = withSections.filter(r => r.section_count <= 4);
-    const avgImpLong    = longFormRows.length  ? longFormRows.reduce((a,r) => a + parseFloat(r.impressions||0), 0) / longFormRows.length  : 0;
-    const avgImpShort   = shortFormRows.length ? shortFormRows.reduce((a,r) => a + parseFloat(r.impressions||0), 0) / shortFormRows.length : 0;
+    const brandRes = await pool.query('SELECT brand_name FROM brand_profiles WHERE id = $1', [brandProfileId]);
+    const brandName = brandRes.rows[0]?.brand_name || 'this brand';
 
-    // Channel breakdown
-    const byChannel = {};
-    for (const r of rows) {
-      if (!byChannel[r.channel]) byChannel[r.channel] = { impressions: [], clicks: [], count: 0 };
-      byChannel[r.channel].impressions.push(parseFloat(r.impressions)||0);
-      byChannel[r.channel].clicks.push(parseFloat(r.clicks)||0);
-      byChannel[r.channel].count++;
-    }
-    const channelSummary = Object.entries(byChannel).map(([ch, d]) => ({
-      channel: ch,
-      count: d.count,
-      avgImpressions: Math.round(d.impressions.reduce((a,b)=>a+b,0)/d.count),
-      avgClicks: Math.round(d.clicks.reduce((a,b)=>a+b,0)/d.count),
-    })).sort((a,b) => b.avgImpressions - a.avgImpressions);
+    const prompt = `You are analyzing human editorial corrections made to AI-generated B2B marketing content for ${brandName}.
 
-    // Pre-cog correction data
-    const precogRows = precogRes.rows;
-    const underPredicted = precogRows.filter(r => r.direction_correct === false && r.predicted_signal === 'below_average');
-    const overPredicted  = precogRows.filter(r => r.direction_correct === false && r.predicted_signal === 'above_average');
-    const predAccuracy   = precogRows.length > 0
-      ? Math.round((precogRows.filter(r => r.direction_correct).length / precogRows.length) * 100)
-      : null;
+Each correction shows: what the AI wrote (Avoid) and what the human reviewer preferred (Prefer).
+These corrections represent the editor's authentic voice and non-negotiable brand standards.
 
-    // Monthly trend direction
-    const months = monthlyRes.rows;
-    const trendDir = months.length >= 2
-      ? (parseFloat(months[months.length-1].avg_impressions) > parseFloat(months[0].avg_impressions) ? 'improving' : 'declining')
-      : 'insufficient_data';
+Analyze these ${editsRes.rows.length} editorial corrections and distill them into 8-10 clear, actionable writing rules that the AI must follow on every future generation.
 
-    const prompt = `You are a content intelligence analyst performing DEEP pattern analysis for a brand's content Brain. Your analysis will directly shape what this brand generates next. Be ruthlessly specific and commercially precise.
+EDITORIAL CORRECTIONS:
+${editSummary}
 
-PERFORMANCE OVERVIEW (${rows.length} tracked articles):
-- Average impressions: ${Math.round(avgImpressions)}
-- Average CTR: ${avgCtr.toFixed(2)}%
-- Performance trend: ${trendDir}${months.length >= 2 ? ` (${Math.round(parseFloat(months[0].avg_impressions))} → ${Math.round(parseFloat(months[months.length-1].avg_impressions))} avg impressions)` : ''}
+Rules for your analysis:
+- Look for PATTERNS across multiple edits — what does the editor consistently change?
+- Each rule should be immediately actionable for an AI content generator
+- Prefer "avoid X, do Y" framing when direction is clear
+- Weight rules by how many edits support them
+- Be specific — "avoid named fictional case studies" is better than "be authentic"
 
-CONTENT STRUCTURE CORRELATION:
-- Long-form articles (8+ sections): ${longFormRows.length} articles, avg ${Math.round(avgImpLong)} impressions
-- Short-form articles (≤4 sections): ${shortFormRows.length} articles, avg ${Math.round(avgImpShort)} impressions
-- Structure performance delta: ${longFormRows.length && shortFormRows.length ? `long-form ${avgImpLong > avgImpShort ? 'outperforms' : 'underperforms'} by ${Math.abs(Math.round(((avgImpLong-avgImpShort)/Math.max(avgImpShort,1))*100))}%` : 'insufficient data'}
-
-CHANNEL PERFORMANCE:
-${channelSummary.map(c => `- ${c.channel}: ${c.count} articles | avg ${c.avgImpressions.toLocaleString()} impressions | avg ${c.avgClicks} clicks`).join('\n')}
-
-TOP PERFORMING ARTICLES:
-${topPosts.map(p => `- "${p.title||'Untitled'}" | ${p.channel} | ${p.impressions||0} impressions | CTR: ${p.ctr||0}% | Sections: ${p.section_count||'?'} | Campaign: ${p.campaign_name||'standalone'}`).join('\n')}
-
-UNDERPERFORMING ARTICLES:
-${bottomPosts.map(p => `- "${p.title||'Untitled'}" | ${p.channel} | ${p.impressions||0} impressions | CTR: ${p.ctr||0}%`).join('\n')}
-
-${precogRows.length > 0 ? `PRE-COG ACCURACY FEEDBACK (${precogRows.length} predictions measured, ${predAccuracy}% directional accuracy):
-${underPredicted.length > 0 ? `Articles that BEAT predictions (Brain was too pessimistic): ${underPredicted.slice(0,3).map(r => `"${r.title||r.content_id.slice(0,8)}" (predicted ${r.predicted_signal}, actual ${r.actual_impressions} vs avg ${Math.round(r.avg_impressions_at_prediction)})`).join('; ')}` : ''}
-${overPredicted.length > 0 ? `Articles that MISSED predictions (Brain was too optimistic): ${overPredicted.slice(0,3).map(r => `"${r.title||r.content_id.slice(0,8)}" (predicted ${r.predicted_signal}, actual ${r.actual_impressions} vs avg ${Math.round(r.avg_impressions_at_prediction)})`).join('; ')}` : ''}` : ''}
-
-${months.length >= 3 ? `MONTHLY TRENDS:
-${months.map(m => `${new Date(m.month).toLocaleDateString('en-US',{month:'short',year:'numeric'})}: ${m.articles} articles, avg ${Math.round(parseFloat(m.avg_impressions))} impressions`).join(' | ')}` : ''}
-
-Extract DEEP, SPECIFIC patterns. Include:
-- Pattern types: topic_momentum, structure_correlation, channel_pattern, timing_pattern, prediction_correction, format_signal, engagement_driver
-- For prediction_correction patterns: explain WHY the Brain's model may be wrong and how to adjust
-- For topic_momentum: identify rising/declining topics from titles
-- Be ruthlessly specific — "listicle format" beats "good structure", "AI tools content" beats "tech content"
-
-Return ONLY valid JSON:
+Return ONLY valid JSON, no explanation:
 {
-  "patterns": [
-    { "pattern_type": "string", "description": "2-3 sentence specific insight", "confidence_score": 0.0-1.0, "tags": ["tag"], "source_channel": "channel or null", "example_titles": ["title1"] }
-  ],
-  "mistakes": [
-    { "mistake_type": "string", "description": "2-3 sentence specific insight", "severity": "high|medium|low" }
+  "rules": [
+    {
+      "rule": "One clear, actionable directive sentence",
+      "rationale": "Why this rule exists — the pattern you observed across edits",
+      "direction": "avoid OR do",
+      "example_avoid": "Representative example of what to avoid (under 120 chars)",
+      "example_prefer": "Representative example of what to write instead (under 120 chars)",
+      "confidence": 0.0-1.0,
+      "edit_count": number
+    }
   ]
-}
-
-Extract 5-8 patterns and 3-5 mistakes. Prioritize prediction_correction patterns if pre-cog data is available.`;
+}`;
 
     const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: 2000, messages: [{ role: 'user', content: prompt }] })
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 2000, messages: [{ role: 'user', content: prompt }] })
+    });
+    const aiData = await aiRes.json();
+    const rawText = aiData.content?.[0]?.text || '{}';
+    const clean = rawText.replace(/```json|```/g, '').trim();
+    let extracted = { rules: [] };
+    try { extracted = JSON.parse(clean); } catch(e) { console.error('[BRAIN-DISTILL] JSON parse error:', e.message, rawText.slice(0, 200)); }
+
+    const rules = extracted.rules || [];
+
+    // Replace existing writing_rule patterns for this brand
+    await pool.query(`DELETE FROM brain_patterns WHERE brand_profile_id = $1 AND pattern_type = 'writing_rule'`, [brandProfileId]);
+
+    for (const rule of rules) {
+      await pool.query(
+        `INSERT INTO brain_patterns
+           (brand_profile_id, pattern_type, description, confidence_score, tags, source_channel, example_titles, last_validated_at, updated_at)
+         VALUES ($1, 'writing_rule', $2, $3, $4, 'compliance_gate', $5, NOW(), NOW())`,
+        [
+          brandProfileId,
+          rule.rule || '',
+          rule.confidence || 0.7,
+          JSON.stringify([
+            `direction:${rule.direction || 'avoid'}`,
+            `rationale:${(rule.rationale || '').slice(0, 150)}`,
+            `edits:${rule.edit_count || 1}`
+          ]),
+          JSON.stringify([
+            (rule.example_avoid || '').slice(0, 200),
+            (rule.example_prefer || '').slice(0, 200)
+          ])
+        ]
+      );
+    }
+
+    console.log(`[BRAIN-DISTILL] ${rules.length} rules written for ${brandProfileId} from ${editsRes.rows.length} edits`);
+    res.json({ success: true, rules, ruleCount: rules.length, editCount: editsRes.rows.length });
+  } catch(e) {
+    console.error('[BRAIN-DISTILL]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/analytics/extract-patterns/:brandProfileId
+// Analyzes content_analytics + publishing_queue to extract Brain Patterns and Mistakes
+app.post('/api/analytics/extract-patterns/:brandProfileId', async (req, res) => {
+  const { brandProfileId } = req.params;
+  // Allow cron/admin bypass with adminPassword, otherwise require Clerk JWT
+  const isCron = req.body?.adminPassword === process.env.ADMIN_PASSWORD;
+  if (!isCron) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+      const { payload } = await jwtVerify(authHeader.split(' ')[1], clerkJWKS, { algorithms: ['RS256'] });
+      req.userId = payload.sub;
+    } catch { return res.status(401).json({ error: 'Invalid token' }); }
+  }
+  try {
+    if (!isCron && !(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+    const safeId = brandProfileId.replace(/-/g, '_');
+
+    // Fetch analytics data
+    const analyticsRes = await pool.query(
+      `SELECT ca.content_id, ca.channel, ca.impressions, ca.clicks, ca.reactions,
+              ca.ctr, ca.engagement_rate, ca.reading_time, ca.positive_feedback,
+              ca.negative_feedback, ca.published_at,
+              pq.title
+       FROM content_analytics ca
+       LEFT JOIN publishing_queue pq ON pq.content_id = ca.content_id
+       WHERE ca.brand_profile_id = $1
+       ORDER BY ca.impressions DESC, ca.clicks DESC`,
+      [brandProfileId]
+    ).catch(() => ({ rows: [] }));
+
+    if (analyticsRes.rows.length === 0) {
+      return res.json({ success: true, patternsWritten: 0, mistakesWritten: 0, patterns: [], mistakes: [], message: 'No analytics data to extract from' });
+    }
+
+    // Build summary for Claude
+    const topPosts = analyticsRes.rows.slice(0, 10);
+    const bottomPosts = analyticsRes.rows.slice(-5);
+    const avgImpressions = analyticsRes.rows.reduce((a, r) => a + (r.impressions || 0), 0) / analyticsRes.rows.length;
+    const avgCtr = analyticsRes.rows.reduce((a, r) => a + (r.ctr || 0), 0) / analyticsRes.rows.length;
+
+    const prompt = `You are a content intelligence analyst. Analyze this performance data and extract actionable patterns and mistakes.
+
+ANALYTICS SUMMARY:
+- Total articles tracked: ${analyticsRes.rows.length}
+- Average impressions: ${Math.round(avgImpressions)}
+- Average CTR: ${avgCtr.toFixed(2)}%
+
+TOP PERFORMING (highest impressions/engagement):
+${topPosts.map(p => `- "${p.title || 'Untitled'}" | Channel: ${p.channel} | Impressions: ${p.impressions || 0} | Clicks: ${p.clicks || 0} | CTR: ${p.ctr || 0}% | Reactions: ${p.reactions || 0} | Reading time: ${p.reading_time || 0}min`).join('\n')}
+
+UNDERPERFORMING (lowest engagement):
+${bottomPosts.map(p => `- "${p.title || 'Untitled'}" | Channel: ${p.channel} | Impressions: ${p.impressions || 0} | Clicks: ${p.clicks || 0} | CTR: ${p.ctr || 0}%`).join('\n')}
+
+Return ONLY a JSON object with this exact structure:
+{
+  "patterns": [
+    { "pattern_type": "short label", "description": "1-2 sentence actionable insight about what's working", "confidence_score": 0.0-1.0, "tags": ["tag1"] }
+  ],
+  "mistakes": [
+    { "mistake_type": "short label", "description": "1-2 sentence insight about what to avoid", "severity": "high|medium|low" }
+  ]
+}
+
+Extract 3-6 patterns and 2-4 mistakes. Be specific and actionable. Focus on content type, topic, channel, format, timing patterns.`;
+
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001-20251001', max_tokens: 1500, messages: [{ role: 'user', content: prompt }] })
     });
 
     const aiData = await aiRes.json();
@@ -1767,40 +1740,22 @@ Extract 5-8 patterns and 3-5 mistakes. Prioritize prediction_correction patterns
     let extracted = { patterns: [], mistakes: [] };
     try {
       const clean = rawText.replace(/```json|```/g, '').trim();
-      extracted = JSON.parse(sanitizeJson(clean));
-    } catch(e) { console.error('[EXTRACT-PATTERNS] JSON parse error:', e.message, rawText.slice(0,200)); }
+      extracted = JSON.parse(clean);
+    } catch(e) { console.error('[EXTRACT-PATTERNS] JSON parse error:', e.message); }
 
-    // ── Write patterns — upsert by description fingerprint ──────────────────
+    // Write patterns to brain_patterns
     let patternsWritten = 0;
     for (const p of (extracted.patterns || [])) {
       await pool.query(
-        `INSERT INTO brain_patterns
-           (brand_profile_id, pattern_type, description, confidence_score, tags, source_channel, example_titles, last_validated_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-         ON CONFLICT (brand_profile_id, pattern_type, description) DO UPDATE SET
-           confidence_score = GREATEST(brain_patterns.confidence_score, EXCLUDED.confidence_score),
-           tags = EXCLUDED.tags,
-           source_channel = EXCLUDED.source_channel,
-           example_titles = EXCLUDED.example_titles,
-           last_validated_at = NOW(),
-           updated_at = NOW()`,
-        [brandProfileId, p.pattern_type || 'general', p.description || '',
-         p.confidence_score || 0.5, JSON.stringify(p.tags || []),
-         p.source_channel || null, JSON.stringify(p.example_titles || [])]
-      ).catch(async () => {
-        // Fallback: no unique constraint — just insert
-        await pool.query(
-          `INSERT INTO brain_patterns (brand_profile_id, pattern_type, description, confidence_score, tags, source_channel, example_titles, last_validated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
-          [brandProfileId, p.pattern_type || 'general', p.description || '',
-           p.confidence_score || 0.5, JSON.stringify(p.tags || []),
-           p.source_channel || null, JSON.stringify(p.example_titles || [])]
-        ).catch(() => {});
-      });
+        `INSERT INTO brain_patterns (brand_profile_id, pattern_type, description, confidence_score, tags)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT DO NOTHING`,
+        [brandProfileId, p.pattern_type || 'general', p.description || '', p.confidence_score || 0.5, JSON.stringify(p.tags || [])]
+      ).catch(() => {});
       patternsWritten++;
     }
 
-    // ── Write mistakes ───────────────────────────────────────────────────────
+    // Write mistakes to brain_mistakes
     let mistakesWritten = 0;
     for (const m of (extracted.mistakes || [])) {
       await pool.query(
@@ -1811,254 +1766,24 @@ Extract 5-8 patterns and 3-5 mistakes. Prioritize prediction_correction patterns
       mistakesWritten++;
     }
 
-    // ── Return fresh Brain state ─────────────────────────────────────────────
+    // Return fresh patterns and mistakes
     const [pRes, mRes] = await Promise.all([
-      pool.query(`SELECT *, last_validated_at FROM brain_patterns WHERE brand_profile_id = $1 ORDER BY confidence_score DESC, last_validated_at DESC NULLS LAST`, [brandProfileId]),
-      pool.query(`SELECT * FROM brain_mistakes WHERE brand_profile_id = $1 ORDER BY severity DESC, created_at DESC`, [brandProfileId])
+      pool.query('SELECT * FROM brain_patterns WHERE brand_profile_id = $1 ORDER BY confidence_score DESC', [brandProfileId]),
+      pool.query('SELECT * FROM brain_mistakes WHERE brand_profile_id = $1 ORDER BY severity DESC, created_at DESC', [brandProfileId])
     ]);
 
-    res.json({
-      success: true,
-      patternsWritten, mistakesWritten,
-      patterns: pRes.rows,
-      mistakes: mRes.rows,
-      meta: {
-        articlesAnalyzed: rows.length,
-        precogOutcomesUsed: precogRows.length,
-        predictionAccuracy: predAccuracy,
-        trendDirection: trendDir,
-        channelsAnalyzed: channelSummary.map(c => c.channel),
-      }
-    });
+    res.json({ success: true, patternsWritten, mistakesWritten, patterns: pRes.rows, mistakes: mRes.rows });
   } catch(e) {
     console.error('[EXTRACT-PATTERNS]', e.message);
     res.status(500).json({ success: false, error: e.message });
   }
 });
 
+// ══════════════════════════════════════════════════════════════════════════════
+// ── Pre-cog Score — Predictive Performance Scoring ────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
 
-// ── Pre-cog Score — Predictive Performance Scoring ─────────────────────────
-// ════════════════════════════════════════════════════════════════════════════
-// Scoring is Claude Haiku-powered semantic reasoning against real brain data.
-// A brand needs ≥3 published articles with analytics before scoring is meaningful.
-// Below that threshold we return insufficient_data — never a fake score.
-//
-// Endpoints:
-//   POST /api/precog/score        — score one article (auth required)
-//   GET  /api/precog/score/:b/:c  — retrieve cached score (auth required)
-//   POST /api/precog/batch        — score all unscored for a brand (auth required)
-// ════════════════════════════════════════════════════════════════════════════
-
-// Shared scoring logic — called directly (no self-HTTP)
-async function computePrecogScore(brandProfileId, contentId) {
-  const safeId = brandProfileId.replace(/-/g, '_');
-  const contentTable = `generated_content_${safeId}`;
-
-  // 1. Load the article
-  const contentRes = await pool.query(`SELECT * FROM ${contentTable} WHERE id = $1`, [contentId]);
-  if (!contentRes.rows.length) throw new Error('Content not found');
-  const content = contentRes.rows[0];
-  const articleJson = content.article_json || {};
-  const sections = articleJson.sections || [];
-  const wordCount = sections.reduce((acc, s) => acc + ((s.body || s.content || '').split(/\s+/).length), 0);
-
-  // 2. Load historical analytics — need ≥3 articles with real data
-  const analyticsRes = await pool.query(`
-    SELECT
-      COUNT(DISTINCT content_id)                                   AS total_articles,
-      AVG(impressions)                                             AS avg_impressions,
-      AVG(engagement_rate)                                         AS avg_engagement,
-      AVG(clicks)                                                  AS avg_clicks,
-      PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY impressions)   AS p25_impressions,
-      PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY impressions)   AS p50_impressions,
-      PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY impressions)   AS p75_impressions,
-      PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY engagement_rate) AS p75_engagement
-    FROM content_analytics
-    WHERE brand_profile_id = $1 AND impressions > 0
-  `, [brandProfileId]);
-  const stats = analyticsRes.rows[0] || {};
-  const totalArticles = parseInt(stats.total_articles) || 0;
-
-  // 3. Insufficient data gate
-  if (totalArticles < 3) {
-    return {
-      score: null,
-      tier: 'insufficient_data',
-      prediction: 'Not enough published data yet. Publish and sync analytics for 3+ articles to unlock Pre-cog scoring.',
-      color: '#64748B',
-      dataPoints: totalArticles,
-      breakdown: null,
-      predictedImpressions: null
-    };
-  }
-
-  // 4. Load brain patterns + mistakes
-  const patternsRes = await pool.query(`
-    SELECT pattern_type, description, confidence_score, success_rate
-    FROM brain_patterns
-    WHERE brand_profile_id = $1
-    ORDER BY success_rate DESC, confidence_score DESC
-    LIMIT 10
-  `, [brandProfileId]);
-
-  const mistakesRes = await pool.query(`
-    SELECT mistake_type, description, severity, human_feedback
-    FROM brain_mistakes
-    WHERE brand_profile_id = $1
-    ORDER BY CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END
-    LIMIT 10
-  `, [brandProfileId]);
-
-  // 5. Build article summary for Haiku
-  const headings = sections.filter(s => s.heading).map(s => s.heading).slice(0, 6);
-  const firstParas = sections.slice(0, 3).map(s => (s.body || s.content || '').slice(0, 200)).join(' ');
-  const genConfidence = content.overall_confidence || null;
-  const dataConfidence = totalArticles >= 20 ? 'high' : totalArticles >= 10 ? 'medium' : 'low';
-
-  const systemPrompt = `You are a content performance prediction engine. You analyze an article against a brand's proven performance patterns and known mistakes to predict how it will perform relative to their historical average.
-
-Be ruthlessly honest. Do not inflate scores. A score of 50 means exactly average — the article shows no meaningful signal either way.
-
-Return ONLY valid JSON in this exact structure:
-{
-  "score": <0-100 integer>,
-  "signals": [
-    { "label": "<short label>", "impact": "positive" | "negative" | "neutral", "weight": <1-3>, "reason": "<one sentence>" }
-  ],
-  "prediction": "<1-2 sentence plain-English prediction>",
-  "recommended_actions": ["<specific actionable improvement>"],
-  "scoring_rationale": "<2-3 sentences explaining how you arrived at this score>"
-}
-
-Scoring guidelines:
-- 80-100: Clear alignment with top-performing patterns, no significant anti-patterns triggered
-- 60-79: Good alignment, minor concerns
-- 40-59: Average — mixed signals, neither strongly aligned nor misaligned
-- 20-39: Notable anti-patterns or missing key success signals
-- 0-19: Multiple high-severity anti-patterns, high risk of underperformance`;
-
-  const userPrompt = `ARTICLE TO SCORE:
-Title: "${content.title || 'Untitled'}"
-Category: ${articleJson.category || 'Unknown'}
-Word count: ${wordCount}
-Section count: ${sections.length}
-Section headings: ${headings.join(' | ') || 'None'}
-Opening: "${firstParas.slice(0, 400)}"
-${genConfidence ? `Generation confidence: ${genConfidence}%` : ''}
-
-BRAND'S HISTORICAL PERFORMANCE (${totalArticles} articles):
-- Average impressions: ${Math.round(stats.avg_impressions || 0)}
-- Average engagement rate: ${((parseFloat(stats.avg_engagement) || 0) * 100).toFixed(2)}%
-- Data confidence: ${dataConfidence} (${totalArticles} data points)
-
-PROVEN SUCCESS PATTERNS (what works for this brand):
-${patternsRes.rows.length > 0
-  ? patternsRes.rows.map(p => `- [${p.pattern_type}] ${p.description} (success rate: ${Math.round((p.success_rate || 0) * 100)}%)`).join('\n')
-  : '- No patterns recorded yet'}
-
-KNOWN MISTAKES TO AVOID:
-${mistakesRes.rows.length > 0
-  ? mistakesRes.rows.map(m => `- [${m.severity?.toUpperCase()} | ${m.mistake_type}] ${m.description}${m.human_feedback ? ' — ' + m.human_feedback : ''}`).join('\n')
-  : '- No mistakes recorded yet'}
-
-Score this article honestly against the patterns and mistakes above.`;
-
-  const haiku = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': process.env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-5',
-      max_tokens: 800,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userPrompt }]
-    })
-  });
-  const haikuData = await haiku.json();
-  const rawText = haikuData.content?.[0]?.text || '{}';
-  const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-  let analysis;
-  try {
-    analysis = JSON.parse(sanitizeJson(jsonMatch ? jsonMatch[0] : rawText));
-  } catch (e) {
-    throw new Error('Pre-cog: Haiku returned unparseable JSON: ' + e.message);
-  }
-
-  const score = Math.max(0, Math.min(100, Math.round(analysis.score || 50)));
-
-  // 6. Tier + color
-  let tier, color;
-  if (score >= 80)      { tier = 'high';    color = '#22C55E'; }
-  else if (score >= 60) { tier = 'medium';  color = '#EAB308'; }
-  else if (score >= 40) { tier = 'low';     color = '#F97316'; }
-  else                  { tier = 'risk';    color = '#EF4444'; }
-
-  // 7. Predicted impressions from real percentiles
-  let predictedImpressions = null;
-  if (stats.p50_impressions) {
-    const low  = Math.round(score >= 75 ? stats.p50_impressions : stats.p25_impressions);
-    const high = Math.round(score >= 75 ? stats.p75_impressions : score >= 50 ? stats.p50_impressions : stats.p25_impressions * 1.2);
-    predictedImpressions = { low, high };
-  }
-
-  const breakdown = {
-    score,
-    tier,
-    color,
-    dataPoints: totalArticles,
-    dataConfidence,
-    signals: analysis.signals || [],
-    prediction: analysis.prediction || '',
-    recommendedActions: analysis.recommended_actions || [],
-    scoringRationale: analysis.scoring_rationale || '',
-    predictedImpressions,
-    historicalContext: {
-      totalArticles,
-      avgImpressions: Math.round(stats.avg_impressions || 0),
-      avgEngagement: ((parseFloat(stats.avg_engagement) || 0) * 100).toFixed(2) + '%',
-      p25Impressions: Math.round(stats.p25_impressions || 0),
-      p50Impressions: Math.round(stats.p50_impressions || 0),
-      p75Impressions: Math.round(stats.p75_impressions || 0),
-    }
-  };
-
-  // 8. Persist to content table
-  await pool.query(
-    `UPDATE ${contentTable}
-     SET precog_score = $1, precog_breakdown = $2, precog_scored_at = NOW(), updated_at = NOW()
-     WHERE id = $3`,
-    [score, JSON.stringify(breakdown), contentId]
-  );
-
-  // 9. Write prediction to precog_outcomes for accuracy tracking
-  const signal = score >= 70 ? 'above_average' : score >= 40 ? 'average' : 'below_average';
-  await pool.query(`
-    INSERT INTO precog_outcomes
-      (brand_profile_id, content_id, predicted_score, predicted_tier,
-       predicted_impressions_low, predicted_impressions_high,
-       predicted_signal, avg_impressions_at_prediction)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    ON CONFLICT (brand_profile_id, content_id) DO UPDATE SET
-      predicted_score = $3, predicted_tier = $4,
-      predicted_impressions_low = $5, predicted_impressions_high = $6,
-      predicted_signal = $7, avg_impressions_at_prediction = $8,
-      scored_at = NOW(), measured_at = NULL,
-      actual_impressions = NULL, actual_clicks = NULL,
-      direction_correct = NULL, in_range = NULL
-  `, [
-    brandProfileId, contentId, score, tier,
-    predictedImpressions?.low || null, predictedImpressions?.high || null,
-    signal, Math.round(stats.avg_impressions || 0)
-  ]).catch(e => console.log('[PRE-COG] precog_outcomes write note:', e.message));
-
-  return { score, tier, prediction: analysis.prediction || '', color, breakdown, predictedImpressions };
-}
-
-
-// ── Pre-cog accuracy updater — call after any analytics sync ─────────────────
+// POST /api/precog/score — Calculate pre-cog score for a content item
 async function updatePrecogOutcomes(brandProfileId) {
   try {
     // Find outcomes awaiting measurement — join with content_analytics for actuals
@@ -2115,75 +1840,251 @@ async function updatePrecogOutcomes(brandProfileId) {
   }
 }
 
-// POST /api/precog/score
 app.post('/api/precog/score', requireAuth, async (req, res) => {
   const { brandProfileId, contentId } = req.body;
-  if (!brandProfileId || !contentId) return res.status(400).json({ error: 'brandProfileId and contentId required' });
+  if (!brandProfileId || !contentId) {
+    return res.status(400).json({ error: 'brandProfileId and contentId required' });
+  }
+
   try {
-    const result = await computePrecogScore(brandProfileId, contentId);
-    res.json({ success: true, ...result });
+    const safeId = brandProfileId.replace(/-/g, '_');
+    const contentTable = `generated_content_${safeId}`;
+
+    // 1. Get the content
+    const contentRes = await pool.query(`SELECT * FROM ${contentTable} WHERE id = $1`, [contentId]);
+    if (!contentRes.rows.length) return res.status(404).json({ error: 'Content not found' });
+    const content = contentRes.rows[0];
+    const articleJson = content.article_json || {};
+    const sections = articleJson.sections || [];
+
+    // 2. Get historical performance data
+    const analyticsRes = await pool.query(`
+      SELECT 
+        AVG(impressions) as avg_impressions,
+        AVG(clicks) as avg_clicks,
+        AVG(engagement_rate) as avg_engagement,
+        AVG(ctr) as avg_ctr,
+        MAX(impressions) as max_impressions,
+        MAX(engagement_rate) as max_engagement,
+        COUNT(*) as total_posts
+      FROM content_analytics 
+      WHERE brand_profile_id = $1 AND impressions > 0
+    `, [brandProfileId]);
+    const stats = analyticsRes.rows[0] || {};
+
+    // 3. Get top performing content patterns
+    const topPerformersRes = await pool.query(`
+      SELECT ca.content_id, ca.impressions, ca.engagement_rate, ca.channel
+      FROM content_analytics ca
+      WHERE ca.brand_profile_id = $1 AND ca.impressions > 0
+      ORDER BY ca.engagement_rate DESC
+      LIMIT 10
+    `, [brandProfileId]);
+
+    // 4. Get brain patterns
+    const patternsRes = await pool.query(`
+      SELECT pattern_type, description, confidence_score, success_rate
+      FROM brain_patterns
+      WHERE brand_profile_id = $1
+      ORDER BY success_rate DESC
+      LIMIT 20
+    `, [brandProfileId]);
+    const patterns = patternsRes.rows;
+
+    // 5. Get brain mistakes (anti-patterns)
+    const mistakesRes = await pool.query(`
+      SELECT mistake_type, description, severity
+      FROM brain_mistakes
+      WHERE brand_profile_id = $1
+    `, [brandProfileId]);
+    const mistakes = mistakesRes.rows;
+
+    // ── SCORING ALGORITHM ──
+    let score = 50; // Base score
+    const breakdown = {};
+
+    // A. Content Structure Score (0-15 points)
+    const wordCount = sections.reduce((acc, s) => acc + ((s.body || s.content || '').split(' ').length), 0);
+    const sectionCount = sections.length;
+    const hasHeadings = sections.filter(s => s.heading).length;
+    
+    let structureScore = 0;
+    if (wordCount >= 800 && wordCount <= 2000) structureScore += 5;
+    else if (wordCount >= 500 && wordCount <= 2500) structureScore += 3;
+    if (sectionCount >= 3 && sectionCount <= 8) structureScore += 5;
+    else if (sectionCount >= 2) structureScore += 2;
+    if (hasHeadings >= 3) structureScore += 5;
+    else if (hasHeadings >= 1) structureScore += 2;
+    
+    breakdown.structure = { score: structureScore, max: 15, wordCount, sectionCount, hasHeadings };
+    score += structureScore;
+
+    // B. Title Score (0-15 points)
+    const title = content.title || '';
+    let titleScore = 0;
+    if (title.length >= 30 && title.length <= 70) titleScore += 5;
+    if (/\d/.test(title)) titleScore += 3;
+    if (/how|why|what|guide|tips|secrets|mistakes/i.test(title)) titleScore += 4;
+    if (!/\?$/.test(title) && title.length > 0) titleScore += 3;
+    
+    breakdown.title = { score: titleScore, max: 15, length: title.length };
+    score += titleScore;
+
+    // C. Pattern Match Score (0-20 points)
+    let patternScore = 0;
+    const matchedPatterns = [];
+    const titleLower = title.toLowerCase();
+    const bodyText = sections.map(s => (s.body || s.content || '').toLowerCase()).join(' ');
+    
+    for (const p of patterns) {
+      const desc = (p.description || '').toLowerCase();
+      const keywords = desc.split(' ').filter(w => w.length > 4).slice(0, 5);
+      const matches = keywords.filter(k => titleLower.includes(k) || bodyText.includes(k));
+      if (matches.length >= 2) {
+        patternScore += Math.min(4, (p.success_rate || 0.5) * 5);
+        matchedPatterns.push({ type: p.pattern_type, confidence: p.confidence_score });
+      }
+    }
+    patternScore = Math.min(20, patternScore);
+    breakdown.patternMatch = { score: patternScore, max: 20, matchedPatterns };
+    score += patternScore;
+
+    // D. Anti-pattern Penalty (-10 to 0 points)
+    let penaltyScore = 0;
+    const triggeredMistakes = [];
+    for (const m of mistakes) {
+      const desc = (m.description || '').toLowerCase();
+      const keywords = desc.split(' ').filter(w => w.length > 4).slice(0, 3);
+      const matches = keywords.filter(k => titleLower.includes(k) || bodyText.includes(k));
+      if (matches.length >= 2) {
+        const penalty = m.severity === 'high' ? -4 : m.severity === 'medium' ? -2 : -1;
+        penaltyScore += penalty;
+        triggeredMistakes.push({ type: m.mistake_type, severity: m.severity });
+      }
+    }
+    penaltyScore = Math.max(-10, penaltyScore);
+    breakdown.antiPatterns = { score: penaltyScore, max: 0, triggeredMistakes };
+    score += penaltyScore;
+
+    // E. Historical Context Score (0-10 points)
+    let historyScore = 0;
+    if (stats.total_posts > 0) {
+      if (stats.total_posts >= 20) historyScore += 5;
+      else if (stats.total_posts >= 10) historyScore += 3;
+      else if (stats.total_posts >= 5) historyScore += 1;
+      if (stats.avg_engagement > 0.03) historyScore += 5;
+      else if (stats.avg_engagement > 0.01) historyScore += 3;
+    }
+    breakdown.history = { 
+      score: historyScore, 
+      max: 10, 
+      totalPosts: parseInt(stats.total_posts) || 0,
+      avgEngagement: parseFloat(stats.avg_engagement) || 0,
+      avgImpressions: parseInt(stats.avg_impressions) || 0
+    };
+    score += historyScore;
+
+    // Normalize to 0-100
+    score = Math.max(0, Math.min(100, score));
+
+    // Prediction tier
+    let tier, prediction, color;
+    if (score >= 80) {
+      tier = 'high'; prediction = 'Likely to outperform your average'; color = '#22C55E';
+    } else if (score >= 60) {
+      tier = 'medium'; prediction = 'Expected to perform near your average'; color = '#EAB308';
+    } else if (score >= 40) {
+      tier = 'low'; prediction = 'May underperform — consider revisions'; color = '#F97316';
+    } else {
+      tier = 'risk'; prediction = 'High risk — review before publishing'; color = '#EF4444';
+    }
+
+    // Predicted impressions range
+    const predictedImpressions = stats.avg_impressions 
+      ? { low: Math.round(stats.avg_impressions * (score / 100) * 0.7), high: Math.round(stats.avg_impressions * (score / 100) * 1.5) }
+      : null;
+
+    // Save score to content table
+    await pool.query(`ALTER TABLE ${contentTable} ADD COLUMN IF NOT EXISTS precog_score INTEGER`).catch(() => {});
+    await pool.query(`ALTER TABLE ${contentTable} ADD COLUMN IF NOT EXISTS precog_breakdown JSONB`).catch(() => {});
+    await pool.query(`UPDATE ${contentTable} SET precog_score = $1, precog_breakdown = $2, updated_at = NOW() WHERE id = $3`, [score, JSON.stringify(breakdown), contentId]);
+
+    res.json({
+      success: true, score, tier, prediction, color, breakdown, predictedImpressions,
+      historicalContext: {
+        totalPosts: parseInt(stats.total_posts) || 0,
+        avgImpressions: Math.round(stats.avg_impressions) || 0,
+        avgEngagement: ((parseFloat(stats.avg_engagement) || 0) * 100).toFixed(2) + '%'
+      }
+    });
+
   } catch (err) {
-    console.error('[Pre-cog] Score error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    console.error('[Pre-cog] Error:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
-// GET /api/precog/score/:brandProfileId/:contentId — fetch cached score
+// GET /api/precog/score/:brandProfileId/:contentId — Get cached score
 app.get('/api/precog/score/:brandProfileId/:contentId', requireAuth, async (req, res) => {
   const { brandProfileId, contentId } = req.params;
   try {
     const safeId = brandProfileId.replace(/-/g, '_');
     const contentTable = `generated_content_${safeId}`;
-    const result = await pool.query(
-      `SELECT precog_score, precog_breakdown, precog_scored_at FROM ${contentTable} WHERE id = $1`,
-      [contentId]
-    );
+    
+    const result = await pool.query(`SELECT precog_score, precog_breakdown FROM ${contentTable} WHERE id = $1`, [contentId]);
     if (!result.rows.length) return res.status(404).json({ error: 'Content not found' });
+    
     const row = result.rows[0];
-    if (!row.precog_score && row.precog_breakdown?.tier !== 'insufficient_data') {
-      return res.json({ success: true, score: null, message: 'Score not yet calculated' });
-    }
-    res.json({ success: true, scoredAt: row.precog_scored_at, ...row.precog_breakdown });
+    if (!row.precog_score) return res.json({ success: true, score: null, message: 'Score not yet calculated' });
+
+    const score = row.precog_score;
+    let tier, prediction, color;
+    if (score >= 80) { tier = 'high'; prediction = 'Likely to outperform'; color = '#22C55E'; }
+    else if (score >= 60) { tier = 'medium'; prediction = 'Near average'; color = '#EAB308'; }
+    else if (score >= 40) { tier = 'low'; prediction = 'May underperform'; color = '#F97316'; }
+    else { tier = 'risk'; prediction = 'High risk'; color = '#EF4444'; }
+
+    res.json({ success: true, score, tier, prediction, color, breakdown: row.precog_breakdown });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// POST /api/precog/batch — score all unscored content for a brand
+// POST /api/precog/batch — Score all unscored content for a brand
 app.post('/api/precog/batch', requireAuth, async (req, res) => {
-  const { brandProfileId, force } = req.body;
+  const { brandProfileId } = req.body;
   if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
+
   try {
     const safeId = brandProfileId.replace(/-/g, '_');
     const contentTable = `generated_content_${safeId}`;
-    // Score items with no score, or scores older than 7 days (analytics may have updated)
-    const toScore = await pool.query(`
-      SELECT id FROM ${contentTable}
-      WHERE precog_score IS NULL
-         OR precog_scored_at < NOW() - INTERVAL '7 days'
-         ${force ? "OR TRUE" : ""}
-      ORDER BY created_at DESC
-      LIMIT 50
-    `);
-    const scored = [], failed = [];
-    for (const row of toScore.rows) {
+    
+    await pool.query(`ALTER TABLE ${contentTable} ADD COLUMN IF NOT EXISTS precog_score INTEGER`).catch(() => {});
+    await pool.query(`ALTER TABLE ${contentTable} ADD COLUMN IF NOT EXISTS precog_breakdown JSONB`).catch(() => {});
+
+    const unscoredRes = await pool.query(`SELECT id FROM ${contentTable} WHERE precog_score IS NULL ORDER BY created_at DESC LIMIT 50`);
+
+    const scored = [];
+    for (const row of unscoredRes.rows) {
       try {
-        const result = await computePrecogScore(brandProfileId, row.id);
-        scored.push({ id: row.id, score: result.score, tier: result.tier });
+        const scoreRes = await fetch(`https://${req.headers.host}/api/precog/score`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ brandProfileId, contentId: row.id })
+        });
+        const data = await scoreRes.json();
+        if (data.success) scored.push({ id: row.id, score: data.score });
       } catch (e) {
-        console.error(`[Pre-cog] Batch score failed for ${row.id}:`, e.message);
-        failed.push({ id: row.id, error: e.message });
+        console.error(`[Pre-cog] Failed to score ${row.id}:`, e.message);
       }
     }
-    res.json({ success: true, scored: scored.length, failed: failed.length, items: scored });
+
+    res.json({ success: true, scored: scored.length, items: scored });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ error: err.message });
   }
 });
 
-
-
-// GET /api/precog/all/:brandProfileId — all scored content for the Predictions tab
 app.get('/api/precog/all/:brandProfileId', requireAuth, async (req, res) => {
   const { brandProfileId } = req.params;
   if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
@@ -2215,7 +2116,6 @@ app.get('/api/precog/all/:brandProfileId', requireAuth, async (req, res) => {
   }
 });
 
-// GET /api/precog/accuracy/:brandProfileId — brain-level prediction accuracy stats
 app.get('/api/precog/accuracy/:brandProfileId', requireAuth, async (req, res) => {
   const { brandProfileId } = req.params;
   if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
@@ -2250,15 +2150,13 @@ app.get('/api/precog/accuracy/:brandProfileId', requireAuth, async (req, res) =>
   }
 });
 
-
-
 // -- GET /api/brand-profiles/list
 // GET /api/brand-settings/:brandProfileId
 app.get('/api/brand-settings/:brandProfileId', requireAuth, async (req, res) => {
   const { brandProfileId } = req.params;
   try {
     const r = await pool.query(
-      'SELECT id, brand_name, brand_url, article_base_url, article_url_suffix, logo_url, settings, is_paid, created_at, updated_at, digest_unsubscribed FROM brand_profiles WHERE id = $1',
+      'SELECT id, brand_name, brand_url, article_base_url, article_url_suffix, logo_url, settings, created_at, updated_at FROM brand_profiles WHERE id = $1',
       [brandProfileId]
     );
     if (!r.rows.length) return res.status(404).json({ error: 'Brand not found' });
@@ -2294,68 +2192,7 @@ app.patch('/api/brand-settings/:brandProfileId', async (req, res) => {
   }
 });
 
-// PATCH /api/brand-settings/:brandProfileId/voice — tune toneAttribute scores directly
-app.patch('/api/brand-settings/:brandProfileId/voice', requireAuth, async (req, res) => {
-  const { brandProfileId } = req.params;
-  const { toneAdjustments } = req.body;
-  // toneAdjustments: [{ attribute: 'Formality', score: 72 }, ...]
-  if (!Array.isArray(toneAdjustments) || !toneAdjustments.length) {
-    return res.status(400).json({ error: 'toneAdjustments array required' });
-  }
-  try {
-    const brandRes = await pool.query(
-      `SELECT profile_data FROM brand_profiles WHERE id = $1 AND clerk_user_id = $2`,
-      [brandProfileId, req.userId]
-    );
-    if (!brandRes.rows.length) return res.status(404).json({ error: 'Brand not found' });
-
-    const profileData = brandRes.rows[0].profile_data || {};
-    const voiceProfile = profileData.voiceProfile || {};
-    const attrs = voiceProfile.toneAttributes || [];
-
-    // Apply adjustments — only update score, preserve attribute name + description
-    const adjustmentMap = {};
-    toneAdjustments.forEach(a => { adjustmentMap[a.attribute.toLowerCase()] = Math.min(100, Math.max(0, parseInt(a.score))); });
-
-    const updatedAttrs = attrs.map(a => {
-      const key = (a.attribute || '').toLowerCase();
-      return adjustmentMap[key] !== undefined ? { ...a, score: adjustmentMap[key] } : a;
-    });
-
-    const updatedProfileData = {
-      ...profileData,
-      voiceProfile: { ...voiceProfile, toneAttributes: updatedAttrs }
-    };
-
-    await pool.query(
-      `UPDATE brand_profiles SET profile_data = $1, updated_at = NOW() WHERE id = $2`,
-      [JSON.stringify(updatedProfileData), brandProfileId]
-    );
-
-    res.json({ success: true, toneAttributes: updatedAttrs });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// GET /api/brand-settings/:brandProfileId/voice — get current toneAttributes
-app.get('/api/brand-settings/:brandProfileId/voice', requireAuth, async (req, res) => {
-  const { brandProfileId } = req.params;
-  try {
-    const r = await pool.query(
-      `SELECT profile_data FROM brand_profiles WHERE id = $1 AND clerk_user_id = $2`,
-      [brandProfileId, req.userId]
-    );
-    if (!r.rows.length) return res.status(404).json({ error: 'Brand not found' });
-    const attrs = r.rows[0].profile_data?.voiceProfile?.toneAttributes || [];
-    res.json({ success: true, toneAttributes: attrs });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-
-app.get('/api/brand-profiles/list', async (req, res) => {
+app.get('/api/brand-profiles/list', requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT id, brand_url, brand_name, profile_data FROM brand_profiles WHERE is_active = true ORDER BY updated_at DESC`
@@ -2398,32 +2235,10 @@ app.post('/api/context-hub/analyze', softAuth, async (req, res) => {
   const startTime = Date.now();
 
   try {
-    // One domain, one brain — block scan if this URL is already owned by someone else
-    const normalizedUrl = brandUrl.startsWith('http') ? brandUrl : `https://${brandUrl}`;
-    const ownerCheck = await pool.query(
-      `SELECT clerk_user_id FROM brand_profiles
-       WHERE (brand_url = $1 OR brand_url = $2)
-         AND clerk_user_id IS NOT NULL
-         AND is_active = true
-       LIMIT 1`,
-      [normalizedUrl, normalizedUrl.replace(/^https?:\/\//, '').replace(/^www\./, '')]
-    );
-    if (ownerCheck.rows.length > 0) {
-      const ownerId = ownerCheck.rows[0].clerk_user_id;
-      const requesterId = req.userId || null;
-      // Allow if the requester IS the owner
-      if (ownerId !== requesterId) {
-        return res.status(409).json({
-          success: false,
-          error: 'domain_claimed',
-          message: 'A Brain already exists for this domain. If this is your brand, sign in to access it.'
-        });
-      }
-    }
     // ── Brain-First: cache check ──────────────────────────────────────────────
     if (checkBrainFirst) {
       const existing = await pool.query(
-        `SELECT * FROM brand_profiles WHERE brand_url = $1 AND is_active = true AND (is_paid = true OR expires_at IS NULL OR expires_at > NOW()) ORDER BY version DESC LIMIT 1`,
+        `SELECT * FROM brand_profiles WHERE brand_url = $1 AND is_active = true ORDER BY version DESC LIMIT 1`,
         [brandUrl]
       );
       if (existing.rows.length > 0) {
@@ -2433,7 +2248,6 @@ app.post('/api/context-hub/analyze', softAuth, async (req, res) => {
         return res.json({ success: true, cached: true, data: {
           id: r.id, brandUrl: r.brand_url, brandName: r.brand_name,
           version: r.version, isActive: r.is_active, cacheStatus: 'cached',
-          expiresAt: r.expires_at, isPaid: r.is_paid,
           createdAt: r.created_at, updatedAt: r.updated_at, ...r.profile_data
         }});
       }
@@ -2525,103 +2339,11 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
       }
     } catch(e) { console.log('[Context Hub] No prior patterns:', e.message); }
 
-    // ── Tool 3: LinkedIn Company Enrichment ──────────────────────────────────
-    // Two-stage: Google CSE discovery → Apify harvestapi extraction
-    // Non-blocking — degrades gracefully if any call fails
-    console.log(`[Context Hub] Tool 3: LinkedIn enrichment for ${brandUrl}...`);
-    let linkedInSection = '';
-    try {
-      const cseKey     = process.env.GOOGLE_CSE_API_KEY;
-      const cseId      = process.env.GOOGLE_CSE_SEARCH_ENGINE_ID;
-      const apifyToken = process.env.APIFY_TOKEN;
-
-      if (cseKey && cseId && apifyToken) {
-        // Stage 1: discover LinkedIn company URL via Google CSE
-        let linkedInUrl = null;
-        const searchStrategies = [
-          `"${brandName}" site:linkedin.com/company`,
-          `${brandName} ${brandUrl.replace(/https?:\/\//, '').split('/')[0]} site:linkedin.com/company`,
-        ];
-        for (const query of searchStrategies) {
-          if (linkedInUrl) break;
-          try {
-            const cseRes = await fetch(
-              `https://www.googleapis.com/customsearch/v1?key=${cseKey}&cx=${cseId}&q=${encodeURIComponent(query)}&num=3`
-            );
-            if (cseRes.ok) {
-              const cseData = await cseRes.json();
-              const match = (cseData.items || []).find(item =>
-                item.link && item.link.includes('linkedin.com/company')
-              );
-              if (match) linkedInUrl = match.link.split('?')[0].replace(/\/$/, '');
-            }
-          } catch(e) { /* try next */ }
-        }
-
-        if (linkedInUrl) {
-          console.log(`[Context Hub] LinkedIn discovered: ${linkedInUrl}`);
-
-          // Stage 2: extract company profile + recent posts via Apify
-          const runApify = async (actorId, input) => {
-            const res = await fetch(
-              `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${apifyToken}&timeout=45`,
-              { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) }
-            );
-            if (!res.ok) throw new Error(`Apify ${actorId} → ${res.status}`);
-            return res.json();
-          };
-
-          const [profileResult, postsResult] = await Promise.allSettled([
-            runApify('harvestapi/linkedin-company', { urls: [linkedInUrl], proxy: { useApifyProxy: true } }),
-            runApify('harvestapi/linkedin-company-posts', { urls: [linkedInUrl], maxPosts: 20, proxy: { useApifyProxy: true } })
-          ]);
-
-          const company = profileResult.status === 'fulfilled' ? profileResult.value?.[0] : null;
-          const posts   = postsResult.status   === 'fulfilled' ? (postsResult.value || []) : [];
-          const sections = [];
-
-          if (company) {
-            if (company.description) sections.push(`Company description: "${company.description.slice(0, 500)}"`);
-            if (company.tagline)     sections.push(`Tagline: "${company.tagline}"`);
-            if (company.industry)    sections.push(`Industry on LinkedIn: ${company.industry}`);
-            if (company.followerCount) sections.push(`Followers: ${company.followerCount.toLocaleString()}`);
-          }
-
-          const postTexts = posts.filter(p => p.text?.length > 30).slice(0, 15).map(p => p.text.slice(0, 280));
-          if (postTexts.length > 0) {
-            sections.push(`\nRecent LinkedIn posts (${postTexts.length} samples — use these for operational voice calibration):`);
-            postTexts.forEach((t, i) => sections.push(`  ${i+1}: "${t}"`));
-
-            // Recurring hashtags → topical positioning
-            const freq = {};
-            posts.flatMap(p => (p.text?.match(/#[\w]+/g) || []).map(h => h.toLowerCase()))
-                 .forEach(h => { freq[h] = (freq[h]||0) + 1; });
-            const topTags = Object.entries(freq).filter(([,n])=>n>=2).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([h])=>h);
-            if (topTags.length) sections.push(`Recurring hashtags: ${topTags.join(', ')}`);
-
-            const avgLen = Math.round(postTexts.reduce((a,t)=>a+t.length,0)/postTexts.length);
-            sections.push(`Avg post length: ~${avgLen} chars (${avgLen<150?'brief/punchy':avgLen<400?'conversational':'editorial'} style)`);
-          }
-
-          if (sections.length > 0) {
-            linkedInSection = '\n\nLINKEDIN VOICE SIGNALS (operational voice — weight alongside website):\n' + sections.join('\n');
-            console.log(`[Context Hub] LinkedIn complete — ${posts.length} posts, profile: ${!!company}`);
-          }
-        } else {
-          console.log(`[Context Hub] LinkedIn: no company page found for ${brandName}`);
-        }
-      } else {
-        console.log('[Context Hub] LinkedIn enrichment skipped — env vars not configured');
-      }
-    } catch(e) {
-      console.log('[Context Hub] LinkedIn enrichment failed (non-fatal):', e.message);
-    }
-
     const prompt = `You are the Forge Intelligence Context Agent — Stage 1 of an 8-stage Brand Intelligence platform.
 
-Analyze the brand at: ${brandUrl}${competitorSection}${icpSection}${marketSection}${audienceSection}${strategicSection}${linkedInSection}${patternSection}${mistakeSection}
+Analyze the brand at: ${brandUrl}${competitorSection}${icpSection}${marketSection}${audienceSection}${strategicSection}${patternSection}${mistakeSection}
 
-Return ONLY valid JSON (no markdown, no explanation):
+Return ONLY valid JSON (no markdown, no explanation, no newlines inside string values — use spaces instead):
 {
   "voiceProfile": {
     "summary": "string",
@@ -2648,7 +2370,7 @@ Return ONLY valid JSON (no markdown, no explanation):
 Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competitiveGaps, 4-6 strategicRecommendations. Use the ICP and market context provided to make personas and gaps highly specific. For visualStyle and accentColor: infer carefully from the brand website design, color palette, imagery, and overall aesthetic — these feed directly into AI hero image generation and must reflect the real brand identity. For industry, positioning, and targetPersona: be specific and commercially precise, not generic.`;
 
     const message = await anthropic.messages.create({
-      model: 'claude-opus-4-5',
+      model: 'claude-opus-4-6',
       max_tokens: 4096,
       messages: [{ role: 'user', content: prompt }]
     });
@@ -2656,7 +2378,14 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
     const raw = message.content[0].text;
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('Claude returned no valid JSON');
-    const profileData = JSON.parse(sanitizeJson(jsonMatch[0]));
+    let profileData;
+    try {
+      profileData = JSON.parse(jsonMatch[0]);
+    } catch(parseErr) {
+      // Claude embedded bare newlines in string values — fix by replacing \n inside strings
+      const fixed = jsonMatch[0].replace(/:\s*"([\s\S]*?)"/g, (m, val) => ': "' + val.replace(/\n/g, ' ').replace(/\r/g, ' ') + '"');
+      profileData = JSON.parse(fixed);
+    }
 
     // Inject discovered competitors into profile
     profileData.discoveredCompetitors = sonarCompetitors;
@@ -2689,7 +2418,6 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
       return res.json({ success: true, cached: false, data: {
         id: r.id, brandUrl: r.brand_url, brandName: r.brand_name,
         version: r.version, isActive: r.is_active, cacheStatus: r.cache_status,
-        expiresAt: r.expires_at, isPaid: r.is_paid,
         latencyMs, discoveredCompetitors: sonarCompetitors,
         createdAt: r.created_at, updatedAt: r.updated_at, ...profileData
       }});
@@ -2710,6 +2438,323 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
   }
 });
 
+
+
+// GET /api/context-hub/brand/:brandId — fetch brand profile by ID (unauthenticated, for URL-based recovery)
+app.get('/api/context-hub/brand/:brandId', async (req, res) => {
+  const { brandId } = req.params;
+  try {
+    const r = await pool.query(
+      `SELECT * FROM brand_profiles WHERE id = $1 AND (expires_at IS NULL OR expires_at > NOW()) LIMIT 1`,
+      [brandId]
+    );
+    if (!r.rows.length) return res.status(404).json({ success: false, error: 'Brand not found or expired' });
+    const row = r.rows[0];
+    res.json({ success: true, data: {
+      id: row.id, brandUrl: row.brand_url, brandName: row.brand_name,
+      version: row.version, isActive: row.is_active, cacheStatus: row.cache_status,
+      expiresAt: row.expires_at, createdAt: row.created_at, isPaid: !!row.clerk_user_id,
+      ...row.profile_data
+    }});
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+
+// ── Email Campaign Tables ──────────────────────────────────────────────────
+// Created in initDB — see payment_events block above
+
+// ── Stage 4.6 — Email Campaign Generator ──────────────────────────────────
+
+// POST /api/email-campaign/create — save brief + create campaign record
+app.post('/api/email-campaign/create', requireAuth, async (req, res) => {
+  const { brandProfileId, brief } = req.body;
+  if (!brandProfileId || !brief) return res.status(400).json({ error: 'brandProfileId and brief required' });
+
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS email_campaigns (
+      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      brand_profile_id TEXT NOT NULL,
+      brief JSONB NOT NULL,
+      status VARCHAR(30) DEFAULT 'pending',
+      sequence_notes TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`).catch(() => {});
+
+    await pool.query(`CREATE TABLE IF NOT EXISTS email_campaign_emails (
+      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      campaign_id TEXT NOT NULL,
+      email_index INTEGER NOT NULL,
+      job TEXT,
+      send_day INTEGER DEFAULT 0,
+      subject_lines JSONB,
+      preview_text TEXT,
+      body TEXT,
+      cta_text TEXT,
+      cta_url_placeholder TEXT,
+      ps TEXT,
+      confidence_score INTEGER,
+      confidence_reason TEXT,
+      flags JSONB DEFAULT '[]',
+      status VARCHAR(30) DEFAULT 'pending',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`).catch(() => {});
+
+    const result = await pool.query(
+      `INSERT INTO email_campaigns (brand_profile_id, brief, status) VALUES ($1, $2, 'pending') RETURNING id`,
+      [brandProfileId, JSON.stringify(brief)]
+    );
+    const campaignId = result.rows[0].id;
+    res.json({ success: true, campaignId });
+  } catch (err) {
+    console.error('[EMAIL CAMPAIGN] Create error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/email-campaign/list/:brandProfileId — list saved campaigns
+app.get('/api/email-campaign/list/:brandProfileId', requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, brief, status, sequence_notes, created_at FROM email_campaigns WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 20`,
+      [req.params.brandProfileId]
+    );
+    res.json({ success: true, campaigns: result.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/email-campaign/:id — get campaign + emails
+app.get('/api/email-campaign/:id', requireAuth, async (req, res) => {
+  try {
+    const [camp, emails] = await Promise.all([
+      pool.query(`SELECT * FROM email_campaigns WHERE id = $1`, [req.params.id]),
+      pool.query(`SELECT * FROM email_campaign_emails WHERE campaign_id = $1 ORDER BY email_index`, [req.params.id])
+    ]);
+    if (!camp.rows.length) return res.status(404).json({ error: 'Campaign not found' });
+    res.json({ success: true, campaign: camp.rows[0], emails: emails.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/email-campaign/generate/:id — SSE — generate all emails sequentially
+app.get('/api/email-campaign/generate/:id', requireAuth, async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  const keepalive = setInterval(() => res.write(': ping\n\n'), 30000);
+  req.on('close', () => clearInterval(keepalive));
+
+  try {
+    const campRes = await pool.query(`SELECT * FROM email_campaigns WHERE id = $1`, [req.params.id]);
+    if (!campRes.rows.length) { send('error', { message: 'Campaign not found' }); return res.end(); }
+    const campaign = campRes.rows[0];
+    const brief = campaign.brief;
+
+    const profileRes = await pool.query(`SELECT * FROM brand_profiles WHERE id = $1`, [campaign.brand_profile_id]);
+    if (!profileRes.rows.length) { send('error', { message: 'Brand profile not found' }); return res.end(); }
+    const profileData = profileRes.rows[0].profile_data || profileRes.rows[0];
+
+    const [patternsRes, mistakesRes] = await Promise.all([
+      pool.query(`SELECT pattern_type, description, confidence_score FROM brain_patterns WHERE brand_profile_id = $1 ORDER BY confidence_score DESC LIMIT 6`, [campaign.brand_profile_id]).catch(() => ({ rows: [] })),
+      pool.query(`SELECT mistake_type, description, severity FROM brain_mistakes WHERE brand_profile_id = $1 ORDER BY severity DESC LIMIT 5`, [campaign.brand_profile_id]).catch(() => ({ rows: [] }))
+    ]);
+
+    const systemPrompt = fs.readFileSync(
+      path.join(__dirname, 'src/agents/stage46_email_campaign/system_prompt.md'), 'utf8'
+    );
+
+    const trimTo = (obj, max = 3000) => {
+      const s = typeof obj === 'string' ? obj : JSON.stringify(obj);
+      return s.length > max ? s.substring(0, max) + '...[truncated]' : s;
+    };
+
+    const numEmails = brief.num_emails || 5;
+    const userPrompt = `Generate a ${numEmails}-email ${brief.campaign_type || 'nurture'} sequence using the following brief and brand brain.
+
+CAMPAIGN BRIEF:
+- Business Problem: ${brief.business_problem}
+- SMART Goal: ${brief.smart_goal}
+- Single-Minded Proposition: ${brief.smp}
+- UVP: ${brief.uvp}
+- Pain Point Being Solved: ${brief.pain_point}
+- Target Persona: ${brief.target_persona}
+- Current Mindset: ${brief.current_mindset}
+- Desired Mindset After Reading: ${brief.desired_mindset}
+- Direct Competitor: ${brief.competitor || 'Not specified'}
+- Mandatories: ${brief.mandatories || 'None'}
+
+BRAND VOICE PROFILE:
+${trimTo(profileData?.voiceProfile || profileData?.voice_profile || {}, 2000)}
+
+PERSONAS:
+${trimTo(profileData?.personas || [], 1500)}
+
+BRAIN PATTERNS (what has worked — lean into these):
+${patternsRes.rows.map(p => `- [${p.pattern_type}] ${p.description}`).join('\n') || 'None yet'}
+
+BRAIN MISTAKES (what has failed — avoid unconditionally):
+${mistakesRes.rows.map(m => `- [${m.severity}] ${m.mistake_type}: ${m.description}`).join('\n') || 'None yet'}
+
+Generate exactly ${numEmails} emails. Return ONLY valid JSON matching the output format.`;
+
+    await pool.query(`UPDATE email_campaigns SET status = 'generating', updated_at = NOW() WHERE id = $1`, [req.params.id]);
+    send('status', { message: 'Brain loaded. Generating sequence...' });
+
+    const message = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 8000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }]
+    });
+
+    const raw = message.content[0].text;
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonMatch ? jsonMatch[0] : raw);
+    } catch(e) {
+      // Fallback: strip newlines inside strings
+      const fixed = (jsonMatch ? jsonMatch[0] : raw).replace(/:\s*"([\s\S]*?)"/g, (m, val) => ': "' + val.replace(/\n/g, ' ').replace(/\r/g, ' ') + '"');
+      parsed = JSON.parse(fixed);
+    }
+
+    // Save campaign-level metadata
+    await pool.query(
+      `UPDATE email_campaigns SET status = 'complete', sequence_notes = $1, updated_at = NOW() WHERE id = $2`,
+      [parsed.sequence_notes || '', req.params.id]
+    );
+
+    // Save each email
+    for (const email of parsed.emails || []) {
+      await pool.query(
+        `INSERT INTO email_campaign_emails (campaign_id, email_index, job, send_day, subject_lines, preview_text, body, cta_text, cta_url_placeholder, ps, confidence_score, confidence_reason, flags, status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'complete')
+         ON CONFLICT DO NOTHING`,
+        [
+          req.params.id, email.index, email.job || '', email.send_day || 0,
+          JSON.stringify(email.subject_lines || {}), email.preview_text || '',
+          email.body || '', email.cta_text || '', email.cta_url_placeholder || '{{cta_url}}',
+          email.ps || null, email.confidence_score || 80, email.confidence_reason || '',
+          JSON.stringify(email.flags || [])
+        ]
+      ).catch(() => {});
+      send('email', { index: email.index, job: email.job, confidence_score: email.confidence_score, flags: email.flags || [] });
+    }
+
+    send('complete', { campaignId: req.params.id, emailCount: parsed.emails?.length || 0, sequenceNotes: parsed.sequence_notes });
+    clearInterval(keepalive);
+    res.end();
+  } catch (err) {
+    console.error('[EMAIL CAMPAIGN] Generate error:', err.message);
+    send('error', { message: err.message });
+    clearInterval(keepalive);
+    res.end();
+  }
+});
+
+// POST /api/email-campaign/push-to-hubspot — push email sequence to HubSpot as draft campaign
+app.post('/api/email-campaign/push-to-hubspot', requireAuth, async (req, res) => {
+  const { brandProfileId, campaignId } = req.body;
+  if (!brandProfileId || !campaignId) return res.status(400).json({ error: 'brandProfileId and campaignId required' });
+
+  try {
+    const accessToken = await refreshHubSpotToken(brandProfileId);
+
+    const [camp, emails] = await Promise.all([
+      pool.query(`SELECT * FROM email_campaigns WHERE id = $1`, [campaignId]),
+      pool.query(`SELECT * FROM email_campaign_emails WHERE campaign_id = $1 ORDER BY email_index`, [campaignId])
+    ]);
+    if (!camp.rows.length) return res.status(404).json({ error: 'Campaign not found' });
+    const brief = camp.rows[0].brief;
+    const campaignName = `${brief.smp || 'Email Campaign'} — ${new Date().toLocaleDateString()}`;
+
+    // Create a HubSpot campaign object to group the emails
+    const hsRes = await fetch('https://api.hubapi.com/marketing/v3/campaigns', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: campaignName, startDate: new Date().toISOString() })
+    }).catch(() => null);
+
+    const hsCampaign = hsRes?.ok ? await hsRes.json() : null;
+    const hsCampaignId = hsCampaign?.id || null;
+
+    // Push each email as a draft marketing email in HubSpot
+    const results = [];
+    for (const email of emails.rows) {
+      const subjects = email.subject_lines || {};
+      const primarySubject = subjects.benefit || subjects.curiosity || 'New Email';
+      const emailRes = await fetch('https://api.hubapi.com/marketing/v3/emails', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: `[${email.email_index}] ${primarySubject}`,
+          subject: primarySubject,
+          previewText: email.preview_text || '',
+          content: { body: (email.body || '').replace(/\n/g, '<br>') },
+          state: 'DRAFT',
+          campaign: hsCampaignId ? { id: hsCampaignId } : undefined
+        })
+      }).catch(() => null);
+
+      if (emailRes?.ok) {
+        const hsEmail = await emailRes.json();
+        results.push({ index: email.email_index, hsEmailId: hsEmail.id, status: 'pushed' });
+      } else {
+        results.push({ index: email.email_index, status: 'failed' });
+      }
+    }
+
+    res.json({ success: true, hsCampaignId, results, campaignName });
+  } catch (err) {
+    console.error('[EMAIL CAMPAIGN] HubSpot push error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/email-campaign/save-brief-template — save reusable brief
+app.post('/api/email-campaign/save-brief-template', requireAuth, async (req, res) => {
+  const { brandProfileId, name, brief } = req.body;
+  if (!brandProfileId || !name || !brief) return res.status(400).json({ error: 'brandProfileId, name, and brief required' });
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS email_brief_templates (
+      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      brand_profile_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      brief JSONB NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`).catch(() => {});
+    const result = await pool.query(
+      `INSERT INTO email_brief_templates (brand_profile_id, name, brief) VALUES ($1, $2, $3) RETURNING id`,
+      [brandProfileId, name, JSON.stringify(brief)]
+    );
+    res.json({ success: true, templateId: result.rows[0].id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/email-campaign/brief-templates/:brandProfileId
+app.get('/api/email-campaign/brief-templates/:brandProfileId', requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, name, brief, created_at FROM email_brief_templates WHERE brand_profile_id = $1 ORDER BY created_at DESC`,
+      [req.params.brandProfileId]
+    ).catch(() => ({ rows: [] }));
+    res.json({ success: true, templates: result.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ── GEO data normalizer — shared by fresh + cached responses ─────────────────
 function normalizeGeoData(briefData, topicalMap, geoOpportunities, entitySchema, profile) {
@@ -2907,7 +2952,7 @@ BRAIN MEMORIES (high performers): ${JSON.stringify(brainMemories)}`;
     // ── Tool 1: Topical Authority Mapper ─────────────────────────────────────
     console.log('[GEO] Tool 1: Topical Authority Mapper...');
     const topicalRes = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1500,
       messages: [{ role: 'user', content: `You are the Topical Authority Mapper for Forge Intelligence GEO Strategist.
 
@@ -2939,7 +2984,7 @@ Return ONLY the raw JSON array. No markdown. No backticks. No explanation. No ot
     // ── Tool 2: GEO Opportunity Scorer ────────────────────────────────────────
     console.log('[GEO] Tool 2: GEO Opportunity Scorer...');
     const scorerRes = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 2000,
       messages: [{ role: 'user', content: `You are the GEO Opportunity Scorer for Forge Intelligence.
 
@@ -2963,7 +3008,7 @@ Return ONLY a raw JSON array (no markdown, no explanation):
     // ── Tool 3: Entity & Schema Mapper ────────────────────────────────────────
     console.log('[GEO] Tool 3: Entity & Schema Mapper...');
     const entityRes = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1500,
       messages: [{ role: 'user', content: `You are the Entity & Schema Mapper for Forge Intelligence.
 
@@ -2989,7 +3034,7 @@ Return ONLY valid JSON array:
     const targetTopic = topicFocus || quickWins[0]?.topic || geoOpportunities[0]?.topic || whitespace || profile.brand_name + ' strategy';
 
     const briefRes = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 4000,
       messages: [{ role: 'user', content: `You are the GEO Brief Generator for Forge Intelligence.
 
@@ -3220,7 +3265,7 @@ Return empty arrays if not found. Be factual and accurate.`
     console.log('[ENRICH] Tool 2: E-E-A-T Confidence Scorer...');
 
     const scorerRes = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 2000,
       system: 'You are a JSON API. You must respond with valid JSON only — no markdown, no explanation, no code fences.',
       messages: [
@@ -3251,7 +3296,7 @@ Respond with this exact JSON structure:
     console.log('[ENRICH] Tool 3: Voice & Persona Injection Mapper...');
 
     const injectionRes = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 8096,
       system: 'You are a JSON API. You must respond with valid JSON only — no markdown, no explanation, no code fences.',
       messages: [
@@ -3280,7 +3325,7 @@ Respond with this exact JSON structure:
     console.log('[ENRICH] Tool 4: Enriched Brief Assembler...');
 
     const assemblerRes = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 8096,
       system: 'You are a JSON API. You must respond with valid JSON only — no markdown, no explanation, no code fences.',
       messages: [
@@ -3471,7 +3516,7 @@ async function ensureGeneratedContentTable(brandProfileId) {
   return tableName;
 }
 
-app.get('/api/content-generator/generate', async (req, res) => {
+app.get('/api/content-generator/generate', requireAuth, async (req, res) => {
   const { brandProfileId, enrichedBriefId, force, topicPrompt } = req.query;
   if (!brandProfileId) return res.status(400).json({ success: false, error: 'brandProfileId required' });
 
@@ -3559,7 +3604,7 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
 
     let fullText = '';
     const stream = await client.messages.stream({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 8096,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }]
@@ -3578,9 +3623,8 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
     try {
       const jsonMatch = fullText.match(/\{[\s\S]*\}/);
       const jsonStr = jsonMatch ? jsonMatch[0] : fullText;
-
       try {
-        parsed = JSON.parse(sanitizeJson(jsonStr));
+        parsed = JSON.parse(jsonStr);
       } catch(e) {
         // Claude truncated mid-JSON — robust bracket-counting recovery
         const attemptRecovery = (str) => {
@@ -3606,7 +3650,7 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
         };
         try {
           const recovered = attemptRecovery(jsonStr);
-          parsed = JSON.parse(sanitizeJson(recovered));
+          parsed = JSON.parse(recovered);
           parsed._truncated = true;
         } catch(e2) {
           // Last resort — try stripping to last complete top-level section
@@ -3658,7 +3702,7 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
        0, JSON.stringify({ title: parsed.title, overallConfidence: parsed.overallConfidence })]
     ).catch(() => {});
 
-    send('done', JSON.stringify(parsed));
+    send('done', JSON.stringify({ ...parsed, contentId }));
 
     // Fire Flux image generation in parallel — don't block the done event
     (async () => {
@@ -3763,7 +3807,7 @@ ${enrichedBrief ? trimTo(enrichedBrief, 4000) : 'Not available — infer from br
 Return ONLY valid JSON matching the output format. No markdown, no commentary.`;
 
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }]
@@ -3771,7 +3815,7 @@ Return ONLY valid JSON matching the output format. No markdown, no commentary.`;
 
     const raw = message.content[0].text;
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    const plan = JSON.parse(sanitizeJson(jsonMatch ? jsonMatch[0] : raw));
+    const plan = JSON.parse(jsonMatch ? jsonMatch[0] : raw);
 
     res.json({ success: true, plan });
   } catch (err) {
@@ -3780,24 +3824,32 @@ Return ONLY valid JSON matching the output format. No markdown, no commentary.`;
   }
 });
 
-// POST /api/campaign/create — save campaign plan to DB
-// ── Test: image generation endpoint (no article needed) ──────────────────────
-app.get('/api/test/image', async (req, res) => {
+
+// POST /api/campaign/reset/:id — reset a stalled campaign back to pending
+app.post('/api/campaign/reset/:id', requireAuth, async (req, res) => {
   try {
-    const title = req.query.title || 'The Future of B2B Marketing Intelligence';
-    const voiceProfile = { tone_summary: req.query.tone || 'Professional, strategic, data-driven' };
-    const fluxPrompt = await buildImagePrompt(title, voiceProfile, '');
-    const falRes = await fetch('https://fal.run/fal-ai/flux/schnell', {
-      method: 'POST',
-      headers: { 'Authorization': `Key ${process.env.FAL_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: fluxPrompt, image_size: 'landscape_16_9', num_inference_steps: 4, num_images: 1 })
-    });
-    const falData = await falRes.json();
-    res.json({ prompt: fluxPrompt, imageUrl: falData?.images?.[0]?.url, raw: falData });
-  } catch(e) {
-    res.status(500).json({ error: e.message });
+    const result = await pool.query(
+      `UPDATE campaigns SET status = 'pending', updated_at = NOW()
+       WHERE id = $1 AND status IN ('generating', 'error')
+       RETURNING id, status`,
+      [req.params.id]
+    );
+    if (!result.rows.length) {
+      return res.status(404).json({ error: 'Campaign not found or not in a resettable state' });
+    }
+    // Also reset any stuck article statuses
+    await pool.query(
+      `UPDATE campaign_articles SET status = 'pending', updated_at = NOW()
+       WHERE campaign_id = $1 AND status = 'generating'`,
+      [req.params.id]
+    ).catch(() => {});
+    res.json({ success: true, campaignId: req.params.id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
+
+// POST /api/campaign/create — save campaign plan to DB
 
 app.post('/api/campaign/create', requireAuth, async (req, res) => {
   const { brandProfileId, plan } = req.body;
@@ -3890,7 +3942,7 @@ app.get('/api/campaign/:id', async (req, res) => {
 });
 
 // GET /api/campaign/generate/:id — SSE — generate all pending articles sequentially
-app.get('/api/campaign/generate/:id', async (req, res) => {
+app.get('/api/campaign/generate/:id', requireAuth, async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -3906,12 +3958,6 @@ app.get('/api/campaign/generate/:id', async (req, res) => {
     const campaign = campRes.rows[0];
     if (!campaign) { send('error', { message: 'Campaign not found' }); return res.end(); }
 
-    // Reset any articles stuck in 'generating' state from a previous interrupted run
-    await pool.query(
-      `UPDATE campaign_articles SET status = 'pending', updated_at = NOW()
-       WHERE campaign_id = $1 AND status = 'generating'`,
-      [req.params.id]
-    );
     const articlesRes = await pool.query(
       `SELECT * FROM campaign_articles WHERE campaign_id = $1 AND status = 'pending' ORDER BY article_index`,
       [req.params.id]
@@ -4015,7 +4061,7 @@ Return ONLY valid JSON matching the content generator output format.`;
 
       let fullText = '';
       const stream = await anthropic.messages.stream({
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6',
         max_tokens: 16000,
         system: cgSystemPrompt,
         messages: [{ role: 'user', content: userPrompt }]
@@ -4033,7 +4079,7 @@ Return ONLY valid JSON matching the content generator output format.`;
         // Use extractJSON which handles token-truncated responses by closing open structures
         const recovered = extractJSON(fullText, 'object');
         if (!recovered) throw new Error('No valid JSON found in response');
-        parsed = JSON.parse(sanitizeJson(recovered));
+        parsed = JSON.parse(recovered);
       } catch (e) {
         await pool.query(
           `UPDATE campaign_articles SET status = 'failed', updated_at = NOW() WHERE id = $1`,
@@ -4143,88 +4189,6 @@ app.get('/api/compliance/latest/:brandProfileId', requireAuth, async (req, res) 
 });
 
 // POST compliance critique — Claude reads article + brain mistakes, returns report
-// POST /api/compliance/find-sources — Perplexity finds real sources for a factual claim
-app.post('/api/compliance/find-sources', requireAuth, async (req, res) => {
-  const { claim, sectionBody } = req.body;
-  if (!claim && !sectionBody) return res.status(400).json({ error: 'claim or sectionBody required' });
-  try {
-    const query = (claim || sectionBody || '').slice(0, 200);
-
-    // Perplexity sonar — simple prose request, exponential backoff on 429
-    let sonarData = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const sonarRes = await fetch('https://api.perplexity.ai/chat/completions', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'sonar',
-          messages: [
-            { role: 'system', content: 'You are a research assistant. Find credible sources with data.' },
-            { role: 'user', content: `Find research, statistics, or studies supporting: "${query}"` }
-          ]
-        })
-      });
-      if (sonarRes.status === 429) {
-        await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
-        continue;
-      }
-      if (!sonarRes.ok) {
-        const err = await sonarRes.text();
-        console.error('[FIND-SOURCES] Perplexity', sonarRes.status, err.slice(0, 200));
-        return res.status(500).json({ success: false, error: `Source search failed (${sonarRes.status}) — try again` });
-      }
-      sonarData = await sonarRes.json();
-      break;
-    }
-
-    if (!sonarData) return res.status(500).json({ success: false, error: 'Source search timed out — try again' });
-
-    const prose = sonarData.choices?.[0]?.message?.content || '';
-    const citations = sonarData.citations || [];
-    console.log('[FIND-SOURCES] prose:', prose.length, 'citations:', citations.length);
-
-    // Claude Haiku structures the prose into source objects — Perplexity returns prose, not JSON
-    const extractRes = await anthropic.messages.create({
-      model: 'claude-haiku-4-5',
-      max_tokens: 600,
-      messages: [{
-        role: 'user',
-        content: `From this research text and URLs, extract up to 3 sources as a JSON array.
-Return ONLY the raw array — no markdown, no backticks, no explanation.
-Format: [{"title":"...","url":"...","snippet":"key finding in one sentence","year":"YYYY or empty"}]
-
-Text: ${prose.slice(0, 1500)}
-URLs: ${JSON.stringify(citations.slice(0, 6))}`
-      }]
-    });
-
-    const raw = (extractRes.content[0]?.text || '').trim();
-    let sources = [];
-    try {
-      const match = raw.match(/\[[\s\S]*?\]/);
-      sources = match ? JSON.parse(match[0]) : [];
-      if (!Array.isArray(sources)) sources = [];
-    } catch {
-      sources = [];
-    }
-
-    // Hard fallback: use raw citation URLs if parsing failed
-    if (!sources.length && citations.length) {
-      sources = citations.slice(0, 3).map((url, i) => ({
-        title: `Source ${i + 1}`, url, snippet: prose.slice(i * 80, i * 80 + 80) || '', year: ''
-      }));
-    }
-
-    if (!sources.length) return res.json({ success: false, error: 'No sources found — try a different section' });
-
-    res.json({ success: true, sources: sources.slice(0, 3) });
-  } catch (e) {
-    console.error('[FIND-SOURCES] caught:', e.message);
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
-// POST /api/compliance/rewrite-section — AI rewrites one section using a compliance suggestion
 app.post('/api/compliance/rewrite-section', requireAuth, async (req, res) => {
   const { sectionBody, suggestion, brandProfileId, source } = req.body;
   if (!sectionBody || !suggestion) return res.status(400).json({ error: 'sectionBody and suggestion required' });
@@ -4521,7 +4485,6 @@ app.get('/api/public/articles', async (req, res) => {
   }
 });
 
-
 // GET /api/publishing/queue/:brandProfileId
 app.get('/api/publishing/queue/:brandProfileId', requireAuth, async (req, res) => {
   const { brandProfileId } = req.params;
@@ -4595,6 +4558,22 @@ app.get('/api/publishing/queue/:brandProfileId', requireAuth, async (req, res) =
               item.primary_persona = meta.angle?.primary_persona || null;
             }
           }
+        }
+      }
+    }
+
+    // Fetch Pre-cog scores for all items
+    const contentIds = items.filter(i => i.content_id).map(i => i.content_id);
+    if (contentIds.length > 0) {
+      const precogRes = await pool.query(
+        `SELECT id::text, precog_score FROM generated_content_${safeId} WHERE id::text = ANY($1)`,
+        [contentIds]
+      ).catch(() => ({ rows: [] }));
+      const precogMap = {};
+      for (const row of precogRes.rows) precogMap[row.id] = row.precog_score;
+      for (const item of items) {
+        if (item.content_id && precogMap[item.content_id] !== undefined) {
+          item.precog_score = precogMap[item.content_id];
         }
       }
     }
@@ -4969,14 +4948,14 @@ app.delete('/api/publishing/channels/:id', requireAuth, async (req, res) => {
 // ── LinkedIn OAuth2 Flow ──────────────────────────────────────────────────────
 app.get('/api/linkedin/auth', (req, res) => {
   const clientId = process.env.LINKEDIN_CLIENT_ID;
-  const redirectUri = encodeURIComponent(process.env.LINKEDIN_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/linkedin/callback');
-  const brandProfileId = req.query.brandProfileId || 'system';
+  const redirectUri = encodeURIComponent(process.env.LINKEDIN_REDIRECT_URI || 'https://forgeintelligence.ai/auth/linkedin/callback');
+  const brandProfileId = req.query.state?.split('|')[0] || req.query.brandProfileId || 'system';
   const nonce = randomBytes(16).toString('hex');
   // Embed brandProfileId in state so callback knows which brand to save to
   const state = `${brandProfileId}|${nonce}`;
   const scopes = 'openid profile email w_member_social';
   const url = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&state=${encodeURIComponent(state)}&scope=${encodeURIComponent(scopes)}`;
-  res.json({ authUrl: url, state });
+  res.redirect(url);
 });
 
 app.get('/auth/linkedin/callback', async (req, res) => {
@@ -4986,7 +4965,7 @@ app.get('/auth/linkedin/callback', async (req, res) => {
   try {
     const clientId     = process.env.LINKEDIN_CLIENT_ID;
     const clientSecret = process.env.LINKEDIN_CLIENT_SECRET;
-    const redirectUri  = process.env.LINKEDIN_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/linkedin/callback';
+    const redirectUri  = process.env.LINKEDIN_REDIRECT_URI || 'https://forgeintelligence.ai/auth/linkedin/callback';
     const tokenRes = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -5000,18 +4979,57 @@ app.get('/auth/linkedin/callback', async (req, res) => {
       headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
     });
     const profile = await profileRes.json();
-    const authorUrn = `urn:li:person:${profile.sub}`;
+    const personUrn = `urn:li:person:${profile.sub}`;
+
+    // Fetch company pages user is admin of
+    let companyPages = [];
+    try {
+      const orgsRes = await fetch('https://api.linkedin.com/v2/organizationalEntityAcls?q=roleAssignee&role=ADMINISTRATOR&projection=(elements*(organizationalTarget~))', {
+        headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+      });
+      if (orgsRes.ok) {
+        const orgsData = await orgsRes.json();
+        companyPages = (orgsData.elements || []).map(el => {
+          const org = el['organizationalTarget~'] || {};
+          const orgUrn = el.organizationalTarget; // e.g. urn:li:organization:12345
+          return {
+            urn: orgUrn,
+            name: org.localizedName || org.name || 'Company Page',
+            vanityName: org.vanityName || null,
+            logoUrl: org.logoV2?.['original~']?.elements?.[0]?.identifiers?.[0]?.identifier || null
+          };
+        });
+      }
+    } catch (orgErr) {
+      console.log('[LinkedIn] Could not fetch orgs (user may not be admin of any):', orgErr.message);
+    }
 
     // Parse brandProfileId from state param
     const stateDecoded = decodeURIComponent(state || '');
     const brandProfileId = stateDecoded.includes('|') ? stateDecoded.split('|')[0] : 'system';
+
+    // Build available targets (personal + company pages)
+    const availableTargets = [
+      { type: 'personal', urn: personUrn, name: profile.name || 'Personal Profile' },
+      ...companyPages.map(p => ({ type: 'company', urn: p.urn, name: p.name, vanityName: p.vanityName, logoUrl: p.logoUrl }))
+    ];
+
+    // Default to personal profile, user can switch later
+    const selectedTarget = availableTargets[0];
 
     await pool.query(`
       INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active, updated_at)
       VALUES ($1, 'linkedin', $2, true, NOW())
       ON CONFLICT (brand_profile_id, channel) DO UPDATE
         SET credentials = $2, is_active = true, updated_at = NOW()
-    `, [brandProfileId, JSON.stringify({ accessToken: tokenData.access_token, expiresIn: tokenData.expires_in, authorUrn, name: profile.name })]);
+    `, [brandProfileId, JSON.stringify({
+      accessToken: tokenData.access_token,
+      expiresIn: tokenData.expires_in,
+      authorUrn: selectedTarget.urn,
+      selectedTarget,
+      availableTargets,
+      name: profile.name
+    })]);
 
     res.redirect('/app/integrations?linkedin_connected=true');
   } catch (err) {
@@ -5019,14 +5037,13 @@ app.get('/auth/linkedin/callback', async (req, res) => {
     res.redirect(`/app/integrations?linkedin_error=${encodeURIComponent(err.message)}`);
   }
 });
-// ─────────────────────────────────────────────────────────────────────────────
 
 
 // ── LinkedIn ORG OAuth (Company Pages - separate app required by LinkedIn) ───
 app.get('/api/linkedin/org/auth', (req, res) => {
   const clientId = process.env.LINKEDIN_ORG_CLIENT_ID;
   if (!clientId) return res.status(500).json({ error: 'LINKEDIN_ORG_CLIENT_ID not configured' });
-  const redirectUri = encodeURIComponent(process.env.LINKEDIN_ORG_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/linkedin/org/callback');
+  const redirectUri = encodeURIComponent(process.env.LINKEDIN_ORG_REDIRECT_URI || 'https://forgeintelligence.ai/auth/linkedin/org/callback');
   const brandProfileId = req.query.state?.split('|')[0] || req.query.brandProfileId || 'system';
   const nonce = randomBytes(16).toString('hex');
   const state = `${brandProfileId}|${nonce}`;
@@ -5042,7 +5059,7 @@ app.get('/auth/linkedin/org/callback', async (req, res) => {
   try {
     const clientId = process.env.LINKEDIN_ORG_CLIENT_ID;
     const clientSecret = process.env.LINKEDIN_ORG_SECRET;
-    const redirectUri = process.env.LINKEDIN_ORG_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/linkedin/org/callback';
+    const redirectUri = process.env.LINKEDIN_ORG_REDIRECT_URI || 'https://forgeintelligence.ai/auth/linkedin/org/callback';
     
     const tokenRes = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
       method: 'POST',
@@ -5138,7 +5155,7 @@ app.get('/api/hubspot/auth', (req, res) => {
   const clientId = process.env.HUBSPOT_CLIENT_ID;
   if (!clientId) return res.status(500).json({ error: 'HUBSPOT_CLIENT_ID not configured' });
   
-  const redirectUri = encodeURIComponent(process.env.HUBSPOT_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/hubspot/callback');
+  const redirectUri = encodeURIComponent(process.env.HUBSPOT_REDIRECT_URI || 'https://forgeintelligence.ai/auth/hubspot/callback');
   const brandProfileId = req.query.state?.split('|')[0] || req.query.brandProfileId || 'system';
   const nonce = randomBytes(16).toString('hex');
   const state = `${brandProfileId}|${nonce}`;
@@ -5157,7 +5174,7 @@ app.get('/api/hubspot/auth', (req, res) => {
   ].join('%20');
   
   const url = `https://app.hubspot.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scopes}&state=${encodeURIComponent(state)}`;
-  res.redirect(url);
+  res.json({ authUrl: url });
 });
 
 app.get('/auth/hubspot/callback', async (req, res) => {
@@ -5168,7 +5185,7 @@ app.get('/auth/hubspot/callback', async (req, res) => {
   try {
     const clientId = process.env.HUBSPOT_CLIENT_ID;
     const clientSecret = process.env.HUBSPOT_CLIENT_SECRET;
-    const redirectUri = process.env.HUBSPOT_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/hubspot/callback';
+    const redirectUri = process.env.HUBSPOT_REDIRECT_URI || 'https://forgeintelligence.ai/auth/hubspot/callback';
     
     // Exchange code for tokens
     const tokenRes = await fetch('https://api.hubapi.com/oauth/v1/token', {
@@ -5649,7 +5666,7 @@ app.get('/api/webflow/auth', (req, res) => {
   const clientId = process.env.WEBFLOW_CLIENT_ID;
   if (!clientId) return res.status(500).json({ error: 'WEBFLOW_CLIENT_ID not configured' });
   
-  const redirectUri = encodeURIComponent(process.env.WEBFLOW_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/webflow/callback');
+  const redirectUri = encodeURIComponent(process.env.WEBFLOW_REDIRECT_URI || 'https://forgeintelligence.ai/auth/webflow/callback');
   const brandProfileId = req.query.state?.split('|')[0] || req.query.brandProfileId || 'system';
   const nonce = randomBytes(16).toString('hex');
   const state = `${brandProfileId}|${nonce}`;
@@ -5658,7 +5675,7 @@ app.get('/api/webflow/auth', (req, res) => {
   const scopes = 'sites:read cms:read cms:write';
   
   const url = `https://webflow.com/oauth/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&scope=${encodeURIComponent(scopes)}&state=${encodeURIComponent(state)}`;
-  res.redirect(url);
+  res.json({ authUrl: url });
 });
 
 app.get('/auth/webflow/callback', async (req, res) => {
@@ -5669,7 +5686,7 @@ app.get('/auth/webflow/callback', async (req, res) => {
   try {
     const clientId = process.env.WEBFLOW_CLIENT_ID;
     const clientSecret = process.env.WEBFLOW_CLIENT_SECRET;
-    const redirectUri = process.env.WEBFLOW_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/webflow/callback';
+    const redirectUri = process.env.WEBFLOW_REDIRECT_URI || 'https://forgeintelligence.ai/auth/webflow/callback';
     
     // Exchange code for token
     const tokenRes = await fetch('https://api.webflow.com/oauth/access_token', {
@@ -5783,14 +5800,13 @@ app.post('/api/webflow/select-target', requireAuth, async (req, res) => {
   }
 });
 
-
 // ── Google Search Console OAuth ──────────────────────────────────────────────
 
 // GET /api/gsc/auth — initiate OAuth flow
 app.get('/api/gsc/auth', (req, res) => {
   const clientId = process.env.GSC_CLIENT_ID;
   if (!clientId) return res.status(500).json({ error: 'GOOGLE_CLIENT_ID not configured' });
-  const brandProfileId = req.query.brandProfileId || 'system';
+  const brandProfileId = req.query.state?.split('|')[0] || req.query.brandProfileId || 'system';
   const nonce = randomBytes(16).toString('hex');
   const state = `${brandProfileId}|${nonce}`;
   const redirectUri = encodeURIComponent(process.env.GSC_REDIRECT_URI || 'https://dev.forgeintelligence.ai/auth/gsc/callback');
@@ -5938,6 +5954,12 @@ app.post('/api/analytics/sync-gsc/:brandProfileId', requireAuth, async (req, res
     // Match GSC pages to content_analytics by URL or publishing_queue by title slug
     for (const row of rows) {
       const pageUrl = row.keys[0];
+      // Only sync forgeintelligence.ai — skip other GSC properties and /app/ routes
+      try {
+        const u = new URL(pageUrl);
+        if (!u.hostname.includes('forgeintelligence.ai')) continue;
+        if (u.pathname.startsWith('/app/')) continue;
+      } catch { continue; }
       const clicks = Math.round(row.clicks || 0);
       const impressions = Math.round(row.impressions || 0);
       const ctr = parseFloat((row.ctr * 100).toFixed(2));
@@ -5966,8 +5988,6 @@ app.post('/api/analytics/sync-gsc/:brandProfileId', requireAuth, async (req, res
       synced++;
     }
 
-    // Update pre-cog accuracy with fresh GSC data
-    updatePrecogOutcomes(brandProfileId).catch(() => {});
     res.json({ success: true, synced, siteUrl, dateRange: { startDate, endDate }, totalRows: rows.length });
   } catch(err) {
     console.error('[GSC-SYNC]', err.message);
@@ -5995,21 +6015,25 @@ app.post('/api/publishing/generate-post-copy', async (req, res) => {
   const { title, headings, readMinutes, articleUrl } = req.body;
   try {
     const copyRes = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 400,
-      messages: [{ role: 'user', content: `Write a LinkedIn post to promote this B2B article. Give a compelling overview of what the reader will learn — NOT a quote from the intro paragraph.
+      messages: [{ role: 'user', content: `Write a LinkedIn post designed to drive link clicks to this B2B article. Goal: make the reader feel they MUST click to get the full answer. Do NOT summarize — create a curiosity gap.
 
 Article title: "${title}"
 Sections covered: ${headings || 'not provided'}
 Read time: ${readMinutes} min read
 Article URL: ${articleUrl}
 
-Rules:
-- 3-4 short paragraphs
-- Lead with the core insight or tension, not a question
-- No emojis, no hashtags
-- Every sentence must be complete — no ellipsis cutoffs
-- Last line must be exactly: Read more: ${articleUrl}
+Structure (follow exactly):
+Line 1: One punchy statement of the core tension or counterintuitive insight. Must hook in under 200 characters — this is what shows before 'see more'.
+Lines 2-4: 2-3 short lines that deepen the tension or name the specific problem. Do NOT resolve it — leave the answer in the article.
+Final line: Exactly this and nothing else: Read more: ${articleUrl}
+
+Hard rules:
+- Total post: 500-800 characters including the URL line
+- No emojis, no hashtags, no bullet points
+- No summarizing the article — create hunger for it
+- No ellipsis cutoffs — every sentence complete
 - Plain text only
 
 Output only the post text.` }]
@@ -6021,11 +6045,21 @@ Output only the post text.` }]
   }
 });
 
-app.post('/api/publishing/publish', requireAuth, async (req, res) => {
+app.post('/api/publishing/publish', async (req, res) => {
+  // Allow scheduler to call without user auth via adminPassword
+  const isCron = req.body?.adminPassword === process.env.ADMIN_PASSWORD;
+  if (!isCron) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+      const { payload } = await jwtVerify(authHeader.split(' ')[1], clerkJWKS, { algorithms: ['RS256'] });
+      req.userId = payload.sub;
+    } catch { return res.status(401).json({ error: 'Invalid token' }); }
+  }
+  const startTime = Date.now();
   const { queueItemId, channels: selectedChannels } = req.body;
   if (!queueItemId) return res.status(400).json({ error: 'queueItemId required' });
   try {
-    const startTime = Date.now();
     // Load queue item + article
     const queueRes = await pool.query('SELECT * FROM publishing_queue WHERE id = $1', [queueItemId]);
     if (!queueRes.rows.length) return res.status(404).json({ error: 'Queue item not found' });
@@ -6069,7 +6103,7 @@ app.post('/api/publishing/publish', requireAuth, async (req, res) => {
         const sections = aj.sections || [];
         const firstBody = (sections[0]?.body || sections[0]?.content || '').slice(0, 300);
         const imgPromptRes = await anthropic.messages.create({
-          model: 'claude-sonnet-4-5',
+          model: 'claude-haiku-4-5-20251001',
           max_tokens: 150,
           messages: [{ role: 'user', content: `Write a Flux image generation prompt for a B2B editorial hero image for this article: "${article.title}". Context: ${firstBody}. Output only the prompt, no quotes, no preamble. Professional photography style, 16:9, no text in image.` }]
         });
@@ -6100,9 +6134,22 @@ app.post('/api/publishing/publish', requireAuth, async (req, res) => {
       }
     }
 
+    // Load existing publish_log entries for this queue item — used to skip already-published channels
+    const existingLogRes = await pool.query(
+      `SELECT channel FROM publish_log WHERE queue_item_id = $1 AND status = 'published'`,
+      [queueItemId]
+    ).catch(() => ({ rows: [] }));
+    const alreadyPublished = new Set(existingLogRes.rows.map(r => r.channel));
+
     for (const channel of targets) {
       const chConfig = channelMap[channel];
       if (!chConfig) { results[channel] = { status: 'error', error: 'Channel not connected' }; continue; }
+
+      // Skip channels already successfully published — prevents double-posting
+      if (alreadyPublished.has(channel)) {
+        results[channel] = { status: 'published', skipped: true, message: 'Already published to this channel' };
+        continue;
+      }
 
       // campaign_id is a UUID — derive a readable slug from the queue item's campaign_id
       // Fall back to the campaigns table name if we have it, otherwise use the UUID prefix
@@ -6166,10 +6213,12 @@ app.post('/api/publishing/publish', requireAuth, async (req, res) => {
 
         } else if (channel === 'webflow') {
           // ── Real Webflow CMS publish ──
-          const webflowToken = creds.apiToken || process.env.WEBFLOW_API_TOKEN;
-          const siteId = creds.siteId || '69c715bf39ddf47aae9481b1';
-          const collectionId = creds.collectionId || '69c7189df169a5faf671dba4';
-          if (!webflowToken) throw new Error('Missing Webflow API token');
+          const webflowToken = creds.accessToken || creds.apiToken;
+          const siteId = creds.selectedSite?.id || creds.siteId;
+          const collectionId = creds.selectedCollection?.id || creds.collectionId;
+          if (!webflowToken) throw new Error('Webflow not connected — visit Integrations to authorize via OAuth');
+          if (!siteId) throw new Error('Webflow site not selected — visit Integrations to pick a site');
+          if (!collectionId) throw new Error('Webflow collection not selected — visit Integrations to pick a collection');
 
           const articleJson = article.article_json || {};
           const sections = articleJson.sections || [];
@@ -6203,7 +6252,13 @@ app.post('/api/publishing/publish', requireAuth, async (req, res) => {
           });
           const wfData = await wfRes.json();
           if (!wfRes.ok) throw new Error(wfData.message || JSON.stringify(wfData));
-          const publishedUrl = `https://${brand.brand_url || siteId}/articles/${slug}`;
+          // Build Webflow URL from site info or item response
+          // Prefer explicit customDomain, then shortName, then fall back to site ID
+          const wfSiteDomain = creds.selectedSite?.customDomain
+            || (creds.selectedSite?.shortName ? `${creds.selectedSite.shortName}.webflow.io` : null)
+            || siteId;
+          // Webflow CMS URLs are just domain/article-slug — collection slug is internal, not in the URL
+          const publishedUrl = `https://${wfSiteDomain}/${slug}`;
           results[channel] = { status: 'published', url: publishedUrl, itemId: wfData.id, utmParams };
 
         } else if (channel === 'hubspot') {
@@ -6229,21 +6284,24 @@ app.post('/api/publishing/publish', requireAuth, async (req, res) => {
               const sectionHeadings = sections.slice(1, 5).map(s => s.heading).filter(Boolean).join(', ');
               try {
                 const copyRes = await anthropic.messages.create({
-                  model: 'claude-sonnet-4-5',
+                  model: 'claude-haiku-4-5-20251001',
                   max_tokens: 400,
-                  messages: [{ role: 'user', content: `Write a LinkedIn post to promote this article. It should be a compelling overview (NOT the intro paragraph), end with a clear CTA, and the last line should be exactly "Read more: ${articleUrl}"
+                  messages: [{ role: 'user', content: `Write a LinkedIn post designed to drive link clicks to this B2B article. Goal: make the reader feel they MUST click to get the full answer. Do NOT summarize — create a curiosity gap.
 
 Article title: "${article.title}"
 Key sections covered: ${sectionHeadings}
 Read time: ${readMinutes} min read
 
-Rules:
-- 3-5 short paragraphs max
-- Lead with the core insight or tension, not a question
-- No emojis
-- No hashtags  
-- No ellipsis (...) cutoffs — complete every sentence
-- Last line must be exactly: Read more: ${articleUrl}
+Structure (follow exactly):
+Line 1: One punchy statement of the core tension or counterintuitive insight. Must hook in under 200 characters — this is what shows before 'see more'.
+Lines 2-4: 2-3 short lines that deepen the tension or name the specific problem. Do NOT resolve it — leave the answer in the article.
+Final line: Exactly this and nothing else: Read more: ${articleUrl}
+
+Hard rules:
+- Total post: 500-800 characters including the URL line
+- No emojis, no hashtags, no bullet points
+- No summarizing the article — create hunger for it
+- No ellipsis cutoffs — every sentence complete
 - Plain text only, no markdown
 
 Output only the post text.` }]
@@ -6333,7 +6391,7 @@ Output only the post text.` }]
           let fbMessage = `${item.title}\n\n${utmUrl}`;
           try {
             const haiku = await anthropic.messages.create({
-              model: 'claude-sonnet-4-5',
+              model: 'claude-haiku-4-5-20251001-20251001',
               max_tokens: 600,
               messages: [{
                 role: 'user',
@@ -6554,6 +6612,15 @@ ${canonicalNote}`,
     const anyError = targets.some(ch => results[ch]?.status === 'error');
     const newStatus = allPublished ? 'published' : anyError ? 'partial' : 'staged';
 
+    // Strip transient fields before persisting — only store status + url for published/skipped channels
+    const persistResults = Object.fromEntries(
+      Object.entries(results).map(([ch, r]) => [
+        ch,
+        (r.status === 'published' || r.skipped)
+          ? { status: r.status, ...(r.url ? { url: r.url } : {}), ...(r.itemId ? { itemId: r.itemId } : {}) }
+          : r  // keep error detail for genuinely failed channels
+      ])
+    );
     // Merge new results into existing publish_results — preserves prior channel results
     await pool.query(
       `UPDATE publishing_queue SET
@@ -6563,7 +6630,7 @@ ${canonicalNote}`,
          published_at = COALESCE($4, published_at),
          updated_at = NOW()
        WHERE id = $5`,
-      [newStatus, JSON.stringify(targets), JSON.stringify(results), allPublished ? new Date() : null, queueItemId]
+      [newStatus, JSON.stringify(targets), JSON.stringify(persistResults), allPublished ? new Date() : null, queueItemId]
     );
 
     // Write memory to Brain on any successful publish
@@ -6571,7 +6638,7 @@ ${canonicalNote}`,
     if (successfulChannels.length > 0) {
       pool.query(
         `INSERT INTO memories (id, raw_content, metadata, created_at)
-         VALUES (gen_random_uuid()::text, $1, $2, NOW())`,
+         VALUES (gen_random_uuid(), $1, $2, NOW())`,
         [
           `Published: ${article.title}`,
           JSON.stringify({ contentId: item.content_id, channels: successfulChannels, brandProfileId: item.brand_profile_id, publishedAt: new Date(), utmResults: results })
@@ -6604,8 +6671,18 @@ function buildGhostJWT(apiKey) {
   return `${sigInput}.${sig}`;
 }
 
-app.post('/api/analytics/sync/:brandProfileId', requireAuth, async (req, res) => {
+app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
+  // Allow cron/admin bypass with adminPassword, otherwise require Clerk JWT
+  const isCron = req.body?.adminPassword === process.env.ADMIN_PASSWORD;
+  if (!isCron) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+      const { payload } = await jwtVerify(authHeader.split(' ')[1], clerkJWKS, { algorithms: ['RS256'] });
+      req.userId = payload.sub;
+    } catch { return res.status(401).json({ error: 'Invalid token' }); }
+  }
     if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
   const { channel = 'linkedin' } = req.body;
   try {
@@ -6627,10 +6704,7 @@ app.post('/api/analytics/sync/:brandProfileId', requireAuth, async (req, res) =>
 
       // Get LinkedIn credentials from publishing_channels (primary) or channel_credentials (legacy)
       const credRes = await pool.query(
-        `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'linkedin' AND is_active = true
-         UNION ALL
-         SELECT credentials FROM channel_credentials WHERE brand_profile_id = $1 AND channel = 'linkedin'
-         LIMIT 1`,
+        `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'linkedin' AND is_active = true LIMIT 1`,
         [brandProfileId]
       ).catch(() => ({ rows: [] }));
       const creds = credRes.rows[0]?.credentials || {};
@@ -6640,7 +6714,7 @@ app.post('/api/analytics/sync/:brandProfileId', requireAuth, async (req, res) =>
         try {
           const postId = row.response_data?.postId || row.response_data?.post_id || row.response_data?.id;
           if (!postId || !token) {
-            if (!token) errors.push({ contentId: row.content_id, error: 'no_linkedin_token' });
+            if (!token) continue; // LinkedIn not connected for this brand — skip
             continue;
           }
 
@@ -6751,7 +6825,7 @@ app.post('/api/analytics/sync/:brandProfileId', requireAuth, async (req, res) =>
           const tweetId = rd.tweetId || rd.id
             || (row.published_url?.match(/\/status\/(\d+)/)?.[1]);
           if (!tweetId || !xApiKey || !xAccessToken) {
-            if (!xApiKey || !xAccessToken) errors.push({ contentId: row.content_id, error: 'no_x_credentials' });
+            if (!xApiKey || !xAccessToken) continue // X not connected — skip;
             else if (!tweetId) errors.push({ contentId: row.content_id, error: 'no_tweet_id_in:' + row.published_url });
             continue;
           }
@@ -6837,7 +6911,7 @@ app.post('/api/analytics/sync/:brandProfileId', requireAuth, async (req, res) =>
       const ghostApiKey = ghostCreds.adminApiKey || process.env.GHOST_ADMIN_API_KEY;
       const ghostApiUrl = (ghostCreds.adminUrl || process.env.GHOST_API_URL || '').replace(/\/+$/, '');
       if (!ghostApiKey || !ghostApiUrl) {
-        errors.push({ channel: 'ghost', error: 'GHOST credentials not configured' });
+        // Ghost not configured for this brand — skip silently
       } else {
         const safeId = brandProfileId.replace(/-/g, '_');
         // Fetch all published posts directly from Ghost Admin API
@@ -6890,8 +6964,8 @@ app.post('/api/analytics/sync/:brandProfileId', requireAuth, async (req, res) =>
                 || titleMap[post.title?.toLowerCase().trim()]
                 || null;
 
-              // If no match, use Ghost post ID as synthetic content_id so we still record it
-              if (!contentId) contentId = `ghost_${post.id}`;
+              // If no match, skip — only track Ghost posts Forge published
+              if (!contentId) continue;
 
               await pool.query(
                 `INSERT INTO content_analytics
@@ -6913,6 +6987,81 @@ app.post('/api/analytics/sync/:brandProfileId', requireAuth, async (req, res) =>
       }
     }
 
+    // ── WordPress sync ─────────────────────────────────────────────────────
+    if (channel === 'wordpress' || channel === 'all') {
+      const wpLogRes = await pool.query(
+        `SELECT pl.content_id, pl.response_data, pl.attempted_at AS published_at,
+                pl.published_url, ct.title, ct.campaign_id
+         FROM publish_log pl
+         LEFT JOIN generated_content_${safeId} ct ON ct.id::text = pl.content_id
+         WHERE pl.brand_profile_id = $1 AND pl.channel = 'wordpress' AND pl.status = 'published'
+         ORDER BY pl.attempted_at DESC`,
+        [brandProfileId]
+      ).catch(() => ({ rows: [] }));
+
+      for (const row of wpLogRes.rows) {
+        try {
+          const postId = row.response_data?.postId || row.response_data?.id || null;
+          const postUrl = row.published_url || row.response_data?.link || '';
+          
+          // WordPress doesn't have a simple analytics API — record basic publish data
+          // Future: Could integrate Jetpack Stats API if available
+          await pool.query(
+            `INSERT INTO content_analytics
+               (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at, campaign_id)
+             VALUES ($1,$2,'wordpress',$3,0,0,0,0,0,0,0,$4,$5,NOW(),$6)
+             ON CONFLICT (content_id, channel) DO UPDATE SET
+               post_id=COALESCE(EXCLUDED.post_id, content_analytics.post_id),
+               raw_data=EXCLUDED.raw_data, synced_at=NOW(),
+               campaign_id=COALESCE(EXCLUDED.campaign_id, content_analytics.campaign_id)`,
+            [brandProfileId, row.content_id, postId, 
+             JSON.stringify({ title: row.title, url: postUrl, ...row.response_data }), 
+             row.published_at, row.campaign_id || null]
+          );
+          synced.push({ contentId: row.content_id, title: row.title, postId, channel: 'wordpress', url: postUrl });
+        } catch(e) {
+          errors.push({ contentId: row.content_id, channel: 'wordpress', error: e.message });
+        }
+      }
+    }
+
+    // ── Webflow sync ──────────────────────────────────────────────────────
+    if (channel === 'webflow' || channel === 'all') {
+      const wfLogRes = await pool.query(
+        `SELECT pl.content_id, pl.response_data, pl.attempted_at AS published_at,
+                pl.published_url, ct.title, ct.campaign_id
+         FROM publish_log pl
+         LEFT JOIN generated_content_${safeId} ct ON ct.id::text = pl.content_id
+         WHERE pl.brand_profile_id = $1 AND pl.channel = 'webflow' AND pl.status = 'published'
+         ORDER BY pl.attempted_at DESC`,
+        [brandProfileId]
+      ).catch(() => ({ rows: [] }));
+
+      for (const row of wfLogRes.rows) {
+        try {
+          const itemId = row.response_data?.itemId || row.response_data?.id || row.response_data?._id || null;
+          const postUrl = row.published_url || '';
+          
+          // Webflow doesn't have a public analytics API — record basic publish data
+          await pool.query(
+            `INSERT INTO content_analytics
+               (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at, campaign_id)
+             VALUES ($1,$2,'webflow',$3,0,0,0,0,0,0,0,$4,$5,NOW(),$6)
+             ON CONFLICT (content_id, channel) DO UPDATE SET
+               post_id=COALESCE(EXCLUDED.post_id, content_analytics.post_id),
+               raw_data=EXCLUDED.raw_data, synced_at=NOW(),
+               campaign_id=COALESCE(EXCLUDED.campaign_id, content_analytics.campaign_id)`,
+            [brandProfileId, row.content_id, itemId,
+             JSON.stringify({ title: row.title, url: postUrl, ...row.response_data }),
+             row.published_at, row.campaign_id || null]
+          );
+          synced.push({ contentId: row.content_id, title: row.title, itemId, channel: 'webflow', url: postUrl });
+        } catch(e) {
+          errors.push({ contentId: row.content_id, channel: 'webflow', error: e.message });
+        }
+      }
+    }
+
     res.json({ success: true, channel, synced: synced.length, errors: errors.length, data: synced, errs: errors });
   } catch(e) {
     res.status(500).json({ success: false, error: e.message });
@@ -6924,44 +7073,24 @@ app.get('/api/analytics/dashboard/:brandProfileId', requireAuth, async (req, res
   const { brandProfileId } = req.params;
     if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
   const channel = req.query.channel || 'linkedin';
-  const isAll = channel === 'all';
   try {
     const safeId = brandProfileId.replace(/-/g, '_');
 
     // Totals
     const totals = await pool.query(
-      isAll
-        ? `SELECT
-             COUNT(*) as total_posts,
-             COALESCE(SUM(impressions),0) as total_impressions,
-             COALESCE(SUM(clicks),0) as total_clicks,
-             COALESCE(SUM(reactions),0) as total_reactions,
-             COALESCE(SUM(comments),0) as total_comments,
-             COALESCE(SUM(reposts),0) as total_reposts,
-             COALESCE(AVG(NULLIF(ctr,0)),0) as avg_ctr,
-             COALESCE(AVG(NULLIF(engagement_rate,0)),0) as avg_engagement_rate,
-             COALESCE(SUM(positive_feedback),0) as total_positive_feedback,
-             COALESCE(SUM(negative_feedback),0) as total_negative_feedback,
-             COALESCE(AVG(NULLIF(reading_time,0)),0) as avg_reading_time,
-             MAX(synced_at) as last_synced
-           FROM content_analytics
-           WHERE brand_profile_id=$1`
-        : `SELECT
-             COUNT(*) as total_posts,
-             COALESCE(SUM(impressions),0) as total_impressions,
-             COALESCE(SUM(clicks),0) as total_clicks,
-             COALESCE(SUM(reactions),0) as total_reactions,
-             COALESCE(SUM(comments),0) as total_comments,
-             COALESCE(SUM(reposts),0) as total_reposts,
-             COALESCE(AVG(NULLIF(ctr,0)),0) as avg_ctr,
-             COALESCE(AVG(NULLIF(engagement_rate,0)),0) as avg_engagement_rate,
-             COALESCE(SUM(positive_feedback),0) as total_positive_feedback,
-             COALESCE(SUM(negative_feedback),0) as total_negative_feedback,
-             COALESCE(AVG(NULLIF(reading_time,0)),0) as avg_reading_time,
-             MAX(synced_at) as last_synced
-           FROM content_analytics
-           WHERE brand_profile_id=$1 AND channel=$2`,
-      isAll ? [brandProfileId] : [brandProfileId, channel]
+      `SELECT
+         COUNT(*) as total_posts,
+         COALESCE(SUM(impressions),0) as total_impressions,
+         COALESCE(SUM(clicks),0) as total_clicks,
+         COALESCE(SUM(reactions),0) as total_reactions,
+         COALESCE(SUM(comments),0) as total_comments,
+         COALESCE(SUM(reposts),0) as total_reposts,
+         COALESCE(AVG(NULLIF(ctr,0)),0) as avg_ctr,
+         COALESCE(AVG(NULLIF(engagement_rate,0)),0) as avg_engagement_rate,
+         MAX(synced_at) as last_synced
+       FROM content_analytics
+       WHERE brand_profile_id=$1 AND channel=$2`,
+      [brandProfileId, channel]
     );
 
     // Top 5 posts by impressions — DISTINCT on content_id, latest non-deleted publish_log entry
@@ -6970,8 +7099,8 @@ app.get('/api/analytics/dashboard/:brandProfileId', requireAuth, async (req, res
               ca.content_id, ca.impressions, ca.clicks, ca.reactions,
               ca.comments, ca.reposts, ca.ctr, ca.engagement_rate,
               ca.reading_time, ca.positive_feedback, ca.negative_feedback,
-              ca.synced_at AS published_at, ca.synced_at,
-              pl.published_url, pq.title
+              ca.synced_at AS published_at, ca.synced_at, ca.post_id, ca.raw_data,
+              pl.published_url, pq.title, pq.hero_image_url
        FROM content_analytics ca
        LEFT JOIN LATERAL (
          SELECT published_url FROM publish_log
@@ -6980,10 +7109,10 @@ app.get('/api/analytics/dashboard/:brandProfileId', requireAuth, async (req, res
          ORDER BY attempted_at DESC LIMIT 1
        ) pl ON true
        LEFT JOIN publishing_queue pq ON pq.content_id = ca.content_id
-       WHERE ca.brand_profile_id=$1 ${isAll ? '' : 'AND ca.channel=$2'}
+       WHERE ca.brand_profile_id=$1 AND ca.channel=$2
        ORDER BY ca.content_id, ca.impressions DESC, ca.reactions DESC
        LIMIT 5`,
-      isAll ? [brandProfileId] : [brandProfileId, channel]
+      [brandProfileId, channel]
     );
 
     // 30-day trend (daily impressions)
@@ -6993,11 +7122,11 @@ app.get('/api/analytics/dashboard/:brandProfileId', requireAuth, async (req, res
               SUM(clicks) as clicks,
               SUM(reactions) as reactions
        FROM content_analytics
-       WHERE brand_profile_id=$1 ${isAll ? '' : 'AND channel=$2'}
+       WHERE brand_profile_id=$1 AND channel=$2
          AND synced_at > NOW() - INTERVAL '30 days'
        GROUP BY DATE_TRUNC('day', synced_at)
        ORDER BY day ASC`,
-      isAll ? [brandProfileId] : [brandProfileId, channel]
+      [brandProfileId, channel]
     ).catch(() => ({ rows: [] }));
 
     // All posts for table — DISTINCT on content_id, latest non-deleted publish_log entry
@@ -7006,8 +7135,8 @@ app.get('/api/analytics/dashboard/:brandProfileId', requireAuth, async (req, res
               ca.content_id, ca.impressions, ca.clicks, ca.reactions,
               ca.comments, ca.reposts, ca.ctr, ca.engagement_rate,
               ca.reading_time, ca.positive_feedback, ca.negative_feedback,
-              ca.synced_at AS published_at, ca.synced_at, ca.channel,
-              pl.published_url, pq.title
+              ca.synced_at AS published_at, ca.synced_at, ca.channel, ca.post_id, ca.raw_data,
+              pl.published_url, pq.title, pq.hero_image_url
        FROM content_analytics ca
        LEFT JOIN LATERAL (
          SELECT published_url FROM publish_log
@@ -7016,9 +7145,9 @@ app.get('/api/analytics/dashboard/:brandProfileId', requireAuth, async (req, res
          ORDER BY attempted_at DESC LIMIT 1
        ) pl ON true
        LEFT JOIN publishing_queue pq ON pq.content_id = ca.content_id
-       WHERE ca.brand_profile_id=$1 ${isAll ? '' : 'AND ca.channel=$2'}
+       WHERE ca.brand_profile_id=$1 AND ca.channel=$2
        ORDER BY ca.content_id, ca.impressions DESC, ca.synced_at DESC`,
-      isAll ? [brandProfileId] : [brandProfileId, channel]
+      [brandProfileId, channel]
     );
 
     const t = totals.rows[0];
@@ -7034,9 +7163,6 @@ app.get('/api/analytics/dashboard/:brandProfileId', requireAuth, async (req, res
         reposts: parseInt(t.total_reposts),
         avgCtr: parseFloat(t.avg_ctr).toFixed(2),
         avgEngagementRate: parseFloat(t.avg_engagement_rate).toFixed(2),
-        positiveFeedback: parseInt(t.total_positive_feedback) || 0,
-        negativeFeedback: parseInt(t.total_negative_feedback) || 0,
-        avgReadingTime: Math.round(parseFloat(t.avg_reading_time) || 0),
         lastSynced: t.last_synced
       },
       trend: trend.rows.map(r => ({
@@ -7046,8 +7172,6 @@ app.get('/api/analytics/dashboard/:brandProfileId', requireAuth, async (req, res
       topPosts: top.rows,
       posts: posts.rows
     });
-    // Update pre-cog accuracy with fresh analytics data
-    updatePrecogOutcomes(brandProfileId).catch(() => {});
   } catch(e) {
     res.status(500).json({ success: false, error: e.message });
   }
@@ -7230,7 +7354,7 @@ async function runScheduledPublishes() {
         const publishRes = await fetch(`${baseUrl}/api/publishing/publish`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ queueItemId: item.id, channels: targets })
+          body: JSON.stringify({ queueItemId: item.id, channels: targets, adminPassword: process.env.ADMIN_PASSWORD })
         });
         const publishData = await publishRes.json();
 
@@ -7482,86 +7606,67 @@ app.get('/api/admin/activity', async (req, res) => {
   }
 });
 
-// GET /api/admin/stats — scoped to authenticated user's brands
-app.get('/api/admin/stats', requireAuth, async (req, res) => {
+// GET /api/admin/stats — platform-wide stats
+app.get('/api/admin/stats', async (req, res) => {
   try {
-    const userBrands = await pool.query(
-      `SELECT id FROM brand_profiles WHERE clerk_user_id = $1 AND is_active = true`,
-      [req.userId]
-    );
-    const brandIds = userBrands.rows;
-    const brandIdList = brandIds.map(b => b.id);
-
-    if (!brandIdList.length) {
-      return res.json({ success: true, stats: {
-        totalBrands: 0, totalReach: 0, totalContent: 0,
-        totalQueued: 0, totalPublished: 0, avgConfidence: 0,
-        last30Days: { totalCalls: 0, totalTokens: 0, avgLatency: 0, errorCount: 0, activeBrands: 0 },
-        agentBreakdown: []
-      }});
-    }
-
-    const ph = brandIdList.map((_, i) => `$${i + 1}`).join(',');
-
-    const [activity, queue] = await Promise.all([
-      pool.query(`
-        SELECT COUNT(*) as total_calls, SUM(tokens_used) as total_tokens,
-               AVG(latency_ms) as avg_latency,
-               COUNT(CASE WHEN status = 'error' THEN 1 END) as error_count,
-               COUNT(DISTINCT brand_profile_id) as active_brands
-        FROM agent_activity_log
-        WHERE brand_profile_id IN (${ph}) AND created_at > NOW() - INTERVAL '30 days'`,
-        brandIdList),
-      pool.query(`
-        SELECT COUNT(*), COUNT(CASE WHEN status = 'published' THEN 1 END) as published
-        FROM publishing_queue WHERE brand_profile_id IN (${ph})`,
-        brandIdList),
+    const [brands, activity, content, queue] = await Promise.all([
+      pool.query('SELECT COUNT(*) FROM brand_profiles'),
+      pool.query(`SELECT 
+        COUNT(*) as total_calls,
+        SUM(tokens_used) as total_tokens,
+        AVG(latency_ms) as avg_latency,
+        COUNT(CASE WHEN status = 'error' THEN 1 END) as error_count,
+        COUNT(DISTINCT brand_profile_id) as active_brands
+        FROM agent_activity_log WHERE created_at > NOW() - INTERVAL '30 days'`),
+      pool.query(`SELECT COUNT(*) FROM (
+        SELECT id FROM generated_content_${(await pool.query('SELECT id FROM brand_profiles LIMIT 1')).rows[0]?.id?.replace(/-/g,'_') || 'x'} LIMIT 1
+      ) t`).catch(() => ({ rows: [{ count: 0 }] })),
+      pool.query(`SELECT COUNT(*), COUNT(CASE WHEN status = 'published' THEN 1 END) as published FROM publishing_queue`),
     ]);
 
+    // Get total content across all brands
+    const brandIds = (await pool.query('SELECT id FROM brand_profiles')).rows;
     let totalContent = 0;
     for (const b of brandIds) {
       const safeId = b.id.replace(/-/g, '_');
-      const cnt = await pool.query(`SELECT COUNT(*) FROM generated_content_${safeId}`)
-        .catch(() => ({ rows: [{ count: 0 }] }));
+      const cnt = await pool.query(`SELECT COUNT(*) FROM generated_content_${safeId}`).catch(() => ({ rows: [{ count: 0 }] }));
       totalContent += parseInt(cnt.rows[0].count);
-    }
-
-    const reach = await pool.query(
-      `SELECT COALESCE(SUM(impressions),0) as total FROM content_analytics WHERE brand_profile_id IN (${ph})`,
-      brandIdList
-    ).catch(() => ({ rows: [{ total: 0 }] }));
-
-    let confTotal = 0, confCount = 0;
-    for (const b of brandIds) {
-      const s = b.id.replace(/-/g, '_');
-      const r = await pool.query(
-        `SELECT AVG(overall_confidence) as avg FROM generated_content_${s} WHERE overall_confidence IS NOT NULL`
-      ).catch(() => ({ rows: [{ avg: null }] }));
-      if (r.rows[0].avg) { confTotal += parseFloat(r.rows[0].avg); confCount++; }
     }
 
     const agentBreakdown = await pool.query(`
       SELECT agent_name, COUNT(*) as calls, SUM(tokens_used) as tokens, AVG(latency_ms) as avg_latency
       FROM agent_activity_log
-      WHERE brand_profile_id IN (${ph}) AND created_at > NOW() - INTERVAL '30 days'
-      GROUP BY agent_name ORDER BY calls DESC`, brandIdList);
+      WHERE created_at > NOW() - INTERVAL '30 days'
+      GROUP BY agent_name ORDER BY calls DESC`);
 
-    res.json({ success: true, stats: {
-      totalBrands: brandIdList.length,
-      totalReach: parseInt(reach.rows[0].total) || 0,
-      avgConfidence: confCount ? confTotal / confCount : 0,
-      totalContent,
-      totalQueued: parseInt(queue.rows[0].count),
-      totalPublished: parseInt(queue.rows[0].published),
-      last30Days: {
-        totalCalls: parseInt(activity.rows[0].total_calls) || 0,
-        totalTokens: parseInt(activity.rows[0].total_tokens) || 0,
-        avgLatency: Math.round(parseFloat(activity.rows[0].avg_latency) || 0),
-        errorCount: parseInt(activity.rows[0].error_count) || 0,
-        activeBrands: parseInt(activity.rows[0].active_brands) || 0,
-      },
-      agentBreakdown: agentBreakdown.rows,
-    }});
+    res.json({
+      success: true,
+      stats: {
+        totalBrands: parseInt(brands.rows[0].count),
+      totalReach: (await pool.query(`SELECT COALESCE(SUM(impressions),0) as total FROM content_analytics`).catch(()=>({rows:[{total:0}]}))).rows[0].total,
+      avgConfidence: (await (async () => {
+        const bIds = (await pool.query('SELECT id FROM brand_profiles')).rows;
+        let total = 0, count = 0;
+        for (const b of bIds) {
+          const s = b.id.replace(/-/g,'_');
+          const r = await pool.query(`SELECT AVG(overall_confidence) as avg FROM generated_content_${s} WHERE overall_confidence IS NOT NULL`).catch(()=>({rows:[{avg:null}]}));
+          if (r.rows[0].avg) { total += parseFloat(r.rows[0].avg); count++; }
+        }
+        return count ? total/count : 0;
+      })()),
+        totalContent,
+        totalQueued: parseInt(queue.rows[0].count),
+        totalPublished: parseInt(queue.rows[0].published),
+        last30Days: {
+          totalCalls: parseInt(activity.rows[0].total_calls),
+          totalTokens: parseInt(activity.rows[0].total_tokens) || 0,
+          avgLatency: Math.round(parseFloat(activity.rows[0].avg_latency) || 0),
+          errorCount: parseInt(activity.rows[0].error_count),
+          activeBrands: parseInt(activity.rows[0].active_brands),
+        },
+        agentBreakdown: agentBreakdown.rows,
+      }
+    });
   } catch(e) {
     res.status(500).json({ success: false, error: e.message });
   }
@@ -7665,6 +7770,7 @@ app.delete('/api/reviewers/:id', async (req, res) => {
 // Every authenticated endpoint that takes a brandProfileId MUST call this.
 async function verifyBrandAccess(brandProfileId, userId) {
   if (!brandProfileId || !userId) return false;
+  if (SUPER_ADMIN_IDS.includes(userId)) return true;
   const r = await pool.query(
     'SELECT id FROM brand_profiles WHERE id = $1 AND clerk_user_id = $2',
     [brandProfileId, userId]
@@ -7672,13 +7778,20 @@ async function verifyBrandAccess(brandProfileId, userId) {
   return r.rows.length > 0;
 }
 
+
+// ── Brand ownership verification ─────────────────────────────────────────────
+
+
 async function requireAuth(req, res, next) {
   try {
+    // Accept token from Authorization header OR ?token= query param (needed for EventSource SSE)
     const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
+    const queryToken = req.query?.token;
+    const rawToken = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : queryToken;
+    if (!rawToken) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
-    const token = authHeader.split(' ')[1];
+    const token = rawToken;
     if (!clerkJWKS) return res.status(500).json({ error: 'Auth not configured' });
     const { payload } = await jwtVerify(token, clerkJWKS, { algorithms: ['RS256'] });
     req.userId = payload.sub;
@@ -7711,28 +7824,15 @@ pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS is_paid BOOLEAN 
     await pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS clerk_user_id TEXT`).catch(() => {});
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_bp_clerk ON brand_profiles(clerk_user_id)`).catch(() => {});
 pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS onboard_session_id TEXT`).catch(() => {});
-
-// POST /api/domain/check — lightweight pre-check before scan, no auth needed
-app.post('/api/domain/check', async (req, res) => {
-  const { url } = req.body;
-  if (!url) return res.json({ claimed: false });
-  const brandUrl = url.startsWith('http') ? url : `https://${url}`;
-  const bare = brandUrl.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '');
-  try {
-    const result = await pool.query(
-      `SELECT id FROM brand_profiles
-       WHERE (brand_url = $1 OR brand_url = $2 OR brand_url = $3)
-         AND clerk_user_id IS NOT NULL
-         AND is_paid = true
-         AND is_active = true
-       LIMIT 1`,
-      [brandUrl, bare, `https://${bare}`]
-    );
-    res.json({ claimed: result.rows.length > 0 });
-  } catch {
-    res.json({ claimed: false });
-  }
-});
+  await pool.query(`CREATE TABLE IF NOT EXISTS payment_events (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    brand_profile_id TEXT NOT NULL,
+    order_id TEXT,
+    amount NUMERIC(10,2) DEFAULT 99.00,
+    currency VARCHAR(10) DEFAULT 'USD',
+    source VARCHAR(50) DEFAULT 'paypal',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )`).catch(() => {});
 
 // POST /api/onboard/analyze — landing page entry point
 // Creates a UUID, seeds the brain, fires Context Agent, returns session
@@ -7744,22 +7844,6 @@ app.post('/api/onboard/analyze', async (req, res) => {
     // Normalise URL
     const brandUrl = url.startsWith('http') ? url : `https://${url}`;
     const brandName = brandUrl.replace(/https?:\/\//, '').split('/')[0].replace(/^www\./, '');
-
-    // One domain, one brain — if a claimed (owned) brand exists for this URL, reject
-    const domainCheck = await pool.query(
-      `SELECT id FROM brand_profiles
-       WHERE (brand_url = $1 OR brand_url = $2)
-         AND clerk_user_id IS NOT NULL
-         AND is_active = true
-       LIMIT 1`,
-      [brandUrl, brandUrl.replace(/^https?:\/\//, '').replace(/^www\./, '')]
-    );
-    if (domainCheck.rows.length > 0) {
-      return res.status(409).json({
-        error: 'domain_claimed',
-        message: 'A brain already exists for this domain. If this is your brand, sign in to access it.'
-      });
-    }
 
     // Create brand profile with 24hr expiry + session ID for persistence
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
@@ -7817,6 +7901,10 @@ app.post('/api/onboard/paypal-success', async (req, res) => {
       `UPDATE brand_profiles SET is_paid = true, expires_at = NULL, updated_at = NOW() WHERE id = $1`,
       [brandProfileId]
     );
+    await pool.query(
+      `INSERT INTO payment_events (brand_profile_id, order_id, amount, currency, source) VALUES ($1, $2, 99.00, 'USD', 'paypal')`,
+      [brandProfileId, orderId || null]
+    ).catch(() => {});
     console.log('[PAYPAL] Payment confirmed — brandProfileId:', brandProfileId, 'orderId:', orderId);
     res.json({ success: true, unlocked: true });
   } catch(e) {
@@ -7825,342 +7913,80 @@ app.post('/api/onboard/paypal-success', async (req, res) => {
 });
 
 
-
-// ── Weekly Brain Digest ───────────────────────────────────────────────────────
-// Called by EasyCron weekly: POST /api/digest/send-all (admin key)
-// Or per-brand:               POST /api/digest/send/:brandProfileId (requireAuth)
-
-const sendDigestForBrand = async (brandProfileId) => {
-  const safeId = brandProfileId.replace(/-/g, '_');
-
-  // Load brand + check opt-out
-  const brandRes = await pool.query(
-    `SELECT * FROM brand_profiles WHERE id = $1`, [brandProfileId]
-  );
-  if (!brandRes.rows.length) return { skipped: 'brand_not_found' };
-  const brand = brandRes.rows[0];
-  if (brand.digest_unsubscribed) return { skipped: 'unsubscribed' };
-  if (!brand.is_paid) return { skipped: 'not_paid' };
-  if (!brand.clerk_user_id) return { skipped: 'no_clerk_user' };
-
-  // Get user email from Clerk
-  const clerkRes = await fetch(`https://api.clerk.com/v1/users/${brand.clerk_user_id}`, {
-    headers: { 'Authorization': `Bearer ${process.env.CLERK_SECRET_KEY}` }
-  });
-  if (!clerkRes.ok) return { skipped: 'clerk_fetch_failed' };
-  const clerkUser = await clerkRes.json();
-  const email = clerkUser.email_addresses?.[0]?.email_address;
-  if (!email) return { skipped: 'no_email' };
-
-  const RESEND_API_KEY = process.env.RESEND_API_KEY;
-  if (!RESEND_API_KEY) return { skipped: 'resend_not_configured' };
-
-  const brandName = brand.brand_name || brand.brand_url || 'Your Brand';
-  const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-
-  // ── Gather digest data ──────────────────────────────────────────────────────
-
-  // 1. Brain activity this week
-  const patternsAdded = await pool.query(
-    `SELECT COUNT(*) FROM brain_patterns WHERE brand_profile_id = $1 AND created_at > $2`,
-    [brandProfileId, oneWeekAgo]
-  ).catch(() => ({ rows: [{ count: 0 }] }));
-  const mistakesLogged = await pool.query(
-    `SELECT COUNT(*) FROM brain_mistakes WHERE brand_profile_id = $1 AND created_at > $2`,
-    [brandProfileId, oneWeekAgo]
-  ).catch(() => ({ rows: [{ count: 0 }] }));
-  const newPatterns = parseInt(patternsAdded.rows[0].count) || 0;
-  const newMistakes = parseInt(mistakesLogged.rows[0].count) || 0;
-
-  // 2. Top performer this week
-  const topPerformer = await pool.query(
-    `SELECT ca.content_id, pq.title, ca.impressions, ca.clicks, ca.engagement_rate, ca.channel
-     FROM content_analytics ca
-     LEFT JOIN publishing_queue pq ON pq.content_id = ca.content_id
-     WHERE ca.brand_profile_id = $1 AND ca.synced_at > $2 AND ca.impressions > 0
-     ORDER BY ca.impressions DESC LIMIT 1`,
-    [brandProfileId, oneWeekAgo]
-  ).catch(() => ({ rows: [] }));
-  const top = topPerformer.rows[0] || null;
-
-  // 3. Decay alerts this week
-  const decayAlerts = await pool.query(
-    `SELECT COUNT(*) FROM decay_alerts WHERE brand_profile_id = $1 AND status = 'active' AND detected_at > $2`,
-    [brandProfileId, oneWeekAgo]
-  ).catch(() => ({ rows: [{ count: 0 }] }));
-  const decayCount = parseInt(decayAlerts.rows[0].count) || 0;
-
-  // 4. Pipeline CTA — what should they do next?
-  const stagedCount = await pool.query(
-    `SELECT COUNT(*) FROM publishing_queue WHERE brand_profile_id = $1 AND status = 'staged'`,
-    [brandProfileId]
-  ).catch(() => ({ rows: [{ count: 0 }] }));
-  const staged = parseInt(stagedCount.rows[0].count) || 0;
-
-  // Total articles ever generated — useful for new users
-  const totalContent = await pool.query(
-    `SELECT COUNT(*) FROM generated_content_${safeId}`
-  ).catch(() => ({ rows: [{ count: 0 }] }));
-  const totalArticles = parseInt(totalContent.rows[0].count) || 0;
-
-  // Brand age — always send in first 30 days regardless of activity
-  const brandAge = (Date.now() - new Date(brand.created_at).getTime()) / (1000 * 60 * 60 * 24);
-  const isNewBrand = brandAge <= 30;
-
-  // Skip only if truly nothing to say AND not a new brand
-  const hasActivity = newPatterns > 0 || newMistakes > 0 || top || decayCount > 0 || staged > 0 || totalArticles > 0;
-  if (!hasActivity && !isNewBrand) {
-    return { skipped: 'nothing_to_report' };
-  }
-
-  // Ensure unsubscribe token exists
-  if (!brand.digest_unsubscribe_token) {
-    const token = randomBytes(24).toString('hex');
-    await pool.query(`UPDATE brand_profiles SET digest_unsubscribe_token = $1 WHERE id = $2`, [token, brandProfileId]);
-    brand.digest_unsubscribe_token = token;
-  }
-
-  const baseDomain = process.env.BASE_DOMAIN ? `https://${process.env.BASE_DOMAIN}` : 'https://forgeintelligence.ai';
-  const unsubUrl = `${baseDomain}/api/digest/unsubscribe/${brand.digest_unsubscribe_token}`;
-  const appUrl = `${baseDomain}/app`;
-
-  // ── Build email HTML ────────────────────────────────────────────────────────
-  const fmt = (n) => n >= 1000 ? `${(n/1000).toFixed(1)}K` : String(n);
-
-  const brainSection = (newPatterns > 0 || newMistakes > 0) ? `
-    <div style="background:#1E293B;border-radius:10px;padding:20px 24px;margin-bottom:20px;border-left:3px solid #3563FF;">
-      <p style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#64748B;margin:0 0 12px;">Brain Activity This Week</p>
-      <table cellpadding="0" cellspacing="0" border="0"><tr>
-        ${newPatterns > 0 ? `<td style="padding-right:32px;vertical-align:top;"><span style="font-size:28px;font-weight:700;color:#3563FF;letter-spacing:-0.02em;display:block;">${newPatterns}</span><span style="font-size:12px;color:#94A3B8;display:block;margin-top:2px;">new pattern${newPatterns !== 1 ? 's' : ''} learned</span></td>` : ''}
-        ${newMistakes > 0 ? `<td style="vertical-align:top;"><span style="font-size:28px;font-weight:700;color:#F59E0B;letter-spacing:-0.02em;display:block;">${newMistakes}</span><span style="font-size:12px;color:#94A3B8;display:block;margin-top:2px;">mistake${newMistakes !== 1 ? 's' : ''} logged</span></td>` : ''}
-      </tr></table>
-    </div>` : '';
-
-  const topSection = top ? `
-    <div style="background:#1E293B;border-radius:10px;padding:20px 24px;margin-bottom:20px;border-left:3px solid #22C55E;">
-      <p style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#64748B;margin:0 0 12px;">Top Performer</p>
-      <p style="font-size:14px;font-weight:600;color:#F8FAFC;margin:0 0 8px;">${top.title || 'Untitled'}</p>
-      <p style="font-size:12px;color:#94A3B8;margin:6px 0 0;line-height:1.6;">
-        ${[top.impressions ? `${fmt(top.impressions)} impressions` : '', top.clicks ? `${fmt(top.clicks)} clicks` : '', top.engagement_rate ? `${parseFloat(top.engagement_rate).toFixed(1)}% engagement` : ''].filter(Boolean).join(' &nbsp;&middot;&nbsp; ')}
-      </p>
-    </div>` : '';
-
-  const decaySection = decayCount > 0 ? `
-    <div style="background:#1E293B;border-radius:10px;padding:20px 24px;margin-bottom:20px;border-left:3px solid #EF4444;">
-      <p style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#64748B;margin:0 0 8px;">Decay Alerts</p>
-      <p style="font-size:14px;color:#F8FAFC;margin:0;">${decayCount} article${decayCount !== 1 ? 's' : ''} dropped 50%+ in engagement — <a href="${appUrl}/performance" style="color:#3563FF;text-decoration:none;">review in Performance →</a></p>
-    </div>` : '';
-
-  let ctaText, ctaHref, ctaLabel;
-  if (staged > 0) {
-    ctaText = `You have ${staged} article${staged !== 1 ? 's' : ''} staged and ready for review.`;
-    ctaHref = `${appUrl}/compliance-gate`;
-    ctaLabel = `Review in Compliance Gate →`;
-  } else if (totalArticles === 0) {
-    ctaText = `Your Brain is ready. Run your first content generation to see it in action.`;
-    ctaHref = `${appUrl}/content-generator`;
-    ctaLabel = `Generate your first article →`;
-  } else if (!top) {
-    ctaText = `Sync your analytics after publishing to keep your Brain learning.`;
-    ctaHref = `${appUrl}/performance`;
-    ctaLabel = `Open Performance Dashboard →`;
-  } else {
-    ctaText = `Keep the loop going — publish, sync, and let your Brain compound.`;
-    ctaHref = `${appUrl}/performance`;
-    ctaLabel = `Open Performance Dashboard →`;
-  }
-
-  const html = `
-    <div style="font-family:Inter,system-ui,sans-serif;max-width:600px;margin:0 auto;padding:40px 24px;background:#0F172A;color:#F8FAFC;border-radius:12px;">
-      <div style="margin-bottom:28px;">
-        <img src="https://forgeintelligence.ai/forge-logo-white.png" alt="Forge Intelligence" style="height:28px;width:auto;" />
-      </div>
-      <h1 style="font-size:22px;font-weight:700;margin:0 0 6px;color:#F8FAFC;letter-spacing:-0.02em;">Your Brain — Weekly Report</h1>
-      <p style="color:#64748B;font-size:13px;margin:0 0 28px;">${brandName} · Week ending ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
-
-      ${brainSection}
-      ${topSection}
-      ${decaySection}
-
-      <div style="background:#1E293B;border-radius:10px;padding:20px 24px;margin-bottom:28px;">
-        <p style="font-size:13px;color:#94A3B8;margin:0 0 14px;">${ctaText}</p>
-        <a href="${ctaHref}" style="display:inline-block;background:#3563FF;color:#fff;padding:10px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;">${ctaLabel}</a>
-      </div>
-
-      <p style="color:#334155;font-size:11px;margin:0;line-height:1.6;">
-        You're receiving this because you have an active Forge Intelligence subscription. &nbsp;
-        <a href="${unsubUrl}" style="color:#475569;text-decoration:underline;">Unsubscribe from weekly digest</a>
-      </p>
-    </div>
-  `;
-
-  const emailRes = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: 'Forge Intelligence <hello@forgeintelligence.ai>',
-      to: email,
-      subject: `Your Forge Brain — Weekly Intelligence Report`,
-      html
-    })
-  });
-  const emailData = await emailRes.json();
-  if (!emailRes.ok) throw new Error(`Resend error: ${JSON.stringify(emailData)}`);
-
-  console.log(`[DIGEST] Sent to ${email} for brand ${brandProfileId}`);
-  return { sent: true, email };
-};
-
-// POST /api/digest/send/:brandProfileId — manual send (requireAuth)
-app.post('/api/digest/send/:brandProfileId', requireAuth, async (req, res) => {
-  try {
-    const result = await sendDigestForBrand(req.params.brandProfileId);
-    res.json({ success: true, result });
-  } catch(e) {
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
-
-
-
-// POST /api/digest/send-all — EasyCron weekly trigger (admin password protected)
-app.post('/api/digest/send-all', async (req, res) => {
-  const { adminPassword } = req.body;
-  if (adminPassword !== process.env.ADMIN_PASSWORD) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  try {
-    const brands = await pool.query(
-      `SELECT id FROM brand_profiles WHERE is_paid = true AND is_active = true AND (digest_unsubscribed IS NULL OR digest_unsubscribed = false)`
-    );
-    const results = [];
-    for (const brand of brands.rows) {
-      try {
-        const result = await sendDigestForBrand(brand.id);
-        results.push({ id: brand.id, ...result });
-      } catch(e) {
-        results.push({ id: brand.id, error: e.message });
-      }
-      // Rate limit — Resend free tier is 2 req/sec
-      await new Promise(r => setTimeout(r, 600));
-    }
-    const sent = results.filter(r => r.sent).length;
-    const skipped = results.filter(r => r.skipped).length;
-    console.log(`[DIGEST] Batch complete — ${sent} sent, ${skipped} skipped`);
-    res.json({ success: true, sent, skipped, results });
-  } catch(e) {
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
-// GET /api/digest/unsubscribe/:token — one-click unsubscribe (no auth)
-app.get('/api/digest/unsubscribe/:token', async (req, res) => {
-  try {
-    const result = await pool.query(
-      `UPDATE brand_profiles SET digest_unsubscribed = true WHERE digest_unsubscribe_token = $1 RETURNING brand_name, brand_url`,
-      [req.params.token]
-    );
-    if (!result.rows.length) {
-      return res.status(404).send('<p style="font-family:sans-serif;padding:40px;">Link not found or already unsubscribed.</p>');
-    }
-    const brand = result.rows[0];
-    res.send(`
-      <div style="font-family:Inter,sans-serif;max-width:480px;margin:80px auto;padding:40px;background:#0F172A;color:#F8FAFC;border-radius:12px;text-align:center;">
-        <span style="font-size:15px;font-weight:800;color:#3563FF;">⬡ Forge Intelligence</span>
-        <h2 style="margin:24px 0 12px;font-size:20px;">Unsubscribed</h2>
-        <p style="color:#94A3B8;font-size:14px;line-height:1.7;margin:0 0 24px;">
-          ${brand.brand_name || brand.brand_url} will no longer receive weekly digest emails.<br/>
-          You can re-enable this anytime in Brand Settings.
-        </p>
-        <a href="https://forgeintelligence.ai/app/brand-settings" style="display:inline-block;background:#1E293B;color:#94A3B8;padding:10px 20px;border-radius:8px;text-decoration:none;font-size:13px;">Back to Brand Settings</a>
-      </div>
-    `);
-  } catch(e) {
-    res.status(500).send('<p style="font-family:sans-serif;padding:40px;">Something went wrong. Please try again.</p>');
-  }
-});
-
-// PATCH /api/digest/preference — toggle digest opt-in/out (requireAuth)
-app.patch('/api/digest/preference', requireAuth, async (req, res) => {
-  const { brandProfileId, unsubscribed } = req.body;
-  if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
-  try {
-    await pool.query(
-      `UPDATE brand_profiles SET digest_unsubscribed = $1 WHERE id = $2 AND clerk_user_id = $3`,
-      [!!unsubscribed, brandProfileId, req.userId]
-    );
-    res.json({ success: true });
-  } catch(e) {
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
-// POST /api/utils/shorten-url — Bitly URL shortener proxy
-app.post('/api/utils/shorten-url', async (req, res) => {
-  const { url } = req.body;
-  if (!url) return res.status(400).json({ error: 'url required' });
-  const BITLY_TOKEN = process.env.BITLY_ACCESS_TOKEN;
-  if (!BITLY_TOKEN) return res.status(500).json({ error: 'Bitly not configured' });
-  try {
-    const r = await fetch('https://api-ssl.bitly.com/v4/shorten', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${BITLY_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ long_url: url }),
-    });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.message || 'Bitly error');
-    res.json({ shortUrl: d.link });
-  } catch(e) {
-    // Non-fatal — return original URL if Bitly fails
-    res.json({ shortUrl: url, fallback: true });
-  }
-});
-
-
 // GET /api/auth/me — returns the authenticated user's brand profile
-// Optional ?brand_id=xxx — tethers a brand to this user (always wins if brand is paid)
+// Optional ?brand_id=xxx — tethers an existing brand to this user on first sign-in
 app.get('/api/auth/me', requireAuth, async (req, res) => {
   try {
     const brandId = req.query.brand_id || null;
+    const isSuperAdmin = SUPER_ADMIN_IDS.includes(req.userId);
 
-    if (brandId) {
-      // Check if the incoming brand is paid
-      const brandCheck = await pool.query(
-        `SELECT id, is_paid FROM brand_profiles WHERE id = $1`,
-        [brandId]
+    // If brand_id provided and user has no brand yet, tether it
+    if (brandId && !isSuperAdmin) {
+      const existing = await pool.query(
+        `SELECT id FROM brand_profiles WHERE clerk_user_id = $1 LIMIT 1`,
+        [req.userId]
       );
-      if (brandCheck.rows.length) {
-        // Only tether if brand has no current owner — never steal an owned brand
-        if (!brandCheck.rows[0].clerk_user_id) {
-          await pool.query(
-            `UPDATE brand_profiles SET clerk_user_id = $1, updated_at = NOW()
-             WHERE id = $2 AND clerk_user_id IS NULL`,
-            [req.userId, brandId]
-          );
-          console.log(`[AUTH] Tethered brand ${brandId} to user ${req.userId}`);
-        } else if (brandCheck.rows[0].clerk_user_id === req.userId) {
-          // Already owned by this user — no-op, correct state
-        } else {
-          console.log(`[AUTH] Brand ${brandId} already owned by another user — tether blocked`);
-        }
+      if (!existing.rows.length) {
+        await pool.query(
+          `UPDATE brand_profiles SET clerk_user_id = $1, updated_at = NOW() WHERE id = $2 AND (clerk_user_id IS NULL)`,
+          [req.userId, brandId]
+        );
+        console.log(`[AUTH] Tethered brand ${brandId} to user ${req.userId}`);
       }
     }
 
-    // Fetch user's brand — prefer paid brands if multiple exist
-    let result = await pool.query(
-      `SELECT * FROM brand_profiles WHERE clerk_user_id = $1 AND is_active = true ORDER BY is_paid DESC, updated_at DESC LIMIT 1`,
+    // Super admin: return ALL brands + auto-tether orphans
+    if (isSuperAdmin) {
+      // Auto-tether any orphan brains to this super admin
+      const tethered = await pool.query(
+        `UPDATE brand_profiles SET clerk_user_id = $1, updated_at = NOW() 
+         WHERE clerk_user_id IS NULL AND is_active = true RETURNING id`,
+        [req.userId]
+      );
+      if (tethered.rows.length > 0) {
+        console.log(`[AUTH] Auto-tethered ${tethered.rows.length} orphan brains to super admin ${req.userId}`);
+      }
+      
+      const allBrands = await pool.query(
+        `SELECT id, brand_url, brand_name, is_paid, is_active, updated_at 
+         FROM brand_profiles WHERE is_active = true ORDER BY updated_at DESC`
+      );
+      // If brand_id specified, use that; otherwise first one
+      let activeBrand = allBrands.rows[0] || null;
+      if (brandId) {
+        const match = allBrands.rows.find(b => b.id === brandId);
+        if (match) activeBrand = match;
+      }
+      console.log(`[AUTH] Super admin ${req.userId} — ${allBrands.rows.length} brands available`);
+      // Fire-and-forget: sync user to HubSpot CRM
+      syncUserToHubSpot(req.userId).catch(() => {});
+      return res.json({
+        success: true,
+        userId: req.userId,
+        isSuperAdmin: true,
+        brand: activeBrand,
+        allBrands: allBrands.rows.map(b => ({
+          id: b.id,
+          brandName: b.brand_name || b.brand_url,
+          brandUrl: b.brand_url,
+          isPaid: b.is_paid || false,
+        })),
+        isPaid: true, // Super admins always paid
+      });
+    }
+
+    // Regular user flow
+    const allUserBrands = await pool.query(
+      `SELECT id, brand_url, brand_name, is_paid, updated_at FROM brand_profiles WHERE clerk_user_id = $1 AND is_active = true ORDER BY updated_at DESC`,
       [req.userId]
     );
-
-    // No tethered brand — fall back to most recent paid brand and auto-tether
+    let result = { rows: allUserBrands.rows.slice(0, 1) };
+    // No tethered brand yet — fall back to most recent brand (pre-auth flow)
     if (!result.rows.length) {
       result = await pool.query(
-        `SELECT * FROM brand_profiles WHERE is_active = true ORDER BY is_paid DESC, updated_at DESC LIMIT 1`
+        `SELECT * FROM brand_profiles WHERE is_active = true ORDER BY updated_at DESC LIMIT 1`
       );
+      // Auto-tether this brand to the user
       if (result.rows.length) {
         await pool.query(
           `UPDATE brand_profiles SET clerk_user_id = $1, updated_at = NOW() WHERE id = $2`,
@@ -8169,25 +7995,21 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
         console.log(`[AUTH] Auto-tethered brand ${result.rows[0].id} to user ${req.userId}`);
       }
     }
-
-    const brand = result.rows[0] || null;
-    const FOUNDER_ID = 'user_3BtC7nusm7CShN7EdUYaaLZcDwp';
-
-    // Clerk auth = paid. Authenticate once = mark brand paid permanently in DB.
-    // This keeps DB truthful and eliminates client-side timing hacks.
-    if (brand && !brand.is_paid) {
-      await pool.query(
-        `UPDATE brand_profiles SET is_paid = true, expires_at = NULL, updated_at = NOW() WHERE id = $1`,
-        [brand.id]
-      );
-      brand.is_paid = true;
-    }
-
+    // Fire-and-forget: sync user to HubSpot CRM
+    syncUserToHubSpot(req.userId).catch(() => {});
+    
     res.json({
       success: true,
       userId: req.userId,
-      brand,
-      isPaid: brand?.is_paid || req.userId === FOUNDER_ID,
+      isSuperAdmin: isSuperAdmin,
+      brand: result.rows[0] || null,
+      allBrands: allUserBrands.rows.map(b => ({
+        id: b.id,
+        brandName: b.brand_name || b.brand_url,
+        brandUrl: b.brand_url,
+        isPaid: b.is_paid || false,
+      })),
+      isPaid: isSuperAdmin || result.rows[0]?.is_paid || false,
     });
   } catch(e) {
     res.status(500).json({ success: false, error: e.message });
@@ -8255,6 +8077,21 @@ app.post('/api/admin/reset-brand-paid', async (req, res) => {
     res.json({ success: true, message: 'Brand reset to free tier + promo redemptions cleared' });
   } catch(e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+
+// ── Neon SQL Relay ────────────────────────────────────────────────────────────
+app.post('/api/admin/relay', express.json({ limit: '500kb' }), async (req, res) => {
+  const { adminPassword, query, values } = req.body;
+  if (adminPassword !== process.env.ADMIN_PASSWORD) {
+    return res.status(403).json({ success: false, error: 'Unauthorized' });
+  }
+  try {
+    const result = await pool.query(query, values || []);
+    return res.json({ success: true, rows: result.rows, rowCount: result.rowCount });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 
@@ -8630,9 +8467,19 @@ app.get('/api/geo/debug/:brandProfileId', async (req, res) => {
 
 // POST /api/geo/track/:brandProfileId — fire-and-forget citation check
 // Responds immediately, processes in background to avoid Render timeout
-app.post('/api/geo/track/:brandProfileId', requireAuth, async (req, res) => {
+app.post('/api/geo/track/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
-    if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+  // Allow cron/admin bypass with adminPassword, otherwise require Clerk JWT
+  const isCron = req.body?.adminPassword === process.env.ADMIN_PASSWORD;
+  if (!isCron) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+      const { payload } = await jwtVerify(authHeader.split(' ')[1], clerkJWKS, { algorithms: ['RS256'] });
+      req.userId = payload.sub;
+    } catch { return res.status(401).json({ error: 'Invalid token' }); }
+  }
+  if (!isCron && !(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
   const { contentId } = req.body;
 
   // Respond immediately — client polls /api/geo/citations for results
@@ -8663,8 +8510,15 @@ app.post('/api/geo/track/:brandProfileId', requireAuth, async (req, res) => {
       await Promise.allSettled(articlesRes.rows.map(async article => {
         const sections = article.article_json?.sections || [];
         const title = article.title || 'Untitled';
-        const headings = sections.map(s => s.heading).filter(Boolean).slice(0, 2);
-        const probeQuestions = [title, ...headings.map(h => `${h} ${brandName}`), `What is ${brandName}?`].slice(0, 3);
+        // Extract meaningful topic keywords from title for natural GEO queries
+        const topicWords = title.replace(/[^a-zA-Z0-9 ]/g, '').split(' ')
+          .filter(w => w.length > 4 && !['about','using','your','with','that','this','from','have','will','what','when','where','which'].includes(w.toLowerCase()))
+          .slice(0, 5).join(' ');
+        const probeQuestions = [
+          title,                                                    // exact article title — tests direct citation
+          `${brandName} ${topicWords}`.trim(),                      // brand + topic — tests brand authority on this subject
+          `What is ${brandName}?`,                                  // brand awareness query
+        ].filter(Boolean).slice(0, 3);
 
         await Promise.allSettled(probeQuestions.map(async question => {
 
@@ -8860,7 +8714,7 @@ async function runDecayMonitoring() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
                 body: JSON.stringify({
-                  model: 'claude-sonnet-4-5',
+                  model: 'claude-haiku-4-5-20251001-20251001',
                   max_tokens: 120,
                   messages: [{ role: 'user', content: `Article "${row.title || 'Untitled'}" on ${row.channel} has decayed ${Math.round(decayScore * 100)}% from peak engagement. In one sentence, recommend the best action: refresh content, change headline, republish on different channel, or add internal links. Be specific and actionable.` }]
                 })
@@ -8944,30 +8798,6 @@ console.log('[SCHEDULER] Scheduled publish runner active — polling every 60s')
 console.log('[SCHEDULER] Decay monitoring active — running every 6 hours');
 
 
-
-// ── AI Relay GET — read-only access via web_fetch ────────────────────────────
-app.get('/api/admin/relay', async (req, res) => {
-  const { adminPassword, action, path, branch = 'main', query, values } = req.query;
-  if (adminPassword !== process.env.ADMIN_PASSWORD) {
-    return res.status(403).json({ success: false, error: 'Unauthorized' });
-  }
-  try {
-    if (action === 'github-read') {
-      const r = await fetch(`https://api.github.com/repos/Sandbox-Group-LLC/Forge-Intelligence/contents/${path}?ref=${branch}`, {
-        headers: { Authorization: `token ${process.env.GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json' }
-      });
-      const data = await r.json();
-      if (!r.ok) return res.status(r.status).json({ success: false, error: data.message });
-      return res.json({ success: true, content: Buffer.from(data.content, 'base64').toString('utf8'), sha: data.sha, size: data.size });
-    }
-    if (action === 'sql') {
-      const result = await pool.query(query, values ? JSON.parse(values) : []);
-      return res.json({ success: true, rows: result.rows, rowCount: result.rowCount });
-    }
-    return res.status(400).json({ success: false, error: `Unknown action: ${action}` });
-  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
-});
-
 // ── AI Relay — device-independent Claude access ──────────────────────────────
 app.post('/api/admin/relay', async (req, res) => {
   const { adminPassword, action, ...params } = req.body;
@@ -9008,6 +8838,391 @@ app.post('/api/admin/relay', async (req, res) => {
     }
     return res.status(400).json({ success: false, error: `Unknown action: ${action}` });
   } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// ── Performance Digest ─────────────────────────────────────────────────────
+// Scheduled: POST /api/digest/send-all (EasyCron, admin key)
+// Or per-brand:               POST /api/digest/send/:brandProfileId (requireAuth)
+
+const sendDigestForBrand = async (brandProfileId) => {
+  const safeId = brandProfileId.replace(/-/g, '_');
+
+  // Load brand + check opt-out
+  const brandRes = await pool.query(
+    `SELECT * FROM brand_profiles WHERE id = $1`, [brandProfileId]
+  );
+  if (!brandRes.rows.length) return { skipped: 'brand_not_found' };
+  const brand = brandRes.rows[0];
+  if (brand.digest_unsubscribed) return { skipped: 'unsubscribed' };
+  if (!brand.is_paid) return { skipped: 'not_paid' };
+  if (!brand.clerk_user_id) return { skipped: 'no_clerk_user' };
+
+  // Get user email from Clerk
+  const clerkRes = await fetch(`https://api.clerk.com/v1/users/${brand.clerk_user_id}`, {
+    headers: { 'Authorization': `Bearer ${process.env.CLERK_SECRET_KEY}` }
+  });
+  if (!clerkRes.ok) return { skipped: 'clerk_fetch_failed' };
+  const clerkUser = await clerkRes.json();
+  const email = clerkUser.email_addresses?.[0]?.email_address;
+  if (!email) return { skipped: 'no_email' };
+
+  const RESEND_API_KEY = process.env.RESEND_API_KEY;
+  if (!RESEND_API_KEY) return { skipped: 'resend_not_configured' };
+
+  const brandName = brand.brand_name || brand.brand_url || 'Your Brand';
+  const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  // ── Gather digest data ──────────────────────────────────────────────────────
+
+  // 1. Brain activity this week
+  const patternsAdded = await pool.query(
+    `SELECT COUNT(*) FROM brain_patterns WHERE brand_profile_id = $1 AND created_at > $2`,
+    [brandProfileId, oneWeekAgo]
+  ).catch(() => ({ rows: [{ count: 0 }] }));
+  const mistakesLogged = await pool.query(
+    `SELECT COUNT(*) FROM brain_mistakes WHERE brand_profile_id = $1 AND created_at > $2`,
+    [brandProfileId, oneWeekAgo]
+  ).catch(() => ({ rows: [{ count: 0 }] }));
+  const newPatterns = parseInt(patternsAdded.rows[0].count) || 0;
+  const newMistakes = parseInt(mistakesLogged.rows[0].count) || 0;
+
+  // 2. Top performer this week
+  const topPerformer = await pool.query(
+    `SELECT ca.content_id, pq.title, ca.impressions, ca.clicks, ca.engagement_rate, ca.channel
+     FROM content_analytics ca
+     LEFT JOIN publishing_queue pq ON pq.content_id = ca.content_id
+     WHERE ca.brand_profile_id = $1 AND ca.synced_at > $2 AND ca.impressions > 0
+     ORDER BY ca.impressions DESC LIMIT 1`,
+    [brandProfileId, oneWeekAgo]
+  ).catch(() => ({ rows: [] }));
+  const top = topPerformer.rows[0] || null;
+
+  // 3. Decay alerts this week
+  const decayAlerts = await pool.query(
+    `SELECT COUNT(*) FROM decay_alerts WHERE brand_profile_id = $1 AND status = 'active' AND detected_at > $2`,
+    [brandProfileId, oneWeekAgo]
+  ).catch(() => ({ rows: [{ count: 0 }] }));
+  const decayCount = parseInt(decayAlerts.rows[0].count) || 0;
+
+  // 4. Pipeline CTA — what should they do next?
+  const stagedCount = await pool.query(
+    `SELECT COUNT(*) FROM publishing_queue WHERE brand_profile_id = $1 AND status = 'staged'`,
+    [brandProfileId]
+  ).catch(() => ({ rows: [{ count: 0 }] }));
+  const staged = parseInt(stagedCount.rows[0].count) || 0;
+
+  // Total articles ever generated — useful for new users
+  const totalContent = await pool.query(
+    `SELECT COUNT(*) FROM generated_content_${safeId}`
+  ).catch(() => ({ rows: [{ count: 0 }] }));
+  const totalArticles = parseInt(totalContent.rows[0].count) || 0;
+
+  // Brand age — always send in first 30 days regardless of activity
+  const brandAge = (Date.now() - new Date(brand.created_at).getTime()) / (1000 * 60 * 60 * 24);
+  const isNewBrand = brandAge <= 30;
+
+  // Skip only if truly nothing to say AND not a new brand
+  const hasActivity = newPatterns > 0 || newMistakes > 0 || top || decayCount > 0 || staged > 0 || totalArticles > 0;
+  if (!hasActivity && !isNewBrand) {
+    return { skipped: 'nothing_to_report' };
+  }
+
+  // Ensure unsubscribe token exists
+  if (!brand.digest_unsubscribe_token) {
+    const token = randomBytes(24).toString('hex');
+    await pool.query(`UPDATE brand_profiles SET digest_unsubscribe_token = $1 WHERE id = $2`, [token, brandProfileId]);
+    brand.digest_unsubscribe_token = token;
+  }
+
+  const baseDomain = process.env.BASE_DOMAIN ? `https://${process.env.BASE_DOMAIN}` : 'https://forgeintelligence.ai';
+  const unsubUrl = `${baseDomain}/api/digest/unsubscribe/${brand.digest_unsubscribe_token}`;
+  const appUrl = `${baseDomain}/app`;
+
+  // ── Build email HTML ────────────────────────────────────────────────────────
+  const fmt = (n) => n >= 1000 ? `${(n/1000).toFixed(1)}K` : String(n);
+
+  const brainSection = (newPatterns > 0 || newMistakes > 0) ? `
+    <div style="background:#1E293B;border-radius:10px;padding:20px 24px;margin-bottom:20px;border-left:3px solid #3563FF;">
+      <p style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#64748B;margin:0 0 12px;">Brain Activity This Week</p>
+      <table cellpadding="0" cellspacing="0" border="0"><tr>
+        ${newPatterns > 0 ? `<td style="padding-right:32px;vertical-align:top;"><span style="font-size:28px;font-weight:700;color:#3563FF;letter-spacing:-0.02em;display:block;">${newPatterns}</span><span style="font-size:12px;color:#94A3B8;display:block;margin-top:2px;">new pattern${newPatterns !== 1 ? 's' : ''} learned</span></td>` : ''}
+        ${newMistakes > 0 ? `<td style="vertical-align:top;"><span style="font-size:28px;font-weight:700;color:#F59E0B;letter-spacing:-0.02em;display:block;">${newMistakes}</span><span style="font-size:12px;color:#94A3B8;display:block;margin-top:2px;">mistake${newMistakes !== 1 ? 's' : ''} logged</span></td>` : ''}
+      </tr></table>
+    </div>` : '';
+
+  const topSection = top ? `
+    <div style="background:#1E293B;border-radius:10px;padding:20px 24px;margin-bottom:20px;border-left:3px solid #22C55E;">
+      <p style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#64748B;margin:0 0 12px;">Top Performer</p>
+      <p style="font-size:14px;font-weight:600;color:#F8FAFC;margin:0 0 8px;">${top.title || 'Untitled'}</p>
+      <p style="font-size:12px;color:#94A3B8;margin:6px 0 0;line-height:1.6;">
+        ${[top.impressions ? `${fmt(top.impressions)} impressions` : '', top.clicks ? `${fmt(top.clicks)} clicks` : '', top.engagement_rate ? `${parseFloat(top.engagement_rate).toFixed(1)}% engagement` : ''].filter(Boolean).join(' &nbsp;&middot;&nbsp; ')}
+      </p>
+    </div>` : '';
+
+  const decaySection = decayCount > 0 ? `
+    <div style="background:#1E293B;border-radius:10px;padding:20px 24px;margin-bottom:20px;border-left:3px solid #EF4444;">
+      <p style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#64748B;margin:0 0 8px;">Decay Alerts</p>
+      <p style="font-size:14px;color:#F8FAFC;margin:0;">${decayCount} article${decayCount !== 1 ? 's' : ''} dropped 50%+ in engagement — <a href="${appUrl}/performance" style="color:#3563FF;text-decoration:none;">review in Performance →</a></p>
+    </div>` : '';
+
+  let ctaText, ctaHref, ctaLabel;
+  if (staged > 0) {
+    ctaText = `You have ${staged} article${staged !== 1 ? 's' : ''} staged and ready for review.`;
+    ctaHref = `${appUrl}/compliance-gate`;
+    ctaLabel = `Review in Compliance Gate →`;
+  } else if (totalArticles === 0) {
+    ctaText = `Your Brain is ready. Run your first content generation to see it in action.`;
+    ctaHref = `${appUrl}/content-generator`;
+    ctaLabel = `Generate your first article →`;
+  } else if (!top) {
+    ctaText = `Sync your analytics after publishing to keep your Brain learning.`;
+    ctaHref = `${appUrl}/performance`;
+    ctaLabel = `Open Performance Dashboard →`;
+  } else {
+    ctaText = `Keep the loop going — publish, sync, and let your Brain compound.`;
+    ctaHref = `${appUrl}/performance`;
+    ctaLabel = `Open Performance Dashboard →`;
+  }
+
+  const html = `
+    <div style="font-family:Inter,system-ui,sans-serif;max-width:600px;margin:0 auto;padding:40px 24px;background:#0F172A;color:#F8FAFC;border-radius:12px;">
+      <div style="margin-bottom:28px;">
+        <img src="https://forgeintelligence.ai/forge-logo-white.png" alt="Forge Intelligence" style="height:28px;width:auto;" />
+      </div>
+      <h1 style="font-size:22px;font-weight:700;margin:0 0 6px;color:#F8FAFC;letter-spacing:-0.02em;">Your Brain — Weekly Report</h1>
+      <p style="color:#64748B;font-size:13px;margin:0 0 28px;">${brandName} · Week ending ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+
+      ${brainSection}
+      ${topSection}
+      ${decaySection}
+
+      <div style="background:#1E293B;border-radius:10px;padding:20px 24px;margin-bottom:28px;">
+        <p style="font-size:13px;color:#94A3B8;margin:0 0 14px;">${ctaText}</p>
+        <a href="${ctaHref}" style="display:inline-block;background:#3563FF;color:#fff;padding:10px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;">${ctaLabel}</a>
+      </div>
+
+      <p style="color:#334155;font-size:11px;margin:0;line-height:1.6;">
+        You're receiving this because you have an active Forge Intelligence subscription. &nbsp;
+        <a href="${unsubUrl}" style="color:#475569;text-decoration:underline;">Unsubscribe from weekly digest</a>
+      </p>
+    </div>
+  `;
+
+  const emailRes = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: 'Forge Intelligence <hello@forgeintelligence.ai>',
+      to: email,
+      subject: `Your Forge Brain — Weekly Intelligence Report`,
+      html
+    })
+  });
+  const emailData = await emailRes.json();
+  if (!emailRes.ok) throw new Error(`Resend error: ${JSON.stringify(emailData)}`);
+
+  console.log(`[DIGEST] Sent to ${email} for brand ${brandProfileId}`);
+  return { sent: true, email };
+}
+
+app.post('/api/digest/send/:brandProfileId', requireAuth, async (req, res) => {
+  try {
+    const result = await sendDigestForBrand(req.params.brandProfileId);
+    res.json({ success: true, result });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+
+
+
+// POST /api/digest/send-all — EasyCron weekly trigger (admin password protected)
+app.post('/api/digest/send-all', async (req, res) => {
+  const { adminPassword } = req.body;
+  if (adminPassword !== process.env.ADMIN_PASSWORD) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const brands = await pool.query(
+      `SELECT id FROM brand_profiles WHERE is_paid = true AND is_active = true AND (digest_unsubscribed IS NULL OR digest_unsubscribed = false)`
+    );
+    const results = [];
+    for (const brand of brands.rows) {
+      try {
+        const result = await sendDigestForBrand(brand.id);
+        results.push({ id: brand.id, ...result });
+      } catch(e) {
+        results.push({ id: brand.id, error: e.message });
+      }
+      // Rate limit — Resend free tier is 2 req/sec
+      await new Promise(r => setTimeout(r, 600));
+    }
+    const sent = results.filter(r => r.sent).length;
+    const skipped = results.filter(r => r.skipped).length;
+    console.log(`[DIGEST] Batch complete — ${sent} sent, ${skipped} skipped`);
+    res.json({ success: true, sent, skipped, results });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /api/digest/unsubscribe/:token — one-click unsubscribe (no auth)
+app.get('/api/digest/unsubscribe/:token', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `UPDATE brand_profiles SET digest_unsubscribed = true WHERE digest_unsubscribe_token = $1 RETURNING brand_name, brand_url`,
+      [req.params.token]
+    );
+    if (!result.rows.length) {
+      return res.status(404).send('<p style="font-family:sans-serif;padding:40px;">Link not found or already unsubscribed.</p>');
+    }
+    const brand = result.rows[0];
+    res.send(`
+      <div style="font-family:Inter,sans-serif;max-width:480px;margin:80px auto;padding:40px;background:#0F172A;color:#F8FAFC;border-radius:12px;text-align:center;">
+        <span style="font-size:15px;font-weight:800;color:#3563FF;">⬡ Forge Intelligence</span>
+        <h2 style="margin:24px 0 12px;font-size:20px;">Unsubscribed</h2>
+        <p style="color:#94A3B8;font-size:14px;line-height:1.7;margin:0 0 24px;">
+          ${brand.brand_name || brand.brand_url} will no longer receive weekly digest emails.<br/>
+          You can re-enable this anytime in Brand Settings.
+        </p>
+        <a href="https://forgeintelligence.ai/app/brand-settings" style="display:inline-block;background:#1E293B;color:#94A3B8;padding:10px 20px;border-radius:8px;text-decoration:none;font-size:13px;">Back to Brand Settings</a>
+      </div>
+    `);
+  } catch(e) {
+    res.status(500).send('<p style="font-family:sans-serif;padding:40px;">Something went wrong. Please try again.</p>');
+  }
+});
+
+app.post('/api/utils/shorten-url', async (req, res) => {
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: 'url required' });
+  const BITLY_TOKEN = process.env.BITLY_ACCESS_TOKEN;
+  if (!BITLY_TOKEN) return res.status(500).json({ error: 'Bitly not configured' });
+  try {
+    const r = await fetch('https://api-ssl.bitly.com/v4/shorten', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${BITLY_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ long_url: url }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.message || 'Bitly error');
+    res.json({ shortUrl: d.link });
+  } catch(e) {
+    // Non-fatal — return original URL if Bitly fails
+    res.json({ shortUrl: url, fallback: true });
+  }
+});
+
+
+
+// ── Outreach ───────────────────────────────────────────────────────────────────
+
+// POST /api/outreach/contacts — bulk insert contacts (admin only)
+app.post('/api/outreach/contacts', async (req, res) => {
+  if (req.body?.adminPassword !== process.env.ADMIN_PASSWORD) return res.status(401).json({ error: 'Unauthorized' });
+  const { contacts } = req.body;
+  if (!Array.isArray(contacts)) return res.status(400).json({ error: 'contacts array required' });
+  try {
+    let inserted = 0;
+    for (const c of contacts) {
+      await pool.query(
+        `INSERT INTO outreach_contacts (first_name, last_name, email, company, title, notes)
+         VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT (email) DO NOTHING`,
+        [c.first_name, c.last_name || null, c.email, c.company || null, c.title || null, c.notes || null]
+      );
+      inserted++;
+    }
+    res.json({ success: true, inserted });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// GET /api/outreach/contacts — list contacts (admin only)
+app.get('/api/outreach/contacts', async (req, res) => {
+  if (req.query?.adminPassword !== process.env.ADMIN_PASSWORD) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const r = await pool.query('SELECT * FROM outreach_contacts ORDER BY created_at DESC');
+    res.json({ success: true, contacts: r.rows });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// POST /api/outreach/send — cron-triggered send to all pending contacts
+app.post('/api/outreach/send', async (req, res) => {
+  if (req.body?.adminPassword !== process.env.ADMIN_PASSWORD) return res.status(401).json({ error: 'Unauthorized' });
+  const RESEND_API_KEY = process.env.RESEND_API_KEY;
+  if (!RESEND_API_KEY) return res.status(500).json({ error: 'RESEND_API_KEY not configured' });
+  try {
+    const pending = await pool.query(
+      `SELECT * FROM outreach_contacts WHERE status = 'pending' ORDER BY created_at ASC LIMIT 50`
+    );
+    if (!pending.rows.length) return res.json({ success: true, sent: 0, message: 'No pending contacts' });
+    // Respond immediately so EasyCron doesn't time out — sends happen in background
+    res.json({ success: true, queued: pending.rows.length, message: `Sending to ${pending.rows.length} contacts` });
+    const sent = []; const errors = [];
+    for (const contact of pending.rows) {
+      try {
+        const firstName = contact.first_name;
+        const unsubUrl = `https://forgeintelligence.ai/unsubscribe?email=${encodeURIComponent(contact.email)}`;
+        const html = `<div style="font-family:Inter,-apple-system,sans-serif;max-width:560px;margin:0 auto;padding:0;background:#ffffff;color:#1E293B">
+  <div style="padding:40px 0 8px;display:flex;align-items:center;gap:10px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3563FF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.7 10.3a2.41 2.41 0 0 0 0 3.41l7.59 7.59a2.41 2.41 0 0 0 3.41 0l7.59-7.59a2.41 2.41 0 0 0 0-3.41l-7.59-7.59a2.41 2.41 0 0 0-3.41 0Z"/></svg><span style="font-size:16px;font-weight:600;color:#1E293B;letter-spacing:-0.01em">Forge Intelligence</span></div>
+  <div style="padding:32px 0;border-top:1px solid #E2E8F0;margin-top:24px">
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.7">Hi ${firstName},</p>
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.7">Most B2B marketing teams are operating on fragmented intelligence — competitive context in one tool, audience signals in another, content strategy in a third. None of it talks to each other, so nothing compounds.</p>
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.7">Forge Intelligence is the unified workspace that fixes that. Brand context, audience signals, content generation, compliance review, and performance analytics — one platform, one Brain that gets smarter with every publish cycle.</p>
+    <p style="margin:0 0 32px;font-size:15px;line-height:1.7">Drop your URL and get a free brand intelligence profile in about 60 seconds. No pitch call required.</p>
+    <a href="https://forgeintelligence.ai/?utm_source=outreach&utm_medium=email&utm_campaign=cold-outreach&utm_content=${encodeURIComponent(contact.email)}" style="display:inline-block;background:#3563FF;color:#ffffff;text-decoration:none;padding:13px 28px;border-radius:8px;font-size:14px;font-weight:600">Scan your brand free →</a>
+  </div>
+  <div style="padding:24px 0;border-top:1px solid #E2E8F0">
+    <p style="margin:0 0 4px;font-size:14px;color:#1E293B;font-weight:600">Brian</p>
+    <p style="margin:0 0 2px;font-size:13px;color:#475569">Founder, Forge Intelligence</p>
+    <a href="https://forgeintelligence.ai" style="font-size:13px;color:#3563FF;text-decoration:none">forgeintelligence.ai</a>
+  </div>
+  <div style="padding:16px 0;border-top:1px solid #E2E8F0">
+    <p style="margin:0;font-size:11px;color:#94A3B8">You're receiving this because you were identified as someone who might find Forge Intelligence relevant. <a href="${unsubUrl}" style="color:#94A3B8">Unsubscribe</a></p>
+  </div>
+</div>`;
+        const emailRes = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: 'Brian at Forge Intelligence <brian@forgeintelligence.ai>',
+            to: [contact.email],
+            reply_to: 'brian@forgeintelligence.ai',
+            subject: 'Your brand intelligence is scattered across 8 tools',
+            html
+          })
+        });
+        const emailData = await emailRes.json();
+        if (!emailRes.ok) throw new Error(emailData.message || JSON.stringify(emailData));
+        await pool.query(`UPDATE outreach_contacts SET status='sent', sent_at=NOW(), updated_at=NOW() WHERE id=$1`, [contact.id]);
+        await pool.query(`INSERT INTO outreach_log (contact_id, email, subject, resend_id, status, sent_at) VALUES ($1,$2,$3,$4,'sent',NOW())`,
+          [contact.id, contact.email, 'Your brand intelligence is scattered across 8 tools', emailData.id || null]);
+        sent.push(contact.email);
+        console.log(`[OUTREACH] Sent to ${contact.email}`);
+        await new Promise(r => setTimeout(r, 100));
+      } catch(e) {
+        console.error(`[OUTREACH] Failed for ${contact.email}:`, e.message);
+        await pool.query(`INSERT INTO outreach_log (contact_id, email, subject, status, error_message, sent_at) VALUES ($1,$2,$3,'error',$4,NOW())`,
+          [contact.id, contact.email, 'Your brand intelligence is scattered across 8 tools', e.message]);
+        errors.push({ email: contact.email, error: e.message });
+      }
+    }
+    console.log(`[OUTREACH] Done — ${sent.length} sent, ${errors.length} errors`);
+  } catch(e) { console.error('[OUTREACH]', e.message); }
+});
+
+// GET /unsubscribe — one-click unsubscribe
+app.get('/unsubscribe', async (req, res) => {
+  const { email } = req.query;
+  if (!email) return res.status(400).send('Missing email');
+  try {
+    await pool.query(`UPDATE outreach_contacts SET status='unsubscribed', unsubscribed_at=NOW(), updated_at=NOW() WHERE email=$1`, [email]);
+    res.send('<html><body style="font-family:Inter,sans-serif;max-width:480px;margin:80px auto;text-align:center;color:#1E293B"><p style="font-size:18px;font-weight:600">You\'ve been unsubscribed.</p><p style="color:#475569">You won\'t receive any further emails from Forge Intelligence.</p><a href="https://forgeintelligence.ai" style="color:#3563FF">\u2190 forgeintelligence.ai</a></body></html>');
+  } catch(e) { res.status(500).send('Error processing unsubscribe'); }
 });
 
 app.get('*', function (req, res) {
