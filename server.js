@@ -4336,6 +4336,11 @@ app.post('/api/compliance/critique', requireAuth, async (req, res) => {
 
     const systemPrompt = `You are a compliance and brand voice auditor. Analyze this article against the brand profile and known mistakes. Return a JSON compliance report.
 
+CRITICAL RULES:
+- ONLY flag claims, phrases, or issues that are EXPLICITLY present in the article text. Do NOT flag claims from the brand profile that were not actually written into the article.
+- Every flag must include a "flaggedExcerpt" field containing the EXACT quote from the article that triggered the flag. If you cannot quote it verbatim from the article, do not flag it.
+- Do NOT hallucinate or infer content. If a section contains no issues, do not flag it.
+
 Brand Voice Profile:
 ${JSON.stringify(brand?.voice_profile || {}, null, 2)}
 
@@ -4355,6 +4360,7 @@ Return ONLY valid JSON in this exact structure:
       "sectionHeading": "<heading>",
       "severity": "yellow" | "red",
       "type": "brand_voice" | "factual_claim" | "legal_risk" | "sme_required",
+      "flaggedExcerpt": "<exact quote from the article that triggered this flag>",
       "reason": "<why flagged>",
       "suggestion": "<recommended fix>"
     }
