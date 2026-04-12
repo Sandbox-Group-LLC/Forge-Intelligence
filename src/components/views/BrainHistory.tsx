@@ -37,7 +37,6 @@ const icons = {
 export function BrainHistory() {
   const { historyEntries, setHistoryEntries, setCurrentView, setBrandProfile } = useApp();
   const [selectedEntries, setSelectedEntries] = useState<string[]>([]);
-  const [filterBrand, setFilterBrand] = useState<string>('');
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -66,9 +65,8 @@ export function BrainHistory() {
   const uniqueBrands = Array.from(new Set(historyEntries.map(e => e.brandName)));
 
   // Filter entries
-  const filteredEntries = filterBrand
-    ? historyEntries.filter(e => e.brandName === filterBrand)
-    : historyEntries;
+  // No filtering needed for single-tenant production
+  const filteredEntries = historyEntries;
 
   // Group by brand
   const groupedEntries = filteredEntries.reduce((acc, entry) => {
@@ -151,20 +149,6 @@ export function BrainHistory() {
       </div>
 
       <div className="history-controls">
-        <div className="filter-section">
-          <label className="filter-label">Filter by Brand</label>
-          <select
-            className="filter-select"
-            value={filterBrand}
-            onChange={(e) => setFilterBrand(e.target.value)}
-          >
-            <option value="">All Brands</option>
-            {uniqueBrands.map(brand => (
-              <option key={brand} value={brand}>{brand}</option>
-            ))}
-          </select>
-        </div>
-
         {canCompare && (
           <button className="btn-compare">
             Compare Selected ({selectedEntries.length})
