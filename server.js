@@ -4331,10 +4331,12 @@ app.post('/api/compliance/critique', requireAuth, async (req, res) => {
     // Load brand profile + brain mistakes
     const brandRes = await pool.query('SELECT * FROM brand_profiles WHERE id = $1', [brandProfileId]);
     const brand = brandRes.rows[0];
-    const mistakesRes = await pool.query(`SELECT * FROM mistakes ORDER BY created_at DESC LIMIT 20`).catch(() => ({ rows: [] }));
+    const mistakesRes = await pool.query(`SELECT * FROM brain_mistakes WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 20`, [brandProfileId]).catch(() => ({ rows: [] }));
     const mistakes = mistakesRes.rows;
 
-    const systemPrompt = `You are a compliance and brand voice auditor. Analyze this article against the brand profile and known mistakes. Return a JSON compliance report.
+    const systemPrompt = `You are a compliance and brand voice auditor for the brand "${brand?.brand_name || 'Unknown'}". Analyze this article against the brand profile and known mistakes. Return a JSON compliance report.
+
+The article was written for the brand "${brand?.brand_name || 'Unknown'}" (${brand?.brand_url || 'no URL'}). Do NOT flag brand name usage that correctly references this brand.
 
 CRITICAL RULES:
 - ONLY flag claims, phrases, or issues that are EXPLICITLY present in the article text. Do NOT flag claims from the brand profile that were not actually written into the article.
@@ -4342,7 +4344,7 @@ CRITICAL RULES:
 - Do NOT hallucinate or infer content. If a section contains no issues, do not flag it.
 
 Brand Voice Profile:
-${JSON.stringify(brand?.voice_profile || {}, null, 2)}
+${JSON.stringify(brand?.profile_data?.voice_profile || {}, null, 2)}
 
 Known Mistakes to Avoid:
 ${mistakes.map(m => `- ${m.mistake_type}: ${m.human_feedback}`).join('\n') || 'None recorded yet'}
