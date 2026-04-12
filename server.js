@@ -4242,7 +4242,7 @@ Return ONLY valid JSON in this exact structure:
       method: 'POST',
       headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-4-5',
         max_tokens: 2000,
         system: systemPrompt,
         messages: [{ role: 'user', content: `Article to audit:\n\n${JSON.stringify(articleJson, null, 2)}` }]
@@ -4251,75 +4251,7 @@ Return ONLY valid JSON in this exact structure:
     const critiqueData = await critiqueRes.json();
     const rawText = critiqueData.content?.[0]?.text || '{}';
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-    const jsonStr = jsonMatch ? jsonMatch[0] : rawText;
-    let report;
-    try {
-      report = JSON.parse(jsonStr);
-    } catch(e) {
-      const sanitized = jsonStr.replace(/:\s*"([\s\S]*?)"/g, (m, val) =>
-        ': "' + val.replace(/\n/g, ' ').replace(/\r/g, ' ').replace(/\t/g, ' ') + '"'
-      );
-      try {
-        report = JSON.parse(sanitized);
-      } catch(e2) {
-        report = { overallScore: 50, brandVoiceScore: 50, factualConfidence: 50, autoApprovable: false, summary: 'Critique parse error — please retry.', flags: [], mistakesApplied: [] };
-      }
-    }
-
-    // ── Normalise schema — system prompt uses overallVoiceScore, endpoint expects overallScore
-    if (report.overallVoiceScore !== undefined && report.overallScore === undefined) {
-      report.overallScore = report.overallVoiceScore;
-    }
-    // Map old severity labels to yellow/red
-    if (report.flags) {
-      report.flags = report.flags.map(f => ({
-        ...f,
-        severity: f.severity === 'critical' ? 'red' : f.severity === 'warning' ? 'yellow' : (f.severity || 'yellow'),
-        type: f.type || f.flagType || 'factual_claim',
-      }));
-    }
-
-    // ── Server-side pre-scan: guarantee placeholder flags regardless of Claude output
-    const placeholderRx = /\[NEEDS[_ ]?CITATION[^\]]*\]|\[CITATION[^\]]*\]|\[SOURCE[^\]]*\]|\[INSERT[^\]]*\]|\[TBD[^\]]*\]/gi;
-    const sections = articleJson?.sections || [];
-    const guaranteedFlags = [];
-    sections.forEach((section, idx) => {
-      const body = section.body || section.content || '';
-      const matches = body.match(placeholderRx);
-      if (matches) {
-        // Check if Claude already flagged this section
-        const alreadyFlagged = (report.flags || []).some(f => f.sectionIndex === idx && f.type === 'placeholder');
-        if (!alreadyFlagged) {
-          guaranteedFlags.push({
-            sectionIndex: idx,
-            sectionHeading: section.heading || `Section ${idx + 1}`,
-            severity: 'red',
-            type: 'placeholder',
-            reason: `Contains ${matches.length} unresolved placeholder(s): ${matches.slice(0, 3).join(', ')}`,
-            suggestion: 'Replace each placeholder with verified data, a real citation, or remove the claim entirely before publishing.'
-          });
-        }
-      }
-    });
-    if (guaranteedFlags.length > 0) {
-      report.flags = [...(report.flags || []), ...guaranteedFlags];
-    }
-
-    // ── Enforce scoring rules server-side — Claude cannot override these
-    const placeholderCount = sections.reduce((n, s) => {
-      const b = s.body || s.content || '';
-      return n + (b.match(placeholderRx) || []).length;
-    }, 0);
-    const redFlagCount = (report.flags || []).filter(f => f.severity === 'red').length;
-
-    // Deduct from factualConfidence per placeholder
-    if (placeholderCount > 0) {
-      report.factualConfidence = Math.max(0, (report.factualConfidence || 70) - (placeholderCount * 15));
-    }
-    // Recalculate overallScore
-    report.overallScore = Math.round(((report.brandVoiceScore || 70) + (report.factualConfidence || 70)) / 2);
-    // autoApprovable: must be >= 80 AND zero red flags AND zero placeholders
-    report.autoApprovable = report.overallScore >= 80 && redFlagCount === 0 && placeholderCount === 0;
+    const report = JSON.parse(sanitizeJson(jsonMatch ? jsonMatch[0] : rawText));
 
     // Normalise sectionIndex to 0-based — Claude sometimes returns 1-based
     if (report.flags?.length && articleJson?.sections?.length) {
@@ -4344,63 +4276,10 @@ Return ONLY valid JSON in this exact structure:
 });
 
 // POST approve — save human edits, write mistakes to brain, mark approved
-
-// ── Compliance Gate: Rewrite Section ─────────────────────────────────────────
-// Called when user clicks "Accept Suggestion" on a flagged section
-app.post('/api/compliance/rewrite-section', requireAuth, async (req, res) => {
-  const { sectionBody, suggestion, brandProfileId, source } = req.body;
-  if (!sectionBody || !suggestion) return res.status(400).json({ error: 'sectionBody and suggestion required' });
-
-  try {
-    const brandRes = await pool.query('SELECT * FROM brand_profiles WHERE id = $1', [brandProfileId]);
-    const brand = brandRes.rows[0];
-    const voiceProfile = brand?.voice_profile || {};
-
-    const sourceContext = source
-      ? `\n\nCite this source in the rewrite: "${source.title}" (${source.url})${source.snippet ? ' — key excerpt: ' + source.snippet.slice(0, 300) : ''}`
-      : '';
-
-    const prompt = `You are a brand voice editor. Rewrite the following section to address the compliance suggestion while maintaining the brand voice exactly.
-
-BRAND VOICE:
-${JSON.stringify(voiceProfile, null, 2).slice(0, 1500)}
-
-ORIGINAL SECTION:
-${sectionBody}
-
-COMPLIANCE SUGGESTION:
-${suggestion}${sourceContext}
-
-RULES:
-- Maintain the brand voice and tone precisely
-- Address the specific compliance issue identified
-- Do NOT include placeholders like [NEEDS CITATION], [SOURCE], [LINK], [INSERT], [TBD] or similar — write final copy only
-- Do NOT add markdown formatting that wasn't in the original
-- Return ONLY the rewritten section text, nothing else`;
-
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1500, messages: [{ role: 'user', content: prompt }] })
-    });
-    const data = await response.json();
-    let rewritten = data.content?.[0]?.text?.trim() || sectionBody;
-
-    // Strip any AI artifact placeholders Claude might have included anyway
-    const artifactRx = /\[NEEDS[_ ]?CITATION[^\]]*\]|\[CITATION[^\]]*\]|\[SOURCE[^\]]*\]|\[LINK[^\]]*\]|\[INSERT[^\]]*\]|\[TBD[^\]]*\]/gi;
-    rewritten = rewritten.replace(artifactRx, '').replace(/\s{2,}/g, ' ').trim();
-
-    res.json({ success: true, rewritten });
-  } catch (err) {
-    console.error('[REWRITE-SECTION]', err.message);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
 app.post('/api/compliance/approve', requireAuth, async (req, res) => {
-  const startTime = Date.now();
   const { brandProfileId, contentId, reviewMode, editedSections, decisions } = req.body;
   if (!brandProfileId || !contentId) return res.status(400).json({ error: 'brandProfileId and contentId required' });
+  const startTime = Date.now();
   try {
     const safeId = brandProfileId.replace(/-/g, '_');
     const tableName = `generated_content_${safeId}`;
@@ -4441,16 +4320,7 @@ app.post('/api/compliance/approve', requireAuth, async (req, res) => {
     }
 
     // Handle red section decisions
-    // Load compliance report to enforce score threshold
-    const reportRow = await pool.query(`SELECT compliance_report FROM ${tableName} WHERE id = $1`, [contentId]);
-    const compReport = reportRow.rows[0]?.compliance_report ? JSON.parse(reportRow.rows[0].compliance_report) : null;
-    const overallScore = compReport?.overallScore || 0;
-    const hasRedFlags = (compReport?.flags || []).some(f => f.severity === 'red');
-
-    // Auto-ship: still requires score >= 70 and no red flags — not a bypass
-    const autoShipBlocked = reviewMode === 'auto-ship' && (overallScore < 70 || hasRedFlags);
-    const finalStatus = autoShipBlocked ? 'reviewed' :
-      reviewMode === 'auto-ship' ? 'approved' :
+    const finalStatus = reviewMode === 'auto-ship' ? 'approved' :
       decisions && Object.values(decisions).some(d => d === 'rejected') ? 'rejected' : 'approved';
 
     await pool.query(
