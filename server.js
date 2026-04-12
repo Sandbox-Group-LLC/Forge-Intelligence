@@ -2776,31 +2776,6 @@ function normalizeGeoData(briefData, topicalMap, geoOpportunities, entitySchema,
 function extractJSON(text, type = 'object') {
   // Strip markdown code fences Claude sometimes wraps JSON in
   text = text.replace(/^
-  let depth = 0;
-  for (let i = start; i < text.length; i++) {
-    if (text[i] === open) depth++;
-    else if (text[i] === close) {
-      depth--;
-      if (depth === 0) return text.slice(start, i + 1);
-    }
-  }
-  // JSON was truncated (hit token limit) — attempt recovery by closing open structures
-  if (depth > 0) {
-    let partial = text.slice(start).trimEnd();
-    // Remove any trailing incomplete string or value
-    partial = partial.replace(/,\s*$/, '').replace(/"[^"]*$/, '"truncated"');
-    // Close all open braces/brackets
-    const stack = [];
-    for (const ch of partial) {
-      if (ch === '{') stack.push('}');
-      else if (ch === '[') stack.push(']');
-      else if (ch === '}' || ch === ']') stack.pop();
-    }
-    partial += stack.reverse().join('');
-    try { JSON.parse(partial); return partial; } catch(e) { /* unrecoverable */ }
-  }
-  return null;
-}
 
 app.get('/api/geo-strategist/briefs', requireAuth, async (req, res) => {
   try {
