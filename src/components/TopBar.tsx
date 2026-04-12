@@ -1,4 +1,4 @@
-import { useUser, useClerk, SignOutButton, SignedIn, SignedOut } from '@clerk/clerk-react';
+import { useUser, SignOutButton, SignedIn, SignedOut } from '@clerk/clerk-react';
 import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import './TopBar.css';
@@ -62,22 +62,23 @@ const pathTitles: Record<string, string> = {
   '/app/publishing-queue':       'Publishing Queue',
   '/app/performance':            'Performance Dashboard',
   '/app/brand-settings':         'Brand Settings',
+  '/app/content-library':        'Content Library',
+  '/app/content-import':         'Import Article',
+  '/app/topic-queue':            'Topic Queue',
+  '/app/admin':                  'Admin',
   '/app/email-campaign':         'Email Campaign',
   '/app/context-hub':            'New Analysis',
-  '/app/admin':                  'Admin',
-  '/app/topic-queue':            'Topic Queue',
-  '/app/content-library':        'Content Library',
-  '/app/content-import':         'Content Import',
 };
 
 export function TopBar({ pageTitle }: { pageTitle?: string }) {
-  const { currentView, brandProfile, sidebarCollapsed, setSidebarCollapsed, allBrands, switchBrand, activeBrandId, isSuperAdmin } = useApp();
+  const { currentView, brandProfile, activeBrand, sidebarCollapsed, setSidebarCollapsed, allBrands, switchBrand } = useApp();
   const { user } = useUser();
-  const { openUserProfile } = useClerk();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [brandMenuOpen, setBrandMenuOpen] = useState(false);
   const brandMenuRef = useRef<HTMLDivElement>(null);
+
+  const currentBrand = allBrands?.find(b => b.id === activeBrand?.id) || allBrands?.[0];
 
   useEffect(() => {
     if (!menuOpen && !brandMenuOpen) return;
@@ -93,8 +94,6 @@ export function TopBar({ pageTitle }: { pageTitle?: string }) {
     return () => document.removeEventListener('mousedown', handler);
   }, [menuOpen, brandMenuOpen]);
 
-  const currentBrand = allBrands?.find(b => b.id === activeBrandId) || allBrands?.[0];
-
   return (
     <header className="topbar">
       <div className="topbar-left">
@@ -106,9 +105,9 @@ export function TopBar({ pageTitle }: { pageTitle?: string }) {
           {icons.menu}
         </button>
         <h1 className="topbar-title">{pageTitle || Object.entries(pathTitles).find(([k]) => window.location.pathname.startsWith(k))?.[1] || viewTitles[currentView] || 'Forge Intelligence'}</h1>
-        {activeBrandId && (
-          <span className="topbar-brand-pill" title={allBrands?.find(b => b.id === activeBrandId)?.brandUrl || ''}>
-            {allBrands?.find(b => b.id === activeBrandId)?.brandName || activeBrandId}
+        {activeBrand && (
+          <span className="topbar-brand-pill" title={activeBrand.brandUrl}>
+            {activeBrand.brandName || activeBrand.brandUrl.replace(/^https?:\/\//, '').replace(/^www\./, '')}
             {brandProfile && currentView === 'brand-profile' && (
               <span style={{ opacity: 0.5, marginLeft: 4, fontWeight: 400 }}>· v{brandProfile.version}</span>
             )}
@@ -169,15 +168,14 @@ export function TopBar({ pageTitle }: { pageTitle?: string }) {
                     onClick={() => {
                       switchBrand(b.id);
                       setBrandMenuOpen(false);
-                      // Force reload to refresh all data for new brand
                       window.location.reload();
                     }}
                     style={{
                       width: '100%',
                       padding: '10px 16px',
-                      background: b.id === activeBrandId ? 'rgba(99, 102, 241, 0.15)' : 'none',
+                      background: b.id === activeBrand?.id ? 'rgba(99, 102, 241, 0.15)' : 'none',
                       border: 'none',
-                      color: b.id === activeBrandId ? '#A5B4FC' : 'rgba(255,255,255,0.7)',
+                      color: b.id === activeBrand?.id ? '#A5B4FC' : 'rgba(255,255,255,0.7)',
                       fontSize: '0.85rem',
                       textAlign: 'left',
                       cursor: 'pointer',
@@ -202,7 +200,7 @@ export function TopBar({ pageTitle }: { pageTitle?: string }) {
           </div>
         )}
 
-        {brandProfile && activeBrandId && (
+        {brandProfile && activeBrand && (
           <div className={`cache-indicator ${brandProfile.cacheStatus}`} title={`Brain last updated: ${new Date(brandProfile.updatedAt).toLocaleDateString()}`}>
             <span className="cache-icon">
               {brandProfile.cacheStatus === 'fresh' ? icons.zap : icons.clock}
@@ -215,7 +213,7 @@ export function TopBar({ pageTitle }: { pageTitle?: string }) {
         )}
         <div className="user-area" style={{ position: 'relative' }} ref={menuRef}>
           <SignedOut>
-            <a href="https://accounts.forgeintelligence.ai/sign-in" style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.6)', textDecoration: 'none', fontWeight: 500, padding: '6px 12px', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8 }}>
+            <a href="https://accounts.forgeintelligence.ai/sign-in" style={{ fontSize: '0.875rem', color: '#ffffff', textDecoration: 'none', fontWeight: 600, padding: '8px 20px', background: 'var(--color-accent)', border: 'none', borderRadius: 8, display: 'inline-block' }}>
               Sign In
             </a>
           </SignedOut>
@@ -239,13 +237,6 @@ export function TopBar({ pageTitle }: { pageTitle?: string }) {
               <div style={{ padding: '8px 16px 10px', borderBottom: '1px solid rgba(255,255,255,0.08)', fontSize: '0.8rem', color: 'rgba(255,255,255,0.45)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {user?.primaryEmailAddress?.emailAddress || user?.firstName || 'Your account'}
               </div>
-              <button 
-                style={{ width: '100%', padding: '10px 16px', background: 'none', border: 'none', color: 'rgba(255,255,255,0.8)', fontSize: '0.875rem', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}
-                onClick={() => { openUserProfile(); setMenuOpen(false); }}
-              >
-                Manage Account
-              </button>
-
               <SignOutButton redirectUrl="/">
                 <button style={{ width: '100%', padding: '10px 16px', background: 'none', border: 'none', color: '#F87171', fontSize: '0.875rem', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}
                   onClick={() => setMenuOpen(false)}
