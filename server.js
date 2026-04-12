@@ -4394,7 +4394,7 @@ Return ONLY valid JSON in this exact structure:
       headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 2000,
+        max_tokens: 4096,
         system: systemPrompt,
         messages: [{ role: 'user', content: `Article to audit:\n\n${JSON.stringify(articleJson, null, 2)}` }]
       })
