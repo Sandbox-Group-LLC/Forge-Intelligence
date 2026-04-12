@@ -4251,7 +4251,7 @@ Return ONLY valid JSON in this exact structure:
     const critiqueData = await critiqueRes.json();
     const rawText = critiqueData.content?.[0]?.text || '{}';
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-    const report = JSON.parse(sanitizeJson(jsonMatch ? jsonMatch[0] : rawText));
+    const report = JSON.parse(jsonMatch ? jsonMatch[0] : rawText);
 
     // Normalise sectionIndex to 0-based — Claude sometimes returns 1-based
     if (report.flags?.length && articleJson?.sections?.length) {
