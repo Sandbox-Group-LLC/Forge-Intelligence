@@ -35,11 +35,6 @@ const ExternalLink = () => (
     <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
   </svg>
 );
-const InfoIcon = () => (
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
-  </svg>
-);
 
 // ── Setup Guide Tooltip ──────────────────────────────────────────────────────
 interface SetupStep { text: string; url?: string; code?: string; }
@@ -100,7 +95,7 @@ interface ChannelDef {
   setupGuide: SetupGuide;
 }
 
-const CMS_CHANNELS: ChannelDef[] = [
+const CHANNELS: ChannelDef[] = [
   {
     id: 'wordpress',
     label: 'WordPress',
@@ -132,68 +127,56 @@ const CMS_CHANNELS: ChannelDef[] = [
     color: '#4353FF',
     logo: 'WF',
     liveStatus: 'live',
-    credentialFields: [],
+    credentialFields: [
+      { key: 'apiToken', label: 'API Token', placeholder: 'eyJhbGci...', type: 'password' },
+      { key: 'siteId', label: 'Site ID', placeholder: '5f4d...' },
+      { key: 'collectionId', label: 'Collection ID', placeholder: 'Blog Posts collection ID' },
+    ],
     setupGuide: {
-      title: 'Webflow OAuth',
+      title: 'Webflow API Token',
       steps: [
-        { text: 'Click Connect. You\'ll be redirected to Webflow to authorize Forge Intelligence.' },
-        { text: 'Select the site you want to publish to and click Authorize.' },
-        { text: 'You\'ll be redirected back automatically. No tokens to copy.' },
+        { text: 'Go to your Webflow dashboard and open your site settings.', url: 'https://webflow.com/dashboard' },
+        { text: 'Navigate to Integrations → API Access → Generate API Token.' },
+        { text: 'Copy the token and paste it above.' },
+        { text: 'Find your Site ID: Settings → General → Site ID.' },
+        { text: 'Find your Collection ID: CMS → Collections → click your blog collection → the ID is in the URL.' },
       ],
     },
   },
   {
     id: 'hubspot',
-    label: 'HubSpot Blog',
+    label: 'HubSpot',
     oauthFlow: true,
-    description: 'Publish articles directly to your HubSpot Blog or Knowledge Base via OAuth. Separate from Pipeline Intelligence — this is for content publishing only.',
+    description: 'Contact tracking + campaign attribution. Connects published article UTMs to HubSpot contacts.',
     color: '#FF7A59',
     logo: 'HS',
     liveStatus: 'live',
-    credentialFields: [],
+    credentialFields: [
+      { key: 'accessToken', label: 'Private App Token', placeholder: 'pat-na2-...', type: 'password' },
+      { key: 'portalId', label: 'Portal ID', placeholder: '244954048' },
+    ],
     setupGuide: {
       title: 'Connect HubSpot via OAuth',
       steps: [
         { text: 'Click Connect above. You\'ll be redirected to HubSpot to authorize Forge Intelligence.' },
-        { text: 'Log in to HubSpot and select the account you want to connect.' },
-        { text: 'HubSpot will redirect you back automatically — no token or portal ID needed.' },
+        { text: 'Log in to HubSpot if prompted and select the account you want to connect.' },
+        { text: 'HubSpot will redirect you back automatically once authorized — no token or portal ID needed.' },
       ],
     },
   },
-  {
-    id: 'ghost',
-    label: 'Ghost',
-    description: 'Publish full articles to your Ghost site via Admin API. No OAuth — just an Admin API key from your Ghost integration settings.',
-    color: '#15171A',
-    logo: 'GH',
-    liveStatus: 'live',
-    credentialFields: [
-      { key: 'adminUrl', label: 'Admin URL', placeholder: 'https://yourblog.ghost.io' },
-      { key: 'adminApiKey', label: 'Admin API Key', placeholder: 'id:secret (64-char hex)', type: 'password' },
-    ],
-    setupGuide: {
-      title: 'Ghost Admin API Key',
-      steps: [
-        { text: 'Go to your Ghost Admin panel and navigate to Settings.', url: 'https://ghost.org/help/' },
-        { text: 'Click Integrations in the left sidebar, then click Add custom integration at the bottom.' },
-        { text: 'Name it anything (e.g. Forge Intelligence) and click Create.' },
-        { text: 'Copy the Admin API Key shown — it looks like a long hex string with a colon in the middle (id:secret format).' },
-        { text: 'Your Admin URL is the root of your Ghost site, e.g. https://yourblog.ghost.io. Paste both above.' },
-      ],
-    },
-  },
-];
-
-const SOCIAL_CHANNELS: ChannelDef[] = [
   {
     id: 'linkedin',
     label: 'LinkedIn',
     description: 'Share articles to your LinkedIn profile via OAuth2. Click Connect to authorize Forge -- no manual token needed.',
+    pipedreamApp: 'linkedin',
     color: '#0A66C2',
     logo: 'in',
     liveStatus: 'live',
     oauthFlow: true,
-    credentialFields: [],
+    credentialFields: [
+      { key: 'accessToken', label: 'OAuth Access Token', placeholder: 'Auto-filled after OAuth', type: 'password' },
+      { key: 'authorUrn', label: 'Author URN', placeholder: 'Auto-filled after OAuth' },
+    ],
     setupGuide: {
       title: 'LinkedIn OAuth',
       steps: [
@@ -241,48 +224,69 @@ const SOCIAL_CHANNELS: ChannelDef[] = [
     setupGuide: {
       title: 'How to get your Facebook Page Access Token',
       steps: [
-        { text: 'Step 1 -- Create a Meta Developer app at Meta for Developers. Choose type "Business".', url: 'https://developers.facebook.com/apps/create/' },
-        { text: 'Step 2 -- Add Pages permissions: pages_manage_posts, pages_read_engagement, pages_show_list.' },
-        { text: 'Step 3 -- Get a User Access Token via Graph API Explorer. Select your app, add permissions, click Generate Access Token.', url: 'https://developers.facebook.com/tools/explorer/' },
-        { text: 'Step 4 -- In Graph API Explorer, call GET /me/accounts. Copy the Page ID and Page Access Token for your Page.' },
-        { text: 'Step 5 -- Extend the token at Access Token Debugger → Extend Access Token (lasts 60 days).', url: 'https://developers.facebook.com/tools/debug/accesstoken/' },
-        { text: 'Paste the Page ID and long-lived Page token into Forge above.' },
+        { text: 'Step 1 -- Create a Meta Developer app. Do this on desktop -- the portal is broken on mobile. Go to Meta for Developers and create a new app. Choose type "Business". Name it anything (e.g. "Forge").', url: 'https://developers.facebook.com/apps/create/' },
+        { text: 'Step 2 -- Add Pages permissions. In your app dashboard, go to App Settings → Advanced. Under "Optional Permissions" add: pages_manage_posts, pages_read_engagement, pages_show_list, pages_manage_metadata. Some may require App Review for non-admin users -- for your own Pages you can proceed without review.' },
+        { text: 'Step 3 -- Get a User Access Token. Go to Graph API Explorer. Select your app from the top-right dropdown. Add the permissions above, then click "Generate Access Token" and authorize with the Facebook account that admins your Page.', url: 'https://developers.facebook.com/tools/explorer/' },
+        { text: 'Step 4 -- Exchange for a Page Access Token. This is the critical step most people miss. In Graph API Explorer, call GET /me/accounts using your user token. The response lists every Page you manage, each with its own Page ID and a Page access token. Copy the token for your Page -- this is what Forge needs, not the user token.' },
+        { text: 'Step 5 -- Make the Page token long-lived. The token from /me/accounts is short-lived. Paste it into the Access Token Debugger and click "Extend Access Token". Copy the result -- it lasts 60 days.', url: 'https://developers.facebook.com/tools/debug/accesstoken/' },
+        { text: 'Step 6 -- Get your Page ID. Your Page ID is in the /me/accounts response from Step 4, or find it on your Facebook Page under About → Page transparency. Paste both the Page ID and the long-lived Page token into Forge above.' },
       ],
     },
   },
   {
     id: 'medium',
     label: 'Medium',
-    description: 'Medium stopped issuing new API tokens in early 2025. Existing tokens still work -- if you have a pre-2025 token you can connect it here.',
+    description: 'Medium stopped issuing new API tokens in early 2025. Existing tokens still work -- if you have a pre-2025 token you can connect it here. New tokens are no longer available.',
     color: '#000000',
     logo: 'M',
     liveStatus: 'legacy',
     credentialFields: [
-      { key: 'integrationToken', label: 'Integration Token', placeholder: 'xxxxxxxxxxxxxxxx...', type: 'password' },
+      { key: 'integrationToken', label: 'Integration Token', placeholder: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', type: 'password' },
     ],
     setupGuide: {
       title: 'Medium Integration Token',
       steps: [
         { text: 'Go to your Medium settings page.', url: 'https://medium.com/me/settings/security' },
-        { text: 'Scroll to "Integration tokens". Give it a name like "Forge Intelligence" and click Get integration token.' },
-        { text: 'Copy the long hex token and paste it above.' },
-        { text: 'Note: Medium publishes as your personal account.' },
+        { text: 'Scroll to "Integration tokens" at the bottom. Give it a name like "Forge Intelligence" and click Get integration token.' },
+        { text: 'Copy the long hex token shown and paste it into the field above.' },
+        { text: 'No OAuth or app creation needed. Medium uses simple bearer tokens for API access.' },
+        { text: 'Note: Medium publishes as your personal account. Log into the account you want to publish from before generating the token.' },
+      ],
+    },
+  },
+  {
+    id: 'ghost',
+    label: 'Ghost',
+    description: 'Publish full articles to your Ghost site via Admin API. No OAuth — just an Admin API key from your Ghost integration settings.',
+    color: '#15171A',
+    logo: 'GH',
+    liveStatus: 'live',
+    credentialFields: [
+      { key: 'adminUrl', label: 'Admin URL', placeholder: 'https://yourblog.ghost.io' },
+      { key: 'adminApiKey', label: 'Admin API Key', placeholder: 'id:secret (64-char hex)', type: 'password' },
+    ],
+    setupGuide: {
+      title: 'Ghost Admin API Key',
+      steps: [
+        { text: 'Go to your Ghost Admin panel and navigate to Settings.', url: 'https://ghost.org/help/' },
+        { text: 'Click Integrations in the left sidebar, then click Add custom integration at the bottom.' },
+        { text: 'Name it anything (e.g. Forge Intelligence) and click Create.' },
+        { text: 'Copy the Admin API Key shown — it looks like a long hex string with a colon in the middle (id:secret format).' },
+        { text: 'Your Admin URL is the root of your Ghost site, e.g. https://yourblog.ghost.io. Paste both above.' },
       ],
     },
   },
 ];
 
-const ALL_CHANNELS = [...CMS_CHANNELS, ...SOCIAL_CHANNELS];
-
 const DEFAULT_UTM: Record<ChannelId, Record<string, string>> = {
   wordpress: { utm_source: 'forge', utm_medium: 'organic', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   webflow:   { utm_source: 'forge', utm_medium: 'organic', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
-  hubspot:   { utm_source: 'hubspot', utm_medium: 'blog', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
+  hubspot:   { utm_source: 'hubspot', utm_medium: 'attribution', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   linkedin:  { utm_source: 'linkedin', utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
-  x:         { utm_source: 'x', utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
-  facebook:  { utm_source: 'facebook', utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
-  medium:    { utm_source: 'medium', utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
-  ghost:     { utm_source: 'ghost', utm_medium: 'blog', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
+  x:         { utm_source: 'x',        utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
+  facebook:  { utm_source: 'facebook',   utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
+    medium:    { utm_source: 'medium',     utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
+  ghost:     { utm_source: 'ghost',      utm_medium: 'blog',   utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
 };
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -295,192 +299,16 @@ interface SavedChannel {
   updated_at: string;
 }
 
-// ── Channel Card ─────────────────────────────────────────────────────────────
-function ChannelCard({
-  ch, connected, saved, isOpen, saving, disconnecting, credentials, utmTemplates, selectedBrand,
-  onExpand, onSave, onDisconnect, onCredentialChange, onUtmChange, onUtmSave,
-}: {
-  ch: ChannelDef;
-  connected: boolean;
-  saved: SavedChannel | null;
-  isOpen: boolean;
-  saving: ChannelId | null;
-  disconnecting: ChannelId | null;
-  credentials: Record<string, string>;
-  utmTemplates: Record<string, string>;
-  selectedBrand: string;
-  onExpand: () => void;
-  onSave: (id: ChannelId) => void;
-  onDisconnect: (id: ChannelId) => void;
-  onCredentialChange: (id: ChannelId, key: string, value: string) => void;
-  onUtmChange: (id: ChannelId, key: string, value: string) => void;
-  onUtmSave: (id: ChannelId) => void;
-}) {
-  return (
-    <div className={`int-channel-card ${connected ? 'connected' : ''}`}>
-      <div className="int-card-header">
-        <div className="int-card-left">
-          <div className="int-logo" style={{ background: ch.color }}>{ch.logo}</div>
-          <div>
-            <div className="int-card-title">
-              {ch.label}
-              {ch.liveStatus === 'legacy' && <span className="int-legacy-badge">Legacy</span>}
-            </div>
-            <div className="int-card-desc">{ch.description}</div>
-          </div>
-        </div>
-        <div className="int-card-right">
-          {connected ? (
-            <div className="int-status-row">
-              <span className="int-status-pill connected"><CheckCircle /> Connected</span>
-              {saved?.updated_at && (
-                <span className="int-last-updated">{new Date(saved.updated_at).toLocaleDateString()}</span>
-              )}
-              <button className="int-disconnect-btn" onClick={() => onDisconnect(ch.id)} disabled={disconnecting === ch.id}>
-                <Unlink /> {disconnecting === ch.id ? '...' : 'Disconnect'}
-              </button>
-              <button className="int-edit-btn" onClick={onExpand} title={isOpen ? 'Collapse' : 'View & edit settings'}>
-                {isOpen ? <ChevronUp /> : <ChevronDown />}
-              </button>
-            </div>
-          ) : (
-            selectedBrand && (
-              ch.liveStatus === 'legacy' ? (
-                <button className="int-connect-btn int-connect-legacy" onClick={onExpand}>
-                  {isOpen ? 'Cancel' : 'Connect existing token'}
-                </button>
-              ) : (
-                <button
-                  className="int-connect-btn"
-                  style={{ '--ch-color': ch.color } as React.CSSProperties}
-                  onClick={() => (ch.pipedreamApp || ch.oauthFlow) ? onSave(ch.id) : onExpand()}
-                >
-                  Connect
-                </button>
-              )
-            )
-          )}
-        </div>
-      </div>
-
-      {isOpen && (
-        <div className="int-card-form">
-          {ch.pipedreamApp && connected && (
-            <div className="int-form-section">
-              <div className="int-pipedream-status">
-                <div className="int-pipedream-badge">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                  Connected via Pipedream
-                </div>
-                <span className="int-pipedream-sub">OAuth managed by Pipedream · Token auto-refreshes · Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}</span>
-                <button className="int-reauth-btn" onClick={() => onSave(ch.id)}>Reconnect</button>
-              </div>
-            </div>
-          )}
-
-          {ch.oauthFlow && connected && (
-            <div className="int-pipedream-section">
-              <div className="int-pipedream-info">
-                <div className="int-pipedream-badge">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
-                  Connected via OAuth
-                </div>
-                <span className="int-pipedream-sub">Token managed by {ch.label} OAuth · Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}</span>
-                <button className="int-reauth-btn" onClick={() => onSave(ch.id)}>Reconnect</button>
-              </div>
-            </div>
-          )}
-
-          {!ch.pipedreamApp && !ch.oauthFlow && ch.credentialFields.length > 0 && (
-            <div className="int-form-section">
-              <div className="int-form-label">
-                Credentials
-                <SetupGuide guide={ch.setupGuide} />
-              </div>
-              <div className="int-fields">
-                {ch.credentialFields.map(f => (
-                  <div key={f.key} className="int-field">
-                    <label className="int-field-label">{f.label}</label>
-                    <input
-                      className="int-field-input"
-                      type={connected ? 'password' : (f.type || 'text')}
-                      placeholder={connected ? '••••••••••••' : f.placeholder}
-                      value={credentials[f.key] !== undefined ? credentials[f.key] : (connected ? (saved as any)?.credentials?.[f.key] || '' : '')}
-                      onChange={e => onCredentialChange(ch.id, f.key, e.target.value)}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="int-form-section">
-            <div className="int-form-label">
-              UTM Template
-              <span className="int-utm-hint">Tokens: {`{campaign_slug} {article_slug} {brand_slug} {channel}`}</span>
-            </div>
-            <div className="int-utm-grid">
-              {Object.entries(utmTemplates).map(([k, v]) => (
-                <div key={k} className="int-utm-row">
-                  <span className="int-utm-key">{k}</span>
-                  <input
-                    className="int-field-input int-utm-val"
-                    value={v}
-                    onChange={e => onUtmChange(ch.id, k, e.target.value)}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="int-form-footer">
-            <button className="int-cancel-btn" onClick={onExpand}>Close</button>
-            {!ch.pipedreamApp && !ch.oauthFlow && (
-              <button className="int-save-btn" onClick={() => onSave(ch.id)} disabled={saving === ch.id}>
-                {saving === ch.id ? 'Saving...' : connected ? 'Update Connection' : `Connect ${ch.label}`}
-              </button>
-            )}
-            {connected && (
-              <button
-                className="int-save-btn"
-                style={{ background: 'var(--color-bg-elevated)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
-                onClick={() => onUtmSave(ch.id)}
-                disabled={saving === ch.id}
-              >
-                {saving === ch.id ? 'Saving...' : 'Save UTM Template'}
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function IntegrationsPage() {
-  const { isPaid, isAuthLoading, activeBrandId } = useApp();
-
-  if (isAuthLoading) return null;
-  if (!isPaid) {
-    return (
-      <AppShell>
-        <GateModal
-          featureName="Integrations"
-          onClose={() => window.location.href = '/app/context-hub'}
-          onUnlocked={() => {}}
-        />
-      </AppShell>
-    );
-  }
-
-  const selectedBrand = activeBrandId || localStorage.getItem('forge_active_brand_id') || '';
+  const { isPaid, brandLoading, activeBrand } = useApp();
+  
+  const selectedBrand = activeBrand?.id || '';
   const [savedChannels, setSavedChannels] = useState<Record<ChannelId, SavedChannel | null>>({
-    wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null, facebook: null, medium: null, ghost: null,
+    wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null, facebook: null, medium: null, ghost: null
   });
   const [expanded, setExpanded] = useState<ChannelId | null>(null);
   const [credentials, setCredentials] = useState<Record<ChannelId, Record<string, string>>>({
-    wordpress: {}, webflow: {}, hubspot: {}, linkedin: {}, x: {}, facebook: {}, medium: {}, ghost: {},
+    wordpress: {}, webflow: {}, hubspot: {}, linkedin: {}, x: {}, facebook: {}, medium: {}, ghost: {}
   });
   const [utmTemplates, setUtmTemplates] = useState<Record<ChannelId, Record<string, string>>>(DEFAULT_UTM);
   const [saving, setSaving] = useState<ChannelId | null>(null);
@@ -488,13 +316,19 @@ export default function IntegrationsPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  // Load channels whenever active brand resolves
+  useEffect(() => {
+    const brandId = activeBrand?.id || '';
+    if (brandId) loadChannels(brandId);
+  }, [activeBrand?.id]);
+
   const loadChannels = (brandId: string) => {
     fetch(`/api/publishing/channels/${brandId}`)
       .then(r => r.json())
       .then(d => {
         if (d.success) {
           const map: Record<ChannelId, SavedChannel | null> = {
-            wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null, facebook: null, medium: null, ghost: null,
+            wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null, facebook: null, medium: null, ghost: null
           };
           for (const ch of d.channels) map[ch.channel as ChannelId] = ch;
           setSavedChannels(map);
@@ -510,58 +344,40 @@ export default function IntegrationsPage() {
   };
 
   useEffect(() => {
-    if (selectedBrand) loadChannels(selectedBrand);
-  }, [selectedBrand]);
-
-  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('linkedin_connected') === 'true') {
       setSuccess('LinkedIn connected successfully!');
       setExpanded('linkedin');
       window.history.replaceState({}, '', '/app/integrations');
-      if (selectedBrand) setTimeout(() => loadChannels(selectedBrand), 500);
-    }
-    if (params.get('hubspot_connected') === 'true') {
-      setSuccess('HubSpot connected successfully!');
-      setExpanded('hubspot');
-      window.history.replaceState({}, '', '/app/integrations');
-      if (selectedBrand) setTimeout(() => loadChannels(selectedBrand), 500);
-    }
-    if (params.get('webflow_connected') === 'true') {
-      setSuccess('Webflow connected successfully!');
-      setExpanded('webflow');
-      window.history.replaceState({}, '', '/app/integrations');
-      if (selectedBrand) setTimeout(() => loadChannels(selectedBrand), 500);
+      const brand = activeBrand?.id || (() => { try { return localStorage.getItem('forge_active_brand_id'); } catch(e) { return ''; } })() || new URLSearchParams(window.location.search).get('brand') || '';
+      if (brand) setTimeout(() => loadChannels(brand), 500);
     }
     if (params.get('linkedin_error')) {
       setError(`LinkedIn authorization failed: ${decodeURIComponent(params.get('linkedin_error') || '')}`);
       window.history.replaceState({}, '', '/app/integrations');
     }
-    if (params.get('hubspot_error')) {
-      setError(`HubSpot authorization failed: ${decodeURIComponent(params.get('hubspot_error') || '')}`);
-      window.history.replaceState({}, '', '/app/integrations');
-    }
   }, []);
 
-  const nativeOAuthRoutes: Record<string, string> = {
-    linkedin: '/api/linkedin/auth',
-    hubspot: '/api/hubspot/auth',
-    webflow: '/api/webflow/auth',
-  };
-
   const handleSave = async (channelId: ChannelId) => {
-    const channel = ALL_CHANNELS.find(c => c.id === channelId);
+    const channel = CHANNELS.find(c => c.id === channelId);
 
+    // Native OAuth channels — bypass Pipedream entirely
+    const nativeOAuthRoutes: Record<string, string> = {
+      linkedin: '/api/linkedin/auth',
+      hubspot:  '/api/hubspot/auth',
+      webflow:  '/api/webflow/auth',
+    };
     if (channel?.oauthFlow && nativeOAuthRoutes[channelId]) {
       if (!selectedBrand) { setError('Select a Brain first'); return; }
       try {
         const r = await fetch(`${nativeOAuthRoutes[channelId]}?brandProfileId=${selectedBrand}`);
         const d = await r.json();
         if (d.authUrl) { window.location.href = d.authUrl; return; }
+        // Some auth routes redirect directly (no JSON)
         throw new Error(d.error || `Failed to start ${channel.label} authorization`);
-      } catch (e: any) {
+      } catch(e: any) {
         if (!String(e.message).includes('JSON')) {
-          setError(`Could not connect ${channel?.label}: ${e.message}`);
+          setError(`Could not connect ${channel.label}: ${e.message}`);
         }
       }
       return;
@@ -570,14 +386,17 @@ export default function IntegrationsPage() {
     if (channel?.pipedreamApp) {
       if (!selectedBrand) { setError('Select a Brain first'); return; }
       try {
+        // Get short-lived token from our server
         const tokenRes = await fetch('/api/pipedream/token', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ brandProfileId: selectedBrand }),
+          body: JSON.stringify({ brandProfileId: selectedBrand })
         });
         const { token } = await tokenRes.json();
         if (!token) throw new Error('Could not get connect token');
 
+        // Open Pipedream Connect iframe directly — bypass SDK token resolution issues
         const iframeUrl = `https://pipedream.com/_static/connect.html?token=${encodeURIComponent(token)}&app=${encodeURIComponent(channel.pipedreamApp || '')}`;
+
         await new Promise<void>((resolve) => {
           const iframe = document.createElement('iframe');
           iframe.src = iframeUrl;
@@ -592,9 +411,9 @@ export default function IntegrationsPage() {
               const accountId = e.data.authProvisionId;
               await fetch('/api/pipedream/account', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ brandProfileId: selectedBrand, channel: channelId, accountId, appSlug: channel.pipedreamApp }),
+                body: JSON.stringify({ brandProfileId: selectedBrand, channel: channelId, accountId, appSlug: channel.pipedreamApp })
               });
-              setSuccess(`${channel.label} connected via Pipedream`);
+              setSuccess(`${channel.label} connected via Pipedream ✓`);
               loadChannels(selectedBrand);
               setTimeout(() => setSuccess(''), 4000);
               resolve();
@@ -611,14 +430,14 @@ export default function IntegrationsPage() {
           };
           window.addEventListener('message', onMessage);
         });
-      } catch (e: any) {
+      } catch(e: any) {
+        console.error('[Pipedream Connect Catch]', e);
         if (e?.message !== 'User closed the connect dialog') {
-          setError(`Could not connect ${channel?.label}: ${e?.message || JSON.stringify(e)}`);
+          setError(`Could not connect ${channel.label}: ${e?.message || JSON.stringify(e)}`);
         }
       }
       return;
     }
-
     if (!selectedBrand) { setError('Select a Brain first'); return; }
     setSaving(channelId);
     setError(''); setSuccess('');
@@ -631,11 +450,11 @@ export default function IntegrationsPage() {
           channel: channelId,
           credentials: credentials[channelId],
           utmTemplate: utmTemplates[channelId],
-        }),
+        })
       });
       const d = await r.json();
       if (d.success) {
-        setSuccess(`${ALL_CHANNELS.find(c => c.id === channelId)?.label} connected successfully`);
+        setSuccess(`${CHANNELS.find(c => c.id === channelId)?.label} connected successfully`);
         loadChannels(selectedBrand);
         setExpanded(channelId);
         setTimeout(() => setSuccess(''), 4000);
@@ -658,125 +477,257 @@ export default function IntegrationsPage() {
       setSavedChannels(prev => ({ ...prev, [channelId]: null }));
       setCredentials(prev => ({ ...prev, [channelId]: {} }));
       setExpanded(null);
+      setSuccess('');
     } finally {
       setDisconnecting(null);
     }
   };
 
-  const handleUtmSave = async (channelId: ChannelId) => {
-    if (!selectedBrand) return;
-    setSaving(channelId);
-    try {
-      const r = await fetch('/api/publishing/channels', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          brandProfileId: selectedBrand,
-          channel: channelId,
-          credentials: savedChannels[channelId] ? {} : credentials[channelId],
-          utmTemplate: utmTemplates[channelId],
-        }),
-      });
-      const d = await r.json();
-      if (d.success) { setSuccess('UTM template saved'); setTimeout(() => setSuccess(''), 3000); }
-    } finally {
-      setSaving(null);
-    }
-  };
-
   const isConnected = (id: ChannelId) => !!savedChannels[id];
-  const connectedCount = Object.values(savedChannels).filter(Boolean).length;
 
-  const cardProps = (ch: ChannelDef) => ({
-    ch,
-    connected: isConnected(ch.id),
-    saved: savedChannels[ch.id],
-    isOpen: expanded === ch.id,
-    saving,
-    disconnecting,
-    credentials: credentials[ch.id],
-    utmTemplates: utmTemplates[ch.id],
-    selectedBrand,
-    onExpand: () => setExpanded(expanded === ch.id ? null : ch.id),
-    onSave: handleSave,
-    onDisconnect: handleDisconnect,
-    onCredentialChange: (id: ChannelId, key: string, value: string) =>
-      setCredentials(prev => ({ ...prev, [id]: { ...prev[id], [key]: value } })),
-    onUtmChange: (id: ChannelId, key: string, value: string) =>
-      setUtmTemplates(prev => ({ ...prev, [id]: { ...prev[id], [key]: value } })),
-    onUtmSave: handleUtmSave,
-  });
+  if (brandLoading) return null;
+  if (!isPaid) {
+    return (
+      <AppShell>
+        <GateModal
+          featureName="Integrations"
+          onClose={() => window.location.href = '/app/context-hub'}
+          onUnlocked={() => {}}
+        />
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell pageTitle="Integrations">
       <div className="int-page">
         <div className="geo-header">
           <div>
-            <div className="geo-eyebrow">Stage 6</div>
+            <div className="geo-eyebrow">Settings</div>
             <h1 className="geo-title">Integrations</h1>
-            <p className="geo-description">Connect publishing channels per Brain. Credentials are isolated per brand — no cross-tenant leakage.</p>
+            <p className="geo-description">Connect publishing channels per Brain. Credentials are isolated per brand -- no cross-tenant leakage.</p>
           </div>
         </div>
 
         {selectedBrand && (
           <div className="int-connected-count">
-            {connectedCount} of {ALL_CHANNELS.length} channels connected
+            {Object.values(savedChannels).filter(Boolean).length} of {CHANNELS.length} channels connected
           </div>
         )}
 
         {error && <div className="geo-error">{error}</div>}
         {success && <div className="int-success">{success}</div>}
 
-        {/* ── CMS Publishing ─────────────────────────────────────────────── */}
-        <div className="int-section-header">
-          <h2 className="int-section-title">CMS Publishing</h2>
-          <p className="int-section-desc">Publish full articles to your website or blog. Articles flow from Stage 5 (Compliance Gate) through the Publishing Queue to these destinations.</p>
-        </div>
+        {/* Channel cards */}
         <div className="int-channels">
-          {CMS_CHANNELS.map(ch => <ChannelCard key={ch.id} {...cardProps(ch)} />)}
-        </div>
+          {CHANNELS.map(ch => {
+            const connected = isConnected(ch.id);
+            const isOpen = expanded === ch.id;
+            const saved = savedChannels[ch.id];
 
-        {/* ── Social Distribution ────────────────────────────────────────── */}
-        <div className="int-section-header" style={{ marginTop: 40 }}>
-          <h2 className="int-section-title">Social Distribution</h2>
-          <p className="int-section-desc">Share articles and post copy to social channels with UTM tracking. Forge generates platform-optimized post copy automatically.</p>
-        </div>
-        <div className="int-channels">
-          {SOCIAL_CHANNELS.map(ch => <ChannelCard key={ch.id} {...cardProps(ch)} />)}
-        </div>
+            return (
+              <div key={ch.id} className={`int-channel-card ${connected ? 'connected' : ''}`}>
+                {/* Card header */}
+                <div className="int-card-header">
+                  <div className="int-card-left">
+                    <div className="int-logo" style={{ background: ch.color }}>{ch.logo}</div>
+                    <div>
+                      <div className="int-card-title">
+                        {ch.label}
+                        {ch.liveStatus === 'staged' && (
+                          <span className="int-coming-badge">Stage 6.1</span>
+                        )}
+                        {ch.liveStatus === 'legacy' && (
+                          <span className="int-legacy-badge">Legacy</span>
+                        )}
+                      </div>
+                      <div className="int-card-desc">{ch.description}</div>
+                    </div>
+                  </div>
+                  <div className="int-card-right">
+                    {connected ? (
+                      <div className="int-status-row">
+                        <span className="int-status-pill connected"><CheckCircle /> Connected</span>
+                        {saved?.updated_at && (
+                          <span className="int-last-updated">
+                            {new Date(saved.updated_at).toLocaleDateString()}
+                          </span>
+                        )}
+                        <button
+                          className="int-disconnect-btn"
+                          onClick={() => handleDisconnect(ch.id)}
+                          disabled={disconnecting === ch.id}
+                        >
+                          <Unlink /> {disconnecting === ch.id ? '...' : 'Disconnect'}
+                        </button>
+                        <button
+                          className="int-edit-btn"
+                          onClick={() => setExpanded(isOpen ? null : ch.id)}
+                          title={isOpen ? 'Collapse' : 'View & edit settings'}
+                        >
+                          {isOpen ? <ChevronUp /> : <ChevronDown />}
+                        </button>
+                      </div>
+                    ) : (
+                      selectedBrand && (
+                        ch.liveStatus === 'legacy' ? (
+                          <button
+                            className="int-connect-btn int-connect-legacy"
+                            onClick={() => setExpanded(isOpen ? null : ch.id)}
+                          >
+                            {isOpen ? 'Cancel' : 'Connect existing token'}
+                          </button>
+                        ) : (
+                          <button
+                            className="int-connect-btn"
+                            style={{ '--ch-color': ch.color } as React.CSSProperties}
+                            onClick={() => (ch.pipedreamApp || ch.oauthFlow) ? handleSave(ch.id) : setExpanded(isOpen ? null : ch.id)}
+                          >
+                            {ch.pipedreamApp ? 'Connect' : (isOpen ? 'Cancel' : 'Connect')}
+                          </button>
+                        )
+                      )
+                    )}
+                  </div>
+                </div>
 
-        {/* ── Pipeline Intelligence ──────────────────────────────────────── */}
-        <div className="int-section-header" style={{ marginTop: 40 }}>
-          <h2 className="int-section-title">Pipeline Intelligence</h2>
-          <p className="int-section-desc">Push Forge content analytics into your CRM as campaign activity. Track pipeline influence — which deals were first touched by Forge-published content.</p>
-        </div>
-        <div className="int-pipeline-card">
-          <div className="int-pipeline-card-left">
-            <div className="int-logo" style={{ background: '#FF7A59' }}>HS</div>
-            <div>
-              <div className="int-card-title">HubSpot Pipeline Attribution</div>
-              <div className="int-card-desc">
-                After connecting HubSpot Blog above, Forge can push content analytics — impressions, clicks, engagement — into HubSpot as marketing events. Any deal where the first UTM touch was a Forge-published link appears in the Pipeline tab of Performance Dashboard.
+                {/* Expanded panel */}
+                {isOpen && (
+                  <div className="int-card-form">
+                    {/* Pipedream-connected channels: no credential fields, just UTM + reconnect */}
+                    {ch.pipedreamApp && connected && (
+                      <div className="int-form-section">
+                        <div className="int-pipedream-status">
+                          <div className="int-pipedream-badge">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                            Connected via Pipedream
+                          </div>
+                          <span className="int-pipedream-sub">OAuth managed by Pipedream · Token auto-refreshes · Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}</span>
+                          <button className="int-reauth-btn" onClick={() => handleSave(ch.id)}>Reconnect</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* OAuth reconnect for native OAuth channels */}
+                    {ch.oauthFlow && connected && (
+                      <div className="int-pipedream-section">
+                        <div className="int-pipedream-info">
+                          <div className="int-pipedream-badge">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
+                            Connected via OAuth
+                          </div>
+                          <span className="int-pipedream-sub">Token managed by {ch.label} OAuth · Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}</span>
+                          <button className="int-reauth-btn" onClick={() => handleSave(ch.id)}>Reconnect</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* OAuth reconnect for native OAuth channels */}
+                    {ch.oauthFlow && connected && (
+                      <div className="int-pipedream-section">
+                        <div className="int-pipedream-info">
+                          <div className="int-pipedream-badge">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
+                            Connected via OAuth
+                          </div>
+                          <span className="int-pipedream-sub">Authorized with {ch.label} · Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}</span>
+                          <button className="int-reauth-btn" onClick={() => handleSave(ch.id)}>Reconnect</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Manual credential fields for non-Pipedream, non-OAuth channels */}
+                    {!ch.pipedreamApp && !ch.oauthFlow && (
+                      <div className="int-form-section">
+                        <div className="int-form-label">
+                          Credentials
+                          <SetupGuide guide={ch.setupGuide} />
+                        </div>
+                        <div className="int-fields">
+                          {ch.credentialFields.map(f => (
+                            <div key={f.key} className="int-field">
+                              <label className="int-field-label">{f.label}</label>
+                              <input
+                                className="int-field-input"
+                                type={connected ? 'password' : (f.type || 'text')}
+                                placeholder={connected ? '••••••••••••' : f.placeholder}
+                                value={credentials[ch.id][f.key] !== undefined ? credentials[ch.id][f.key] : (connected ? (savedChannels[ch.id] as any)?.credentials?.[f.key] || '' : '')}
+                                onChange={e => setCredentials(prev => ({
+                                  ...prev,
+                                  [ch.id]: { ...prev[ch.id], [f.key]: e.target.value }
+                                }))}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="int-form-section">
+                      <div className="int-form-label">
+                        UTM Template
+                        <span className="int-utm-hint">Tokens: {`{campaign_slug} {article_slug} {brand_slug} {channel}`}</span>
+                      </div>
+                      <div className="int-utm-grid">
+                        {Object.entries(utmTemplates[ch.id]).map(([k, v]) => (
+                          <div key={k} className="int-utm-row">
+                            <span className="int-utm-key">{k}</span>
+                            <input
+                              className="int-field-input int-utm-val"
+                              value={v}
+                              onChange={e => setUtmTemplates(prev => ({
+                                ...prev,
+                                [ch.id]: { ...prev[ch.id], [k]: e.target.value }
+                              }))}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="int-form-footer">
+                      <button className="int-cancel-btn" onClick={() => setExpanded(null)}>Close</button>
+                      {!ch.pipedreamApp && !ch.oauthFlow && (
+                        <button
+                          className="int-save-btn"
+                          onClick={() => handleSave(ch.id)}
+                          disabled={saving === ch.id}
+                        >
+                          {saving === ch.id ? 'Saving...' : connected ? 'Update Connection' : `Connect ${ch.label}`}
+                        </button>
+                      )}
+                      {connected && (
+                        <button
+                          className="int-save-btn"
+                          style={{ background: 'var(--color-bg-elevated)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
+                          onClick={async () => {
+                            if (!selectedBrand) return;
+                            setSaving(ch.id);
+                            try {
+                              const r = await fetch('/api/publishing/channels', {
+                                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ brandProfileId: selectedBrand, channel: ch.id, credentials: ch.pipedreamApp ? savedChannels[ch.id] : credentials[ch.id], utmTemplate: utmTemplates[ch.id] })
+                              });
+                              const d = await r.json();
+                              if (d.success) { setSuccess('UTM template saved'); setTimeout(() => setSuccess(''), 3000); }
+                            } finally { setSaving(null); }
+                          }}
+                          disabled={saving === ch.id}
+                        >
+                          {saving === ch.id ? 'Saving...' : 'Save UTM Template'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="int-pipeline-note">
-                <InfoIcon />
-                <span>Requires <strong>HubSpot Marketing Hub Starter</strong> or higher for campaign-level sync and deal attribution. The HubSpot Blog connection above must be authorized first — this uses the same OAuth token.</span>
-              </div>
-            </div>
-          </div>
-          <div className="int-card-right">
-            {isConnected('hubspot') ? (
-              <span className="int-status-pill connected"><CheckCircle /> Active</span>
-            ) : (
-              <span className="int-status-pill" style={{ color: 'var(--color-text-muted)', borderColor: 'var(--color-border)' }}>
-                Connect HubSpot Blog first
-              </span>
-            )}
-          </div>
+            );
+          })}
         </div>
 
-        {/* Footer note */}
-        <div className="int-gate-note" style={{ marginTop: 40 }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        {/* Subscription gate note */}
+        <div className="int-gate-note">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{display:'inline',marginRight:6,verticalAlign:'middle'}}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
           Channel credentials are encrypted at rest and scoped to this Brain only. Multi-tenant access requires an active subscription.
         </div>
       </div>
