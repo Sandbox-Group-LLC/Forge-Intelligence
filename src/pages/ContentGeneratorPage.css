@@ -389,6 +389,38 @@
 }
 .cg-preflight-reframe-text:hover { text-decoration: underline; }
 
+.cg-preflight-reframe-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 20%, transparent);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.cg-preflight-reframe-card:hover {
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+
+.cg-preflight-reframe-topic {
+  font-size: 0.8125rem;
+  color: var(--color-accent);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.cg-preflight-reframe-rationale {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+  margin-top: 2px;
+  font-style: italic;
+}
+
 .cg-preflight-use-hint {
   font-size: 0.7rem;
   opacity: 0.6;
