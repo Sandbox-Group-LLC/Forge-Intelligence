@@ -4330,7 +4330,29 @@ Return ONLY valid JSON in this exact structure:
     const critiqueData = await critiqueRes.json();
     const rawText = critiqueData.content?.[0]?.text || '{}';
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-    const report = JSON.parse(jsonMatch ? jsonMatch[0] : rawText);
+    // Sanitise control chars inside JSON strings + recovery
+    let report;
+    try {
+      const extracted = extractJSON(rawText, 'object') || (jsonMatch ? jsonMatch[0] : rawText);
+      const sanitized = extracted.replace(/(?<=":[ ]*"(?:[^"\\]|\\.)*)([\x00-\x1f])/g, (m, ch) => {
+        if (ch === '\n') return '\\n';
+        if (ch === '\t') return '\\t';
+        if (ch === '\r') return '';
+        return '';
+      });
+      report = JSON.parse(sanitized);
+    } catch(parseErr) {
+      try {
+        const brute = (jsonMatch ? jsonMatch[0] : rawText)
+          .replace(/[\x00-\x09\x0b\x0c\x0e-\x1f]/g, ' ')
+          .replace(/\n/g, '\\n')
+          .replace(/\r/g, '');
+        report = JSON.parse(brute);
+      } catch(e2) {
+        console.error('[COMPLIANCE] JSON recovery failed:', parseErr.message);
+        return res.status(500).json({ success: false, error: 'AI returned malformed JSON — please retry' });
+      }
+    }
 
     // Normalise sectionIndex to 0-based — Claude sometimes returns 1-based
     if (report.flags?.length && articleJson?.sections?.length) {
