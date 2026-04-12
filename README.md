@@ -37,7 +37,7 @@
 
 ---
 
-## Platform Status (April 9, 2026)
+## Platform Status (April 12, 2026)
 
 ### All 8 Stages Live
 
@@ -311,3 +311,25 @@ BEFORE generating:
 
 **Owner:** Brian — Founder, Sandbox Group LLC (Portland, OR)
 Sandbox Group: **Sandbox-XM** (experience marketing) + **Sandbox-GTM** (event registration + GTM platform) + **Forge Intelligence** (the intelligence layer)
+
+
+### Compliance Gate (Stage 5) — Production Ready
+- AI critique → inline flagged excerpt highlighting (red/amber by claim type)
+- Find Sources: Perplexity sonar → `search_results` → 3 source candidates
+- Accept Suggestion → Sonnet rewrite incorporating editorial suggestion + optional citation
+- Rewrite with Source → weaves selected citation naturally into rewritten section
+- Edits persisted to localStorage per article, cleared on approve
+- ComplianceGateContent / ComplianceGatePage split — hooks-safe architecture
+- Auto-approved badge only shows on green sections with zero flags
+- HighlightedBody: quoted phrase matching + sliding window fallback for unquoted flag reasons
+- `authFetch()` + `freshToken()` — auto-retries on 401, eliminates stale token failures
+
+### Compliance Gate — AI Endpoint Architecture (Critical — do not patch blindly)
+- `POST /api/compliance/rewrite-section` — claude-sonnet-4-6 rewrites flagged section
+- `POST /api/compliance/find-sources` — Perplexity sonar, returns 3 source candidates
+- `POST /api/compliance/critique` — Claude Sonnet critique, returns structured JSON report
+- `POST /api/compliance/approve` — saves edits, writes brain_mistakes, marks approved
+- All 4 endpoints use `requireAuth`
+- Model string must be `claude-sonnet-4-6` — `claude-sonnet-4-5` is invalid and causes silent failure
+- Never restore a full server.js to fix compliance endpoints — splice only the compliance block
+- Canonical working state: commit `4d1e2c5af6e2` (April 8 01:11) has all 4 endpoints correct
