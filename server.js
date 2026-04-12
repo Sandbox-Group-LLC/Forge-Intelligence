@@ -3824,6 +3824,31 @@ Return ONLY valid JSON matching the output format. No markdown, no commentary.`;
   }
 });
 
+
+// POST /api/campaign/reset/:id — reset a stalled campaign back to pending
+app.post('/api/campaign/reset/:id', requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `UPDATE campaigns SET status = 'pending', updated_at = NOW()
+       WHERE id = $1 AND status IN ('generating', 'error')
+       RETURNING id, status`,
+      [req.params.id]
+    );
+    if (!result.rows.length) {
+      return res.status(404).json({ error: 'Campaign not found or not in a resettable state' });
+    }
+    // Also reset any stuck article statuses
+    await pool.query(
+      `UPDATE campaign_articles SET status = 'pending', updated_at = NOW()
+       WHERE campaign_id = $1 AND status = 'generating'`,
+      [req.params.id]
+    ).catch(() => {});
+    res.json({ success: true, campaignId: req.params.id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/campaign/create — save campaign plan to DB
 
 app.post('/api/campaign/create', requireAuth, async (req, res) => {
