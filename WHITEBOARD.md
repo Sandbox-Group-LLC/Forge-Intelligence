@@ -952,3 +952,92 @@ Stage 1 → 6 end-to-end complete.
 - LinkedIn Insight Tag → production index.html
 - GSC dev callback URL in Google Cloud Console
 - Formal pen test before Agency tier launch
+
+---
+
+## Session — April 11, 2026
+
+### Full Code Review Pass (50 findings — CODE_REVIEW.md)
+
+**Criticals (all fixed):**
+- C1 — Dual scan paths unified; 75s timing; URL brand persistence; mobile recovery
+- C2/C3/C4 — Auth locked on brand-profiles/list, content-generator, campaign/generate, content/:id, test/image deleted
+
+**Highs (all fixed):**
+- H1 — /api/publishing/republish: requireAuth + BASE_URL self-call fix
+- H2 — /api/precog/* all 3 endpoints require auth
+- H4 — initDB triple-fire: 3 BACKFILL blocks → 1, 9 MIGRATION blocks → 1
+- H5 — BrandProfile GEO CTA fixed to /app/geo-strategist preserving profileId
+- H6 — Strategy tab now derives all content from real brandProfile data
+- H7 — Dead "Save Version" button removed
+- H8 — IntegrationsPage, BrandSettingsPage, ContentImportPage, GeoStrategistPage: mobile-safe localStorage fallback chain
+- H9 — Scan failure dispatches forge:scan-error event; navigates to new-analysis
+- H11 — GeoStrategistPage mobile-safe brand ID fallback
+
+**Mediums (fixed or deferred):**
+- M7 — ClerkTokenSync stripped to bare no-op
+- M9 — CSS var sweep: 16 rgba replacements in PublishingQueuePage, 2 in PerformanceDashboardPage
+- M11 — AuthenticityEnricherPage gets its own CSS file (was importing GeoStrategistPage.css)
+
+**UX (fixed or deferred):**
+- U1 — forge:scan-error wired to NewAnalysis inline error + Try again
+- U3 — GateModal backdrop click removed
+- U6 — Brain cache indicator now shows across all app pages with update date tooltip
+- U7 — BrandProfile UUID replaced with clickable brand URL
+- U8 — Null/0-confidence signals filtered from display
+- U9 — Elapsed timer persists via sessionStorage across remounts
+- U11 — False LinkedIn scraping claim replaced with accurate Claude Opus synthesis description
+- U12 — PayPalGate.tsx tombstoned
+
+**Enhancements (fixed or deferred):**
+- E1 — payment_events table + record written on every PayPal confirmation
+- E5 — Landing domain lookup: cache-first recovery + "Already scanned?" hint
+- E6 — Promo code collapsed behind "Have a promo code?" toggle
+- E9 — Persistent brand context pill in TopBar across all app pages
+
+---
+
+### Stage 4.6 — Email Campaign Generator (SHIPPED)
+
+**Spec:** Brief-driven (5 sections), Brain-First, 3 subject line variants per email (curiosity/benefit/pattern interrupt), Smart Export as .txt, HubSpot push as drafts, reusable brief templates.
+
+**Route:** `/app/email-campaign` — gated behind isPaid
+
+**Compliance:** Existing gate logic + 4 email-specific flag types: email_spam_risk, email_cta_conflict, email_promise_gap, email_sequence_drift
+
+**Files:**
+- `src/agents/stage46_email_campaign/system_prompt.md`
+- `src/pages/EmailCampaignPage.tsx` (563 lines)
+- `src/pages/EmailCampaignPage.css` (232 lines)
+
+**Backend endpoints (server.js):**
+- POST /api/email-campaign/create
+- GET /api/email-campaign/generate/:id (SSE, claude-sonnet-4-6, 8000 tokens)
+- GET /api/email-campaign/:id
+- GET /api/email-campaign/list/:brandProfileId
+- POST /api/email-campaign/push-to-hubspot (HubSpot Marketing Emails API — requires Marketing Hub)
+- POST /api/email-campaign/save-brief-template
+- GET /api/email-campaign/brief-templates/:brandProfileId
+
+**DB tables:** email_campaigns, email_campaign_emails, email_brief_templates (lazy-created)
+
+---
+
+### Infrastructure Fixes
+
+- **requireAuth** now accepts `?token=` query param for SSE/EventSource endpoints (EventSource can't send headers)
+- **AuthenticityEnricherPage.css**: all hardcoded dark hex values replaced with CSS vars + explicit fallbacks; .geo-content scope enforces light mode vars
+- **GeoStrategistPage.css**: .geo-running card gets !important override for light mode
+- **server.js main branch**: was catastrophically truncated at line 416 (SyntaxError: Invalid regular expression) from a previous session's broken find/replace. Restored from production (9,184 lines).
+
+---
+
+### Open / Deferred
+- AuthenticityEnricherPage dark cards — root cause of var override never isolated; mitigated with scope-level var enforcement + fallback hex values
+- U4 (OnboardingBot for unauth), U5 (sidebar affordance), U10 (real SSE activity log)
+- M4 (Brain History compare — needs backend feature)
+- M12/M13 (architecture refactors)
+- E3/E4 (PerformanceDashboard split, server.js route modules)
+- HubSpot Marketing Emails API requires Marketing Hub subscription — surface to users on push failure
+- LinkedIn MDP approval still pending
+
