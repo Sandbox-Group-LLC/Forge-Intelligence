@@ -96,7 +96,7 @@ function CampaignGeneratorContent() {
   const [streamBuffer, setStreamBuffer] = useState('');
   const [error, setError] = useState('');
   const esRef = useRef<EventSource | null>(null);
-  const { historyEntries, activeBrand } = useApp();
+  const { historyEntries, activeBrand, authToken } = useApp();
 
   const brains: Brain[] = historyEntries.map(e => ({ id: e.id, brandName: e.brandName, brandUrl: e.brandUrl }));
 
