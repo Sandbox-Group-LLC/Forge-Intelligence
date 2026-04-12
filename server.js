@@ -7493,6 +7493,10 @@ pool.query(`CREATE TABLE IF NOT EXISTS agent_activity_log (
   metadata JSONB DEFAULT '{}',
   created_at TIMESTAMPTZ DEFAULT NOW()
 )`).catch(() => {});
+pool.query(`ALTER TABLE agent_activity_log ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'`).catch(() => {});
+pool.query(`ALTER TABLE agent_activity_log ADD COLUMN IF NOT EXISTS tokens_used INTEGER DEFAULT 0`).catch(() => {});
+pool.query(`ALTER TABLE agent_activity_log ADD COLUMN IF NOT EXISTS latency_ms INTEGER DEFAULT 0`).catch(() => {});
+pool.query(`ALTER TABLE agent_activity_log ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'success'`).catch(() => {});
 
 // GET /api/admin/activity — recent agent activity log
 app.get('/api/admin/activity', async (req, res) => {
