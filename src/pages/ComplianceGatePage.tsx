@@ -580,7 +580,7 @@ function ComplianceGateContent() {
                     )}
                     {/* Section footer — confidence + decision status */}
                     <div className="comp-section-footer">
-                      <span>{(section.confidenceTier === 'green' && !flag) ? 'Auto-approved' : decisions[idx] === 'approved' ? 'Approved' : decisions[idx] === 'rejected' ? 'Rejected' : 'Pending review'}</span>
+                      <span>{(!flag) ? 'Auto-approved' : decisions[idx] === 'approved' ? 'Approved' : decisions[idx] === 'rejected' ? 'Rejected' : 'Pending review'}</span>
                       <span>{section.confidence}% confidence · {flag ? flag.type.replace(/_/g, ' ') : 'No flags'}</span>
                     </div>
                   </div>
