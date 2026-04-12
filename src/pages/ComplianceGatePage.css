@@ -494,3 +494,19 @@
 .comp-scoring-tip-trigger:focus-within .comp-scoring-tip {
   display: block;
 }
+
+/* ── Make edits link for auto-approved sections ───────────────── */
+.comp-manual-edit-link {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-bottom: 1px dashed var(--color-text-muted);
+  padding-bottom: 1px;
+  transition: color 0.2s;
+}
+.comp-manual-edit-link:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
