@@ -6843,8 +6843,12 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
               reposts   = actData?.shareSummary?.totalShares || 0;
               rawData   = { ...rawData, socialActions: actData };
               dataSource = 'socialActions';
+            } else {
+              const errBody = await actRes.text().catch(() => '');
+              console.error(`[LINKEDIN-SYNC] socialActions ${actRes.status} for ${postId}: ${errBody.slice(0, 200)}`);
+              rawData = { ...rawData, socialActionsError: { status: actRes.status, body: errBody.slice(0, 300) } };
             }
-          } catch(e) { /* socialActions unavailable — continue */ }
+          } catch(e) { console.error(`[LINKEDIN-SYNC] socialActions error: ${e.message}`); }
 
           // Step 2: Try shareStatistics — requires LinkedIn Marketing Developer Platform approval
           // Will return impressions + clicks once MDP is granted; silently skipped until then
@@ -6869,7 +6873,7 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
                 dataSource  = 'shareStatistics';
               }
             }
-          } catch(e) { /* MDP not yet approved — expected */ }
+          } catch(e) { console.error(`[LINKEDIN-SYNC] shareStatistics error: ${e.message}`); }
 
           // Engagement rate: use impressions if available, else use total engagements as proxy
           const totalEngagement = reactions + comments + reposts + clicks;
