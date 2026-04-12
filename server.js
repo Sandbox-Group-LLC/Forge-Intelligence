@@ -5060,7 +5060,7 @@ app.get('/api/linkedin/auth', (req, res) => {
   const state = `${brandProfileId}|${nonce}`;
   const scopes = 'openid profile email w_member_social';
   const url = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&state=${encodeURIComponent(state)}&scope=${encodeURIComponent(scopes)}`;
-  res.redirect(url);
+  res.json({ authUrl: url });
 });
 
 app.get('/auth/linkedin/callback', async (req, res) => {
