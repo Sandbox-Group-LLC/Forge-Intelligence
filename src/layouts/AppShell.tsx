@@ -4,6 +4,7 @@ import { TopBar } from '../components/TopBar';
 import { useApp } from '../context/AppContext';
 import '../layouts/WorkspaceLayout.css';
 import { ClerkTokenSync } from '../components/ClerkTokenSync';
+import { OnboardingBot } from '../components/OnboardingBot';
 
 interface AppShellProps {
   children: ReactNode;
@@ -20,6 +21,7 @@ export function AppShell({ children, pageTitle, showSidebar = true }: AppShellPr
       <div className="app-main">
         <TopBar pageTitle={pageTitle} />
         <ClerkTokenSync />
+        <OnboardingBot />
         <main className="app-content">
           <div className="view-container">
             {children}
