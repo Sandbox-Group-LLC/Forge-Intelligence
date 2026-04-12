@@ -1,6 +1,17 @@
 /* AuthenticityEnricherPage.css — shares layout classes with GeoStrategistPage */
 .geo-content {
+  /* Enforce light mode vars — prevent upstream dark theme from bleeding in */
+  --color-bg-base: #EDF1FF;
+  --color-bg-card: #FFFFFF;
+  --color-bg-elevated: #F4F7FF;
+  --color-bg-hover: #EDF1FF;
+  --color-border: #E2E8F0;
+  --color-border-subtle: rgba(53, 99, 255, 0.08);
+  --color-text-primary: #1E293B;
+  --color-text-secondary: #475569;
+  --color-text-muted: #94A3B8;
   color: var(--color-text-primary);
+  background: #EDF1FF;
   font-family: Inter, system-ui, sans-serif;
   display: flex;
   flex-direction: column;
