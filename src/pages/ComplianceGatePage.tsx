@@ -308,7 +308,7 @@ export default function ComplianceGatePage() {
             <div className="comp-sections">
               {selectedArticle.article_json?.sections?.map((section, idx) => {
                 const flag = report?.flags?.find(f => f.sectionIndex === idx);
-                const isEditing = section.confidenceTier !== 'green' || mode === 'full-review';
+                const isEditing = true; // Always show edit area — green sections can still be refined
                 const editVal = editedSections[idx] ?? (section.body || section.content || '');
 
                 return (
@@ -367,7 +367,7 @@ export default function ComplianceGatePage() {
                         />
                       </div>
                     ) : (
-                      <p className="comp-section-body">{section.body || section.content}</p>
+                      <p className="comp-section-body" dangerouslySetInnerHTML={{ __html: renderMd(section.body || section.content || '') }} />
                     )}
                   </div>
                 );
