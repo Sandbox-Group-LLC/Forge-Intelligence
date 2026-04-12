@@ -9037,30 +9037,6 @@ app.post('/api/compliance/find-sources', requireAuth, async (req, res) => {
 });
 
 // POST /api/compliance/rewrite-section — AI rewrites one section using a compliance suggestion
-app.post('/api/compliance/rewrite-section', requireAuth, async (req, res) => {
-  const { sectionBody, suggestion, brandProfileId, source } = req.body;
-  if (!sectionBody || !suggestion) return res.status(400).json({ error: 'sectionBody and suggestion required' });
-  try {
-    const profileRes = brandProfileId
-      ? await pool.query('SELECT profile_data FROM brand_profiles WHERE id = $1', [brandProfileId])
-      : { rows: [] };
-    const voiceHint = profileRes.rows[0]?.profile_data?.voice_profile?.tone
-      ? `Brand tone: ${profileRes.rows[0].profile_data.voice_profile.tone}.`
-      : '';
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
-      max_tokens: 1024,
-      messages: [{ role: 'user', content: `You are an editorial AI. Rewrite the following article section to incorporate the editorial suggestion. Preserve the author's voice and intent. Return only the rewritten section body — no commentary, no preamble, no labels.\n\n${voiceHint}\n\nORIGINAL SECTION:\n${sectionBody}\n\nEDITORIAL SUGGESTION:\n${suggestion}${source ? `\n\nCITATION TO INCORPORATE:\nTitle: ${source.title}\nURL: ${source.url}\nKey finding: ${source.snippet}\n\nWeave this citation naturally into the rewritten section as a supporting reference.` : ''}\n\nREWRITTEN SECTION:` }]
-    });
-    const rewritten = response.content[0]?.text?.trim();
-    if (!rewritten) return res.status(500).json({ success: false, error: 'AI returned empty response' });
-    res.json({ success: true, rewritten });
-  } catch (e) {
-    console.error('[REWRITE-SECTION]', e.message);
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
 
 app.post('/api/compliance/critique', requireAuth, async (req, res) => {
   const { brandProfileId, contentId } = req.body;
