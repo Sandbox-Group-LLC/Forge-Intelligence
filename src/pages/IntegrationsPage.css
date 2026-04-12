@@ -42,7 +42,7 @@
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-lg);
-  overflow: hidden;
+  overflow: visible;
   transition: border-color var(--transition-fast);
 }
 .int-channel-card.connected {
