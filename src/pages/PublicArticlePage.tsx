@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import './PublicArticlePage.css';
 // ── Markdown helper ───────────────────────────────────────────────────────────
 const ARTIFACT_RX = /\[(?:NEEDS CITATION|CITATION|SOURCE)[^\]]*\]/gi;
@@ -173,20 +173,7 @@ export default function PublicArticlePage() {
             </section>
           ))}
 
-          {/* CTA Section */}
-          <div className="pa-cta">
-            <div className="pa-cta-inner">
-              <h3 className="pa-cta-headline">Ready to build content that compounds?</h3>
-              <p className="pa-cta-body">
-                Most AI content tools optimize for volume. Forge Intelligence optimizes for results—learning what works for <em>your</em> brand, <em>your</em> audience, and <em>your</em> goals. No generic outputs. No starting over every time.
-              </p>
-              <a href="https://forgeintelligence.ai" className="pa-cta-button">
-                Run your brand through Forge →
-              </a>
-            </div>
-          </div>
-
-                    {/* ── CTA ─── */}
+          {/* ── CTA ─── */}
           <div className="pa-cta">
             <div className="pa-cta-inner">
               <div className="pa-cta-logo">
@@ -216,7 +203,7 @@ export default function PublicArticlePage() {
                   </a>
                 </span>
               </div>
-              <Link to={`/articles/${brandSlug}`} className="pa-back-link">← More articles</Link>
+              <a href="https://forgeintelligence.ai" className="pa-back-link">← More articles</a>
             </div>
           </footer>
 
