@@ -77,6 +77,17 @@ const tierColor = (tier: string) => tier === 'green' ? '#22C55E' : tier === 'yel
 function HighlightedBody({ body, flag }: { body: string; flag: any }) {
   if (!flag?.reason) return <p className="comp-section-body">{body}</p>;
   const quotes = Array.from(flag.reason.matchAll(/[“”"']([^“”"']{8,})[“”"']/g)).map((m: any) => m[1] as string);
+  // Fallback: slide a window over reason words to find verbatim phrases in body
+  if (!quotes.length) {
+    const words = flag.reason.replace(/[.,;:!?]+/g, ' ').split(/\s+/).filter(Boolean);
+    for (let w = 0; w <= words.length - 5; w++) {
+      for (let len = Math.min(10, words.length - w); len >= 5; len--) {
+        const phrase = words.slice(w, w + len).join(' ');
+        if (body.includes(phrase)) { quotes.push(phrase); break; }
+      }
+      if (quotes.length >= 2) break;
+    }
+  }
   if (!quotes.length) return <p className="comp-section-body">{body}</p>;
   const flagColor = flag.type === 'factual_claim' ? '#EF4444' : flag.type === 'legal_risk' ? '#DC2626' : '#F59E0B';
   type Part = { text: string; highlight: boolean };
