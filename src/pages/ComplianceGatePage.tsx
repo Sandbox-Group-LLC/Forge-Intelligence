@@ -131,6 +131,7 @@ function ComplianceGateContent() {
   const [report, setReport] = useState<ComplianceReport | null>(null);
   const [editedSections, setEditedSections] = useState<Record<number, string>>({});
   const [manualEditSections, setManualEditSections] = useState<Record<number, boolean>>({});
+  const [dismissedFlags, setDismissedFlags] = useState<Record<number, boolean>>({});
   const [decisions, setDecisions] = useState<Record<number, 'approved' | 'rejected'>>({});
   const [loading, setLoading] = useState(false);
   const [critiqueLoading, setCritiqueLoading] = useState(false);
@@ -226,6 +227,27 @@ function ComplianceGateContent() {
       setError('Critique request failed');
     } finally {
       setCritiqueLoading(false);
+    }
+  };
+
+  const dismissFlag = async (sectionIdx: number, flag: any) => {
+    if (!selectedArticle || !activeBrand?.id) return;
+    try {
+      const token = await getToken({ template: 'jwt-template-600' });
+      await fetch('/api/compliance/dismiss-flag', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          brandProfileId: activeBrand.id,
+          contentId: selectedArticle.id,
+          flagType: flag.type,
+          flagReason: flag.reason,
+          sectionHeading: flag.sectionHeading || '',
+        })
+      });
+      setDismissedFlags(p => ({ ...p, [sectionIdx]: true }));
+    } catch(e) {
+      console.error('Dismiss flag error:', e);
     }
   };
 
@@ -531,6 +553,17 @@ function ComplianceGateContent() {
                               >
                                 {rewritingIdx === idx ? 'Rewriting...' : rewrittenSections.has(idx) ? 'Rewrite Applied' : 'Accept Suggestion'}
                               </button>
+                              {!dismissedFlags[idx] && (
+                                <button
+                                  className="comp-dismiss-flag-btn"
+                                  onClick={() => dismissFlag(idx, flag)}
+                                >
+                                  Dismiss Flag
+                                </button>
+                              )}
+                              {dismissedFlags[idx] && (
+                                <span className="comp-dismissed-label">Dismissed — Brain updated</span>
+                              )}
                             </div>
 
                             {/* Source candidates */}
