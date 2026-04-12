@@ -408,7 +408,9 @@ function ComplianceGateContent() {
             <div className="comp-sections">
               {selectedArticle.article_json?.sections?.map((section, idx) => {
                 const flag = report?.flags?.find(f => f.sectionIndex === idx);
-                const isEditing = section.confidenceTier !== 'green' || mode === 'full-review';
+                const sectionText = section.body || section.content || '';
+                const hasPlaceholder = /\[NEEDS[_ ]?CITATION[^\]]*\]|\[CITATION[^\]]*\]|\[INSERT[^\]]*\]/i.test(sectionText);
+                const isEditing = section.confidenceTier !== 'green' || mode === 'full-review' || hasPlaceholder;
                 const editVal = editedSections[idx] ?? (section.body || section.content || '');
 
                 return (
@@ -438,6 +440,26 @@ function ComplianceGateContent() {
                       )}
                     </div>
 
+                    {hasPlaceholder && !flag && (
+                      <div className="comp-flag flag-yellow" style={{ marginBottom: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: '#D97706' }}>⚠ Contains unresolved placeholder text</span>
+                          <button
+                            className="comp-accept-suggestion-btn"
+                            style={{ background: '#D97706', color: '#fff', borderColor: '#D97706' }}
+                            onClick={() => {
+                              const stripped = sectionText.replace(/\[NEEDS[_ ]?CITATION[^\]]*\]|\[CITATION[^\]]*\]|\[INSERT[^\]]*\]/gi, '').replace(/  +/g, ' ').trim();
+                              setEditedSections(p => ({ ...p, [idx]: stripped }));
+                            }}
+                          >
+                            Strip Placeholder
+                          </button>
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4 }}>
+                          This section contains a citation placeholder that must be resolved before publishing.
+                        </div>
+                      </div>
+                    )}
                     {flag && (
                       <div className={`comp-flag flag-${flag.severity}`}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
