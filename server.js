@@ -4250,7 +4250,22 @@ Return ONLY valid JSON in this exact structure:
     const critiqueData = await critiqueRes.json();
     const rawText = critiqueData.content?.[0]?.text || '{}';
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-    const report = JSON.parse(jsonMatch ? jsonMatch[0] : rawText);
+    const jsonStr = jsonMatch ? jsonMatch[0] : rawText;
+    let report;
+    try {
+      report = JSON.parse(jsonStr);
+    } catch(e) {
+      // Claude sometimes emits literal newlines inside string values — sanitize and retry
+      const sanitized = jsonStr.replace(/:\s*"([\s\S]*?)"/g, (m, val) =>
+        ': "' + val.replace(/\n/g, ' ').replace(/\r/g, ' ').replace(/\t/g, ' ') + '"'
+      );
+      try {
+        report = JSON.parse(sanitized);
+      } catch(e2) {
+        // Last resort — return a safe default so the UI doesn't crash
+        report = { overallScore: 50, brandVoiceScore: 50, factualConfidence: 50, autoApprovable: false, summary: 'Critique parse error — please retry.', flags: [], mistakesApplied: [] };
+      }
+    }
 
     // Normalise sectionIndex to 0-based — Claude sometimes returns 1-based
     if (report.flags?.length && articleJson?.sections?.length) {
