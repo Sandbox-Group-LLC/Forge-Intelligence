@@ -3,7 +3,7 @@
   align-items: center;
   gap: 20px;
   padding: 12px 0;
-  border-bottom: 1px solid #1E293B;
+  border-bottom: 1px solid var(--color-bg-card);
   flex-wrap: wrap;
 }
 
@@ -24,14 +24,14 @@
 .cg-tab {
   padding: 6px 14px;
   border-radius: 6px;
-  border: 1px solid #1E293B;
+  border: 1px solid var(--color-bg-card);
   background: transparent;
   color: #64748B;
   font-size: 12px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
-.cg-tab:hover { background: #1E293B; color: #CBD5E1; }
+.cg-tab:hover { background: var(--color-bg-card); color: #CBD5E1; }
 .cg-tab.active { background: #3563FF22; border-color: #3563FF; color: #3563FF; }
 
 .cg-article {
@@ -52,8 +52,8 @@
 }
 
 .cg-section {
-  background: #111C27;
-  border: 1px solid #1E293B;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-bg-card);
   border-left: 3px solid #3563FF;
   border-radius: 10px;
   padding: 20px 24px;
@@ -72,7 +72,7 @@
 .cg-section-heading {
   font-size: 16px;
   font-weight: 600;
-  color: #E2E8F0;
+  color: var(--color-text-emphasis);
   margin: 0;
   word-wrap: break-word;
   overflow-wrap: break-word;
@@ -141,8 +141,8 @@
   align-items: center;
   gap: 8px;
   padding: 14px 20px;
-  background: #0F1720;
-  border: 1px solid #1E293B;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-bg-card);
   border-radius: 8px;
   font-size: 13px;
   color: #64748B;
@@ -159,8 +159,8 @@
 }
 
 .cg-stream-body {
-  background: #0B1320;
-  border: 1px solid #1E293B;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-bg-card);
   border-radius: 10px;
   padding: 24px;
   font-size: 13px;
@@ -211,8 +211,8 @@
 }
 
 .cg-schema-pre {
-  background: #0B1320;
-  border: 1px solid #1E293B;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-bg-card);
   border-radius: 10px;
   padding: 20px;
   font-size: 12px;
@@ -225,11 +225,11 @@
   display: flex;
   justify-content: flex-end;
   padding-top: 16px;
-  border-top: 1px solid #1E293B;
+  border-top: 1px solid var(--color-bg-card);
 }
 
 .geo-running {
-  background: #0B1320;
+  background: var(--color-bg-card);
   border: 1px solid #1E2D40;
   border-radius: 12px;
   padding: 24px;
