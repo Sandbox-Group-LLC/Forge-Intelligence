@@ -276,19 +276,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
 
     // Drive all 5 stages with 75s total timing — matches landing page onboard flow
+    // The last stage stays in 'running' until the API resolves — eliminates the dead zone
+    // where animation is done but results haven't rendered yet.
     const stageTimings = [12500, 15500, 19000, 15500, 12500];
     let cancelled = false;
+    const lastIdx = stageTimings.length - 1;
     const driveStages = async () => {
       for (let i = 0; i < stageTimings.length; i++) {
         if (cancelled) break;
         setProcessingStages(prev => prev.map((s, idx) =>
-          idx === i ? { ...s, status: 'running' as const, startTime: Date.now() } : s
+          idx === i ? { ...s,
+            status: 'running' as const,
+            startTime: Date.now(),
+            // Last stage label updates to signal we're waiting on the API
+            name: i === lastIdx ? 'Finalizing Brain...' : s.name
+          } : s
         ));
         await new Promise(r => setTimeout(r, stageTimings[i]));
         if (cancelled) break;
-        setProcessingStages(prev => prev.map((s, idx) =>
-          idx === i ? { ...s, status: 'complete' as const, endTime: Date.now() } : s
-        ));
+        // Don't mark last stage complete here — API resolution does that
+        if (i < lastIdx) {
+          setProcessingStages(prev => prev.map((s, idx) =>
+            idx === i ? { ...s, status: 'complete' as const, endTime: Date.now() } : s
+          ));
+        }
       }
     };
     driveStages();
