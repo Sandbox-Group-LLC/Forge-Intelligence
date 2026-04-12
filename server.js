@@ -4189,30 +4189,6 @@ app.get('/api/compliance/latest/:brandProfileId', requireAuth, async (req, res) 
 });
 
 // POST compliance critique — Claude reads article + brain mistakes, returns report
-app.post('/api/compliance/rewrite-section', requireAuth, async (req, res) => {
-  const { sectionBody, suggestion, brandProfileId, source } = req.body;
-  if (!sectionBody || !suggestion) return res.status(400).json({ error: 'sectionBody and suggestion required' });
-  try {
-    const profileRes = brandProfileId
-      ? await pool.query('SELECT profile_data FROM brand_profiles WHERE id = $1', [brandProfileId])
-      : { rows: [] };
-    const voiceHint = profileRes.rows[0]?.profile_data?.voice_profile?.tone
-      ? `Brand tone: ${profileRes.rows[0].profile_data.voice_profile.tone}.`
-      : '';
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
-      max_tokens: 1024,
-      messages: [{ role: 'user', content: `You are an editorial AI. Rewrite the following article section to incorporate the editorial suggestion. Preserve the author's voice and intent. Return only the rewritten section body — no commentary, no preamble, no labels.\n\n${voiceHint}\n\nORIGINAL SECTION:\n${sectionBody}\n\nEDITORIAL SUGGESTION:\n${suggestion}${source ? `\n\nCITATION TO INCORPORATE:\nTitle: ${source.title}\nURL: ${source.url}\nKey finding: ${source.snippet}\n\nWeave this citation naturally into the rewritten section as a supporting reference.` : ''}\n\nREWRITTEN SECTION:` }]
-    });
-    const rewritten = response.content[0]?.text?.trim();
-    if (!rewritten) return res.status(500).json({ success: false, error: 'AI returned empty response' });
-    res.json({ success: true, rewritten });
-  } catch (e) {
-    console.error('[REWRITE-SECTION]', e.message);
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
 app.post('/api/compliance/critique', requireAuth, async (req, res) => {
   const { brandProfileId, contentId } = req.body;
   if (!brandProfileId || !contentId) return res.status(400).json({ error: 'brandProfileId and contentId required' });
@@ -4265,7 +4241,7 @@ Return ONLY valid JSON in this exact structure:
       method: 'POST',
       headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6',
         max_tokens: 2000,
         system: systemPrompt,
         messages: [{ role: 'user', content: `Article to audit:\n\n${JSON.stringify(articleJson, null, 2)}` }]
@@ -4274,7 +4250,7 @@ Return ONLY valid JSON in this exact structure:
     const critiqueData = await critiqueRes.json();
     const rawText = critiqueData.content?.[0]?.text || '{}';
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-    const report = JSON.parse(sanitizeJson(jsonMatch ? jsonMatch[0] : rawText));
+    const report = JSON.parse(jsonMatch ? jsonMatch[0] : rawText);
 
     // Normalise sectionIndex to 0-based — Claude sometimes returns 1-based
     if (report.flags?.length && articleJson?.sections?.length) {
@@ -4300,9 +4276,9 @@ Return ONLY valid JSON in this exact structure:
 
 // POST approve — save human edits, write mistakes to brain, mark approved
 app.post('/api/compliance/approve', requireAuth, async (req, res) => {
+  const startTime = Date.now();
   const { brandProfileId, contentId, reviewMode, editedSections, decisions } = req.body;
   if (!brandProfileId || !contentId) return res.status(400).json({ error: 'brandProfileId and contentId required' });
-  const startTime = Date.now();
   try {
     const safeId = brandProfileId.replace(/-/g, '_');
     const tableName = `generated_content_${safeId}`;
@@ -9227,6 +9203,190 @@ app.get('/unsubscribe', async (req, res) => {
 
 app.get('*', function (req, res) {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
+
+app.post('/api/compliance/rewrite-section', requireAuth, async (req, res) => {
+  const { sectionBody, suggestion, brandProfileId, source } = req.body;
+  if (!sectionBody || !suggestion) return res.status(400).json({ error: 'sectionBody and suggestion required' });
+  try {
+    const profileRes = brandProfileId
+      ? await pool.query('SELECT profile_data FROM brand_profiles WHERE id = $1', [brandProfileId])
+      : { rows: [] };
+    const voiceHint = profileRes.rows[0]?.profile_data?.voice_profile?.tone
+      ? `Brand tone: ${profileRes.rows[0].profile_data.voice_profile.tone}.`
+      : '';
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: `You are an editorial AI. Rewrite the following article section to incorporate the editorial suggestion. Preserve the author's voice and intent. Return only the rewritten section body — no commentary, no preamble, no labels.\n\n${voiceHint}\n\nORIGINAL SECTION:\n${sectionBody}\n\nEDITORIAL SUGGESTION:\n${suggestion}${source ? `\n\nCITATION TO INCORPORATE:\nTitle: ${source.title}\nURL: ${source.url}\nKey finding: ${source.snippet}\n\nWeave this citation naturally into the rewritten section as a supporting reference.` : ''}\n\nREWRITTEN SECTION:` }]
+    });
+    const rewritten = response.content[0]?.text?.trim();
+    if (!rewritten) return res.status(500).json({ success: false, error: 'AI returned empty response' });
+    res.json({ success: true, rewritten });
+  } catch (e) {
+    console.error('[REWRITE-SECTION]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+app.post('/api/compliance/critique', requireAuth, async (req, res) => {
+  const { brandProfileId, contentId } = req.body;
+  if (!brandProfileId || !contentId) return res.status(400).json({ error: 'brandProfileId and contentId required' });
+  try {
+    const safeId = brandProfileId.replace(/-/g, '_');
+    const tableName = `generated_content_${safeId}`;
+
+    await ensureComplianceColumns(tableName);
+    // Load article
+    const articleRes = await pool.query(`SELECT * FROM ${tableName} WHERE id = $1`, [contentId]);
+    if (!articleRes.rows.length) return res.status(404).json({ error: 'Article not found' });
+    const article = articleRes.rows[0];
+    const articleJson = article.article_json;
+
+    // Load brand profile + brain mistakes
+    const brandRes = await pool.query('SELECT * FROM brand_profiles WHERE id = $1', [brandProfileId]);
+    const brand = brandRes.rows[0];
+    const mistakesRes = await pool.query(`SELECT * FROM mistakes ORDER BY created_at DESC LIMIT 20`).catch(() => ({ rows: [] }));
+    const mistakes = mistakesRes.rows;
+
+    const systemPrompt = `You are a compliance and brand voice auditor. Analyze this article against the brand profile and known mistakes. Return a JSON compliance report.
+
+Brand Voice Profile:
+${JSON.stringify(brand?.voice_profile || {}, null, 2)}
+
+Known Mistakes to Avoid:
+${mistakes.map(m => `- ${m.mistake_type}: ${m.human_feedback}`).join('\n') || 'None recorded yet'}
+
+Return ONLY valid JSON in this exact structure:
+{
+  "overallScore": <0-100>,
+  "brandVoiceScore": <0-100>,
+  "factualConfidence": <0-100>,
+  "autoApprovable": <true if all sections green>,
+  "summary": "<2 sentence overall assessment>",
+  "flags": [
+    {
+      "sectionIndex": <zero-based index of the section in the sections array — first section is 0, second is 1, etc>,
+      "sectionHeading": "<heading>",
+      "severity": "yellow" | "red",
+      "type": "brand_voice" | "factual_claim" | "legal_risk" | "sme_required",
+      "reason": "<why flagged>",
+      "suggestion": "<recommended fix>"
+    }
+  ],
+  "mistakesApplied": ["<list of mistake patterns that influenced this critique>"]
+}`;
+
+    const critiqueRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 2000,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: `Article to audit:\n\n${JSON.stringify(articleJson, null, 2)}` }]
+      })
+    });
+    const critiqueData = await critiqueRes.json();
+    const rawText = critiqueData.content?.[0]?.text || '{}';
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    const report = JSON.parse(sanitizeJson(jsonMatch ? jsonMatch[0] : rawText));
+
+    // Normalise sectionIndex to 0-based — Claude sometimes returns 1-based
+    if (report.flags?.length && articleJson?.sections?.length) {
+      const maxIdx = articleJson.sections.length - 1;
+      const anyExceedsBounds = report.flags.some(f => f.sectionIndex > maxIdx);
+      if (anyExceedsBounds) {
+        report.flags = report.flags.map(f => ({ ...f, sectionIndex: Math.max(0, f.sectionIndex - 1) }));
+      }
+    }
+
+    // Persist compliance report to article record
+    await pool.query(
+      `UPDATE ${tableName} SET compliance_report = $1, compliance_status = 'reviewed', updated_at = NOW() WHERE id = $2`,
+      [JSON.stringify(report), contentId]
+    );
+
+    res.json({ success: true, report });
+  } catch (err) {
+    console.error('[COMPLIANCE] Critique error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST approve — save human edits, write mistakes to brain, mark approved
+app.post('/api/compliance/approve', requireAuth, async (req, res) => {
+  const { brandProfileId, contentId, reviewMode, editedSections, decisions } = req.body;
+  if (!brandProfileId || !contentId) return res.status(400).json({ error: 'brandProfileId and contentId required' });
+  const startTime = Date.now();
+  try {
+    const safeId = brandProfileId.replace(/-/g, '_');
+    const tableName = `generated_content_${safeId}`;
+
+    await ensureComplianceColumns(tableName);
+    // Load original article
+    const articleRes = await pool.query(`SELECT * FROM ${tableName} WHERE id = $1`, [contentId]);
+    if (!articleRes.rows.length) return res.status(404).json({ error: 'Article not found' });
+    const article = articleRes.rows[0];
+    let articleJson = article.article_json;
+
+    // Apply human edits to article sections
+    if (editedSections && Array.isArray(editedSections)) {
+      editedSections.forEach(edit => {
+        if (articleJson.sections && articleJson.sections[edit.sectionIndex]) {
+          const section = articleJson.sections[edit.sectionIndex];
+          const orig = section.body || section.content || '';
+          if (orig !== edit.content) {
+            // Write to brain_mistakes (brand-scoped)
+            pool.query(
+              `INSERT INTO brain_mistakes (brand_profile_id, mistake_type, description, human_feedback, severity)
+               VALUES ($1, 'human_edit', $2, $3, 'medium')`,
+              [
+                brandProfileId,
+                `Section "${section.heading || 'untitled'}": human reviewer edited content`,
+                `Avoid: "${orig.substring(0, 200)}" — prefer: "${edit.content.substring(0, 200)}"`
+              ]
+            ).catch(e => console.error('[COMPLIANCE] Mistake write error:', e.message));
+            // Update whichever field exists
+            if (section.body !== undefined) {
+              articleJson.sections[edit.sectionIndex].body = edit.content;
+            } else {
+              articleJson.sections[edit.sectionIndex].content = edit.content;
+            }
+          }
+        }
+      });
+    }
+
+    // Handle red section decisions
+    const finalStatus = reviewMode === 'auto-ship' ? 'approved' :
+      decisions && Object.values(decisions).some(d => d === 'rejected') ? 'rejected' : 'approved';
+
+    await pool.query(
+      `UPDATE ${tableName} SET article_json = $1, compliance_status = $2, review_mode = $3, reviewed_at = NOW(), updated_at = NOW() WHERE id = $4`,
+      [JSON.stringify(articleJson), finalStatus, reviewMode || 'approve-to-ship', contentId]
+    );
+
+    // Auto-stage into publishing queue on approval
+    if (finalStatus === 'approved') {
+      const articleTitle = articleJson.title || article.title || 'Untitled Article';
+      pool.query(
+        `INSERT INTO publishing_queue (brand_profile_id, content_id, title, status, created_at, updated_at)
+         VALUES ($1, $2, $3, 'staged', NOW(), NOW())
+         ON CONFLICT (content_id) DO UPDATE SET
+           title = EXCLUDED.title,
+           updated_at = NOW()
+         WHERE publishing_queue.status = 'staged'`,
+        [brandProfileId, contentId, articleTitle]
+      ).catch(e => console.error('[QUEUE] Auto-stage error:', e.message));
+    }
+
+        await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata) VALUES ($1,$2,$3,$4,$5,$6)', ['stage5_compliance_gate', brandProfileId, 'success', 0, Date.now()-startTime, JSON.stringify({ contentId, status: finalStatus })]).catch(e => console.error('[ACTIVITY LOG]', e.message));
+        res.json({ success: true, status: finalStatus, contentId });
+  } catch (err) {
+    console.error('[COMPLIANCE] Approve error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 
