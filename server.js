@@ -4190,6 +4190,87 @@ app.get('/api/compliance/latest/:brandProfileId', requireAuth, async (req, res) 
 });
 
 // POST compliance critique — Claude reads article + brain mistakes, returns report
+
+
+app.post('/api/compliance/find-sources', requireAuth, async (req, res) => {
+  const { claim, sectionBody } = req.body;
+  if (!claim && !sectionBody) return res.status(400).json({ error: 'claim or sectionBody required' });
+  try {
+    const query = (claim || sectionBody || '').slice(0, 200);
+
+    // Perplexity sonar — use search_results directly, no JSON parsing needed
+    let sonarData = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const sonarRes = await fetch('https://api.perplexity.ai/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'sonar',
+          messages: [
+            { role: 'system', content: 'You are a research assistant. Find credible sources.' },
+            { role: 'user', content: `Find research, statistics, or studies supporting: "${query}"` }
+          ]
+        })
+      });
+      if (sonarRes.status === 429) {
+        await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+        continue;
+      }
+      if (!sonarRes.ok) {
+        const err = await sonarRes.text();
+        console.error('[FIND-SOURCES] Perplexity', sonarRes.status, err.slice(0, 200));
+        return res.status(500).json({ success: false, error: `Source search failed (${sonarRes.status}) — try again` });
+      }
+      sonarData = await sonarRes.json();
+      break;
+    }
+
+    if (!sonarData) return res.status(500).json({ success: false, error: 'Source search timed out — try again' });
+
+    // search_results has everything we need — title, url, snippet, date
+    const searchResults = sonarData.search_results || [];
+    const sources = searchResults.slice(0, 3).map(r => ({
+      title: r.title || '',
+      url: r.url || '',
+      snippet: r.snippet || '',
+      year: r.date ? r.date.slice(0, 4) : (r.last_updated ? r.last_updated.slice(0, 4) : ''),
+    }));
+
+    if (!sources.length) return res.json({ success: false, error: 'No sources found — try a different section' });
+
+    res.json({ success: true, sources: sources.slice(0, 3) });
+  } catch (e) {
+    console.error('[FIND-SOURCES] caught:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/compliance/rewrite-section — AI rewrites one section using a compliance suggestion
+app.post('/api/compliance/rewrite-section', requireAuth, async (req, res) => {
+  const { sectionBody, suggestion, brandProfileId, source } = req.body;
+  if (!sectionBody || !suggestion) return res.status(400).json({ error: 'sectionBody and suggestion required' });
+  try {
+    const profileRes = brandProfileId
+      ? await pool.query('SELECT profile_data FROM brand_profiles WHERE id = $1', [brandProfileId])
+      : { rows: [] };
+    const voiceHint = profileRes.rows[0]?.profile_data?.voice_profile?.tone
+      ? `Brand tone: ${profileRes.rows[0].profile_data.voice_profile.tone}.`
+      : '';
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: `You are an editorial AI. Rewrite the following article section to incorporate the editorial suggestion. Preserve the author's voice and intent. Return only the rewritten section body — no commentary, no preamble, no labels.\n\n${voiceHint}\n\nORIGINAL SECTION:\n${sectionBody}\n\nEDITORIAL SUGGESTION:\n${suggestion}${source ? `\n\nCITATION TO INCORPORATE:\nTitle: ${source.title}\nURL: ${source.url}\nKey finding: ${source.snippet}\n\nWeave this citation naturally into the rewritten section as a supporting reference.` : ''}\n\nREWRITTEN SECTION:` }]
+    });
+    const rewritten = response.content[0]?.text?.trim();
+    if (!rewritten) return res.status(500).json({ success: false, error: 'AI returned empty response' });
+    res.json({ success: true, rewritten });
+  } catch (e) {
+    console.error('[REWRITE-SECTION]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+
 app.post('/api/compliance/critique', requireAuth, async (req, res) => {
   const { brandProfileId, contentId } = req.body;
   if (!brandProfileId || !contentId) return res.status(400).json({ error: 'brandProfileId and contentId required' });
