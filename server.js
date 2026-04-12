@@ -4291,6 +4291,59 @@ Return ONLY valid JSON in this exact structure:
 });
 
 // POST approve — save human edits, write mistakes to brain, mark approved
+
+// ── Compliance Gate: Rewrite Section ─────────────────────────────────────────
+// Called when user clicks "Accept Suggestion" on a flagged section
+app.post('/api/compliance/rewrite-section', requireAuth, async (req, res) => {
+  const { sectionBody, suggestion, brandProfileId, source } = req.body;
+  if (!sectionBody || !suggestion) return res.status(400).json({ error: 'sectionBody and suggestion required' });
+
+  try {
+    const brandRes = await pool.query('SELECT * FROM brand_profiles WHERE id = $1', [brandProfileId]);
+    const brand = brandRes.rows[0];
+    const voiceProfile = brand?.voice_profile || {};
+
+    const sourceContext = source
+      ? `\n\nCite this source in the rewrite: "${source.title}" (${source.url})${source.snippet ? ' — key excerpt: ' + source.snippet.slice(0, 300) : ''}`
+      : '';
+
+    const prompt = `You are a brand voice editor. Rewrite the following section to address the compliance suggestion while maintaining the brand voice exactly.
+
+BRAND VOICE:
+${JSON.stringify(voiceProfile, null, 2).slice(0, 1500)}
+
+ORIGINAL SECTION:
+${sectionBody}
+
+COMPLIANCE SUGGESTION:
+${suggestion}${sourceContext}
+
+RULES:
+- Maintain the brand voice and tone precisely
+- Address the specific compliance issue identified
+- Do NOT include placeholders like [NEEDS CITATION], [SOURCE], [LINK], [INSERT], [TBD] or similar — write final copy only
+- Do NOT add markdown formatting that wasn't in the original
+- Return ONLY the rewritten section text, nothing else`;
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1500, messages: [{ role: 'user', content: prompt }] })
+    });
+    const data = await response.json();
+    let rewritten = data.content?.[0]?.text?.trim() || sectionBody;
+
+    // Strip any AI artifact placeholders Claude might have included anyway
+    const artifactRx = /\[NEEDS[_ ]?CITATION[^\]]*\]|\[CITATION[^\]]*\]|\[SOURCE[^\]]*\]|\[LINK[^\]]*\]|\[INSERT[^\]]*\]|\[TBD[^\]]*\]/gi;
+    rewritten = rewritten.replace(artifactRx, '').replace(/\s{2,}/g, ' ').trim();
+
+    res.json({ success: true, rewritten });
+  } catch (err) {
+    console.error('[REWRITE-SECTION]', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.post('/api/compliance/approve', requireAuth, async (req, res) => {
   const startTime = Date.now();
   const { brandProfileId, contentId, reviewMode, editedSections, decisions } = req.body;
@@ -4335,7 +4388,16 @@ app.post('/api/compliance/approve', requireAuth, async (req, res) => {
     }
 
     // Handle red section decisions
-    const finalStatus = reviewMode === 'auto-ship' ? 'approved' :
+    // Load compliance report to enforce score threshold
+    const reportRow = await pool.query(`SELECT compliance_report FROM ${tableName} WHERE id = $1`, [contentId]);
+    const compReport = reportRow.rows[0]?.compliance_report ? JSON.parse(reportRow.rows[0].compliance_report) : null;
+    const overallScore = compReport?.overallScore || 0;
+    const hasRedFlags = (compReport?.flags || []).some(f => f.severity === 'red');
+
+    // Auto-ship: still requires score >= 70 and no red flags — not a bypass
+    const autoShipBlocked = reviewMode === 'auto-ship' && (overallScore < 70 || hasRedFlags);
+    const finalStatus = autoShipBlocked ? 'reviewed' :
+      reviewMode === 'auto-ship' ? 'approved' :
       decisions && Object.values(decisions).some(d => d === 'rejected') ? 'rejected' : 'approved';
 
     await pool.query(
