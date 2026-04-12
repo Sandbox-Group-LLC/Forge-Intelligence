@@ -97,7 +97,7 @@ function ContentGeneratorContent() {
   const [newIdea, setNewIdea] = useState('');
   const [newIdeaNote, setNewIdeaNote] = useState('');
   const [savingIdea, setSavingIdea] = useState(false);
-  const [preflight, setPreflight] = useState<{ status: string; signal?: string; confidence?: string; reframe?: string; reason?: string }>({ status: 'idle' });
+  const [preflight, setPreflight] = useState<{ status: string; signal?: string; confidence?: string; reframe?: string; reframeRationale?: string; reason?: string }>({ status: 'idle' });
 
   const { historyEntries, activeBrand, authToken } = useApp();
   const brains: Brain[] = historyEntries.map(e => ({ id: e.id, brandName: e.brandName, brandUrl: e.brandUrl }));
