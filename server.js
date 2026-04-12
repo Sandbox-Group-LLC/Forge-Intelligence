@@ -4200,7 +4200,7 @@ app.post('/api/compliance/rewrite-section', requireAuth, async (req, res) => {
       ? `Brand tone: ${profileRes.rows[0].profile_data.voice_profile.tone}.`
       : '';
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1024,
       messages: [{ role: 'user', content: `You are an editorial AI. Rewrite the following article section to incorporate the editorial suggestion. Preserve the author's voice and intent. Return only the rewritten section body — no commentary, no preamble, no labels.\n\n${voiceHint}\n\nORIGINAL SECTION:\n${sectionBody}\n\nEDITORIAL SUGGESTION:\n${suggestion}\n\nREWRITTEN SECTION:` }]
     });
