@@ -258,15 +258,17 @@ export function BrandProfile() {
                   <span className="td-confidence">
                     {signal.confidence > 0 ? (
                       <div className="confidence-indicator">
-                        <div 
-                          className="confidence-fill" 
-                          style={{ 
-                            width: `${signal.confidence}%`,
-                            background: getScoreColor(signal.confidence)
-                          }}
-                        />
-                        <span className="confidence-text">{signal.confidence}%</span>
-                      </div>
+                          <div className="confidence-bar-track">
+                            <div
+                              className="confidence-fill"
+                              style={{
+                                width: `${signal.confidence}%`,
+                                background: getScoreColor(signal.confidence)
+                              }}
+                            />
+                          </div>
+                          <span className="confidence-text">{signal.confidence}%</span>
+                        </div>
                     ) : (
                       <span className="no-confidence">—</span>
                     )}
