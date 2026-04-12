@@ -130,6 +130,7 @@ function ComplianceGateContent() {
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [report, setReport] = useState<ComplianceReport | null>(null);
   const [editedSections, setEditedSections] = useState<Record<number, string>>({});
+  const [manualEditSections, setManualEditSections] = useState<Record<number, boolean>>({});
   const [decisions, setDecisions] = useState<Record<number, 'approved' | 'rejected'>>({});
   const [loading, setLoading] = useState(false);
   const [critiqueLoading, setCritiqueLoading] = useState(false);
@@ -439,7 +440,7 @@ function ComplianceGateContent() {
                 const flag = report?.flags?.find(f => f.sectionIndex === idx);
                 const sectionText = section.body || section.content || '';
                 const hasPlaceholder = /\[NEEDS[_ ]?CITATION[^\]]*\]|\[CITATION[^\]]*\]|\[INSERT[^\]]*\]/i.test(sectionText);
-                const isEditing = section.confidenceTier !== 'green' || !!flag || mode === 'full-review' || hasPlaceholder;
+                const isEditing = section.confidenceTier !== 'green' || !!flag || mode === 'full-review' || hasPlaceholder || manualEditSections[idx];
                 const editVal = editedSections[idx] ?? (section.body || section.content || '');
 
                 return (
@@ -594,7 +595,18 @@ function ComplianceGateContent() {
                         />
                       </div>
                     ) : (
-                      <p className="comp-section-body">{section.body || section.content}</p>
+                      <div>
+                        <p className="comp-section-body">{section.body || section.content}</p>
+                        <span
+                          className="comp-manual-edit-link"
+                          onClick={() => {
+                            setManualEditSections(p => ({ ...p, [idx]: true }));
+                            setEditedSections(p => ({ ...p, [idx]: section.body || section.content || '' }));
+                          }}
+                        >
+                          Make edits
+                        </span>
+                      </div>
                     )}
                     {/* Section footer — confidence + decision status */}
                     <div className="comp-section-footer">
