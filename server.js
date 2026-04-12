@@ -2845,7 +2845,9 @@ function extractJSON(text, type = 'object') {
 // Not a library. Not an npm package. Just a dev who got tired of Claude's newlines.
 // ── Shared LLM JSON parser — sanitise + recover ──────────────────────────────
 function safeParseLLM(raw, type = 'object') {
-  const extracted = extractJSON(raw, type) || raw;
+  // Strip markdown code fences Claude loves to wrap JSON in
+  const stripped = raw.replace(/```(?:json)?\s*/g, '').trim();
+  const extracted = extractJSON(stripped, type) || stripped;
   try { return JSON.parse(extracted); } catch(_) {}
   try {
     const sanitized = extracted
