@@ -2776,7 +2776,6 @@ function normalizeGeoData(briefData, topicalMap, geoOpportunities, entitySchema,
 function extractJSON(text, type = 'object') {
   // Strip markdown code fences Claude sometimes wraps JSON in
   text = text.replace(/^
-  if (start === -1) return null;
   let depth = 0;
   for (let i = start; i < text.length; i++) {
     if (text[i] === open) depth++;
