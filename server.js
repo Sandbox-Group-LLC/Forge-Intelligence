@@ -4426,6 +4426,32 @@ Return ONLY valid JSON in this exact structure:
   }
 });
 
+// POST dismiss-flag — user dismisses a false-positive flag, writes to brain as training signal
+app.post('/api/compliance/dismiss-flag', requireAuth, async (req, res) => {
+  const { brandProfileId, contentId, flagType, flagReason, sectionHeading } = req.body;
+  if (!brandProfileId || !contentId) return res.status(400).json({ error: 'brandProfileId and contentId required' });
+  try {
+    await pool.query(
+      `INSERT INTO brain_mistakes (brand_profile_id, mistake_type, description, human_feedback, severity)
+       VALUES ($1, 'false_positive_flag', $2, $3, 'low')`,
+      [
+        brandProfileId,
+        `AI incorrectly flagged section "${sectionHeading || 'untitled'}" as ${flagType || 'unknown'} — user dismissed`,
+        `False positive: ${(flagReason || '').substring(0, 500)}. Do NOT flag similar content in future critiques for this brand.`
+      ]
+    );
+    await pool.query(
+      `INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata)
+       VALUES ('compliance_dismiss', $1, 'success', 0, 0, $2)`,
+      [brandProfileId, JSON.stringify({ contentId, flagType, sectionHeading })]
+    ).catch(() => {});
+    res.json({ success: true });
+  } catch(e) {
+    console.error('[COMPLIANCE] Dismiss flag error:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // POST approve — save human edits, write mistakes to brain, mark approved
 app.post('/api/compliance/approve', requireAuth, async (req, res) => {
   const startTime = Date.now();
