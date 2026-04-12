@@ -11,9 +11,13 @@ interface GateModalProps {
 declare global { interface Window { paypal: any; } }
 
 const PAYPAL_CLIENT_ID = 'AV1QAbjyqG1YTRCWKXzWjZr1Ls7uNLRnk5SzoC-ajEb3rZaq5h58SCUoi9lcZgd9OCvJrM2WchL1om6l';
+const CLERK_SIGNUP_URL = 'https://accounts.forgeintelligence.ai/sign-up';
 
 export default function GateModal({ featureName, onClose, brandProfileId, onUnlocked }: GateModalProps) {
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, isLoaded } = useAuth();
+
+  // Never render during Clerk loading or for signed-in users — they've paid.
+  if (!isLoaded || isSignedIn) return null;
   const [ppLoading, setPpLoading] = useState(true);
   const [ppError, setPpError] = useState('');
   const [paid, setPaid] = useState(false);
@@ -33,13 +37,28 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
     return () => { try { document.body.removeChild(script); } catch {} };
   }, []);
 
+  // After successful payment, either refetch in place (signed in) or tether + redirect to Clerk (not signed in)
+  function handleUnlocked() {
+    setPaid(true);
+    if (isSignedIn) {
+      // Already authed — onUnlocked calls refetchBrand(), sidebar updates reactively
+      onUnlocked?.();
+    } else {
+      // Pre-auth payment — tether brand to future Clerk account via localStorage
+      if (brandProfileId) localStorage.setItem('forge_pending_brand_id', brandProfileId);
+      setTimeout(() => {
+        window.location.href = `${CLERK_SIGNUP_URL}?redirect_url=${encodeURIComponent(window.location.origin + '/app/context-hub')}`;
+      }, 1200);
+    }
+  }
+
   const renderButtons = () => {
     if (!window.paypal) return;
     setTimeout(() => {
       window.paypal.Buttons({
         style: { layout: 'vertical', color: 'blue', shape: 'rect', label: 'pay', height: 44 },
         createOrder: (_: any, actions: any) => actions.order.create({
-          purchase_units: [{ amount: { value: '99.00', currency_code: 'USD' }, description: 'Forge Intelligence — Full Suite Unlock' }]
+          purchase_units: [{ amount: { value: '99.00', currency_code: 'USD' }, description: 'Forge Intelligence — Full Suite Unlock' }],
         }),
         onApprove: async (_: any, actions: any) => {
           const order = await actions.order.capture();
@@ -50,19 +69,12 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
               body: JSON.stringify({ brandProfileId, orderId: order.id }),
             });
           }
-          setPaid(true);
-          onUnlocked?.();
-          // Redirect to Clerk sign-up to tether account to this brain
-          setTimeout(() => {
-            if (brandProfileId) localStorage.setItem('forge_pending_brand_id', brandProfileId);
-            window.location.href = `https://accounts.forgeintelligence.ai/sign-up?redirect_url=${encodeURIComponent(window.location.origin + '/app/context-hub')}`;
-          }, 1500);
+          handleUnlocked();
         },
         onError: () => setPpError('Payment failed. Please try again.'),
       }).render('#forge-gate-paypal');
     }, 100);
   };
-
 
   const applyPromo = async () => {
     if (!promoCode.trim()) return;
@@ -77,17 +89,7 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
       if (d.valid) {
         setPromoStatus('success');
         setPromoMsg(d.message);
-        setTimeout(() => {
-          setPaid(true);
-          if (isSignedIn) {
-            // Already signed in — just reload to re-fetch isPaid from server
-            window.location.reload();
-          } else {
-            // Not signed in — redirect to Clerk sign-up
-            if (brandProfileId) localStorage.setItem('forge_pending_brand_id', brandProfileId);
-            window.location.href = `https://accounts.forgeintelligence.ai/sign-up?redirect_url=${encodeURIComponent(window.location.origin + '/app/context-hub')}`;
-          }
-        }, 1200);
+        setTimeout(() => handleUnlocked(), 1200);
       } else {
         setPromoStatus('error');
         setPromoMsg(d.message || 'Invalid code');
@@ -176,6 +178,11 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
         <div id="forge-gate-paypal" />
 
         <p className="gate-caption">Your free brand brief stays. Payment unlocks everything above Stage 1.</p>
+        <p style={{ marginTop: 16, fontSize: '0.7rem', color: 'rgba(255,255,255,0.2)', textAlign: 'center', lineHeight: 1.5 }}>
+          If you believe your brand profile was incorrectly assigned, contact us at{" "}
+          <a href="mailto:hello@forgeintelligence.ai" style={{ color: 'rgba(255,255,255,0.35)' }}>hello@forgeintelligence.ai</a>{" "}
+          and we'll verify domain ownership and make it right.
+        </p>
       </div>
     </div>
   );
