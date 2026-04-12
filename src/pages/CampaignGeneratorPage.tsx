@@ -159,7 +159,7 @@ function CampaignGeneratorContent() {
       })));
       setStep('generating');
 
-      const es = new EventSource(`/api/campaign/generate/${savedCampaignId}`);
+      const es = new EventSource(`/api/campaign/generate/${savedCampaignId}?token=${authToken}`);
       esRef.current = es;
 
       es.addEventListener('article_start', (e) => {
