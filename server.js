@@ -1437,7 +1437,8 @@ Evaluate the user's topic against this brand's performance data and return ONLY 
   "signal": "strong" | "caution" | "weak",
   "confidence": "one short phrase like '92% alignment' or 'Low confidence'",
   "reason": "2-3 sentences explaining why this topic will or won't perform based on the brain data",
-  "reframe": "If signal is caution or weak, return ONLY the reframed topic as a short phrase or sentence — no explanation, no rationale, just the topic the user should write about instead. If strong, return null."
+  "reframe": "If signal is caution or weak, return ONLY the reframed topic as a short phrase — just the topic the user should write about instead, no explanation. If strong, return null.",
+  "reframeRationale": "If reframe is not null, explain in 1-2 sentences why this angle aligns better with the brand's brain data. If strong, return null."
 }`;
 
     const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
