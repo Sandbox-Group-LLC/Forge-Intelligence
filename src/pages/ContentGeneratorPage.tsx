@@ -287,9 +287,13 @@ function ContentGeneratorContent() {
                 {preflight.reframe && (
                   <div className="cg-preflight-reframe">
                     <span className="cg-preflight-reframe-label">Brain suggests instead:</span>
-                    <span className="cg-preflight-reframe-text" onClick={() => { setTopicPrompt(preflight.reframe || ''); setPreflight({ status: 'idle' }); }}>
-                      {preflight.reframe} <span className="cg-preflight-use-hint">tap to use</span>
-                    </span>
+                    <div className="cg-preflight-reframe-card" onClick={() => { setTopicPrompt(preflight.reframe || ''); setPreflight({ status: 'idle' }); }}>
+                      <span className="cg-preflight-reframe-topic">{preflight.reframe}</span>
+                      <span className="cg-preflight-use-hint">tap to use</span>
+                    </div>
+                    {preflight.reframeRationale && (
+                      <p className="cg-preflight-reframe-rationale">{preflight.reframeRationale}</p>
+                    )}
                   </div>
                 )}
               </div>
