@@ -268,33 +268,16 @@ BEFORE generating:
 | Item | Priority | Notes |
 |------|----------|-------|
 | LinkedIn impressions/clicks | Medium | Requires MDP approval — reactions/comments live |
+| WordPress live API publish | Medium | Pending |
+| Webflow live API publish | Medium | Pipedream Connect wired, logic pending |
 | authToken rollout | Medium | Remaining unauthenticated fetches in PublishingQueuePage |
+| Full light mode CSS sweep | Medium | PerformanceDashboardPage.css + remaining PublishingQueue sections |
 | LinkedIn Insight Tag | Low | Port to production index.html |
 | GSC dev callback URL | Low | Add to Google Cloud Console |
+| Pre-cog Score Dashboard | Backlog | Base implementation live (Haiku-powered, percentile-based, Predictions tab in Performance Dashboard). Phase 3 upgrade: Voyage AI embeddings + pgvector semantic similarity scoring — parked. |
 | Agency Dashboard | Backlog | Cross-brand bird's-eye view |
 | Pen test | Backlog | Required before Agency tier launch |
 | Medium integration | Legacy | New tokens unavailable since early 2025 |
-
-### Recently Resolved
-| Item | Resolved | Notes |
-|------|----------|-------|
-| HubSpot Pipeline tab — 30-Day Impressions + Published Posts showing | April 10, 2026 | Added `pipeline` to exclusion lists on both sections — both branches |
-| HubSpot OAuth callback blank screen | April 10, 2026 | `HUBSPOT_REDIRECT_URI` corrected to `https://dev.forgeintelligence.ai/auth/hubspot/callback` |
-| HubSpot client_id mismatch | April 10, 2026 | `HUBSPOT_CLIENT_ID` in Render corrected to match HubSpot app portal |
-
-### Recently Resolved
-| Item | Resolved | Notes |
-|------|----------|-------|
-| Full light mode CSS sweep | April 9, 2026 | Predictions tab cards, Publishing Queue, all major pages done |
-| WordPress live API publish | April 9, 2026 | Confirmed working |
-| Webflow live API publish | April 9, 2026 | Confirmed working |
-| Pre-cog Score Dashboard | April 9, 2026 | Compact card design, accuracy banner, `precog_outcomes` table live in production, migrations deployed |
-| LinkedIn Connect OAuth | April 9, 2026 | Native OAuth routing fixed — was incorrectly routing through Pipedream |
-| HubSpot / Webflow Connect | April 9, 2026 | Restored native OAuth routing, fixed auth endpoint response pattern |
-| Scheduler self-call auth | April 9, 2026 | `adminPassword` bypass added to `/api/publishing/publish` |
-| Brain Intelligence tab | April 9, 2026 | Full rebuild — writing rules distilled from human edits via Haiku |
-| Topic Queue | April 9, 2026 | Add, filter, inline edit, send to generator — fully live |
-| Dynamic sitemap.xml | April 9, 2026 | Server-generated, production URLs, live Ghost articles |
 
 ---
 
@@ -312,6 +295,15 @@ BEFORE generating:
 **Owner:** Brian — Founder, Sandbox Group LLC (Portland, OR)
 Sandbox Group: **Sandbox-XM** (experience marketing) + **Sandbox-GTM** (event registration + GTM platform) + **Forge Intelligence** (the intelligence layer)
 
+---
+
+## Updated: April 12, 2026
+
+### Auth Architecture
+- Clerk JWT template `jwt-template-600` — 600 second token lifetime
+- All authenticated fetches use `getToken({ template: 'jwt-template-600' })`
+- `authFetch()` pattern in Compliance Gate — auto-retries once on 401 with fresh token
+- `freshToken()` helper calls Clerk directly at request time, never relies on stale state
 
 ### Compliance Gate (Stage 5) — Production Ready
 - AI critique → inline flagged excerpt highlighting (red/amber by claim type)
@@ -333,3 +325,21 @@ Sandbox Group: **Sandbox-XM** (experience marketing) + **Sandbox-GTM** (event re
 - Model string must be `claude-sonnet-4-6` — `claude-sonnet-4-5` is invalid and causes silent failure
 - Never restore a full server.js to fix compliance endpoints — splice only the compliance block
 - Canonical working state: commit `4d1e2c5af6e2` (April 8 01:11) has all 4 endpoints correct
+
+### Campaign Generator (Stage 4.5)
+- Full DB persistence — campaign_articles + generated_content_{uuid} mirror
+- Resume generation — resets frozen articles, resumes from correct index
+- Recent Campaigns list — loads and restores all 8 articles from DB
+- Send All to Compliance Gate CTA on completion
+
+### Publishing Queue — Campaign Scheduler
+- Channel picker — selects publish destination
+- Smart date scheduling — Article 1 on exact chosen date, rest follow day-of-week cadence
+- Writes channels + status:'scheduled' — cron job publishes automatically
+
+### Light Mode Design System
+- `--color-bg-base: #EDF1FF` blueberry, `--color-bg-card: #FFFFFF`
+- `--color-text-emphasis: #0F172A` for titles/quotes
+- `--shadow-card` blue-tinted outer glow
+- `--shadow-chrome-x/y` for sidebar/topbar floating effect
+- Sidebar + TopBar: white, no border, chrome shadow
