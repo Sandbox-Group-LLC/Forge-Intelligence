@@ -184,7 +184,7 @@ function ContentGeneratorContent() {
     setError('');
 
     const es = new EventSource(
-      `/api/content-generator/generate?brandProfileId=${activeBrand?.id}${selectedBriefId ? `&enrichedBriefId=${selectedBriefId}` : ''}${topicPrompt.trim() ? `&topicPrompt=${encodeURIComponent(topicPrompt.trim())}` : ''}`
+      `/api/content-generator/generate?brandProfileId=${activeBrand?.id}${selectedBriefId ? `&enrichedBriefId=${selectedBriefId}` : ''}${topicPrompt.trim() ? `&topicPrompt=${encodeURIComponent(topicPrompt.trim())}` : ''}&token=${authToken}`
     );
     streamRef.current = es;
 
