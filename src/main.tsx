@@ -1,7 +1,7 @@
 import { StrictMode } from 'react';
-import { ClerkProvider, SignIn, useAuth } from '@clerk/clerk-react';
+import { ClerkProvider } from '@clerk/clerk-react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import Landing from './Landing';
 import Product from './Product';
@@ -24,12 +24,12 @@ import TopicQueuePage from './pages/TopicQueuePage';
 import ReviewPage from './pages/ReviewPage';
 import PrivacyPage from './pages/PrivacyPage';
 import EmailCampaignPage from './pages/EmailCampaignPage';
-import { RequirePaid } from './components/RequirePaid';
 import './index.css';
 
 
 
 // ── Global fetch interceptor — auto-injects Clerk auth token on all /api/ calls ──
+// Token is written to window.__forgeToken by AppContext on sign-in and refreshed every 55s.
 const _origFetch = window.fetch.bind(window);
 (window as any).fetch = async (input: RequestInfo | URL, init: RequestInit = {}) => {
   const url = typeof input === 'string' ? input
@@ -65,71 +65,6 @@ const _origFetch = window.fetch.bind(window);
 })();
 
 
-
-// ── Dev auth gate — single layout route wrapping all /app/* ──
-function AuthGate() {
-  const { isLoaded, isSignedIn } = useAuth();
-  if (!isLoaded) return null;
-  if (!isSignedIn) return (
-    <div style={{
-      position: 'fixed', inset: 0,
-      backgroundColor: '#0F1720',
-      backgroundImage: 'radial-gradient(circle at top left, rgba(53,99,255,0.18), transparent 55%), radial-gradient(circle at bottom right, rgba(20,184,166,0.10), transparent 55%)',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      zIndex: 9999,
-    }}>
-      <div style={{ marginBottom: 28, display: 'flex', alignItems: 'center', gap: 10 }}>
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3563FF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-        <span style={{ color: '#F8FAFC', fontSize: 18, fontWeight: 700, fontFamily: "Inter, system-ui, sans-serif", letterSpacing: '-0.3px' }}>Forge Intelligence</span>
-      </div>
-      <SignIn
-        routing="hash"
-        appearance={{
-          elements: {
-            rootBox: { width: 380 },
-            card: {
-              backgroundColor: '#1E293B',
-              border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: 12,
-              boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-              padding: '32px 32px 24px',
-            },
-            headerTitle: { color: '#F8FAFC', fontSize: 18, fontWeight: 700 },
-            headerSubtitle: { color: '#64748B' },
-            socialButtonsBlockButton: {
-              backgroundColor: '#0F1720',
-              border: '1px solid rgba(255,255,255,0.1)',
-              color: '#F8FAFC',
-              borderRadius: 8,
-            },
-            socialButtonsBlockButtonText: { color: '#F8FAFC' },
-            dividerLine: { backgroundColor: 'rgba(255,255,255,0.08)' },
-            dividerText: { color: '#64748B' },
-            formFieldLabel: { color: '#94A3B8', fontSize: 13 },
-            formFieldInput: {
-              backgroundColor: '#0F1720',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 8,
-              color: '#F8FAFC',
-            },
-            formButtonPrimary: {
-              backgroundColor: '#3563FF',
-              borderRadius: 8,
-              fontSize: 14,
-              fontWeight: 600,
-            },
-            footerActionText: { color: '#64748B' },
-            footerActionLink: { color: '#3563FF' },
-            identityPreviewText: { color: '#94A3B8' },
-            identityPreviewEditButton: { color: '#3563FF' },
-          },
-        }}
-      />
-    </div>
-  );
-  return <Outlet />;
-}
-
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_live_Y2xlcmsuZm9yZ2VpbnRlbGxpZ2VuY2UuYWkk"}>
@@ -140,24 +75,25 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/product" element={<Product />} />
 
-        {/* App — all product routes gated by Clerk auth */}
-        <Route element={<AuthGate />}>
-          <Route path="/app/context-hub/*" element={<AppProvider><ContextAgentPage /></AppProvider>} />
-          <Route path="/app/geo-strategist" element={<AppProvider><RequirePaid featureName="Geo Strategist"><GeoStrategistPage /></RequirePaid></AppProvider>} />
-          <Route path="/app/authenticity-enricher" element={<AppProvider><RequirePaid featureName="Authenticity Enricher"><AuthenticityEnricherPage /></RequirePaid></AppProvider>} />
-          <Route path="/app/content-generator" element={<AppProvider><RequirePaid featureName="Content Generator"><ContentGeneratorPage /></RequirePaid></AppProvider>} />
-          <Route path="/app/campaign-generator" element={<AppProvider><RequirePaid featureName="Campaign Generator"><CampaignGeneratorPage /></RequirePaid></AppProvider>} />
-          <Route path="/app/email-campaign" element={<AppProvider><RequirePaid featureName="Email Campaign"><EmailCampaignPage /></RequirePaid></AppProvider>} />
-          <Route path="/app/compliance-gate" element={<AppProvider><RequirePaid featureName="Compliance Gate"><ComplianceGatePage /></RequirePaid></AppProvider>} />
-          <Route path="/app/integrations" element={<AppProvider><RequirePaid featureName="Integrations"><IntegrationsPage /></RequirePaid></AppProvider>} />
-          <Route path="/app/publishing-queue" element={<AppProvider><RequirePaid featureName="Publishing Queue"><PublishingQueuePage /></RequirePaid></AppProvider>} />
-          <Route path="/app/performance" element={<AppProvider><RequirePaid featureName="Performance Dashboard"><PerformanceDashboardPage /></RequirePaid></AppProvider>} />
-          <Route path="/app/content-library" element={<AppProvider><RequirePaid featureName="Content Library"><ContentLibraryPage /></RequirePaid></AppProvider>} />
-          <Route path="/app/content-import" element={<AppProvider><RequirePaid featureName="Content Import"><ContentImportPage /></RequirePaid></AppProvider>} />
-          <Route path="/app/admin" element={<AppProvider><RequirePaid featureName="Admin"><AdminPage /></RequirePaid></AppProvider>} />
-          <Route path="/app/topic-queue" element={<AppProvider><RequirePaid featureName="Topic Queue"><TopicQueuePage /></RequirePaid></AppProvider>} />
-          <Route path="/app/brand-settings" element={<AppProvider><RequirePaid featureName="Brand Settings"><BrandSettingsPage /></RequirePaid></AppProvider>} />
-        </Route>
+        {/* App — all product routes live under /app/ */}
+        <Route
+          path="/app/context-hub/*"
+          element={<AppProvider><ContextAgentPage /></AppProvider>}
+        />
+        <Route path="/app/geo-strategist" element={<AppProvider><GeoStrategistPage /></AppProvider>} />
+        <Route path="/app/authenticity-enricher" element={<AppProvider><AuthenticityEnricherPage /></AppProvider>} />
+        <Route path="/app/content-generator" element={<AppProvider><ContentGeneratorPage /></AppProvider>} />
+        <Route path="/app/campaign-generator" element={<AppProvider><CampaignGeneratorPage /></AppProvider>} />
+        <Route path="/app/email-campaign" element={<AppProvider><EmailCampaignPage /></AppProvider>} />
+        <Route path="/app/compliance-gate" element={<AppProvider><ComplianceGatePage /></AppProvider>} />
+        <Route path="/app/integrations" element={<AppProvider><IntegrationsPage /></AppProvider>} />
+        <Route path="/app/publishing-queue" element={<AppProvider><PublishingQueuePage /></AppProvider>} />
+        <Route path="/app/performance" element={<AppProvider><PerformanceDashboardPage /></AppProvider>} />
+        <Route path="/app/content-library" element={<AppProvider><ContentLibraryPage /></AppProvider>} />
+        <Route path="/app/content-import" element={<AppProvider><ContentImportPage /></AppProvider>} />
+        <Route path="/app/admin" element={<AppProvider><AdminPage /></AppProvider>} />
+        <Route path="/app/topic-queue" element={<AppProvider><TopicQueuePage /></AppProvider>} />
+        <Route path="/app/brand-settings" element={<AppProvider><BrandSettingsPage /></AppProvider>} />
 
         {/* Public article viewer — no AppProvider needed */}
         <Route path="/articles/:brandSlug/:articleSlug" element={<PublicArticlePage />} />
