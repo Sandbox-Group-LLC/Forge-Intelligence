@@ -9,6 +9,12 @@ import '../components/GateModal.css';
 type ReviewMode = 'auto-ship' | 'approve-to-ship' | 'full-review';
 type ComplianceStatus = 'pending' | 'reviewed' | 'approved' | 'rejected';
 
+const IconInfo = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+  </svg>
+);
+
 const IconZap = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
@@ -325,7 +331,19 @@ function ComplianceGateContent() {
           <div>
             <div className="geo-eyebrow">Stage 5</div>
             <h1 className="geo-title">Compliance Gate</h1>
-            <p className="geo-description">AI self-critique + human refinement. Every edit trains the Brain.</p>
+            <p className="geo-description">
+              AI self-critique + human refinement. Every edit trains the Brain.
+              <span className="comp-scoring-tip-trigger" tabIndex={0}>
+                <IconInfo /> How scoring works
+                <span className="comp-scoring-tip">
+                  <strong>Auto-approved</strong> — No flags from the AI critique. Safe to publish.<br/>
+                  <strong>Pending review</strong> — AI flagged a concern (factual claim, brand voice, legal risk, or SME required). Review the flag, edit if needed, then approve.<br/>
+                  <strong>Yellow flags</strong> — Caution. The AI found something worth checking but not blocking.<br/>
+                  <strong>Red flags</strong> — High severity. Review before publishing.<br/><br/>
+                  Every human edit is written to the Brain as a learning signal — the more you review, the smarter future articles get.
+                </span>
+              </span>
+            </p>
           </div>
         </div>
 
