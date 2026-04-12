@@ -3677,7 +3677,7 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
 
     // Strip AI artifact placeholders from section bodies before saving
     if (parsed.sections) {
-      const artifactRx = /\[NEEDS CITATION:[^\]]*\]|\[CITATION:[^\]]*\]|\[SOURCE:[^\]]*\]/gi;
+      const artifactRx = /\[NEEDS[_ ]?CITATION[^\]]*\]|\[CITATION[^\]]*\]|\[SOURCE[^\]]*\]|\[LINK[^\]]*\]|\[INSERT[^\]]*\]|\[TBD[^\]]*\]/gi;
       parsed.sections = parsed.sections.map((s) => ({
         ...s,
         body: s.body ? s.body.replace(artifactRx, '').trim() : s.body,
