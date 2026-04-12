@@ -37,7 +37,7 @@
 
 ---
 
-## Platform Status (April 12, 2026)
+## Platform Status (April 11, 2026)
 
 ### All 8 Stages Live
 
@@ -297,7 +297,7 @@ Sandbox Group: **Sandbox-XM** (experience marketing) + **Sandbox-GTM** (event re
 
 ---
 
-## Updated: April 12, 2026
+## Updated: April 11, 2026
 
 ### Auth Architecture
 - Clerk JWT template `jwt-template-600` — 600 second token lifetime
