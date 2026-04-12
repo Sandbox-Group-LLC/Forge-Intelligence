@@ -87,7 +87,7 @@ function StreamProgress({ text }: { text: string }) {
 }
 
 function ContentGeneratorContent() {
-    const { activeBrand } = useApp();
+    const { activeBrand, authToken } = useApp();
 
   const [briefs, setBriefs] = useState<EnrichedBrief[]>([]);
 
