@@ -1673,13 +1673,103 @@
   font-weight: 500;
 }
 
-/* Pre-cog Score Badge */
+/* ── Pre-cog Score Badge ─────────────────────────────────────────────────── */
 .pq-precog-badge {
-  font-weight: 600;
-  font-size: 11px;
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 5px;
+  padding: 3px 8px 3px 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--precog-color, #64748B) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--precog-color, #64748B) 30%, transparent);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--precog-color, #64748B);
+  cursor: default;
+  margin-top: 6px;
+  width: fit-content;
+  transition: background 0.15s;
+}
+
+.pq-precog-badge:hover {
+  background: color-mix(in srgb, var(--precog-color, #64748B) 20%, transparent);
+}
+
+.pq-precog-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--precog-color, #64748B);
+  flex-shrink: 0;
+}
+
+.pq-precog-score {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.pq-precog-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.8;
+}
+
+.pq-precog-insufficient {
+  --precog-color: #475569;
+  opacity: 0.6;
+  font-weight: 500;
+  gap: 4px;
+}
+
+/* ── UTM Link tab — per-channel list ─────────────────────────────────────── */
+.pq-export-link-desc {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  margin: 0 0 16px;
+  line-height: 1.6;
+}
+.pq-utm-empty {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  padding: 20px 0;
+}
+.pq-utm-channel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pq-utm-channel-row {
+  display: grid;
+  grid-template-columns: 90px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+}
+.pq-utm-channel-label {
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.pq-utm-channel-url {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: monospace;
+}
+
+/* Send for Review link label */
+.pq-review-link-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
 /* Spin animation for loading states */
