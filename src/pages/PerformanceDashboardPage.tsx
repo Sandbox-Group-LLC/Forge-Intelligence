@@ -314,8 +314,8 @@ export default function PerformanceDashboardPage() {
     setWfSeoLoading(true);
     try {
       const token = await getToken({ template: 'jwt-template-600' });
-      const r = await fetch(\`/api/analytics/webflow-seo/\${brandProfileId}\`, {
-        headers: { 'Authorization': \`Bearer \${token}\` }
+      const r = await fetch(`/api/analytics/webflow-seo/${brandProfileId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       const d = await r.json();
       if (d.success) setWfSeo(d);
@@ -719,7 +719,7 @@ export default function PerformanceDashboardPage() {
                         { label: 'Published', value: String(wfSeo.totals?.published || 0), sub: 'Articles on Webflow', icon: 'eye' },
                         { label: 'Search Impressions', value: fmt(wfSeo.totals?.impressions || 0), sub: 'Google search appearances', icon: 'eye' },
                         { label: 'Search Clicks', value: fmt(wfSeo.totals?.clicks || 0), sub: 'Organic traffic', icon: 'click' },
-                        { label: 'Avg CTR', value: \`\${wfSeo.totals?.avgCtr || 0}%\`, sub: 'Click-through rate', icon: 'trend' },
+                        { label: 'Avg CTR', value: `${wfSeo.totals?.avgCtr || 0}%`, sub: 'Click-through rate', icon: 'trend' },
                         { label: 'Avg Position', value: wfSeo.totals?.avgPosition ? String(wfSeo.totals.avgPosition) : '—', sub: 'Search ranking', icon: 'trend' },
                       ].map(kpi => (
                         <div key={kpi.label} className="perf-kpi-card">
@@ -758,7 +758,7 @@ export default function PerformanceDashboardPage() {
                                 </td>
                                 <td className="num">{a.hasGscData ? fmt(a.impressions) : '—'}</td>
                                 <td className="num">{a.hasGscData ? fmt(a.clicks) : '—'}</td>
-                                <td className="num">{a.hasGscData ? \`\${a.ctr}%\` : '—'}</td>
+                                <td className="num">{a.hasGscData ? `${a.ctr}%` : '—'}</td>
                                 <td className="num">{a.hasGscData ? a.position : '—'}</td>
                                 <td>{a.published_at ? new Date(a.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}</td>
                               </tr>
