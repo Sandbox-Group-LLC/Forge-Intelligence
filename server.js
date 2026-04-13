@@ -2403,16 +2403,32 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
       messages: [{ role: 'user', content: prompt }]
     });
 
-    const raw = message.content[0].text;
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('Claude returned no valid JSON');
     let profileData;
-    try {
-      profileData = safeParseLLM(jsonMatch[0]);
-    } catch(parseErr) {
-      // Claude embedded bare newlines in string values — fix by replacing \n inside strings
-      const fixed = jsonMatch[0].replace(/:\s*"([\s\S]*?)"/g, (m, val) => ': "' + val.replace(/\n/g, ' ').replace(/\r/g, ' ') + '"');
-      profileData = JSON.parse(fixed);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const msg = attempt === 0 ? message : await anthropic.messages.create({
+        model: 'claude-opus-4-6',
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: prompt }]
+      });
+      const raw = msg.content[0].text;
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) { if (attempt === 1) throw new Error('Claude returned no valid JSON'); continue; }
+      try {
+        profileData = safeParseLLM(jsonMatch[0]);
+        break;
+      } catch(parseErr) {
+        try {
+          const fixed = jsonMatch[0].replace(/:\s*"([\s\S]*?)"/g, (m, val) => ': "' + val.replace(/\n/g, ' ').replace(/\r/g, ' ') + '"');
+          profileData = JSON.parse(fixed);
+          break;
+        } catch(fixErr) {
+          if (attempt === 0) {
+            console.log('[Context Hub] JSON parse failed, retrying Claude call...');
+            continue;
+          }
+          throw fixErr;
+        }
+      }
     }
 
     // Inject discovered competitors into profile
