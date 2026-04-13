@@ -92,7 +92,7 @@ export default function Landing() {
       }
     } catch { /* non-fatal — let Context Hub handle it */ }
 
-    await handleLookup(brandUrl);
+    // Don't await lookup — redirect immediately, let the app handle cache check
     sessionStorage.setItem('forge_onboard_url', brandUrl);
     window.location.href = '/app/context-hub?view=active-run';
   };
