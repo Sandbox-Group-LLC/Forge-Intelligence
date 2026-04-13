@@ -409,6 +409,7 @@ export default function PerformanceDashboardPage() {
     <AppShell>
       <GateModal
         featureName="Performance Dashboard"
+            brandProfileId={activeBrand?.id}
         onClose={() => window.location.href = '/app/context-hub'}
         onUnlocked={() => {}}
       />
