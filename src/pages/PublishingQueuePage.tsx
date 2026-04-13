@@ -212,7 +212,7 @@ export default function PublishingQueuePage() {
     publishTime: string;
     preview: { id: string; title: string; week: number; day: string; scheduledAt: string }[];
   } | null>(null);
-  const [schedCampaignChannel, setSchedCampaignChannel] = useState<string>('');
+  const [schedCampaignChannels, setSchedCampaignChannels] = useState<string[]>([]);
   const [generatingImage, setGeneratingImage] = useState(false);
   const [reviewUrl, setReviewUrl] = useState<string | null>(null);
   const [reviewCopied, setReviewCopied] = useState(false);
@@ -261,7 +261,7 @@ export default function PublishingQueuePage() {
   const scheduleCampaign = async () => {
     if (!campaignScheduler) return;
     const { items, startDate, publishTime } = campaignScheduler;
-    if (!schedCampaignChannel) { setError('Select a publish channel'); return; }
+    if (!schedCampaignChannels.length) { setError('Select at least one publish channel'); return; }
     const preview = buildSchedulePreview(items, startDate, publishTime);
     if (!preview.length) { setError('Set a start date before scheduling'); return; }
     try {
@@ -269,7 +269,7 @@ export default function PublishingQueuePage() {
         fetch(`/api/publishing/queue/${p.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', ...ah },
-          body: JSON.stringify({ scheduledAt: p.scheduledAt, channels: [schedCampaignChannel], status: 'scheduled' })
+          body: JSON.stringify({ scheduledAt: p.scheduledAt, channels: schedCampaignChannels, status: 'scheduled' })
         }).then(r => r.json())
       ));
       const failed = results.filter((r: any) => !r.success);
@@ -277,7 +277,7 @@ export default function PublishingQueuePage() {
         setError(`${failed.length} article(s) failed to schedule`);
       } else {
         setCampaignScheduler(null);
-        setSchedCampaignChannel('');
+        setSchedCampaignChannels([]);
         loadQueue();
         setSuccessMsg(`Campaign scheduled — ${preview.length} articles queued`);
         setTimeout(() => setSuccessMsg(''), 5000);
@@ -2046,18 +2046,23 @@ return (
                     <span className="pq-sched-hint">Applied to all articles</span>
                   </div>
                   <div className="pq-sched-field">
-                    <label className="pq-sched-label">Publish Channel</label>
-                    <select
-                      className="pq-sched-input"
-                      value={schedCampaignChannel}
-                      onChange={e => setSchedCampaignChannel(e.target.value)}
-                    >
-                      <option value="">Select a channel...</option>
+                    <label className="pq-sched-label">Publish Channels</label>
+                    <div className="pq-channel-checkboxes">
                       {(connectedChannels[items[0]?.brand_profile_id] || []).map(ch => (
-                        <option key={ch} value={ch}>{ch.charAt(0).toUpperCase() + ch.slice(1)}</option>
+                        <label key={ch} className={`pq-channel-checkbox ${schedCampaignChannels.includes(ch) ? 'checked' : ''}`}>
+                          <input
+                            type="checkbox"
+                            checked={schedCampaignChannels.includes(ch)}
+                            onChange={e => {
+                              if (e.target.checked) setSchedCampaignChannels(prev => [...prev, ch]);
+                              else setSchedCampaignChannels(prev => prev.filter(c => c !== ch));
+                            }}
+                          />
+                          {ch.charAt(0).toUpperCase() + ch.slice(1)}
+                        </label>
                       ))}
-                    </select>
-                    <span className="pq-sched-hint">All articles publish to this channel</span>
+                    </div>
+                    <span className="pq-sched-hint">{schedCampaignChannels.length ? `${schedCampaignChannels.length} channel${schedCampaignChannels.length > 1 ? 's' : ''} selected` : 'Select channels to publish to'}</span>
                   </div>
                 </div>
                 {livePreview.length > 0 ? (
@@ -2083,7 +2088,7 @@ return (
                 <button className="pq-cancel-btn" onClick={() => setCampaignScheduler(null)}>Cancel</button>
                 <button
                   className="pq-publish-now-btn"
-                  disabled={!startDate || livePreview.length === 0 || !schedCampaignChannel}
+                  disabled={!startDate || livePreview.length === 0 || !schedCampaignChannels.length}
                   onClick={scheduleCampaign}
                 >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:6}}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
