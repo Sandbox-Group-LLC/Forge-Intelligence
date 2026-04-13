@@ -343,12 +343,12 @@ export function BrandProfile() {
       {/* Pipeline Next Step */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '32px', padding: '20px 24px', background: 'var(--color-surface, #f8fafc)', borderRadius: '12px', border: '1px solid var(--color-border, #e2e8f0)' }}>
         <div>
-          <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-text, #1e293b)' }}>Ready to build your content strategy?</div>
-          <div style={{ fontSize: '12px', color: 'var(--color-text-secondary, #64748b)', marginTop: '2px' }}>Next: Map your GEO citation opportunities across ChatGPT, Perplexity, Gemini, and AI Overviews.</div>
+          <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-text, #1e293b)' }}>Your Strategy Brief is ready</div>
+          <div style={{ fontSize: '12px', color: 'var(--color-text-secondary, #64748b)', marginTop: '2px' }}>Next: Review your priority matrix — actionable recommendations ranked by impact and effort.</div>
         </div>
-        <a href={`/app/geo-strategist?profileId=${brandProfile.id || ''}`} style={{ padding: '10px 24px', background: 'var(--color-accent, #4F46E5)', color: '#fff', borderRadius: '8px', fontSize: '13px', fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap' }}>
-          Run GEO Strategy →
-        </a>
+        <button onClick={() => { const e = new CustomEvent('forge:set-view', { detail: 'strategy' }); window.dispatchEvent(e); window.location.href = '/app/context-hub?view=strategy'; }} style={{ padding: '10px 24px', background: 'var(--color-accent, #4F46E5)', color: '#fff', borderRadius: '8px', fontSize: '13px', fontWeight: 600, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          View Strategy Brief →
+        </button>
       </div>
     </div>
   );
