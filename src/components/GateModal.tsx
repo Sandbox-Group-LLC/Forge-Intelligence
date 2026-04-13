@@ -178,7 +178,12 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
         <div id="forge-gate-paypal" />
 
         <p className="gate-caption">Your free brand brief stays. Payment unlocks everything above Stage 1.</p>
-        <p style={{ marginTop: 16, fontSize: '0.7rem', color: 'rgba(255,255,255,0.2)', textAlign: 'center', lineHeight: 1.5 }}>
+        <p style={{ marginTop: 14, fontSize: '0.7rem', color: 'rgba(255,255,255,0.25)', textAlign: 'center', lineHeight: 1.6 }}>
+          By clicking "Pay Now," you agree to our{" "}
+          <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: 'rgba(255,255,255,0.4)', textDecoration: 'underline' }}>Terms of Service</a>{" "}and{" "}
+          <a href="/acceptable-use" target="_blank" rel="noopener noreferrer" style={{ color: 'rgba(255,255,255,0.4)', textDecoration: 'underline' }}>Acceptable Use Policy</a>, confirming that your purchase complies with all applicable laws and usage guidelines.
+        </p>
+        <p style={{ marginTop: 10, fontSize: '0.7rem', color: 'rgba(255,255,255,0.2)', textAlign: 'center', lineHeight: 1.5 }}>
           If you believe your brand profile was incorrectly assigned, contact us at{" "}
           <a href="mailto:hello@forgeintelligence.ai" style={{ color: 'rgba(255,255,255,0.35)' }}>hello@forgeintelligence.ai</a>{" "}
           and we'll verify domain ownership and make it right.
