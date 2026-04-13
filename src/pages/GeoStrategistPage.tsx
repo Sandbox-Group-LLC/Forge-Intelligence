@@ -76,16 +76,15 @@ function GeoStrategistContent() {
           headers: { 'Authorization': `Bearer ${authToken}` }
         });
         const d = await res.json();
-        if (d.success && d.briefs?.length > 0) {
-          const brief = d.briefs[0];
-          const bd = typeof brief.brief_data === 'string' ? JSON.parse(brief.brief_data) : brief.brief_data;
+        if (d.success && d.data?.length > 0) {
+          const b = d.data.find((x: any) => x.brandProfileId === selectedBrainId) || d.data[0];
           setResult({
-            opportunityScore: brief.opportunity_score || bd.opportunityScore || 0,
-            topicalAuthorityMap: bd.topicalAuthorityMap || [],
-            geoOpportunities: bd.geoOpportunities || [],
-            entitySchemaMap: bd.entitySchemaMap || [],
-            geoBrief: bd.geoBrief || null,
-            brandName: brief.brand_name || '',
+            opportunityScore: b.opportunityScore || 0,
+            topicalAuthorityMap: b.topicalAuthorityMap || [],
+            geoOpportunities: b.geoOpportunities || [],
+            entitySchemaMap: b.entitySchemaMap || [],
+            geoBrief: b.geoBrief || null,
+            brandName: b.brandName || '',
             latencyMs: 0
           });
         }
