@@ -99,16 +99,16 @@ export function Strategy() {
             Actionable insights derived from the {brandProfile.brandName} brand intelligence profile
           </p>
         </div>
-        <div className="header-meta" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#334155', lineHeight: 1, boxSizing: 'border-box' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#334155', lineHeight: 1, boxSizing: 'border-box', fontFamily: 'inherit', cursor: 'default' }} disabled>
             {brandProfile.strategicRecommendations.length} Recommendations
-          </span>
-          <button onClick={() => {}} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0 }}>
+          </button>
+          <button onClick={() => {}} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
             {icons.download} Export Brief
           </button>
-          <a href="/app/geo-strategist" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, borderRadius: 8, background: '#4F46E5', color: '#fff', border: '1px solid #4F46E5', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0 }}>
+          <button onClick={() => { window.location.href = '/app/geo-strategist'; }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, borderRadius: 8, background: '#4F46E5', color: '#fff', border: '1px solid #4F46E5', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
             Run GEO Strategy →
-          </a>
+          </button>
         </div>
       </div>
 
