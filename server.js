@@ -8613,6 +8613,17 @@ app.post('/api/admin/reset-brand-paid', async (req, res) => {
 });
 
 
+// ── Robots.txt — block crawlers on dev, allow on production ──────────────────
+app.get('/robots.txt', (req, res) => {
+  const host = req.headers.host || '';
+  const isDev = host.includes('dev.');
+  res.type('text/plain');
+  res.send(isDev
+    ? 'User-agent: *\nDisallow: /'
+    : 'User-agent: *\nAllow: /\nDisallow: /app/\nSitemap: https://forgeintelligence.ai/sitemap.xml'
+  );
+});
+
 // ── Neon SQL Relay ────────────────────────────────────────────────────────────
 app.post('/api/admin/relay', express.json({ limit: '500kb' }), async (req, res) => {
   const { adminPassword, query, values } = req.body;
