@@ -7282,10 +7282,10 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
         [brandProfileId]
       ).catch(() => ({ rows: [] }));
       const ghostCreds  = ghostCredRes.rows[0]?.credentials || {};
-      const ghostApiKey = ghostCreds.adminApiKey || process.env.GHOST_ADMIN_API_KEY;
-      const ghostApiUrl = (ghostCreds.adminUrl || process.env.GHOST_API_URL || '').replace(/\/+$/, '');
+      const ghostApiKey = ghostCreds.adminApiKey;
+      const ghostApiUrl = (ghostCreds.adminUrl || '').replace(/\/+$/, '');
       if (!ghostApiKey || !ghostApiUrl) {
-        // Ghost not configured for this brand — skip silently
+        // Ghost not configured for this brand — skip
       } else {
         const safeId = brandProfileId.replace(/-/g, '_');
         // Fetch all published posts directly from Ghost Admin API
