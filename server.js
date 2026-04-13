@@ -3886,10 +3886,10 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
 
     await pool.query(
       `INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+       VALUES ($1, $2, $3, $4, $5)`,
       ['stage4_content_generator', brandProfileId, 'success',
        (stream.usage?.input_tokens || 0) + (stream.usage?.output_tokens || 0),
-       0, JSON.stringify({ title: parsed.title, overallConfidence: parsed.overallConfidence })]
+       0]
     ).catch(() => {});
 
     send('done', JSON.stringify({ ...parsed, contentId }));
@@ -4738,7 +4738,7 @@ app.post('/api/compliance/dismiss-flag', requireAuth, async (req, res) => {
     );
     await pool.query(
       `INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms)
-       VALUES ('compliance_dismiss', $1, 'success', 0, 0, $2)`,
+       VALUES ('compliance_dismiss', $1, 'success', 0, 0)`,
       [brandProfileId]
     ).catch(() => {});
     res.json({ success: true });
