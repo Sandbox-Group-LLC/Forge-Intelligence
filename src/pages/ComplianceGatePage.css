@@ -546,19 +546,19 @@
 .comp-rewrite-toolbar {
   position: fixed;
   z-index: 60;
-  background: var(--color-bg-card, #1E293B);
-  border: 1px solid rgba(59, 130, 246, 0.3);
+  background: #0F172A;
+  border: 1px solid rgba(59, 130, 246, 0.4);
   border-radius: 8px;
-  padding: 8px 10px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-  min-width: 300px;
-  max-width: 420px;
+  padding: 10px 12px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  min-width: 320px;
+  max-width: 440px;
 }
 .comp-rewrite-toolbar-selected {
-  font-size: 11px;
-  color: rgba(148, 163, 184, 0.7);
+  font-size: 12px;
+  color: #94A3B8;
   font-style: italic;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -569,55 +569,55 @@
 }
 .comp-rewrite-input {
   flex: 1;
-  padding: 6px 10px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 8px 12px;
+  background: #1E293B;
+  border: 1px solid #334155;
   border-radius: 6px;
-  color: #e2e8f0;
-  font-size: 13px;
+  color: #F1F5F9;
+  font-size: 14px;
   font-family: inherit;
   outline: none;
 }
 .comp-rewrite-input:focus {
-  border-color: rgba(59, 130, 246, 0.5);
+  border-color: #3B82F6;
 }
 .comp-rewrite-input::placeholder {
-  color: rgba(148, 163, 184, 0.4);
+  color: #64748B;
 }
 .comp-rewrite-btn {
-  padding: 6px 14px;
-  background: rgba(59, 130, 246, 0.85);
-  color: #fff;
+  padding: 8px 16px;
+  background: #3B82F6;
+  color: #FFFFFF;
   border: none;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.12s;
 }
 .comp-rewrite-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: default;
 }
 .comp-rewrite-btn:hover:not(:disabled) {
-  background: rgba(59, 130, 246, 1);
+  background: #2563EB;
 }
 .comp-rewrite-delete {
-  padding: 6px 10px;
-  background: rgba(239, 68, 68, 0.12);
-  color: rgba(248, 113, 113, 0.9);
-  border: 1px solid rgba(239, 68, 68, 0.25);
+  padding: 8px 10px;
+  background: #1E293B;
+  color: #F87171;
+  border: 1px solid rgba(239, 68, 68, 0.35);
   border-radius: 6px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.12s;
   line-height: 1;
 }
 .comp-rewrite-delete:hover {
-  background: rgba(239, 68, 68, 0.25);
-  color: #f87171;
+  background: rgba(239, 68, 68, 0.15);
+  color: #FCA5A5;
 }
 .comp-rewrite-undo {
   background: none;
