@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useAuth } from '@clerk/clerk-react';
 import { useApp } from '../../context/AppContext';
 import './BrandProfile.css';
 
@@ -36,6 +37,7 @@ type TabType = 'voice' | 'personas' | 'signals' | 'gaps';
 
 export function BrandProfile() {
   const { brandProfile, setBrandProfile } = useApp();
+  const { getToken } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>('voice');
   const [reanalyzing, setReanalyzing] = useState(false);
 
@@ -43,9 +45,10 @@ export function BrandProfile() {
     if (!brandProfile?.brandUrl || reanalyzing) return;
     setReanalyzing(true);
     try {
+      const token = await getToken();
       const r = await fetch('/api/context-hub/analyze', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
         body: JSON.stringify({
           brandUrl: brandProfile.brandUrl,
           competitorUrls: [],
