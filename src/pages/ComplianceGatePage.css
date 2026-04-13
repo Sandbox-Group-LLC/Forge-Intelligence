@@ -8,8 +8,7 @@
 
 /* ── Mode Selector ─────────────────────────────────────────────────────────── */
 .comp-mode-bar {
-  display: grid !important;
-  grid-template-columns: 1fr 1fr !important;
+  display: flex;
   gap: 12px;
 }
 
@@ -19,8 +18,7 @@
   flex-direction: column;
   gap: 6px;
   padding: 16px;
-  width: 100%;
-  min-width: 0;
+  flex: 1;
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-lg);
