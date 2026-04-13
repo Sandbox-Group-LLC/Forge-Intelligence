@@ -47,7 +47,7 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
       // Pre-auth payment — tether brand to future Clerk account via localStorage
       if (brandProfileId) localStorage.setItem('forge_pending_brand_id', brandProfileId);
       setTimeout(() => {
-        window.location.href = `${CLERK_SIGNUP_URL}?redirect_url=${encodeURIComponent(window.location.origin + '/app/context-hub')}`;
+        window.location.href = `${CLERK_SIGNUP_URL}?redirect_url=${encodeURIComponent(window.location.href)}`;
       }, 1200);
     }
   }
