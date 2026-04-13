@@ -8073,7 +8073,7 @@ app.get('/api/admin/mission-control', requireAuth, async (req, res) => {
       pool.query(`SELECT channel, COUNT(*) as total,
         COUNT(CASE WHEN is_active THEN 1 END) as active
         FROM publishing_channels GROUP BY channel ORDER BY channel`),
-      pool.query(`SELECT agent_name, brand_profile_id, status, tokens_used, latency_ms, created_at, metadata
+      pool.query(`SELECT agent_name, brand_profile_id, status, tokens_used, latency_ms, created_at
         FROM agent_activity_log ORDER BY created_at DESC LIMIT 20`),
     ]);
 
@@ -8131,7 +8131,7 @@ app.get('/api/admin/mission-control', requireAuth, async (req, res) => {
       recentActivity: recentActivityRes.rows.map(r => ({
         agent: r.agent_name, brand: r.brand_profile_id,
         status: r.status, tokens: r.tokens_used, latency: r.latency_ms,
-        createdAt: r.created_at, metadata: r.metadata
+        createdAt: r.created_at
       })),
     });
   } catch(e) {
