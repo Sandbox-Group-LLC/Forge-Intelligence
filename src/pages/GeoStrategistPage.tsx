@@ -67,6 +67,33 @@ function GeoStrategistContent() {
     if (activeBrand?.id && !selectedBrainId) setSelectedBrainId(activeBrand.id);
   }, [activeBrand?.id]);
 
+  // Fetch existing GEO results on mount
+  useEffect(() => {
+    if (!selectedBrainId || result) return;
+    const fetchExisting = async () => {
+      try {
+        const res = await fetch(`/api/geo-strategist/briefs?brandProfileId=${selectedBrainId}`, {
+          headers: { 'Authorization': `Bearer ${(window as any).__clerk_token || ''}` }
+        });
+        const d = await res.json();
+        if (d.success && d.briefs?.length > 0) {
+          const brief = d.briefs[0];
+          const bd = typeof brief.brief_data === 'string' ? JSON.parse(brief.brief_data) : brief.brief_data;
+          setResult({
+            opportunityScore: brief.opportunity_score || bd.opportunityScore || 0,
+            topicalAuthorityMap: bd.topicalAuthorityMap || [],
+            geoOpportunities: bd.geoOpportunities || [],
+            entitySchemaMap: bd.entitySchemaMap || [],
+            geoBrief: bd.geoBrief || null,
+            brandName: brief.brand_name || '',
+            latencyMs: 0
+          });
+        }
+      } catch { /* silent */ }
+    };
+    fetchExisting();
+  }, [selectedBrainId]);
+
   // Use historyEntries from AppContext (already loaded) as brain list
   const brains: BrainEntry[] = historyEntries.map(e => ({
     id: e.id,
@@ -302,6 +329,18 @@ function GeoStrategistContent() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Next Step CTA */}
+      {result && !isRunning && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px', paddingBottom: '24px' }}>
+          <button className="geo-run-btn" style={{ opacity: 0.6 }} onClick={() => { setResult(null); setIsRerun(true); }}>
+            Re-run GEO Analysis
+          </button>
+          <a href="/app/authenticity-enricher" className="geo-run-btn" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            Continue to Authenticity Enricher →
+          </a>
         </div>
       )}
     </div>
