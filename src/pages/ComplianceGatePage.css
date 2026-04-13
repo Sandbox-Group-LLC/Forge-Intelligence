@@ -546,7 +546,7 @@
 .comp-rewrite-toolbar {
   position: fixed;
   z-index: 60;
-  background: #bfbfbf;
+  background: #999a99;
   border: 1px solid rgba(59, 130, 246, 0.4);
   border-radius: 8px;
   padding: 10px 12px;
@@ -556,7 +556,7 @@
 }
 .comp-rewrite-toolbar-selected {
   font-size: 12px;
-  color: #94A3B8;
+  color: #bfbfbf;
   font-style: italic;
   margin-bottom: 8px;
   overflow: hidden;
