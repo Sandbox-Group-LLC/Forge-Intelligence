@@ -546,7 +546,7 @@
 .comp-rewrite-toolbar {
   position: fixed;
   z-index: 60;
-  background: #959595;
+  background: #cfcfcf;
   border: 1px solid rgba(121, 121, 121, 0.4);
   border-radius: 8px;
   padding: 10px 12px;
@@ -556,7 +556,7 @@
 }
 .comp-rewrite-toolbar-selected {
   font-size: 12px;
-  color: #eaeaea;
+  color: #454545;
   font-style: italic;
   margin-bottom: 8px;
   overflow: hidden;
@@ -570,10 +570,10 @@
 .comp-rewrite-input {
   flex: 1;
   padding: 8px 12px;
-  background: #b3b3b3;
+  background: #ededed;
   border: 1px solid #777777;
   border-radius: 6px;
-  color: #F1F5F9;
+  color: #5c5c5c;
   font-size: 14px;
   font-family: inherit;
   outline: none;
@@ -605,7 +605,7 @@
 }
 .comp-rewrite-delete {
   padding: 8px 10px;
-  background: #995151;
+  background: #f0c5c5;
   color: #F87171;
   border: 1px solid rgba(239, 68, 68, 0.35);
   border-radius: 6px;
