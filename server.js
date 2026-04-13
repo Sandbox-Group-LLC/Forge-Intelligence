@@ -4286,6 +4286,66 @@ app.post('/api/compliance/rewrite-section', requireAuth, async (req, res) => {
 });
 
 
+// POST /api/compliance/rewrite-selection — AI rewrites only the selected text per user instruction
+app.post('/api/compliance/rewrite-selection', requireAuth, async (req, res) => {
+  const { selectedText, instruction, fullSectionText, sectionHeading, brandProfileId } = req.body;
+  if (!selectedText || !instruction) return res.status(400).json({ error: 'selectedText and instruction required' });
+  try {
+    // Load brand voice profile
+    const profileRes = brandProfileId
+      ? await pool.query('SELECT profile_data FROM brand_profiles WHERE id = $1', [brandProfileId])
+      : { rows: [] };
+    const voiceProfile = profileRes.rows[0]?.profile_data?.voiceProfile || profileRes.rows[0]?.profile_data?.voice_profile || null;
+
+    let voiceBlock = '';
+    if (voiceProfile) {
+      voiceBlock = `\nBRAND VOICE:\n${voiceProfile.summary || ''}`;
+      if (voiceProfile.toneAttributes?.length) {
+        voiceBlock += `\nTone: ${voiceProfile.toneAttributes.map((t) => `${t.attribute} (${t.score}/10)`).join(', ')}`;
+      }
+      if (voiceProfile.writingStyle) voiceBlock += `\nStyle: ${voiceProfile.writingStyle}`;
+    }
+
+    // Load brain mistakes for this brand
+    let mistakesBlock = '';
+    try {
+      const mistakesRes = await pool.query(
+        'SELECT mistake_type, description, human_feedback FROM brain_mistakes WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 20',
+        [brandProfileId]
+      );
+      if (mistakesRes.rows.length) {
+        mistakesBlock = '\nKNOWN MISTAKES TO AVOID:\n' + mistakesRes.rows.map((m) => `- ${m.description}${m.human_feedback ? ' → ' + m.human_feedback : ''}`).join('\n');
+      }
+    } catch {}
+
+    const systemPrompt = `You are a precision editor. Rewrite ONLY the selected text according to the user's instruction.${voiceBlock}${mistakesBlock}
+
+RULES:
+- Return ONLY the rewritten text, nothing else
+- No preamble, no labels, no commentary
+- Preserve the same approximate length unless the instruction implies otherwise
+- Maintain the brand voice described above
+- Do not change meaning unless the instruction asks for it
+- Match the surrounding context's tone and tense`;
+
+    const userPrompt = `SECTION: "${sectionHeading || 'Untitled'}"\n\nFULL SECTION CONTEXT:\n${fullSectionText || ''}\n\nSELECTED TEXT TO REWRITE:\n"${selectedText}"\n\nINSTRUCTION:\n${instruction}\n\nReturn only the rewritten text:`;
+
+    const response = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
+    });
+
+    const rewrittenText = response.content[0]?.text?.trim();
+    if (!rewrittenText) return res.status(500).json({ success: false, error: 'AI returned empty response' });
+    res.json({ success: true, rewrittenText });
+  } catch (e) {
+    console.error('[REWRITE-SELECTION]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 app.post('/api/compliance/find-sources', requireAuth, async (req, res) => {
   const { claim, sectionBody } = req.body;
   if (!claim && !sectionBody) return res.status(400).json({ error: 'claim or sectionBody required' });

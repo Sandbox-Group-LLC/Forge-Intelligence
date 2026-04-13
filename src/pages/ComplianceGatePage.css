@@ -541,3 +541,80 @@
   color: var(--color-text-muted);
   font-style: italic;
 }
+
+/* ── Targeted AI Rewrite toolbar ── */
+.comp-rewrite-toolbar {
+  position: fixed;
+  z-index: 60;
+  background: var(--color-bg-card, #1E293B);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 8px;
+  padding: 8px 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  min-width: 300px;
+  max-width: 420px;
+}
+.comp-rewrite-toolbar-selected {
+  font-size: 11px;
+  color: rgba(148, 163, 184, 0.7);
+  font-style: italic;
+  margin-bottom: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.comp-rewrite-toolbar-row {
+  display: flex;
+  gap: 6px;
+}
+.comp-rewrite-input {
+  flex: 1;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #e2e8f0;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+.comp-rewrite-input:focus {
+  border-color: rgba(59, 130, 246, 0.5);
+}
+.comp-rewrite-input::placeholder {
+  color: rgba(148, 163, 184, 0.4);
+}
+.comp-rewrite-btn {
+  padding: 6px 14px;
+  background: rgba(59, 130, 246, 0.85);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s;
+}
+.comp-rewrite-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.comp-rewrite-btn:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 1);
+}
+.comp-rewrite-undo {
+  background: none;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: rgba(148, 163, 184, 0.7);
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  margin-top: 6px;
+  transition: color 0.12s, border-color 0.12s;
+}
+.comp-rewrite-undo:hover {
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.4);
+}

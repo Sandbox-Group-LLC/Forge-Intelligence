@@ -144,6 +144,12 @@ function ComplianceGateContent() {
   const [step, setStep] = useState<'select' | 'review' | 'done'>('select');
   const [error, setError] = useState('');
 
+  // Targeted rewrite state
+  const [selectionToolbar, setSelectionToolbar] = useState<{ idx: number; text: string; start: number; end: number; top: number; left: number } | null>(null);
+  const [rewriteInstruction, setRewriteInstruction] = useState('');
+  const [rewriteSelLoading, setRewriteSelLoading] = useState(false);
+  const [rewriteUndo, setRewriteUndo] = useState<{ idx: number; original: string } | null>(null);
+
   // Always get a fresh token at call time — never rely on state which may be stale
   const freshToken = async () => {
     try { return await getToken({ template: 'jwt-template-600' }) || authToken || (window as any).__forgeToken || ''; }
@@ -345,6 +351,55 @@ function ComplianceGateContent() {
   const statusBadge = (status: ComplianceStatus) => {
     const map = { pending: '⏳ Pending', reviewed: '🔍 Reviewed', approved: '✅ Approved', rejected: '❌ Rejected' };
     return map[status] || status;
+  };
+
+  // Targeted rewrite — text selection handler for edit textareas
+  const handleTextSelection = (e: React.SyntheticEvent<HTMLTextAreaElement>, idx: number) => {
+    const ta = e.currentTarget;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const text = ta.value.slice(start, end).trim();
+    if (text.length < 4) { setSelectionToolbar(null); return; }
+    const rect = ta.getBoundingClientRect();
+    // Position toolbar above the textarea, offset by rough caret position
+    const lineHeight = 20;
+    const charsPerLine = Math.max(Math.floor(rect.width / 8), 1);
+    const lineOffset = Math.floor(start / charsPerLine) * lineHeight;
+    setSelectionToolbar({ idx, text, start, end, top: rect.top + lineOffset - 50 + window.scrollY, left: rect.left + 10 + window.scrollX });
+    setRewriteInstruction('');
+  };
+
+  const handleSelectionRewrite = async (idx: number) => {
+    if (!selectionToolbar || !rewriteInstruction.trim() || !selectedArticle) return;
+    setRewriteSelLoading(true);
+    try {
+      const sections = selectedArticle.article_json?.sections || [];
+      const sectionText = editedSections[idx] ?? sections[idx]?.body ?? sections[idx]?.content ?? '';
+      const res = await authFetch('/api/compliance/rewrite-selection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          selectedText: selectionToolbar.text,
+          instruction: rewriteInstruction,
+          fullSectionText: sectionText,
+          sectionHeading: sections[idx]?.heading || '',
+          brandProfileId,
+        }),
+      });
+      const data = await res.json();
+      if (data.rewrittenText) {
+        setRewriteUndo({ idx, original: sectionText });
+        const before = sectionText.slice(0, selectionToolbar.start);
+        const after = sectionText.slice(selectionToolbar.end);
+        setEditedSections(p => ({ ...p, [idx]: before + data.rewrittenText + after }));
+        setSelectionToolbar(null);
+        setRewriteInstruction('');
+      }
+    } catch (err) {
+      console.error('[rewrite-selection]', err);
+    } finally {
+      setRewriteSelLoading(false);
+    }
   };
 
   return (
@@ -617,15 +672,40 @@ function ComplianceGateContent() {
                     <HighlightedBody body={section.body || section.content || ''} flag={flag} />
 
                     {isEditing ? (
-                      <div className="comp-edit-wrap">
-                        <div className="comp-edit-label">Edit section copy below — your changes replace this section before publishing</div>
+                      <div className="comp-edit-wrap" style={{ position: 'relative' }}>
+                        <div className="comp-edit-label">Edit section copy below — select text and describe a change for AI rewrite</div>
                         <textarea
                           className="comp-section-edit"
                           value={editVal}
-                          onChange={e => setEditedSections(p => ({ ...p, [idx]: e.target.value }))}
+                          onChange={e => { setEditedSections(p => ({ ...p, [idx]: e.target.value })); setRewriteUndo(null); }}
+                          onMouseUp={e => handleTextSelection(e, idx)}
+                          onKeyUp={e => handleTextSelection(e as unknown as React.SyntheticEvent<HTMLTextAreaElement>, idx)}
                           placeholder="Edit the section text here. Address the flagged issue above, then submit below to approve and stage for publishing."
                           rows={8}
                         />
+                        {selectionToolbar && selectionToolbar.idx === idx && (
+                          <div className="comp-rewrite-toolbar" style={{ top: selectionToolbar.top, left: selectionToolbar.left }}>
+                            <div className="comp-rewrite-toolbar-selected">"{selectionToolbar.text.length > 80 ? selectionToolbar.text.slice(0, 80) + '…' : selectionToolbar.text}"</div>
+                            <div className="comp-rewrite-toolbar-row">
+                              <input
+                                className="comp-rewrite-input"
+                                value={rewriteInstruction}
+                                onChange={e => setRewriteInstruction(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') handleSelectionRewrite(idx); if (e.key === 'Escape') setSelectionToolbar(null); }}
+                                placeholder="Describe your change…"
+                                autoFocus
+                              />
+                              <button className="comp-rewrite-btn" onClick={() => handleSelectionRewrite(idx)} disabled={rewriteSelLoading || !rewriteInstruction.trim()}>
+                                {rewriteSelLoading ? 'Rewriting…' : 'Rewrite'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                        {rewriteUndo && rewriteUndo.idx === idx && (
+                          <button className="comp-rewrite-undo" onClick={() => { setEditedSections(p => ({ ...p, [idx]: rewriteUndo.original })); setRewriteUndo(null); }}>
+                            ↩ Undo rewrite
+                          </button>
+                        )}
                       </div>
                     ) : (
                       <p className="comp-section-body">{section.body || section.content}</p>
