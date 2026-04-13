@@ -140,6 +140,12 @@ export function BrandProfile() {
             Export JSON
           </button>
           <a
+            href="/app/context-hub?view=strategy"
+            className="btn-action"
+          >
+            Strategy Brief →
+          </a>
+          <a
             href={`/app/geo-strategist?profileId=${brandProfile.id}`}
             className="btn-action geo-cta"
           >
