@@ -2020,7 +2020,7 @@ app.post('/api/precog/score', requireAuth, async (req, res) => {
     // Save score to content table
     await pool.query(`ALTER TABLE ${contentTable} ADD COLUMN IF NOT EXISTS precog_score INTEGER`).catch(() => {});
     await pool.query(`ALTER TABLE ${contentTable} ADD COLUMN IF NOT EXISTS precog_breakdown JSONB`).catch(() => {});
-    await pool.query(`UPDATE ${contentTable} SET precog_score = $1, precog_breakdown = $2, updated_at = NOW() WHERE id = $3`, [score, JSON.stringify(breakdown), contentId]);
+    await pool.query(`UPDATE ${contentTable} SET precog_score = $1, precog_breakdown = $2, updated_at = NOW() WHERE id = $3`, [Math.round(score), JSON.stringify(breakdown), contentId]);
 
     res.json({
       success: true, score, tier, prediction, color, breakdown, predictedImpressions,
