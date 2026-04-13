@@ -313,10 +313,9 @@ export default function PerformanceDashboardPage() {
     if (!brandProfileId) return;
     setWfSeoLoading(true);
     try {
-      const token = await getToken({ template: 'jwt-template-600' });
-      const r = await fetch(`/api/analytics/webflow-seo/${brandProfileId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const token = authTokenRef.current || authToken || '';
+      const h: Record<string,string> = token ? { 'Authorization': `Bearer ${token}` } : {};
+      const r = await fetch(`/api/analytics/webflow-seo/${brandProfileId}`, { headers: h });
       const d = await r.json();
       if (d.success) setWfSeo(d);
     } catch(e) { console.error('Webflow SEO fetch error:', e); }
