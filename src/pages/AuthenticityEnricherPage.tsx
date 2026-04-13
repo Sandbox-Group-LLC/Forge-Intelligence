@@ -148,17 +148,7 @@ function AuthenticityEnricherContent() {
         if (d.success && d.briefs?.length > 0) {
           const brief = d.briefs[0];
           const ed = typeof brief.enriched_data === 'string' ? JSON.parse(brief.enriched_data) : brief.enriched_data;
-          setResult({
-            confidenceScore: brief.confidence_score || ed.confidenceScore || 0,
-            eeatBreakdown: ed.eeatBreakdown || {},
-            smeGaps: ed.smeGaps || [],
-            voiceInjections: ed.voiceInjections || [],
-            enrichedBrief: ed.enrichedBrief || null,
-            authorSchemaMarkup: ed.authorSchemaMarkup || null,
-            needsManualSME: ed.needsManualSME || false,
-            brandName: brief.brand_name || '',
-            latencyMs: 0
-          });
+          setResult(ed as EnrichResult);
         }
       } catch { /* silent */ }
     };
