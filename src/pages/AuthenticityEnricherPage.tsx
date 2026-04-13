@@ -138,7 +138,7 @@ function AuthenticityEnricherContent() {
 
   // Fetch existing enrichment results on mount
   useEffect(() => {
-    if (!selectedBrainId || result) return;
+    if (!selectedBrainId || !authToken || result) return;
     const fetchExisting = async () => {
       try {
         const res = await fetch(`/api/authenticity-enricher/briefs?brandProfileId=${selectedBrainId}`, {
