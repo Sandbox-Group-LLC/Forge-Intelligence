@@ -545,17 +545,17 @@
 .comp-rewrite-toolbar {
   position: fixed;
   z-index: 60;
-  background: #edf1ff;
-  border: 1px solid rgba(121, 121, 121, 0.4);
+  background: var(--color-bg-base, #EDF1FF);
+  border: 1px solid var(--color-accent, #3563FF);
   border-radius: 8px;
   padding: 10px 12px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
   min-width: 320px;
   max-width: 440px;
 }
 .comp-rewrite-toolbar-selected {
   font-size: 12px;
-  color: #454545;
+  color: var(--color-text-secondary, #475569);
   font-style: italic;
   margin-bottom: 8px;
   overflow: hidden;
@@ -569,23 +569,23 @@
 .comp-rewrite-input {
   flex: 1;
   padding: 8px 12px;
-  background: #f8f8f8;
-  border: 1px solid #777777;
+  background: var(--color-bg-card, #FFFFFF);
+  border: 1px solid var(--color-border-input, #CBD5E1);
   border-radius: 6px;
-  color: #5c5c5c;
+  color: var(--color-text-primary, #1E293B);
   font-size: 14px;
   font-family: inherit;
   outline: none;
 }
 .comp-rewrite-input:focus {
-  border-color: #686868;
+  border-color: var(--color-accent, #3563FF);
 }
 .comp-rewrite-input::placeholder {
-  color: #64748B;
+  color: var(--color-text-muted, #94A3B8);
 }
 .comp-rewrite-btn {
   padding: 8px 16px;
-  background: #3B82F6;
+  background: var(--color-accent, #3563FF);
   color: #FFFFFF;
   border: none;
   border-radius: 6px;
@@ -600,13 +600,13 @@
   cursor: default;
 }
 .comp-rewrite-btn:hover:not(:disabled) {
-  background: #2563EB;
+  background: var(--color-accent-hover, #2952e0);
 }
 .comp-rewrite-delete {
   padding: 8px 10px;
-  background: #f0c5c5;
-  color: #F87171;
-  border: 1px solid rgba(239, 68, 68, 0.35);
+  background: var(--color-bg-card, #FFFFFF);
+  color: #DC2626;
+  border: 1px solid rgba(220, 38, 38, 0.3);
   border-radius: 6px;
   font-size: 14px;
   font-weight: 600;
@@ -615,13 +615,13 @@
   line-height: 1;
 }
 .comp-rewrite-delete:hover {
-  background: rgba(239, 68, 68, 0.15);
-  color: #FCA5A5;
+  background: rgba(220, 38, 38, 0.06);
+  color: #B91C1C;
 }
 .comp-rewrite-undo {
   background: none;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  color: rgba(148, 163, 184, 0.7);
+  border: 1px solid var(--color-border, #E2E8F0);
+  color: var(--color-text-muted, #94A3B8);
   font-size: 12px;
   padding: 4px 10px;
   border-radius: 5px;
@@ -630,6 +630,6 @@
   transition: color 0.12s, border-color 0.12s;
 }
 .comp-rewrite-undo:hover {
-  color: #e2e8f0;
-  border-color: rgba(148, 163, 184, 0.4);
+  color: var(--color-text-primary, #1E293B);
+  border-color: var(--color-border-input, #CBD5E1);
 }
