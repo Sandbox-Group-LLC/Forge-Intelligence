@@ -103,11 +103,11 @@ export function Strategy() {
           <button style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#334155', lineHeight: 1, boxSizing: 'border-box', fontFamily: 'inherit', cursor: 'default' }} disabled>
             {brandProfile.strategicRecommendations.length} Recommendations
           </button>
-          <button onClick={() => {}} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
+          <button onClick={() => { const blob = new Blob([JSON.stringify(brandProfile, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${brandProfile.brandName || 'strategy'}-brief.json`; a.click(); }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
             {icons.download} Export Brief
           </button>
           <button onClick={() => { window.location.href = '/app/geo-strategist'; }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, borderRadius: 8, background: '#4F46E5', color: '#fff', border: '1px solid #4F46E5', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
-            Run GEO Strategy →
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Run GEO Strategy →
           </button>
         </div>
       </div>
