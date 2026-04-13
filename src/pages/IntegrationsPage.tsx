@@ -195,10 +195,7 @@ const CHANNELS: ChannelDef[] = [
     logo: '𝕏',
     liveStatus: 'live',
     oauthFlow: true,
-    credentialFields: [
-      { key: 'accessToken', label: 'Access Token', placeholder: 'Auto-filled after OAuth', type: 'password' },
-      { key: 'accessSecret', label: 'Access Token Secret', placeholder: 'Auto-filled after OAuth', type: 'password' },
-    ],
+    credentialFields: [],
     setupGuide: {
       title: 'Connect X (Twitter)',
       steps: [
