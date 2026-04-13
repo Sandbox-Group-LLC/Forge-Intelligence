@@ -4426,6 +4426,113 @@ Return ONLY valid JSON in this exact structure:
   }
 });
 
+// ── X (Twitter) OAuth 2.0 with PKCE ──────────────────────────────────────────
+const xOAuthStates = new Map(); // state → { brandProfileId, codeVerifier }
+
+app.get('/api/x/auth', requireAuth, (req, res) => {
+  const brandProfileId = req.query.brandProfileId || req.query.state?.split('|')[0] || 'system';
+  const clientId = process.env.X_OAUTH2CLIENT_ID;
+  if (!clientId) return res.status(500).json({ error: 'X_OAUTH2CLIENT_ID not configured' });
+
+  // PKCE: generate code_verifier and code_challenge
+  const codeVerifier = randomBytes(32).toString('base64url');
+  const codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url');
+  const state = randomBytes(16).toString('hex');
+
+  xOAuthStates.set(state, { brandProfileId, codeVerifier });
+  // Clean up after 10 min
+  setTimeout(() => xOAuthStates.delete(state), 600000);
+
+  const redirectUri = process.env.X_REDIRECT_URI || `https://${req.headers.host}/auth/x/callback`;
+  const scopes = ['tweet.write', 'tweet.read', 'users.read', 'offline.access'].join('%20');
+  const authUrl = `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&state=${state}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
+
+  res.json({ authUrl });
+});
+
+app.get('/auth/x/callback', async (req, res) => {
+  const { code, state, error } = req.query;
+  if (error) return res.redirect(`/app/integrations?x_error=${error}`);
+  if (!code || !state) return res.redirect('/app/integrations?x_error=no_code');
+
+  const stateData = xOAuthStates.get(state);
+  if (!stateData) return res.redirect('/app/integrations?x_error=invalid_state');
+  xOAuthStates.delete(state);
+
+  const { brandProfileId, codeVerifier } = stateData;
+  const clientId = process.env.X_OAUTH2CLIENT_ID;
+  const clientSecret = process.env.X_OAUTH2CLIENT_SECRET;
+  const redirectUri = process.env.X_REDIRECT_URI || `https://${req.headers.host}/auth/x/callback`;
+
+  try {
+    // Exchange code for tokens
+    const tokenRes = await fetch('https://api.twitter.com/2/oauth2/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': 'Basic ' + Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
+      },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: redirectUri,
+        code_verifier: codeVerifier
+      })
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) throw new Error(tokenData.error_description || tokenData.error || 'Token exchange failed');
+
+    // Get user info
+    let username = '';
+    try {
+      const meRes = await fetch('https://api.twitter.com/2/users/me', {
+        headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+      });
+      if (meRes.ok) {
+        const meData = await meRes.json();
+        username = meData.data?.username || '';
+      }
+    } catch(e) { console.log('[X-OAUTH] User lookup failed:', e.message); }
+
+    // Store credentials
+    await pool.query(`
+      INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active, updated_at)
+      VALUES ($1, 'x', $2, true, NOW())
+      ON CONFLICT (brand_profile_id, channel) DO UPDATE
+        SET credentials = $2, is_active = true, updated_at = NOW()
+    `, [brandProfileId, JSON.stringify({
+      oauth2AccessToken: tokenData.access_token,
+      oauth2RefreshToken: tokenData.refresh_token,
+      oauth2ExpiresIn: tokenData.expires_in,
+      oauth2Scope: tokenData.scope,
+      username,
+      connectedAt: new Date().toISOString()
+    })]);
+
+    res.redirect(`/app/integrations?x_connected=true`);
+  } catch(err) {
+    console.error('[X-OAUTH]', err.message);
+    res.redirect(`/app/integrations?x_error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+// Helper: refresh X OAuth 2.0 token
+async function refreshXOAuth2Token(refreshToken) {
+  const clientId = process.env.X_OAUTH2CLIENT_ID;
+  const clientSecret = process.env.X_OAUTH2CLIENT_SECRET;
+  const tokenRes = await fetch('https://api.twitter.com/2/oauth2/token', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': 'Basic ' + Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
+    },
+    body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken })
+  });
+  const data = await tokenRes.json();
+  if (!data.access_token) throw new Error(data.error_description || 'X token refresh failed');
+  return data;
+}
+
 // POST dismiss-flag — user dismisses a false-positive flag, writes to brain as training signal
 app.post('/api/compliance/dismiss-flag', requireAuth, async (req, res) => {
   const { brandProfileId, contentId, flagType, flagReason, sectionHeading } = req.body;
@@ -6573,46 +6680,71 @@ Output only the post text.` }]
           }
 
         } else if (channel === 'x') {
-          // ── Real X (Twitter) API v2 publish via OAuth 1.0a ──
-          const xApiKey       = creds.apiKey       || process.env.X_OAUTH1CONSUMER_KEY;
-          const xApiSecret    = creds.apiSecret    || process.env.X_OAUTH1CONSUMER_SECRET;
-          const xAccessToken  = creds.accessToken  || process.env.X_OAUTH1ACCESS_TOKEN;
-          const xAccessSecret = creds.accessSecret || process.env.X_OAUTH1ACCESS_SECRET;
-          if (!xApiKey || !xApiSecret || !xAccessToken || !xAccessSecret) throw new Error('Missing X credentials');
-
+          // ── X (Twitter) API v2 publish — OAuth 2.0 preferred, 1.0a fallback ──
           const articleJson = article.article_json || {};
           const sections = articleJson.sections || [];
           const articleUrl = forgeArticleUrl;
           const fullTweetUrl = `${articleUrl}${utmString ? '?' + utmString : ''}`;
-          // Twitter counts any URL as 23 chars regardless of length — never slice the URL
           const excerpt = (sections[0]?.content || sections[0]?.body || article.title || '').slice(0, 250);
           const tweetText = `${excerpt}...\n\n${fullTweetUrl}`;
+          const tweetEndpoint = 'https://api.twitter.com/2/tweets';
 
-          // Build OAuth 1.0a signature
-          const tweetUrl = 'https://api.twitter.com/2/tweets';
-          const authHeader = buildXOAuthHeader('POST', tweetUrl, xApiKey, xApiSecret, xAccessToken, xAccessSecret);
+          let authHeader;
+          let twitterHandle = creds.username || 'i';
 
-          const xRes = await fetch(tweetUrl, {
-            method: 'POST',
-            headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: tweetText })
-          });
-          const xData = await xRes.json();
-          if (!xRes.ok) throw new Error(xData.detail || xData.title || JSON.stringify(xData));
-          const tweetId = xData.data?.id;
-          // Look up authenticated user's handle to build the correct tweet URL
-          let twitterHandle = 'i';
-          try {
-            const meRes = await fetch('https://api.twitter.com/2/users/me', {
-              headers: { 'Authorization': authHeader }
+          if (creds.oauth2AccessToken) {
+            // OAuth 2.0 path (preferred — from Connect flow)
+            let token = creds.oauth2AccessToken;
+            // Try posting; if 401, refresh and retry
+            let xRes = await fetch(tweetEndpoint, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: tweetText })
             });
-            if (meRes.ok) {
-              const meData = await meRes.json();
-              twitterHandle = meData.data?.username || 'i';
+            if (xRes.status === 401 && creds.oauth2RefreshToken) {
+              try {
+                const refreshed = await refreshXOAuth2Token(creds.oauth2RefreshToken);
+                token = refreshed.access_token;
+                // Update stored tokens
+                await pool.query(
+                  `UPDATE publishing_channels SET credentials = credentials || $1 WHERE brand_profile_id = $2 AND channel = 'x'`,
+                  [JSON.stringify({ oauth2AccessToken: refreshed.access_token, oauth2RefreshToken: refreshed.refresh_token || creds.oauth2RefreshToken }), brandProfileId]
+                );
+                xRes = await fetch(tweetEndpoint, {
+                  method: 'POST',
+                  headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ text: tweetText })
+                });
+              } catch(e) { console.error('[X] Token refresh failed:', e.message); }
             }
-          } catch(e) { /* fall back to /i/status/ path */ }
-          const tweetUrl2 = `https://x.com/${twitterHandle}/status/${tweetId}`;
-          results[channel] = { status: 'published', url: tweetUrl2, tweetId, utmParams };
+            const xData = await xRes.json();
+            if (!xRes.ok) throw new Error(xData.detail || xData.title || JSON.stringify(xData));
+            const tweetId = xData.data?.id;
+            const tweetUrl2 = `https://x.com/${twitterHandle}/status/${tweetId}`;
+            results[channel] = { status: 'published', url: tweetUrl2, tweetId, utmParams };
+          } else {
+            // OAuth 1.0a fallback (legacy manual tokens)
+            const xApiKey       = creds.apiKey       || process.env.X_OAUTH1CONSUMER_KEY;
+            const xApiSecret    = creds.apiSecret    || process.env.X_OAUTH1CONSUMER_SECRET;
+            const xAccessToken  = creds.accessToken  || process.env.X_OAUTH1ACCESS_TOKEN;
+            const xAccessSecret = creds.accessSecret || process.env.X_OAUTH1ACCESS_SECRET;
+            if (!xApiKey || !xApiSecret || !xAccessToken || !xAccessSecret) throw new Error('Missing X credentials — use Connect X to authorize');
+            authHeader = buildXOAuthHeader('POST', tweetEndpoint, xApiKey, xApiSecret, xAccessToken, xAccessSecret);
+            const xRes = await fetch(tweetEndpoint, {
+              method: 'POST',
+              headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: tweetText })
+            });
+            const xData = await xRes.json();
+            if (!xRes.ok) throw new Error(xData.detail || xData.title || JSON.stringify(xData));
+            const tweetId = xData.data?.id;
+            try {
+              const meRes = await fetch('https://api.twitter.com/2/users/me', { headers: { 'Authorization': authHeader } });
+              if (meRes.ok) { twitterHandle = (await meRes.json()).data?.username || 'i'; }
+            } catch(e) {}
+            const tweetUrl2 = `https://x.com/${twitterHandle}/status/${tweetId}`;
+            results[channel] = { status: 'published', url: tweetUrl2, tweetId, utmParams };
+          }
 
         } else if (channel === 'facebook') {
           // ── Facebook Page API publish ──
