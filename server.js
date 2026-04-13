@@ -893,18 +893,26 @@ app.get('/api/publishing/sync/:queueItemId', requireAuth, async (req, res) => {
             }
           }
         } else if (row.channel === 'x') {
-          // Check X tweet status via v2 API with OAuth 1.0a
+          // Check X tweet status via v2 API — OAuth 2.0 preferred, 1.0a fallback
           const tweetId = row.response_data?.tweetId || row.response_data?.id;
-          const xApiKey    = creds.apiKey    || process.env.X_OAUTH1CONSUMER_KEY;
-          const xApiSecret = creds.apiSecret || process.env.X_OAUTH1CONSUMER_SECRET;
-          const xAccessToken  = creds.accessToken  || process.env.X_OAUTH1ACCESS_TOKEN;
-          const xAccessSecret = creds.accessSecret || process.env.X_OAUTH1ACCESS_SECRET;
+          let xAuth = '';
+          if (creds.oauth2AccessToken) {
+            xAuth = `Bearer ${creds.oauth2AccessToken}`;
+          } else {
+            const xApiKey    = creds.apiKey    || process.env.X_OAUTH1CONSUMER_KEY;
+            const xApiSecret = creds.apiSecret || process.env.X_OAUTH1CONSUMER_SECRET;
+            const xAccessToken  = creds.accessToken  || process.env.X_OAUTH1ACCESS_TOKEN;
+            const xAccessSecret = creds.accessSecret || process.env.X_OAUTH1ACCESS_SECRET;
+            if (xApiKey && xAccessToken) {
+              const endpoint = `https://api.twitter.com/2/tweets/${tweetId}`;
+              xAuth = buildXOAuthHeader('GET', endpoint, xApiKey, xApiSecret, xAccessToken, xAccessSecret);
+            }
+          }
 
-          if (tweetId && xApiKey && xAccessToken) {
+          if (tweetId && xAuth) {
             const endpoint = `https://api.twitter.com/2/tweets/${tweetId}`;
-            const authHeader = buildXOAuthHeader('GET', endpoint, xApiKey, xApiSecret, xAccessToken, xAccessSecret);
 
-            const xRes = await fetch(endpoint, { headers: { 'Authorization': authHeader } });
+            const xRes = await fetch(endpoint, { headers: { 'Authorization': xAuth } });
             if (xRes.status === 404) {
               liveStatus = 'deleted';
             } else if (xRes.status === 401 || xRes.status === 403) {
@@ -7184,37 +7192,32 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
         [brandProfileId]
       ).catch(() => ({ rows: [] }));
       const xCreds = xCredRes.rows[0]?.credentials || {};
-      const xApiKey       = xCreds.apiKey       || process.env.X_OAUTH1CONSUMER_KEY;
-      const xApiSecret    = xCreds.apiSecret    || process.env.X_OAUTH1CONSUMER_SECRET;
-      const xAccessToken  = xCreds.accessToken  || process.env.X_OAUTH1ACCESS_TOKEN;
-      const xAccessSecret = xCreds.accessSecret || process.env.X_OAUTH1ACCESS_SECRET;
 
       for (const row of xLogRes.rows) {
         try {
-          // Extract tweetId — from response_data, queue publish_results, or parse from published_url
           const rd = row.response_data || row.queue_results?.x || {};
           const tweetId = rd.tweetId || rd.id
             || (row.published_url?.match(/\/status\/(\d+)/)?.[1]);
-          if (!tweetId || !xApiKey || !xAccessToken) {
-            if (!xApiKey || !xAccessToken) continue // X not connected — skip;
-            else if (!tweetId) errors.push({ contentId: row.content_id, error: 'no_tweet_id_in:' + row.published_url });
+          if (!tweetId) {
+            errors.push({ contentId: row.content_id, error: 'no_tweet_id_in:' + row.published_url });
             continue;
           }
 
-          // Build OAuth 1.0a header for GET request
+          // Build auth header — OAuth 2.0 preferred, 1.0a fallback
           const endpoint = `https://api.twitter.com/2/tweets/${tweetId}`;
-          const oauthParams = {
-            oauth_consumer_key: xApiKey,
-            oauth_nonce: randomBytes(16).toString('hex'),
-            oauth_signature_method: 'HMAC-SHA1',
-            oauth_timestamp: String(Math.floor(Date.now() / 1000)),
-            oauth_token: xAccessToken,
-            oauth_version: '1.0',
-          };
-          // Request public + non_public metrics
           const queryString = 'tweet.fields=public_metrics,non_public_metrics,created_at,author_id';
-          const authHeader = buildXOAuthHeader('GET', endpoint, xApiKey, xApiSecret, xAccessToken, xAccessSecret,
-            Object.fromEntries(new URLSearchParams(queryString)));
+          let authHeader;
+          if (xCreds.oauth2AccessToken) {
+            authHeader = `Bearer ${xCreds.oauth2AccessToken}`;
+          } else {
+            const xApiKey       = xCreds.apiKey       || process.env.X_OAUTH1CONSUMER_KEY;
+            const xApiSecret    = xCreds.apiSecret    || process.env.X_OAUTH1CONSUMER_SECRET;
+            const xAccessToken  = xCreds.accessToken  || process.env.X_OAUTH1ACCESS_TOKEN;
+            const xAccessSecret = xCreds.accessSecret || process.env.X_OAUTH1ACCESS_SECRET;
+            if (!xApiKey || !xAccessToken) continue; // X not connected
+            authHeader = buildXOAuthHeader('GET', endpoint, xApiKey, xApiSecret, xAccessToken, xAccessSecret,
+              Object.fromEntries(new URLSearchParams(queryString)));
+          }
 
           const tweetRes = await fetch(`${endpoint}?${queryString}`, {
             headers: { 'Authorization': authHeader }
