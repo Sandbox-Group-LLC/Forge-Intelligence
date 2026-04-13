@@ -8044,6 +8044,102 @@ app.get('/api/admin/activity', async (req, res) => {
 });
 
 // GET /api/admin/stats — platform-wide stats
+// GET /api/admin/mission-control — full platform dashboard data
+app.get('/api/admin/mission-control', requireAuth, async (req, res) => {
+  try {
+    const [
+      brandsRes, activityRes, agentBreakdownRes, brainPatternsRes,
+      brainMistakesRes, publishRes, integrationsRes, recentActivityRes
+    ] = await Promise.all([
+      pool.query('SELECT COUNT(*) as cnt FROM brand_profiles WHERE is_active = true'),
+      pool.query(`SELECT COUNT(*) as total_calls, COALESCE(SUM(tokens_used),0) as total_tokens,
+        COALESCE(AVG(latency_ms),0)::int as avg_latency,
+        COUNT(CASE WHEN status = 'error' THEN 1 END) as errors,
+        COUNT(DISTINCT brand_profile_id) as active_brands
+        FROM agent_activity_log WHERE created_at > NOW() - INTERVAL '30 days'`),
+      pool.query(`SELECT agent_name, COUNT(*) as calls, COALESCE(SUM(tokens_used),0) as tokens,
+        COALESCE(AVG(latency_ms),0)::int as avg_ms
+        FROM agent_activity_log WHERE created_at > NOW() - INTERVAL '30 days'
+        GROUP BY agent_name ORDER BY tokens DESC`),
+      pool.query(`SELECT pattern_type, COUNT(*) as cnt FROM brain_patterns GROUP BY pattern_type`),
+      pool.query(`SELECT COUNT(*) as total,
+        COUNT(CASE WHEN mistake_type = 'false_positive_flag' THEN 1 END) as false_positives,
+        COUNT(CASE WHEN mistake_type = 'human_edit' THEN 1 END) as human_edits
+        FROM brain_mistakes`),
+      pool.query(`SELECT channel, COUNT(*) as total,
+        COUNT(CASE WHEN status = 'published' THEN 1 END) as published,
+        COUNT(CASE WHEN status = 'error' THEN 1 END) as errors
+        FROM publish_log GROUP BY channel ORDER BY total DESC`),
+      pool.query(`SELECT channel, COUNT(*) as total,
+        COUNT(CASE WHEN is_active THEN 1 END) as active
+        FROM publishing_channels GROUP BY channel ORDER BY channel`),
+      pool.query(`SELECT agent_name, brand_profile_id, status, tokens_used, latency_ms, created_at, metadata
+        FROM agent_activity_log ORDER BY created_at DESC LIMIT 20`),
+    ]);
+
+    // Total content across all brands
+    const brandIds = (await pool.query('SELECT id FROM brand_profiles')).rows;
+    let totalContent = 0;
+    for (const b of brandIds) {
+      const cnt = await pool.query(\`SELECT COUNT(*) FROM generated_content_\${b.id.replace(/-/g, '_')}\`).catch(() => ({ rows: [{ count: 0 }] }));
+      totalContent += parseInt(cnt.rows[0].count);
+    }
+
+    // Total reach
+    const reachRes = await pool.query('SELECT COALESCE(SUM(impressions),0) as total FROM content_analytics').catch(() => ({ rows: [{ total: 0 }] }));
+
+    // Brain pattern breakdown
+    const brainBreakdown = {};
+    for (const r of brainPatternsRes.rows) brainBreakdown[r.pattern_type] = parseInt(r.cnt);
+
+    const a = activityRes.rows[0];
+    const m = brainMistakesRes.rows[0];
+
+    res.json({
+      success: true,
+      platform: {
+        totalBrands: parseInt(brandsRes.rows[0].cnt),
+        totalContent,
+        totalReach: parseInt(reachRes.rows[0].total),
+      },
+      brain: {
+        writingRules: brainBreakdown.writing_rule || 0,
+        contentSignals: brainBreakdown.content_signal || 0,
+        totalMistakes: parseInt(m.total),
+        humanEdits: parseInt(m.human_edits),
+        falsePositives: parseInt(m.false_positives),
+        totalPatterns: Object.values(brainBreakdown).reduce((s, v) => s + v, 0),
+      },
+      activity: {
+        totalCalls: parseInt(a.total_calls),
+        totalTokens: parseInt(a.total_tokens),
+        avgLatency: parseInt(a.avg_latency),
+        errors: parseInt(a.errors),
+        activeBrands: parseInt(a.active_brands),
+        agentBreakdown: agentBreakdownRes.rows.map(r => ({
+          agent: r.agent_name, calls: parseInt(r.calls),
+          tokens: parseInt(r.tokens), avgMs: parseInt(r.avg_ms)
+        })),
+      },
+      publishing: publishRes.rows.map(r => ({
+        channel: r.channel, total: parseInt(r.total),
+        published: parseInt(r.published), errors: parseInt(r.errors)
+      })),
+      integrations: integrationsRes.rows.map(r => ({
+        channel: r.channel, total: parseInt(r.total), active: parseInt(r.active)
+      })),
+      recentActivity: recentActivityRes.rows.map(r => ({
+        agent: r.agent_name, brand: r.brand_profile_id,
+        status: r.status, tokens: r.tokens_used, latency: r.latency_ms,
+        createdAt: r.created_at, metadata: r.metadata
+      })),
+    });
+  } catch(e) {
+    console.error('[MISSION-CONTROL]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 app.get('/api/admin/stats', async (req, res) => {
   try {
     const [brands, activity, content, queue] = await Promise.all([
