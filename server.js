@@ -1587,12 +1587,18 @@ app.post('/api/brain/distill/:brandProfileId', async (req, res) => {
     // Format edits for Haiku (cap body to keep tokens manageable)
     const editSummary = editsRes.rows.map((e, i) => {
       const fb = e.human_feedback || '';
-      const avoidMatch = fb.match(/Avoid:\s*"([\s\S]{0,250})"/);
-      const preferMatch = fb.match(/prefer:\s*"([\s\S]{0,250})"/);
-      const avoid = avoidMatch?.[1]?.replace(/\n/g, ' ').trim() || '';
-      const prefer = preferMatch?.[1]?.replace(/\n/g, ' ').trim() || '';
-      if (!avoid && !prefer) return null;
-      return `Edit ${i + 1}:\nAvoid: "${avoid}"\nPrefer: "${prefer}"`;
+      // Try structured Avoid/Prefer parsing first, fall back to raw feedback
+      const avoidMatch = fb.match(/Avoid:\s*"([\s\S]*?)(?:"|$)/);
+      const preferMatch = fb.match(/[Pp]refer:\s*"([\s\S]*?)(?:"|$)/);
+      const avoid = (avoidMatch?.[1] || '').replace(/\n/g, ' ').trim().slice(0, 500);
+      const prefer = (preferMatch?.[1] || '').replace(/\n/g, ' ').trim().slice(0, 500);
+      if (avoid || prefer) {
+        return `Edit ${i + 1}:\nAvoid: "${avoid}"\nPrefer: "${prefer}"`;
+      }
+      // Raw fallback — just pass the feedback directly
+      const raw = fb.replace(/\n/g, ' ').trim().slice(0, 500);
+      if (!raw) return null;
+      return `Edit ${i + 1}:\n${raw}`;
     }).filter(Boolean).join('\n\n');
 
     const brandRes = await pool.query('SELECT brand_name FROM brand_profiles WHERE id = $1', [brandProfileId]);
