@@ -41,6 +41,66 @@
 - Event ROI Calculator committed (`/event-roi-calculator` route, public, no auth)
 - "9 Things Every B2B Event Marketer Must Know" article published to The Sandbox with calculator CTA
 
+
+### April 12 Evening Session — Pre-Launch Push
+
+#### X (Twitter) OAuth 2.0 Migration
+- **Full OAuth 2.0 Connect flow** — same redirect pattern as LinkedIn/HubSpot/Webflow
+- PKCE code challenge, token refresh, automatic username lookup
+- Publishing: OAuth 2.0 Bearer preferred, OAuth 1.0a fallback for legacy tokens
+- Live status check: OAuth 2.0 Bearer preferred
+- Analytics sync: OAuth 2.0 Bearer preferred
+- Frontend: pure "Connect" button, no manual credential fields, no dropdown
+- Setup guide rewritten for OAuth flow (4 steps, no developer console needed)
+- Cleaned 7 dead env vars (OAuth 1.0a keys, Bearer token, OAuth 2.0 access/refresh tokens)
+- Fixed service-level env var overrides on dev (same Webflow pattern)
+
+#### Pre-cog Predictions Redesign
+- Enriched cards with tier labels (high/moderate/low), color coding
+- Signal breakdown: Structure, Brain alignment, Title, Anti-patterns, History
+- Suggested actions when scores are low
+- Fixed precog/batch auth — was not forwarding Authorization header to internal score calls
+
+#### Webflow SEO Tab
+- New endpoint: GET /api/analytics/webflow-seo/:brandProfileId
+- Cross-references Webflow publishes with GSC search data
+- Custom KPI cards: Published, Search Impressions, Clicks, CTR, Position
+- Custom table: Webflow articles with per-article GSC performance
+- Sync Search Data button triggers GSC sync then refreshes
+- Fixed GSC check ordering (was hardcoded false before early return)
+
+#### Dismiss Flag (Compliance Gate)
+- "Dismiss Flag" button on each flag card
+- Writes false_positive_flag to brain_mistakes as training signal
+- Next critique reads the dismissal and avoids repeating the same flag
+- Confirmed writing to DB via SQL relay
+
+#### Brain Intelligence Fixes
+- max_tokens: distill 2000→4096, extract-patterns 1500→3000
+- Removed .slice(0, 150) on rationale and .slice(0, 200) on examples
+- Result: 10 complete rules with full sentences (was 4 truncated)
+- Compliance critique max_tokens: 2000→4096
+
+#### safeParseLLM v2
+- Step 0: Strip BOM, zero-width chars, non-breaking spaces
+- Step 5 (nuclear): Re-slice from raw between outermost braces
+- Diagnostic logging on total failure (first 300 chars)
+
+#### Integration Fixes
+- Setup guide CSS: removed 2 duplicate blocks (~5000 chars), fixed text visibility, tooltip direction, card overflow
+- X setup guide: rewritten to match current X Developer Console UI, explicit Consumer Key vs Access Token warning
+- WordPress setup guide: rewritten with exact navigation, password format, common mistakes
+- HubSpot: added cms.knowledge_base.articles.* scopes, fixed redirect URI
+- Webflow: fixed missing https:// in redirect URI
+- Ghost: removed env var fallback from analytics (was leaking Brian's data to other brands)
+- Smart sync messages: "connect this integration first" instead of "up to date" for unconnected channels
+- Empty states link to Integrations page
+
+#### Env Var Cleanup
+- Killed: X_OAUTH1CONSUMER_KEY, X_OAUTH1CONSUMER_SECRET, X_OAUTH1ACCESS_TOKEN, X_OAUTH1ACCESS_SECRET, X_BEARER_TOKEN, X_OAUTH2ACCESS_TOKEN, X_OUTH2REFRESHSH_TOKEN
+- Kept: X_OAUTH2CLIENT_ID, X_OAUTH2CLIENT_SECRET (platform credentials for Connect flow)
+- Removed GHOST_API_URL and GHOST_ADMIN_API_KEY from group (per-brand only now)
+
 ### Infrastructure — Env Var Recovery
 - Rogue Claude agent wiped ~30 env vars from Render services before being vanished
 - `ANTHROPIC_API_KEY` missing from both services — root cause of Campaign Generator auth error ("Could not resolve authentication method")
@@ -132,6 +192,66 @@
 
 ### Design
 - **Dev theme** — `index.css`, `Sidebar.css`, `TopBar.css` replaced with production versions; dev now mirrors production visually
+
+
+### April 12 Evening Session — Pre-Launch Push
+
+#### X (Twitter) OAuth 2.0 Migration
+- **Full OAuth 2.0 Connect flow** — same redirect pattern as LinkedIn/HubSpot/Webflow
+- PKCE code challenge, token refresh, automatic username lookup
+- Publishing: OAuth 2.0 Bearer preferred, OAuth 1.0a fallback for legacy tokens
+- Live status check: OAuth 2.0 Bearer preferred
+- Analytics sync: OAuth 2.0 Bearer preferred
+- Frontend: pure "Connect" button, no manual credential fields, no dropdown
+- Setup guide rewritten for OAuth flow (4 steps, no developer console needed)
+- Cleaned 7 dead env vars (OAuth 1.0a keys, Bearer token, OAuth 2.0 access/refresh tokens)
+- Fixed service-level env var overrides on dev (same Webflow pattern)
+
+#### Pre-cog Predictions Redesign
+- Enriched cards with tier labels (high/moderate/low), color coding
+- Signal breakdown: Structure, Brain alignment, Title, Anti-patterns, History
+- Suggested actions when scores are low
+- Fixed precog/batch auth — was not forwarding Authorization header to internal score calls
+
+#### Webflow SEO Tab
+- New endpoint: GET /api/analytics/webflow-seo/:brandProfileId
+- Cross-references Webflow publishes with GSC search data
+- Custom KPI cards: Published, Search Impressions, Clicks, CTR, Position
+- Custom table: Webflow articles with per-article GSC performance
+- Sync Search Data button triggers GSC sync then refreshes
+- Fixed GSC check ordering (was hardcoded false before early return)
+
+#### Dismiss Flag (Compliance Gate)
+- "Dismiss Flag" button on each flag card
+- Writes false_positive_flag to brain_mistakes as training signal
+- Next critique reads the dismissal and avoids repeating the same flag
+- Confirmed writing to DB via SQL relay
+
+#### Brain Intelligence Fixes
+- max_tokens: distill 2000→4096, extract-patterns 1500→3000
+- Removed .slice(0, 150) on rationale and .slice(0, 200) on examples
+- Result: 10 complete rules with full sentences (was 4 truncated)
+- Compliance critique max_tokens: 2000→4096
+
+#### safeParseLLM v2
+- Step 0: Strip BOM, zero-width chars, non-breaking spaces
+- Step 5 (nuclear): Re-slice from raw between outermost braces
+- Diagnostic logging on total failure (first 300 chars)
+
+#### Integration Fixes
+- Setup guide CSS: removed 2 duplicate blocks (~5000 chars), fixed text visibility, tooltip direction, card overflow
+- X setup guide: rewritten to match current X Developer Console UI, explicit Consumer Key vs Access Token warning
+- WordPress setup guide: rewritten with exact navigation, password format, common mistakes
+- HubSpot: added cms.knowledge_base.articles.* scopes, fixed redirect URI
+- Webflow: fixed missing https:// in redirect URI
+- Ghost: removed env var fallback from analytics (was leaking Brian's data to other brands)
+- Smart sync messages: "connect this integration first" instead of "up to date" for unconnected channels
+- Empty states link to Integrations page
+
+#### Env Var Cleanup
+- Killed: X_OAUTH1CONSUMER_KEY, X_OAUTH1CONSUMER_SECRET, X_OAUTH1ACCESS_TOKEN, X_OAUTH1ACCESS_SECRET, X_BEARER_TOKEN, X_OAUTH2ACCESS_TOKEN, X_OUTH2REFRESHSH_TOKEN
+- Kept: X_OAUTH2CLIENT_ID, X_OAUTH2CLIENT_SECRET (platform credentials for Connect flow)
+- Removed GHOST_API_URL and GHOST_ADMIN_API_KEY from group (per-brand only now)
 
 ### Infrastructure
 - **`PIPEDREAM_PROJECT_ENVIRONMENT=production`** — added to Render env vars
@@ -1095,6 +1215,66 @@ Stage 1 → 6 end-to-end complete.
 **DB tables:** email_campaigns, email_campaign_emails, email_brief_templates (lazy-created)
 
 ---
+
+
+### April 12 Evening Session — Pre-Launch Push
+
+#### X (Twitter) OAuth 2.0 Migration
+- **Full OAuth 2.0 Connect flow** — same redirect pattern as LinkedIn/HubSpot/Webflow
+- PKCE code challenge, token refresh, automatic username lookup
+- Publishing: OAuth 2.0 Bearer preferred, OAuth 1.0a fallback for legacy tokens
+- Live status check: OAuth 2.0 Bearer preferred
+- Analytics sync: OAuth 2.0 Bearer preferred
+- Frontend: pure "Connect" button, no manual credential fields, no dropdown
+- Setup guide rewritten for OAuth flow (4 steps, no developer console needed)
+- Cleaned 7 dead env vars (OAuth 1.0a keys, Bearer token, OAuth 2.0 access/refresh tokens)
+- Fixed service-level env var overrides on dev (same Webflow pattern)
+
+#### Pre-cog Predictions Redesign
+- Enriched cards with tier labels (high/moderate/low), color coding
+- Signal breakdown: Structure, Brain alignment, Title, Anti-patterns, History
+- Suggested actions when scores are low
+- Fixed precog/batch auth — was not forwarding Authorization header to internal score calls
+
+#### Webflow SEO Tab
+- New endpoint: GET /api/analytics/webflow-seo/:brandProfileId
+- Cross-references Webflow publishes with GSC search data
+- Custom KPI cards: Published, Search Impressions, Clicks, CTR, Position
+- Custom table: Webflow articles with per-article GSC performance
+- Sync Search Data button triggers GSC sync then refreshes
+- Fixed GSC check ordering (was hardcoded false before early return)
+
+#### Dismiss Flag (Compliance Gate)
+- "Dismiss Flag" button on each flag card
+- Writes false_positive_flag to brain_mistakes as training signal
+- Next critique reads the dismissal and avoids repeating the same flag
+- Confirmed writing to DB via SQL relay
+
+#### Brain Intelligence Fixes
+- max_tokens: distill 2000→4096, extract-patterns 1500→3000
+- Removed .slice(0, 150) on rationale and .slice(0, 200) on examples
+- Result: 10 complete rules with full sentences (was 4 truncated)
+- Compliance critique max_tokens: 2000→4096
+
+#### safeParseLLM v2
+- Step 0: Strip BOM, zero-width chars, non-breaking spaces
+- Step 5 (nuclear): Re-slice from raw between outermost braces
+- Diagnostic logging on total failure (first 300 chars)
+
+#### Integration Fixes
+- Setup guide CSS: removed 2 duplicate blocks (~5000 chars), fixed text visibility, tooltip direction, card overflow
+- X setup guide: rewritten to match current X Developer Console UI, explicit Consumer Key vs Access Token warning
+- WordPress setup guide: rewritten with exact navigation, password format, common mistakes
+- HubSpot: added cms.knowledge_base.articles.* scopes, fixed redirect URI
+- Webflow: fixed missing https:// in redirect URI
+- Ghost: removed env var fallback from analytics (was leaking Brian's data to other brands)
+- Smart sync messages: "connect this integration first" instead of "up to date" for unconnected channels
+- Empty states link to Integrations page
+
+#### Env Var Cleanup
+- Killed: X_OAUTH1CONSUMER_KEY, X_OAUTH1CONSUMER_SECRET, X_OAUTH1ACCESS_TOKEN, X_OAUTH1ACCESS_SECRET, X_BEARER_TOKEN, X_OAUTH2ACCESS_TOKEN, X_OUTH2REFRESHSH_TOKEN
+- Kept: X_OAUTH2CLIENT_ID, X_OAUTH2CLIENT_SECRET (platform credentials for Connect flow)
+- Removed GHOST_API_URL and GHOST_ADMIN_API_KEY from group (per-brand only now)
 
 ### Infrastructure Fixes
 
