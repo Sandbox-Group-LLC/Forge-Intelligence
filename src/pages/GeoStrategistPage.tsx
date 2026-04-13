@@ -69,7 +69,7 @@ function GeoStrategistContent() {
 
   // Fetch existing GEO results on mount
   useEffect(() => {
-    if (!selectedBrainId || result) return;
+    if (!selectedBrainId || !authToken || result) return;
     const fetchExisting = async () => {
       try {
         const res = await fetch(`/api/geo-strategist/briefs?brandProfileId=${selectedBrainId}`, {
