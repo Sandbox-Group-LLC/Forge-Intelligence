@@ -201,11 +201,10 @@ const CHANNELS: ChannelDef[] = [
     setupGuide: {
       title: 'X (Twitter) Access Token',
       steps: [
-        { text: 'Open the X Developer Console and click "Apps" in the left sidebar.', url: 'https://developer.x.com/en/portal/projects-and-apps' },
-        { text: 'Click on your app name to open it. If you don\'t have an app yet, create one first under your project.' },
-        { text: 'Click the "Keys and tokens" tab at the top of your app page.' },
-        { text: 'Scroll to "Authentication Tokens" and click Generate (or Regenerate) next to "Access Token and Secret." Make sure it says Read and Write — if it says Read Only, go to Settings → User authentication settings and change the permissions first, then regenerate.' },
-        { text: 'Copy both the Access Token and Access Token Secret and paste them into the fields above. You do not need the API Key or API Secret — those are already configured in Forge.' },
+        { text: 'Open the X Developer Console and click "Apps" in the left sidebar. Click on your app name.', url: 'https://developer.x.com/en/portal/projects-and-apps' },
+        { text: 'You\'ll see a section called "OAuth 1.0 Keys" with two items: Consumer Key and Access Token. You need the Access Token — NOT the Consumer Key.' },
+        { text: 'Next to "Access Token," click Regenerate. This creates two values: an Access Token and an Access Token Secret. Copy both. Important: it should say "Read and write" underneath — if it says "Read only," go to App Settings → User authentication settings, change to Read and Write, then come back and regenerate.' },
+        { text: 'Paste the Access Token and Access Token Secret into the two fields above. Do not paste the Consumer Key or Consumer Secret — those are already configured in Forge and are not the same thing.' },
       ],
     },
   },
