@@ -2333,6 +2333,78 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
       console.log('[Context Hub] Sonar research failed, proceeding without:', e.message);
     }
 
+
+    // ── Tool 1.5: Website Scraper — actual content extraction ─────────────────
+    console.log(`[Context Hub] Tool 1.5: Scraping website content for ${brandUrl}...`);
+    let scrapedContent = '';
+    try {
+      const normalizedUrl = brandUrl.startsWith('http') ? brandUrl : `https://${brandUrl}`;
+      const stripHtml = (html) => html
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
+        .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
+        .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&[a-z]+;/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      // Fetch homepage
+      const homeRes = await fetch(normalizedUrl, {
+        headers: { 'User-Agent': 'ForgeIntelligence/1.0 (Brand Analysis)' },
+        signal: AbortSignal.timeout(10000)
+      }).catch(() => null);
+      
+      let homeHtml = '';
+      if (homeRes?.ok) {
+        homeHtml = await homeRes.text();
+        const homeText = stripHtml(homeHtml).slice(0, 3000);
+        scrapedContent += `HOMEPAGE CONTENT:\n${homeText}\n\n`;
+      }
+
+      // Extract internal links from homepage for deeper crawl
+      const linkMatches = homeHtml.match(/href=["'](\/[^"'#?]+)["']/g) || [];
+      const internalPaths = [...new Set(
+        linkMatches
+          .map(m => m.match(/href=["'](\/[^"'#?]+)["']/)?.[1])
+          .filter(Boolean)
+          .filter(p => /\/(about|story|product|service|blog|mission|team|who-we|what-we|our-)/i.test(p))
+      )].slice(0, 4);
+
+      // Also try common about paths if none found
+      const aboutPaths = internalPaths.length > 0 ? internalPaths : ['/about', '/about-us', '/pages/about'];
+
+      for (const path of aboutPaths) {
+        try {
+          const pageUrl = new URL(path, normalizedUrl).href;
+          const pageRes = await fetch(pageUrl, {
+            headers: { 'User-Agent': 'ForgeIntelligence/1.0 (Brand Analysis)' },
+            signal: AbortSignal.timeout(8000)
+          }).catch(() => null);
+          if (pageRes?.ok) {
+            const pageHtml = await pageRes.text();
+            const pageText = stripHtml(pageHtml).slice(0, 2000);
+            if (pageText.length > 100) {
+              scrapedContent += `PAGE (${path}):\n${pageText}\n\n`;
+            }
+          }
+        } catch { /* skip failed pages */ }
+      }
+
+      if (scrapedContent.length > 200) {
+        console.log(`[Context Hub] Scraped ${scrapedContent.length} chars from ${aboutPaths.length + 1} pages`);
+      } else {
+        console.log(`[Context Hub] Scraping returned minimal content — Claude will rely on Sonar context`);
+      }
+    } catch(e) {
+      console.log(`[Context Hub] Scraper error (non-fatal):`, e.message);
+    }
+
+    const siteContentSection = scrapedContent.length > 200
+      ? `\n\nACTUAL WEBSITE CONTENT (scraped — use this as primary source, do NOT guess from domain name):\n${scrapedContent.slice(0, 8000)}`
+      : '';
+
     // ── Tool 2: Claude — Brand Intelligence Profile ───────────────────────────
     console.log(`[Context Hub] Tool 2: Claude brand analysis...`);
 
@@ -2369,7 +2441,7 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
 
     const prompt = `You are the Forge Intelligence Context Agent — Stage 1 of an 8-stage Brand Intelligence platform.
 
-Analyze the brand at: ${brandUrl}${competitorSection}${icpSection}${marketSection}${audienceSection}${strategicSection}${patternSection}${mistakeSection}
+Analyze the brand at: ${brandUrl}${siteContentSection}${competitorSection}${icpSection}${marketSection}${audienceSection}${strategicSection}${patternSection}${mistakeSection}
 
 Return ONLY valid JSON (no markdown, no explanation, no newlines inside string values — use spaces instead):
 {
