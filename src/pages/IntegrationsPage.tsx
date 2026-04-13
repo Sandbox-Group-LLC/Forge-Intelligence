@@ -111,11 +111,10 @@ const CHANNELS: ChannelDef[] = [
     setupGuide: {
       title: 'WordPress Application Password',
       steps: [
-        { text: 'Log into your WordPress admin dashboard.' },
-        { text: 'Go to Users → Profile (or any user you want to publish as).' },
-        { text: 'Scroll down to Application Passwords. Enter a name like "Forge Intelligence" and click Add New.' },
-        { text: 'Copy the generated password -- it will only be shown once.' },
-        { text: 'Paste your site URL, your WordPress username, and the application password above.' },
+        { text: 'Log into your WordPress admin dashboard at yourdomain.com/wp-admin. You need an account with Editor or Administrator role.' },
+        { text: 'In the left sidebar, go to Users → Profile. Scroll all the way to the bottom of the page — past the color scheme and bio fields — until you see a section called "Application Passwords."' },
+        { text: 'In the "New Application Password Name" field, type "Forge Intelligence" and click "Add New Application Password." WordPress will show a 24-character password with spaces (e.g. xxxx xxxx xxxx xxxx xxxx xxxx). Copy the entire thing including spaces — you will not be able to see it again.' },
+        { text: 'Back in Forge, enter your Site URL (e.g. https://yourdomain.com — no /wp-admin, no trailing slash), your WordPress username (the one you logged in with, not your display name), and paste the application password.' },
       ],
     },
   },
