@@ -603,6 +603,22 @@
 .comp-rewrite-btn:hover:not(:disabled) {
   background: rgba(59, 130, 246, 1);
 }
+.comp-rewrite-delete {
+  padding: 6px 10px;
+  background: rgba(239, 68, 68, 0.12);
+  color: rgba(248, 113, 113, 0.9);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s;
+  line-height: 1;
+}
+.comp-rewrite-delete:hover {
+  background: rgba(239, 68, 68, 0.25);
+  color: #f87171;
+}
 .comp-rewrite-undo {
   background: none;
   border: 1px solid rgba(148, 163, 184, 0.2);

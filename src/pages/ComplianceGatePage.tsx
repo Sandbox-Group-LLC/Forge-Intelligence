@@ -698,6 +698,15 @@ function ComplianceGateContent() {
                               <button className="comp-rewrite-btn" onClick={() => handleSelectionRewrite(idx)} disabled={rewriteSelLoading || !rewriteInstruction.trim()}>
                                 {rewriteSelLoading ? 'Rewriting…' : 'Rewrite'}
                               </button>
+                              <button className="comp-rewrite-delete" onClick={() => {
+                                if (!selectionToolbar) return;
+                                const sectionText = editedSections[idx] ?? selectedArticle?.article_json?.sections?.[idx]?.body ?? selectedArticle?.article_json?.sections?.[idx]?.content ?? '';
+                                setRewriteUndo({ idx, original: sectionText });
+                                const before = sectionText.slice(0, selectionToolbar.start);
+                                const after = sectionText.slice(selectionToolbar.end);
+                                setEditedSections(p => ({ ...p, [idx]: (before + after).replace(/\s{2,}/g, ' ').trim() }));
+                                setSelectionToolbar(null);
+                              }} title="Remove selected text">✕</button>
                             </div>
                           </div>
                         )}
