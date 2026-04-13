@@ -314,7 +314,7 @@ function ScoreCell({ score }: { score: number }) {
 }
 
 export default function GeoStrategistPage() {
-  const { isPaid , brandLoading } = useApp();
+  const { isPaid, brandLoading, activeBrand } = useApp();
   if (brandLoading) return null;
   if (!isPaid) {
     return (
