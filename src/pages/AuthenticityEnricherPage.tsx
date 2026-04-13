@@ -145,10 +145,9 @@ function AuthenticityEnricherContent() {
           headers: { 'Authorization': `Bearer ${authToken}` }
         });
         const d = await res.json();
-        if (d.success && d.briefs?.length > 0) {
-          const brief = d.briefs[0];
-          const ed = typeof brief.enriched_data === 'string' ? JSON.parse(brief.enriched_data) : brief.enriched_data;
-          setResult(ed as EnrichResult);
+        if (d.success && d.data?.length > 0) {
+          const b = d.data[0];
+          setResult(b as EnrichResult);
         }
       } catch { /* silent */ }
     };
