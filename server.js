@@ -4371,6 +4371,7 @@ CRITICAL RULES:
 - Do NOT hallucinate or infer content. If a section contains no issues, do not flag it.
 - The "Known Mistakes" below are BEHAVIORAL PATTERNS to watch for (e.g. "avoid truncated sentences"). They are NOT evidence or sources. Never cite a Known Mistake as proof that a claim exists elsewhere or needs sourcing.
 - When flagging a factual claim, explain why the CLAIM ITSELF is unverifiable based on what appears in the article — do not say "referenced in an internal brief" or "found elsewhere in the system."
+- SECTION ISOLATION: Each flag must reference content from ONLY the section it is assigned to (by sectionIndex). Do not flag Section 5 for something that appears in Section 4. The flaggedExcerpt must be a verbatim quote from the section identified by the sectionIndex — not from any other section.
 
 Brand Voice Profile:
 ${JSON.stringify(brand?.profile_data?.voice_profile || {}, null, 2)}
