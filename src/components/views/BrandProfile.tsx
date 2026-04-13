@@ -131,17 +131,17 @@ export function BrandProfile() {
           </div>
         </div>
         <div className="profile-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <button onClick={handleReanalyze} disabled={reanalyzing} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', fontSize: '13px', fontWeight: 500, border: '1px solid var(--color-border, #e2e8f0)', borderRadius: '8px', background: 'transparent', color: 'var(--color-text-secondary, #64748b)', cursor: 'pointer' }}>
+          <button onClick={handleReanalyze} disabled={reanalyzing} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 16px', fontSize: '13px', fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: '1' }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
             {reanalyzing ? 'Re-analyzing...' : 'Re-analyze'}
           </button>
-          <button onClick={handleExportJSON} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', fontSize: '13px', fontWeight: 500, border: '1px solid var(--color-border, #e2e8f0)', borderRadius: '8px', background: 'transparent', color: 'var(--color-text-secondary, #64748b)', cursor: 'pointer' }}>
+          <button onClick={handleExportJSON} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 16px', fontSize: '13px', fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: '1' }}>
             {icons.download} Export JSON
           </button>
-          <a href="/app/context-hub?view=strategy" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', fontSize: '13px', fontWeight: 600, border: '1px solid var(--color-accent, #4F46E5)', borderRadius: '8px', background: 'transparent', color: 'var(--color-accent, #4F46E5)', textDecoration: 'none' }}>
+          <a href="/app/context-hub?view=strategy" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 16px', fontSize: '13px', fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: '1' }}>
             Strategy Brief →
           </a>
-          <a href={`/app/geo-strategist?profileId=${brandProfile.id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', fontSize: '13px', fontWeight: 600, borderRadius: '8px', background: 'var(--color-accent, #4F46E5)', color: '#fff', textDecoration: 'none', border: 'none' }}>
+          <a href={`/app/geo-strategist?profileId=${brandProfile.id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 16px', fontSize: '13px', fontWeight: 600, borderRadius: '8px', background: '#4F46E5', color: '#fff', border: '1px solid #4F46E5', cursor: 'pointer', textDecoration: 'none', lineHeight: '1' }}>
             {icons.zap} Run GEO Strategy →
           </a>
         </div>
