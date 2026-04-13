@@ -103,11 +103,10 @@ export function Strategy() {
           <span className="meta-badge">
             {brandProfile.strategicRecommendations.length} Recommendations
           </span>
-          <button className="btn-export">
-            <span className="btn-icon">{icons.download}</span>
-            Export Brief
+          <button onClick={() => {}} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', fontSize: '13px', fontWeight: 500, border: '1px solid var(--color-border, #e2e8f0)', borderRadius: '8px', background: 'transparent', color: 'var(--color-text-secondary, #64748b)', cursor: 'pointer' }}>
+            {icons.download} Export Brief
           </button>
-          <a href="/app/geo-strategist" style={{ padding: '8px 20px', background: 'var(--color-accent, #4F46E5)', color: '#fff', borderRadius: '8px', fontSize: '13px', fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }}>
+          <a href="/app/geo-strategist" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', fontSize: '13px', fontWeight: 600, borderRadius: '8px', background: 'var(--color-accent, #4F46E5)', color: '#fff', textDecoration: 'none', border: 'none' }}>
             Run GEO Strategy →
           </a>
         </div>
