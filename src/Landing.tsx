@@ -107,25 +107,6 @@ export default function Landing() {
     setReturning(null);
   };
 
-  // E5: Domain lookup — allows mobile users with wiped localStorage to resume
-  const handleLookup = async (brandUrl: string) => {
-    if (!brandUrl.trim()) return;
-    const normalized = brandUrl.trim().startsWith('http') ? brandUrl.trim() : `https://${brandUrl.trim()}`;
-    try {
-      const res = await fetch('/api/context-hub/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brandUrl: normalized, checkBrainFirst: true, saveToBrain: false }),
-      });
-      const d = await res.json();
-      if (d.success && d.cached && d.data) {
-        // Found existing brain — restore it
-        const b = d.data;
-        try { localStorage.setItem('forge_active_brand', JSON.stringify({ id: b.id, brandUrl: b.brandUrl, brandName: b.brandName, expiresAt: b.expiresAt || null, isPaid: b.isPaid || false })); } catch(e) {}
-        setReturning({ brandUrl: b.brandUrl, brandName: b.brandName, expiresAt: b.expiresAt || null });
-      }
-    } catch { /* silent — user can just scan again */ }
-  };
 
   return (
     <div style={styles.root}>
