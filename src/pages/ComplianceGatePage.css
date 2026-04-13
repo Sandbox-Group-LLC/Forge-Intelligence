@@ -1,4 +1,3 @@
-.comp-page {
   padding-bottom: 64px;
   display: flex;
   flex-direction: column;
@@ -546,7 +545,7 @@
 .comp-rewrite-toolbar {
   position: fixed;
   z-index: 60;
-  background: #cfcfcf;
+  background: #edf1ff;
   border: 1px solid rgba(121, 121, 121, 0.4);
   border-radius: 8px;
   padding: 10px 12px;
@@ -570,7 +569,7 @@
 .comp-rewrite-input {
   flex: 1;
   padding: 8px 12px;
-  background: #ededed;
+  background: #ffffff;
   border: 1px solid #777777;
   border-radius: 6px;
   color: #5c5c5c;
