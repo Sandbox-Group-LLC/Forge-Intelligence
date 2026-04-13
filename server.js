@@ -4366,9 +4366,11 @@ app.post('/api/compliance/critique', requireAuth, async (req, res) => {
 The article was written for the brand "${brand?.brand_name || 'Unknown'}" (${brand?.brand_url || 'no URL'}). Do NOT flag brand name usage that correctly references this brand.
 
 CRITICAL RULES:
-- ONLY flag claims, phrases, or issues that are EXPLICITLY present in the article text. Do NOT flag claims from the brand profile that were not actually written into the article.
-- Every flag must include a "flaggedExcerpt" field containing the EXACT quote from the article that triggered the flag. If you cannot quote it verbatim from the article, do not flag it.
+- ONLY flag claims, phrases, or issues that are EXPLICITLY present in the article text being audited. Do NOT reference, cite, or cross-reference content from other articles, briefs, GEO reports, or any source outside this specific article.
+- Every flag must include a "flaggedExcerpt" field containing the EXACT quote from the article that triggered the flag. If you cannot quote it verbatim from THIS article, do not flag it.
 - Do NOT hallucinate or infer content. If a section contains no issues, do not flag it.
+- The "Known Mistakes" below are BEHAVIORAL PATTERNS to watch for (e.g. "avoid truncated sentences"). They are NOT evidence or sources. Never cite a Known Mistake as proof that a claim exists elsewhere or needs sourcing.
+- When flagging a factual claim, explain why the CLAIM ITSELF is unverifiable based on what appears in the article — do not say "referenced in an internal brief" or "found elsewhere in the system."`
 
 Brand Voice Profile:
 ${JSON.stringify(brand?.profile_data?.voice_profile || {}, null, 2)}
