@@ -431,7 +431,7 @@ export default function PerformanceDashboardPage() {
             <p className="geo-description">Content analytics across all channels and campaigns.</p>
           </div>
           <div className="perf-header-right">
-            {!['geo', 'gsc', 'predictions', 'patterns'].includes(activeChannel) && <div className="perf-sync-wrap">
+            {!['geo', 'gsc', 'predictions', 'patterns', 'webflow'].includes(activeChannel) && <div className="perf-sync-wrap">
               <div className="perf-btn-group">
               <button className={`perf-sync-btn ${syncing ? 'syncing' : ''}`} onClick={handleSync} disabled={syncing || !brandProfileId}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={syncing ? 'spin' : ''}>
@@ -710,7 +710,16 @@ export default function PerformanceDashboardPage() {
                   <div className="perf-gsc-connected">
                     <div className="perf-gsc-connected-header">
                       <span className="perf-gsc-connected-label">Content SEO Performance</span>
-                      <span className="perf-section-meta">{wfSeo.articles.length} articles · {wfSeo.gscConnected ? 'GSC connected' : 'GSC not connected'}</span>
+                      <div className="perf-btn-group">
+                        <button className="perf-sync-btn" onClick={async () => { await handleGscSync(); await fetchWebflowSeo(); }} disabled={gscSyncing || !brandProfileId}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={gscSyncing ? 'spin' : ''}>
+                            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
+                            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
+                          </svg>
+                          {gscSyncing ? 'Syncing GSC...' : 'Sync Search Data'}
+                        </button>
+                        <span className="perf-section-meta">{wfSeo.articles.length} articles · {wfSeo.gscConnected ? 'GSC connected' : 'GSC not connected'}</span>
+                      </div>
                     </div>
 
                     <div className="perf-kpis" style={{ marginTop: '16px' }}>
