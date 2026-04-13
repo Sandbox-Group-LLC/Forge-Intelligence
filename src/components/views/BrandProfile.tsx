@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useApp } from '../../context/AppContext';
 import './BrandProfile.css';
 
@@ -35,8 +35,33 @@ const icons = {
 type TabType = 'voice' | 'personas' | 'signals' | 'gaps';
 
 export function BrandProfile() {
-  const { brandProfile } = useApp();
+  const { brandProfile, setBrandProfile } = useApp();
   const [activeTab, setActiveTab] = useState<TabType>('voice');
+  const [reanalyzing, setReanalyzing] = useState(false);
+
+  const handleReanalyze = useCallback(async () => {
+    if (!brandProfile?.brandUrl || reanalyzing) return;
+    setReanalyzing(true);
+    try {
+      const r = await fetch('/api/context-hub/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          brandUrl: brandProfile.brandUrl,
+          competitorUrls: [],
+          audienceNotes: '',
+          strategicNotes: '',
+          checkBrainFirst: false,
+          saveToBrain: true,
+        }),
+      });
+      const d = await r.json();
+      if (d.success && d.data) {
+        setBrandProfile(d.data);
+      }
+    } catch (e) { console.error('Re-analyze failed:', e); }
+    setReanalyzing(false);
+  }, [brandProfile?.brandUrl, reanalyzing, setBrandProfile]);
 
   if (!brandProfile) {
     return (
@@ -103,6 +128,10 @@ export function BrandProfile() {
           </div>
         </div>
         <div className="profile-actions">
+          <button className="btn-action reanalyze-btn" onClick={handleReanalyze} disabled={reanalyzing}>
+            <span className="btn-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></span>
+            {reanalyzing ? 'Re-analyzing...' : 'Re-analyze'}
+          </button>
           <button className="btn-action" onClick={handleExportJSON}>
             <span className="btn-icon">{icons.download}</span>
             Export JSON
