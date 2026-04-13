@@ -8686,13 +8686,30 @@ const PROMO_CODES = new Map([
 ]);
 
 // POST /api/promo/validate — validate a promo code (unlimited use)
-app.post('/api/promo/validate', async (req, res) => {
-  const { code, brandProfileId } = req.body;
+app.post('/api/promo/validate', softAuth, async (req, res) => {
+  const { code, brandProfileId: providedId } = req.body;
   if (!code) return res.status(400).json({ error: 'code required' });
 
   const normalised = code.trim().toUpperCase();
   const promo = PROMO_CODES.get(normalised);
   if (!promo) return res.json({ valid: false, message: 'Invalid promo code' });
+
+  // Resolve brandProfileId — use provided, or look up from auth token
+  let brandProfileId = providedId;
+  if (!brandProfileId && req.userId) {
+    const lookup = await pool.query(
+      'SELECT id FROM brand_profiles WHERE clerk_user_id = $1 AND is_active = true ORDER BY updated_at DESC LIMIT 1',
+      [req.userId]
+    );
+    if (lookup.rows.length) brandProfileId = lookup.rows[0].id;
+  }
+  // Last resort — most recently created active brand
+  if (!brandProfileId) {
+    const fallback = await pool.query(
+      'SELECT id FROM brand_profiles WHERE is_active = true ORDER BY created_at DESC LIMIT 1'
+    );
+    if (fallback.rows.length) brandProfileId = fallback.rows[0].id;
+  }
 
   // Apply — mark brand as paid
   if (promo.discount === 100 && brandProfileId) {
@@ -8701,6 +8718,8 @@ app.post('/api/promo/validate', async (req, res) => {
       [brandProfileId]
     );
     console.log(`[PROMO] ${normalised} applied to brand ${brandProfileId} — ${promo.description}`);
+  } else if (promo.discount === 100) {
+    console.warn(`[PROMO] ${normalised} validated but no brandProfileId found — is_paid NOT set`);
   }
 
   res.json({ valid: true, discount: promo.discount, message: `Code applied — ${promo.description}` });
