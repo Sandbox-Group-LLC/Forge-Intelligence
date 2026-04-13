@@ -390,9 +390,13 @@ function ComplianceGateContent() {
       const data = await res.json();
       if (data.rewrittenText) {
         setRewriteUndo({ idx, original: sectionText });
-        const before = sectionText.slice(0, selectionToolbar.start);
-        const after = sectionText.slice(selectionToolbar.end);
-        setEditedSections(p => ({ ...p, [idx]: before + data.rewrittenText + after }));
+        // Use string matching instead of numeric offsets (offsets can go stale)
+        const pos = sectionText.indexOf(selectionToolbar.text);
+        if (pos >= 0) {
+          const before = sectionText.slice(0, pos);
+          const after = sectionText.slice(pos + selectionToolbar.text.length);
+          setEditedSections(p => ({ ...p, [idx]: before + data.rewrittenText + after }));
+        }
         setSelectionToolbar(null);
         setRewriteInstruction('');
       }
@@ -704,9 +708,13 @@ function ComplianceGateContent() {
                                 if (!confirm(`Delete ${selectionToolbar.text.length} characters?\n\n"${selectionToolbar.text.slice(0, 100)}${selectionToolbar.text.length > 100 ? '…' : ''}"`)) return;
                                 const sectionText = editedSections[idx] ?? selectedArticle?.article_json?.sections?.[idx]?.body ?? selectedArticle?.article_json?.sections?.[idx]?.content ?? '';
                                 setRewriteUndo({ idx, original: sectionText });
-                                const before = sectionText.slice(0, selectionToolbar.start);
-                                const after = sectionText.slice(selectionToolbar.end);
-                                setEditedSections(p => ({ ...p, [idx]: (before + after).replace(/  +/g, ' ').trim() }));
+                                // Use the actual selected text to find and remove — not numeric offsets which can go stale
+                                const pos = sectionText.indexOf(selectionToolbar.text);
+                                if (pos >= 0) {
+                                  const before = sectionText.slice(0, pos);
+                                  const after = sectionText.slice(pos + selectionToolbar.text.length);
+                                  setEditedSections(p => ({ ...p, [idx]: (before + after).replace(/  +/g, ' ').replace(/\n{3,}/g, '\n\n').trim() }));
+                                }
                                 setSelectionToolbar(null);
                               }} title="Remove selected text">✕</button>
                             </div>
