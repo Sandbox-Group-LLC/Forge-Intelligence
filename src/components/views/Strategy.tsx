@@ -100,13 +100,13 @@ export function Strategy() {
           </p>
         </div>
         <div className="header-meta" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span className="meta-badge">
+          <span style={{ display: 'inline-flex', alignItems: 'center', padding: '9px 16px', fontSize: '13px', fontWeight: 600, border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff', color: '#334155', lineHeight: '1' }}>
             {brandProfile.strategicRecommendations.length} Recommendations
           </span>
-          <button onClick={() => {}} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', fontSize: '13px', fontWeight: 500, border: '1px solid var(--color-border, #e2e8f0)', borderRadius: '8px', background: 'transparent', color: 'var(--color-text-secondary, #64748b)', cursor: 'pointer' }}>
+          <button onClick={() => {}} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 16px', fontSize: '13px', fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: '1' }}>
             {icons.download} Export Brief
           </button>
-          <a href="/app/geo-strategist" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', fontSize: '13px', fontWeight: 600, borderRadius: '8px', background: 'var(--color-accent, #4F46E5)', color: '#fff', textDecoration: 'none', border: 'none' }}>
+          <a href="/app/geo-strategist" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 16px', fontSize: '13px', fontWeight: 600, borderRadius: '8px', background: '#4F46E5', color: '#fff', border: '1px solid #4F46E5', cursor: 'pointer', textDecoration: 'none', lineHeight: '1' }}>
             Run GEO Strategy →
           </a>
         </div>
