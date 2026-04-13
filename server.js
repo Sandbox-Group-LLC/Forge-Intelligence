@@ -2399,7 +2399,7 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
 
     const message = await anthropic.messages.create({
       model: 'claude-opus-4-6',
-      max_tokens: 4096,
+      max_tokens: 8192,
       messages: [{ role: 'user', content: prompt }]
     });
 
@@ -2407,7 +2407,7 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
     for (let attempt = 0; attempt < 2; attempt++) {
       const msg = attempt === 0 ? message : await anthropic.messages.create({
         model: 'claude-opus-4-6',
-        max_tokens: 4096,
+        max_tokens: 8192,
         messages: [{ role: 'user', content: prompt }]
       });
       const raw = msg.content[0].text;
