@@ -999,13 +999,43 @@ export default function PerformanceDashboardPage() {
                 ) : (
                   <div className="perf-predictions-list">
                     {predictions.map((item: any) => {
-                      const bd = item.breakdown || {};
-                      const tier = bd.tier || item.tier;
-                      const score = bd.score ?? item.precog_score;
-                      const color = bd.color || '#64748B';
-                      const signals = bd.signals || [];
-                      const actions = bd.recommendedActions || [];
-                      const hist = bd.historicalContext || {};
+                      const raw = item.precog_breakdown || item.breakdown || {};
+                      const score = raw.score ?? item.precog_score ?? 0;
+
+                      // Enrich: compute tier, color, signals from raw breakdown dimensions
+                      const tier = raw.tier || (score >= 80 ? 'high' : score >= 65 ? 'moderate' : score >= 45 ? 'low' : 'insufficient_data');
+                      const color = tier === 'high' ? '#22C55E' : tier === 'moderate' ? '#F5B942' : tier === 'low' ? '#EF4444' : '#64748B';
+
+                      // Build signals from raw breakdown
+                      const signals: { label: string; impact: string }[] = [];
+                      if (raw.structure) {
+                        const pct = Math.round((raw.structure.score / raw.structure.max) * 100);
+                        signals.push({ label: `Structure: ${raw.structure.score}/${raw.structure.max} — ${raw.structure.wordCount} words, ${raw.structure.sectionCount} sections`, impact: pct >= 80 ? 'positive' : pct >= 50 ? 'neutral' : 'negative' });
+                      }
+                      if (raw.patternMatch) {
+                        const matched = raw.patternMatch.matchedPatterns?.length || 0;
+                        signals.push({ label: `Brain alignment: ${raw.patternMatch.score}/${raw.patternMatch.max} — ${matched} writing rule${matched !== 1 ? 's' : ''} matched`, impact: raw.patternMatch.score >= 15 ? 'positive' : raw.patternMatch.score >= 8 ? 'neutral' : 'negative' });
+                      }
+                      if (raw.title) {
+                        signals.push({ label: `Title: ${raw.title.score}/${raw.title.max} — ${raw.title.length} chars`, impact: raw.title.score >= 12 ? 'positive' : raw.title.score >= 7 ? 'neutral' : 'negative' });
+                      }
+                      if (raw.antiPatterns && raw.antiPatterns.score < 0) {
+                        const count = raw.antiPatterns.triggeredMistakes?.length || 0;
+                        signals.push({ label: `Anti-patterns: ${raw.antiPatterns.score} pts — ${count} triggered mistake${count !== 1 ? 's' : ''}`, impact: 'negative' });
+                      }
+                      if (raw.history) {
+                        signals.push({ label: raw.history.totalPosts > 0 ? `History: ${raw.history.score}/${raw.history.max} — based on ${raw.history.totalPosts} posts` : 'No historical baseline yet — score improves with analytics data', impact: raw.history.score > 0 ? 'positive' : 'neutral' });
+                      }
+
+                      // Generate actions
+                      const actions: string[] = [];
+                      if (raw.patternMatch && raw.patternMatch.score < 10) actions.push('Review Brain writing rules — article may not align with proven patterns');
+                      if (raw.antiPatterns && raw.antiPatterns.score <= -6) actions.push('Run through Compliance Gate — past edits suggest this content needs human review');
+                      if (raw.history && raw.history.totalPosts === 0) actions.push('Publish and sync analytics to build a performance baseline');
+                      if (raw.title && raw.title.score < 8) actions.push('Consider a more specific or compelling title');
+
+                      const bd = raw;
+                      const hist = { totalArticles: raw.history?.totalPosts || 0, avgImpressions: raw.history?.avgImpressions || 0 };
                       const insufficient = tier === 'insufficient_data';
                       return (
                         <div key={item.id} className={`perf-pred-card perf-pred-${tier}`}>
