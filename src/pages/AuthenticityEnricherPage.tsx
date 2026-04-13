@@ -136,6 +136,35 @@ function AuthenticityEnricherContent() {
     if (activeBrand?.id && !selectedBrainId) setSelectedBrainId(activeBrand.id);
   }, [activeBrand?.id]);
 
+  // Fetch existing enrichment results on mount
+  useEffect(() => {
+    if (!selectedBrainId || result) return;
+    const fetchExisting = async () => {
+      try {
+        const res = await fetch(`/api/authenticity-enricher/briefs?brandProfileId=${selectedBrainId}`, {
+          headers: { 'Authorization': `Bearer ${(window as any).__clerk_token || ''}` }
+        });
+        const d = await res.json();
+        if (d.success && d.briefs?.length > 0) {
+          const brief = d.briefs[0];
+          const ed = typeof brief.enriched_data === 'string' ? JSON.parse(brief.enriched_data) : brief.enriched_data;
+          setResult({
+            confidenceScore: brief.confidence_score || ed.confidenceScore || 0,
+            eeatBreakdown: ed.eeatBreakdown || {},
+            smeGaps: ed.smeGaps || [],
+            voiceInjections: ed.voiceInjections || [],
+            enrichedBrief: ed.enrichedBrief || null,
+            authorSchemaMarkup: ed.authorSchemaMarkup || null,
+            needsManualSME: ed.needsManualSME || false,
+            brandName: brief.brand_name || '',
+            latencyMs: 0
+          });
+        }
+      } catch { /* silent */ }
+    };
+    fetchExisting();
+  }, [selectedBrainId]);
+
   // Use historyEntries from context as brain list
   const brains = historyEntries.map(e => ({ id: e.id, brandName: e.brandName, brandUrl: e.brandUrl }));
 
@@ -545,6 +574,18 @@ function AuthenticityEnricherContent() {
             </div>
           )}
         </>
+      )}
+
+      {/* Next Step CTA */}
+      {result && !isRunning && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px', paddingBottom: '24px' }}>
+          <button className="ae-run-btn" style={{ opacity: 0.6 }} onClick={() => { setResult(null); }}>
+            Re-run Enrichment
+          </button>
+          <a href="/app/content-generator" className="ae-run-btn" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            Continue to Content Generator →
+          </a>
+        </div>
       )}
     </div>
   );
