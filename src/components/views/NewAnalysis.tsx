@@ -109,11 +109,11 @@ export function NewAnalysis() {
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/>
             </svg>
-            <span>Your brand already has a Brain. To refresh it, use <strong>Re-analyze</strong> on your Brand Profile.</span>
+            <span>Your Brain is ready. Continue to <strong>GEO Strategy</strong> to map your content opportunities, or view your <strong>Brand Profile</strong>.</span>
           </div>
-          <button className="staleness-refresh-btn" onClick={() => setCurrentView('brand-profile')} style={{ borderColor: 'var(--color-accent)', color: 'var(--color-accent)' }}>
-            Go to Brand Profile
-          </button>
+          <a href={`/app/geo-strategist?profileId=${activeBrand.id}`} className="staleness-refresh-btn" style={{ borderColor: 'var(--color-accent)', color: 'var(--color-accent)', textDecoration: 'none' }}>
+            Continue to GEO Strategy →
+          </a>
         </div>
       )}
 
