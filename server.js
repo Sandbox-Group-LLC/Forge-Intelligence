@@ -6165,16 +6165,16 @@ app.get('/api/analytics/webflow-seo/:brandProfileId', requireAuth, async (req, r
       [brandProfileId]
     ).catch(() => ({ rows: [] }));
 
-    if (!wfRes.rows.length) {
-      return res.json({ success: true, articles: [], totals: { published: 0, impressions: 0, clicks: 0, avgCtr: 0, avgPosition: 0 }, gscConnected: false });
-    }
-
-    // 2. Check GSC connection
+    // 2. Check GSC connection (before early return so empty state knows)
     const gscCred = await pool.query(
       'SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = $2 AND is_active = true LIMIT 1',
       [brandProfileId, 'gsc']
     ).catch(() => ({ rows: [] }));
     const gscConnected = gscCred.rows.length > 0;
+
+    if (!wfRes.rows.length) {
+      return res.json({ success: true, articles: [], totals: { published: 0, impressions: 0, clicks: 0, avgCtr: 0, avgPosition: 0 }, gscConnected });
+    }
 
     // 3. Get GSC data for all pages
     const gscRes = await pool.query(
