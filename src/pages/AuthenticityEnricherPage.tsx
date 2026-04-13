@@ -551,7 +551,7 @@ function AuthenticityEnricherContent() {
 }
 
 export default function AuthenticityEnricherPage() {
-  const { isPaid , brandLoading } = useApp();
+  const { isPaid, brandLoading, activeBrand } = useApp();
   if (brandLoading) return null;
   if (!isPaid) {
     return (
