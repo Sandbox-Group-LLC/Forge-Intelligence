@@ -366,6 +366,7 @@ export default function IntegrationsPage() {
       linkedin: '/api/linkedin/auth',
       hubspot:  '/api/hubspot/auth',
       webflow:  '/api/webflow/auth',
+      x:        '/api/x/auth',
     };
     if (channel?.oauthFlow && nativeOAuthRoutes[channelId]) {
       if (!selectedBrand) { setError('Select a Brain first'); return; }
