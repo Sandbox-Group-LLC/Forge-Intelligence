@@ -123,7 +123,7 @@ function AuthenticityEnricherContent() {
   const [showManualForm, setShowManualForm] = useState(false);
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
 
-  const { setCurrentView, historyEntries, activeBrand } = useApp();
+  const { setCurrentView, historyEntries, activeBrand, authToken } = useApp();
 
   useEffect(() => {
     setCurrentView('authenticity-enricher');
@@ -142,7 +142,7 @@ function AuthenticityEnricherContent() {
     const fetchExisting = async () => {
       try {
         const res = await fetch(`/api/authenticity-enricher/briefs?brandProfileId=${selectedBrainId}`, {
-          headers: { 'Authorization': `Bearer ${(window as any).__clerk_token || ''}` }
+          headers: { 'Authorization': `Bearer ${authToken}` }
         });
         const d = await res.json();
         if (d.success && d.briefs?.length > 0) {
@@ -153,7 +153,7 @@ function AuthenticityEnricherContent() {
       } catch { /* silent */ }
     };
     fetchExisting();
-  }, [selectedBrainId]);
+  }, [selectedBrainId, authToken]);
 
   // Use historyEntries from context as brain list
   const brains = historyEntries.map(e => ({ id: e.id, brandName: e.brandName, brandUrl: e.brandUrl }));
