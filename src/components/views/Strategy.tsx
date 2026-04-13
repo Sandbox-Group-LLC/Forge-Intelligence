@@ -100,13 +100,13 @@ export function Strategy() {
           </p>
         </div>
         <div className="header-meta" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', padding: '9px 16px', fontSize: '13px', fontWeight: 600, border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff', color: '#334155', lineHeight: '1' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', height: '36px', padding: '0 16px', fontSize: '13px', fontWeight: 600, border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff', color: '#334155', lineHeight: '1', boxSizing: 'border-box' as const }}>
             {brandProfile.strategicRecommendations.length} Recommendations
           </span>
-          <button onClick={() => {}} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 16px', fontSize: '13px', fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: '1' }}>
+          <button onClick={() => {}} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: '36px', padding: '0 16px', fontSize: '13px', fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: '1', boxSizing: 'border-box' as const, margin: 0 }}>
             {icons.download} Export Brief
           </button>
-          <a href="/app/geo-strategist" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 16px', fontSize: '13px', fontWeight: 600, borderRadius: '8px', background: '#4F46E5', color: '#fff', border: '1px solid #4F46E5', cursor: 'pointer', textDecoration: 'none', lineHeight: '1' }}>
+          <a href="/app/geo-strategist" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: '36px', padding: '0 16px', fontSize: '13px', fontWeight: 600, borderRadius: '8px', background: '#4F46E5', color: '#fff', border: '1px solid #4F46E5', cursor: 'pointer', textDecoration: 'none', lineHeight: '1', boxSizing: 'border-box' as const, margin: 0 }}>
             Run GEO Strategy →
           </a>
         </div>
