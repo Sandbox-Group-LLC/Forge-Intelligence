@@ -4,7 +4,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import pkg from 'pg';
 import Anthropic from '@anthropic-ai/sdk';
-import { randomUUID, randomBytes, createHmac } from 'crypto';
+import { randomUUID, randomBytes, createHmac, createHash } from 'crypto';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
 const { Pool } = pkg;
