@@ -23,6 +23,8 @@ import AdminPage from './pages/AdminPage';
 import TopicQueuePage from './pages/TopicQueuePage';
 import ReviewPage from './pages/ReviewPage';
 import PrivacyPage from './pages/PrivacyPage';
+import TermsPage from './pages/TermsPage';
+import AcceptableUsePage from './pages/AcceptableUsePage';
 import EmailCampaignPage from './pages/EmailCampaignPage';
 import './index.css';
 
@@ -73,6 +75,8 @@ createRoot(document.getElementById('root')!).render(
         {/* Marketing site */}
         <Route path="/" element={<Landing />} />
         <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/terms" element={<TermsPage />} />
+        <Route path="/acceptable-use" element={<AcceptableUsePage />} />
         <Route path="/product" element={<Product />} />
 
         {/* App — all product routes live under /app/ */}
