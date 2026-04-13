@@ -130,27 +130,19 @@ export function BrandProfile() {
             </span>
           </div>
         </div>
-        <div className="profile-actions">
-          <button className="btn-action reanalyze-btn" onClick={handleReanalyze} disabled={reanalyzing}>
-            <span className="btn-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></span>
+        <div className="profile-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button onClick={handleReanalyze} disabled={reanalyzing} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', fontSize: '13px', fontWeight: 500, border: '1px solid var(--color-border, #e2e8f0)', borderRadius: '8px', background: 'transparent', color: 'var(--color-text-secondary, #64748b)', cursor: 'pointer' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
             {reanalyzing ? 'Re-analyzing...' : 'Re-analyze'}
           </button>
-          <button className="btn-action" onClick={handleExportJSON}>
-            <span className="btn-icon">{icons.download}</span>
-            Export JSON
+          <button onClick={handleExportJSON} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', fontSize: '13px', fontWeight: 500, border: '1px solid var(--color-border, #e2e8f0)', borderRadius: '8px', background: 'transparent', color: 'var(--color-text-secondary, #64748b)', cursor: 'pointer' }}>
+            {icons.download} Export JSON
           </button>
-          <a
-            href="/app/context-hub?view=strategy"
-            className="btn-action"
-          >
+          <a href="/app/context-hub?view=strategy" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', fontSize: '13px', fontWeight: 600, border: '1px solid var(--color-accent, #4F46E5)', borderRadius: '8px', background: 'transparent', color: 'var(--color-accent, #4F46E5)', textDecoration: 'none' }}>
             Strategy Brief →
           </a>
-          <a
-            href={`/app/geo-strategist?profileId=${brandProfile.id}`}
-            className="btn-action geo-cta"
-          >
-            <span className="btn-icon">{icons.zap}</span>
-            Run GEO Strategy →
+          <a href={`/app/geo-strategist?profileId=${brandProfile.id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', fontSize: '13px', fontWeight: 600, borderRadius: '8px', background: 'var(--color-accent, #4F46E5)', color: '#fff', textDecoration: 'none', border: 'none' }}>
+            {icons.zap} Run GEO Strategy →
           </a>
         </div>
       </div>
