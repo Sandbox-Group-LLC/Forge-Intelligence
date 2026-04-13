@@ -137,7 +137,15 @@ function ContextAgentPage() {
     }
   };
 
-  return <AppShell>{renderView()}</AppShell>;
+  const viewTitles: Record<string, string> = {
+    'new-analysis': 'New Analysis',
+    'active-run': 'New Analysis',
+    'brand-profile': 'Brand Profile',
+    'strategy': 'Strategy Brief',
+    'brain-history': 'Brain History',
+  };
+
+  return <AppShell pageTitle={viewTitles[currentView] || 'New Analysis'}>{renderView()}</AppShell>;
 }
 
 export default ContextAgentPage;
