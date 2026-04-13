@@ -322,6 +322,7 @@ export default function GeoStrategistPage() {
         <div className="geo-gate-wrapper">
           <GateModal
             featureName="GEO Strategist"
+            brandProfileId={activeBrand?.id}
             onClose={() => window.location.href = '/app/context-hub'}
             onUnlocked={() => {}}
           />
