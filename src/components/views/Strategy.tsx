@@ -99,10 +99,17 @@ export function Strategy() {
             Actionable insights derived from the {brandProfile.brandName} brand intelligence profile
           </p>
         </div>
-        <div className="header-meta">
+        <div className="header-meta" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span className="meta-badge">
             {brandProfile.strategicRecommendations.length} Recommendations
           </span>
+          <button className="btn-export">
+            <span className="btn-icon">{icons.download}</span>
+            Export Brief
+          </button>
+          <a href="/app/geo-strategist" style={{ padding: '8px 20px', background: 'var(--color-accent, #4F46E5)', color: '#fff', borderRadius: '8px', fontSize: '13px', fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }}>
+            Run GEO Strategy →
+          </a>
         </div>
       </div>
 
@@ -210,22 +217,7 @@ export function Strategy() {
         </section>
       )}
 
-      {/* Next Step + Export */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '32px', padding: '20px 24px', background: 'var(--color-surface, #f8fafc)', borderRadius: '12px', border: '1px solid var(--color-border, #e2e8f0)' }}>
-        <div>
-          <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-text, #1e293b)' }}>Ready to execute?</div>
-          <div style={{ fontSize: '12px', color: 'var(--color-text-secondary, #64748b)', marginTop: '2px' }}>Next: Map GEO citation opportunities across ChatGPT, Perplexity, Gemini, and AI Overviews.</div>
-        </div>
-        <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-          <button className="btn-export">
-            <span className="btn-icon">{icons.download}</span>
-            Export Brief
-          </button>
-          <a href="/app/geo-strategist" style={{ padding: '10px 24px', background: 'var(--color-accent, #4F46E5)', color: '#fff', borderRadius: '8px', fontSize: '13px', fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }}>
-            Run GEO Strategy →
-          </a>
-        </div>
-      </div>
+
     </div>
   );
 }
