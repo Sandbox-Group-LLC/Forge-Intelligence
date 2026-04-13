@@ -559,6 +559,7 @@ export default function AuthenticityEnricherPage() {
         <div className="geo-gate-wrapper">
           <GateModal
             featureName="Authenticity Enricher"
+            brandProfileId={activeBrand?.id}
             onClose={() => window.location.href = '/app/context-hub'}
             onUnlocked={() => {}}
           />
