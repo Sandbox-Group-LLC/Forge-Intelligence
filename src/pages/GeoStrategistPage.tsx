@@ -40,7 +40,7 @@ const STAGES = [
 ];
 
 function GeoStrategistContent() {
-  const { setCurrentView, historyEntries, activeBrand } = useApp();
+  const { setCurrentView, historyEntries, activeBrand, authToken } = useApp();
   const [selectedBrainId, setSelectedBrainId] = useState('');
   const [isRunning, setIsRunning] = useState(false);
   const [currentStage, setCurrentStage] = useState(0);
@@ -73,7 +73,7 @@ function GeoStrategistContent() {
     const fetchExisting = async () => {
       try {
         const res = await fetch(`/api/geo-strategist/briefs?brandProfileId=${selectedBrainId}`, {
-          headers: { 'Authorization': `Bearer ${(window as any).__clerk_token || ''}` }
+          headers: { 'Authorization': `Bearer ${authToken}` }
         });
         const d = await res.json();
         if (d.success && d.briefs?.length > 0) {
@@ -92,7 +92,7 @@ function GeoStrategistContent() {
       } catch { /* silent */ }
     };
     fetchExisting();
-  }, [selectedBrainId]);
+  }, [selectedBrainId, authToken]);
 
   // Use historyEntries from AppContext (already loaded) as brain list
   const brains: BrainEntry[] = historyEntries.map(e => ({
