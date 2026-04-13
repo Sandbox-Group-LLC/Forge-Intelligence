@@ -137,6 +137,18 @@
 ### README
 - Fixed date typo: April 12 → April 11 in Platform Status header and Updated footer (both branches)
 
+### Targeted AI Rewrite in Compliance Gate (Late Session)
+- **New feature:** Select text in the edit textarea, type a natural language instruction, AI rewrites just that selection on-brand
+- **Backend:** `POST /api/compliance/rewrite-selection` — uses Claude Haiku for sub-2s response, includes brand voice profile + brain_mistakes in system prompt
+- **Floating toolbar:** Appears on text selection (15+ chars, 3+ words threshold to prevent accidental triggers), positioned near selection
+- **Inputs:** Instruction text field + Rewrite button + Delete (✕) button
+- **Inline replacement:** Uses `indexOf(selectedText)` string matching (not numeric offsets) to replace only the selection — rest of section untouched
+- **Delete with confirmation:** ✕ button shows confirm dialog with character count and preview before removing
+- **Undo:** "↩ Undo rewrite" button appears after any rewrite or delete, restores full section to pre-change state
+- **Brain training:** Existing approve flow captures before/after edits as brain_mistakes — rewrites feed the same signal pipeline
+- **Accessibility:** Toolbar uses slate-950 background (#0F172A) with WCAG AAA contrast ratios on all text elements
+- **Why it matters:** Compliance editing goes from "fix it yourself" to "tell the AI what's wrong and it fixes it while staying on-brand" — every instruction becomes a training signal for the Brain
+
 ---
 
 ## Session — April 9, 2026 (continued)
