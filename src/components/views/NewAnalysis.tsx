@@ -32,7 +32,7 @@ const icons = {
 };
 
 export function NewAnalysis() {
-  const { analysisInput, setAnalysisInput, startAnalysis, activeBrand, isPaid } = useApp();
+  const { analysisInput, setAnalysisInput, startAnalysis, activeBrand, isPaid, setCurrentView } = useApp();
   const [competitorInput, setCompetitorInput] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [scanError, setScanError] = useState('');
@@ -112,9 +112,9 @@ export function NewAnalysis() {
             <span>Your Brain is ready. Start with your <strong>Strategy Brief</strong> — competitive gaps, personas, and strategic recommendations for your brand.</span>
           </div>
           <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-            <a href="/app/context-hub?view=brand-profile" className="staleness-refresh-btn" style={{ borderColor: 'var(--color-accent)', color: 'var(--color-accent)', textDecoration: 'none' }}>
+            <a onClick={() => setCurrentView('strategy')} className="staleness-refresh-btn" style={{ borderColor: 'var(--color-accent)', color: 'var(--color-accent)', cursor: 'pointer', background: 'none', border: '1px solid var(--color-accent)' }}>
               View Strategy Brief →
-            </a>
+            </button>
             <a href={`/app/geo-strategist?profileId=${activeBrand.id}`} className="staleness-refresh-btn" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)', textDecoration: 'none' }}>
               Skip to GEO Strategy
             </a>
