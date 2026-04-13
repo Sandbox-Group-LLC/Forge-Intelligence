@@ -32,7 +32,7 @@ const icons = {
 };
 
 export function NewAnalysis() {
-  const { analysisInput, setAnalysisInput, startAnalysis, activeBrand, isPaid, setCurrentView } = useApp();
+  const { analysisInput, setAnalysisInput, startAnalysis, activeBrand, isPaid } = useApp();
   const [competitorInput, setCompetitorInput] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [scanError, setScanError] = useState('');
