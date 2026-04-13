@@ -2074,7 +2074,7 @@ app.post('/api/precog/batch', requireAuth, async (req, res) => {
       try {
         const scoreRes = await fetch(`https://${req.headers.host}/api/precog/score`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Authorization': req.headers.authorization || '' },
           body: JSON.stringify({ brandProfileId, contentId: row.id })
         });
         const data = await scoreRes.json();
