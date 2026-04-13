@@ -4370,7 +4370,7 @@ CRITICAL RULES:
 - Every flag must include a "flaggedExcerpt" field containing the EXACT quote from the article that triggered the flag. If you cannot quote it verbatim from THIS article, do not flag it.
 - Do NOT hallucinate or infer content. If a section contains no issues, do not flag it.
 - The "Known Mistakes" below are BEHAVIORAL PATTERNS to watch for (e.g. "avoid truncated sentences"). They are NOT evidence or sources. Never cite a Known Mistake as proof that a claim exists elsewhere or needs sourcing.
-- When flagging a factual claim, explain why the CLAIM ITSELF is unverifiable based on what appears in the article — do not say "referenced in an internal brief" or "found elsewhere in the system."`
+- When flagging a factual claim, explain why the CLAIM ITSELF is unverifiable based on what appears in the article — do not say "referenced in an internal brief" or "found elsewhere in the system."
 
 Brand Voice Profile:
 ${JSON.stringify(brand?.profile_data?.voice_profile || {}, null, 2)}
