@@ -390,7 +390,9 @@ export default function PerformanceDashboardPage() {
       });
       const d = await res.json();
       setSyncMsg(d.success
-        ? d.synced > 0 ? `Synced ${d.synced} post${d.synced !== 1 ? 's' : ''}` : 'Analytics up to date'
+        ? d.synced > 0
+          ? `Synced ${d.synced} post${d.synced !== 1 ? 's' : ''}`
+          : (!data?.posts?.length ? `No ${activeChannel} data found — connect this integration first` : 'Analytics up to date')
         : `Error: ${d.error}`);
       if (d.success) {
         if (activeChannel === 'campaigns') await loadCampaigns();
@@ -526,7 +528,7 @@ export default function PerformanceDashboardPage() {
               {!data?.posts?.length ? (
                 <div className="perf-empty">
                   <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>
-                  <p>No analytics data yet for {activeChannel}. Publish articles and hit Sync to start tracking.</p>
+                  <p>No analytics data yet for {activeChannel}. <a href="/app/integrations" style={{ color: 'var(--color-accent)', textDecoration: 'none' }}>Connect this integration</a> and publish articles to start tracking.</p>
                 </div>
               ) : (
                 <div className="perf-table-wrap">
