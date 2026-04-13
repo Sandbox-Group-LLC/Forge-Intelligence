@@ -1649,12 +1649,12 @@ Return ONLY valid JSON, no explanation:
           rule.confidence || 0.7,
           JSON.stringify([
             `direction:${rule.direction || 'avoid'}`,
-            `rationale:${(rule.rationale || '').slice(0, 150)}`,
+            `rationale:${rule.rationale || ''}`,
             `edits:${rule.edit_count || 1}`
           ]),
           JSON.stringify([
-            (rule.example_avoid || '').slice(0, 200),
-            (rule.example_prefer || '').slice(0, 200)
+            rule.example_avoid || '',
+            rule.example_prefer || ''
           ])
         ]
       );
