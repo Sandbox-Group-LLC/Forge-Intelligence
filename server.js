@@ -2442,30 +2442,47 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
       const resolvedBrandName = (profileData.brandName && !uuidPattern.test(profileData.brandName))
         ? profileData.brandName : brandName;
 
-      await pool.query(`UPDATE brand_profiles SET is_active = false WHERE brand_url = $1`, [brandUrl]);
-      const versionResult = await pool.query(
-        `SELECT COALESCE(MAX(version), 0) as max_v FROM brand_profiles WHERE brand_url = $1`, [brandUrl]
+      // Check if brand already exists — UPDATE in place to preserve UUID and all content references
+      const existing = await pool.query(
+        `SELECT id, version FROM brand_profiles WHERE brand_url = $1 AND is_active = true ORDER BY version DESC LIMIT 1`,
+        [brandUrl]
       );
-      const nextVersion = versionResult.rows[0].max_v + 1;
-      const id = randomUUID();
 
-      // For unauthenticated users: store session ID and set 24hr expiry
-      const sessionId = req.body.sessionId || null;
-      const expiresAt = req.userId ? null : "NOW() + INTERVAL '24 hours'";
-      
-      const inserted = await pool.query(
-        `INSERT INTO brand_profiles (id, brand_url, brand_name, version, is_active, cache_status, profile_data, clerk_user_id, onboard_session_id, expires_at)
-         VALUES ($1, $2, $3, $4, true, 'fresh', $5, $6, $7, ${expiresAt ? expiresAt : 'NULL'}) RETURNING *`,
-        [id, brandUrl, resolvedBrandName, nextVersion, JSON.stringify(profileData), req.userId || null, sessionId]
-      );
-      const r = inserted.rows[0];
+      let r;
+      if (existing.rows.length > 0) {
+        // UPDATE existing — preserves UUID, content tables, queue, analytics, brain data
+        const ex = existing.rows[0];
+        const updated = await pool.query(
+          `UPDATE brand_profiles SET profile_data = $1, brand_name = $2, version = $3, cache_status = 'fresh', updated_at = NOW()
+           WHERE id = $4 RETURNING *`,
+          [JSON.stringify(profileData), resolvedBrandName, ex.version + 1, ex.id]
+        );
+        r = updated.rows[0];
+        console.log(`[Context Hub] Updated existing brand ${r.id} to v${r.version}`);
+      } else {
+        // INSERT new — first-time analysis for this URL
+        const versionResult = await pool.query(
+          `SELECT COALESCE(MAX(version), 0) as max_v FROM brand_profiles WHERE brand_url = $1`, [brandUrl]
+        );
+        const nextVersion = versionResult.rows[0].max_v + 1;
+        const id = randomUUID();
+        const sessionId = req.body.sessionId || null;
+        const expiresAt = req.userId ? null : "NOW() + INTERVAL '24 hours'";
+        const inserted = await pool.query(
+          `INSERT INTO brand_profiles (id, brand_url, brand_name, version, is_active, cache_status, profile_data, clerk_user_id, onboard_session_id, expires_at, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, true, 'fresh', $5, $6, $7, ${expiresAt ? expiresAt : 'NULL'}, NOW(), NOW()) RETURNING *`,
+          [id, brandUrl, resolvedBrandName, nextVersion, JSON.stringify(profileData), req.userId || null, sessionId]
+        );
+        r = inserted.rows[0];
+        console.log(`[Context Hub] Created new brand ${r.id} v${r.version}`);
+      }
+
       return res.json({ success: true, cached: false, data: {
         id: r.id, brandUrl: r.brand_url, brandName: r.brand_name,
         version: r.version, isActive: r.is_active, cacheStatus: r.cache_status,
         latencyMs, discoveredCompetitors: sonarCompetitors,
         createdAt: r.created_at, updatedAt: r.updated_at, ...profileData
       }});
-    }
 
     await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata) VALUES ($1,$2,$3,$4,$5,$6)', ['stage1_context_agent', brandProfileId||null, 'success', (usage?.input_tokens||0)+(usage?.output_tokens||0), Date.now()-startTime, JSON.stringify({ brandUrl })]).catch(()=>{});
         res.json({ success: true, cached: false, data: {
