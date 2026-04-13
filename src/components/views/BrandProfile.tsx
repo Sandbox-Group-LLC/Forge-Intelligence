@@ -36,7 +36,7 @@ const icons = {
 type TabType = 'voice' | 'personas' | 'signals' | 'gaps';
 
 export function BrandProfile() {
-  const { brandProfile, setBrandProfile } = useApp();
+  const { brandProfile, setBrandProfile, setCurrentView } = useApp();
   const { getToken } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>('voice');
   const [reanalyzing, setReanalyzing] = useState(false);
@@ -138,7 +138,7 @@ export function BrandProfile() {
           <button onClick={handleExportJSON} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
             {icons.download} Export JSON
           </button>
-          <button onClick={() => { window.location.href = '/app/context-hub?view=strategy'; }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
+          <button onClick={() => setCurrentView('strategy')} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
             Strategy Brief →
           </button>
           <button onClick={() => { window.location.href = `/app/geo-strategist?profileId=${brandProfile.id}`; }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, borderRadius: 8, background: '#4F46E5', color: '#fff', border: '1px solid #4F46E5', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
