@@ -201,11 +201,11 @@ const CHANNELS: ChannelDef[] = [
     setupGuide: {
       title: 'X (Twitter) Access Token',
       steps: [
-        { text: 'Go to the X Developer Portal and open your app.', url: 'https://developer.x.com/en/portal/projects-and-apps' },
-        { text: 'Under Keys and Tokens, find User Authentication Tokens.' },
-        { text: 'If you don\'t see an Access Token, click Generate under "Access Token and Secret".' },
-        { text: 'Make sure your app has Read and Write permissions (App Settings → User authentication settings).' },
-        { text: 'Copy the Access Token and Access Token Secret and paste them above. The API Key/Secret live in Forge -- you don\'t need them.' },
+        { text: 'Open the X Developer Console and click "Apps" in the left sidebar.', url: 'https://developer.x.com/en/portal/projects-and-apps' },
+        { text: 'Click on your app name to open it. If you don\'t have an app yet, create one first under your project.' },
+        { text: 'Click the "Keys and tokens" tab at the top of your app page.' },
+        { text: 'Scroll to "Authentication Tokens" and click Generate (or Regenerate) next to "Access Token and Secret." Make sure it says Read and Write — if it says Read Only, go to Settings → User authentication settings and change the permissions first, then regenerate.' },
+        { text: 'Copy both the Access Token and Access Token Secret and paste them into the fields above. You do not need the API Key or API Secret — those are already configured in Forge.' },
       ],
     },
   },
