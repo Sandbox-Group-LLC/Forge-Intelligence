@@ -567,13 +567,13 @@ function AuthenticityEnricherContent() {
 
       {/* Next Step CTA */}
       {result && !isRunning && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px', paddingBottom: '24px' }}>
-          <button className="ae-run-btn" style={{ opacity: 0.6 }} onClick={() => { setResult(null); }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 24, paddingBottom: 24 }}>
+          <button onClick={() => { setResult(null); }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
             Re-run Enrichment
           </button>
-          <a href="/app/content-generator" className="ae-run-btn" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <button onClick={() => { window.location.href = '/app/content-generator'; }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, borderRadius: 8, background: '#4F46E5', color: '#fff', border: '1px solid #4F46E5', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
             Continue to Content Generator →
-          </a>
+          </button>
         </div>
       )}
     </div>
