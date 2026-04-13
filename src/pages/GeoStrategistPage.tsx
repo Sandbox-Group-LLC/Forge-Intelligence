@@ -333,13 +333,13 @@ function GeoStrategistContent() {
 
       {/* Next Step CTA */}
       {result && !isRunning && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px', paddingBottom: '24px' }}>
-          <button className="geo-run-btn" style={{ opacity: 0.6 }} onClick={() => { setResult(null); setIsRerun(true); }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 24, paddingBottom: 24 }}>
+          <button onClick={() => { setResult(null); setIsRerun(true); }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
             Re-run GEO Analysis
           </button>
-          <a href="/app/authenticity-enricher" className="geo-run-btn" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <button onClick={() => { window.location.href = '/app/authenticity-enricher'; }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, borderRadius: 8, background: '#4F46E5', color: '#fff', border: '1px solid #4F46E5', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
             Continue to Authenticity Enricher →
-          </a>
+          </button>
         </div>
       )}
     </div>
