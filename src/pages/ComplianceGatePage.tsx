@@ -198,6 +198,9 @@ function ComplianceGateContent() {
       const d = await r.json();
       if (d.success) {
         setArticles(d.articles || []);
+        if (d.message && (!d.articles || d.articles.length === 0)) {
+          setError(d.message);
+        }
       } else {
         setError(d.error || 'Failed to load articles');
       }
