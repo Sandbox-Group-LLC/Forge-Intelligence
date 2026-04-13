@@ -2484,6 +2484,7 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
         createdAt: r.created_at, updatedAt: r.updated_at, ...profileData
       }});
 
+    }
     await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms, metadata) VALUES ($1,$2,$3,$4,$5,$6)', ['stage1_context_agent', brandProfileId||null, 'success', (usage?.input_tokens||0)+(usage?.output_tokens||0), Date.now()-startTime, JSON.stringify({ brandUrl })]).catch(()=>{});
         res.json({ success: true, cached: false, data: {
       id: randomUUID(), brandUrl, brandName,
