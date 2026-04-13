@@ -359,7 +359,8 @@ function ComplianceGateContent() {
     const start = ta.selectionStart;
     const end = ta.selectionEnd;
     const text = ta.value.slice(start, end).trim();
-    if (text.length < 4) { setSelectionToolbar(null); return; }
+    // Require at least 15 chars and 3 words to avoid triggering on accidental drags
+    if (text.length < 15 || text.split(/\s+/).length < 3) { setSelectionToolbar(null); return; }
     const rect = ta.getBoundingClientRect();
     // Position toolbar above the textarea, offset by rough caret position
     const lineHeight = 20;
@@ -700,11 +701,12 @@ function ComplianceGateContent() {
                               </button>
                               <button className="comp-rewrite-delete" onClick={() => {
                                 if (!selectionToolbar) return;
+                                if (!confirm(`Delete ${selectionToolbar.text.length} characters?\n\n"${selectionToolbar.text.slice(0, 100)}${selectionToolbar.text.length > 100 ? '…' : ''}"`)) return;
                                 const sectionText = editedSections[idx] ?? selectedArticle?.article_json?.sections?.[idx]?.body ?? selectedArticle?.article_json?.sections?.[idx]?.content ?? '';
                                 setRewriteUndo({ idx, original: sectionText });
                                 const before = sectionText.slice(0, selectionToolbar.start);
                                 const after = sectionText.slice(selectionToolbar.end);
-                                setEditedSections(p => ({ ...p, [idx]: (before + after).replace(/\s{2,}/g, ' ').trim() }));
+                                setEditedSections(p => ({ ...p, [idx]: (before + after).replace(/  +/g, ' ').trim() }));
                                 setSelectionToolbar(null);
                               }} title="Remove selected text">✕</button>
                             </div>
