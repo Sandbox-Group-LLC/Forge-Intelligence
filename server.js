@@ -4368,6 +4368,14 @@ app.get('/api/compliance/latest/:brandProfileId', requireAuth, async (req, res) 
   try {
     const safeId = brandProfileId.replace(/-/g, '_');
     const tableName = `generated_content_${safeId}`;
+    // Check if content table exists before querying
+    const tableCheck = await pool.query(
+      `SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1`,
+      [tableName]
+    );
+    if (!tableCheck.rows.length) {
+      return res.json({ success: true, articles: [], message: 'No content generated yet. Run the Content Generator first to create articles for compliance review.' });
+    }
     await ensureComplianceColumns(tableName);
     const result = await pool.query(
       `SELECT * FROM ${tableName} ORDER BY created_at DESC LIMIT 10`
