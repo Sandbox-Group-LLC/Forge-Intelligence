@@ -8081,7 +8081,7 @@ app.get('/api/admin/mission-control', requireAuth, async (req, res) => {
     const brandIds = (await pool.query('SELECT id FROM brand_profiles')).rows;
     let totalContent = 0;
     for (const b of brandIds) {
-      const cnt = await pool.query(\`SELECT COUNT(*) FROM generated_content_\${b.id.replace(/-/g, '_')}\`).catch(() => ({ rows: [{ count: 0 }] }));
+      const cnt = await pool.query(`SELECT COUNT(*) FROM generated_content_${b.id.replace(/-/g, '_')}`).catch(() => ({ rows: [{ count: 0 }] }));
       totalContent += parseInt(cnt.rows[0].count);
     }
 
