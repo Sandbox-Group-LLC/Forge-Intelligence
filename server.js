@@ -2890,14 +2890,20 @@ function safeParseLLM(raw, type = 'object') {
       .replace(/,\s*([\]\}])/g, '$1');
     return JSON.parse(sanitized);
   } catch(_) {}
-  // Step 4: brute-force — escape all newlines/tabs/control chars
+  // Step 4: brute-force — escape all newlines/tabs/control chars + fix missing commas
   try {
     const brute = extracted
       .replace(/\r/g, '')
       .replace(/\n/g, '\\n')
       .replace(/\t/g, '\\t')
       .replace(/[\x00-\x1f]/g, ' ')
-      .replace(/,\s*([\]\}])/g, '$1');
+      .replace(/,\s*([\]\}])/g, '$1')
+      .replace(/("\s*)(\n\s*")/g, '$1,$2')           // missing comma between strings
+      .replace(/(\}\s*)(\{)/g, '$1,$2')                 // missing comma between objects
+      .replace(/("\s*)(\{)/g, '$1,$2')                  // missing comma before object in array
+      .replace(/(\}\s*)(")/g, '$1,$2')                  // missing comma after object before string
+      .replace(/([\]\}])\s*([\[\{])/g, '$1,$2')      // missing comma between any close+open
+      .replace(/(")\s*(")/g, '$1,$2');                   // missing comma between adjacent strings
     return JSON.parse(brute);
   } catch(_) {}
   // Step 5: nuclear — re-slice from raw, kill everything non-printable
