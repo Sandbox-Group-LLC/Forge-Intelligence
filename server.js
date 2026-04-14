@@ -5777,7 +5777,11 @@ app.get('/api/hubspot/auth', (req, res) => {
 
 app.get('/auth/hubspot/callback', async (req, res) => {
   const { code, state, error } = req.query;
-  if (error) return res.redirect(`/app/integrations?hubspot_error=${error}`);
+  console.log(`[HubSpot Callback] code=${code ? 'present' : 'MISSING'} state=${state} error=${error || 'none'}`);
+  if (error) {
+    console.error(`[HubSpot Callback] OAuth error from HubSpot: ${error}`);
+    return res.redirect(`/app/integrations?hubspot_error=${error}`);
+  }
   if (!code) return res.redirect('/app/integrations?hubspot_error=no_code');
   
   try {
@@ -5798,7 +5802,11 @@ app.get('/auth/hubspot/callback', async (req, res) => {
       })
     });
     const tokenData = await tokenRes.json();
-    if (!tokenData.access_token) throw new Error(tokenData.message || 'Token exchange failed');
+    if (!tokenData.access_token) {
+      console.error('[HubSpot Callback] Token exchange failed:', JSON.stringify(tokenData));
+      throw new Error(tokenData.message || 'Token exchange failed');
+    }
+    console.log(`[HubSpot Callback] Token exchange success — portal: ${tokenData.hub_id || 'unknown'}`);
 
     // Get account info (portal ID, hub domain)
     const accountRes = await fetch('https://api.hubapi.com/oauth/v1/access-tokens/' + tokenData.access_token);
@@ -5874,7 +5882,7 @@ app.get('/auth/hubspot/callback', async (req, res) => {
 
     res.redirect('/app/integrations?hubspot_connected=true');
   } catch (err) {
-    console.error('HubSpot callback error:', err);
+    console.error('[HubSpot Callback] FULL ERROR:', err.message, err.stack?.slice(0, 300));
     res.redirect(`/app/integrations?hubspot_error=${encodeURIComponent(err.message)}`);
   }
 });
