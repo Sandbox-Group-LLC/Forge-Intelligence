@@ -3362,10 +3362,10 @@ Return ONLY valid JSON:
     const { topicalAuthorityMap, geoOpportunities: geoOpportunitiesNorm, entitySchemaMap, geoBrief } = normalizeGeoData(briefData, topicalMap, geoOpportunities, entitySchema, profile);
     const fullBriefData = { ...briefData, topicalMap, geoOpportunities, entitySchema, topicalAuthorityMap, geoOpportunitiesNorm, entitySchemaMap, geoBrief };
 
-    await pool.query(
-      // Nuke stale GEO briefs — re-run means old data is superseded
-      await pool.query('DELETE FROM geo_briefs WHERE brand_profile_id = $1', [brandProfileId]);
+    // Nuke stale GEO briefs — re-run means old data is superseded
+    await pool.query('DELETE FROM geo_briefs WHERE brand_profile_id = $1', [brandProfileId]);
 
+    await pool.query(
       `INSERT INTO geo_briefs (id, client_id, brand_profile_id, brand_url, brand_name, version, opportunity_score, brief_data, brain_version)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [id, null, brandProfileId, profile.brand_url, profile.brand_name, nextVersion, opportunityScore, JSON.stringify(fullBriefData), profile.version || 1]
@@ -3706,10 +3706,11 @@ Respond with this exact JSON structure:
     const confidenceScore = assembledBrief.overallConfidence || scorerData.overallEEATScore || 0;
 
     await pool.query(
-      // Nuke stale briefs — corrections override old data, no point keeping wrong entity info
-      await pool.query('DELETE FROM enriched_briefs WHERE brand_profile_id = $1', [brandProfileId]);
-      console.log('[ENRICH] Cleared old enriched briefs for brand — fresh data only');
+    // Nuke stale briefs — corrections override old data, no point keeping wrong entity info
+    await pool.query('DELETE FROM enriched_briefs WHERE brand_profile_id = $1', [brandProfileId]);
+    console.log('[ENRICH] Cleared old enriched briefs for brand — fresh data only');
 
+    await pool.query(
       `INSERT INTO enriched_briefs (id, brand_profile_id, geo_brief_id, brand_url, brand_name, version, confidence_score, enriched_data, brain_version)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [newId, brandProfileId, enrichedData.geoBriefId, profile.brand_url, brandName, nextVersion, confidenceScore, JSON.stringify(enrichedData), profile.version || 1]
