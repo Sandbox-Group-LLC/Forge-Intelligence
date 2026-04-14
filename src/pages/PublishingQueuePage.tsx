@@ -262,6 +262,12 @@ export default function PublishingQueuePage() {
     if (!campaignScheduler) return;
     const { items, startDate, publishTime } = campaignScheduler;
     if (!schedCampaignChannels.length) { setError('Select at least one publish channel'); return; }
+    const connected = connectedChannels[items[0]?.brand_profile_id] || [];
+    const disconnected = schedCampaignChannels.filter(ch => !connected.includes(ch));
+    if (disconnected.length > 0) {
+      setError(`Cannot schedule — ${disconnected.map(ch => (CHANNEL_LABELS as any)[ch]?.label || ch).join(', ')} ${disconnected.length === 1 ? 'is' : 'are'} no longer connected. Reconnect in Settings → Integrations.`);
+      return;
+    }
     const preview = buildSchedulePreview(items, startDate, publishTime);
     if (!preview.length) { setError('Set a start date before scheduling'); return; }
     try {
@@ -441,6 +447,12 @@ export default function PublishingQueuePage() {
     if (!dt) { setError('Pick a date and time'); return; }
     const channels = selectedChannels[item.id] || [];
     if (channels.length === 0) { setError('Select at least one channel'); return; }
+    const connected = connectedChannels[item.brand_profile_id] || [];
+    const disconnected = channels.filter(ch => !connected.includes(ch));
+    if (disconnected.length > 0) {
+      setError(`Cannot schedule — ${disconnected.map(ch => (CHANNEL_LABELS as any)[ch]?.label || ch).join(', ')} ${disconnected.length === 1 ? 'is' : 'are'} not connected. Set up in Settings → Integrations.`);
+      return;
+    }
     setScheduling(item.id);
     try {
       await fetch(`/api/publishing/queue/${item.id}`, {
