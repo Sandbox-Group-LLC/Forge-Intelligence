@@ -32,6 +32,7 @@ interface MissionData {
   activity: { totalCalls: number; totalTokens: number; avgLatency: number; errors: number; activeBrands: number; agentBreakdown: { agent: string; calls: number; tokens: number; avgMs: number }[] };
   publishing: { channel: string; total: number; published: number; errors: number }[];
   integrations: { channel: string; total: number; active: number }[];
+  tableSizes: { table: string; sizeBytes: number; sizePretty: string; overThreshold: boolean }[];
   recentActivity: { agent: string; brand: string; status: string; tokens: number; latency: number; createdAt: string; metadata: any }[];
 }
 
@@ -288,6 +289,34 @@ export default function AdminPage() {
                 </div>
               </div>
             </div>
+
+            {/* Table Size Monitor */}
+            {data?.tableSizes && data.tableSizes.length > 0 && (
+              <div className="mc-panel" style={{ gridColumn: '1 / -1' }}>
+                <div className="mc-panel-header">
+                  <span className="mc-panel-title">CONTENT TABLE SIZES</span>
+                  <span className="mc-panel-meta">
+                    {data.tableSizes.filter(t => t.overThreshold).length > 0
+                      ? `⚠️ ${data.tableSizes.filter(t => t.overThreshold).length} over 500KB`
+                      : '✅ All under 500KB'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '12px 0' }}>
+                  {data.tableSizes.map((t, i) => (
+                    <div key={i} style={{
+                      padding: '8px 14px', borderRadius: 8, fontSize: 12, fontFamily: 'monospace',
+                      background: t.overThreshold ? '#FEF2F2' : 'var(--color-bg, #f8fafc)',
+                      border: `1px solid ${t.overThreshold ? '#FECACA' : 'var(--color-border, #e2e8f0)'}`,
+                      color: t.overThreshold ? '#B91C1C' : 'var(--color-text-secondary, #64748b)'
+                    }}>
+                      <span style={{ fontWeight: 600 }}>{t.table.replace('generated_content_', '').slice(0, 8)}...</span>
+                      {' '}{t.sizePretty}
+                      {t.overThreshold && ' ⚠️'}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Error Aggregation Card */}
             <div className="mc-panel" style={{ gridColumn: '1 / -1' }}>
