@@ -1589,3 +1589,100 @@ Isolated and scanned all 4 recurring bug patterns across the entire codebase:
 - #10 safeParseLLM masking bad prompts (aggressive recovery hides broken prompts)
 - Export Brief downloads raw JSON — should generate formatted PDF
 - Dark theme ghost colors may exist in other CSS files
+
+## Session — April 14, 2026 (Evening) — Pipeline Integrity & HubSpot
+
+### Website Scraper (CRITICAL — Root Cause Fix)
+- **Discovery:** Context Hub NEVER scraped actual website content. Claude received only the URL and Perplexity Sonar context, then guessed from domain name.
+- **Evidence:** makemysandbox.com → "cedar sandbox kit company." therosethyme.com → "food and lifestyle blog about cooking." Both 100% hallucinated.
+- **Fix:** Added Tool 1.5 between Sonar and Claude — fetches homepage + about/product/blog pages, strips HTML, injects up to 8K chars of real content into Claude prompt with header "ACTUAL WEBSITE CONTENT (scraped — use this as primary source, do NOT guess from domain name)"
+- **Result:** therosethyme.com correctly identified as "plant-based skincare brand" with accurate SKU count (8), pricing ($14.99-$39.85), and Shopify platform detection
+- Every brand scan prior to this commit was Claude being the best boy it could be from domain name alone
+
+### Content Library Recovery
+- 11 articles for Forge Intelligence vanished from `generated_content` table — no code path found (no DROP, TRUNCATE, DELETE, cascading FK, or RLS)
+- Recovered all 11 as stubs from `publishing_queue` (titles + status preserved)
+- Root cause of orphaning: re-analyze created new UUID, old content references orphaned
+
+### Context Hub Re-analyze: Update in Place
+- **Before:** Created new UUID → deactivated old → orphaned all content, queue, analytics, brain references
+- **After:** `UPDATE brand_profiles SET profile_data = $1, version = version + 1 WHERE id = $2` — same UUID, version bumps, everything stays linked
+
+### Brain Multi-tenancy Fix
+- **GEO Strategist + Authenticity Enricher** were querying legacy `patterns`/`mistakes`/`memories` tables (mostly empty) with NO brand_profile_id filter
+- **Fix:** Both now query `brain_patterns`/`brain_mistakes` with `WHERE brand_profile_id = $1`
+- **Full audit:** All 8 stages verified — every user-facing brain query is brand-scoped. Zero legacy table references remain.
+- Pre-cog, Campaign Gen, Email Campaign, Content Gen, Compliance Gate — all confirmed clean
+
+### Brain Version Staleness System
+- Added `brain_version` column to `geo_briefs` and `enriched_briefs` tables
+- Backend stores `profile.version` on every new brief, returns `brainVersion` + `currentBrainVersion` in all responses
+- Frontend: yellow warning banner on GEO + Authenticity when `brainVersion < currentBrainVersion`
+- Cache busting: GEO + Authenticity caches now auto-bust when brain version is stale — no more serving v1 results to v3 brands
+- Stale brief cleanup: DELETE old briefs before INSERT on every re-run — corrections override, no accumulation of bad data
+
+### Authenticity Enricher: Corrections Field
+- New "Corrections & Clarifications" text field in "Got 2 minutes?" section
+- Corrections get `CRITICAL CORRECTIONS FROM BRAND OWNER (these OVERRIDE any AI-discovered data)` treatment in Claude prompt
+- Regular manual inputs get softer "treat as verified, high-confidence" treatment
+- Manual form now shows on cached results (was only visible after fresh runs)
+
+### GEO Strategist Fixes
+- **GEO Opportunities duplication:** Frontend was reading `geoOpportunities` (40 raw items, 1 per platform per topic) instead of `geoOpportunitiesNorm` (10 normalized, all platforms merged). Fixed to prefer normalized.
+- **Token limits bumped:** Tool 1: 1500→2500, Tool 2: 2000→3000, Tool 3 (Entity/Schema): 1500→3000, Tool 4 (Brief): 4000→8192. Eliminates truncation.
+
+### Authenticity Enricher Token Bumps
+- Tool 1 (Sonar SME): 1000→2000
+- Tool 2 (E-E-A-T): 2000→4000
+
+### Landing Page Instant Redirect
+- `await handleLookup(brandUrl)` was blocking 60-90 seconds for new domains before redirecting to animation page
+- Removed blocking call — stores URL in sessionStorage and redirects instantly
+- Removed dead `handleLookup` function (TS6133)
+
+### SSE Reliability (Content Generator)
+- **Keepalive:** 30s → 15s (iOS suspends tabs at ~30s)
+- **Recovery endpoint:** `GET /api/content/:safeId/latest` — returns most recent article from last 5 minutes
+- **Frontend:** SSE error handler waits 3s then polls recovery endpoint before showing error. If article exists, loads it silently.
+- **Error message:** "JSON parse failed: Expected ',' at position 36099" → "Article generation hit a formatting issue — click Generate again and it'll come through clean."
+- **Image spinner:** Clears on all error paths (was spinning forever on generation failure)
+
+### Super Admin IDs
+- Added `user_3CJmE0WkOj1RJC5yF99scEuwUpO` (therosethyme account)
+- Intentionally excluded `user_3Bxs9lQ5r9Bf6laluD6n7VsvtT3` (brian@forgeintelligence.ai) — needs brand isolation for dogfooding
+
+### Brand Dropdown Auth Race Fix
+- GEO, Authenticity, Content Generator dropdowns were empty after Clerk auth redirect
+- `historyEntries` hadn't loaded yet — `fetchBrains` races the page render
+- Fix: if `brains` is empty but `activeBrand` exists, synthesize an entry as fallback
+
+### HubSpot Email Push
+- Was returning "Pushed 0 emails" with no explanation — HubSpot API errors swallowed by `.catch(() => null)`
+- **Root cause:** Missing `content` scope in OAuth grant
+- **Fix:** Added `content` to HubSpot OAuth scopes, added error capture + logging, frontend shows actual HubSpot error instead of misleading "Pushed 0"
+- Brian reconnected HubSpot, 3 emails pushed as drafts successfully
+
+### fal.ai Webhook Drain
+- New endpoint: `POST /api/webhooks/fal` — logs events to `agent_activity_log`
+- Authenticated via `FAL_DRAIN_TOKEN` (Bearer header or query param)
+
+### Brand Settings UX
+- Save Changes button moved from below Danger Zone to top of page
+
+### Qlty Code Quality Audit
+- 215 code smells analyzed via SARIF export
+- 70 boolean-logic, 48 function-complexity, 31 nested-control-flow, 23 return-statements, 17 file-complexity, 17 identical-code, 8 similar-code, 1 function-parameters
+- CVEs: vite + esbuild vulns are dev-server-only, not exploitable in production (deferred)
+- PublishingQueuePage duplication: tracked as issue #58 — 270 lines, VS Code refactor
+- server.js complexity 963: acknowledged, tracked as modularization work
+
+### Neon Backups
+- Daily snapshot enabled: production, Apr 13 12:00 AM PDT, expires May 18
+
+### Known Issues / Shelved
+- X OAuth 2.0 refresh tokens are single-use — if refresh fails, user must reconnect
+- LinkedIn Community Management API approval pending
+- Timer animation on Context Hub persists from previous runs (zombie timer fix deployed but needs QA)
+- `forge_active_brand` localStorage can reference deleted brands
+- server.js monolith (9,800 lines, complexity 963) — needs modularization
+- PublishingQueuePage duplication (issue #58) — needs VS Code refactor
