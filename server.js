@@ -3363,6 +3363,9 @@ Return ONLY valid JSON:
     const fullBriefData = { ...briefData, topicalMap, geoOpportunities, entitySchema, topicalAuthorityMap, geoOpportunitiesNorm, entitySchemaMap, geoBrief };
 
     await pool.query(
+      // Nuke stale GEO briefs — re-run means old data is superseded
+      await pool.query('DELETE FROM geo_briefs WHERE brand_profile_id = $1', [brandProfileId]);
+
       `INSERT INTO geo_briefs (id, client_id, brand_profile_id, brand_url, brand_name, version, opportunity_score, brief_data, brain_version)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [id, null, brandProfileId, profile.brand_url, profile.brand_name, nextVersion, opportunityScore, JSON.stringify(fullBriefData), profile.version || 1]
@@ -3545,7 +3548,7 @@ app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => 
 }
 Return empty arrays if not found. Be factual and accurate.`
           }],
-          max_tokens: 1000
+          max_tokens: 2000
         })
       });
       if (sonarRes.ok) {
@@ -3564,7 +3567,7 @@ Return empty arrays if not found. Be factual and accurate.`
 
     const scorerRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
+      max_tokens: 4000,
       system: 'You are a JSON API. You must respond with valid JSON only — no markdown, no explanation, no code fences.',
       messages: [
         { role: 'user', content: `E-E-A-T scoring task for ${brandName} (${brandUrl}).
@@ -3703,6 +3706,10 @@ Respond with this exact JSON structure:
     const confidenceScore = assembledBrief.overallConfidence || scorerData.overallEEATScore || 0;
 
     await pool.query(
+      // Nuke stale briefs — corrections override old data, no point keeping wrong entity info
+      await pool.query('DELETE FROM enriched_briefs WHERE brand_profile_id = $1', [brandProfileId]);
+      console.log('[ENRICH] Cleared old enriched briefs for brand — fresh data only');
+
       `INSERT INTO enriched_briefs (id, brand_profile_id, geo_brief_id, brand_url, brand_name, version, confidence_score, enriched_data, brain_version)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [newId, brandProfileId, enrichedData.geoBriefId, profile.brand_url, brandName, nextVersion, confidenceScore, JSON.stringify(enrichedData), profile.version || 1]
