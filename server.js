@@ -8283,6 +8283,33 @@ app.get('/api/admin/mission-control', requireAuth, async (req, res) => {
     const a = activityRes.rows[0];
     const m = brainMistakesRes.rows[0];
 
+    // Table size monitoring — flag tables over 500KB
+    const TABLE_SIZE_THRESHOLD_KB = 500;
+    let tableSizeAlerts = [];
+    try {
+      const sizeRes = await pool.query(`
+        SELECT t.table_name,
+               pg_relation_size(quote_ident(t.table_name)) as size_bytes,
+               pg_size_pretty(pg_relation_size(quote_ident(t.table_name))) as size_pretty,
+               (SELECT COUNT(*) FROM information_schema.columns c WHERE c.table_name = t.table_name) as col_count
+        FROM information_schema.tables t
+        WHERE t.table_schema = 'public'
+          AND t.table_name LIKE 'generated_content_%'
+        ORDER BY pg_relation_size(quote_ident(t.table_name)) DESC
+      `);
+      tableSizeAlerts = sizeRes.rows
+        .map(r => ({
+          table: r.table_name,
+          sizeBytes: parseInt(r.size_bytes),
+          sizePretty: r.size_pretty,
+          overThreshold: parseInt(r.size_bytes) > TABLE_SIZE_THRESHOLD_KB * 1024
+        }));
+      const overLimit = tableSizeAlerts.filter(t => t.overThreshold);
+      if (overLimit.length > 0) {
+        console.warn(`[MISSION-CONTROL] ⚠️ ${overLimit.length} content table(s) exceed ${TABLE_SIZE_THRESHOLD_KB}KB: ${overLimit.map(t => t.table + '=' + t.sizePretty).join(', ')}`);
+      }
+    } catch(e) { console.log('[MISSION-CONTROL] Table size check note:', e.message); }
+
     res.json({
       success: true,
       platform: {
@@ -8321,6 +8348,7 @@ app.get('/api/admin/mission-control', requireAuth, async (req, res) => {
         status: r.status, tokens: r.tokens_used, latency: r.latency_ms,
         createdAt: r.created_at
       })),
+      tableSizes: tableSizeAlerts,
     });
   } catch(e) {
     console.error('[MISSION-CONTROL]', e.message);
