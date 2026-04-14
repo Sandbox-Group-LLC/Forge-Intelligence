@@ -1412,3 +1412,96 @@ Brian asked to delete the Event-to-Pipeline campaign. I ran queries, found nothi
 - After any commit, verify the last 20 lines of server.js haven't been truncated
 - Check model strings in any restored endpoint before committing
 - Brian is always right about what was working. Find the evidence, don't argue.
+
+
+---
+
+## Session — April 13, 2026 (Marathon)
+
+### Website Scraper — THE Critical Fix
+- **Root cause:** Context Hub NEVER scraped actual website content. Claude received only the URL and guessed from domain name.
+- Every brand profile since launch was Claude being "the best boy it can be" — no real content.
+- `makemysandbox.com` → hallucinated cedar sandbox kit empire. `therosethyme.com` → hallucinated seasonal cooking blog. Both are completely wrong.
+- **Fix:** Added Tool 1.5 between Perplexity Sonar and Claude — fetches homepage + about/product/blog pages, strips HTML, injects up to 8K chars into Claude prompt with header "ACTUAL WEBSITE CONTENT (scraped — use this as primary source, do NOT guess from domain name)"
+- After scraper: Rose + Thyme correctly identified as plant-based skincare, 8 SKUs, $14.99-$39.85, Shopify, vegan/cruelty-free. Perfect.
+- **This single commit is the most important of the entire project.**
+
+### Context Hub Re-analyze — Update in Place
+- **Root cause of content loss:** Re-analyze created new UUID → old UUID orphaned → all content, queue, analytics references pointed to dead ID
+- **Fix:** Re-analyze now checks for existing active brand by URL. If found, UPDATEs in place (same UUID, version bumps). Only INSERTs for first-time scans.
+- 11 Forge Intelligence articles recovered from publishing_queue stubs
+
+### Promo Code Flow — Fixed for Revenue
+- **Root cause:** All 3 GateModal instances (GEO, Authenticity, Performance) did NOT pass `brandProfileId` prop → promo codes validated but `is_paid` never flipped
+- **Fix (frontend):** Added `brandProfileId={activeBrand?.id}` + `activeBrand` to wrapper `useApp()` destructures in all 3 pages
+- **Fix (backend):** Promo validate endpoint now uses `softAuth` + resolves brandProfileId from clerk_user_id → most recent active brand fallback
+- CMOs can now enter promo codes and access paid features immediately
+
+### Landing Page UX
+- **Sign In button added** — was completely missing from landing page (top-right, ghost button style)
+- **Instant redirect** — removed `await handleLookup(brandUrl)` which was blocking 60+ seconds for new domains. Now stores URL in sessionStorage and redirects immediately.
+- **Domain check** still runs for claimed domains (8ms, returns 404 for new = "go ahead")
+
+### Pipeline UX Flow — Complete Overhaul
+Every stage now persists results and has clear forward navigation:
+
+#### Stage results persist on return:
+- GEO Strategist: fetches existing briefs from `geo_briefs` table, waits for `authToken`
+- Authenticity Enricher: fetches existing enrichment from `enriched_briefs` table, waits for `authToken`
+- Content Generator: fetches last article from `generated_content` table on mount
+- All fetch useEffects depend on `[selectedBrainId, authToken]` to avoid firing before Clerk loads
+
+#### Forward CTAs on every stage:
+- New Analysis → "View Strategy Brief →" (primary) + "Skip to GEO Strategy" (secondary)
+- Brand Profile → Re-analyze | Export JSON | Strategy Brief → | Run GEO Strategy →
+- Strategy Brief → Export Brief (downloads JSON) | Run GEO Strategy →
+- GEO Strategist → Re-run | Continue to Authenticity Enricher →
+- Authenticity Enricher → Re-run | Continue to Content Generator →
+- Content Generator → Generate Another | View in Content Library | Send to Compliance Gate
+
+#### Button consistency:
+- All CTA buttons: 36px height, `<button>` elements only, inline styles
+- CSS class names (`btn-action`, `geo-cta`, `btn-export`) were overriding inline styles — removed all classNames from action buttons
+- Secondary = white bg, gray border. Primary = filled accent blue. Green = Compliance Gate.
+
+#### TopBar titles:
+- Dynamic per Brain sub-view: New Analysis, Brand Profile, Strategy Brief, Brain History
+- Was showing "New Analysis" for all sub-views
+
+### Post-Auth Redirect
+- Changed from always `/app/context-hub` to `window.location.href` (returns to current page)
+- User clicks GEO → GateModal → Sign In → Clerk → returns to GEO, not context-hub
+
+### GEO Briefs Cross-Brand Leakage Fix
+- GET `/api/geo-strategist/briefs` returned ALL brands' briefs unfiltered
+- Frontend grabbed first result → showed Rose + Thyme data on Marriott's GEO page
+- **Fix:** Endpoint now filters by `brandProfileId` query param (matches Enricher endpoint pattern)
+- Full audit: all other endpoints already scoped by brand (URL param, body param, or table name)
+
+### Compliance Gate Empty State
+- Was throwing raw SQL error: `relation "generated_content_xxx" does not exist`
+- **Fix:** Backend checks `information_schema.tables` before querying. Returns friendly message: "No content generated yet. Run the Content Generator first."
+
+### Content Generator
+- Article title color was `#F1F5F9` (near-white) on light background — invisible. Changed to `var(--color-text, #1e293b)`
+- Ideas FAB moved from floating bottom-right (overlapped chatbot) to header button
+- Ideas drawer now has × close button
+- Post-generation CTAs: Generate Another + View in Content Library + Send to Compliance Gate
+
+### agent_activity_log Fixes
+- Removed `metadata` column from all 7 INSERT statements (column doesn't exist in table)
+- Fixed parameter count mismatch: content generator had 6 VALUES for 5 columns, compliance_dismiss had 6 values for 5 columns
+
+### Database Operations
+- Deleted makemysandbox.com brand (hallucinated cedar sandbox empire — JSON saved for posterity)
+- Deleted therosethyme.com v1 (hallucinated cooking blog), re-scanned with scraper → perfect skincare profile
+- Restored 11 Forge Intelligence articles from publishing_queue to generated_content table
+- Neon daily snapshots enabled (production branch, rolling retention)
+
+### Known Issues / Next
+- Export Brief button downloads raw JSON — should generate a formatted PDF Strategy Brief
+- Ideas drawer positioning may need adjustment on smaller screens (currently `left: 280px`)
+- Timer animation on Context Hub persists from previous runs (UX bug — should reset on new analysis)
+- `forge_active_brand` localStorage can reference deleted brands — should auto-clear on 404
+- LinkedIn Community Management API approval pending
+- Targeted AI Rewrite feature scoped but not built (Gemini-style "describe your change" for Compliance Gate)
