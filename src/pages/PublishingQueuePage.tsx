@@ -940,6 +940,311 @@ ${bodyHtml}
   const brandName = (item: QueueItem) =>
     item.brand_name || item.brand_url || '—';
 
+  // ── Shared queue item renderer — eliminates campaign/standalone duplication ──
+  const renderQueueItem = (item: any, opts: { showReviewBadge?: boolean; showPreviewLink?: boolean } = {}) => {
+    const availChannels = connectedChannels[item.brand_profile_id] || [];
+    const sel = selectedChannels[item.id] || [];
+    const isPublishing = publishing === item.id;
+    const isScheduling = scheduling === item.id;
+    const results = item.publish_results || {};
+    return (
+                <div key={item.id} className={`pq-item status-${item.status}`}>
+                  {item.week_number != null && (
+                    <div className="pq-campaign-meta-row">
+                      <span className="pq-campaign-meta-week">Wk {item.week_number}{item.scheduled_at ? ` · ${new Date(item.scheduled_at).toLocaleDateString('en-US', { weekday: 'long' })}` : item.publish_day ? ` · ${item.publish_day}` : ''}</span>
+                      {item.content_type && <span className="pq-campaign-meta-type">{item.content_type}</span>}
+                      {item.funnel_position && <span className={`pq-campaign-meta-funnel funnel-${(item.funnel_position||'').toLowerCase()}`}>{item.funnel_position}</span>}
+                    </div>
+                  )}
+                  {/* Row top: title + meta + status */}
+                  <div className="pq-item-top">
+                    <div className="pq-item-meta">
+                      {opts.showReviewBadge && item.review_status && (
+                        <div className={`pq-review-badge pq-review-badge--${item.review_status}`}>
+                          {item.review_status === 'approved' && '✓ Approved'}
+                          {item.review_status === 'changes_requested' && '↩ Changes Requested'}
+                          {item.review_status === 'pending' && '⏳ Awaiting Review'}
+                          {item.review_comment && (
+                            <span className="pq-review-comment" title={item.review_comment}>
+                              · "{item.review_comment.length > 40 ? item.review_comment.slice(0, 40) + '…' : item.review_comment}"
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {editingTitleId === item.id ? (
+                        <input
+                          className="pq-title-edit-input"
+                          value={editingTitleVal}
+                          onChange={e => setEditingTitleVal(e.target.value)}
+                          onBlur={() => saveTitle(item)}
+                          onKeyDown={e => { if (e.key === 'Enter') saveTitle(item); if (e.key === 'Escape') setEditingTitleId(null); }}
+                          autoFocus
+                        />
+                      ) : (
+                        <div
+                          className="pq-item-title pq-item-title-editable"
+                          title="Click to edit title"
+                          onClick={() => { setEditingTitleId(item.id); setEditingTitleVal(item.title || ''); }}
+                        >
+                          {item.title || 'Untitled Article'}
+                          <span className="pq-title-edit-hint">✎</span>
+                        </div>
+                      )}
+                      <div className="pq-item-sub">
+                        <span className="pq-brand-tag">{brandName(item)}</span>
+                        <span className="pq-dot">·</span>
+                        <span className="pq-date">{
+                          item.scheduled_at && item.status !== 'staged'
+                            ? `${item.status === 'published' || item.status === 'partial' ? 'Published' : 'Scheduled'} ${new Date(item.scheduled_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · ${new Date(item.scheduled_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
+                            : `Generated ${new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                        }</span>
+                      </div>
+                    </div>
+                    {(() => {
+                      const ps = precogScores[item.content_id];
+                      if (!ps) return null;
+                      if (ps.tier === 'insufficient_data') return (
+                        <div className="pq-precog-badge pq-precog-insufficient" title="Not enough analytics data yet to score this article">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                          No data yet
+                        </div>
+                      );
+                      return (
+                        <div className="pq-precog-badge" style={{ '--precog-color': ps.color } as React.CSSProperties}
+                          title={ps.prediction + (ps.recommendedActions?.length ? '\n\nSuggested: ' + ps.recommendedActions[0] : '')}>
+                          <span className="pq-precog-dot" />
+                          <span className="pq-precog-score">{ps.score}</span>
+                          <span className="pq-precog-label">Pre-cog</span>
+                        </div>
+                      );
+                    })()}
+                    <div className="pq-item-actions-top">
+
+                      <button className="pq-icon-btn" title="Smart Export" onClick={() => openExportModal(item)}>
+                        <Download />
+                      </button>
+                      {(() => {
+                        const brandUrl = item.brand_url || '';
+                        const bSlug = brandUrl.replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
+                        const aSlug = (item.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+                        return (
+                          <a className="pq-icon-btn" title="Preview live article" href={`/articles/${bSlug}/${aSlug}`} target="_blank" rel="noopener noreferrer">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+                            </svg>
+                          </a>
+                        );
+                      })()}
+                      <button className="pq-icon-btn" title="Preview & Edit Post" onClick={() => openContentPreview(item)}>
+                        <Eye />
+                      </button>
+
+                      <div style={{ position: 'relative' }}>
+                        <button className="pq-icon-btn" title="Send for Review"
+                          onClick={() => setReviewDropdown(reviewDropdown === item.id ? null : item.id)}>
+                          <Share />
+                        </button>
+                        {reviewDropdown === item.id && (
+                          <div className="pq-reviewer-dropdown">
+                            <div className="pq-reviewer-dropdown-title">Send for Review</div>
+                            {reviewers.length === 0 ? (
+                              <div className="pq-reviewer-empty">No reviewers — add them in Admin</div>
+                            ) : reviewers.map(rv => (
+                              <button key={rv.id} className="pq-reviewer-option"
+                                onClick={() => sendForReview(item, rv.id)}>
+                                <span className="pq-reviewer-avatar">{rv.name[0].toUpperCase()}</span>
+                                <span>
+                                  <div className="pq-reviewer-rname">{rv.name}</div>
+                                  {rv.title && <div className="pq-reviewer-rtitle">{rv.title}</div>}
+                                </span>
+                              </button>
+                            ))}
+                            <div className="pq-reviewer-divider" />
+                            <button className="pq-reviewer-option pq-reviewer-link-only"
+                              onClick={() => sendForReview(item)}>
+                              <span className="pq-reviewer-avatar"><Link2 /></span>
+                              <span><div className="pq-reviewer-rname">Copy link only</div></span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <button className="pq-icon-btn" title="Archive" onClick={() => archiveItem(item)}>
+                        <Archive />
+                      </button>
+                      <button className="pq-icon-btn danger" title="Remove from queue" onClick={() => openDeleteModal(item)}>
+                        <Trash />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Channel selector */}
+                  <div className="pq-channel-row">
+                    <span className="pq-channel-label">Publish to:</span>
+                    <div className="pq-channel-chips">
+                      {availChannels.length === 0 ? (
+                        <span className="pq-no-channels">No channels connected — set up in Integrations</span>
+                      ) : (
+                        availChannels.map(ch => {
+                          const def = CHANNEL_LABELS[ch];
+                          const isSelected = sel.includes(ch);
+                          const result = results[ch];
+                          return (
+                            <button
+                              key={ch}
+                              className={`pq-chip ${isSelected ? 'selected' : ''} ${(() => {
+                                const logEntry = (publishLog[item.id] || []).find(l => l.channel === ch);
+                                if (!logEntry) {
+                                  if (result?.status === 'published') return 'published';
+                                  if (result?.status === 'error') return 'error';
+                                  return '';
+                                }
+                                if (logEntry.live_status === 'published') return 'published';
+                                if (logEntry.live_status === 'deleted') return 'published-deleted';
+                                if (logEntry.live_status === 'unknown') return 'published-deleted';
+                                if (logEntry.live_status === 'error') return 'error';
+                                if (result?.status === 'error') return 'error';
+                                return result?.status === 'published' ? 'published' : '';
+                              })()}`}
+                              style={{ '--chip-color': def?.color } as React.CSSProperties}
+                              onClick={() => toggleChannel(item.id, ch)}
+                              title={result ? `${result.status}${result.url ? ': ' + result.url : result.error ? ': ' + result.error : ''}` : ''}
+                            >
+                              {def?.label || ch}
+                              {result?.status === 'published' && result.url && (
+                                <a href={result.url} target="_blank" rel="noreferrer" className="pq-chip-link" onClick={e => e.stopPropagation()}>
+                                  <ExternalLink />
+                                </a>
+                              )}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                    {ALL_CHANNELS.filter(ch => !availChannels.includes(ch)).length > 0 && availChannels.length > 0 && (
+                      <span className="pq-unconnected-hint">
+                        {ALL_CHANNELS.filter(ch => !availChannels.includes(ch)).map(ch => CHANNEL_LABELS[ch]?.label).join(', ')} not connected
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Publish actions — show for staged/failed AND for published to allow re-targeting new channels */}
+                  {(item.status !== 'published' || availChannels.some(ch => !results[ch])) && (
+                    <div className="pq-item-actions">
+                      <button
+                        className="pq-publish-now-btn"
+                        onClick={() => handlePublishNow(item)}
+                        disabled={isPublishing || sel.length === 0}
+                      >
+                        <Send /> {isPublishing ? 'Publishing...' : 'Publish Now'}
+                      </button>
+                      <div className="pq-schedule-group">
+                        <div className="pq-datetime-wrap">
+                          <input
+                            type="datetime-local"
+                            className="pq-datetime-input"
+                            value={scheduleDate[item.id] || ''}
+                            onChange={e => setScheduleDate(prev => ({ ...prev, [item.id]: e.target.value }))}
+                          />
+                          <span className="pq-datetime-tz">{Intl.DateTimeFormat().resolvedOptions().timeZone}</span>
+                        </div>
+                        <button
+                          className="pq-schedule-btn"
+                          onClick={() => handleSchedule(item)}
+                          disabled={isScheduling || !scheduleDate[item.id]}
+                        >
+                          <Clock /> {isScheduling ? 'Scheduling...' : 'Schedule'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Publish results with live status + sync + republish */}
+                  {Object.keys(results).length > 0 && (
+                    <div className="pq-results">
+                      <div className="pq-results-header">
+                        <span className="pq-results-label">Published to</span>
+                        <button
+                          className="pq-sync-btn"
+                          onClick={() => handleSync(item.id)}
+                          disabled={syncing === item.id}
+                          title="Check live status on each channel"
+                        >
+                          <RefreshCw /> {syncing === item.id ? 'Syncing...' : 'Sync Status'}
+                        </button>
+                      </div>
+                      {Object.entries(results).map(([ch, res]) => {
+                        const log = (publishLog[item.id] || []).find(l => l.channel === ch);
+                        // Prefer publish log live_status (most accurate) over publish result status
+                        // If log says deleted, show deleted regardless of publish_results JSONB
+                        const liveStatus = log?.live_status ?? (res.status === 'published' ? 'published' : res.status);
+                        const isDeleted = liveStatus === 'deleted';
+                        const isUnknown = liveStatus === 'unknown';
+                        const repKey = `${item.id}:${ch}`;
+                        return (
+                        <div key={ch} className={`pq-result-row result-${liveStatus}`}>
+                          <span className="pq-result-channel">{CHANNEL_LABELS[ch]?.label || ch}</span>
+                          <span className={`pq-result-status live-${liveStatus}`}>
+                            {isDeleted ? '🗑 Deleted' : isUnknown ? '⚠ Unknown' : '✓ Live'}
+                          </span>
+                          {res.url && !isDeleted && !isUnknown && (
+                            <a href={res.url} target="_blank" rel="noreferrer" className="pq-result-url">
+                              View post <ExternalLink />
+                            </a>
+                          )}
+                          {!isDeleted && !isUnknown && (() => {
+                            const bSlug = (item.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
+                            const aSlug = (item.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+                            const cSlug = (item.campaign_name || 'forge-content').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50);
+                            const bs = brandSettings[item.brand_profile_id];
+                            const base = bs?.article_base_url?.trim()
+                              ? bs.article_base_url.replace(/\/+$/, '')
+                              : `https://${window.location.hostname}/articles/${bSlug}`;
+                            const suffix = (bs?.article_url_suffix || '').trim();
+                            const utmUrl = `${base}/${aSlug}${suffix}?utm_source=${ch}&utm_medium=social&utm_campaign=${cSlug}&utm_content=${aSlug}`;
+                            return (
+                              <button
+                                className="pq-utm-copy-btn"
+                                title="Copy UTM link"
+                                onClick={() => { navigator.clipboard.writeText(utmUrl); }}
+                              >
+                                UTM
+                              </button>
+                            );
+                          })()}
+                          {log?.last_synced_at && (
+                            <span className="pq-synced-at">synced {new Date(log.last_synced_at).toLocaleTimeString()}</span>
+                          )}
+                          {(isDeleted || isUnknown) && (
+                            <button
+                              className="pq-republish-btn"
+                              onClick={() => handleRepublish(item.id, ch)}
+                              disabled={republishing === repKey}
+                            >
+                              {republishing === repKey ? 'Republishing...' : '↺ Republish'}
+                            </button>
+                          )}
+                          {(res.status === 'error' || liveStatus === 'error') && (
+                            <button
+                              className="pq-retry-btn"
+                              onClick={() => handleRetry(item.id, ch)}
+                              disabled={republishing === repKey}
+                              title="Clear error and retry"
+                            >
+                              {republishing === repKey ? 'Resetting...' : '↺ Reset & Retry'}
+                            </button>
+                          )}
+                          {res.error && liveStatus !== 'error' && liveStatus !== 'published' && <span className="pq-result-error">{res.error}</span>}
+                          {res.message && liveStatus !== 'published' && !res.skipped && <span className="pq-result-msg">{res.message}</span>}
+                        </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+    );
+  };
+
+
   return (
     <>
     <AppShell pageTitle="Publishing Queue">
@@ -1323,308 +1628,9 @@ ${bodyHtml}
               );
                         })} {/* week items */}
                       </div>
-                    </div>
-                  ))} {/* weeks */}
-                </div>
-              );
-            })} {/* campaign groups */}
-
-            {/* Standalone articles */}
-            {standaloneItems.length > 0 && (
-              <>
-                {Object.keys(campaignGroups).length > 0 && (
-                  <div className="pq-standalone-label">Standalone Articles</div>
-                )}
-                {standaloneItems.map(item => {
-                  const availChannels = connectedChannels[item.brand_profile_id] || [];
-                  const sel = selectedChannels[item.id] || [];
-                  const isPublishing = publishing === item.id;
-                  const isScheduling = scheduling === item.id;
-                  const results = item.publish_results || {};
-return (
-                <div key={item.id} className={`pq-item status-${item.status}`}>
-                  {item.week_number != null && (
-                    <div className="pq-campaign-meta-row">
-                      <span className="pq-campaign-meta-week">Wk {item.week_number}{item.scheduled_at ? ` · ${new Date(item.scheduled_at).toLocaleDateString('en-US', { weekday: 'long' })}` : item.publish_day ? ` · ${item.publish_day}` : ''}</span>
-                      {item.content_type && <span className="pq-campaign-meta-type">{item.content_type}</span>}
-                      {item.funnel_position && <span className={`pq-campaign-meta-funnel funnel-${(item.funnel_position||'').toLowerCase()}`}>{item.funnel_position}</span>}
-                    </div>
-                  )}
-                  {/* Row top: title + meta + status */}
-                  <div className="pq-item-top">
-                    <div className="pq-item-meta">
-                      {editingTitleId === item.id ? (
-                        <input
-                          className="pq-title-edit-input"
-                          value={editingTitleVal}
-                          onChange={e => setEditingTitleVal(e.target.value)}
-                          onBlur={() => saveTitle(item)}
-                          onKeyDown={e => { if (e.key === 'Enter') saveTitle(item); if (e.key === 'Escape') setEditingTitleId(null); }}
-                          autoFocus
-                        />
-                      ) : (
-                        <div
-                          className="pq-item-title pq-item-title-editable"
-                          title="Click to edit title"
-                          onClick={() => { setEditingTitleId(item.id); setEditingTitleVal(item.title || ''); }}
-                        >
-                          {item.title || 'Untitled Article'}
-                          <span className="pq-title-edit-hint">✎</span>
-                        </div>
-                      )}
-                      <div className="pq-item-sub">
-                        <span className="pq-brand-tag">{brandName(item)}</span>
-                        <span className="pq-dot">·</span>
-                        <span className="pq-date">{
-                          item.scheduled_at && item.status !== 'staged'
-                            ? `${item.status === 'published' || item.status === 'partial' ? 'Published' : 'Scheduled'} ${new Date(item.scheduled_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · ${new Date(item.scheduled_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
-                            : `Generated ${new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-                        }</span>
-                      </div>
-                    </div>
-                    {(() => {
-                      const ps = precogScores[item.content_id];
-                      if (!ps) return null;
-                      if (ps.tier === 'insufficient_data') return (
-                        <div className="pq-precog-badge pq-precog-insufficient" title="Not enough analytics data yet to score this article">
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                          No data yet
-                        </div>
-                      );
-                      return (
-                        <div className="pq-precog-badge" style={{ '--precog-color': ps.color } as React.CSSProperties}
-                          title={ps.prediction + (ps.recommendedActions?.length ? '\n\nSuggested: ' + ps.recommendedActions[0] : '')}>
-                          <span className="pq-precog-dot" />
-                          <span className="pq-precog-score">{ps.score}</span>
-                          <span className="pq-precog-label">Pre-cog</span>
-                        </div>
-                      );
-                    })()}
-                    <div className="pq-item-actions-top">
-
-                      <button className="pq-icon-btn" title="Smart Export" onClick={() => openExportModal(item)}>
-                        <Download />
-                      </button>
-                      <button className="pq-icon-btn" title="Preview & Edit Post" onClick={() => openContentPreview(item)}>
-                        <Eye />
-                      </button>
-
-                      <div style={{ position: 'relative' }}>
-                        <button className="pq-icon-btn" title="Send for Review"
-                          onClick={() => setReviewDropdown(reviewDropdown === item.id ? null : item.id)}>
-                          <Share />
-                        </button>
-                        {reviewDropdown === item.id && (
-                          <div className="pq-reviewer-dropdown">
-                            <div className="pq-reviewer-dropdown-title">Send for Review</div>
-                            {reviewers.length === 0 ? (
-                              <div className="pq-reviewer-empty">No reviewers — add them in Admin</div>
-                            ) : reviewers.map(rv => (
-                              <button key={rv.id} className="pq-reviewer-option"
-                                onClick={() => sendForReview(item, rv.id)}>
-                                <span className="pq-reviewer-avatar">{rv.name[0].toUpperCase()}</span>
-                                <span>
-                                  <div className="pq-reviewer-rname">{rv.name}</div>
-                                  {rv.title && <div className="pq-reviewer-rtitle">{rv.title}</div>}
-                                </span>
-                              </button>
-                            ))}
-                            <div className="pq-reviewer-divider" />
-                            <button className="pq-reviewer-option pq-reviewer-link-only"
-                              onClick={() => sendForReview(item)}>
-                              <span className="pq-reviewer-avatar"><Link2 /></span>
-                              <span><div className="pq-reviewer-rname">Copy link only</div></span>
-                            </button>
-                          </div>
+                        {group.items.filter(i => i.week_number === week).map(item =>
+                          renderQueueItem(item, { showReviewBadge: true, showPreviewLink: true })
                         )}
-                      </div>
-                      <button className="pq-icon-btn" title="Archive" onClick={() => archiveItem(item)}>
-                        <Archive />
-                      </button>
-                      <button className="pq-icon-btn danger" title="Remove from queue" onClick={() => openDeleteModal(item)}>
-                        <Trash />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Channel selector */}
-                  <div className="pq-channel-row">
-                    <span className="pq-channel-label">Publish to:</span>
-                    <div className="pq-channel-chips">
-                      {availChannels.length === 0 ? (
-                        <span className="pq-no-channels">No channels connected — set up in Integrations</span>
-                      ) : (
-                        availChannels.map(ch => {
-                          const def = CHANNEL_LABELS[ch];
-                          const isSelected = sel.includes(ch);
-                          const result = results[ch];
-                          return (
-                            <button
-                              key={ch}
-                              className={`pq-chip ${isSelected ? 'selected' : ''} ${(() => {
-                                const logEntry = (publishLog[item.id] || []).find(l => l.channel === ch);
-                                if (!logEntry) {
-                                  if (result?.status === 'published') return 'published';
-                                  if (result?.status === 'error') return 'error';
-                                  return '';
-                                }
-                                if (logEntry.live_status === 'published') return 'published';
-                                if (logEntry.live_status === 'deleted') return 'published-deleted';
-                                if (logEntry.live_status === 'unknown') return 'published-deleted';
-                                if (logEntry.live_status === 'error') return 'error';
-                                if (result?.status === 'error') return 'error';
-                                return result?.status === 'published' ? 'published' : '';
-                              })()}`}
-                              style={{ '--chip-color': def?.color } as React.CSSProperties}
-                              onClick={() => toggleChannel(item.id, ch)}
-                              title={result ? `${result.status}${result.url ? ': ' + result.url : result.error ? ': ' + result.error : ''}` : ''}
-                            >
-                              {def?.label || ch}
-                              {result?.status === 'published' && result.url && (
-                                <a href={result.url} target="_blank" rel="noreferrer" className="pq-chip-link" onClick={e => e.stopPropagation()}>
-                                  <ExternalLink />
-                                </a>
-                              )}
-                            </button>
-                          );
-                        })
-                      )}
-                    </div>
-                    {ALL_CHANNELS.filter(ch => !availChannels.includes(ch)).length > 0 && availChannels.length > 0 && (
-                      <span className="pq-unconnected-hint">
-                        {ALL_CHANNELS.filter(ch => !availChannels.includes(ch)).map(ch => CHANNEL_LABELS[ch]?.label).join(', ')} not connected
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Publish actions — show for staged/failed AND for published to allow re-targeting new channels */}
-                  {(item.status !== 'published' || availChannels.some(ch => !results[ch])) && (
-                    <div className="pq-item-actions">
-                      <button
-                        className="pq-publish-now-btn"
-                        onClick={() => handlePublishNow(item)}
-                        disabled={isPublishing || sel.length === 0}
-                      >
-                        <Send /> {isPublishing ? 'Publishing...' : 'Publish Now'}
-                      </button>
-                      <div className="pq-schedule-group">
-                        <div className="pq-datetime-wrap">
-                          <input
-                            type="datetime-local"
-                            className="pq-datetime-input"
-                            value={scheduleDate[item.id] || ''}
-                            onChange={e => setScheduleDate(prev => ({ ...prev, [item.id]: e.target.value }))}
-                          />
-                          <span className="pq-datetime-tz">{Intl.DateTimeFormat().resolvedOptions().timeZone}</span>
-                        </div>
-                        <button
-                          className="pq-schedule-btn"
-                          onClick={() => handleSchedule(item)}
-                          disabled={isScheduling || !scheduleDate[item.id]}
-                        >
-                          <Clock /> {isScheduling ? 'Scheduling...' : 'Schedule'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Publish results with live status + sync + republish */}
-                  {Object.keys(results).length > 0 && (
-                    <div className="pq-results">
-                      <div className="pq-results-header">
-                        <span className="pq-results-label">Published to</span>
-                        <button
-                          className="pq-sync-btn"
-                          onClick={() => handleSync(item.id)}
-                          disabled={syncing === item.id}
-                          title="Check live status on each channel"
-                        >
-                          <RefreshCw /> {syncing === item.id ? 'Syncing...' : 'Sync Status'}
-                        </button>
-                      </div>
-                      {Object.entries(results).map(([ch, res]) => {
-                        const log = (publishLog[item.id] || []).find(l => l.channel === ch);
-                        // Prefer publish log live_status (most accurate) over publish result status
-                        // If log says deleted, show deleted regardless of publish_results JSONB
-                        const liveStatus = log?.live_status ?? (res.status === 'published' ? 'published' : res.status);
-                        const isDeleted = liveStatus === 'deleted';
-                        const isUnknown = liveStatus === 'unknown';
-                        const repKey = `${item.id}:${ch}`;
-                        return (
-                        <div key={ch} className={`pq-result-row result-${liveStatus}`}>
-                          <span className="pq-result-channel">{CHANNEL_LABELS[ch]?.label || ch}</span>
-                          <span className={`pq-result-status live-${liveStatus}`}>
-                            {isDeleted ? '🗑 Deleted' : isUnknown ? '⚠ Unknown' : '✓ Live'}
-                          </span>
-                          {res.url && !isDeleted && !isUnknown && (
-                            <a href={res.url} target="_blank" rel="noreferrer" className="pq-result-url">
-                              View post <ExternalLink />
-                            </a>
-                          )}
-                          {!isDeleted && !isUnknown && (() => {
-                            const bSlug = (item.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
-                            const aSlug = (item.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
-                            const cSlug = (item.campaign_name || 'forge-content').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50);
-                            const bs = brandSettings[item.brand_profile_id];
-                            const base = bs?.article_base_url?.trim()
-                              ? bs.article_base_url.replace(/\/+$/, '')
-                              : `https://${window.location.hostname}/articles/${bSlug}`;
-                            const suffix = (bs?.article_url_suffix || '').trim();
-                            const utmUrl = `${base}/${aSlug}${suffix}?utm_source=${ch}&utm_medium=social&utm_campaign=${cSlug}&utm_content=${aSlug}`;
-                            return (
-                              <button
-                                className="pq-utm-copy-btn"
-                                title="Copy UTM link"
-                                onClick={() => { navigator.clipboard.writeText(utmUrl); }}
-                              >
-                                UTM
-                              </button>
-                            );
-                          })()}
-                          {log?.last_synced_at && (
-                            <span className="pq-synced-at">synced {new Date(log.last_synced_at).toLocaleTimeString()}</span>
-                          )}
-                          {(isDeleted || isUnknown) && (
-                            <button
-                              className="pq-republish-btn"
-                              onClick={() => handleRepublish(item.id, ch)}
-                              disabled={republishing === repKey}
-                            >
-                              {republishing === repKey ? 'Republishing...' : '↺ Republish'}
-                            </button>
-                          )}
-                          {(res.status === 'error' || liveStatus === 'error') && (
-                            <button
-                              className="pq-retry-btn"
-                              onClick={() => handleRetry(item.id, ch)}
-                              disabled={republishing === repKey}
-                              title="Clear error and retry"
-                            >
-                              {republishing === repKey ? 'Resetting...' : '↺ Reset & Retry'}
-                            </button>
-                          )}
-                          {res.error && liveStatus !== 'error' && liveStatus !== 'published' && <span className="pq-result-error">{res.error}</span>}
-                          {res.message && liveStatus !== 'published' && !res.skipped && <span className="pq-result-msg">{res.message}</span>}
-                        </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-
-                })} {/* standalone items */}
-              </>
-            )}
-          </div>
-        )}
-      </div>
-
-
-      {/* ── Content Preview & Edit Modal ─────────────────────────────── */}
-      {contentPreview && (() => {
-        const { item, article, postCopy } = contentPreview;
-        const sections = article?.article_json?.sections || [];
         const heroImageUrl = article?.hero_image_url;
         const connChannels = connectedChannels[item.brand_profile_id] || [];
         const sel = selectedChannels[item.id] || [];
@@ -1639,285 +1645,7 @@ return (
                 </div>
                 <button className="pq-modal-close" onClick={() => setContentPreview(null)}><X /></button>
               </div>
-
-              <div className="pq-preview-layout">
-                {/* Left: article preview */}
-                <div className="pq-preview-article">
-                  {heroImageUrl ? (
-                    <div className="pq-preview-hero-wrap">
-                      <img src={heroImageUrl} alt={item.title} className="pq-preview-hero" />
-                      <button
-                        className="pq-regen-image-overlay-btn"
-                        disabled={generatingImage}
-                        onClick={async () => {
-                          setGeneratingImage(true);
-                          try {
-                            const r = await fetch(`/api/content/regenerate-image/${item.content_id}`, {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json', ...ah },
-                              body: JSON.stringify({ brandProfileId: item.brand_profile_id })
-                            });
-                            const d = await r.json();
-                            if (d.imageUrl) setContentPreview(prev => prev ? { ...prev, article: { ...prev.article, hero_image_url: d.imageUrl } } : null);
-                          } finally { setGeneratingImage(false); }
-                        }}
-                      >{generatingImage ? <span className="pq-spin">↺</span> : '↺'} {generatingImage ? 'Generating...' : 'Regenerate Image'}</button>
-                    </div>
-                  ) : (
-                    <div className="pq-preview-no-image">
-                      <span>No hero image generated</span>
-                      <button
-                        className="pq-regen-image-btn"
-                        disabled={generatingImage}
-                        onClick={async () => {
-                          setGeneratingImage(true);
-                          try {
-                            const r = await fetch(`/api/content/regenerate-image/${item.content_id}`, {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json', ...ah },
-                              body: JSON.stringify({ brandProfileId: item.brand_profile_id })
-                            });
-                            const d = await r.json();
-                            if (d.imageUrl) setContentPreview(prev => prev ? { ...prev, article: { ...prev.article, hero_image_url: d.imageUrl } } : null);
-                          } finally { setGeneratingImage(false); }
-                        }}
-                      >{generatingImage ? <span className="pq-spin">↺</span> : '↺'} {generatingImage ? 'Generating...' : 'Generate Image'}</button>
-                    </div>
-                  )}
-                  {editingField === 'title' ? (
-                    <textarea
-                      className="pq-edit-inline pq-edit-title"
-                      defaultValue={article?.title || item.title}
-                      autoFocus
-                      rows={2}
-                      onBlur={e => saveArticleEdit('title', e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); saveArticleEdit('title', (e.target as HTMLTextAreaElement).value); } if (e.key === 'Escape') setEditingField(null); }}
-                    />
-                  ) : (
-                    <h1 className="pq-preview-title pq-editable" onClick={() => setEditingField('title')} title="Click to edit">
-                      {article?.title || item.title}
-                      <span className="pq-edit-hint">✎</span>
-                    </h1>
-                  )}
-                  {article?.article_json?.metaDescription !== undefined && (
-                    editingField === 'metaDescription' ? (
-                      <textarea
-                        className="pq-edit-inline pq-edit-meta"
-                        defaultValue={article.article_json.metaDescription}
-                        autoFocus
-                        rows={3}
-                        onBlur={e => saveArticleEdit('metaDescription', e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Escape') setEditingField(null); }}
-                      />
-                    ) : (
-                      <p className="pq-preview-meta-desc pq-editable" onClick={() => setEditingField('metaDescription')} title="Click to edit">
-                        {article.article_json.metaDescription}
-                        <span className="pq-edit-hint">✎</span>
-                      </p>
-                    )
-                  )}
-                  <div className="pq-preview-sections">
-                    {sections.map((s: any, i: number) => (
-                      <div key={i} className="pq-preview-section">
-                        {s.heading && (
-                          editingField === `heading-${i}` ? (
-                            <textarea
-                              className="pq-edit-inline pq-edit-heading"
-                              defaultValue={s.heading}
-                              autoFocus
-                              rows={2}
-                              onBlur={e => saveArticleEdit('sectionHeading', e.target.value, i)}
-                              onKeyDown={e => { if (e.key === 'Escape') setEditingField(null); }}
-                            />
-                          ) : (
-                            <h2 className="pq-preview-heading pq-editable" onClick={() => setEditingField(`heading-${i}`)} title="Click to edit">
-                              {s.heading}<span className="pq-edit-hint">✎</span>
-                            </h2>
-                          )
-                        )}
-                        {editingField === `body-${i}` ? (
-                          <textarea
-                            className="pq-edit-inline pq-edit-body"
-                            defaultValue={s.body || s.content || ''}
-                            autoFocus
-                            rows={8}
-                            onBlur={e => saveArticleEdit('sectionBody', e.target.value, i)}
-                            onKeyDown={e => { if (e.key === 'Escape') setEditingField(null); }}
-                          />
-                        ) : (
-                          <div className="pq-editable pq-editable-body" onClick={() => setEditingField(`body-${i}`)} title="Click to edit">
-                            <>{renderMarkdown(s.body || s.content || '')}</>
-                            <span className="pq-edit-hint pq-edit-hint-body">✎ Edit</span>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Right: post copy editor per channel */}
-                <div className="pq-preview-side">
-                  <div className="pq-preview-side-title"><Edit2 /> Post Copy</div>
-                  <p className="pq-preview-side-hint">Edit the intro copy for each social channel before publishing.</p>
-
-                  {connChannels.map(ch => {
-                    const def = CHANNEL_LABELS[ch];
-                    const isTextChannel = ch === 'linkedin' || ch === 'x';
-                    if (!isTextChannel) return null;
-                    return (
-                      <div key={ch} className="pq-copy-block">
-                        <div className="pq-copy-channel-label" style={{ color: def?.color }}>
-                          {def?.label}
-                          <span className="pq-copy-char-count">
-                            {(postCopy[ch] || '').length} chars
-                            {ch === 'x' && (postCopy[ch] || '').length > 280 && (
-                              <span className="pq-copy-over"> · over 280!</span>
-                            )}
-                          </span>
-                        </div>
-                        <textarea
-                          className="pq-copy-textarea"
-                          value={postCopy[ch] || ''}
-                          rows={ch === 'linkedin' ? 6 : 4}
-                          onChange={e => setContentPreview(prev => prev ? {
-                            ...prev,
-                            postCopy: { ...prev.postCopy, [ch]: e.target.value }
-                          } : null)}
-                        />
-                      </div>
-                    );
-                  })}
-
-                  <div className="pq-preview-actions">
-                    <button className="pq-cancel-btn" onClick={() => setContentPreview(null)}>Cancel</button>
-                    <button
-                      className="pq-publish-now-btn"
-                      disabled={publishing === item.id || sel.length === 0}
-                      onClick={async () => {
-                        setPublishing(item.id);
-                        setError('');
-                        try {
-                          const r = await fetch('/api/publishing/publish', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', ...ah },
-                            body: JSON.stringify({ queueItemId: item.id, channels: sel, postCopy: contentPreview.postCopy })
-                          });
-                          const d = await r.json();
-                          if (d.success) {
-                            setSuccessMsg(`Published to ${sel.join(', ')}`);
-                            setContentPreview(null);
-                            loadQueue();
-                            setTimeout(() => setSuccessMsg(''), 5000);
-                          } else { setError(d.error || 'Publish failed'); }
-                        } finally { setPublishing(null); }
-                      }}
-                    >
-                      <Send /> {publishing === item.id ? 'Publishing...' : `Publish to ${sel.length} channel${sel.length !== 1 ? 's' : ''}`}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-    </AppShell>
-
-    {/* ── Delete / Unpublish Modal ── */}
-    {deleteModal && (
-      <div className="pq-modal-overlay" onClick={() => !deleting && setDeleteModal(null)}>
-        <div className="pq-modal pq-delete-modal" onClick={e => e.stopPropagation()}>
-          <div className="pq-modal-header">
-            <h3 className="pq-modal-title">Remove article</h3>
-            <button className="pq-modal-close" onClick={() => !deleting && setDeleteModal(null)}>✕</button>
-          </div>
-
-          <div className="pq-delete-article-title">{deleteModal.item.title}</div>
-
-          {deleteModal.publishedChannels.length > 0 ? (
-            <>
-              <p className="pq-delete-desc">Select which live channels to unpublish from, then choose what to do in Forge.</p>
-
-              {/* Per-channel checkboxes */}
-              <div className="pq-delete-channel-list">
-                {deleteModal.publishedChannels.map(ch => (
-                  <label key={ch} className="pq-delete-channel-row">
-                    <input
-                      type="checkbox"
-                      className="pq-delete-checkbox"
-                      checked={!!deleteChannelSelection[ch]}
-                      disabled={deleting}
-                      onChange={e => setDeleteChannelSelection(prev => ({ ...prev, [ch]: e.target.checked }))}
-                    />
-                    <span className="pq-delete-channel-name" style={{ color: CHANNEL_LABELS[ch]?.color || 'inherit' }}>
-                      {CHANNEL_LABELS[ch]?.label || ch}
-                    </span>
-                    <span className="pq-delete-channel-status">
-                      {(publishLog[deleteModal.item.id]||[]).find(l=>l.channel===ch)?.live_status === 'published' ? 'Live' : 'Error / Stale'}
-                    </span>
-                  </label>
-                ))}
-              </div>
-
-              <div className="pq-delete-actions">
-                <button
-                  className="pq-delete-option-btn full"
-                  onClick={() => handleUnpublish(true)}
-                  disabled={deleting}
-                >
-                  <span className="pq-delete-option-icon">🗑</span>
-                  <div>
-                    <div className="pq-delete-option-label">
-                      {Object.values(deleteChannelSelection).some(Boolean)
-                        ? `Unpublish selected + remove from Forge`
-                        : 'Remove from Forge only'}
-                    </div>
-                    <div className="pq-delete-option-sub">
-                      {Object.values(deleteChannelSelection).some(Boolean)
-                        ? 'Deletes checked live posts and clears from queue'
-                        : 'All live posts stay up — only clears from queue'}
-                    </div>
-                  </div>
-                </button>
-                <button
-                  className="pq-delete-option-btn forge-only"
-                  onClick={() => handleUnpublish(false)}
-                  disabled={deleting}
-                >
-                  <span className="pq-delete-option-icon">📋</span>
-                  <div>
-                    <div className="pq-delete-option-label">
-                      {Object.values(deleteChannelSelection).some(Boolean)
-                        ? 'Unpublish selected — keep in Forge'
-                        : 'No action'}
-                    </div>
-                    <div className="pq-delete-option-sub">
-                      {Object.values(deleteChannelSelection).some(Boolean)
-                        ? 'Removes checked live posts but keeps article in queue as staged'
-                        : 'Uncheck channels above to unpublish without removing from Forge'}
-                    </div>
-                  </div>
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <p className="pq-delete-desc">This article has not been published to any channels yet.</p>
-              <div className="pq-delete-actions">
-                <button
-                  className="pq-delete-option-btn full"
-                  onClick={() => handleUnpublish(true)}
-                  disabled={deleting}
-                >
-                  <span className="pq-delete-option-icon">🗑</span>
-                  <div>
-                    <div className="pq-delete-option-label">Remove from queue</div>
-                    <div className="pq-delete-option-sub">Clears the article from Forge</div>
-                  </div>
-                </button>
-              </div>
-            </>
+                {standaloneItems.map(item => renderQueueItem(item))}
           )}
 
           {deleting && <div className="pq-delete-loading">Working…</div>}
