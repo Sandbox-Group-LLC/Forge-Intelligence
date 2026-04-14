@@ -9000,6 +9000,10 @@ app.post('/api/admin/reset-brand-paid', async (req, res) => {
 // ── fal.ai webhook drain — receives event logs from fal.ai dashboard ─────────
 app.post('/api/webhooks/fal', express.json({ limit: '1mb' }), async (req, res) => {
   try {
+    const drainToken = req.headers['authorization']?.replace('Bearer ', '') || req.query.token;
+    if (!drainToken || drainToken !== process.env.FAL_DRAIN_TOKEN) {
+      return res.status(403).json({ error: 'Invalid drain token' });
+    }
     console.log('[fal.ai webhook]', JSON.stringify(req.body).slice(0, 500));
     const payload = req.body || {};
     const endpoint = payload.endpoint || payload.model || 'unknown';
