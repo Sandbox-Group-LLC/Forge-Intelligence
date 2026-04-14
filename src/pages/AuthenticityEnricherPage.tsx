@@ -224,15 +224,22 @@ function AuthenticityEnricherContent() {
           </p>
         </div>
         {result && (
-          <div className="geo-score-badge" style={{
-            background: result.confidenceScore >= 75 ? 'var(--color-accent-muted)' : result.confidenceScore >= 50 ? '#F5B94214' : '#EF444414',
-            border: `1px solid ${result.confidenceScore >= 75 ? 'var(--color-accent-70)' : result.confidenceScore >= 50 ? '#F5B94240' : '#EF444440'}`
-          }}>
-            <div className="score-value" style={{ color: result.confidenceScore >= 75 ? 'var(--color-accent)' : result.confidenceScore >= 50 ? '#F5B942' : '#EF4444', fontSize: '36px' }}>{result.confidenceScore}</div>
-            <div className="score-label">E-E-A-T Score</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div className="geo-score-badge" style={{
+              background: result.confidenceScore >= 75 ? 'var(--color-accent-muted)' : result.confidenceScore >= 50 ? '#F5F3FF' : '#FFF7ED',
+              border: `1px solid ${result.confidenceScore >= 75 ? 'var(--color-accent-70)' : result.confidenceScore >= 50 ? '#C4B5FD' : '#FDBA74'}`
+            }}>
+              <div className="score-value" style={{ color: result.confidenceScore >= 75 ? 'var(--color-accent)' : result.confidenceScore >= 50 ? '#7C3AED' : '#EA580C' }}>{result.confidenceScore}</div>
+              <div className="score-label">E-E-A-T Score</div>
+            </div>
+            <button onClick={() => { setResult(null); }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
+              Re-run Enrichment
+            </button>
+            <button onClick={() => { window.location.href = '/app/content-generator'; }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, borderRadius: 8, background: '#4F46E5', color: '#fff', border: '1px solid #4F46E5', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
+              Continue to Content Generator →
+            </button>
           </div>
         )}
-      </div>
 
       {/* Brain selector */}
       <div className="geo-input-bar">
@@ -565,17 +572,7 @@ function AuthenticityEnricherContent() {
         </>
       )}
 
-      {/* Next Step CTA */}
-      {result && !isRunning && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 24, paddingBottom: 24 }}>
-          <button onClick={() => { setResult(null); }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
-            Re-run Enrichment
-          </button>
-          <button onClick={() => { window.location.href = '/app/content-generator'; }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, borderRadius: 8, background: '#4F46E5', color: '#fff', border: '1px solid #4F46E5', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
-            Continue to Content Generator →
-          </button>
-        </div>
-      )}
+
     </div>
   );
 }
