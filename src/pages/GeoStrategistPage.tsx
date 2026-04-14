@@ -83,7 +83,7 @@ function GeoStrategistContent() {
           setResult({
             opportunityScore: b.opportunityScore || 0,
             topicalAuthorityMap: b.topicalAuthorityMap || [],
-            geoOpportunities: b.geoOpportunities || [],
+            geoOpportunities: b.geoOpportunitiesNorm || b.geoOpportunities || [],
             entitySchemaMap: b.entitySchemaMap || [],
             geoBrief: b.geoBrief || null,
             brandName: b.brandName || '',
