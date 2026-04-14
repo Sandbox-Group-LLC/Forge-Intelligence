@@ -8825,18 +8825,19 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
       [req.userId]
     );
     let result = { rows: allUserBrands.rows.slice(0, 1) };
-    // No tethered brand yet — fall back to most recent brand (pre-auth flow)
-    if (!result.rows.length) {
-      result = await pool.query(
-        `SELECT * FROM brand_profiles WHERE is_active = true ORDER BY updated_at DESC LIMIT 1`
+    // No tethered brand — only tether if brand_id explicitly provided (from GateModal/onboard flow)
+    if (!result.rows.length && brandId) {
+      const candidate = await pool.query(
+        `SELECT * FROM brand_profiles WHERE id = $1 AND (clerk_user_id IS NULL OR clerk_user_id = $2) AND is_active = true LIMIT 1`,
+        [brandId, req.userId]
       );
-      // Auto-tether this brand to the user
-      if (result.rows.length) {
+      if (candidate.rows.length) {
         await pool.query(
           `UPDATE brand_profiles SET clerk_user_id = $1, updated_at = NOW() WHERE id = $2`,
-          [req.userId, result.rows[0].id]
+          [req.userId, candidate.rows[0].id]
         );
-        console.log(`[AUTH] Auto-tethered brand ${result.rows[0].id} to user ${req.userId}`);
+        result = candidate;
+        console.log(`[AUTH] Tethered brand ${candidate.rows[0].id} to user ${req.userId} (explicit brand_id)`);
       }
     }
     // Fire-and-forget: sync user to HubSpot CRM
