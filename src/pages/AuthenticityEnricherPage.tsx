@@ -159,7 +159,12 @@ function AuthenticityEnricherContent() {
   }, [selectedBrainId, authToken]);
 
   // Use historyEntries from context as brain list
-  const brains = historyEntries.map(e => ({ id: e.id, brandName: e.brandName, brandUrl: e.brandUrl }));
+  let brains = historyEntries.map(e => ({ id: e.id, brandName: e.brandName, brandUrl: e.brandUrl }));
+
+  // Ensure current brand appears in dropdown even if historyEntries hasn't loaded yet (auth redirect race)
+  if (brains.length === 0 && activeBrand) {
+    brains.push({ id: activeBrand.id, brandName: activeBrand.brandName || activeBrand.brandUrl, brandUrl: activeBrand.brandUrl });
+  }
 
   const runAnalysis = async (withManual = false, forceRefresh = false) => {
     if (!selectedBrainId) return;
