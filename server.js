@@ -8900,13 +8900,8 @@ app.post('/api/promo/validate', softAuth, async (req, res) => {
     );
     if (lookup.rows.length) brandProfileId = lookup.rows[0].id;
   }
-  // Last resort — most recently created active brand
-  if (!brandProfileId) {
-    const fallback = await pool.query(
-      'SELECT id FROM brand_profiles WHERE is_active = true ORDER BY created_at DESC LIMIT 1'
-    );
-    if (fallback.rows.length) brandProfileId = fallback.rows[0].id;
-  }
+  // No global fallback — brandProfileId must come from frontend or auth token
+  // Without it, the promo validates but is_paid does NOT flip (logged as warning)
 
   // Apply — mark brand as paid
   if (promo.discount === 100 && brandProfileId) {
