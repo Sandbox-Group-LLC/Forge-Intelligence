@@ -37,7 +37,7 @@
 
 ---
 
-## Platform Status (April 13, 2026)
+## Platform Status (April 14, 2026)
 
 ### All 8 Stages Live
 
@@ -118,6 +118,23 @@ Every stage persists results and points forward:
 - TopBar title updates dynamically per Brain sub-view (Brand Profile, Strategy Brief, Brain History)
 - Landing page has Sign In button in header
 - Post-auth redirects to current page, not always /app/context-hub
+
+### Mission Control (`/app/mc`)
+- Super-admin only — hidden from customer sidebar via `isSuperAdmin` filter
+- **Deploy Status:** Production + Development cards, last 8 deploys, failed builds highlighted red with commit messages
+- **Content Table Sizes:** Monitors all `generated_content_*` tables, alerts at 500KB threshold
+- **Error Aggregation:** Deduped by pattern (strips UUIDs/timestamps), count + last seen
+- **Live Log Tail:** SSE stream from 500-entry ring buffer, color-coded errors/warnings, pause/resume/filter/clear
+- Reviewers section moved to Brand Settings (accessible to all customers)
+
+### DevOps Hardening (April 14, 2026)
+- **Concurrent scan protection:** `UNIQUE INDEX idx_bp_active_url ON brand_profiles (brand_url) WHERE is_active = true` + `ON CONFLICT` on both INSERT paths
+- **Primary key:** `brand_profiles_pkey PRIMARY KEY (id)` — was missing entirely
+- **Duplicate SSE stream guard:** `activeStreams` Map tracks brand+stage, returns `busy` event if already running, stale cleanup every 2 min (10-min max)
+- **Expiry race fix:** `useActiveBrand` checks DB before expiring localStorage brands — promo codes survive 24hr window
+- **Ghost brand cleanup:** Auth/me returns no brand → localStorage wiped. Unauthenticated: brand verified against API on mount, 404 = cleared
+- **Timer reset:** `sessionStorage.removeItem('forge_run_start')` on every new analysis — no more zombie timers
+- **Brand name from Claude:** Added `brandName` to Claude response schema — actual website name instead of domain parse
 - GitHub Contents API commits require a freshly fetched SHA — stale SHAs fail
 
 ### Branch Strategy (April 12, 2026)
