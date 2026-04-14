@@ -3204,6 +3204,7 @@ BRAIN MISTAKES (DO NOT repeat for this brand): ${JSON.stringify(brainMistakes)}`
             id: r.id, brandProfileId: r.brand_profile_id,
             brandUrl: r.brand_url, brandName: r.brand_name,
             version: r.version, opportunityScore: r.opportunity_score,
+            brainVersion: r.brain_version || 1, currentBrainVersion: profile.version || 1,
             createdAt: r.created_at, updatedAt: r.updated_at,
             ...normalized
           }});
@@ -3352,9 +3353,9 @@ Return ONLY valid JSON:
     const fullBriefData = { ...briefData, topicalMap, geoOpportunities, entitySchema, topicalAuthorityMap, geoOpportunitiesNorm, entitySchemaMap, geoBrief };
 
     await pool.query(
-      `INSERT INTO geo_briefs (id, client_id, brand_profile_id, brand_url, brand_name, version, opportunity_score, brief_data)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [id, null, brandProfileId, profile.brand_url, profile.brand_name, nextVersion, opportunityScore, JSON.stringify(fullBriefData)]
+      `INSERT INTO geo_briefs (id, client_id, brand_profile_id, brand_url, brand_name, version, opportunity_score, brief_data, brain_version)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [id, null, brandProfileId, profile.brand_url, profile.brand_name, nextVersion, opportunityScore, JSON.stringify(fullBriefData), profile.version || 1]
     );
 
     // ── Write pattern if score >= 75 ──────────────────────────────────────────
@@ -3380,6 +3381,7 @@ Return ONLY valid JSON:
             res.json({ success: true, cached: false, data: {
       id, brandProfileId, brandUrl: profile.brand_url, brandName: profile.brand_name,
       version: nextVersion, opportunityScore, latencyMs,
+      brainVersion: profile.version || 1, currentBrainVersion: profile.version || 1,
       topicalAuthorityMap, geoOpportunities: geoOpportunitiesNorm, entitySchemaMap, geoBrief
     }});
 
@@ -3470,7 +3472,9 @@ app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => 
           return res.json({ success: true, cached: true, data: {
             id: r.id, brandProfileId: r.brand_profile_id, geoBriefId: r.geo_brief_id,
             brandUrl: r.brand_url, brandName: r.brand_name, version: r.version,
-            confidenceScore: r.confidence_score, createdAt: r.created_at, updatedAt: r.updated_at,
+            confidenceScore: r.confidence_score,
+            brainVersion: r.brain_version || 1, currentBrainVersion: profile.version || 1,
+            createdAt: r.created_at, updatedAt: r.updated_at,
             ...r.enriched_data
           }});
         }
@@ -3673,9 +3677,9 @@ Respond with this exact JSON structure:
     const confidenceScore = assembledBrief.overallConfidence || scorerData.overallEEATScore || 0;
 
     await pool.query(
-      `INSERT INTO enriched_briefs (id, brand_profile_id, geo_brief_id, brand_url, brand_name, version, confidence_score, enriched_data)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [newId, brandProfileId, enrichedData.geoBriefId, profile.brand_url, brandName, nextVersion, confidenceScore, JSON.stringify(enrichedData)]
+      `INSERT INTO enriched_briefs (id, brand_profile_id, geo_brief_id, brand_url, brand_name, version, confidence_score, enriched_data, brain_version)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [newId, brandProfileId, enrichedData.geoBriefId, profile.brand_url, brandName, nextVersion, confidenceScore, JSON.stringify(enrichedData), profile.version || 1]
     );
 
     const latencyMs = Date.now() - startTime;
@@ -3685,6 +3689,7 @@ Respond with this exact JSON structure:
             res.json({ success: true, cached: false, data: {
       id: newId, brandProfileId, brandUrl: profile.brand_url, brandName,
       version: nextVersion, confidenceScore, latencyMs, needsManualInput,
+      brainVersion: profile.version || 1, currentBrainVersion: profile.version || 1,
       ...enrichedData
     }});
 
