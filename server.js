@@ -2493,6 +2493,7 @@ Analyze the brand at: ${brandUrl}${siteContentSection}${competitorSection}${icpS
 
 Return ONLY valid JSON (no markdown, no explanation, no newlines inside string values — use spaces instead):
 {
+  "brandName": "string — the brand's actual display name as it appears on the website (e.g. 'Rose + Thyme', not 'therosethyme' or 'Therosethyme')",
   "voiceProfile": {
     "summary": "string",
     "toneAttributes": [{ "attribute": "string", "score": 0-100, "description": "string" }],
