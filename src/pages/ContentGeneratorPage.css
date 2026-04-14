@@ -433,7 +433,7 @@
 .cg-idea-fab {
   position: fixed;
   bottom: 32px;
-  right: 32px;
+  left: 280px;
   z-index: 200;
   background: var(--color-accent);
   color: #fff;
@@ -463,7 +463,7 @@
 .cg-idea-drawer {
   position: fixed;
   bottom: 88px;
-  right: 32px;
+  left: 280px;
   z-index: 199;
   width: 360px;
   background: var(--color-bg-card);
