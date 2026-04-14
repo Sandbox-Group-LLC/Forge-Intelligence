@@ -2451,9 +2451,11 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
       console.log(`[Context Hub] Scraper error (non-fatal):`, e.message);
     }
 
-    const siteContentSection = scrapedContent.length > 200
+    const scraperSuccess = scrapedContent.length > 200;
+    const siteContentSection = scraperSuccess
       ? `\n\nACTUAL WEBSITE CONTENT (scraped — use this as primary source, do NOT guess from domain name):\n${scrapedContent.slice(0, 8000)}`
       : '';
+    if (!scraperSuccess) console.warn(`[Context Hub] ⚠️ SCRAPER FAILED for ${brandUrl} — Claude will guess from domain name + Sonar context only`);
 
     // ── Tool 2: Claude — Brand Intelligence Profile ───────────────────────────
     console.log(`[Context Hub] Tool 2: Claude brand analysis...`);
@@ -2560,6 +2562,8 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
     const latencyMs = Date.now() - startTime;
     console.log(`[Context Hub] Complete — ${brandName} | Latency: ${latencyMs}ms | Competitors found: ${sonarCompetitors.length}`);
 
+    profileData.scraperSuccess = scraperSuccess;
+
     if (saveToBrain) {
       const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       const resolvedBrandName = (profileData.brandName && !uuidPattern.test(profileData.brandName))
@@ -2615,7 +2619,7 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
         res.json({ success: true, cached: false, data: {
       id: randomUUID(), brandUrl, brandName,
       version: 1, isActive: false, cacheStatus: 'fresh',
-      latencyMs, discoveredCompetitors: sonarCompetitors,
+      latencyMs, discoveredCompetitors: sonarCompetitors, scraperSuccess,
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       ...profileData
     }});
