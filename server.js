@@ -2934,7 +2934,9 @@ app.post('/api/email-campaign/push-to-hubspot', requireAuth, async (req, res) =>
         const hsEmail = await emailRes.json();
         results.push({ index: email.email_index, hsEmailId: hsEmail.id, status: 'pushed' });
       } else {
-        results.push({ index: email.email_index, status: 'failed' });
+        const errBody = emailRes ? await emailRes.text().catch(() => 'no body') : 'fetch failed';
+        console.error(`[EMAIL CAMPAIGN] HubSpot email push failed for #${email.email_index}: ${emailRes?.status} ${errBody}`);
+        results.push({ index: email.email_index, status: 'failed', error: `HubSpot ${emailRes?.status || 'network error'}: ${errBody.slice(0, 200)}` });
       }
     }
 
