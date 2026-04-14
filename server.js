@@ -702,49 +702,8 @@ async function initDB() {
   } catch(e) { console.log('NeonDB: Brain tables note:', e.message); }
 
 
-  // ── Row Level Security — orphan brand prevention ─────────────────────────
-  const rlsTables = [
-    'publishing_queue', 'publishing_channels', 'content_analytics',
-    'brain_patterns', 'brain_mistakes', 'geo_briefs', 'geo_citations',
-    'decay_alerts', 'precog_outcomes', 'topic_ideas', 'reviewers', 'memories',
-  ];
-  for (const tbl of rlsTables) {
-    try {
-      await pool.query(`ALTER TABLE ${tbl} ENABLE ROW LEVEL SECURITY`);
-      await pool.query(`ALTER TABLE ${tbl} FORCE ROW LEVEL SECURITY`);
-      await pool.query(`DROP POLICY IF EXISTS no_orphan_brands ON ${tbl}`);
-      await pool.query(`
-        CREATE POLICY no_orphan_brands ON ${tbl}
-          USING (brand_profile_id IN (
-            SELECT id FROM brand_profiles WHERE clerk_user_id IS NOT NULL
-          ))
-      `);
-    } catch(e) { /* skip tables without brand_profile_id */ }
-  }
-  // publish_log — joins through queue
-  try {
-    await pool.query(`ALTER TABLE publish_log ENABLE ROW LEVEL SECURITY`);
-    await pool.query(`ALTER TABLE publish_log FORCE ROW LEVEL SECURITY`);
-    await pool.query(`DROP POLICY IF EXISTS no_orphan_brands ON publish_log`);
-    await pool.query(`
-      CREATE POLICY no_orphan_brands ON publish_log
-        USING (queue_item_id IN (
-          SELECT id FROM publishing_queue WHERE brand_profile_id IN (
-            SELECT id FROM brand_profiles WHERE clerk_user_id IS NOT NULL
-          )
-        ))
-    `);
-  } catch(e) { console.log('[RLS] publish_log:', e.message); }
-  console.log('[SECURITY] RLS policies applied');
-
-  // Purge orphaned brain data on every boot
-  try {
-    const [op, om] = await Promise.all([
-      pool.query(`DELETE FROM brain_patterns WHERE brand_profile_id NOT IN (SELECT id FROM brand_profiles WHERE clerk_user_id IS NOT NULL)`),
-      pool.query(`DELETE FROM brain_mistakes WHERE brand_profile_id NOT IN (SELECT id FROM brand_profiles WHERE clerk_user_id IS NOT NULL)`),
-    ]);
-    if (op.rowCount || om.rowCount) console.log(`[SECURITY] Purged orphans: ${op.rowCount} patterns, ${om.rowCount} mistakes`);
-  } catch(e) { console.log('[SECURITY] Orphan purge:', e.message); }
+  // ── RLS REMOVED (April 14, 2026) ──────────────────────────────────────────
+  // Rogue agent's fake RLS stripped. Real isolation: verifyBrandAccess() + WHERE brand_profile_id = $1
 
 
 initDB().catch(err => console.error('DB init error:', err));
