@@ -61,6 +61,10 @@ export default function AdminPage() {
   const [logFilter, setLogFilter] = useState<'all' | 'error' | 'warn'>('all');
   const logEndRef = useRef<HTMLDivElement>(null);
 
+  // Deploys
+  interface Deploy { id: string; status: string; commitMessage: string; commitId: string; createdAt: string; finishedAt: string; env: string; }
+  const [deploys, setDeploys] = useState<{ production: Deploy[]; development: Deploy[] }>({ production: [], development: [] });
+
   const loadData = useCallback(async () => {
     try {
       const token = await getToken();
@@ -109,6 +113,20 @@ export default function AdminPage() {
     };
     fetchErrors();
     const interval = setInterval(fetchErrors, 30000);
+    return () => clearInterval(interval);
+  }, [getToken]);
+
+  // Fetch deploy status
+  useEffect(() => {
+    const fetchDeploys = async () => {
+      const token = await getToken();
+      if (!token) return;
+      const r = await fetch('/api/admin/deploys', { headers: { 'Authorization': `Bearer ${token}` } });
+      const d = await r.json();
+      if (d.success) setDeploys({ production: d.production || [], development: d.development || [] });
+    };
+    fetchDeploys();
+    const interval = setInterval(fetchDeploys, 60000);
     return () => clearInterval(interval);
   }, [getToken]);
 
@@ -289,6 +307,50 @@ export default function AdminPage() {
                 </div>
               </div>
             </div>
+
+            {/* Deploy Status */}
+            {['production', 'development'].map(env => {
+              const envDeploys = env === 'production' ? deploys.production : deploys.development;
+              const failed = envDeploys.filter(d => d.status === 'build_failed' || d.status === 'update_failed');
+              return (
+                <div key={env} className="mc-panel" style={{ gridColumn: env === 'production' ? '1 / 2' : '2 / -1' }}>
+                  <div className="mc-panel-header">
+                    <span className="mc-panel-title">{env.toUpperCase()} DEPLOYS</span>
+                    <span className="mc-panel-meta">
+                      {failed.length > 0 ? `❌ ${failed.length} failed` : envDeploys.length > 0 && envDeploys[0].status === 'live' ? '✅ Live' : '...'}
+                    </span>
+                  </div>
+                  <div style={{ maxHeight: 260, overflow: 'auto' }}>
+                    {envDeploys.slice(0, 8).map((d, i) => {
+                      const isFailed = d.status === 'build_failed' || d.status === 'update_failed';
+                      const isLive = d.status === 'live';
+                      const isBuilding = d.status === 'build_in_progress' || d.status === 'queued';
+                      return (
+                        <div key={d.id || i} style={{
+                          padding: '8px 12px', borderBottom: '1px solid #f1f5f9',
+                          background: isFailed ? '#FEF2F2' : isBuilding ? '#FFFBEB' : 'transparent'
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                            <span style={{
+                              fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 4,
+                              background: isFailed ? '#FEE2E2' : isLive ? '#D1FAE5' : isBuilding ? '#FEF3C7' : '#F1F5F9',
+                              color: isFailed ? '#B91C1C' : isLive ? '#065F46' : isBuilding ? '#92400E' : '#64748b'
+                            }}>{d.status.replace(/_/g, ' ')}</span>
+                            <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                              {d.commitId && <code style={{ marginRight: 6 }}>{d.commitId}</code>}
+                              {d.createdAt ? new Date(d.createdAt).toLocaleString() : ''}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 12, color: isFailed ? '#B91C1C' : '#475569', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                            {d.commitMessage.slice(0, 120) || 'No commit message'}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
 
             {/* Table Size Monitor */}
             {data?.tableSizes && data.tableSizes.length > 0 && (
