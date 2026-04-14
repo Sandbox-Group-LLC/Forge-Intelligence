@@ -3517,8 +3517,7 @@ app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => 
     delete otherInputs.corrections;
     const manualCtx = Object.keys(otherInputs).length
       ? `\nMANUAL INPUTS PROVIDED BY USER (treat as verified, high-confidence):\n${JSON.stringify(otherInputs, null, 2)}${correctionsCtx}`
-      : correctionsCtx
-      : '';
+      : correctionsCtx || '';
 
     // ── Tool 1: SME Signal Scraper ────────────────────────────────────────────
     console.log('[ENRICH] Tool 1: SME Signal Scraper...');
