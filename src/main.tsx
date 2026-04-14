@@ -95,7 +95,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/app/performance" element={<AppProvider><PerformanceDashboardPage /></AppProvider>} />
         <Route path="/app/content-library" element={<AppProvider><ContentLibraryPage /></AppProvider>} />
         <Route path="/app/content-import" element={<AppProvider><ContentImportPage /></AppProvider>} />
-        <Route path="/app/admin" element={<AppProvider><AdminPage /></AppProvider>} />
+        <Route path="/app/mc" element={<AppProvider><AdminPage /></AppProvider>} />
         <Route path="/app/topic-queue" element={<AppProvider><TopicQueuePage /></AppProvider>} />
         <Route path="/app/brand-settings" element={<AppProvider><BrandSettingsPage /></AppProvider>} />
 
