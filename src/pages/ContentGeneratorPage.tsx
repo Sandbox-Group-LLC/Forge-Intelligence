@@ -100,7 +100,12 @@ function ContentGeneratorContent() {
   const [preflight, setPreflight] = useState<{ status: string; signal?: string; confidence?: string; reframe?: string; reframeRationale?: string; reason?: string }>({ status: 'idle' });
 
   const { historyEntries, activeBrand, authToken } = useApp();
-  const brains: Brain[] = historyEntries.map(e => ({ id: e.id, brandName: e.brandName, brandUrl: e.brandUrl }));
+  let brains: Brain[] = historyEntries.map(e => ({ id: e.id, brandName: e.brandName, brandUrl: e.brandUrl }));
+
+  // Ensure current brand appears in dropdown even if historyEntries hasn't loaded yet (auth redirect race)
+  if (brains.length === 0 && activeBrand) {
+    brains.push({ id: activeBrand.id, brandName: activeBrand.brandName || activeBrand.brandUrl, brandUrl: activeBrand.brandUrl });
+  }
 
   // Seed selected brain from active brand context
   useEffect(() => {
