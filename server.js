@@ -1294,6 +1294,24 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // ── Content fetch for preview ─────────────────────────────────────────────────
+
+// GET /api/content/:safeId/latest — SSE recovery: check if article was generated
+app.get('/api/content/:safeId/latest', async (req, res) => {
+  try {
+    const tableName = `generated_content_${req.params.safeId}`;
+    const result = await pool.query(
+      `SELECT id, title, article_json, overall_confidence, brain_match_score, compliance_status, hero_image_url, created_at
+       FROM ${tableName} WHERE created_at > NOW() - INTERVAL '5 minutes' ORDER BY created_at DESC LIMIT 1`
+    );
+    if (!result.rows.length) return res.json({ success: false });
+    const r = result.rows[0];
+    const article = r.article_json || {};
+    res.json({ success: true, article: { ...article, contentId: r.id, title: r.title, overallConfidence: r.overall_confidence, brainMatchScore: r.brain_match_score, heroImageUrl: r.hero_image_url } });
+  } catch(e) {
+    res.json({ success: false, error: e.message });
+  }
+});
+
 app.get('/api/content/:safeId/:contentId', requireAuth, async (req, res) => {
   try {
     const { safeId, contentId } = req.params;
