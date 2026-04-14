@@ -259,12 +259,9 @@ export default function EmailCampaignPage() {
       es.addEventListener('status', (e) => {
         setGenStatus(JSON.parse(e.data).message);
       });
-      es.addEventListener('busy', (e: any) => {
-      try {
-        const d = JSON.parse(e.data);
-        setError(`Email campaign generation already in progress. Check back shortly.`);
-        setGenerating(false);
-      } catch {}
+      es.addEventListener('busy', () => {
+      setError('Email campaign generation already in progress. Check back shortly.');
+      setStep('brief');
       es.close();
     });
 
