@@ -8677,6 +8677,47 @@ app.get('/api/admin/logs/errors', requireAuth, async (req, res) => {
   res.json({ success: true, errors: errorAggregates.slice().reverse(), total: errorAggregates.length });
 });
 
+
+// ── Render Deploy Status (Mission Control) ────────────────────────────────────
+app.get('/api/admin/deploys', requireAuth, async (req, res) => {
+  if (!SUPER_ADMIN_IDS.includes(req.userId)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const renderKey = process.env.RENDER_API_KEY;
+    if (!renderKey) return res.json({ success: true, production: [], development: [] });
+    
+    const fetchDeploys = async (serviceId, label) => {
+      const r = await fetch(`https://api.render.com/v1/services/${serviceId}/deploys?limit=10`, {
+        headers: { 'Authorization': `Bearer ${renderKey}` }
+      });
+      const data = await r.json();
+      return (data || []).map(d => {
+        const dep = d.deploy || d;
+        return {
+          id: dep.id,
+          status: dep.status,
+          commitMessage: dep.commit?.message || '',
+          commitId: dep.commit?.id?.slice(0, 10) || '',
+          createdAt: dep.createdAt,
+          finishedAt: dep.finishedAt,
+          env: label
+        };
+      });
+    };
+
+    const prodId = process.env.PRODUCTION_SERVICE_ID || 'srv-d73bct6a2pns73a8c65g';
+    const devId = process.env.DEVELOPMENT_SERVICE_ID || 'srv-d726u7ea2pns739kopmg';
+
+    const [production, development] = await Promise.all([
+      fetchDeploys(prodId, 'production').catch(() => []),
+      fetchDeploys(devId, 'development').catch(() => [])
+    ]);
+
+    res.json({ success: true, production, development });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // POST /api/onboard/paypal-success — called after PayPal payment confirmed
 // Removes expiry, marks as paid, unlocks all stages
 app.post('/api/onboard/paypal-success', async (req, res) => {
