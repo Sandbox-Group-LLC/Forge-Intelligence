@@ -442,9 +442,12 @@ function ContentGeneratorContent() {
 
       {ideaDrawerOpen && (
         <div className="cg-idea-drawer">
-          <div className="cg-idea-drawer-header">
-            <span className="cg-idea-drawer-title">Topic Ideas</span>
-            <span className="cg-idea-drawer-sub">Park it now, generate when ready</span>
+          <div className="cg-idea-drawer-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <span className="cg-idea-drawer-title">Topic Ideas</span>
+              <span className="cg-idea-drawer-sub">Park it now, generate when ready</span>
+            </div>
+            <button onClick={() => setIdeaDrawerOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#94a3b8', fontSize: 18, lineHeight: 1 }}>×</button>
           </div>
           <div className="cg-idea-capture">
             <input
