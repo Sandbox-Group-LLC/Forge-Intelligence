@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import { useApp } from '../context/AppContext';
 import { AppShell } from '../layouts/AppShell';
@@ -51,6 +51,15 @@ export default function AdminPage() {
   const [error, setError] = useState('');
   const selectedBrand = activeBrand?.id || '';
 
+  // Live logs
+  interface LogEntry { ts: string; level: string; msg: string; isError: boolean; isWarn: boolean; }
+  interface ErrorAgg { key: string; count: number; firstSeen: string; lastSeen: string; lastMsg: string; level: string; }
+  const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
+  const [errorAggs, setErrorAggs] = useState<ErrorAgg[]>([]);
+  const [logPaused, setLogPaused] = useState(false);
+  const [logFilter, setLogFilter] = useState<'all' | 'error' | 'warn'>('all');
+  const logEndRef = useRef<HTMLDivElement>(null);
+
   const loadData = useCallback(async () => {
     try {
       const token = await getToken();
@@ -62,6 +71,45 @@ export default function AdminPage() {
   }, [getToken]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // SSE live log stream
+  useEffect(() => {
+    let es: EventSource | null = null;
+    const connect = async () => {
+      const token = await getToken();
+      if (!token) return;
+      es = new EventSource(`/api/admin/logs/stream?token=${token}`);
+      es.onmessage = (e) => {
+        if (logPaused) return;
+        try {
+          const entry = JSON.parse(e.data);
+          setLogEntries(prev => [...prev.slice(-499), entry]);
+        } catch {}
+      };
+      es.onerror = () => { es?.close(); setTimeout(connect, 5000); };
+    };
+    connect();
+    return () => es?.close();
+  }, [getToken, logPaused]);
+
+  // Auto-scroll log tail
+  useEffect(() => {
+    if (!logPaused) logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [logEntries, logPaused]);
+
+  // Fetch error aggregates every 30s
+  useEffect(() => {
+    const fetchErrors = async () => {
+      const token = await getToken();
+      if (!token) return;
+      const r = await fetch('/api/admin/logs/errors', { headers: { 'Authorization': `Bearer ${token}` } });
+      const d = await r.json();
+      if (d.success) setErrorAggs(d.errors);
+    };
+    fetchErrors();
+    const interval = setInterval(fetchErrors, 30000);
+    return () => clearInterval(interval);
+  }, [getToken]);
 
   useEffect(() => {
     if (!selectedBrand) return;
@@ -238,6 +286,82 @@ export default function AdminPage() {
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+
+            {/* Error Aggregation Card */}
+            <div className="mc-panel" style={{ gridColumn: '1 / -1' }}>
+              <div className="mc-panel-header">
+                <span className="mc-panel-title">ERROR AGGREGATION</span>
+                <span className="mc-panel-meta">{errorAggs.length} unique errors</span>
+              </div>
+              {errorAggs.length === 0 ? (
+                <div style={{ padding: '16px', textAlign: 'center', color: '#10b981', fontSize: 13 }}>No errors captured since last deploy</div>
+              ) : (
+                <div style={{ maxHeight: 240, overflow: 'auto' }}>
+                  <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid #e2e8f0', color: '#64748b', textAlign: 'left' }}>
+                        <th style={{ padding: '6px 8px' }}>Error</th>
+                        <th style={{ padding: '6px 8px', width: 60 }}>Count</th>
+                        <th style={{ padding: '6px 8px', width: 140 }}>Last Seen</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {errorAggs.slice(0, 20).map((e, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '6px 8px', color: '#ef4444', fontFamily: 'monospace', fontSize: 11, wordBreak: 'break-all' }}>{e.lastMsg.slice(0, 150)}</td>
+                          <td style={{ padding: '6px 8px', fontWeight: 600, color: e.count > 5 ? '#ef4444' : '#f59e0b' }}>{e.count}</td>
+                          <td style={{ padding: '6px 8px', color: '#64748b', fontSize: 11 }}>{new Date(e.lastSeen).toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Live Log Tail */}
+            <div className="mc-panel" style={{ gridColumn: '1 / -1' }}>
+              <div className="mc-panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <span className="mc-panel-title">LIVE LOG TAIL</span>
+                  <span className="mc-panel-meta" style={{ marginLeft: 8 }}>{logEntries.length} entries</span>
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {(['all', 'error', 'warn'] as const).map(f => (
+                    <button key={f} onClick={() => setLogFilter(f)} style={{
+                      padding: '4px 10px', fontSize: 11, fontWeight: logFilter === f ? 600 : 400,
+                      border: '1px solid ' + (logFilter === f ? '#4F46E5' : '#e2e8f0'),
+                      borderRadius: 6, background: logFilter === f ? '#4F46E5' : '#fff',
+                      color: logFilter === f ? '#fff' : '#64748b', cursor: 'pointer'
+                    }}>{f === 'all' ? 'All' : f === 'error' ? 'Errors' : 'Warnings'}</button>
+                  ))}
+                  <button onClick={() => setLogPaused(!logPaused)} style={{
+                    padding: '4px 10px', fontSize: 11, border: '1px solid ' + (logPaused ? '#f59e0b' : '#e2e8f0'),
+                    borderRadius: 6, background: logPaused ? '#fef3c7' : '#fff', color: logPaused ? '#92400e' : '#64748b', cursor: 'pointer'
+                  }}>{logPaused ? '▶ Resume' : '⏸ Pause'}</button>
+                  <button onClick={() => setLogEntries([])} style={{
+                    padding: '4px 10px', fontSize: 11, border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', color: '#64748b', cursor: 'pointer'
+                  }}>Clear</button>
+                </div>
+              </div>
+              <div style={{ maxHeight: 400, overflow: 'auto', background: '#0f172a', borderRadius: 8, padding: '8px 0', fontFamily: 'monospace', fontSize: 11, lineHeight: 1.6 }}>
+                {logEntries
+                  .filter(e => logFilter === 'all' || (logFilter === 'error' && e.isError) || (logFilter === 'warn' && e.isWarn))
+                  .map((e, i) => (
+                  <div key={i} style={{
+                    padding: '1px 12px',
+                    color: e.isError ? '#fca5a5' : e.isWarn ? '#fcd34d' : '#94a3b8',
+                    background: e.isError ? 'rgba(239,68,68,0.08)' : 'transparent',
+                    borderLeft: e.isError ? '3px solid #ef4444' : e.isWarn ? '3px solid #f59e0b' : '3px solid transparent'
+                  }}>
+                    <span style={{ color: '#475569' }}>{new Date(e.ts).toLocaleTimeString()}</span>
+                    {' '}
+                    <span>{e.msg.slice(0, 300)}</span>
+                  </div>
+                ))}
+                <div ref={logEndRef} />
               </div>
             </div>
 
