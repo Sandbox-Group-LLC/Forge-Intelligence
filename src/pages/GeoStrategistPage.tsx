@@ -14,6 +14,8 @@ interface BrainEntry {
 
 interface GeoResult {
   opportunityScore: number;
+  brainVersion?: number;
+  currentBrainVersion?: number;
   topicalAuthorityMap: Array<{ topic: string; coverage: string; citationProbability: number; priority: string }>;
   geoOpportunities: Array<{ topic: string; chatgpt: number; perplexity: number; aiOverviews: number; gemini: number; quickWin: boolean }>;
   entitySchemaMap: Array<{ entity: string; schemaType: string; competitorCited: boolean; recommendation: string }>;
