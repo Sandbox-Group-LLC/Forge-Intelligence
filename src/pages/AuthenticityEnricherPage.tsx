@@ -88,6 +88,7 @@ interface EnrichedSection {
 
 interface EnrichResult {
   brandName: string; confidenceScore: number; needsManualInput: boolean;
+  brainVersion?: number; currentBrainVersion?: number;
   overallEEATScore: number; eeatScores: Record<string, EEATScore>;
   gaps: Gap[]; smeSignals: SMESignal[]; injectionMap: InjectionItem[];
   powerPhrases: string[]; contentHooks: any[]; authorSchema: any; authorSchemaMarkup?: any;
@@ -241,6 +242,15 @@ function AuthenticityEnricherContent() {
           </div>
         )}
       </div>
+
+      {result && result.brainVersion && result.currentBrainVersion && result.brainVersion < result.currentBrainVersion && (
+        <div style={{ background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 8, padding: '10px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 14 }}>⚠️</span>
+          <span style={{ fontSize: 13, color: '#92400E' }}>
+            These results were built on <strong>Brain v{result.brainVersion}</strong> — your brand is now on <strong>v{result.currentBrainVersion}</strong>. Re-run Enrichment for updated results.
+          </span>
+        </div>
+      )}
 
       {/* Brain selector */}
       <div className="geo-input-bar">
