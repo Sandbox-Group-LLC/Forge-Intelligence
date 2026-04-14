@@ -401,15 +401,14 @@ function ContentGeneratorContent() {
             </div>
           )}
 
-          <div className="cg-action-bar">
-            <button className="geo-run-btn" onClick={() => { setArticle(null); setStreamText(''); }}>
-              <FileText size={14} /> Generate Again
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+            <button onClick={() => { setArticle(null); setStreamText(''); }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
+              <FileText size={14} /> Generate Another
             </button>
-            <button
-              className="geo-run-btn"
-              style={{ background: '#10b981' }}
-              onClick={() => window.location.href = '/app/compliance-gate'}
-            >
+            <button onClick={() => window.location.href = '/app/content-library'} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, borderRadius: 8, background: '#4F46E5', color: '#fff', border: '1px solid #4F46E5', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
+              View in Content Library
+            </button>
+            <button onClick={() => window.location.href = '/app/compliance-gate'} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, borderRadius: 8, background: '#10b981', color: '#fff', border: '1px solid #10b981', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
               <ShieldCheck size={14} /> Send to Compliance Gate
             </button>
           </div>
