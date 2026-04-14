@@ -3112,17 +3112,24 @@ app.get('/api/geo-strategist/briefs', requireAuth, async (req, res) => {
   try {
     const { brandProfileId } = req.query;
     const query = brandProfileId
-      ? `SELECT id, brand_profile_id, brand_url, brand_name, version, opportunity_score, brief_data, created_at, updated_at
+      ? `SELECT id, brand_profile_id, brand_url, brand_name, version, opportunity_score, brief_data, brain_version, created_at, updated_at
          FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY updated_at DESC`
-      : `SELECT id, brand_profile_id, brand_url, brand_name, version, opportunity_score, brief_data, created_at, updated_at
+      : `SELECT id, brand_profile_id, brand_url, brand_name, version, opportunity_score, brief_data, brain_version, created_at, updated_at
          FROM geo_briefs ORDER BY updated_at DESC`;
     const result = brandProfileId
       ? await pool.query(query, [brandProfileId])
       : await pool.query(query);
+    // Get current brain version for staleness comparison
+    let currentBrainVersion = 1;
+    if (brandProfileId) {
+      const bpRes = await pool.query('SELECT version FROM brand_profiles WHERE id = $1', [brandProfileId]);
+      if (bpRes.rows.length) currentBrainVersion = bpRes.rows[0].version || 1;
+    }
     const data = result.rows.map(r => ({
       id: r.id, brandProfileId: r.brand_profile_id,
       brandUrl: r.brand_url, brandName: r.brand_name,
       version: r.version, opportunityScore: r.opportunity_score,
+      brainVersion: r.brain_version || 1, currentBrainVersion,
       createdAt: r.created_at, updatedAt: r.updated_at,
       ...r.brief_data
     }));
@@ -3400,18 +3407,26 @@ app.get('/api/authenticity-enricher/briefs', requireAuth, async (req, res) => {
     const { brandProfileId } = req.query;
     const query = brandProfileId
       ? `SELECT id, brand_profile_id, geo_brief_id, brand_url, brand_name, version,
-                confidence_score, enriched_data, created_at, updated_at
+                confidence_score, enriched_data, brain_version, created_at, updated_at
          FROM enriched_briefs WHERE brand_profile_id = $1 ORDER BY updated_at DESC`
       : `SELECT id, brand_profile_id, geo_brief_id, brand_url, brand_name, version,
-                confidence_score, enriched_data, created_at, updated_at
+                confidence_score, enriched_data, brain_version, created_at, updated_at
          FROM enriched_briefs ORDER BY updated_at DESC`;
     const result = brandProfileId
       ? await pool.query(query, [brandProfileId])
       : await pool.query(query);
+    // Get current brain version for staleness comparison
+    let currentBrainVersion = 1;
+    if (brandProfileId) {
+      const bpRes = await pool.query('SELECT version FROM brand_profiles WHERE id = $1', [brandProfileId]);
+      if (bpRes.rows.length) currentBrainVersion = bpRes.rows[0].version || 1;
+    }
     res.json({ success: true, data: result.rows.map(r => ({
       id: r.id, brandProfileId: r.brand_profile_id, geoBriefId: r.geo_brief_id,
       brandUrl: r.brand_url, brandName: r.brand_name, version: r.version,
-      confidenceScore: r.confidence_score, createdAt: r.created_at, updatedAt: r.updated_at,
+      confidenceScore: r.confidence_score,
+      brainVersion: r.brain_version || 1, currentBrainVersion,
+      createdAt: r.created_at, updatedAt: r.updated_at,
       ...r.enriched_data
     }))});
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
