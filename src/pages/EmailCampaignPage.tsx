@@ -334,7 +334,18 @@ export default function EmailCampaignPage() {
     const data = await res.json();
     setPushing(false);
     if (data.success) {
-      setPushResult(`Pushed ${data.results?.filter((r: any) => r.status === 'pushed').length} emails to HubSpot as drafts.`);
+      const pushed = data.results?.filter((r: any) => r.status === 'pushed').length || 0;
+      const failed = data.results?.filter((r: any) => r.status === 'failed') || [];
+      if (pushed > 0 && failed.length === 0) {
+        setPushResult(`✓ Pushed ${pushed} emails to HubSpot as drafts.`);
+      } else if (pushed > 0) {
+        setPushResult(`Pushed ${pushed} emails, ${failed.length} failed.`);
+      } else if (failed.length > 0) {
+        const firstErr = failed[0]?.error || 'Unknown error';
+        setPushResult(`Push failed — ${firstErr}`);
+      } else {
+        setPushResult('No emails found to push.');
+      }
     } else {
       setPushResult(`Failed: ${data.error}`);
     }
