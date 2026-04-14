@@ -216,7 +216,7 @@ const topNavItems: TopNavItem[] = [
 ];
 
 export function Sidebar() {
-  const { currentView, setCurrentView, setAnalysisInput, analysisInput, sidebarCollapsed, setSidebarCollapsed, isProcessing, brandProfile, isPaid, brandLoading, activeBrand, refetchBrand } = useApp();
+  const { currentView, setCurrentView, setAnalysisInput, analysisInput, sidebarCollapsed, setSidebarCollapsed, isProcessing, brandProfile, isPaid, brandLoading, activeBrand, refetchBrand, isSuperAdmin } = useApp();
   const [gateFeature, setGateFeature] = useState<string | null>(null);
   const LOCKED_ROUTES = [
     '/app/geo-strategist', '/app/authenticity-enricher', '/app/content-generator',
@@ -512,7 +512,7 @@ export function Sidebar() {
               </button>
               {!sidebarCollapsed && settingsGroupOpen && (
                 <div className="nav-group-children">
-                  {settingsNavItems.map(child => {
+                  {settingsNavItems.filter(c => c.id !== 'admin' || isSuperAdmin).map(child => {
                     const childActive = path.startsWith(child.href);
                     return (
                       <a
