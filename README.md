@@ -37,13 +37,13 @@
 
 ---
 
-## Platform Status (April 11, 2026)
+## Platform Status (April 13, 2026)
 
 ### All 8 Stages Live
 
 | Stage | Name | Status | Model |
 |-------|------|--------|-------|
-| 1 | Context Hub | ✅ LIVE | Claude Sonnet 4.6 |
+| 1 | Context Hub | ✅ LIVE | Perplexity Sonar + Website Scraper + Claude Sonnet 4.6 |
 | 2 | GEO Strategist | ✅ LIVE | Claude Sonnet 4.6 |
 | 3 | Authenticity Enricher | ✅ LIVE | Claude Sonnet 4.6 |
 | 4 | Content Generator | ✅ LIVE | Claude Sonnet 4.6 |
@@ -89,6 +89,7 @@
 | **Email** | Resend |
 | **Images** | fal.ai Flux |
 | **CMS** | Ghost Admin API |
+| **Backups** | Neon daily snapshots — production branch, rolling 35-day retention |
 
 ### Architecture Rules — Do Not Break
 - **Never** use Render env vars `PUT` API — replaces ALL vars. Individual updates only.
@@ -97,6 +98,26 @@
 - **requireAuth** on every endpoint that touches brand data
 - **sanitizeJson()** is a top-level shared utility — do not re-inline it
 - **activeBrand from useApp()** is the only source of brandProfileId — no direct brains fetches from pages
+- **Website Scraper (Tool 1.5)** — Context Hub crawls homepage + /about + /product + /blog pages before Claude analysis. Up to 8K chars injected with "ACTUAL WEBSITE CONTENT" header. Without this, Claude hallucinates from domain names.
+- **Context Hub re-analyze** updates brand in place (same UUID) — never creates a new UUID, preserving all content tables, queue, analytics, and brain data
+- **GEO briefs endpoint** filters by brandProfileId — prevents cross-brand data leakage
+- **Promo code flow** uses softAuth + brandProfileId resolution fallback (auth token → clerk_user_id → most recent active brand)
+- **All GateModal instances** pass `brandProfileId={activeBrand?.id}` — required for promo codes to flip `is_paid`
+- **Neon daily snapshots** enabled on production branch (expires rolling 35 days)
+
+### Pipeline UX Flow (Critical)
+Every stage persists results and points forward:
+1. **New Analysis** → "View Strategy Brief →" | "Skip to GEO Strategy"
+2. **Brand Profile** → Re-analyze | Export JSON | Strategy Brief → | Run GEO Strategy →
+3. **Strategy Brief** → Export Brief | Run GEO Strategy →
+4. **GEO Strategist** → Re-run | Continue to Authenticity Enricher → (results persist on return)
+5. **Authenticity Enricher** → Re-run | Continue to Content Generator → (results persist on return)
+6. **Content Generator** → Generate Another | View in Content Library | Send to Compliance Gate (last article restores on return)
+7. **Compliance Gate** → Approve → Publishing Queue
+- All CTA buttons use consistent 36px height, `<button>` elements only, inline styles (no CSS class interference)
+- TopBar title updates dynamically per Brain sub-view (Brand Profile, Strategy Brief, Brain History)
+- Landing page has Sign In button in header
+- Post-auth redirects to current page, not always /app/context-hub
 - GitHub Contents API commits require a freshly fetched SHA — stale SHAs fail
 
 ### Branch Strategy (April 12, 2026)
