@@ -3205,6 +3205,9 @@ BRAIN MISTAKES (DO NOT repeat for this brand): ${JSON.stringify(brainMistakes)}`
         if (!topicalIsReal || !geoIsReal) {
           console.log('[GEO] Cache stale — topical or geo has bad data, forcing fresh run');
           // fall through to fresh analysis
+        } else if ((r.brain_version || 1) < (profile.version || 1)) {
+          console.log(`[GEO] Cache stale — built on brain v${r.brain_version || 1}, current is v${profile.version || 1}, forcing fresh run`);
+          // fall through to fresh analysis
         } else {
           const normalized = { topicalAuthorityMap: cachedTopical, geoOpportunities: cachedGeo, entitySchemaMap: bd.entitySchemaMap, geoBrief: bd.geoBrief };
           return res.json({ success: true, cached: true, data: {
