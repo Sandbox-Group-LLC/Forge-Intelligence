@@ -44,7 +44,7 @@
 .cg-article-title {
   font-size: 26px;
   font-weight: 700;
-  color: #F1F5F9;
+  color: var(--color-text, #1e293b);
   line-height: 1.3;
   margin-bottom: 8px;
   word-wrap: break-word;
