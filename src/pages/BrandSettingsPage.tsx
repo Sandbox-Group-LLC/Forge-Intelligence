@@ -198,6 +198,15 @@ export default function BrandSettingsPage() {
           <div className="bs-layout">
             <div className="bs-content">
 
+              {/* Save bar */}
+              <div className="bs-save-bar">
+                {error && <span className="bs-error">{error}</span>}
+                {saved && <span className="bs-saved">✓ Saved</span>}
+                <button className="bs-save-btn" onClick={handleSave} disabled={saving}>
+                  {saving ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+
               {/* Identity */}
               <section className="bs-section">
                 <div className="bs-section-header">
@@ -391,14 +400,6 @@ export default function BrandSettingsPage() {
                 </div>
               </section>
 
-              {/* Save bar — Identity + Publishing fields only */}
-              <div className="bs-save-bar">
-                {error && <span className="bs-error">{error}</span>}
-                {saved && <span className="bs-saved">✓ Saved</span>}
-                <button className="bs-save-btn" onClick={handleSave} disabled={saving}>
-                  {saving ? 'Saving...' : 'Save Changes'}
-                </button>
-              </div>
 
               {/* Reviewers Section */}
               <section style={{ marginTop: 32, padding: '24px', background: 'var(--color-bg-card, #fff)', borderRadius: 12, border: '1px solid var(--color-border, #e2e8f0)' }}>
