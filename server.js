@@ -13,6 +13,47 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
+// ── Live Log Ring Buffer ──────────────────────────────────────────────────────
+const LOG_BUFFER_SIZE = 500;
+const logBuffer = [];
+const logSSEClients = new Set();
+const errorAggregates = [];
+
+function captureLog(level, args) {
+  const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+  const entry = {
+    ts: new Date().toISOString(),
+    level,
+    msg: msg.slice(0, 2000),
+    isError: level === 'error' || /\b(error|fail|crash|ECONNREFUSED|FATAL|uncaught|unhandled)\b/i.test(msg),
+    isWarn: level === 'warn' || /\b(warn|deprecat|timeout|retry)\b/i.test(msg),
+  };
+  logBuffer.push(entry);
+  if (logBuffer.length > LOG_BUFFER_SIZE) logBuffer.shift();
+
+  // Aggregate errors
+  if (entry.isError) {
+    const errorKey = msg.slice(0, 120).replace(/[0-9a-f-]{36}/gi, '{id}').replace(/\d{4}-\d{2}-\d{2}T[\d:.Z]+/g, '{ts}');
+    const existing = errorAggregates.find(e => e.key === errorKey);
+    if (existing) { existing.count++; existing.lastSeen = entry.ts; existing.lastMsg = msg.slice(0, 300); }
+    else { errorAggregates.push({ key: errorKey, count: 1, firstSeen: entry.ts, lastSeen: entry.ts, lastMsg: msg.slice(0, 300), level }); }
+    if (errorAggregates.length > 100) errorAggregates.shift();
+  }
+
+  // Push to SSE clients
+  for (const client of logSSEClients) {
+    try { client.write(`data: ${JSON.stringify(entry)}\n\n`); } catch { logSSEClients.delete(client); }
+  }
+}
+
+const origLog = console.log.bind(console);
+const origError = console.error.bind(console);
+const origWarn = console.warn.bind(console);
+console.log = (...args) => { origLog(...args); captureLog('log', args); };
+console.error = (...args) => { origError(...args); captureLog('error', args); };
+console.warn = (...args) => { origWarn(...args); captureLog('warn', args); };
+
+
 // ── X OAuth 1.0a helper (verified working) ───────────────────────────────────
 function buildXOAuthHeader(method, url, apiKey, apiSecret, accessToken, accessSecret, extraParams = {}) {
   const oauthParams = {
@@ -8559,6 +8600,39 @@ app.get('/api/onboard/brain/:brandProfileId', async (req, res) => {
   } catch(e) {
     res.status(500).json({ success: false, error: e.message });
   }
+});
+
+
+// ── Live Log Endpoints (Mission Control) ──────────────────────────────────────
+app.get('/api/admin/logs/stream', requireAuth, (req, res) => {
+  if (!SUPER_ADMIN_IDS.includes(req.userId)) return res.status(403).json({ error: 'Forbidden' });
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive'
+  });
+  // Send last 50 entries as backfill
+  const backfill = logBuffer.slice(-50);
+  for (const entry of backfill) {
+    res.write(`data: ${JSON.stringify(entry)}\n\n`);
+  }
+  logSSEClients.add(res);
+  req.on('close', () => logSSEClients.delete(res));
+});
+
+app.get('/api/admin/logs/recent', requireAuth, async (req, res) => {
+  if (!SUPER_ADMIN_IDS.includes(req.userId)) return res.status(403).json({ error: 'Forbidden' });
+  const limit = Math.min(parseInt(req.query.limit) || 100, 500);
+  const level = req.query.level; // 'error', 'warn', or null for all
+  let filtered = logBuffer;
+  if (level === 'error') filtered = logBuffer.filter(e => e.isError);
+  else if (level === 'warn') filtered = logBuffer.filter(e => e.isWarn);
+  res.json({ success: true, logs: filtered.slice(-limit), total: filtered.length });
+});
+
+app.get('/api/admin/logs/errors', requireAuth, async (req, res) => {
+  if (!SUPER_ADMIN_IDS.includes(req.userId)) return res.status(403).json({ error: 'Forbidden' });
+  res.json({ success: true, errors: errorAggregates.slice().reverse(), total: errorAggregates.length });
 });
 
 // POST /api/onboard/paypal-success — called after PayPal payment confirmed
