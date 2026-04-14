@@ -60,16 +60,20 @@ export function useActiveBrand() {
           setIsSuperAdmin(d.isSuperAdmin || false);
           setAllBrands(d.allBrands || []);
 
-          setBrand(d.success && d.brand ? {
-            id: d.brand.id,
-            brandName: d.brand.brand_name || d.brand.brandName || d.brand.brand_url,
-            brandUrl: d.brand.brand_url || d.brand.brandUrl,
-            isPaid: d.isPaid || false,
-            updatedAt: d.brand.updated_at || null,
-          } : null);
-
-          if (d.brand?.id) {
+          if (d.success && d.brand) {
+            setBrand({
+              id: d.brand.id,
+              brandName: d.brand.brand_name || d.brand.brandName || d.brand.brand_url,
+              brandUrl: d.brand.brand_url || d.brand.brandUrl,
+              isPaid: d.isPaid || false,
+              updatedAt: d.brand.updated_at || null,
+            });
             localStorage.setItem('forge_active_brand_id', d.brand.id);
+          } else {
+            // Brand not found (deleted or expired) — clear ghost references
+            setBrand(null);
+            localStorage.removeItem('forge_active_brand');
+            localStorage.removeItem('forge_active_brand_id');
           }
         } else {
           // Unauthenticated — domain is the session key
@@ -82,11 +86,21 @@ export function useActiveBrand() {
               const b = JSON.parse(stored);
               const expired = b.expiresAt && new Date(b.expiresAt) < new Date();
               if (expired) {
-                // Brain expired — clear it, user needs to re-scan
                 localStorage.removeItem('forge_active_brand');
                 localStorage.removeItem('forge_active_brand_id');
                 setBrand(null);
               } else {
+                // Verify brand still exists in DB
+                try {
+                  const check = await fetch(`/api/context-hub/brand/${b.id}`);
+                  if (!check.ok) {
+                    localStorage.removeItem('forge_active_brand');
+                    localStorage.removeItem('forge_active_brand_id');
+                    setBrand(null);
+                    setLoading(false);
+                    return;
+                  }
+                } catch { /* network error — trust localStorage */ }
                 setBrand({
                   id: b.id,
                   brandName: b.brandName,
