@@ -244,7 +244,28 @@ function ContentGeneratorContent() {
     es.addEventListener('error', (e: any) => {
       es.close();
       setIsRunning(false);
-      setError(e.data || 'Generation failed. Check server logs.');
+      // SSE dropped — check if article was actually generated (iOS tab suspension kills streams)
+      if (!e.data) {
+        const checkGenerated = async () => {
+          try {
+            const safeId = selectedBrainId.replace(/-/g, '_');
+            const checkRes = await fetch(`/api/content/${safeId}/latest`, {
+              headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+            });
+            const checkData = await checkRes.json();
+            if (checkData.success && checkData.article) {
+              setArticle(checkData.article);
+              setStreamText('');
+              setError('');
+              return;
+            }
+          } catch {}
+          setError('Connection lost — your article may still be generating. Refresh in 30 seconds.');
+        };
+        setTimeout(checkGenerated, 3000);
+      } else {
+        setError(e.data);
+      }
     });
   };
 
