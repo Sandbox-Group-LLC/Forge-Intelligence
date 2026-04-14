@@ -2736,6 +2736,19 @@ app.get('/api/email-campaign/:id', requireAuth, async (req, res) => {
 
 // GET /api/email-campaign/generate/:id — SSE — generate all emails sequentially
 app.get('/api/email-campaign/generate/:id', requireAuth, async (req, res) => {
+  // Duplicate stream guard
+  const streamKey = `${req.params.id}:email-campaign`;
+  if (activeStreams.has(streamKey)) {
+    const existing = activeStreams.get(streamKey);
+    const elapsed = Math.floor((Date.now() - existing.startedAt) / 1000);
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.flushHeaders();
+    res.write(`event: busy\ndata: ${JSON.stringify({ message: 'Email campaign generation already in progress', elapsed })}\n\n`);
+    return res.end();
+  }
+  activeStreams.set(streamKey, { startedAt: Date.now(), userId: req.userId });
+
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -2744,7 +2757,7 @@ app.get('/api/email-campaign/generate/:id', requireAuth, async (req, res) => {
 
   const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   const keepalive = setInterval(() => res.write(': ping\n\n'), 30000);
-  req.on('close', () => clearInterval(keepalive));
+  req.on('close', () => { clearInterval(keepalive); activeStreams.delete(streamKey); });
 
   try {
     const campRes = await pool.query(`SELECT * FROM email_campaigns WHERE id = $1`, [req.params.id]);
