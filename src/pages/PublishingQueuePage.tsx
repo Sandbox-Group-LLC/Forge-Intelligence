@@ -407,6 +407,12 @@ export default function PublishingQueuePage() {
   const handlePublishNow = async (item: QueueItem) => {
     const channels = selectedChannels[item.id] || [];
     if (channels.length === 0) { setError('Select at least one channel'); return; }
+    const connected = connectedChannels[item.brand_profile_id] || [];
+    const disconnected = channels.filter(ch => !connected.includes(ch));
+    if (disconnected.length > 0) {
+      setError(`Cannot publish — ${disconnected.map(ch => (CHANNEL_LABELS as any)[ch]?.label || ch).join(', ')} ${disconnected.length === 1 ? 'is' : 'are'} not connected. Set up in Settings → Integrations.`);
+      return;
+    }
     setPublishing(item.id);
     setError('');
     try {
