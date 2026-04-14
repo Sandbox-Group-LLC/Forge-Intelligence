@@ -3705,7 +3705,6 @@ Respond with this exact JSON structure:
 
     const confidenceScore = assembledBrief.overallConfidence || scorerData.overallEEATScore || 0;
 
-    await pool.query(
     // Nuke stale briefs — corrections override old data, no point keeping wrong entity info
     await pool.query('DELETE FROM enriched_briefs WHERE brand_profile_id = $1', [brandProfileId]);
     console.log('[ENRICH] Cleared old enriched briefs for brand — fresh data only');
