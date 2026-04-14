@@ -1686,3 +1686,173 @@ Isolated and scanned all 4 recurring bug patterns across the entire codebase:
 - `forge_active_brand` localStorage can reference deleted brands
 - server.js monolith (9,800 lines, complexity 963) — needs modularization
 - PublishingQueuePage duplication (issue #58) — needs VS Code refactor
+
+---
+
+## v1.1 — Roadmap
+
+> Everything shelved, deferred, or scoped-but-not-built during v1 development.
+> Brian to review and prioritize before sprint planning.
+
+### Features — Scoped & Ready to Build
+
+**Targeted AI Rewrite in Compliance Gate** *(3-4 hours estimated)*
+- Gemini-style "describe your change" for highlighted text
+- Backend: `POST /api/compliance/rewrite-selection` — Haiku for speed, brand voice aware
+- Frontend: selection detection, floating toolbar, inline replacement
+- Every rewrite instruction becomes brain training signal
+- Full spec in Session — April 12 section
+
+**Export Brief as Formatted PDF**
+- Currently downloads raw JSON — should generate a designed strategy brief
+- Applies to GEO Brief + Enriched Brief exports
+
+**ROI Dashboard** *(GitHub issue #14, P1)*
+- Revenue attribution visualization
+- Campaign ROI tracking
+
+**OnboardingBot for Unauthenticated Users**
+- Guided first-run experience for landing page visitors
+
+**Brain History Compare**
+- Side-by-side diff of brain versions (v1 vs v3 profile changes)
+
+### Integrations — Pending / Blocked
+
+**LinkedIn Community Management API** — approval submitted, under review. One approval unlocks: org analytics, member post analytics, follower stats, video analytics.
+
+**Facebook** — Pipedream credentials in production, needs real connect test.
+
+**GSC Dev Callback URL** — needs adding in Google Cloud Console for dev environment.
+
+**Medium** — Legacy, new API tokens unavailable since early 2025. Likely dead integration.
+
+**X OAuth 2.0 Refresh Resilience** — Single-use refresh tokens. If refresh fails mid-cycle, user must reconnect. Needs graceful re-auth prompt.
+
+### Code Quality / Tech Debt
+
+**server.js Modularization** *(complexity 963, 9,800 lines)*
+- Split into route modules: `/routes/geo.js`, `/routes/auth.js`, `/routes/content.js`, etc.
+- Resolves 150+ qlty findings (function-complexity, nested-control-flow, boolean-logic)
+- VS Code refactor, not remote surgery
+
+**PublishingQueuePage Duplication** *(GitHub issue #58)*
+- 270 lines of identical campaign/standalone rendering
+- Extract `renderQueueItem(item, opts)` — full spec in issue #58
+
+**Neon Pool Exhaustion** — No retry logic under load. Needs connection pool monitoring + retry wrapper.
+
+**safeParseLLM Masking Bad Prompts** — Aggressive JSON recovery hides broken prompts. Should log/alert when nuclear fallback fires.
+
+**Full User-Level RLS** — Requires transaction wrapper around pool queries for `SET LOCAL app.current_user_id`. Phase 2 security.
+
+**authToken Rollout** — Remaining unauthenticated fetches in PublishingQueuePage (~25 fetch calls).
+
+**Light Mode Sweep** — PerformanceDashboardPage.css and remaining PublishingQueuePage.css sections may have dark theme ghost colors.
+
+### UX Polish
+
+- Timer animation persistence on Context Hub (zombie timer fix deployed, needs QA)
+- `forge_active_brand` localStorage referencing deleted brands — should auto-clear on 404
+- Ideas drawer positioning on smaller screens (currently `left: 280px`)
+- Publishing queue should validate integrations exist before allowing queue actions
+- Multi-brand context bleeding in super admin view (display-only, cosmetic)
+
+### Platform Scale — Phase 4
+
+**EU AI Act Compliance Layer** *(GitHub issue #25, P0)*
+- Regulatory compliance for AI-generated content labeling
+
+**Native Video + Audio Generation** *(GitHub issue #23, P1)*
+- Extend content pipeline beyond text articles
+
+**Industry Benchmark Reports** *(GitHub issue #26, P2)*
+- Cross-client opt-in, anonymized competitive benchmarks
+
+**GA4 Native Attribution**
+- Direct Google Analytics 4 integration for attribution tracking
+
+**Reader-Level Personalization via CDP**
+- Content personalization based on audience segments
+
+### Agency Tier — Phase 4.5 ($499/mo)
+
+> Data model, per-brand tables, brand selectors, and publishing channels are already built. Phase 4.5 is UX, access control, and commercial packaging.
+
+- [ ] Brand Switcher in TopBar — quick-switch between client contexts
+- [ ] "Currently working in: [Brand]" indicator
+- [ ] Agency Dashboard — bird's-eye: articles/week, pending compliance, decay alerts across all brands
+- [ ] Client-level access control — Clerk auth + org-slug (admin sees all, client sees own)
+- [ ] Brand duplication — "Clone this brand's settings to new brand"
+- [ ] External client approval portal — white-label review workflow
+- [ ] White-label architecture — UI skinning, custom domain
+- [ ] Cross-client pattern sharing — opt-in OFF by default
+
+### Security — Phase 2
+
+- Full user-level RLS (transaction wrapper for `SET LOCAL app.current_user_id`)
+- Audit `generated_content_*` dynamic tables (per-brand, access controlled by safeId but no RLS)
+- Formal penetration test before Agency tier launch
+- Decommission `forge_brain_{client_id}` Neon project if unused
+
+---
+
+## v1 — Completed Work
+
+> Forge Intelligence v1 shipped April 14, 2026. Development started March 28, 2026.
+> 18 days from first pipeline run to production-ready 8-stage platform.
+
+### Core Platform — 8 Stages
+
+| Stage | Name | What It Does |
+|-------|------|-------------|
+| 1 | Context Hub | Perplexity Sonar + Website Scraper + Claude Sonnet 4.6 — real content analysis, not domain-name guessing |
+| 2 | GEO Strategist | Topical authority mapping, GEO citation scoring (ChatGPT/Perplexity/AI Overviews/Gemini), entity/schema map, structured brief |
+| 3 | Authenticity Enricher | E-E-A-T scoring, SME credential injection, voice-matched hooks, corrections field for human override |
+| 4 | Content Generator | Brain-matched, GEO-optimized articles with per-section confidence scoring, SSE streaming, hero image via FLUX Schnell |
+| 4.5 | Campaign Generator | Multi-week campaign planning with topic sequencing, funnel positioning, and batch generation |
+| 4.6 | Email Campaign | 3-email nurture sequences with subject line variants, persona targeting, HubSpot push-as-drafts |
+| 5 | Compliance Gate | Section-by-section AI critique, human edit capture, brain training signal extraction, auto-approve |
+| 6 | Publishing | Multi-channel queue (LinkedIn, X, Webflow, Ghost, HubSpot, WordPress), scheduling, live status sync, republish |
+| 7 | Performance | LinkedIn + X + Ghost + GSC analytics, content decay detection, GEO citation tracking |
+| 8 | Feedback Loop | Pattern extraction via Claude Haiku, brain_patterns + brain_mistakes, pre-cog predictions |
+
+### Infrastructure
+
+- **Auth:** Clerk (Google, GitHub, email/password), JWT with 10-min expiry, soft auth for public routes
+- **Database:** Neon PostgreSQL with daily snapshots, SQL relay for admin access
+- **Hosting:** Render auto-deploy on push (production + dev), linked env group
+- **Image Gen:** fal.ai FLUX Schnell ($0.003/image), webhook drain for monitoring
+- **LLMs:** Claude Sonnet 4.6 (all stages), Claude Haiku 4.5 (brain distill, topic check, compliance rewrite), Perplexity Sonar (research)
+- **OAuth Integrations:** LinkedIn, X (OAuth 2.0 + 1.0a fallback), HubSpot (with content scope), Webflow, Ghost, Google Search Console
+- **Monitoring:** Mission Control dashboard, error aggregation, live log tail, deploy status, content table size monitor
+
+### Architecture Wins
+
+- **Website Scraper** — The fix that made the product real. Every brand scan now grounded in actual site content.
+- **Brain Multi-tenancy** — Every stage queries brain data scoped to `brand_profile_id`. Zero cross-brand leaking.
+- **Brain Version Staleness** — GEO + Authenticity track which brain version they were built from. Cache auto-busts on version mismatch. Yellow warning banner.
+- **Update in Place** — Re-analyze updates existing brand UUID instead of creating orphans. Preserves all content, queue, analytics, and brain references.
+- **SSE Recovery** — Content generator survives iOS tab suspension. Recovery endpoint polls for completed articles.
+- **safeParseLLM v2** — BOM strip, invisible char classes, greedy regex, nuclear re-slice, retry loop, missing comma recovery.
+- **Promo Code Flow** — GateModal passes brandProfileId, backend resolves from clerk_user_id, is_paid flips correctly.
+- **Dynamic robots.txt** — Dev gets `Disallow: /`, production gets `Allow: /` with sitemap.
+
+### Session History
+
+| Date | Focus |
+|------|-------|
+| Mar 28 | First full pipeline run |
+| Mar 30 | Production polish |
+| Apr 2 | Production polish continued |
+| Apr 4 | Integration blitz + production launch |
+| Apr 5 | Infosec fix (brand scoping), JSON parse hardening, Phase 2 completion |
+| Apr 6 | Branch reconciliation, security hardening, performance dashboard |
+| Apr 7 | Light mode redesign, compliance overhaul, campaign scheduler, image gen |
+| Apr 9 | Bug fixes, pre-cog UI overhaul, features built |
+| Apr 11 | Full code review (50 findings), email campaign generator shipped |
+| Apr 11-12 | Rogue agent recovery, X OAuth 2.0, GSC domain filter, smart sync |
+| Apr 12 | Compliance gate overhaul, safeParseLLM v2, LinkedIn auth, env var recovery |
+| Apr 13 | Website scraper, re-analyze fix, promo codes, landing page UX, pipeline overhaul |
+| Apr 14 AM | Mission Control, rogue agent audit, pre-cog fixes, zombie timer, ghost brand cleanup |
+| Apr 14 PM | Brain isolation, staleness system, corrections field, GEO fixes, SSE reliability, HubSpot scope fix, qlty audit |
