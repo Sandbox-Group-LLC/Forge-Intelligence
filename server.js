@@ -87,6 +87,8 @@ const clerkJWKS = createRemoteJWKSet(new URL(CLERK_JWKS_URL));
 // Super Admin user IDs (Clerk) — full access to all brands
 const SUPER_ADMIN_IDS = [
   'user_3BtC7nusm7CShN7EdUYaaLZcDwp', // brian@sandbox-xm.com
+  'user_3Bxs9lQ5r9Bf6laluD6n7VsvtT3', // brian — prod primary
+  'user_3CJmE0WkOj1RJC5yF99scEuwUpO', // brian — therosethyme
 ];
 
 
