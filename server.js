@@ -2757,7 +2757,7 @@ app.get('/api/email-campaign/generate/:id', requireAuth, async (req, res) => {
   res.flushHeaders();
 
   const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-  const keepalive = setInterval(() => res.write(': ping\n\n'), 30000);
+  const keepalive = setInterval(() => res.write(': ping\n\n'), 15000);
   req.on('close', () => { clearInterval(keepalive); activeStreams.delete(streamKey); });
 
   try {
@@ -3834,7 +3834,7 @@ app.get('/api/content-generator/generate', requireAuth, async (req, res) => {
   res.flushHeaders();
 
   const send = (event, data) => res.write(`event: ${event}\ndata: ${data}\n\n`);
-  const keepalive = setInterval(() => res.write(': ping\n\n'), 30000);
+  const keepalive = setInterval(() => res.write(': ping\n\n'), 15000);
   req.on('close', () => clearInterval(keepalive));
 
   try {
@@ -4256,7 +4256,7 @@ app.get('/api/campaign/generate/:id', requireAuth, async (req, res) => {
   const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 
   // Keepalive ping every 30s so Render/proxies don't drop the SSE connection
-  const keepalive = setInterval(() => res.write(': ping\n\n'), 30000);
+  const keepalive = setInterval(() => res.write(': ping\n\n'), 15000);
   req.on('close', () => clearInterval(keepalive));
 
   try {
