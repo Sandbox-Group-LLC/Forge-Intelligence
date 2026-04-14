@@ -467,6 +467,8 @@ async function initDB() {
     )`);
     // Ensure unique constraint exists on pre-existing tables (migration guard)
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS publishing_queue_content_id_uidx ON publishing_queue(content_id)`).catch(() => {});
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_bp_active_url ON brand_profiles (brand_url) WHERE is_active = true`).catch(() => {});
+    await pool.query(`ALTER TABLE brand_profiles ADD CONSTRAINT brand_profiles_pkey PRIMARY KEY (id)`).catch(() => {});
 
     // Backfill: stage any approved articles that aren't in the queue yet
     try {
@@ -2591,11 +2593,14 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
         const expiresAt = req.userId ? null : "NOW() + INTERVAL '24 hours'";
         const inserted = await pool.query(
           `INSERT INTO brand_profiles (id, brand_url, brand_name, version, is_active, cache_status, profile_data, clerk_user_id, onboard_session_id, expires_at, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, true, 'fresh', $5, $6, $7, ${expiresAt ? expiresAt : 'NULL'}, NOW(), NOW()) RETURNING *`,
+           VALUES ($1, $2, $3, $4, true, 'fresh', $5, $6, $7, ${expiresAt ? expiresAt : 'NULL'}, NOW(), NOW())
+           ON CONFLICT (brand_url) WHERE is_active = true
+           DO UPDATE SET profile_data = $5, brand_name = $3, version = brand_profiles.version + 1, cache_status = 'fresh', updated_at = NOW()
+           RETURNING *`,
           [id, brandUrl, resolvedBrandName, nextVersion, JSON.stringify(profileData), req.userId || null, sessionId]
         );
         r = inserted.rows[0];
-        console.log(`[Context Hub] Created new brand ${r.id} v${r.version}`);
+        console.log(`[Context Hub] Created/merged brand ${r.id} v${r.version}`);
       }
 
       return res.json({ success: true, cached: false, data: {
@@ -8559,9 +8564,13 @@ app.post('/api/onboard/analyze', async (req, res) => {
 
     // Create brand profile with 24hr expiry + session ID for persistence
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    // Use ON CONFLICT to handle concurrent scans of the same URL
     const brandInsert = await pool.query(
       `INSERT INTO brand_profiles (id, brand_url, brand_name, version, is_active, cache_status, profile_data, expires_at, is_paid, onboard_session_id, created_at, updated_at)
-       VALUES (gen_random_uuid()::text, $1, $2, 1, true, 'fresh', '{}'::jsonb, $3, false, $4, NOW(), NOW()) RETURNING id`,
+       VALUES (gen_random_uuid()::text, $1, $2, 1, true, 'fresh', '{}'::jsonb, $3, false, $4, NOW(), NOW())
+       ON CONFLICT (brand_url) WHERE is_active = true
+       DO UPDATE SET updated_at = NOW()
+       RETURNING id`,
       [brandUrl, brandName, expiresAt, sessionId || null]
     );
     const brandProfileId = brandInsert.rows[0].id;
