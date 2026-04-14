@@ -3034,10 +3034,15 @@ function safeParseLLM(raw, type = 'object') {
 
 app.get('/api/geo-strategist/briefs', requireAuth, async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT id, brand_profile_id, brand_url, brand_name, version, opportunity_score, brief_data, created_at, updated_at
-       FROM geo_briefs ORDER BY updated_at DESC`
-    );
+    const { brandProfileId } = req.query;
+    const query = brandProfileId
+      ? `SELECT id, brand_profile_id, brand_url, brand_name, version, opportunity_score, brief_data, created_at, updated_at
+         FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY updated_at DESC`
+      : `SELECT id, brand_profile_id, brand_url, brand_name, version, opportunity_score, brief_data, created_at, updated_at
+         FROM geo_briefs ORDER BY updated_at DESC`;
+    const result = brandProfileId
+      ? await pool.query(query, [brandProfileId])
+      : await pool.query(query);
     const data = result.rows.map(r => ({
       id: r.id, brandProfileId: r.brand_profile_id,
       brandUrl: r.brand_url, brandName: r.brand_name,
