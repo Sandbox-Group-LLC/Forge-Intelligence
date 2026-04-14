@@ -3049,25 +3049,25 @@ function extractJSON(text, type = 'object') {
 
 // Not a library. Not an npm package. Just a dev who got tired of Claude's newlines.
 // ── Shared LLM JSON parser — sanitise + recover ──────────────────────────────
-function safeParseLLM(raw, type = 'object') {
-  // Step 0: strip markdown fences, BOM, zero-width chars, and other invisible garbage
+function safeParseLLM(raw, type = 'object', caller = 'unknown') {
   const stripped = raw
     .replace(/```(?:json)?\s*/g, '')
     .replace(/[\uFEFF\u200B\u200C\u200D\u2060\u00A0]/g, '')
     .trim();
-  // Step 1: extract clean JSON block
   const extracted = extractJSON(stripped, type) || stripped;
-  // Step 2: try raw parse (fast path)
+  // Step 2: fast path
   try { return JSON.parse(extracted); } catch(_) {}
-  // Step 3: sanitise control chars + trailing commas
+  // Step 3: control chars + trailing commas
   try {
     const sanitized = extracted
       .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, ' ')
       .replace(/(?<!\\)\n(?=(?:[^"]*"[^"]*")*[^"]*"[^"]*$)/g, '\\n')
       .replace(/,\s*([\]\}])/g, '$1');
-    return JSON.parse(sanitized);
+    const result = JSON.parse(sanitized);
+    console.warn('[safeParseLLM] Step 3 recovery (' + caller + ') control chars/trailing commas');
+    return result;
   } catch(_) {}
-  // Step 4: brute-force — escape all newlines/tabs/control chars + fix missing commas
+  // Step 4: brute-force
   try {
     const brute = extracted
       .replace(/\r/g, '')
@@ -3075,15 +3075,17 @@ function safeParseLLM(raw, type = 'object') {
       .replace(/\t/g, '\\t')
       .replace(/[\x00-\x1f]/g, ' ')
       .replace(/,\s*([\]\}])/g, '$1')
-      .replace(/("\s*)(\n\s*")/g, '$1,$2')           // missing comma between strings
-      .replace(/(\}\s*)(\{)/g, '$1,$2')                 // missing comma between objects
-      .replace(/("\s*)(\{)/g, '$1,$2')                  // missing comma before object in array
-      .replace(/(\}\s*)(")/g, '$1,$2')                  // missing comma after object before string
-      .replace(/([\]\}])\s*([\[\{])/g, '$1,$2')      // missing comma between any close+open
-      .replace(/(")\s*(")/g, '$1,$2');                   // missing comma between adjacent strings
-    return JSON.parse(brute);
+      .replace(/("\s*)(\n\s*")/g, '$1,$2')
+      .replace(/(\}\s*)(\{)/g, '$1,$2')
+      .replace(/("\s*)(\{)/g, '$1,$2')
+      .replace(/(\}\s*)(")/g, '$1,$2')
+      .replace(/([\]\}])\s*([\[\{])/g, '$1,$2')
+      .replace(/(")\s*(")/g, '$1,$2');
+    const result = JSON.parse(brute);
+    console.warn('[safeParseLLM] Step 4 recovery (' + caller + ') brute-force escape');
+    return result;
   } catch(_) {}
-  // Step 5: nuclear — re-slice from raw, kill everything non-printable
+  // Step 5: nuclear
   try {
     const open = type === 'array' ? '[' : '{';
     const close = type === 'array' ? ']' : '}';
@@ -3096,11 +3098,13 @@ function safeParseLLM(raw, type = 'object') {
         .replace(/\r/g, '')
         .replace(/\t/g, '\\t')
         .replace(/,\s*([\]\}])/g, '$1');
-      return JSON.parse(sliced);
+      const result = JSON.parse(sliced);
+      console.warn('[safeParseLLM] NUCLEAR Step 5 recovery (' + caller + ') prompt is broken. First 80: ' + stripped.slice(0, 80).replace(/\n/g, ' '));
+      return result;
     }
   } catch(_) {}
-  console.error('[safeParseLLM] All recovery failed. First 300 chars:', stripped.slice(0, 300));
-  throw new Error('LLM JSON parse failed after recovery — response was not valid JSON');
+  console.error('[safeParseLLM] TOTAL FAILURE (' + caller + ') First 300:', stripped.slice(0, 300));
+  throw new Error('LLM JSON parse failed after recovery');
 }
 
 app.get('/api/geo-strategist/briefs', requireAuth, async (req, res) => {
