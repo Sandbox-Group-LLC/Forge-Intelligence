@@ -82,6 +82,34 @@ export default function BrandSettingsPage() {
     });
   }, [selected, activeBrand?.id]);
 
+  // Load reviewers for active brand
+  useEffect(() => {
+    if (!selected) return;
+    fetch(`/api/reviewers/${selected}`).then(r => r.json()).then(d => {
+      if (d.success) setReviewers(d.reviewers || []);
+    }).catch(() => {});
+  }, [selected]);
+
+  const addReviewer = async () => {
+    if (!revName.trim() || !revEmail.trim()) { setRevError('Name and email required'); return; }
+    setRevSaving(true); setRevError('');
+    try {
+      const r = await fetch('/api/reviewers', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brandProfileId: selected, name: revName.trim(), email: revEmail.trim(), title: revTitle.trim() })
+      });
+      const d = await r.json();
+      if (d.success) { setReviewers(prev => [...prev, d.reviewer]); setRevName(''); setRevEmail(''); setRevTitle(''); }
+      else { setRevError(d.error || 'Failed to add reviewer'); }
+    } catch { setRevError('Failed to add reviewer'); }
+    setRevSaving(false);
+  };
+
+  const removeReviewer = async (id: string) => {
+    await fetch(`/api/reviewers/${id}`, { method: 'DELETE' });
+    setReviewers(prev => prev.filter(r => r.id !== id));
+  };
+
   const handleSave = async () => {
     if (!selected) return;
     setSaving(true); setError('');
