@@ -744,6 +744,10 @@ ${brandContext ? brandContext + '\n' : ''}${bodySnippet ? 'Article context: ' + 
 Rules:
 - Let the brand's visual style and color palette drive the aesthetic — do not impose a generic look
 - Photorealistic editorial or commercial photography appropriate to this brand's industry and tone
+- Think high-end magazine editorial or Bloomberg Businessweek — grounded, sophisticated, real-world
+- Prefer environmental scenes, workspace settings, lifestyle moments, or architectural details over product close-ups
+- NO surrealist compositions, impossible physics, floating objects, or dreamlike distortions
+- NO AI art signatures: hyperreal skin textures, metallic liquids, abstract blob shapes, oversaturated macro shots
 - NO floating UI elements, holographic screens, neon data walls, or sci-fi aesthetics
 - NO stock-photo clichés (handshakes, lightbulbs, generic offices, people pointing at whiteboards)
 - 1 sentence only, no explanation, no quotes
@@ -756,8 +760,11 @@ ${bodySnippet ? 'Article context: ' + bodySnippet : ''}
 
 Rules:
 - Photorealistic editorial photography — clean, high-contrast, professional
-- Abstract macro, architectural detail, natural textures, or environmental storytelling
-- Neutral palette with strong composition
+- Architectural detail, workspace environments, natural textures, or environmental storytelling
+- Think Bloomberg Businessweek or Monocle magazine photography — sophisticated and grounded
+- Neutral palette with strong composition, natural lighting
+- NO surrealist compositions, impossible physics, floating objects, or dreamlike distortions
+- NO AI art signatures: hyperreal textures, metallic liquids, abstract blob shapes, oversaturated macro shots
 - NO floating UI elements, holographic screens, neon data walls, or sci-fi aesthetics
 - NO stock-photo clichés (handshakes, lightbulbs, generic offices, people pointing at whiteboards)
 - 1 sentence only, no explanation, no quotes
