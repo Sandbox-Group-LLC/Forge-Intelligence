@@ -3482,7 +3482,10 @@ app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => 
           ed.injectionMap.some(i => i.suggestedContent && i.suggestedContent.length > 10);
         const hasBrief = ed.enrichedSections && ed.enrichedSections.length > 0;
         const isReal = hasEEAT && hasInjections && hasBrief;
-        if (isReal) {
+        const brainStale = (r.brain_version || 1) < (profile.version || 1);
+        if (brainStale) {
+          console.log(`[ENRICH] Cache stale — built on brain v${r.brain_version || 1}, current is v${profile.version || 1}, forcing fresh run`);
+        } else if (isReal) {
           console.log(`[ENRICH] Cache hit for ${r.brand_url} — eeat:${hasEEAT} injections:${hasInjections} brief:${hasBrief}`);
           return res.json({ success: true, cached: true, data: {
             id: r.id, brandProfileId: r.brand_profile_id, geoBriefId: r.geo_brief_id,
