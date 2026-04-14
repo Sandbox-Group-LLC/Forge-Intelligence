@@ -129,6 +129,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const startAnalysis = async () => {
     const effectiveUrl = analysisInput.brandUrl;
+    sessionStorage.removeItem('forge_run_start'); // Reset timer for new analysis
     setIsProcessing(true);
     setCurrentView('active-run');
     const stages = initialProcessingStages.map(s => ({ ...s, status: 'pending' as const }));
