@@ -118,6 +118,23 @@ function ContentGeneratorContent() {
     fetch(`/api/authenticity-enricher/briefs?brandProfileId=${selectedBrainId}`, { headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {} })
       .then(r => r.json())
       .then(d => { if (d.success) setBriefs(d.data); });
+
+    // Fetch most recent generated article for this brand
+    if (!article && authToken) {
+      fetch(`/api/compliance/latest/${selectedBrainId}`, { headers: { 'Authorization': `Bearer ${authToken}` } })
+        .then(r => r.json())
+        .then(d => {
+          if (d.success && d.articles?.length > 0) {
+            const latest = d.articles[0];
+            const aj = typeof latest.article_json === 'string' ? JSON.parse(latest.article_json) : latest.article_json;
+            if (aj?.title && aj?.sections?.length > 0) {
+              setArticle(aj as GeneratedArticle);
+              if (latest.hero_image_url) setArticleImageUrl(latest.hero_image_url);
+            }
+          }
+        })
+        .catch(() => {});
+    }
   }, [selectedBrainId]);
 
   const checkTopic = async () => {
