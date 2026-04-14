@@ -188,7 +188,7 @@ const NAV_ROUTES: Partial<Record<ViewType, string>> = {
   'content-library':      '/app/content-library',
   'content-import':       '/app/content-import',
   'topic-queue':          '/app/topic-queue',
-  'admin':                '/app/admin',
+  'admin':                '/app/mc',
 };
 
 const publishingNavItems = [
@@ -201,7 +201,7 @@ const publishingNavItems = [
 const settingsNavItems = [
   { id: 'brand-settings', label: 'Brand Settings', icon: 'settings', href: '/app/brand-settings' },
   { id: 'integrations',   label: 'Integrations',   icon: 'plug',     href: '/app/integrations' },
-  { id: 'admin',          label: 'Admin',          icon: 'cpu',      href: '/app/admin' },
+  { id: 'admin',          label: 'Mission Control',          icon: 'cpu',      href: '/app/mc' },
 ] as const;
 
 const topNavItems: TopNavItem[] = [
@@ -222,7 +222,7 @@ export function Sidebar() {
     '/app/geo-strategist', '/app/authenticity-enricher', '/app/content-generator',
     '/app/campaign-generator', '/app/compliance-gate', '/app/publishing-queue',
     '/app/content-library', '/app/content-import', '/app/topic-queue',
-    '/app/performance', '/app/integrations', '/app/admin', '/app/email-campaign',
+    '/app/performance', '/app/integrations', '/app/mc', '/app/email-campaign',
   ];
   // Never gate while auth is still resolving — brandProfileId would be undefined
   const handleGatedClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string, label: string) => {
@@ -233,7 +233,7 @@ export function Sidebar() {
   };
   const [brainGroupOpen, setBrainGroupOpen] = useState(() => window.location.pathname.startsWith('/app/context-hub'));
   const [publishingGroupOpen, setPublishingGroupOpen] = useState(() => ['/app/publishing-queue','/app/content-library','/app/content-import','/app/topic-queue'].some(r => window.location.pathname.startsWith(r)));
-  const [settingsGroupOpen, setSettingsGroupOpen] = useState(() => ['/app/brand-settings','/app/integrations','/app/admin'].some(r => window.location.pathname.startsWith(r)));
+  const [settingsGroupOpen, setSettingsGroupOpen] = useState(() => ['/app/brand-settings','/app/integrations','/app/mc'].some(r => window.location.pathname.startsWith(r)));
   const [mobileExpanded, setMobileExpanded] = useState(false);
 
   // Auto-collapse on mobile at mount
@@ -250,7 +250,7 @@ export function Sidebar() {
     if (['/app/publishing-queue','/app/content-library','/app/content-import','/app/topic-queue'].some(r => p.startsWith(r))) {
       setPublishingGroupOpen(true);
     }
-    if (['/app/brand-settings','/app/integrations','/app/admin'].some(r => p.startsWith(r))) {
+    if (['/app/brand-settings','/app/integrations','/app/mc'].some(r => p.startsWith(r))) {
       setSettingsGroupOpen(true);
     }
   }, [window.location.pathname]);
@@ -491,7 +491,7 @@ export function Sidebar() {
         })}
         {/* Settings group */}
         {(() => {
-          const isSettingsActive = ['/app/brand-settings','/app/integrations','/app/admin'].some(r => path.startsWith(r));
+          const isSettingsActive = ['/app/brand-settings','/app/integrations','/app/mc'].some(r => path.startsWith(r));
           return (
             <div>
               <button
