@@ -149,6 +149,9 @@ function AuthenticityEnricherContent() {
         if (d.success && d.data?.length > 0) {
           const b = d.data[0];
           setResult(b as EnrichResult);
+          if (b.needsManualInput && b.gaps?.some((g: any) => g.severity === 'high')) {
+            setShowManualForm(true);
+          }
         }
       } catch { /* silent */ }
     };
