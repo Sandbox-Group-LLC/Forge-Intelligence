@@ -240,6 +240,7 @@ function AuthenticityEnricherContent() {
             </button>
           </div>
         )}
+      </div>
 
       {/* Brain selector */}
       <div className="geo-input-bar">
