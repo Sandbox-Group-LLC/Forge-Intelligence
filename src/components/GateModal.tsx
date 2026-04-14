@@ -40,6 +40,16 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
   // After successful payment, either refetch in place (signed in) or tether + redirect to Clerk (not signed in)
   function handleUnlocked() {
     setPaid(true);
+    // Update localStorage immediately — clear expiresAt, set isPaid
+    try {
+      const stored = localStorage.getItem('forge_active_brand');
+      if (stored) {
+        const b = JSON.parse(stored);
+        b.isPaid = true;
+        b.expiresAt = null;
+        localStorage.setItem('forge_active_brand', JSON.stringify(b));
+      }
+    } catch { /* non-fatal */ }
     if (isSignedIn) {
       // Already authed — onUnlocked calls refetchBrand(), sidebar updates reactively
       onUnlocked?.();
