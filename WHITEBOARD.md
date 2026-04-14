@@ -1505,3 +1505,87 @@ Every stage now persists results and has clear forward navigation:
 - `forge_active_brand` localStorage can reference deleted brands — should auto-clear on 404
 - LinkedIn Community Management API approval pending
 - Targeted AI Rewrite feature scoped but not built (Gemini-style "describe your change" for Compliance Gate)
+
+
+---
+
+## Session — April 14, 2026 (DevOps Hardening)
+
+### Pipeline UX Polish
+- **GEO Strategist + Authenticity Enricher:** Bottom CTAs moved to header row next to score badges — consistent with Brand Profile and Strategy
+- **Content Generator:** Article title color fixed (`#F1F5F9` → `var(--color-text)` — was invisible on light background)
+- **Content Generator:** Post-generation CTAs added: Generate Another | View in Content Library | Send to Compliance Gate
+- **Content Generator:** Last article restores on return — fetches from `compliance/latest/{brandId}` with `[selectedBrainId, authToken]` dependency
+- **Content Generator:** Ideas FAB moved from floating bottom-right (overlapped chatbot) to header button. Ideas drawer has × close button
+- **Hero image prompts:** Anti-surrealist guardrails — no floating objects, metallic liquids, blob shapes, dreamlike distortions. Pushed toward Bloomberg Businessweek / Monocle editorial photography style
+
+### Mission Control (`/app/mc`)
+- **Route moved** from `/app/admin` to `/app/mc` — customers no longer see the admin dashboard
+- **Sidebar gated:** `isSuperAdmin` filter on settings nav items — only super admins see Mission Control link
+- **Reviewers moved** to Brand Settings — accessible to all customers under Settings → Brand Settings
+- **Deploy Status cards:** Production + Development, last 8 deploys each, failed builds highlighted red with commit messages + commit hash + timestamp. Polls every 60s
+- **Content Table Size monitor:** Queries `pg_relation_size()` for all `generated_content_*` tables. Visual pill badges, red alert at 500KB threshold
+- **Error Aggregation card:** Deduped by pattern (strips UUIDs/timestamps from error messages), shows count + last seen. Table format
+- **Live Log Tail:** SSE stream from 500-entry in-memory ring buffer. Dark terminal, color-coded errors (red) / warnings (yellow). Pause/Resume/Filter/Clear buttons. Auto-scroll with manual pause
+
+### Rogue Agent Pattern Audit
+Isolated and scanned all 4 recurring bug patterns across the entire codebase:
+
+1. **agent_activity_log INSERT mismatches:** ✅ All 7 clean (fixed in prior session)
+2. **Unfiltered endpoints returning all brands:** ✅ All scoped — flagged endpoints use `:id` URL params, `/api/publishing/queue` uses internal brand filter
+3. **window.location.href for SPA navigation:** ✅ Zero remaining — all converted to `setCurrentView()`
+4. **useEffect fetch without authToken guard:** Fixed PerformanceDashboard channel effect + ContentGenerator brief-loading effect. Added authToken guard + dep to both
+
+### Pre-Cog Fixes (6 of 10)
+
+**#1 Token expiry during long stages:** Already handled — `jwt-template-600` (10-min expiry) applied to all 4 SSE endpoints via `?token=` query param. Verified all generators pass token.
+
+**#2 Concurrent brand scan race condition:**
+- `UNIQUE INDEX idx_bp_active_url ON brand_profiles (brand_url) WHERE is_active = true`
+- `PRIMARY KEY (id)` added to brand_profiles (was missing)
+- Both INSERT paths (saveToBrain + onboard) use `ON CONFLICT DO UPDATE`
+- Boot migration ensures index + PK on every deploy
+
+**#3 Scraper hitting bot protection (human intervention point):**
+- `scraperSuccess` boolean tracked and persisted in `profile_data`
+- Warning logged to Mission Control error aggregation
+- Orange warning banner on Brand Profile: "Limited website access — built from search context only"
+- User prompted to Re-analyze or provide manual context via Audience Notes / Strategic Notes
+- No automated workaround — responsible disclosure
+
+**#4 Content table bloat:** Monitor only, no cleanup. Table size alerts at 500KB in Mission Control. Console warning for over-threshold tables.
+
+**#5 24-hour expiry race with promo codes:**
+- `useActiveBrand` now checks DB BEFORE expiring localStorage brands
+- If DB says `is_paid=true, expires_at=NULL` (promo cleared it), localStorage syncs and brand stays alive
+- `GateModal.handleUnlocked` immediately updates localStorage: `isPaid: true, expiresAt: null`
+- Network error falls back to localStorage expiry as last resort
+
+**#6 Multi-brand super admin context bleeding:** Shelved — display-only issue in Brian's session. Customers have one brand each, no risk. Fix would be AbortController on brand switch, risk of breaking > annoyance.
+
+**#7 Duplicate SSE streams:**
+- `activeStreams` Map tracks brand+stage across all 3 generators (Content, Campaign, Email)
+- If busy: returns `busy` SSE event with elapsed time. Frontend shows friendly message
+- Stale stream cleanup every 2 minutes (10-min max lifetime)
+- Frontend handlers on all 3 pages close stream and show error message
+
+### Zombie Timer Fix
+- `sessionStorage.removeItem('forge_run_start')` fires at start of every new analysis
+- No more inherited 137-minute timers from previous runs
+
+### Ghost Brand Cleanup
+- Authenticated: `auth/me` returns no brand → localStorage wiped
+- Unauthenticated: stored brand verified against `/api/context-hub/brand/:id`. 404 = cleared
+
+### Brand Name From Website
+- Added `brandName` to Claude response schema with instruction: "actual display name as it appears on the website"
+- `resolvedBrandName` already preferred `profileData.brandName` — it just never had data because Claude was never asked
+- First scan now shows "Rose + Thyme" instead of "Therosethyme"
+
+### Known Issues / Shelved
+- #6 Multi-brand context bleeding (super admin only, display-only, shelved)
+- #8 Publishing queue assumes integrations exist (no validation before queuing)
+- #9 Neon pool exhaustion under load (no retry logic)
+- #10 safeParseLLM masking bad prompts (aggressive recovery hides broken prompts)
+- Export Brief downloads raw JSON — should generate formatted PDF
+- Dark theme ghost colors may exist in other CSS files
