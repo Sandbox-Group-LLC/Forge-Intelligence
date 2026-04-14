@@ -59,11 +59,14 @@
 - `isPaid` derived from `activeBrand?.isPaid` — computed, not state
 - `GateModal` returns null if `!isLoaded || isSignedIn` — never flashes for authed users
 - All gated pages: `if (brandLoading) return null` before gate check
+- **Super Admins:** `user_3BtC7nusm7CShN7EdUYaaLZcDwp` (brian@sandbox-xm.com), `user_3CJmE0WkOj1RJC5yF99scEuwUpO` (therosethyme). FI account intentionally excluded for dogfooding.
 - Auto-marks `is_paid = true` on every Clerk auth in `/api/auth/me`
 
 ### Brand Scoping (Critical)
 - **Every page** reads `activeBrand` from `useApp()` — the single source of truth for `brandProfileId`
 - No page fetches `/api/context-hub/brains` without an auth token
+- **Brain version tracking:** `geo_briefs` and `enriched_briefs` store `brain_version`. Cache auto-busts when stale. Yellow banner warns users.
+- **Stale brief cleanup:** GEO + Authenticity DELETE old briefs before INSERT on re-run — corrections override, no accumulation
 - Brand picker dropdown visible only to super admin — regular users see their single brand only
 - All API endpoints that touch brand data require `requireAuth`
 - Admin stats scoped to `WHERE clerk_user_id = $1` — no cross-user data
