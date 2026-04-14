@@ -8996,6 +8996,26 @@ app.post('/api/admin/reset-brand-paid', async (req, res) => {
 });
 
 
+
+// ── fal.ai webhook drain — receives event logs from fal.ai dashboard ─────────
+app.post('/api/webhooks/fal', express.json({ limit: '1mb' }), async (req, res) => {
+  try {
+    console.log('[fal.ai webhook]', JSON.stringify(req.body).slice(0, 500));
+    const payload = req.body || {};
+    const endpoint = payload.endpoint || payload.model || 'unknown';
+    const status = payload.status === 'OK' || payload.status === 200 ? 'success' : (payload.status || 'received');
+    await pool.query(
+      `INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms)
+       VALUES ($1, $2, $3, $4, $5)`,
+      ['fal_webhook', null, String(status), 0, payload.duration_ms || 0]
+    ).catch(() => {});
+    res.json({ received: true });
+  } catch(e) {
+    console.error('[fal.ai webhook] Error:', e.message);
+    res.json({ received: true });
+  }
+});
+
 // ── Robots.txt — block crawlers on dev, allow on production ──────────────────
 app.get('/robots.txt', (req, res) => {
   const host = req.headers.host || '';
