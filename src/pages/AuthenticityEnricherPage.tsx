@@ -345,6 +345,22 @@ function AuthenticityEnricherContent() {
               );
             })}
           </div>
+          <div style={{ background: 'var(--color-bg-elevated, #f4f7ff)', borderRadius: '8px', padding: '14px', marginTop: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <AlertTriangle size={14} color="#EF4444" />
+              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-primary, #1e293b)' }}>Corrections & Clarifications</span>
+            </div>
+            <textarea
+              placeholder="Fix anything the AI got wrong — e.g. 'We are based in Portland, OR — not Cambridge, MA. Do not confuse us with the defense contractor Forge Intelligence.'"
+              value={manualInputs['corrections'] || ''}
+              onChange={e => setManualInputs(prev => ({ ...prev, corrections: e.target.value }))}
+              style={{
+                width: '100%', background: 'var(--color-bg-card, #ffffff)', border: '1px solid var(--color-border)',
+                borderRadius: '6px', padding: '10px', fontSize: '13px', minHeight: '70px', resize: 'vertical',
+                fontFamily: 'Inter, system-ui, sans-serif', boxSizing: 'border-box'
+              }}
+            />
+          </div>
           <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
             <button
               onClick={() => runAnalysis(true)}
