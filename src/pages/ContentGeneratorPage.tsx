@@ -259,12 +259,17 @@ function ContentGeneratorContent() {
             Transforms your Enriched Brief into a Brain-matched, GEO-optimized long-form article with per-section confidence scoring.
           </p>
         </div>
-        {article && (
-          <div className="geo-score-badge">
-            <div className="score-value">{article.overallConfidence}</div>
-            <div className="score-label">Confidence</div>
-          </div>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={() => setIdeaDrawerOpen(!ideaDrawerOpen)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
+            <Zap size={14} /> {ideaDrawerOpen ? 'Close Ideas' : '+ Ideas'}
+          </button>
+          {article && (
+            <div className="geo-score-badge">
+              <div className="score-value">{article.overallConfidence}</div>
+              <div className="score-label">Confidence</div>
+            </div>
+          )}
+        </div>
       </div>
 
       {!isRunning && !article && (
@@ -434,14 +439,6 @@ function ContentGeneratorContent() {
           </div>
         </>
       )}
-      {/* Floating idea capture */}
-      <button
-        className={`cg-idea-fab${ideaDrawerOpen ? ' open' : ''}`}
-        onClick={() => setIdeaDrawerOpen(o => !o)}
-        title="Save a topic idea for later"
-      >
-        {ideaDrawerOpen ? '✕' : '+ Idea'}
-      </button>
 
       {ideaDrawerOpen && (
         <div className="cg-idea-drawer">
