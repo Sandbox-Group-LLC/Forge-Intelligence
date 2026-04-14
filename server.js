@@ -3232,7 +3232,7 @@ BRAIN MISTAKES (DO NOT repeat for this brand): ${JSON.stringify(brainMistakes)}`
     console.log('[GEO] Tool 1: Topical Authority Mapper...');
     const topicalRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 1500,
+      max_tokens: 2500,
       messages: [{ role: 'user', content: `You are the Topical Authority Mapper for Forge Intelligence GEO Strategist.
 
 BRAND: ${profile.brand_name} (${profile.brand_url})
@@ -3264,7 +3264,7 @@ Return ONLY the raw JSON array. No markdown. No backticks. No explanation. No ot
     console.log('[GEO] Tool 2: GEO Opportunity Scorer...');
     const scorerRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
+      max_tokens: 3000,
       messages: [{ role: 'user', content: `You are the GEO Opportunity Scorer for Forge Intelligence.
 
 BRAND: ${profile.brand_name} (${profile.brand_url})
@@ -3288,7 +3288,7 @@ Return ONLY a raw JSON array (no markdown, no explanation):
     console.log('[GEO] Tool 3: Entity & Schema Mapper...');
     const entityRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 1500,
+      max_tokens: 3000,
       messages: [{ role: 'user', content: `You are the Entity & Schema Mapper for Forge Intelligence.
 
 BRAND: ${profile.brand_name}
@@ -3314,7 +3314,7 @@ Return ONLY valid JSON array:
 
     const briefRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 4000,
+      max_tokens: 8192,
       messages: [{ role: 'user', content: `You are the GEO Brief Generator for Forge Intelligence.
 
 MANDATORY BRAIN-FIRST CHECK:
