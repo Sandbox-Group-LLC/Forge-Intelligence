@@ -3985,17 +3985,20 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
               parsed = JSON.parse(trimmed);
               parsed._truncated = true;
             } else {
-              send('error', 'JSON parse failed: ' + e.message);
+              send('error', 'Article generation hit a formatting issue — click Generate again and it\'ll come through clean. (The AI sometimes needs a second take.)');
+          console.error('[CONTENT-GEN] JSON parse error:', e.message);
               return res.end();
             }
           } catch(e3) {
-            send('error', 'JSON parse failed: ' + e.message);
+            send('error', 'Article generation hit a formatting issue — click Generate again and it\'ll come through clean. (The AI sometimes needs a second take.)');
+          console.error('[CONTENT-GEN] JSON parse error:', e.message);
             return res.end();
           }
         }
       }
     } catch(e) {
-      send('error', 'JSON parse failed: ' + e.message);
+      send('error', 'Article generation hit a formatting issue — click Generate again and it\'ll come through clean. (The AI sometimes needs a second take.)');
+          console.error('[CONTENT-GEN] JSON parse error:', e.message);
       return res.end();
     }
 
