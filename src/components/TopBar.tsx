@@ -65,7 +65,7 @@ const pathTitles: Record<string, string> = {
   '/app/content-library':        'Content Library',
   '/app/content-import':         'Import Article',
   '/app/topic-queue':            'Topic Queue',
-  '/app/admin':                  'Admin',
+  '/app/mc':                  'Mission Control',
   '/app/email-campaign':         'Email Campaign',
   '/app/context-hub':            'New Analysis',
 };
