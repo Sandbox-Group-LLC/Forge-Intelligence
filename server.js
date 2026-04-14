@@ -3510,8 +3510,14 @@ app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => 
     const brandName = profile.brand_name;
 
     // Build manual inputs context string
-    const manualCtx = Object.keys(manualInputs).length
-      ? `\nMANUAL INPUTS PROVIDED BY USER (treat as verified, high-confidence):\n${JSON.stringify(manualInputs, null, 2)}`
+    const correctionsCtx = manualInputs.corrections
+      ? `\nCRITICAL CORRECTIONS FROM BRAND OWNER (these OVERRIDE any AI-discovered data — do NOT include incorrect information):\n${manualInputs.corrections}`
+      : '';
+    const otherInputs = { ...manualInputs };
+    delete otherInputs.corrections;
+    const manualCtx = Object.keys(otherInputs).length
+      ? `\nMANUAL INPUTS PROVIDED BY USER (treat as verified, high-confidence):\n${JSON.stringify(otherInputs, null, 2)}${correctionsCtx}`
+      : correctionsCtx
       : '';
 
     // ── Tool 1: SME Signal Scraper ────────────────────────────────────────────
