@@ -1507,7 +1507,7 @@ Evaluate the user's topic against this brand's performance data and return ONLY 
     const aiData = await aiRes.json();
     const raw = aiData.content?.[0]?.text || '{}';
     const clean = raw.replace(/```json|```/g, '').trim();
-    const parsed = safeParseLLM(clean, 'object', 'unknown-L1510');
+    const parsed = safeParseLLM(clean, 'object', 'topic-check');
     // Guard: if Anthropic returned an error, parsed will be empty — don't send a blank card
     if (!parsed.signal) {
       return res.json({ success: true, signal: 'strong', confidence: 'Check unavailable', reason: 'Could not evaluate topic against brain data right now. Proceed with generation.', reframe: null });
@@ -1695,7 +1695,7 @@ Return ONLY valid JSON, no explanation:
     const rawText = aiData.content?.[0]?.text || '{}';
     const clean = rawText.replace(/```json|```/g, '').trim();
     let extracted = { rules: [] };
-    try { extracted = safeParseLLM(clean, 'object', 'unknown-L1698'); } catch(e) { console.error('[BRAIN-DISTILL] JSON parse error:', e.message, rawText.slice(0, 200)); }
+    try { extracted = safeParseLLM(clean, 'object', 'brain-distill'); } catch(e) { console.error('[BRAIN-DISTILL] JSON parse error:', e.message, rawText.slice(0, 200)); }
 
     const rules = extracted.rules || [];
 
@@ -1809,7 +1809,7 @@ Extract 3-6 patterns and 2-4 mistakes. Be specific and actionable. Focus on cont
     let extracted = { patterns: [], mistakes: [] };
     try {
       const clean = rawText.replace(/```json|```/g, '').trim();
-      extracted = safeParseLLM(clean, 'object', 'unknown-L1812');
+      extracted = safeParseLLM(clean, 'object', 'pattern-extractor');
     } catch(e) { console.error('[EXTRACT-PATTERNS] JSON parse error:', e.message); }
 
     // Write patterns to brain_patterns
@@ -2539,7 +2539,7 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) { if (attempt === 1) throw new Error('Claude returned no valid JSON'); continue; }
       try {
-        profileData = safeParseLLM(jsonMatch[0], 'object', 'unknown-L2542');
+        profileData = safeParseLLM(jsonMatch[0], 'object', 'context-hub');
         break;
       } catch(parseErr) {
         try {
@@ -2826,7 +2826,7 @@ Generate exactly ${numEmails} emails. Return ONLY valid JSON matching the output
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     let parsed;
     try {
-      parsed = safeParseLLM(jsonMatch ? jsonMatch[0] : raw, 'object', 'unknown-L2829');
+      parsed = safeParseLLM(jsonMatch ? jsonMatch[0] : raw, 'object', 'email-campaign');
     } catch(e) {
       // Fallback: strip newlines inside strings
       const fixed = (jsonMatch ? jsonMatch[0] : raw).replace(/:\s*"([\s\S]*?)"/g, (m, val) => ': "' + val.replace(/\n/g, ' ').replace(/\r/g, ' ') + '"');
@@ -4081,7 +4081,7 @@ Return ONLY valid JSON matching the output format. No markdown, no commentary.`;
 
     const raw = message.content[0].text;
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    const plan = safeParseLLM(jsonMatch ? jsonMatch[0] : raw, 'object', 'unknown-L4084');
+    const plan = safeParseLLM(jsonMatch ? jsonMatch[0] : raw, 'object', 'campaign-plan');
 
     res.json({ success: true, plan });
   } catch (err) {
