@@ -98,12 +98,17 @@ function GeoStrategistContent() {
   }, [selectedBrainId, authToken]);
 
   // Use historyEntries from AppContext (already loaded) as brain list
-  const brains: BrainEntry[] = historyEntries.map(e => ({
+  let brains: BrainEntry[] = historyEntries.map(e => ({
     id: e.id,
     brandName: e.brandName,
     brandUrl: e.brandUrl,
     updatedAt: e.timestamp
   }));
+
+  // Ensure current brand appears in dropdown even if historyEntries hasn't loaded yet (auth redirect race)
+  if (brains.length === 0 && activeBrand) {
+    brains.push({ id: activeBrand.id, brandName: activeBrand.brandName || activeBrand.brandUrl, brandUrl: activeBrand.brandUrl , updatedAt: ''});
+  }
 
   const selectedBrain = brains.find(b => b.id === selectedBrainId);
 
