@@ -87,6 +87,8 @@ function GeoStrategistContent() {
             entitySchemaMap: b.entitySchemaMap || [],
             geoBrief: b.geoBrief || null,
             brandName: b.brandName || '',
+            brainVersion: b.brainVersion || b.brain_version,
+            currentBrainVersion: b.currentBrainVersion || b.current_brain_version,
             latencyMs: 0
           });
         }
