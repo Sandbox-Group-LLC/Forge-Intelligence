@@ -3158,23 +3158,20 @@ app.post('/api/geo-strategist/analyze', requireAuth, async (req, res) => {
 
   try {
     // ── Step 0: Brain-First Protocol ─────────────────────────────────────────
-    let brainPatterns = [], brainMistakes = [], brainMemories = [];
+    let brainPatterns = [], brainMistakes = [];
     try {
-      const [pRes, mRes, memRes] = await Promise.all([
-        pool.query(`SELECT pattern_type, success_rate, confidence_score, tags FROM patterns ORDER BY success_rate DESC LIMIT 10`),
-        pool.query(`SELECT mistake_type, human_feedback, guardrail_created, severity FROM mistakes ORDER BY created_at DESC LIMIT 10`),
-        pool.query(`SELECT raw_content, metadata, performance_outcome FROM memories ORDER BY created_at DESC LIMIT 5`),
+      const [pRes, mRes] = await Promise.all([
+        pool.query(`SELECT pattern_type, description, success_rate, confidence_score, tags FROM brain_patterns WHERE brand_profile_id = $1 ORDER BY success_rate DESC LIMIT 10`, [brandProfileId]),
+        pool.query(`SELECT mistake_type, description, human_feedback, guardrail_created, severity FROM brain_mistakes WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 10`, [brandProfileId]),
       ]);
       brainPatterns = pRes.rows;
       brainMistakes = mRes.rows;
-      brainMemories = memRes.rows;
     } catch(e) {
       console.log('[GEO] Brain tables not seeded — proceeding cold:', e.message);
     }
 
-    const brainContext = `BRAIN PATTERNS (what worked): ${JSON.stringify(brainPatterns)}
-BRAIN MISTAKES (DO NOT repeat): ${JSON.stringify(brainMistakes)}
-BRAIN MEMORIES (high performers): ${JSON.stringify(brainMemories)}`;
+    const brainContext = `BRAIN PATTERNS (what worked for this brand): ${JSON.stringify(brainPatterns)}
+BRAIN MISTAKES (DO NOT repeat for this brand): ${JSON.stringify(brainMistakes)}`;
 
     // ── Step 1: Load Stage 1 brand profile ───────────────────────────────────
     const profileResult = await pool.query(`SELECT * FROM brand_profiles WHERE id = $1`, [brandProfileId]);
@@ -3427,8 +3424,8 @@ app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => 
     let brainPatterns = [], brainMistakes = [];
     try {
       const [pRes, mRes] = await Promise.all([
-        pool.query(`SELECT pattern_type, success_rate, tags FROM patterns ORDER BY success_rate DESC LIMIT 10`),
-        pool.query(`SELECT mistake_type, human_feedback, guardrail_created FROM mistakes ORDER BY created_at DESC LIMIT 10`)
+        pool.query(`SELECT pattern_type, description, success_rate, tags FROM brain_patterns WHERE brand_profile_id = $1 ORDER BY success_rate DESC LIMIT 10`, [brandProfileId]),
+        pool.query(`SELECT mistake_type, description, human_feedback, guardrail_created FROM brain_mistakes WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 10`, [brandProfileId])
       ]);
       brainPatterns = pRes.rows;
       brainMistakes = mRes.rows;
