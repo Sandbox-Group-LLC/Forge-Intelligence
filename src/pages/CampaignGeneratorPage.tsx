@@ -165,6 +165,11 @@ function CampaignGeneratorContent() {
     esRef.current = es;
     setStep('generating');
 
+    es.addEventListener('busy', () => {
+      setError('Campaign generation already in progress. Your articles are being written — check back shortly.');
+      setStep('setup');
+      es.close();
+    });
     es.addEventListener('article_start', (e) => {
       const d = JSON.parse(e.data);
       setStreamBuffer('');
@@ -239,6 +244,11 @@ function CampaignGeneratorContent() {
       const es = new EventSource(`/api/campaign/generate/${savedCampaignId}?token=${authToken}`);
       esRef.current = es;
 
+      es.addEventListener('busy', () => {
+        setError('Campaign generation already in progress. Your articles are being written — check back shortly.');
+        setStep('setup');
+        es.close();
+      });
       es.addEventListener('article_start', (e) => {
         const d = JSON.parse(e.data);
         setStreamBuffer('');
@@ -297,6 +307,11 @@ function CampaignGeneratorContent() {
       setStep('generating');
       const es = new EventSource(`/api/campaign/generate/${campaignId}?token=${authToken}`);
       esRef.current = es;
+      es.addEventListener('busy', () => {
+        setError('Campaign generation already in progress. Your articles are being written — check back shortly.');
+        setStep('setup');
+        es.close();
+      });
       es.addEventListener('article_start', (e) => {
         const d = JSON.parse(e.data);
         setArticleStatuses(prev => prev.map(a => a.index === d.index ? { ...a, status: 'generating' } : a));
