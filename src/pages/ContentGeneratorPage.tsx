@@ -132,13 +132,14 @@ function ContentGeneratorContent() {
 
   useEffect(() => {
     if (!selectedBrainId) { setBriefs([]); setSelectedBriefId(''); return; }
+    if (!authToken) return;
     loadIdeas(selectedBrainId);
     fetch(`/api/authenticity-enricher/briefs?brandProfileId=${selectedBrainId}`, { headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {} })
       .then(r => r.json())
       .then(d => { if (d.success) setBriefs(d.data); });
 
 
-  }, [selectedBrainId]);
+  }, [selectedBrainId, authToken]);
 
   const checkTopic = async () => {
     if (!selectedBrainId || !topicPrompt.trim()) { setPreflight({ status: 'idle' }); return; }
