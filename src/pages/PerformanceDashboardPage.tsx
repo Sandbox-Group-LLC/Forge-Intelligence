@@ -178,6 +178,7 @@ export default function PerformanceDashboardPage() {
   }, [brandProfileId, authToken]);
 
   useEffect(() => {
+    if (!authToken) return;
     if (activeChannel === 'campaigns') loadCampaigns();
     if (activeChannel === 'predictions' && brandProfileId) {
       setPredictionsLoading(true);
@@ -205,7 +206,7 @@ export default function PerformanceDashboardPage() {
         .catch(() => {});
       // patterns loaded in dedicated effect below
     }
-  }, [activeChannel, brandProfileId, loadCampaigns]);
+  }, [activeChannel, brandProfileId, loadCampaigns, authToken]);
 
   const loadDashboard = useCallback(async () => {
     if (!brandProfileId || ['campaigns', 'geo', 'predictions', 'patterns'].includes(activeChannel)) return;
