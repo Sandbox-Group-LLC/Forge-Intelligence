@@ -1691,41 +1691,22 @@ Isolated and scanned all 4 recurring bug patterns across the entire codebase:
 
 ## v1.1 — Roadmap
 
-> Everything shelved, deferred, or scoped-but-not-built during v1 development.
-> Brian to review and prioritize before sprint planning.
+> Shelved, deferred, and next-priority work. No "Phase" references — this is the immediate next release.
 
-### Features — Scoped & Ready to Build
-
-**Targeted AI Rewrite in Compliance Gate** *(3-4 hours estimated)*
-- Gemini-style "describe your change" for highlighted text
-- Backend: `POST /api/compliance/rewrite-selection` — Haiku for speed, brand voice aware
-- Frontend: selection detection, floating toolbar, inline replacement
-- Every rewrite instruction becomes brain training signal
-- Full spec in Session — April 12 section
-
-**Export Brief as Formatted PDF**
-- Currently downloads raw JSON — should generate a designed strategy brief
-- Applies to GEO Brief + Enriched Brief exports
+### Features
 
 **ROI Dashboard** *(GitHub issue #14, P1)*
 - Revenue attribution visualization
 - Campaign ROI tracking
 
-**OnboardingBot for Unauthenticated Users**
-- Guided first-run experience for landing page visitors
-
 **Brain History Compare**
 - Side-by-side diff of brain versions (v1 vs v3 profile changes)
 
-### Integrations — Pending / Blocked
+### Integrations
 
 **LinkedIn Community Management API** — approval submitted, under review. One approval unlocks: org analytics, member post analytics, follower stats, video analytics.
 
-**Facebook** — Pipedream credentials in production, needs real connect test.
-
-**GSC Dev Callback URL** — needs adding in Google Cloud Console for dev environment.
-
-**Medium** — Legacy, new API tokens unavailable since early 2025. Likely dead integration.
+**Medium** — Legacy, new API tokens unavailable since early 2025. Likely dead integration. Evaluate whether to remove.
 
 **X OAuth 2.0 Refresh Resilience** — Single-use refresh tokens. If refresh fails mid-cycle, user must reconnect. Needs graceful re-auth prompt.
 
@@ -1744,21 +1725,21 @@ Isolated and scanned all 4 recurring bug patterns across the entire codebase:
 
 **safeParseLLM Masking Bad Prompts** — Aggressive JSON recovery hides broken prompts. Should log/alert when nuclear fallback fires.
 
-**Full User-Level RLS** — Requires transaction wrapper around pool queries for `SET LOCAL app.current_user_id`. Phase 2 security.
-
 **authToken Rollout** — Remaining unauthenticated fetches in PublishingQueuePage (~25 fetch calls).
 
 **Light Mode Sweep** — PerformanceDashboardPage.css and remaining PublishingQueuePage.css sections may have dark theme ghost colors.
 
-### UX Polish
+### Security — IMMEDIATE PRIORITY
 
-- Timer animation persistence on Context Hub (zombie timer fix deployed, needs QA)
-- `forge_active_brand` localStorage referencing deleted brands — should auto-clear on 404
-- Ideas drawer positioning on smaller screens (currently `left: 280px`)
-- Publishing queue should validate integrations exist before allowing queue actions
-- Multi-brand context bleeding in super admin view (display-only, cosmetic)
+**RLS Audit** ⚠️ — The rogue agent implemented user-level RLS. This needs immediate evaluation. Trust nothing that agent touched — verify every policy, every rule, every table. If it's wrong, it's a data isolation vulnerability.
 
-### Platform Scale — Phase 4
+**Audit `generated_content_*` dynamic tables** — Per-brand tables, access controlled by safeId derivation but no RLS.
+
+**Formal penetration test** — Before Agency tier launch.
+
+**Decommission `forge_brain_{client_id}` Neon project** — Confirm nothing writes to it.
+
+### Platform Scale
 
 **EU AI Act Compliance Layer** *(GitHub issue #25, P0)*
 - Regulatory compliance for AI-generated content labeling
@@ -1775,11 +1756,13 @@ Isolated and scanned all 4 recurring bug patterns across the entire codebase:
 **Reader-Level Personalization via CDP**
 - Content personalization based on audience segments
 
-### Agency Tier — Phase 4.5 ($499/mo)
+---
 
-> Data model, per-brand tables, brand selectors, and publishing channels are already built. Phase 4.5 is UX, access control, and commercial packaging.
+## v1.3 — Agency Tier ($499/mo)
 
-- [ ] Brand Switcher in TopBar — quick-switch between client contexts
+> Data model, per-brand tables, brand selectors, and publishing channels are already built. Brand switcher works for super admin — needs refactor for agency context. v1.3 is UX, access control, and commercial packaging.
+
+- [x] Brand Switcher in TopBar — works for super admin, needs agency refactor
 - [ ] "Currently working in: [Brand]" indicator
 - [ ] Agency Dashboard — bird's-eye: articles/week, pending compliance, decay alerts across all brands
 - [ ] Client-level access control — Clerk auth + org-slug (admin sees all, client sees own)
@@ -1787,13 +1770,6 @@ Isolated and scanned all 4 recurring bug patterns across the entire codebase:
 - [ ] External client approval portal — white-label review workflow
 - [ ] White-label architecture — UI skinning, custom domain
 - [ ] Cross-client pattern sharing — opt-in OFF by default
-
-### Security — Phase 2
-
-- Full user-level RLS (transaction wrapper for `SET LOCAL app.current_user_id`)
-- Audit `generated_content_*` dynamic tables (per-brand, access controlled by safeId but no RLS)
-- Formal penetration test before Agency tier launch
-- Decommission `forge_brain_{client_id}` Neon project if unused
 
 ---
 
