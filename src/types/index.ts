@@ -57,6 +57,7 @@ export interface BrandProfile {
   thirdPartySignals: ThirdPartySignal[];
   competitiveGaps: CompetitiveGap[];
   strategicRecommendations: StrategicRecommendation[];
+  scraperSuccess?: boolean;
 }
 
 export interface AnalysisInput {
