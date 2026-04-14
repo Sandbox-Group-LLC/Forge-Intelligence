@@ -84,30 +84,54 @@ export function useActiveBrand() {
           if (stored) {
             try {
               const b = JSON.parse(stored);
-              const expired = b.expiresAt && new Date(b.expiresAt) < new Date();
-              if (expired) {
-                localStorage.removeItem('forge_active_brand');
-                localStorage.removeItem('forge_active_brand_id');
-                setBrand(null);
-              } else {
-                // Verify brand still exists in DB
-                try {
-                  const check = await fetch(`/api/context-hub/brand/${b.id}`);
-                  if (!check.ok) {
-                    localStorage.removeItem('forge_active_brand');
-                    localStorage.removeItem('forge_active_brand_id');
-                    setBrand(null);
-                    setLoading(false);
-                    return;
-                  }
-                } catch { /* network error — trust localStorage */ }
+              // Always verify with DB — promo codes may have cleared expires_at
+              try {
+                const check = await fetch(`/api/context-hub/brand/${b.id}`);
+                if (!check.ok) {
+                  localStorage.removeItem('forge_active_brand');
+                  localStorage.removeItem('forge_active_brand_id');
+                  setBrand(null);
+                  setLoading(false);
+                  return;
+                }
+                const dbBrand = await check.json();
+                const dbData = dbBrand.data || dbBrand;
+                const dbExpiry = dbData.expires_at || dbData.expiresAt;
+                const dbPaid = dbData.is_paid || dbData.isPaid;
+                const actuallyExpired = !dbPaid && dbExpiry && new Date(dbExpiry) < new Date();
+                if (actuallyExpired) {
+                  localStorage.removeItem('forge_active_brand');
+                  localStorage.removeItem('forge_active_brand_id');
+                  setBrand(null);
+                  setLoading(false);
+                  return;
+                }
+                // Update localStorage with fresh DB values
+                const updated = { ...b, isPaid: dbPaid || false, expiresAt: dbExpiry || null };
+                try { localStorage.setItem('forge_active_brand', JSON.stringify(updated)); } catch {}
                 setBrand({
                   id: b.id,
-                  brandName: b.brandName,
-                  brandUrl: b.brandUrl,
-                  isPaid: b.isPaid || false,
-                  expiresAt: b.expiresAt,
+                  brandName: dbData.brand_name || b.brandName,
+                  brandUrl: dbData.brand_url || b.brandUrl,
+                  isPaid: dbPaid || false,
+                  expiresAt: dbExpiry || null,
                 });
+              } catch {
+                // Network error — fall back to localStorage expiry check
+                const expired = b.expiresAt && new Date(b.expiresAt) < new Date();
+                if (expired) {
+                  localStorage.removeItem('forge_active_brand');
+                  localStorage.removeItem('forge_active_brand_id');
+                  setBrand(null);
+                } else {
+                  setBrand({
+                    id: b.id,
+                    brandName: b.brandName,
+                    brandUrl: b.brandUrl,
+                    isPaid: b.isPaid || false,
+                    expiresAt: b.expiresAt,
+                  });
+                }
               }
             } catch {
               setBrand(null);
