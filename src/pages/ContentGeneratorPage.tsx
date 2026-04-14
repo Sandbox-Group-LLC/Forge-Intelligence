@@ -232,6 +232,7 @@ function ContentGeneratorContent() {
         setImageLoading(true);
       } catch {
         es.close();
+        setImageLoading(false);
         setError('Failed to parse generated article. Raw output preserved.');
         setStreamText(prev => prev || e.data);
       }
@@ -249,6 +250,7 @@ function ContentGeneratorContent() {
     es.addEventListener('error', (e: any) => {
       es.close();
       setIsRunning(false);
+      setImageLoading(false);
       // SSE dropped — check if article was actually generated (iOS tab suspension kills streams)
       if (!e.data) {
         const checkGenerated = async () => {
