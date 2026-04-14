@@ -128,14 +128,20 @@ const STEPS: Step[] = [
 ];
 
 const FAQ = [
-  { q: "How do I re-run my brand analysis?", a: "Go to Context Hub and enter your brand URL again. Toggle off 'Check Brain first' to force a fresh analysis instead of returning the cached version." },
-  { q: "Why is my GEO score low?", a: "GEO scoring reflects your current AI citation presence — most brands start low. The opportunity score shows how much whitespace you have to capture. Run the Content Generator using the GEO Brief and publish consistently." },
-  { q: "What channels can I publish to?", a: "LinkedIn, X (Twitter), Facebook Pages, Ghost CMS, WordPress, and Webflow are live. Connect them in Integrations before publishing from the Queue." },
-  { q: "How often should I sync analytics?", a: "Weekly is ideal. The Pattern Extractor runs after each sync and writes new learnings back to your Brain. More syncs = faster compounding." },
-  { q: "What's the Compliance Gate for?", a: "It's where AI critique meets human judgment. Auto-Ship mode lets articles publish automatically if they pass AI review. Approve-to-Ship lets you review flagged sections before publishing. Every edit you make trains your Brain." },
-  { q: "Can I import content I wrote outside Forge?", a: "Yes — use Content Import under the Publishing menu. Paste a URL or raw text and the Brain will audit it against your voice profile and score it." },
-  { q: "What is Pre-cog scoring?", a: "Pre-cog scores predict how an article will perform relative to your historical average, using your Brain patterns and real analytics data. It appears as a badge on each Publishing Queue card and in the Predictions tab in Performance." },
-  { q: "How do I add a reviewer?", a: "Go to Admin → Reviewers. Add them by name and email. When you send an article for review from the Queue, they get a signed link — no Forge account required." },
+  { q: "How do I re-run my brand analysis?", a: "Go to the Brand Profile view and click 'Re-analyze'. This updates your existing profile in place — all your content, analytics, and Brain data stay connected. No need to start over." },
+  { q: "Why does my brand profile show an orange warning?", a: "That means the website scraper couldn't read your site — usually because of Cloudflare bot protection or a firewall. The profile was built from search data only. Try re-analyzing, or reach out to support if it persists." },
+  { q: "Why is my GEO score low?", a: "GEO scoring reflects your current AI citation presence — most brands start low. The opportunity score shows where AI platforms have gaps you can fill. A low score means high upside." },
+  { q: "Where did my generated article go?", a: "Articles are saved automatically. If you navigate away and come back to the Content Generator, your last article will reload. You can also find all articles in the Content Library or Compliance Gate." },
+  { q: "What's the Brain Match score?", a: "Brain Match measures how closely a generated article aligns with your brand's voice profile, personas, and strategic positioning. Higher scores mean the content sounds more like your brand, not generic AI." },
+  { q: "How do I navigate the pipeline?", a: "Each stage has a 'Continue to...' button in the top-right that takes you to the next step. The full flow is: Context Hub → GEO Strategist → Authenticity Enricher → Content Generator → Compliance Gate → Publishing." },
+  { q: "What's the Ideas feature?", a: "The Ideas button in the Content Generator header lets you save topic ideas for later. Park an idea, and when you're ready to write, you can pull it into the generator as a topic prompt." },
+  { q: "What channels can I publish to?", a: "LinkedIn, X (Twitter), Facebook Pages, Ghost CMS, WordPress, and Webflow are live. Connect them in Settings → Integrations." },
+  { q: "How often should I sync analytics?", a: "Weekly is ideal. The Pattern Extractor runs after each sync and writes new learnings back to the Brain — so your next article is smarter than your last." },
+  { q: "What's the Compliance Gate for?", a: "It reviews every article for factual claims, brand voice alignment, and citation opportunities before publishing. Sections are auto-approved or flagged for human review. You can also add reviewers who get an email link to approve or request changes." },
+  { q: "How do I add a reviewer?", a: "Go to Settings → Brand Settings and scroll to the Reviewers section. Add them by name and email. When you send an article for review, they'll receive an email with a unique approval link." },
+  { q: "Can I use a promo code?", a: "Yes — when you hit a paid feature gate, enter your promo code in the modal. If it's a 100% discount code, access unlocks immediately with no expiration." },
+  { q: "What is Pre-cog scoring?", a: "Pre-cog predicts how an article will perform relative to your historical average, using your Brain data and past analytics. It runs automatically before content generation to catch weak topics early." },
+  { q: "How do I export my Strategy Brief?", a: "On the Strategy Brief view, click 'Export Brief' in the header. This downloads a JSON file with your full strategic analysis including personas, positioning, and content recommendations." },
 ];
 
 const STORAGE_KEY = (userId: string) => `forge_onboarding_${userId}`;
