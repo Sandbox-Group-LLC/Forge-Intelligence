@@ -204,6 +204,16 @@ function ContentGeneratorContent() {
     );
     streamRef.current = es;
 
+    es.addEventListener('busy', (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        const elapsed = d.elapsed ? ` (${d.elapsed}s in)` : '';
+        setError(`Generation already in progress${elapsed}. Come back in a minute — your article is being written.`);
+        setIsRunning(false);
+      } catch {}
+      es.close();
+    });
+
     es.addEventListener('chunk', (e) => {
       setStreamText(prev => prev + e.data);
     });
