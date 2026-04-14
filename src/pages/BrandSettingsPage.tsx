@@ -40,6 +40,15 @@ export default function BrandSettingsPage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
 
+  // Reviewers
+  interface Reviewer { id: string; name: string; email: string; title: string; }
+  const [reviewers, setReviewers] = useState<Reviewer[]>([]);
+  const [revName, setRevName] = useState('');
+  const [revEmail, setRevEmail] = useState('');
+  const [revTitle, setRevTitle] = useState('');
+  const [revSaving, setRevSaving] = useState(false);
+  const [revError, setRevError] = useState('');
+
   const [scraping, setScraping] = useState(false);
   const [scrapeSuccess, setScrapeSuccess] = useState(false);
   const [scrapeError, setScrapeError] = useState('');
@@ -362,6 +371,37 @@ export default function BrandSettingsPage() {
                   {saving ? 'Saving...' : 'Save Changes'}
                 </button>
               </div>
+
+              {/* Reviewers Section */}
+              <section style={{ marginTop: 32, padding: '24px', background: 'var(--color-bg-card, #fff)', borderRadius: 12, border: '1px solid var(--color-border, #e2e8f0)' }}>
+                <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text, #1e293b)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Reviewers</h3>
+                <p style={{ fontSize: 13, color: 'var(--color-text-secondary, #64748b)', marginBottom: 16 }}>Reviewers receive an email with a unique link to approve or request changes on articles before publishing.</p>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                  <input style={{ flex: 1, minWidth: 120, padding: '8px 12px', fontSize: 13, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff' }} placeholder="Name" value={revName} onChange={e => setRevName(e.target.value)} />
+                  <input style={{ flex: 1, minWidth: 160, padding: '8px 12px', fontSize: 13, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff' }} placeholder="Email" type="email" value={revEmail} onChange={e => setRevEmail(e.target.value)} />
+                  <input style={{ flex: 1, minWidth: 120, padding: '8px 12px', fontSize: 13, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff' }} placeholder="Title (optional)" value={revTitle} onChange={e => setRevTitle(e.target.value)} />
+                  <button onClick={addReviewer} disabled={revSaving} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, borderRadius: 8, background: 'var(--color-accent, #4F46E5)', color: '#fff', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    {revSaving ? 'Adding...' : '+ Add'}
+                  </button>
+                </div>
+                {revError && <div style={{ fontSize: 12, color: '#EF4444', marginBottom: 8 }}>{revError}</div>}
+                {reviewers.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {reviewers.map(r => (
+                      <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: 'var(--color-bg, #f8fafc)', borderRadius: 8, border: '1px solid var(--color-border, #e2e8f0)' }}>
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--color-accent, #4F46E5)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600, flexShrink: 0 }}>{r.name[0].toUpperCase()}</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text, #1e293b)' }}>{r.name}</div>
+                          <div style={{ fontSize: 12, color: 'var(--color-text-secondary, #64748b)' }}>{r.email}{r.title ? ` · ${r.title}` : ''}</div>
+                        </div>
+                        <button onClick={() => removeReviewer(r.id)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 16, padding: 4 }} title="Remove">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 13, color: 'var(--color-text-secondary, #94a3b8)', textAlign: 'center', padding: '16px 0' }}>No reviewers added yet</div>
+                )}
+              </section>
 
             </div>
           </div>
