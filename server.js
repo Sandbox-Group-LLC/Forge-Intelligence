@@ -5767,6 +5767,7 @@ app.get('/api/hubspot/auth', (req, res) => {
     'crm.objects.contacts.read',
     'crm.objects.contacts.write',
     'crm.objects.owners.read',
+    'content',
     'oauth'
   ].join('%20');
   
