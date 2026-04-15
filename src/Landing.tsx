@@ -110,6 +110,12 @@ export default function Landing() {
 
   return (
     <div style={styles.root}>
+      <style>{`
+        @keyframes productPulse {
+          0%, 100% { color: #3B82F6; text-shadow: 0 0 4px rgba(59,130,246,0.3); }
+          50% { color: #60A5FA; text-shadow: 0 0 12px rgba(59,130,246,0.6), 0 0 24px rgba(59,130,246,0.2); }
+        }
+      `}</style>
       <div style={styles.gridOverlay} aria-hidden="true" />
       <div style={styles.container}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 0 }}>
@@ -119,9 +125,8 @@ export default function Landing() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <a href="/product"
-              style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem', fontWeight: 500, textDecoration: 'none' }}
-              onMouseEnter={e => { e.currentTarget.style.color = '#fff'; }}
-              onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.5)'; }}
+              className="product-nav-link"
+              style={{ color: '#3B82F6', fontSize: '0.8rem', fontWeight: 600, textDecoration: 'none', animation: 'productPulse 2s ease-in-out infinite' }}
             >Product</a>
             <a href="https://accounts.forgeintelligence.ai/sign-in?redirect_url=https://forgeintelligence.ai/app/context-hub"
               style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem', fontWeight: 500, textDecoration: 'none', padding: '8px 16px', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', transition: 'all 0.2s' }}
