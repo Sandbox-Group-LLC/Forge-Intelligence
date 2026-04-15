@@ -121,6 +121,30 @@ function HighlightedBody({ body, flag }: { body: string; flag: any }) {
       if (quotes.length >= 2) break;
     }
   }
+  if (!quotes.length) return <p className="comp-section-body">{body}</p>;
+  const flagColor = flag.type === 'factual_claim' ? '#EF4444' : flag.type === 'legal_risk' ? '#DC2626' : '#F59E0B';
+  type Part = { text: string; highlight: boolean };
+  let parts: Part[] = [{ text: body, highlight: false }];
+  for (const quote of quotes) {
+    parts = parts.flatMap((p: Part) => {
+      if (p.highlight || !p.text.includes(quote)) return [p];
+      const i = p.text.indexOf(quote);
+      return [
+        { text: p.text.slice(0, i), highlight: false },
+        { text: quote, highlight: true },
+        { text: p.text.slice(i + quote.length), highlight: false },
+      ].filter((x: Part) => x.text.length > 0);
+    });
+  }
+  return (
+    <p className="comp-section-body">
+      {parts.map((part: Part, i: number) => part.highlight
+        ? <mark key={i} style={{ background: flagColor + '28', color: flagColor, borderBottom: `2px solid ${flagColor}`, borderRadius: 2, padding: '1px 2px' }}>{part.text}</mark>
+        : <span key={i}>{part.text}</span>
+      )}
+    </p>
+  );
+}
 
 function ComplianceGateContent() {
   const { activeBrand, authToken } = useApp();
