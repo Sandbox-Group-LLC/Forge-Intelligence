@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@clerk/clerk-react';
-import { useApp } from '../context/AppContext';
 import { AppShell } from '../layouts/AppShell';
 import './AdminPage.css';
 
@@ -39,7 +38,6 @@ interface MissionData {
 
 export default function AdminPage() {
   const { getToken } = useAuth();
-  const { activeBrand } = useApp();
   const [data, setData] = useState<MissionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
