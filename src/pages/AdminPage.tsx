@@ -36,7 +36,6 @@ interface MissionData {
   recentActivity: { agent: string; brand: string; status: string; tokens: number; latency: number; createdAt: string; metadata: any }[];
 }
 
-interface Reviewer { id: string; name: string; email: string; title: string; }
 
 export default function AdminPage() {
   const { getToken } = useAuth();
@@ -44,13 +43,7 @@ export default function AdminPage() {
   const [data, setData] = useState<MissionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
-  const [reviewers, setReviewers] = useState<Reviewer[]>([]);
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [title, setTitle] = useState('');
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const selectedBrand = activeBrand?.id || '';
 
   // Live logs
   interface LogEntry { ts: string; level: string; msg: string; isError: boolean; isWarn: boolean; }
@@ -130,30 +123,9 @@ export default function AdminPage() {
     return () => clearInterval(interval);
   }, [getToken]);
 
-  useEffect(() => {
-    if (!selectedBrand) return;
-    fetch(`/api/reviewers/${selectedBrand}`).then(r => r.json()).then(d => {
-      if (d.success) setReviewers(d.reviewers);
-    });
-  }, [selectedBrand]);
 
-  const addReviewer = async () => {
-    if (!name.trim() || !email.trim()) { setError('Name and email required'); return; }
-    setSaving(true); setError('');
-    const r = await fetch('/api/reviewers', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ brandProfileId: selectedBrand, name: name.trim(), email: email.trim(), title: title.trim() })
-    });
-    const d = await r.json();
-    if (d.success) { setReviewers(prev => [...prev, d.reviewer]); setName(''); setEmail(''); setTitle(''); }
-    else { setError(d.error || 'Failed'); }
-    setSaving(false);
-  };
 
-  const removeReviewer = async (id: string) => {
-    await fetch(`/api/reviewers/${id}`, { method: 'DELETE' });
-    setReviewers(prev => prev.filter(r => r.id !== id));
-  };
+
 
   const totalPublished = data?.publishing.reduce((s, p) => s + p.published, 0) || 0;
   const totalIntegrations = data?.integrations.reduce((s, i) => s + i.active, 0) || 0;
@@ -207,108 +179,83 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {/* Main Grid */}
-            <div className="mc-grid">
-              {/* Left: Agent Activity Feed */}
-              <div className="mc-panel mc-activity-panel">
-                <div className="mc-panel-header">
-                  <span className="mc-panel-title">AGENT ACTIVITY</span>
-                  <span className="mc-panel-meta">{data.activity.totalCalls} calls · 30d</span>
+            {/* ── 2. Live Log Tail ── */}
+            <div className="mc-panel" style={{ gridColumn: '1 / -1' }}>
+              <div className="mc-panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <span className="mc-panel-title">LIVE LOG TAIL</span>
+                  <span className="mc-panel-meta" style={{ marginLeft: 8 }}>{logEntries.length} entries</span>
                 </div>
-                <div className="mc-activity-list">
-                  {data.recentActivity.length === 0 ? (
-                    <div className="mc-empty">No recent agent activity</div>
-                  ) : data.recentActivity.map((a, i) => (
-                    <div key={i} className={`mc-activity-row mc-status-${a.status}`}>
-                      <div className="mc-activity-agent">{a.agent}</div>
-                      <div className="mc-activity-detail">
-                        <span className={`mc-activity-status ${a.status}`}>{a.status}</span>
-                        <span className="mc-activity-tokens">{a.tokens ? fmt(a.tokens) + ' tok' : ''}</span>
-                        <span className="mc-activity-time">{timeAgo(a.createdAt)}</span>
-                      </div>
-                    </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {(['all', 'error', 'warn'] as const).map(f => (
+                    <button key={f} onClick={() => setLogFilter(f)} style={{
+                      padding: '4px 10px', fontSize: 11, fontWeight: logFilter === f ? 600 : 400,
+                      border: '1px solid ' + (logFilter === f ? '#4F46E5' : '#e2e8f0'),
+                      borderRadius: 6, background: logFilter === f ? '#4F46E5' : '#fff',
+                      color: logFilter === f ? '#fff' : '#64748b', cursor: 'pointer'
+                    }}>{f === 'all' ? 'All' : f === 'error' ? 'Errors' : 'Warnings'}</button>
                   ))}
+                  <button onClick={() => setLogPaused(!logPaused)} style={{
+                    padding: '4px 10px', fontSize: 11, border: '1px solid ' + (logPaused ? '#f59e0b' : '#e2e8f0'),
+                    borderRadius: 6, background: logPaused ? '#fef3c7' : '#fff', color: logPaused ? '#92400e' : '#64748b', cursor: 'pointer'
+                  }}>{logPaused ? '▶ Resume' : '⏸ Pause'}</button>
+                  <button onClick={() => setLogEntries([])} style={{
+                    padding: '4px 10px', fontSize: 11, border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', color: '#64748b', cursor: 'pointer'
+                  }}>Clear</button>
                 </div>
               </div>
-
-              {/* Center: Brain Memory + Publishing */}
-              <div className="mc-center-stack">
-                <div className="mc-panel mc-brain-panel">
-                  <div className="mc-panel-header">
-                    <span className="mc-panel-title">BRAIN MEMORY</span>
-                    <span className="mc-panel-meta">{brainTotal} total</span>
+              <div style={{ maxHeight: 400, overflow: 'auto', background: '#0f172a', borderRadius: 8, padding: '8px 0', fontFamily: 'monospace', fontSize: 11 }}>
+                {logEntries
+                  .filter(e => logFilter === 'all' || (logFilter === 'error' && e.isError) || (logFilter === 'warn' && e.isWarn))
+                  .map((e, i) => (
+                  <div key={i} style={{
+                    padding: '1px 12px',
+                    color: e.isError ? '#fca5a5' : e.isWarn ? '#fcd34d' : '#94a3b8',
+                    background: e.isError ? 'rgba(239,68,68,0.08)' : 'transparent',
+                    borderLeft: e.isError ? '3px solid #ef4444' : e.isWarn ? '3px solid #f59e0b' : '3px solid transparent'
+                  }}>
+                    <span style={{ color: '#475569' }}>{new Date(e.ts).toLocaleTimeString()}</span>
+                    {' '}
+                    <span>{e.msg.slice(0, 300)}</span>
                   </div>
-                  <div className="mc-brain-breakdown">
-                    {[
-                      { label: 'Writing Rules', value: data.brain.writingRules, max: 20, color: 'var(--color-accent)' },
-                      { label: 'Human Edits', value: data.brain.humanEdits, max: 100, color: '#F5B942' },
-                      { label: 'Mistakes', value: data.brain.totalMistakes, max: 100, color: '#14B8A6' },
-                      { label: 'False Positives', value: data.brain.falsePositives, max: 10, color: '#EF4444' },
-                    ].map(item => (
-                      <div key={item.label} className="mc-brain-row">
-                        <span className="mc-brain-label">{item.label}</span>
-                        <div className="mc-brain-bar-wrap">
-                          <div className="mc-brain-bar" style={{ width: `${Math.min(100, (item.value / item.max) * 100)}%`, background: item.color }} />
-                        </div>
-                        <span className="mc-brain-count">{item.value}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="mc-panel mc-publish-panel">
-                  <div className="mc-panel-header">
-                    <span className="mc-panel-title">PUBLISHING</span>
-                    <span className="mc-panel-meta">{totalPublished} published</span>
-                  </div>
-                  <div className="mc-publish-grid">
-                    {data.publishing.map(p => (
-                      <div key={p.channel} className="mc-publish-row">
-                        <span className="mc-publish-channel">{p.channel}</span>
-                        <span className="mc-publish-count">{p.published}</span>
-                        {p.errors > 0 && <span className="mc-publish-errors">{p.errors} err</span>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Right: Token Usage */}
-              <div className="mc-panel mc-tokens-panel">
-                <div className="mc-panel-header">
-                  <span className="mc-panel-title">TOKEN USAGE</span>
-                  <span className="mc-panel-meta">{estimateCost(data.activity.totalTokens)}</span>
-                </div>
-                <div className="mc-token-summary">
-                  <div className="mc-token-big">
-                    <span className="mc-token-number">{fmt(data.activity.totalTokens)}</span>
-                    <span className="mc-token-label">TOTAL TOKENS</span>
-                  </div>
-                  <div className="mc-token-stats">
-                    <div className="mc-token-stat">
-                      <span className="mc-token-stat-val">{data.activity.avgLatency}ms</span>
-                      <span className="mc-token-stat-label">AVG LATENCY</span>
-                    </div>
-                    <div className="mc-token-stat">
-                      <span className="mc-token-stat-val">{data.activity.errors}</span>
-                      <span className="mc-token-stat-label">ERRORS</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="mc-agent-list">
-                  {data.activity.agentBreakdown.map(a => (
-                    <div key={a.agent} className="mc-agent-row">
-                      <span className="mc-agent-name">{a.agent}</span>
-                      <span className="mc-agent-calls">{a.calls} calls</span>
-                      <span className="mc-agent-tokens">{fmt(a.tokens)} tok</span>
-                      <span className="mc-agent-cost">{estimateCost(a.tokens)}</span>
-                    </div>
-                  ))}
-                </div>
+                ))}
+                <div ref={logEndRef} />
               </div>
             </div>
 
-            {/* Deploy Status */}
+            {/* ── 3. Error Aggregation ── */}
+            <div className="mc-panel" style={{ gridColumn: '1 / -1' }}>
+              <div className="mc-panel-header">
+                <span className="mc-panel-title">ERROR AGGREGATION</span>
+                <span className="mc-panel-meta">{errorAggs.length} unique errors</span>
+              </div>
+              {errorAggs.length === 0 ? (
+                <div style={{ padding: '16px', textAlign: 'center', color: '#10b981', fontSize: 13 }}>No errors captured since last deploy</div>
+              ) : (
+                <div style={{ maxHeight: 240, overflow: 'auto' }}>
+                  <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid #e2e8f0', color: '#64748b', textAlign: 'left' }}>
+                        <th style={{ padding: '6px 8px' }}>Error</th>
+                        <th style={{ padding: '6px 8px', width: 60 }}>Count</th>
+                        <th style={{ padding: '6px 8px', width: 140 }}>Last Seen</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {errorAggs.slice(0, 20).map((e, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '6px 8px', color: '#ef4444', fontFamily: 'monospace', fontSize: 11, wordBreak: 'break-all' }}>{e.lastMsg.slice(0, 150)}</td>
+                          <td style={{ padding: '6px 8px', fontWeight: 600, color: e.count > 5 ? '#ef4444' : '#f59e0b' }}>{e.count}</td>
+                          <td style={{ padding: '6px 8px', color: '#64748b', fontSize: 11 }}>{new Date(e.lastSeen).toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* ── 4. Deploys ── */}
             {['production', 'development'].map(env => {
               const envDeploys = env === 'production' ? deploys.production : deploys.development;
               const failed = envDeploys.filter(d => d.status === 'build_failed' || d.status === 'update_failed');
@@ -317,7 +264,7 @@ export default function AdminPage() {
                   <div className="mc-panel-header">
                     <span className="mc-panel-title">{env.toUpperCase()} DEPLOYS</span>
                     <span className="mc-panel-meta">
-                      {failed.length > 0 ? `❌ ${failed.length} failed` : envDeploys.length > 0 && envDeploys[0].status === 'live' ? '✅ Live' : '...'}
+                      {failed.length > 0 ? `❌ ${failed.length} failed` : envDeploys.length > 0 && envDeploys[0].status === 'live' ? '✅ Live' : '—'}
                     </span>
                   </div>
                   <div style={{ maxHeight: 260, overflow: 'auto' }}>
@@ -380,113 +327,129 @@ export default function AdminPage() {
               </div>
             )}
 
-            {/* Error Aggregation Card */}
-            <div className="mc-panel" style={{ gridColumn: '1 / -1' }}>
-              <div className="mc-panel-header">
-                <span className="mc-panel-title">ERROR AGGREGATION</span>
-                <span className="mc-panel-meta">{errorAggs.length} unique errors</span>
-              </div>
-              {errorAggs.length === 0 ? (
-                <div style={{ padding: '16px', textAlign: 'center', color: '#10b981', fontSize: 13 }}>No errors captured since last deploy</div>
-              ) : (
-                <div style={{ maxHeight: 240, overflow: 'auto' }}>
-                  <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr style={{ borderBottom: '1px solid #e2e8f0', color: '#64748b', textAlign: 'left' }}>
-                        <th style={{ padding: '6px 8px' }}>Error</th>
-                        <th style={{ padding: '6px 8px', width: 60 }}>Count</th>
-                        <th style={{ padding: '6px 8px', width: 140 }}>Last Seen</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {errorAggs.slice(0, 20).map((e, i) => (
-                        <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                          <td style={{ padding: '6px 8px', color: '#ef4444', fontFamily: 'monospace', fontSize: 11, wordBreak: 'break-all' }}>{e.lastMsg.slice(0, 150)}</td>
-                          <td style={{ padding: '6px 8px', fontWeight: 600, color: e.count > 5 ? '#ef4444' : '#f59e0b' }}>{e.count}</td>
-                          <td style={{ padding: '6px 8px', color: '#64748b', fontSize: 11 }}>{new Date(e.lastSeen).toLocaleString()}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+            {/* ── 5. Three-column row: Agent Activity | Brain+Publishing | Provider Costs ── */}
+            <div className="mc-grid">
+              {/* 5a: Agent Activity */}
+              <div className="mc-panel mc-activity-panel" style={{ minHeight: 380 }}>
+                <div className="mc-panel-header">
+                  <span className="mc-panel-title">AGENT ACTIVITY</span>
+                  <span className="mc-panel-meta">{data.activity.totalCalls} calls · 30d</span>
                 </div>
-              )}
-            </div>
-
-            {/* Live Log Tail */}
-            <div className="mc-panel" style={{ gridColumn: '1 / -1' }}>
-              <div className="mc-panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <span className="mc-panel-title">LIVE LOG TAIL</span>
-                  <span className="mc-panel-meta" style={{ marginLeft: 8 }}>{logEntries.length} entries</span>
-                </div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {(['all', 'error', 'warn'] as const).map(f => (
-                    <button key={f} onClick={() => setLogFilter(f)} style={{
-                      padding: '4px 10px', fontSize: 11, fontWeight: logFilter === f ? 600 : 400,
-                      border: '1px solid ' + (logFilter === f ? '#4F46E5' : '#e2e8f0'),
-                      borderRadius: 6, background: logFilter === f ? '#4F46E5' : '#fff',
-                      color: logFilter === f ? '#fff' : '#64748b', cursor: 'pointer'
-                    }}>{f === 'all' ? 'All' : f === 'error' ? 'Errors' : 'Warnings'}</button>
-                  ))}
-                  <button onClick={() => setLogPaused(!logPaused)} style={{
-                    padding: '4px 10px', fontSize: 11, border: '1px solid ' + (logPaused ? '#f59e0b' : '#e2e8f0'),
-                    borderRadius: 6, background: logPaused ? '#fef3c7' : '#fff', color: logPaused ? '#92400e' : '#64748b', cursor: 'pointer'
-                  }}>{logPaused ? '▶ Resume' : '⏸ Pause'}</button>
-                  <button onClick={() => setLogEntries([])} style={{
-                    padding: '4px 10px', fontSize: 11, border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', color: '#64748b', cursor: 'pointer'
-                  }}>Clear</button>
-                </div>
-              </div>
-              <div style={{ maxHeight: 400, overflow: 'auto', background: '#0f172a', borderRadius: 8, padding: '8px 0', fontFamily: 'monospace', fontSize: 11, lineHeight: 1.6 }}>
-                {logEntries
-                  .filter(e => logFilter === 'all' || (logFilter === 'error' && e.isError) || (logFilter === 'warn' && e.isWarn))
-                  .map((e, i) => (
-                  <div key={i} style={{
-                    padding: '1px 12px',
-                    color: e.isError ? '#fca5a5' : e.isWarn ? '#fcd34d' : '#94a3b8',
-                    background: e.isError ? 'rgba(239,68,68,0.08)' : 'transparent',
-                    borderLeft: e.isError ? '3px solid #ef4444' : e.isWarn ? '3px solid #f59e0b' : '3px solid transparent'
-                  }}>
-                    <span style={{ color: '#475569' }}>{new Date(e.ts).toLocaleTimeString()}</span>
-                    {' '}
-                    <span>{e.msg.slice(0, 300)}</span>
-                  </div>
-                ))}
-                <div ref={logEndRef} />
-              </div>
-            </div>
-
-            {/* Reviewers Section */}
-            <div className="mc-panel mc-reviewers-panel">
-              <div className="mc-panel-header">
-                <span className="mc-panel-title">REVIEWERS</span>
-                <span className="mc-panel-meta">Compliance Gate approval workflow</span>
-              </div>
-              <p className="mc-reviewer-desc">Reviewers receive an email with a unique link to approve or request changes on articles before they publish.</p>
-              <div className="mc-reviewer-form">
-                <input className="mc-input" placeholder="Name" value={name} onChange={e => setName(e.target.value)} />
-                <input className="mc-input" placeholder="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} />
-                <input className="mc-input" placeholder="Title (optional)" value={title} onChange={e => setTitle(e.target.value)} />
-                <button className="mc-add-btn" onClick={addReviewer} disabled={saving}>
-                  {saving ? 'Adding...' : '+ Add'}
-                </button>
-              </div>
-              {error && <div className="mc-error">{error}</div>}
-              {reviewers.length > 0 && (
-                <div className="mc-reviewer-list">
-                  {reviewers.map(r => (
-                    <div key={r.id} className="mc-reviewer-row">
-                      <div className="mc-reviewer-avatar">{r.name[0].toUpperCase()}</div>
-                      <div className="mc-reviewer-info">
-                        <div className="mc-reviewer-name">{r.name}</div>
-                        <div className="mc-reviewer-meta">{r.email}{r.title ? ` · ${r.title}` : ''}</div>
+                <div className="mc-activity-list">
+                  {data.recentActivity.length === 0 ? (
+                    <div className="mc-empty">No recent agent activity</div>
+                  ) : data.recentActivity.map((a, i) => (
+                    <div key={i} className={`mc-activity-row mc-status-${a.status}`}>
+                      <div className="mc-activity-agent">{a.agent}</div>
+                      <div className="mc-activity-detail">
+                        <span className={`mc-activity-status ${a.status}`}>{a.status}</span>
+                        <span className="mc-activity-tokens">{a.tokens ? fmt(a.tokens) + ' tok' : ''}</span>
+                        <span className="mc-activity-time">{timeAgo(a.createdAt)}</span>
                       </div>
-                      <button className="mc-remove-btn" onClick={() => removeReviewer(r.id)} title="Remove">✕</button>
                     </div>
                   ))}
                 </div>
-              )}
+              </div>
+
+              {/* 5b: Brain Memory + Publishing */}
+              <div className="mc-center-stack">
+                <div className="mc-panel mc-brain-panel">
+                  <div className="mc-panel-header">
+                    <span className="mc-panel-title">BRAIN MEMORY</span>
+                    <span className="mc-panel-meta">{brainTotal} total</span>
+                  </div>
+                  <div className="mc-brain-breakdown">
+                    {[
+                      { label: 'Writing Rules', value: data.brain.writingRules, max: 20, color: 'var(--color-accent)' },
+                      { label: 'Human Edits', value: data.brain.humanEdits, max: 100, color: '#F5B942' },
+                      { label: 'Mistakes', value: data.brain.totalMistakes, max: 100, color: '#14B8A6' },
+                      { label: 'False Positives', value: data.brain.falsePositives, max: 10, color: '#EF4444' },
+                    ].map(item => (
+                      <div key={item.label} className="mc-brain-row">
+                        <span className="mc-brain-label">{item.label}</span>
+                        <div className="mc-brain-bar-wrap">
+                          <div className="mc-brain-bar" style={{ width: `${Math.min(100, (item.value / item.max) * 100)}%`, background: item.color }} />
+                        </div>
+                        <span className="mc-brain-count">{item.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mc-panel mc-publish-panel">
+                  <div className="mc-panel-header">
+                    <span className="mc-panel-title">PUBLISHING</span>
+                    <span className="mc-panel-meta">{totalPublished} published</span>
+                  </div>
+                  <div className="mc-publish-grid">
+                    {data.publishing.map(p => (
+                      <div key={p.channel} className="mc-publish-row">
+                        <span className="mc-publish-channel">{p.channel}</span>
+                        <span className="mc-publish-count">{p.published}</span>
+                        {p.errors > 0 && <span className="mc-publish-errors">{p.errors} err</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* 5c: Provider Costs — Anthropic, Perplexity, fal.ai */}
+              <div className="mc-panel mc-tokens-panel" style={{ minHeight: 380 }}>
+                <div className="mc-panel-header">
+                  <span className="mc-panel-title">PROVIDER COSTS</span>
+                  <span className="mc-panel-meta">30d · {estimateCost(data.activity.totalTokens)}</span>
+                </div>
+                <div style={{ padding: '12px 0' }}>
+                  {(() => {
+                    const agents = data.activity.agentBreakdown || [];
+                    const anthropicTokens = agents.filter(a => a.agent.startsWith('stage')).reduce((s, a) => s + a.tokens, 0);
+                    const perplexityTokens = agents.filter(a => a.agent.includes('perplexity') || a.agent.includes('sonar')).reduce((s, a) => s + a.tokens, 0);
+                    const falTokens = agents.filter(a => a.agent.includes('fal')).reduce((s, a) => s + a.tokens, 0);
+                    const providers = [
+                      { name: 'Anthropic', sub: 'Claude Sonnet 4.6 + Haiku', tokens: anthropicTokens, rate: 6, color: '#D97706', icon: '🧠' },
+                      { name: 'Perplexity', sub: 'Sonar Pro', tokens: perplexityTokens, rate: 3, color: '#3B82F6', icon: '🔍' },
+                      { name: 'fal.ai', sub: 'FLUX Schnell', tokens: falTokens, rate: 0.003, color: '#8B5CF6', icon: '🎨' },
+                    ];
+                    return providers.map(p => {
+                      const cost = p.name === 'fal.ai' ? (p.tokens * 0.003) : (p.tokens / 1000000) * p.rate;
+                      return (
+                        <div key={p.name} style={{
+                          padding: '14px 16px', marginBottom: 8, borderRadius: 8,
+                          background: 'var(--color-bg, #f8fafc)', border: '1px solid var(--color-border, #e2e8f0)'
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                            <div>
+                              <span style={{ fontSize: 14 }}>{p.icon} </span>
+                              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text, #1e293b)' }}>{p.name}</span>
+                              <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 6 }}>{p.sub}</span>
+                            </div>
+                            <span style={{ fontSize: 15, fontWeight: 700, color: p.color }}>
+                              {cost < 0.01 ? '<$0.01' : `$${cost.toFixed(2)}`}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#64748b' }}>
+                            <span>{p.name === 'fal.ai' ? `${p.tokens} images` : `${fmt(p.tokens)} tokens`}</span>
+                            <span>{p.name === 'fal.ai' ? '$0.003/image' : `$${p.rate}/M tokens`}</span>
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+                <div style={{ borderTop: '1px solid var(--color-border, #e2e8f0)', padding: '12px 0 0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text, #1e293b)' }}>TOTAL</span>
+                    <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-accent, #4F46E5)' }}>
+                      {estimateCost(data.activity.totalTokens)}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                    {fmt(data.activity.totalTokens)} total tokens · {data.activity.avgLatency}ms avg latency · {data.activity.errors} errors
+                  </div>
+                </div>
+              </div>
             </div>
+
           </>
         ) : null}
       </div>
