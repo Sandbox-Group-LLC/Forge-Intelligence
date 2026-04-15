@@ -43,7 +43,6 @@ export default function AdminPage() {
   const [data, setData] = useState<MissionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
-  const [error, setError] = useState('');
 
   // Live logs
   interface LogEntry { ts: string; level: string; msg: string; isError: boolean; isWarn: boolean; }
