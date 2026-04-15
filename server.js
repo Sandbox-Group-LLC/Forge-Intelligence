@@ -4691,7 +4691,10 @@ Return ONLY valid JSON in this exact structure:
         model: 'claude-sonnet-4-6',
         max_tokens: 4096,
         system: systemPrompt,
-        messages: [{ role: 'user', content: `Article to audit:\n\n${JSON.stringify(articleJson, null, 2)}` }]
+        messages: [{ role: 'user', content: `Article to audit:\n\n${(() => {
+          const sections = articleJson?.sections || [];
+          return sections.map((s, i) => `[SECTION ${i}] heading: ${s.heading || s.title || 'Untitled'}\n${s.body || s.content || ''}`).join('\n\n---\n\n');
+        })()}` }]
       })
     });
     const critiqueData = await critiqueRes.json();
