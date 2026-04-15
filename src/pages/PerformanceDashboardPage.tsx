@@ -162,6 +162,37 @@ export default function PerformanceDashboardPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
   const [error, setError] = useState('');
+  const [manualEdit, setManualEdit] = useState<string | null>(null);
+  const [manualVals, setManualVals] = useState<{ impressions: string; clicks: string; reactions: string; comments: string; reposts: string }>({ impressions: '', clicks: '', reactions: '', comments: '', reposts: '' });
+  const [manualSaving, setManualSaving] = useState(false);
+
+  const saveManualMetrics = async (contentId: string) => {
+    if (!brandProfileId) return;
+    setManualSaving(true);
+    try {
+      const token = authTokenRef.current || authToken || '';
+      const h: Record<string,string> = token ? { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+      const res = await fetch('/api/analytics/manual', {
+        method: 'POST', headers: h,
+        body: JSON.stringify({
+          brandProfileId, contentId, channel: activeChannel,
+          impressions: parseInt(manualVals.impressions) || 0,
+          clicks: parseInt(manualVals.clicks) || 0,
+          reactions: parseInt(manualVals.reactions) || 0,
+          comments: parseInt(manualVals.comments) || 0,
+          reposts: parseInt(manualVals.reposts) || 0,
+        })
+      });
+      const d = await res.json();
+      if (d.success) {
+        setManualEdit(null);
+        setManualVals({ impressions: '', clicks: '', reactions: '', comments: '', reposts: '' });
+        // Refresh data
+        loadChannelData(activeChannel);
+      }
+    } catch { /* non-fatal */ }
+    setManualSaving(false);
+  };
 
 
   const loadCampaigns = useCallback(async () => {
@@ -552,6 +583,7 @@ export default function PerformanceDashboardPage() {
                         </>)}
                         <th>Published</th>
                         <th className="bar-col">{activeChannel === 'ghost' ? 'Relative clicks' : 'Relative reach'}</th>
+                        <th style={{ width: 36 }}></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -581,7 +613,44 @@ export default function PerformanceDashboardPage() {
                               <div className="perf-bar-fill" style={{ width: `${Math.round(((activeChannel === 'ghost' ? post.clicks : post.impressions) / maxReach) * 100)}%` }} />
                             </div>
                           </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <button
+                              onClick={() => {
+                                if (manualEdit === post.content_id) { setManualEdit(null); }
+                                else {
+                                  setManualEdit(post.content_id);
+                                  setManualVals({
+                                    impressions: String(post.impressions || ''),
+                                    clicks: String(post.clicks || ''),
+                                    reactions: String(post.reactions || ''),
+                                    comments: String(post.comments || ''),
+                                    reposts: String(post.reposts || ''),
+                                  });
+                                }
+                              }}
+                              title="Edit metrics manually"
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, opacity: 0.5, padding: '2px 4px' }}
+                            >✎</button>
+                          </td>
                         </tr>
+                        {manualEdit === post.content_id && (
+                          <tr className="perf-manual-row">
+                            <td colSpan={8} style={{ padding: '8px 12px', background: 'var(--color-bg, #f8fafc)', borderBottom: '2px solid var(--color-accent, #4F46E5)' }}>
+                              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary, #64748b)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Manual Input</span>
+                                <input type="number" placeholder="Impressions" value={manualVals.impressions} onChange={e => setManualVals(v => ({ ...v, impressions: e.target.value }))} style={{ width: 90, padding: '4px 8px', fontSize: 12, border: '1px solid #e2e8f0', borderRadius: 4 }} />
+                                <input type="number" placeholder="Clicks" value={manualVals.clicks} onChange={e => setManualVals(v => ({ ...v, clicks: e.target.value }))} style={{ width: 80, padding: '4px 8px', fontSize: 12, border: '1px solid #e2e8f0', borderRadius: 4 }} />
+                                <input type="number" placeholder="Reactions" value={manualVals.reactions} onChange={e => setManualVals(v => ({ ...v, reactions: e.target.value }))} style={{ width: 80, padding: '4px 8px', fontSize: 12, border: '1px solid #e2e8f0', borderRadius: 4 }} />
+                                <input type="number" placeholder="Comments" value={manualVals.comments} onChange={e => setManualVals(v => ({ ...v, comments: e.target.value }))} style={{ width: 80, padding: '4px 8px', fontSize: 12, border: '1px solid #e2e8f0', borderRadius: 4 }} />
+                                <input type="number" placeholder="Reposts" value={manualVals.reposts} onChange={e => setManualVals(v => ({ ...v, reposts: e.target.value }))} style={{ width: 80, padding: '4px 8px', fontSize: 12, border: '1px solid #e2e8f0', borderRadius: 4 }} />
+                                <button onClick={() => saveManualMetrics(post.content_id)} disabled={manualSaving} style={{ padding: '4px 12px', fontSize: 12, fontWeight: 600, background: 'var(--color-accent, #4F46E5)', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
+                                  {manualSaving ? 'Saving...' : 'Save'}
+                                </button>
+                                <button onClick={() => setManualEdit(null)} style={{ padding: '4px 8px', fontSize: 12, background: 'none', border: '1px solid #e2e8f0', borderRadius: 4, cursor: 'pointer', color: '#64748b' }}>Cancel</button>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
                       ))}
                     </tbody>
                   </table>
