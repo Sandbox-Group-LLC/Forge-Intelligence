@@ -7310,9 +7310,10 @@ ${canonicalNote}`,
     const successfulChannels = targets.filter(ch => results[ch]?.status === 'published' || results[ch]?.status === 'staged');
     if (successfulChannels.length > 0) {
       pool.query(
-        `INSERT INTO memories (id, raw_content, metadata, created_at)
-         VALUES (gen_random_uuid(), $1, $2, NOW())`,
+        `INSERT INTO memories (id, client_id, raw_content, metadata, created_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, NOW())`,
         [
+          item.brand_profile_id,
           `Published: ${article.title}`,
           JSON.stringify({ contentId: item.content_id, channels: successfulChannels, brandProfileId: item.brand_profile_id, publishedAt: new Date(), utmResults: results })
         ]
