@@ -117,11 +117,18 @@ export default function Landing() {
             <span style={styles.diamondWrap}><DiamondIcon /></span>
             <span style={styles.wordmarkText}>Forge Intelligence</span>
           </div>
-          <a href="https://accounts.forgeintelligence.ai/sign-in?redirect_url=https://forgeintelligence.ai/app/context-hub"
-            style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem', fontWeight: 500, textDecoration: 'none', padding: '8px 16px', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', transition: 'all 0.2s' }}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <a href="/product"
+              style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem', fontWeight: 500, textDecoration: 'none' }}
+              onMouseEnter={e => { e.currentTarget.style.color = '#fff'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.5)'; }}
+            >Product</a>
+            <a href="https://accounts.forgeintelligence.ai/sign-in?redirect_url=https://forgeintelligence.ai/app/context-hub"
+              style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem', fontWeight: 500, textDecoration: 'none', padding: '8px 16px', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', transition: 'all 0.2s' }}
             onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.3)'; }}
             onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.5)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'; }}
           >Sign In</a>
+          </div>
         </div>
 
         <div style={styles.content}>
