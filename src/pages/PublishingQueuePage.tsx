@@ -332,6 +332,13 @@ export default function PublishingQueuePage() {
     } catch(e) { console.error('Archive failed', e); }
   };
 
+  const unarchiveItem = async (item: QueueItem) => {
+    try {
+      await fetch(`/api/publishing/queue/${item.id}/unarchive`, { method: 'POST', headers: ah });
+      setItems(prev => prev.map(i => i.id === item.id ? { ...i, status: 'staged' } : i));
+    } catch(e) { console.error('Unarchive failed', e); }
+  };
+
   const loadQueue = useCallback(async () => {
     if (!activeBrandId) return;
     setLoading(true);
@@ -1149,9 +1156,15 @@ ${bodyHtml}
                           </div>
                         )}
                       </div>
-                      <button className="pq-icon-btn" title="Archive" onClick={() => archiveItem(item)}>
-                        <Archive />
-                      </button>
+                      {item.status === 'archived' ? (
+                        <button className="pq-icon-btn" title="Unarchive — restore to queue" onClick={() => unarchiveItem(item)} style={{ color: '#10b981' }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                        </button>
+                      ) : (
+                        <button className="pq-icon-btn" title="Archive" onClick={() => archiveItem(item)}>
+                          <Archive />
+                        </button>
+                      )}
                       <button className="pq-icon-btn danger" title="Remove from queue" onClick={() => openDeleteModal(item)}>
                         <Trash />
                       </button>
@@ -1440,9 +1453,15 @@ return (
                           </div>
                         )}
                       </div>
-                      <button className="pq-icon-btn" title="Archive" onClick={() => archiveItem(item)}>
-                        <Archive />
-                      </button>
+                      {item.status === 'archived' ? (
+                        <button className="pq-icon-btn" title="Unarchive — restore to queue" onClick={() => unarchiveItem(item)} style={{ color: '#10b981' }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                        </button>
+                      ) : (
+                        <button className="pq-icon-btn" title="Archive" onClick={() => archiveItem(item)}>
+                          <Archive />
+                        </button>
+                      )}
                       <button className="pq-icon-btn danger" title="Remove from queue" onClick={() => openDeleteModal(item)}>
                         <Trash />
                       </button>
