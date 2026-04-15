@@ -149,7 +149,7 @@ export default function Product() {
           <div style={styles.screenshot}>
             <img src="/2.png" alt="Publishing Queue — content preview with hero image and multi-channel distribution" style={styles.screenshotImg} />
           </div>
-          <p style={styles.screenshotCaption}>Citation probability scored across ChatGPT, Perplexity, AI Overviews, and Gemini — for every topic in your authority map.</p>
+          <p style={styles.screenshotCaption}>Preview, edit post copy, and publish to LinkedIn, X, Webflow, Ghost, or HubSpot — with UTM intelligence built in.</p>
         </div>
 
         {/* Who This Is For */}
@@ -192,7 +192,7 @@ export default function Product() {
           <div style={styles.screenshot}>
             <img src="/4.png" alt="Content Generator — brain-aware topic alignment check before generation" style={styles.screenshotImg} />
           </div>
-          <p style={styles.screenshotCaption}>The Brain checks topic alignment before you spend a single token. 89% match — and it knows what mistakes to avoid.</p>
+          <p style={styles.screenshotCaption}>Citation probability scored across ChatGPT, Perplexity, AI Overviews, and Gemini — for every topic in your authority map.</p>
         </div>
 
         {/* The Brain */}
@@ -259,7 +259,7 @@ export default function Product() {
           <div style={styles.screenshot}>
             <img src="/3.png" alt="GEO Opportunity Scores — ChatGPT, Perplexity, AI Overviews, Gemini citation probability" style={styles.screenshotImg} />
           </div>
-          <p style={styles.screenshotCaption}>Citation probability scored across ChatGPT, Perplexity, AI Overviews, and Gemini — for every topic in your authority map.</p>
+          <p style={styles.screenshotCaption}>The Brain checks topic alignment before you spend a single token. 89% match — and it knows what mistakes to avoid.</p>
         </div>
 
         {/* Pricing */}
