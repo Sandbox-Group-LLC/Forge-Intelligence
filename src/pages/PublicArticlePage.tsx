@@ -81,7 +81,7 @@ export default function PublicArticlePage() {
         <div className="pa-notfound-icon">⚡</div>
         <h1>Article not found</h1>
         <p>This article may have been moved or unpublished.</p>
-        <a href="https://forgeintelligence.ai" className="pa-home-link">← Back to Forge Intelligence</a>
+        <a href={`/articles/${brandSlug}`} className="pa-home-link">← Back to Articles</a>
       </div>
     </div>
   );
@@ -203,7 +203,7 @@ export default function PublicArticlePage() {
                   </a>
                 </span>
               </div>
-              <a href="https://forgeintelligence.ai" className="pa-back-link">← More articles</a>
+              <a href={`/articles/${brandSlug}`} className="pa-back-link">← More articles</a>
             </div>
           </footer>
 
