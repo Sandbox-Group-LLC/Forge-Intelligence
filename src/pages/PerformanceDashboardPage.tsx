@@ -188,7 +188,10 @@ export default function PerformanceDashboardPage() {
         setManualEdit(null);
         setManualVals({ impressions: '', clicks: '', reactions: '', comments: '', reposts: '' });
         // Refresh data
-        loadChannelData(activeChannel);
+        // Refresh — re-fetch dashboard data
+        const token = authTokenRef.current || authToken || '';
+        const h2: Record<string,string> = token ? { 'Authorization': `Bearer ${token}` } : {};
+        fetch(`/api/analytics/dashboard/${brandProfileId}?channel=${activeChannel}`, { cache: 'no-store', headers: h2 }).then(r => r.json()).then(d2 => { if (d2.success) setData(d2); }).catch(() => {});
       }
     } catch { /* non-fatal */ }
     setManualSaving(false);
