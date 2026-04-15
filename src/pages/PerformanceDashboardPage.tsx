@@ -591,7 +591,8 @@ export default function PerformanceDashboardPage() {
                     </thead>
                     <tbody>
                       {data.posts.map(post => (
-                        <tr key={post.content_id}>
+                        <React.Fragment key={post.content_id}>
+                        <tr>
                           <td className="perf-title-cell">
                             {post.hero_image_url && (
                               <img src={post.hero_image_url} alt="" className="perf-thumb" loading="lazy" width="40" height="28" />
@@ -654,6 +655,7 @@ export default function PerformanceDashboardPage() {
                             </td>
                           </tr>
                         )}
+                        </React.Fragment>
                       ))}
                     </tbody>
                   </table>
