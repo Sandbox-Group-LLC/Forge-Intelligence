@@ -8970,6 +8970,28 @@ app.post('/api/admin/reset-brand-paid', async (req, res) => {
 
 
 
+
+// ── Perplexity webhook drain — receives usage events ──────────────────────────
+app.post('/api/webhooks/perplexity', express.json({ limit: '1mb' }), async (req, res) => {
+  try {
+    const drainToken = req.headers['authorization']?.replace('Bearer ', '') || req.query.token;
+    if (!drainToken || drainToken !== process.env.PERPLEXITY_DRAIN_TOKEN) {
+      return res.status(403).json({ error: 'Invalid drain token' });
+    }
+    console.log('[Perplexity webhook]', JSON.stringify(req.body).slice(0, 500));
+    const payload = req.body || {};
+    await pool.query(
+      `INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms)
+       VALUES ($1, $2, $3, $4, $5)`,
+      ['perplexity_webhook', null, 'success', payload.tokens_used || 0, payload.duration_ms || 0]
+    ).catch(() => {});
+    res.json({ received: true });
+  } catch(e) {
+    console.error('[Perplexity webhook] Error:', e.message);
+    res.json({ received: true });
+  }
+});
+
 // ── fal.ai webhook drain — receives event logs from fal.ai dashboard ─────────
 app.post('/api/webhooks/fal', express.json({ limit: '1mb' }), async (req, res) => {
   try {
