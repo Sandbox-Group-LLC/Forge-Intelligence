@@ -106,6 +106,14 @@ export default function Product() {
           </p>
         </section>
 
+        {/* Product Shot: Brand Profile */}
+        <div style={styles.screenshotSection}>
+          <div style={styles.screenshot}>
+            <img src="/1.png" alt="Forge Intelligence — Brand Profile with voice analysis and tone attributes" style={styles.screenshotImg} />
+          </div>
+          <p style={styles.screenshotCaption}>Your brand's voice, personas, and competitive position — extracted from your actual website in minutes.</p>
+        </div>
+
         {/* The Problem */}
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>The Gap Nobody's Filling</h2>
@@ -135,6 +143,14 @@ export default function Product() {
             ))}
           </div>
         </section>
+
+        {/* Product Shot: GEO Opportunity Scores */}
+        <div style={styles.screenshotSection}>
+          <div style={styles.screenshot}>
+            <img src="/3.png" alt="GEO Opportunity Scores — ChatGPT, Perplexity, AI Overviews, Gemini citation probability" style={styles.screenshotImg} />
+          </div>
+          <p style={styles.screenshotCaption}>Citation probability scored across ChatGPT, Perplexity, AI Overviews, and Gemini — for every topic in your authority map.</p>
+        </div>
 
         {/* Who This Is For */}
         <section style={styles.section}>
@@ -171,6 +187,14 @@ export default function Product() {
           </div>
         </section>
 
+        {/* Product Shot: Content Generator */}
+        <div style={styles.screenshotSection}>
+          <div style={styles.screenshot}>
+            <img src="/4.png" alt="Content Generator — brain-aware topic alignment check before generation" style={styles.screenshotImg} />
+          </div>
+          <p style={styles.screenshotCaption}>The Brain checks topic alignment before you spend a single token. 89% match — and it knows what mistakes to avoid.</p>
+        </div>
+
         {/* The Brain */}
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>The Brain: Your Unfair Advantage</h2>
@@ -195,6 +219,14 @@ export default function Product() {
             </p>
           </div>
         </section>
+
+        {/* Product Shot: Entity & Schema Map */}
+        <div style={styles.screenshotSection}>
+          <div style={styles.screenshot}>
+            <img src="/5.png" alt="Entity and Schema Map — competitor cited, you are not" style={styles.screenshotImg} />
+          </div>
+          <p style={styles.screenshotCaption}>Competitors cited. You're not. The Entity Map shows exactly where to inject structured data so AI systems find you.</p>
+        </div>
 
         {/* What's Included */}
         <section style={styles.section}>
@@ -222,6 +254,14 @@ export default function Product() {
           </div>
         </section>
 
+        {/* Product Shot: Publishing Queue */}
+        <div style={styles.screenshotSection}>
+          <div style={styles.screenshot}>
+            <img src="/2.png" alt="Publishing Queue — content preview with hero image and multi-channel distribution" style={styles.screenshotImg} />
+          </div>
+          <p style={styles.screenshotCaption}>Preview, edit post copy, and publish to LinkedIn, X, Webflow, Ghost, or HubSpot — with UTM intelligence built in.</p>
+        </div>
+
         {/* Pricing */}
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>Pricing</h2>
@@ -240,6 +280,14 @@ export default function Product() {
             </div>
           </div>
         </section>
+
+        {/* Product Shot: Mission Control */}
+        <div style={styles.screenshotSection}>
+          <div style={styles.screenshot}>
+            <img src="/6.png" alt="Mission Control — provider costs, agent activity, live logs" style={styles.screenshotImg} />
+          </div>
+          <p style={styles.screenshotCaption}>Anthropic, Perplexity, and fal.ai — orchestrated for pennies. Full visibility into every token, every image, every call.</p>
+        </div>
 
         {/* CTA */}
         <section style={styles.ctaSection}>
@@ -626,6 +674,29 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
+  },
+  screenshot: {
+    width: '100%',
+    maxWidth: 960,
+    margin: '0 auto',
+    borderRadius: 12,
+    border: '1px solid rgba(255,255,255,0.08)',
+    boxShadow: '0 24px 64px rgba(0,0,0,0.4), 0 0 0 1px rgba(53,99,255,0.1)',
+    overflow: 'hidden' as const,
+  },
+  screenshotImg: {
+    width: '100%',
+    display: 'block',
+  },
+  screenshotCaption: {
+    fontSize: 13,
+    color: '#64748B',
+    textAlign: 'center' as const,
+    marginTop: 12,
+    fontStyle: 'italic' as const,
+  },
+  screenshotSection: {
+    padding: '20px 0 48px',
   },
   footer: {
     display: 'flex',
