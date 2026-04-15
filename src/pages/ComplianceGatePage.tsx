@@ -82,8 +82,35 @@ const tierColor = (tier: string) => tier === 'green' ? '#22C55E' : tier === 'yel
 
 function HighlightedBody({ body, flag }: { body: string; flag: any }) {
   if (!flag?.reason) return <p className="comp-section-body">{body}</p>;
-  const quotes = Array.from(flag.reason.matchAll(/[“”"']([^“”"']{8,})[“”"']/g)).map((m: any) => m[1] as string);
-  // Fallback: slide a window over reason words to find verbatim phrases in body
+  
+  // Primary: use flaggedExcerpt from Claude (the exact quote we asked for)
+  let quotes: string[] = [];
+  if (flag.flaggedExcerpt && flag.flaggedExcerpt.length >= 8) {
+    // Try exact match first
+    if (body.includes(flag.flaggedExcerpt)) {
+      quotes.push(flag.flaggedExcerpt);
+    } else {
+      // Case-insensitive fallback
+      const idx = body.toLowerCase().indexOf(flag.flaggedExcerpt.toLowerCase());
+      if (idx >= 0) {
+        quotes.push(body.slice(idx, idx + flag.flaggedExcerpt.length));
+      }
+    }
+  }
+  
+  // Fallback: extract quoted phrases from the reason text
+  if (!quotes.length) {
+    const extracted = Array.from(flag.reason.matchAll(/[\u201c\u201d"']([^\u201c\u201d"']{8,})[\u201c\u201d"']/g)).map((m: any) => m[1] as string);
+    for (const q of extracted) {
+      if (body.includes(q)) quotes.push(q);
+      else {
+        const idx = body.toLowerCase().indexOf(q.toLowerCase());
+        if (idx >= 0) quotes.push(body.slice(idx, idx + q.length));
+      }
+    }
+  }
+  
+  // Last resort: sliding window over reason words
   if (!quotes.length) {
     const words = flag.reason.replace(/[.,;:!?]+/g, ' ').split(/\s+/).filter(Boolean);
     for (let w = 0; w <= words.length - 5; w++) {
@@ -94,30 +121,6 @@ function HighlightedBody({ body, flag }: { body: string; flag: any }) {
       if (quotes.length >= 2) break;
     }
   }
-  if (!quotes.length) return <p className="comp-section-body">{body}</p>;
-  const flagColor = flag.type === 'factual_claim' ? '#EF4444' : flag.type === 'legal_risk' ? '#DC2626' : '#F59E0B';
-  type Part = { text: string; highlight: boolean };
-  let parts: Part[] = [{ text: body, highlight: false }];
-  for (const quote of quotes) {
-    parts = parts.flatMap((p: Part) => {
-      if (p.highlight || !p.text.includes(quote)) return [p];
-      const i = p.text.indexOf(quote);
-      return [
-        { text: p.text.slice(0, i), highlight: false },
-        { text: quote, highlight: true },
-        { text: p.text.slice(i + quote.length), highlight: false },
-      ].filter((x: Part) => x.text.length > 0);
-    });
-  }
-  return (
-    <p className="comp-section-body">
-      {parts.map((part: Part, i: number) => part.highlight
-        ? <mark key={i} style={{ background: flagColor + '28', color: flagColor, borderBottom: `2px solid ${flagColor}`, borderRadius: 2, padding: '0 2px' }}>{part.text}</mark>
-        : <span key={i}>{part.text}</span>
-      )}
-    </p>
-  );
-}
 
 function ComplianceGateContent() {
   const { activeBrand, authToken } = useApp();
