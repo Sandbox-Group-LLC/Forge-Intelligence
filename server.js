@@ -9019,6 +9019,35 @@ app.post('/api/webhooks/fal', express.json({ limit: '1mb' }), async (req, res) =
   }
 });
 
+// ── Manual Metrics Input — for channels without API access yet ────────────────
+app.post('/api/analytics/manual', requireAuth, async (req, res) => {
+  const { brandProfileId, contentId, channel, impressions, clicks, reactions, comments, reposts } = req.body;
+  if (!brandProfileId || !contentId || !channel) {
+    return res.status(400).json({ success: false, error: 'brandProfileId, contentId, and channel required' });
+  }
+  try {
+    await pool.query(
+      `INSERT INTO content_analytics (brand_profile_id, content_id, channel, impressions, clicks, reactions, comments, reposts, synced_at, raw_data)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), '{"source":"manual"}')
+       ON CONFLICT (content_id, channel)
+       DO UPDATE SET
+         impressions = GREATEST(content_analytics.impressions, EXCLUDED.impressions),
+         clicks = GREATEST(content_analytics.clicks, EXCLUDED.clicks),
+         reactions = GREATEST(content_analytics.reactions, EXCLUDED.reactions),
+         comments = GREATEST(content_analytics.comments, EXCLUDED.comments),
+         reposts = GREATEST(content_analytics.reposts, EXCLUDED.reposts),
+         synced_at = NOW(),
+         raw_data = jsonb_set(COALESCE(content_analytics.raw_data, '{}'), '{source}', '"manual"')`,
+      [brandProfileId, contentId, channel, impressions || 0, clicks || 0, reactions || 0, comments || 0, reposts || 0]
+    );
+    console.log(`[ANALYTICS] Manual metrics saved: ${channel} for ${contentId} — ${impressions} impr, ${clicks} clicks`);
+    res.json({ success: true });
+  } catch(e) {
+    console.error('[ANALYTICS] Manual save error:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // ── Sitemap.xml ──────────────────────────────────────────────────────────────
 app.get('/sitemap.xml', (req, res) => {
   const isProduction = req.hostname === 'forgeintelligence.ai';
