@@ -847,19 +847,21 @@ ${bodyHtml}
       const xUrl   = buildChannelUrl('x');
 
       // Shorten URLs via Bitly for cleaner post copy
-      const shorten = async (url: string): Promise<string> => {
+      const shorten = async (url: string, channel?: string): Promise<string> => {
         try {
+          const brandTag = item.brand_name || item.brand_url?.replace(/https?:\/\//, '') || 'unknown';
+          const tags = ['forge', brandTag, channel || 'social', item.campaign_name ? 'campaign' : 'standalone'].filter(Boolean);
           const r = await fetch('/api/utils/shorten-url', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...ah },
-            body: JSON.stringify({ url })
+            body: JSON.stringify({ url, tags })
           });
           const d = await r.json();
           return d.shortUrl || url;
         } catch { return url; }
       };
 
-      const [liShort, xShort] = await Promise.all([shorten(liUrl), shorten(xUrl)]);
+      const [liShort, xShort] = await Promise.all([shorten(liUrl, 'linkedin'), shorten(xUrl, 'x')]);
 
       let liCopy = `${article?.title || item.title}\n\nRead more: ${liShort}`;
       try {
