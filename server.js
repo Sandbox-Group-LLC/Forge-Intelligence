@@ -10024,18 +10024,20 @@ app.get('/api/digest/unsubscribe/:token', async (req, res) => {
 });
 
 app.post('/api/utils/shorten-url', async (req, res) => {
-  const { url } = req.body;
+  const { url, tags } = req.body;
   if (!url) return res.status(400).json({ error: 'url required' });
   const BITLY_TOKEN = process.env.BITLY_ACCESS_TOKEN;
   if (!BITLY_TOKEN) return res.status(500).json({ error: 'Bitly not configured' });
   try {
+    const payload = { long_url: url };
+    if (tags && Array.isArray(tags) && tags.length > 0) payload.tags = tags.map(t => String(t).slice(0, 50));
     const r = await fetch('https://api-ssl.bitly.com/v4/shorten', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${BITLY_TOKEN}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ long_url: url }),
+      body: JSON.stringify(payload),
     });
     const d = await r.json();
     if (!r.ok) throw new Error(d.message || 'Bitly error');
