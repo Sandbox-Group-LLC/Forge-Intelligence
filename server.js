@@ -9473,7 +9473,7 @@ app.post('/api/geo/track/:brandProfileId', async (req, res) => {
       const artParams = contentId ? [contentId] : [];
       const articlesRes = await pool.query(artQuery, artParams).catch(() => ({ rows: [] }));
 
-      const fetchWithTimeout = (url, opts, ms = 12000) => {
+      const fetchWithTimeout = (url, opts, ms = 30000) => {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), ms);
         return fetch(url, { ...opts, signal: controller.signal }).finally(() => clearTimeout(timer));
