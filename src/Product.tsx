@@ -147,7 +147,7 @@ export default function Product() {
         {/* Product Shot: GEO Opportunity Scores */}
         <div style={styles.screenshotSection}>
           <div style={styles.screenshot}>
-            <img src="/3.png" alt="GEO Opportunity Scores — ChatGPT, Perplexity, AI Overviews, Gemini citation probability" style={styles.screenshotImg} />
+            <img src="/2.png" alt="Publishing Queue — content preview with hero image and multi-channel distribution" style={styles.screenshotImg} />
           </div>
           <p style={styles.screenshotCaption}>Citation probability scored across ChatGPT, Perplexity, AI Overviews, and Gemini — for every topic in your authority map.</p>
         </div>
@@ -257,9 +257,9 @@ export default function Product() {
         {/* Product Shot: Publishing Queue */}
         <div style={styles.screenshotSection}>
           <div style={styles.screenshot}>
-            <img src="/2.png" alt="Publishing Queue — content preview with hero image and multi-channel distribution" style={styles.screenshotImg} />
+            <img src="/3.png" alt="GEO Opportunity Scores — ChatGPT, Perplexity, AI Overviews, Gemini citation probability" style={styles.screenshotImg} />
           </div>
-          <p style={styles.screenshotCaption}>Preview, edit post copy, and publish to LinkedIn, X, Webflow, Ghost, or HubSpot — with UTM intelligence built in.</p>
+          <p style={styles.screenshotCaption}>Citation probability scored across ChatGPT, Perplexity, AI Overviews, and Gemini — for every topic in your authority map.</p>
         </div>
 
         {/* Pricing */}
@@ -284,9 +284,9 @@ export default function Product() {
         {/* Product Shot: Mission Control */}
         <div style={styles.screenshotSection}>
           <div style={styles.screenshot}>
-            <img src="/6.png" alt="Mission Control — provider costs, agent activity, live logs" style={styles.screenshotImg} />
+            <img src="/6.png" alt="Performance Dashboard — analytics, content decay, citation tracking" style={styles.screenshotImg} />
           </div>
-          <p style={styles.screenshotCaption}>Anthropic, Perplexity, and fal.ai — orchestrated for pennies. Full visibility into every token, every image, every call.</p>
+          <p style={styles.screenshotCaption}>Real-time analytics across every channel. Content decay detection, citation tracking, and campaign attribution — all in one view.</p>
         </div>
 
         {/* CTA */}
