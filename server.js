@@ -9018,6 +9018,29 @@ app.post('/api/webhooks/fal', express.json({ limit: '1mb' }), async (req, res) =
   }
 });
 
+// ── Sitemap.xml ──────────────────────────────────────────────────────────────
+app.get('/sitemap.xml', (req, res) => {
+  const isProduction = req.hostname === 'forgeintelligence.ai';
+  if (!isProduction) return res.status(404).send('No sitemap for dev');
+  
+  const urls = [
+    { loc: 'https://forgeintelligence.ai/', priority: '1.0', changefreq: 'weekly' },
+    { loc: 'https://forgeintelligence.ai/product', priority: '0.9', changefreq: 'weekly' },
+  ];
+  
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls.map(u => `  <url>
+    <loc>${u.loc}</loc>
+    <changefreq>${u.changefreq}</changefreq>
+    <priority>${u.priority}</priority>
+  </url>`).join('\n')}
+</urlset>`;
+  
+  res.set('Content-Type', 'application/xml');
+  res.send(xml);
+});
+
 // ── Robots.txt — block crawlers on dev, allow on production ──────────────────
 app.get('/robots.txt', (req, res) => {
   const host = req.headers.host || '';
