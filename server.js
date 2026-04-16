@@ -8275,7 +8275,11 @@ app.post('/api/pipedream/account', requireAuth, async (req, res) => {
 app.get('/api/pipedream/config', (req, res) => {
   res.json({
     projectId: process.env.PIPEDREAM_PROJECT_ID,
-    environment: process.env.PIPEDREAM_PROJECT_ENVIRONMENT || 'development'
+    environment: process.env.PIPEDREAM_PROJECT_ENVIRONMENT || 'development',
+    oauthAppIds: {
+      facebook_pages: process.env.PIPEDREAM_OAUTH_APP_ID_FACEBOOK || null,
+      instagram: process.env.PIPEDREAM_OAUTH_APP_ID_INSTAGRAM || null,
+    }
   });
 });
 
