@@ -4570,6 +4570,23 @@ RULES:
 
     const rewrittenText = response.content[0]?.text?.trim();
     if (!rewrittenText) return res.status(500).json({ success: false, error: 'AI returned empty response' });
+
+    // Feed the brain: every user correction is a signal of what the writer got wrong
+    if (brandProfileId) {
+      pool.query(
+        `INSERT INTO brain_mistakes (brand_profile_id, mistake_type, description, human_feedback, severity, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
+        [
+          brandProfileId,
+          'user_rewrite',
+          `AI wrote: "${selectedText.slice(0, 400)}"${sectionHeading ? ` (in section: ${sectionHeading})` : ''}`,
+          `User instruction: "${instruction.slice(0, 400)}" | Corrected to: "${rewrittenText.slice(0, 400)}"`,
+          'medium'
+        ]
+      ).catch(e => console.error('[REWRITE-BRAIN] mistake log error:', e.message));
+      console.log(`[REWRITE-BRAIN] Logged correction for brand ${brandProfileId}`);
+    }
+
     res.json({ success: true, rewrittenText });
   } catch (e) {
     console.error('[REWRITE-SELECTION]', e.message);
