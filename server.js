@@ -7117,13 +7117,33 @@ Output only the post text.` }]
             try {
               const account = await getPipedreamAccountCredentials(pipedreamAccountId, item.brand_profile_id);
               const accountCreds = account.credentials || {};
-              // facebook_pages app stores: page_id, page_access_token
-              // facebook_graph_api app stores: oauth_access_token (user token)
-              const pageId = accountCreds.page_id || accountCreds.pageId || creds.pageId;
-              const pageToken = accountCreds.page_access_token || accountCreds.oauth_access_token;
+              console.log('[FB-PIPEDREAM] account shape:', JSON.stringify({ 
+                topKeys: Object.keys(account),
+                credKeys: Object.keys(accountCreds),
+                hasOauthAccessToken: !!accountCreds.oauth_access_token,
+                name: account.name,
+                external_id: account.external_id
+              }));
               
-              if (!pageToken) throw new Error('Pipedream did not return a Page access token. Reconnect Facebook in Integrations.');
-              if (!pageId) throw new Error('No Facebook Page ID found. Reconnect Facebook and select a Page.');
+              // Try all known credential field names across facebook_pages and facebook_graph_api apps
+              const pageToken = accountCreds.page_access_token 
+                            || accountCreds.pageAccessToken 
+                            || accountCreds.access_token 
+                            || accountCreds.oauth_access_token;
+              const pageId = accountCreds.page_id 
+                         || accountCreds.pageId 
+                         || accountCreds.page?.id
+                         || account.external_id  // facebook_pages often stores page_id here
+                         || creds.pageId;
+              
+              if (!pageToken) {
+                console.error('[FB-PIPEDREAM] No token found. Available keys:', Object.keys(accountCreds).join(', '));
+                throw new Error('Pipedream did not return a Page access token. Reconnect Facebook in Integrations.');
+              }
+              if (!pageId) {
+                console.error('[FB-PIPEDREAM] No page_id found. Available keys:', Object.keys(accountCreds).join(', '));
+                throw new Error('No Facebook Page ID found. Reconnect Facebook and select a Page.');
+              }
               
               const fbRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}/feed`, {
                 method: 'POST',
