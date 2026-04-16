@@ -7113,25 +7113,17 @@ Output only the post text.` }]
           }
 
           if (pipedreamAccountId) {
-            // Pipedream Connect path — managed auth, automatic token refresh
+            // Pipedream Connect path — fetch the Page credentials Pipedream already stored
             try {
-              // Step 1: resolve the Page ID — list pages the user manages
-              const pagesResp = await pipedreamProxy({
-                externalUserId: item.brand_profile_id,
-                accountId: pipedreamAccountId,
-                url: 'https://graph.facebook.com/v21.0/me/accounts',
-                method: 'GET',
-              });
-              const pages = pagesResp?.data || [];
-              if (!pages.length) throw new Error('No Facebook Pages found for this account. Reconnect Facebook in Integrations.');
+              const account = await getPipedreamAccountCredentials(pipedreamAccountId, item.brand_profile_id);
+              const accountCreds = account.credentials || {};
+              // facebook_pages app stores: page_id, page_access_token
+              // facebook_graph_api app stores: oauth_access_token (user token)
+              const pageId = accountCreds.page_id || accountCreds.pageId || creds.pageId;
+              const pageToken = accountCreds.page_access_token || accountCreds.oauth_access_token;
               
-              // Use stored page_id if present, otherwise the first page
-              const targetPage = creds.pageId ? pages.find(p => p.id === creds.pageId) : pages[0];
-              if (!targetPage) throw new Error(`Stored Facebook Page ID (${creds.pageId}) not accessible. Reconnect Facebook.`);
-              
-              // Step 2: publish to the page using its page access token (returned inline in /me/accounts)
-              const pageToken = targetPage.access_token;
-              const pageId = targetPage.id;
+              if (!pageToken) throw new Error('Pipedream did not return a Page access token. Reconnect Facebook in Integrations.');
+              if (!pageId) throw new Error('No Facebook Page ID found. Reconnect Facebook and select a Page.');
               
               const fbRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}/feed`, {
                 method: 'POST',
@@ -7144,7 +7136,7 @@ Output only the post text.` }]
               const fbPostUrl = `https://www.facebook.com/${fbData.id?.replace('_', '/posts/')}`;
               results[channel] = { status: 'published', url: fbPostUrl, postId: fbData.id, utmParams };
               
-              // Cache the resolved pageId for next time (faster path)
+              // Cache the resolved pageId for next time
               if (!creds.pageId) {
                 await pool.query(
                   `UPDATE publishing_channels SET credentials = credentials || $1 WHERE brand_profile_id = $2 AND channel = 'facebook'`,
@@ -8159,6 +8151,27 @@ async function getPipedreamAccessToken() {
   _pdAccessToken = d.access_token;
   _pdTokenExpiresAt = Date.now() + 55 * 60 * 1000;
   return _pdAccessToken;
+}
+
+// Fetch a connected account's credentials from Pipedream's accounts API
+// This returns the real OAuth token (including Page access token for facebook_pages)
+async function getPipedreamAccountCredentials(accountId, externalUserId) {
+  const projectId = process.env.PIPEDREAM_PROJECT_ID;
+  const environment = process.env.PIPEDREAM_PROJECT_ENVIRONMENT || 'development';
+  if (!projectId) throw new Error('PIPEDREAM_PROJECT_ID not configured');
+  
+  const pdToken = await getPipedreamAccessToken();
+  const url = `https://api.pipedream.com/v1/connect/${projectId}/accounts/${accountId}?include_credentials=true&external_user_id=${encodeURIComponent(externalUserId)}`;
+  
+  const r = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${pdToken}`,
+      'x-pd-environment': environment,
+    }
+  });
+  const d = await r.json();
+  if (!r.ok) throw new Error(`Pipedream account fetch error ${r.status}: ${JSON.stringify(d)}`);
+  return d.data || d;
 }
 
 // Proxy an upstream request through Pipedream Connect — handles token refresh transparently
