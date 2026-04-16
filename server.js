@@ -748,7 +748,8 @@ Rules:
 - Let the brand's visual style and color palette drive the aesthetic — do not impose a generic look
 - Photorealistic editorial or commercial photography appropriate to this brand's industry and tone
 - Think high-end magazine editorial or Bloomberg Businessweek — grounded, sophisticated, real-world
-- Prefer environmental scenes, workspace settings, lifestyle moments, or architectural details over product close-ups
+- Prefer environmental scenes, workspace settings, lifestyle moments, or textural details over product close-ups
+- NEVER interpret the brand name literally — 'Forge' is a software company, not a metalwork shop or architecture firm
 - NO surrealist compositions, impossible physics, floating objects, or dreamlike distortions
 - NO AI art signatures: hyperreal skin textures, metallic liquids, abstract blob shapes, oversaturated macro shots
 - NO floating UI elements, holographic screens, neon data walls, or sci-fi aesthetics
