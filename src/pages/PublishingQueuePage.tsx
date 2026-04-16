@@ -1675,7 +1675,7 @@ return (
               }}>
                 <span>
                   <span style={{ marginRight: 6 }}>💡</span>
-                  Post copy edits only — for article-level changes, head back to the Compliance Gate.
+                  Need more than quick edits? The Compliance Gate has Forge's full context, the AI rewrite toolbar, and flagged-section guidance.
                 </span>
                 <button
                   onClick={() => { setContentPreview(null); setCurrentView('compliance-gate'); }}
