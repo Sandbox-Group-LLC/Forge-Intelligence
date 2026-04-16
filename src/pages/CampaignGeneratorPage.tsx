@@ -364,7 +364,7 @@ function CampaignGeneratorContent() {
             </div>
           </div>
           <div className="camp-stats">
-            {[['8','Articles'],['4','Weeks'],['~$1.14','Total cost'],['~18min','Est. time']].map(([n,l]) => (
+            {[['8','Articles'],['4','Weeks'],['~18min','Est. time']].map(([n,l]) => (
               <div key={l} className="camp-stat">
                 <span className="camp-stat-num">{n}</span>
                 <span className="camp-stat-label">{l}</span>
