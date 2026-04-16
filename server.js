@@ -7038,14 +7038,26 @@ Output only the post text.` }]
                 // Update stored tokens
                 await pool.query(
                   `UPDATE publishing_channels SET credentials = credentials || $1 WHERE brand_profile_id = $2 AND channel = 'x'`,
-                  [JSON.stringify({ oauth2AccessToken: refreshed.access_token, oauth2RefreshToken: refreshed.refresh_token || creds.oauth2RefreshToken }), brandProfileId]
+                  [JSON.stringify({ oauth2AccessToken: refreshed.access_token, oauth2RefreshToken: refreshed.refresh_token || creds.oauth2RefreshToken }), item.brand_profile_id]
                 );
                 xRes = await fetch(tweetEndpoint, {
                   method: 'POST',
                   headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                   body: JSON.stringify({ text: tweetText })
                 });
-              } catch(e) { console.error('[X] Token refresh failed:', e.message); }
+              } catch(e) {
+                console.error('[X] Token refresh failed:', e.message);
+                // Invalid refresh token — clear tokens so user is prompted to reconnect
+                if (e.message && (e.message.includes('invalid') || e.message.includes('revoked') || e.message.includes('expired'))) {
+                  await pool.query(
+                    `UPDATE publishing_channels SET credentials = credentials - 'oauth2AccessToken' - 'oauth2RefreshToken' WHERE brand_profile_id = $1 AND channel = 'x'`,
+                    [item.brand_profile_id]
+                  ).catch(() => {});
+                  console.error(`[X] Cleared expired tokens for brand ${item.brand_profile_id} — user must reconnect`);
+                  throw new Error('X authentication expired. Please reconnect X in Integrations.');
+                }
+                throw e;
+              }
             }
             const xData = await xRes.json();
             if (!xRes.ok) throw new Error(xData.detail || xData.title || JSON.stringify(xData));
