@@ -163,7 +163,7 @@ interface QueueItem {
 interface ConnectedChannel { channel: string; }
 
 export default function PublishingQueuePage() {
-  const { isPaid, activeBrand, brandLoading, authToken, setCurrentView } = useApp();
+  const { isPaid, activeBrand, brandLoading, authToken } = useApp();
   const activeBrandId = activeBrand?.id ?? null;
   const ah: Record<string, string> = authToken ? { Authorization: `Bearer ${authToken}` } : {};
   
@@ -1678,7 +1678,7 @@ return (
                   Need more than quick edits? The Compliance Gate has Forge's full context, the AI rewrite toolbar, and flagged-section guidance.
                 </span>
                 <button
-                  onClick={() => { setContentPreview(null); setCurrentView('compliance-gate'); }}
+                  onClick={() => { setContentPreview(null); window.location.href = `/app/compliance-gate?contentId=${item.content_id || item.id}&brandId=${item.brand_profile_id}`; }}
                   style={{
                     padding: '4px 12px',
                     fontSize: 12,
