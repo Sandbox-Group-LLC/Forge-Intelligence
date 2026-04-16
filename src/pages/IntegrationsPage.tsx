@@ -209,6 +209,7 @@ const CHANNELS: ChannelDef[] = [
     id: 'facebook',
     label: 'Facebook',
     pipedreamApp: 'facebook_pages',
+    pipedreamOauthAppId: 'FACEBOOK_OAUTH_APP_ID', // placeholder — filled from /api/pipedream/config
     description: 'Publish articles to your company Facebook Page via Graph API. Requires a Page Access Token.',
     color: '#1877F2',
     logo: 'f',
@@ -392,7 +393,8 @@ export default function IntegrationsPage() {
         if (!token) throw new Error('Could not get connect token');
 
         // Open Pipedream Connect iframe directly — bypass SDK token resolution issues
-        const iframeUrl = `https://pipedream.com/_static/connect.html?token=${encodeURIComponent(token)}&app=${encodeURIComponent(channel.pipedreamApp || '')}`;
+        const oauthAppId = (channel as any).pipedreamOauthAppId && (channel as any).pipedreamOauthAppId !== 'FACEBOOK_OAUTH_APP_ID' ? (channel as any).pipedreamOauthAppId : (await fetch('/api/pipedream/config').then(r => r.json()).then(c => c.oauthAppIds?.[channel.pipedreamApp!]).catch(() => null));
+        const iframeUrl = `https://pipedream.com/_static/connect.html?token=${encodeURIComponent(token)}${oauthAppId ? `&oauthAppId=${encodeURIComponent(oauthAppId)}` : ''}&app=${encodeURIComponent(channel.pipedreamApp || '')}`;
 
         await new Promise<void>((resolve) => {
           const iframe = document.createElement('iframe');
