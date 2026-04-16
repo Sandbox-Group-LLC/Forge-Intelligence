@@ -7113,42 +7113,34 @@ Output only the post text.` }]
           }
 
           if (pipedreamAccountId) {
-            // Pipedream Connect path — fetch the Page credentials Pipedream already stored
+            // Pipedream Connect path — uses Proxy API (Pipedream holds credentials, we never see them)
             try {
-              const account = await getPipedreamAccountCredentials(pipedreamAccountId, item.brand_profile_id);
-              const accountCreds = account.credentials || {};
-              // Sanitize but dump MORE to find where credentials live
-              const sanitized = JSON.parse(JSON.stringify(account));
-              // Redact any token values but keep keys visible
-              const redact = (obj) => {
-                if (!obj || typeof obj !== 'object') return obj;
-                for (const k of Object.keys(obj)) {
-                  if (typeof obj[k] === 'string' && obj[k].length > 30) obj[k] = `[${obj[k].length} chars]`;
-                  else if (typeof obj[k] === 'object') redact(obj[k]);
-                }
-                return obj;
-              };
-              console.log('[FB-PIPEDREAM] full account:', JSON.stringify(redact(sanitized)));
+              // Step 1: List Pages via the proxy — Pipedream injects the user OAuth token
+              const pagesResp = await pipedreamProxy({
+                externalUserId: item.brand_profile_id,
+                accountId: pipedreamAccountId,
+                url: 'https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,tasks',
+                method: 'GET',
+              });
               
-              // Try all known credential field names across facebook_pages and facebook_graph_api apps
-              const pageToken = accountCreds.page_access_token 
-                            || accountCreds.pageAccessToken 
-                            || accountCreds.access_token 
-                            || accountCreds.oauth_access_token;
-              const pageId = accountCreds.page_id 
-                         || accountCreds.pageId 
-                         || accountCreds.page?.id
-                         || account.external_id  // facebook_pages often stores page_id here
-                         || creds.pageId;
+              const pages = pagesResp?.data || [];
+              if (!pages.length) {
+                throw new Error('No Facebook Pages found on your account, OR the Pipedream connection is missing the pages_show_list scope. Go to Integrations → Facebook → Reconnect, and ensure you grant ALL permissions on the Facebook consent screen (especially "Manage your Pages" and "Create and manage content on Pages").');
+              }
               
-              if (!pageToken) {
-                console.error('[FB-PIPEDREAM] No token found. Available keys:', Object.keys(accountCreds).join(', '));
-                throw new Error('Pipedream did not return a Page access token. Reconnect Facebook in Integrations.');
+              // Prefer stored pageId, fall back to first page the user can post to
+              let targetPage = null;
+              if (creds.pageId) targetPage = pages.find(p => p.id === creds.pageId);
+              if (!targetPage) {
+                // Pick first page that has CREATE_CONTENT task permission
+                targetPage = pages.find(p => (p.tasks || []).includes('CREATE_CONTENT')) || pages[0];
               }
-              if (!pageId) {
-                console.error('[FB-PIPEDREAM] No page_id found. Available keys:', Object.keys(accountCreds).join(', '));
-                throw new Error('No Facebook Page ID found. Reconnect Facebook and select a Page.');
-              }
+              
+              if (!targetPage) throw new Error('No Facebook Page with publish permission found. Reconnect Facebook.');
+              if (!targetPage.access_token) throw new Error('Facebook Page found but no Page access token returned. The connection is missing pages_manage_posts scope — reconnect and grant all permissions.');
+              
+              const pageToken = targetPage.access_token;
+              const pageId = targetPage.id;
               
               const fbRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}/feed`, {
                 method: 'POST',
@@ -7161,16 +7153,16 @@ Output only the post text.` }]
               const fbPostUrl = `https://www.facebook.com/${fbData.id?.replace('_', '/posts/')}`;
               results[channel] = { status: 'published', url: fbPostUrl, postId: fbData.id, utmParams };
               
-              // Cache the resolved pageId for next time
+              // Cache pageId so next publish skips discovery
               if (!creds.pageId) {
                 await pool.query(
                   `UPDATE publishing_channels SET credentials = credentials || $1 WHERE brand_profile_id = $2 AND channel = 'facebook'`,
-                  [JSON.stringify({ pageId }), item.brand_profile_id]
+                  [JSON.stringify({ pageId, pageName: targetPage.name }), item.brand_profile_id]
                 ).catch(() => {});
               }
             } catch(e) {
               console.error('[FB-PIPEDREAM]', e.message);
-              throw new Error(`Facebook publish via Pipedream failed: ${e.message}`);
+              throw new Error(e.message);
             }
           } else {
             // Legacy native path — direct pageId + pageAccessToken
