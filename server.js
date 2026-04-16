@@ -3979,7 +3979,13 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
       `INSERT INTO ${tableName} (brand_profile_id, enriched_brief_id, title, article_json, overall_confidence, brain_match_score, status)
        VALUES ($1, $2, $3, $4, $5, $6, 'draft') RETURNING id`,
       [brandProfileId, enrichedBriefId || null, parsed.title, JSON.stringify(parsed),
-       parsed.overallConfidence || null, parsed.brainMatchScore || null]
+       parsed.overallConfidence || null, parsed.brainMatchScore || (() => {
+         // Fallback: Claude dropped the field — compute from section confidences
+         const sections = parsed.sections || [];
+         if (!sections.length) return null;
+         const avg = sections.reduce((a, s) => a + (s.confidence || 0), 0) / sections.length;
+         return Math.round(avg);
+       })()]
     );
     const contentId = contentInsert.rows[0]?.id;
 
