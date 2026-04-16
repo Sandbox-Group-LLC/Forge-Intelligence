@@ -204,6 +204,21 @@ function ComplianceGateContent() {
     if (id) { setBrandProfileId(id); loadArticles(id); }
   }, [activeBrand?.id]);
 
+  // Auto-select article when deep-linked from Publishing Queue (?contentId=...)
+  useEffect(() => {
+    if (!articles.length) return;
+    const params = new URLSearchParams(window.location.search);
+    const contentId = params.get('contentId');
+    if (!contentId) return;
+    const match = articles.find(a => a.id === contentId || (a as any).content_id === contentId);
+    if (match) {
+      setSelectedArticle(match);
+      setStep('review');
+      // Clean URL without triggering nav
+      window.history.replaceState({}, '', '/app/compliance-gate');
+    }
+  }, [articles]);
+
   // Persist edits to localStorage whenever editedSections or decisions change
   useEffect(() => {
     if (!selectedArticle) return;
