@@ -7117,13 +7117,18 @@ Output only the post text.` }]
             try {
               const account = await getPipedreamAccountCredentials(pipedreamAccountId, item.brand_profile_id);
               const accountCreds = account.credentials || {};
-              console.log('[FB-PIPEDREAM] account shape:', JSON.stringify({ 
-                topKeys: Object.keys(account),
-                credKeys: Object.keys(accountCreds),
-                hasOauthAccessToken: !!accountCreds.oauth_access_token,
-                name: account.name,
-                external_id: account.external_id
-              }));
+              // Sanitize but dump MORE to find where credentials live
+              const sanitized = JSON.parse(JSON.stringify(account));
+              // Redact any token values but keep keys visible
+              const redact = (obj) => {
+                if (!obj || typeof obj !== 'object') return obj;
+                for (const k of Object.keys(obj)) {
+                  if (typeof obj[k] === 'string' && obj[k].length > 30) obj[k] = `[${obj[k].length} chars]`;
+                  else if (typeof obj[k] === 'object') redact(obj[k]);
+                }
+                return obj;
+              };
+              console.log('[FB-PIPEDREAM] full account:', JSON.stringify(redact(sanitized)));
               
               // Try all known credential field names across facebook_pages and facebook_graph_api apps
               const pageToken = accountCreds.page_access_token 
