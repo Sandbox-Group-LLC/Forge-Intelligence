@@ -163,7 +163,7 @@ interface QueueItem {
 interface ConnectedChannel { channel: string; }
 
 export default function PublishingQueuePage() {
-  const { isPaid, activeBrand, brandLoading, authToken } = useApp();
+  const { isPaid, activeBrand, brandLoading, authToken, setCurrentView } = useApp();
   const activeBrandId = activeBrand?.id ?? null;
   const ah: Record<string, string> = authToken ? { Authorization: `Bearer ${authToken}` } : {};
   
@@ -1659,6 +1659,38 @@ return (
                   <div className="pq-modal-sub">{item.title}</div>
                 </div>
                 <button className="pq-modal-close" onClick={() => setContentPreview(null)}><X /></button>
+              </div>
+
+              {/* Editing hint — route back to Compliance Gate for deeper edits */}
+              <div style={{
+                padding: '10px 20px',
+                background: 'rgba(59, 130, 246, 0.06)',
+                borderBottom: '1px solid rgba(59, 130, 246, 0.15)',
+                fontSize: 12,
+                color: '#475569',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12
+              }}>
+                <span>
+                  <span style={{ marginRight: 6 }}>💡</span>
+                  Post copy edits only — for article-level changes, head back to the Compliance Gate.
+                </span>
+                <button
+                  onClick={() => { setContentPreview(null); setCurrentView('compliance-gate'); }}
+                  style={{
+                    padding: '4px 12px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    background: '#3B82F6',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 6,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap'
+                  }}
+                >Open Compliance Gate →</button>
               </div>
 
               <div className="pq-preview-layout">
