@@ -394,7 +394,7 @@ function ContentGeneratorContent() {
         <>
           <div className="cg-meta-bar">
             <span className="cg-meta-item"><FileText size={12} /> {article.estimatedReadTime}</span>
-            <span className="cg-meta-item" style={{ color: '#10B981' }}>Brain Match: {article.brainMatchScore}/100</span>
+            {article.brainMatchScore != null && (<span className="cg-meta-item" style={{ color: '#10B981' }}>Brain Match: {article.brainMatchScore}/100</span>)}
             <span className="cg-meta-item">{article.citationOpportunities?.length || 0} citations needed</span>
             <div className="cg-tabs">
               {(['article', 'meta', 'schema'] as const).map(tab => (
