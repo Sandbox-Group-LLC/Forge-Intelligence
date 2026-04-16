@@ -6,6 +6,7 @@ import pkg from 'pg';
 import Anthropic from '@anthropic-ai/sdk';
 import { randomUUID, randomBytes, createHmac, createHash } from 'crypto';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { createBackendClient } from '@pipedream/sdk/server';
 
 const { Pool } = pkg;
 const __filename = fileURLToPath(import.meta.url);
@@ -7089,14 +7090,14 @@ Output only the post text.` }]
           }
 
         } else if (channel === 'facebook') {
-          // ── Facebook Page API publish ──
-          const { pageId, pageAccessToken } = chConfig.credentials || {};
-          if (!pageId || !pageAccessToken) throw new Error('Facebook Page ID and Page Access Token are required');
-
+          // ── Facebook publish via Pipedream Connect Proxy ──
+          const creds = chConfig.credentials || {};
+          const pipedreamAccountId = creds.pipedream_account_id;
+          
           const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
           const utmUrl = articleUrl + '?' + new URLSearchParams({ ...utmCtx, utm_source: 'facebook', utm_medium: 'social' }).toString();
 
-          // Generate FB post copy via Claude Haiku (reuse generate-post-copy logic inline)
+          // Generate FB post copy via Claude Haiku
           let fbMessage = `${item.title}\n\n${utmUrl}`;
           try {
             const haiku = await anthropic.messages.create({
@@ -7104,7 +7105,7 @@ Output only the post text.` }]
               max_tokens: 600,
               messages: [{
                 role: 'user',
-                content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant hashtags at the end. End with: Read more: ${utmUrl}\n\nArticle title: ${item.title}`
+                content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant tags. Include the URL on its own line at the end.\n\nArticle title: ${item.title}\nArticle URL: ${utmUrl}`
               }]
             });
             fbMessage = haiku.content[0]?.text || fbMessage;
@@ -7112,16 +7113,64 @@ Output only the post text.` }]
             console.warn('[FB] Haiku post copy failed, using fallback:', e.message);
           }
 
-          const fbRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}/feed`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: fbMessage, link: utmUrl, access_token: pageAccessToken })
-          });
-          const fbData = await fbRes.json();
-          if (!fbRes.ok || fbData.error) throw new Error(fbData.error?.message || 'Facebook publish failed');
-
-          const fbPostUrl = `https://www.facebook.com/${fbData.id?.replace('_', '/posts/')}`;
-          results[channel] = { status: 'published', url: fbPostUrl, postId: fbData.id, utmParams };
+          if (pipedreamAccountId) {
+            // Pipedream Connect path — managed auth, automatic token refresh
+            try {
+              // Step 1: resolve the Page ID — list pages the user manages
+              const pagesResp = await pipedreamProxy({
+                externalUserId: item.brand_profile_id,
+                accountId: pipedreamAccountId,
+                url: 'https://graph.facebook.com/v21.0/me/accounts',
+                method: 'GET',
+              });
+              const pages = pagesResp?.data || [];
+              if (!pages.length) throw new Error('No Facebook Pages found for this account. Reconnect Facebook in Integrations.');
+              
+              // Use stored page_id if present, otherwise the first page
+              const targetPage = creds.pageId ? pages.find(p => p.id === creds.pageId) : pages[0];
+              if (!targetPage) throw new Error(`Stored Facebook Page ID (${creds.pageId}) not accessible. Reconnect Facebook.`);
+              
+              // Step 2: publish to the page using its page access token (returned inline in /me/accounts)
+              const pageToken = targetPage.access_token;
+              const pageId = targetPage.id;
+              
+              const fbRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}/feed`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: fbMessage, link: utmUrl, access_token: pageToken })
+              });
+              const fbData = await fbRes.json();
+              if (!fbRes.ok || fbData.error) throw new Error(fbData.error?.message || 'Facebook publish failed');
+              
+              const fbPostUrl = `https://www.facebook.com/${fbData.id?.replace('_', '/posts/')}`;
+              results[channel] = { status: 'published', url: fbPostUrl, postId: fbData.id, utmParams };
+              
+              // Cache the resolved pageId for next time (faster path)
+              if (!creds.pageId) {
+                await pool.query(
+                  `UPDATE publishing_channels SET credentials = credentials || $1 WHERE brand_profile_id = $2 AND channel = 'facebook'`,
+                  [JSON.stringify({ pageId }), item.brand_profile_id]
+                ).catch(() => {});
+              }
+            } catch(e) {
+              console.error('[FB-PIPEDREAM]', e.message);
+              throw new Error(`Facebook publish via Pipedream failed: ${e.message}`);
+            }
+          } else {
+            // Legacy native path — direct pageId + pageAccessToken
+            const { pageId, pageAccessToken } = creds;
+            if (!pageId || !pageAccessToken) throw new Error('Facebook not connected. Connect via Pipedream in Integrations.');
+            
+            const fbRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}/feed`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message: fbMessage, link: utmUrl, access_token: pageAccessToken })
+            });
+            const fbData = await fbRes.json();
+            if (!fbRes.ok || fbData.error) throw new Error(fbData.error?.message || 'Facebook publish failed');
+            const fbPostUrl = `https://www.facebook.com/${fbData.id?.replace('_', '/posts/')}`;
+            results[channel] = { status: 'published', url: fbPostUrl, postId: fbData.id, utmParams };
+          }
 
         } else if (channel === 'reddit') {
           // ── Reddit API publish to company subreddit ──
@@ -8090,6 +8139,41 @@ async function runScheduledPublishes() {
 }
 
 
+
+
+// ── Pipedream Connect Proxy helper ────────────────────────────────────────────
+let _pdClient = null;
+function getPdClient() {
+  if (_pdClient) return _pdClient;
+  const clientId = process.env.PIPEDREAM_CLIENT_ID;
+  const clientSecret = process.env.PIPEDREAM_CLIENT_SECRET;
+  const projectId = process.env.PIPEDREAM_PROJECT_ID;
+  const environment = process.env.PIPEDREAM_PROJECT_ENVIRONMENT || 'development';
+  if (!clientId || !clientSecret || !projectId) throw new Error('Pipedream not configured');
+  _pdClient = createBackendClient({
+    credentials: { clientId, clientSecret },
+    projectId,
+    environment,
+  });
+  return _pdClient;
+}
+
+// Proxy an upstream request through Pipedream — handles token refresh transparently
+async function pipedreamProxy({ externalUserId, accountId, url, method = 'GET', headers = {}, data }) {
+  const pd = getPdClient();
+  const resp = await pd.makeProxyRequest(
+    { searchParams: { external_user_id: externalUserId, account_id: accountId } },
+    {
+      url,
+      options: {
+        method,
+        headers,
+        ...(data !== undefined ? { body: typeof data === 'string' ? data : JSON.stringify(data) } : {}),
+      },
+    }
+  );
+  return resp;
+}
 
 // ── Pipedream Connect ─────────────────────────────────────────────────────────
 
