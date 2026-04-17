@@ -358,6 +358,48 @@ async function initDB() {
   }
 }
 
+
+  // ── geo_opportunities table ───────────────────────────────────────────────
+  // Topics surfaced by GEO Strategist but not yet briefed. User cherry-picks from here.
+  // Unpicked rows preserved as brain food — "user did NOT pick this" is a signal.
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS geo_opportunities (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      brand_profile_id TEXT NOT NULL,
+      brain_version INTEGER NOT NULL DEFAULT 1,
+      topic TEXT NOT NULL,
+      platform_scores JSONB NOT NULL DEFAULT '{}'::jsonb,
+      avg_score NUMERIC(5,2) DEFAULT 0,
+      quick_win BOOLEAN DEFAULT false,
+      topical_authority_context TEXT DEFAULT '',
+      intent_signals JSONB DEFAULT '{}'::jsonb,
+      status TEXT NOT NULL DEFAULT 'discovered',
+      discovery_session_id UUID,
+      discovered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      status_changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_geo_opp_brand ON geo_opportunities(brand_profile_id, status)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_geo_opp_session ON geo_opportunities(discovery_session_id)`);
+  } catch(e) { console.log('[MIGRATION] geo_opportunities:', e.message); }
+
+  // ── geo_topic_briefs table ────────────────────────────────────────────────
+  // One brief per user-selected topic. Built via Stage 2.1 Brief Builder.
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS geo_topic_briefs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      opportunity_id UUID NOT NULL REFERENCES geo_opportunities(id) ON DELETE CASCADE,
+      brand_profile_id TEXT NOT NULL,
+      brief_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+      brain_version INTEGER NOT NULL DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'briefed',
+      superseded_by UUID REFERENCES geo_topic_briefs(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_topic_brief_brand ON geo_topic_briefs(brand_profile_id, status)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_topic_brief_opp ON geo_topic_briefs(opportunity_id)`);
+  } catch(e) { console.log('[MIGRATION] geo_topic_briefs:', e.message); }
+
   // ── geo_briefs: add opportunity_score column if missing ─────────────────────
   try {
     await pool.query(`ALTER TABLE geo_briefs ADD COLUMN IF NOT EXISTS opportunity_score INTEGER DEFAULT 0`);
