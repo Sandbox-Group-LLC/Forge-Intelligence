@@ -3584,12 +3584,12 @@ Return ONLY valid JSON array:
       faqStructure: [],
       geoAnchors: [],
       schemaRequirements: [],
-      overallOpportunityScore: persistedOpportunities.length ? Math.max(...persistedOpportunities.map(o => o.avgScore || 0)) : 0,
+      overallOpportunityScore: persistedOpportunities.length ? Math.round(Math.max(...persistedOpportunities.map(o => o.avgScore || 0))) : 0,
       targetPlatforms: [],
       contentCalendar: { month1: [], month2: [], month3: [] },
       quickWins: quickWins.map(q => ({ topic: q.topic, rationale: '', geoTarget: '' })),
       geoScorecard: {
-        currentReadiness: persistedOpportunities.length ? Math.max(...persistedOpportunities.map(o => o.avgScore || 0)) : 0,
+        currentReadiness: persistedOpportunities.length ? Math.round(Math.max(...persistedOpportunities.map(o => o.avgScore || 0))) : 0,
         primaryGap: 'User selection pending',
         topOpportunity: quickWins[0]?.topic || persistedOpportunities[0]?.topic || ''
       },
