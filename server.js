@@ -3792,7 +3792,7 @@ HIGH GAPS: ${JSON.stringify(gaps.filter(g => g.severity === 'high').map(g => g.g
 Assemble enriched brief. Flag sections green/yellow/red by confidence. Mark smeRequired where needed.
 
 Respond with this exact JSON structure:
-{"enrichedTitle":"","enrichedH1":"","enrichedSections":[{"heading":"","eeatInjections":[],"confidenceFlag":"green|yellow|red","flagReason":null,"smeRequired":false}],"enrichedFAQ":[{"q":"","a":"","eeatSignal":""}],"authorSchemaMarkup":{},"overallConfidence":0,"readyForStage4":true,"humanReviewItems":[]}` },
+{"enrichedTitle":"","enrichedH1":"","enrichedSections":[{"heading":"","eeatInjections":[],"confidenceFlag":"green|yellow|red","flagReason":null,"smeRequired":false}],"enrichedFAQ":[{"q":"","a":"","eeatSignal":""}],"overallConfidence":0,"readyForStage4":true,"humanReviewItems":[]}` },
       ]
     });
 
@@ -3828,7 +3828,6 @@ Respond with this exact JSON structure:
         enrichedH1: geoBrief?.h1 || '',
         enrichedSections: fallbackSections,
         enrichedFAQ: (geoBrief?.faqStructure || []).slice(0,3).map(f => ({ q: f.question || f.q || '', a: f.answer || f.a || '', eeatSignal: '' })),
-        authorSchemaMarkup: {},
         overallConfidence: scorerData.overallEEATScore || 0,
         readyForStage4: fallbackSections.length > 0,
         humanReviewItems: ['Tool 4 used fallback — re-run for full enrichment']
@@ -3889,10 +3888,13 @@ Respond with this exact JSON structure:
       smeSignals: scorerData.smeSignals,
       injectionMap: injectionData.injectionMap,
       powerPhrases: injectionData.powerPhrases,
-      authorSchema: finalAuthorSchema,
       contentHooks: injectionData.contentHooks,
       voiceConsistencyScore: injectionData.voiceConsistencyScore,
       ...assembledBrief,
+      // ── Factual Ground author schema comes AFTER assembledBrief spread ──
+      // This guarantees our deterministic schema wins over whatever Tool 4 hallucinated
+      authorSchema: finalAuthorSchema,
+      authorSchemaMarkup: finalAuthorSchema,
       sonarSignals,
       manualInputsProvided: manualInputs,
       geoBriefId: geoBrief?.briefId || geoBriefId || null
