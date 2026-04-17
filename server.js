@@ -10073,7 +10073,7 @@ app.get('/api/content-library', requireAuth, async (req, res) => {
           '${brand.brand_name || brand.brand_url}' AS brand_name,
           '${brand.brand_url}' AS brand_url
         FROM ${tableName} gc
-        LEFT JOIN publishing_queue pq ON pq.content_id = gc.id::text
+        LEFT JOIN publishing_queue pq ON pq.content_id = gc.id::text::text
         LEFT JOIN publish_log pl ON pl.content_id = gc.id::text
         LEFT JOIN content_analytics ca ON ca.content_id = gc.id::text AND ca.brand_profile_id = '${brand.id}'
         WHERE ${conditions.join(' AND ')}
@@ -10455,7 +10455,7 @@ app.get('/api/content-generator/enriched-briefs/:brandProfileId', requireAuth, a
          LEFT JOIN geo_topic_briefs tb ON tb.id::text = eb.enriched_data->>'topicBriefId'
          LEFT JOIN geo_opportunities opp ON opp.id = tb.opportunity_id
          LEFT JOIN generated_content_${safeId} gc ON gc.enriched_brief_id = eb.id::text
-         LEFT JOIN publishing_queue pq ON pq.content_id = gc.id
+         LEFT JOIN publishing_queue pq ON pq.content_id = gc.id::text
          WHERE eb.brand_profile_id = $1
       )
       UNION ALL
@@ -10478,7 +10478,7 @@ app.get('/api/content-generator/enriched-briefs/:brandProfileId', requireAuth, a
            pq.status as queue_status,
            true as is_orphan
          FROM generated_content_${safeId} gc
-         LEFT JOIN publishing_queue pq ON pq.content_id = gc.id
+         LEFT JOIN publishing_queue pq ON pq.content_id = gc.id::text
          WHERE gc.brand_profile_id = $1
            AND gc.enriched_brief_id IS NOT NULL
            AND NOT EXISTS (
