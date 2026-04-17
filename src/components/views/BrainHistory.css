@@ -546,3 +546,24 @@
     }
   }
 }
+
+/* ── Factual Ground badge — shown when user has enriched the brain ── */
+.brand-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.brand-factual-ground-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(59, 130, 246, 0.1);
+  color: #3B82F6;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 999px;
+  white-space: nowrap;
+}
