@@ -3460,7 +3460,13 @@ Return ONLY the raw JSON array. No markdown. No backticks. No explanation. No ot
       messages: [{ role: 'user', content: `You are the GEO Opportunity Scorer for Forge Intelligence.
 
 BRAND: ${profile.brand_name} (${profile.brand_url})
-TOPICAL GAPS: ${JSON.stringify(topicalMap.gapsByCluster.slice(0, 10))}
+TOPICAL GAPS: ${JSON.stringify(
+  (topicalMap.gapsByCluster || [])
+    .map(g => ({ ...g, _score: g.geoCitationScore || g.citationProbability || g.score || g.geoScore || g.probability || 0 }))
+    .sort((a, b) => b._score - a._score)
+    .slice(0, 10)
+    .map(({ _score, ...rest }) => rest)
+)}
 WHITESPACE: ${whitespace.slice(0, 300)}
 
 For each topic gap, score citation probability 0-100 across all 4 AI platforms. quickWin=true if score >= 70 and low brand presence.
@@ -4182,6 +4188,29 @@ app.get('/api/content-generator/generate', requireAuth, async (req, res) => {
       const s = JSON.stringify(obj, null, 2);
       return s.length > maxChars ? s.substring(0, maxChars) + '\n...[truncated for token budget]' : s;
     };
+    // Load Topical Authority Map — strategic context for where this content lives
+    let topicalTerritories = [];
+    try {
+      const gbRes = await pool.query(
+        `SELECT brief_data FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [brandProfileId]
+      );
+      const topicalMapRaw = gbRes.rows[0]?.brief_data?.topicalAuthorityMap || gbRes.rows[0]?.brief_data?.topicalMap?.gapsByCluster || [];
+      topicalTerritories = topicalMapRaw
+        .map(t => ({
+          topic: t.topic || t.cluster || t.name,
+          coverage: (t.coverage || t.rationale || t.description || '').slice(0, 140),
+          priority: t.priority || (t.citationProbability >= 70 ? 'high' : t.citationProbability >= 40 ? 'medium' : 'low')
+        }))
+        .filter(t => t.topic)
+        .sort((a, b) => (a.priority === 'high' ? -1 : b.priority === 'high' ? 1 : 0))
+        .slice(0, 8);
+    } catch(e) { /* silent — non-fatal */ }
+
+    const territoriesBlock = topicalTerritories.length
+      ? `\nSTRATEGIC TERRITORIES THIS BRAND OPERATES IN (write as an authority in these territories — never drift outside them):\n${topicalTerritories.map(t => `  • [${t.priority}] ${t.topic}${t.coverage ? ' — ' + t.coverage : ''}`).join('\n')}\n`
+      : '';
+
     // Load Factual Ground — user-verified facts the writer MUST use verbatim
     let factualGround = null;
     try {
@@ -4216,7 +4245,7 @@ ${factualGround.authors && factualGround.authors.length ? `NAMED AUTHORS (use ON
       : '';
 
         const userPrompt = `Generate a long-form article using the following Brand Intelligence context.
-${topicPrompt ? `\nUSER TOPIC DIRECTION (write the article around this specific topic/angle — this overrides the enriched brief's default topic selection):\n"${topicPrompt}"\n` : ''}${factualGroundBlock}
+${topicPrompt ? `\nUSER TOPIC DIRECTION (write the article around this specific topic/angle — this overrides the enriched brief's default topic selection):\n"${topicPrompt}"\n` : ''}${factualGroundBlock}${territoriesBlock}
 BRAND PROFILE:
 ${trimTo(profileData, 6000)}
 
@@ -4684,7 +4713,30 @@ app.get('/api/campaign/generate/:id', requireAuth, async (req, res) => {
         [articleRow.id]
       );
 
-      // Load Factual Ground — user-verified facts the writer MUST use verbatim
+      // Load Topical Authority Map — strategic context for where this content lives
+    let topicalTerritories = [];
+    try {
+      const gbRes = await pool.query(
+        `SELECT brief_data FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [brandProfileId]
+      );
+      const topicalMapRaw = gbRes.rows[0]?.brief_data?.topicalAuthorityMap || gbRes.rows[0]?.brief_data?.topicalMap?.gapsByCluster || [];
+      topicalTerritories = topicalMapRaw
+        .map(t => ({
+          topic: t.topic || t.cluster || t.name,
+          coverage: (t.coverage || t.rationale || t.description || '').slice(0, 140),
+          priority: t.priority || (t.citationProbability >= 70 ? 'high' : t.citationProbability >= 40 ? 'medium' : 'low')
+        }))
+        .filter(t => t.topic)
+        .sort((a, b) => (a.priority === 'high' ? -1 : b.priority === 'high' ? 1 : 0))
+        .slice(0, 8);
+    } catch(e) { /* silent — non-fatal */ }
+
+    const territoriesBlock = topicalTerritories.length
+      ? `\nSTRATEGIC TERRITORIES THIS BRAND OPERATES IN (write as an authority in these territories — never drift outside them):\n${topicalTerritories.map(t => `  • [${t.priority}] ${t.topic}${t.coverage ? ' — ' + t.coverage : ''}`).join('\n')}\n`
+      : '';
+
+    // Load Factual Ground — user-verified facts the writer MUST use verbatim
     let factualGround = null;
     try {
       const fgRes = await pool.query(
