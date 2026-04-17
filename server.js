@@ -1251,6 +1251,87 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
   }
 });
 
+// ── Marketing pages SSR — inject real content so scrapers + crawlers see it ──
+// Without this, SPA shell returns 1538 bytes of empty <div id="root"></div>
+// Forge's own scraper AND Google both need real HTML to extract product info.
+const MARKETING_META = {
+  '/': {
+    title: 'Forge Intelligence — Brand Intelligence That Compounds',
+    description: 'Forge extracts competitive intelligence from brand websites using an 8-stage AI pipeline. Find undefended market positions, audience blind spots, and messaging fault lines your competitors haven\'t claimed. Intelligence compounds. The content proves it.',
+    bodyContent: `
+      <h1>Brand Intelligence That Compounds</h1>
+      <p>Forge Intelligence extracts competitive intelligence from brand websites using an 8-stage AI pipeline. Every stage conditions the next. By the time content is generated, it's not writing from a prompt — it's writing from a fully constructed competitive worldview unique to your brand.</p>
+      <h2>What Forge Does</h2>
+      <p>Forge surfaces what the best brand strategists charge $50,000 and six weeks to find: competitive gaps, undefended market positions, audience blind spots, messaging fault lines. Then it turns that intelligence into content, closes the loop with performance data, and writes what it learns back into your brand brain automatically.</p>
+      <h2>What Forge Is Not</h2>
+      <p>Forge is not a content marketing agency. Forge does not automate marketing workflows. Forge is the intelligence layer your marketing operation never had.</p>
+      <h2>The 8-Stage Context Agent Architecture</h2>
+      <p>Context Hub scrapes your brand and maps the competitive landscape. GEO Strategist finds topical territory your competitors haven't claimed. Authenticity Enricher injects E-E-A-T signals that make content rank and resonate. Content Generator writes from a fully constructed brand worldview. Compliance Gate critiques before anything goes live. Publishing Queue schedules and distributes with UTM tracking. Performance Dashboard pulls real engagement data back into the system. Brain Memory writes every pattern back automatically.</p>
+      <h2>Who Forge Is For</h2>
+      <p>Mid-market B2B companies building content operations that can compete with teams ten times their size. Bootstrapped. Portland, Oregon. Founded 2025 by Brian Morgan after a decade running Sandbox Group.</p>
+    `
+  },
+  '/product': {
+    title: 'The Forge Product — Context Agent Architecture',
+    description: 'Eight specialized AI agents. One compounding intelligence system. Context Hub, GEO Strategist, Authenticity Enricher, Content Generator, Compliance Gate, Publishing Queue, Performance Dashboard, Brain Memory.',
+    bodyContent: `
+      <h1>The Forge Product</h1>
+      <p>Eight specialized agents. One compounding system. Each stage doesn't just execute — it conditions the next.</p>
+      <h2>Context Hub</h2>
+      <p>Scrapes your brand and maps the competitive landscape. Identifies competitive gaps, personas, voice attributes, and whitespace your competitors haven't claimed.</p>
+      <h2>GEO Strategist</h2>
+      <p>Finds the topical territory your competitors haven't claimed. Builds a topical authority map and GEO opportunity set specific to your positioning.</p>
+      <h2>Authenticity Enricher</h2>
+      <p>Injects E-E-A-T signals — expertise, experience, authoritativeness, trustworthiness — that make content both rank and resonate.</p>
+      <h2>Content Generator</h2>
+      <p>Writes from a fully constructed brand worldview, not a prompt. Uses Factual Ground — founder-provided facts and credentials — as verbatim source material.</p>
+      <h2>Compliance Gate</h2>
+      <p>Critiques every article before publishing. Flags factual confidence issues, voice drift, and brand violations section-by-section.</p>
+      <h2>Publishing Queue</h2>
+      <p>Schedules and distributes across LinkedIn, X, HubSpot, Facebook, and your own site with UTM tracking baked in.</p>
+      <h2>Performance Dashboard</h2>
+      <p>Pulls real engagement data back into the system — tracks what landed, what decayed, what drove action.</p>
+      <h2>Brain Memory</h2>
+      <p>Closes the loop. Every pattern that worked, every mistake flagged, every competitive insight surfaced — written back into the brain automatically, informing every agent on the next cycle.</p>
+    `
+  }
+};
+
+function renderMarketingPage(meta, html) {
+  const escapedDesc = meta.description.replace(/"/g, '&quot;');
+  const escapedTitle = meta.title.replace(/"/g, '&quot;');
+  const headTags = `
+  <title>${escapedTitle}</title>
+  <meta name="description" content="${escapedDesc}" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Forge Intelligence" />
+  <meta property="og:title" content="${escapedTitle}" />
+  <meta property="og:description" content="${escapedDesc}" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${escapedTitle}" />
+  <meta name="twitter:description" content="${escapedDesc}" />`;
+  // Inject head tags AND body content. Content sits inside #root so React hydrates over it on the client.
+  const withMeta = html.replace(/<title>[^<]*<\/title>/, '').replace('<head>', '<head>' + headTags);
+  const withBody = withMeta.replace('<div id="root"></div>', `<div id="root"><div style="position:absolute;left:-99999px;top:-99999px" aria-hidden="true">${meta.bodyContent}</div></div>`);
+  return withBody;
+}
+
+app.get(['/', '/product'], async (req, res, next) => {
+  // Only SSR the landing domains (skip dev.* and strategy.*)
+  const host = (req.get('host') || '').toLowerCase();
+  if (host.includes('dev.') || host.includes('strategy.')) return next();
+  try {
+    const meta = MARKETING_META[req.path];
+    if (!meta) return next();
+    const html = await fs.promises.readFile(path.join(__dirname, 'dist', 'index.html'), 'utf8');
+    res.set('Cache-Control', 'public, max-age=300');
+    return res.send(renderMarketingPage(meta, html));
+  } catch(e) {
+    console.error('[MARKETING-SSR]', e.message);
+    return next();
+  }
+});
+
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // ── Content fetch for preview ─────────────────────────────────────────────────
