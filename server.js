@@ -4074,9 +4074,24 @@ Respond with this exact JSON structure:
 
     const confidenceScore = assembledBrief.overallConfidence || scorerData.overallEEATScore || 0;
 
-    // Nuke stale briefs — corrections override old data, no point keeping wrong entity info
-    await pool.query('DELETE FROM enriched_briefs WHERE brand_profile_id = $1', [brandProfileId]);
-    console.log('[ENRICH] Cleared old enriched briefs for brand — fresh data only');
+    // Smart nuke: delete only prior enrichments tied to THIS topic brief (re-runs of same topic).
+    // DO NOT nuke other enriched briefs for this brand — each topic's enrichment is independent work,
+    // tied to its own topicBriefId. Legacy behavior (pre-cherry-pick) nuked all enrichments per brand,
+    // which orphaned generated articles when users enriched multiple topics in sequence.
+    if (topicBriefId) {
+      await pool.query(
+        `DELETE FROM enriched_briefs WHERE brand_profile_id = $1 AND enriched_data->>'topicBriefId' = $2`,
+        [brandProfileId, topicBriefId]
+      );
+      console.log(`[ENRICH] Cleared prior enrichment for topic brief ${topicBriefId}`);
+    } else {
+      // Legacy (non-topic-brief) enrichments: delete only legacy rows (where topicBriefId is null)
+      await pool.query(
+        `DELETE FROM enriched_briefs WHERE brand_profile_id = $1 AND (enriched_data->>'topicBriefId') IS NULL`,
+        [brandProfileId]
+      );
+      console.log('[ENRICH] Cleared prior legacy enrichment for brand (non-topic-brief path)');
+    }
 
     await pool.query(
       `INSERT INTO enriched_briefs (id, brand_profile_id, geo_brief_id, brand_url, brand_name, version, confidence_score, enriched_data, brain_version)
