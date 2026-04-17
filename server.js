@@ -1238,7 +1238,6 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
     const ogTags = `
   <title>${title} | ${brandName}</title>
   <meta name="description" content="${description}" />
-  <meta name="facebook-domain-verification" content="93h6knwwj598b62edbd56ni24leqvi" />
   <meta property="og:type" content="article" />
   <meta property="og:site_name" content="${brandName}" />
   <meta property="og:title" content="${title}" />
@@ -1321,7 +1320,6 @@ function renderMarketingPage(meta, html) {
   const headTags = `
   <title>${escapedTitle}</title>
   <meta name="description" content="${escapedDesc}" />
-  <meta name="facebook-domain-verification" content="93h6knwwj598b62edbd56ni24leqvi" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Forge Intelligence" />
   <meta property="og:title" content="${escapedTitle}" />
