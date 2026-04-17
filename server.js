@@ -3542,7 +3542,11 @@ Return ONLY valid JSON array:
       const scores = Object.values(platforms).filter(v => typeof v === 'number');
       const avgScore = scores.length ? (scores.reduce((a,b) => a+b, 0) / scores.length) : 0;
       // Find the topical authority writeup for this topic if available
-      const authorityWriteup = (topicalMap || []).find(t => {
+      // topicalMap is an OBJECT like { gapsByCluster: [...] }, not an array
+      const authorityGaps = (topicalMap && Array.isArray(topicalMap.gapsByCluster))
+        ? topicalMap.gapsByCluster
+        : (Array.isArray(topicalMap) ? topicalMap : []);
+      const authorityWriteup = authorityGaps.find(t => {
         const tt = (t.topic || t.cluster || '').trim().toLowerCase();
         return tt === topic || topic.includes(tt) || tt.includes(topic);
       });
