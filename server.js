@@ -4055,6 +4055,20 @@ Respond with this exact JSON structure:
       [newId, brandProfileId, enrichedData.geoBriefId, profile.brand_url, brandName, nextVersion, confidenceScore, JSON.stringify(enrichedData), profile.version || 1]
     );
 
+    // NEW: if this enrichment came from a topic brief, mark it complete + its opportunity
+    if (topicBriefId) {
+      await pool.query(
+        `UPDATE geo_topic_briefs SET status = 'enriched', updated_at = NOW() WHERE id = $1`,
+        [topicBriefId]
+      ).catch(() => {});
+      await pool.query(
+        `UPDATE geo_opportunities SET status = 'enriched', status_changed_at = NOW()
+         WHERE id = (SELECT opportunity_id FROM geo_topic_briefs WHERE id = $1)`,
+        [topicBriefId]
+      ).catch(() => {});
+      console.log(`[ENRICH] Marked topic brief ${topicBriefId} as enriched`);
+    }
+
     const latencyMs = Date.now() - startTime;
     console.log(`[ENRICH] Complete — Score: ${confidenceScore} | Gaps: ${gaps.length} | NeedsManual: ${needsManualInput} | Latency: ${latencyMs}ms`);
 
