@@ -292,7 +292,10 @@ export default function BrandSettingsPage() {
               {/* ── Factual Ground — user-provided credentials and facts that anchor the writer ── */}
               <section className="bs-section">
                 <div className="bs-section-header">
-                  <h2 className="bs-section-title">🏛️ Factual Ground</h2>
+                  <h2 className="bs-section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 6v16"/><path d="m19 13 2-1a9 9 0 0 1-18 0l2 1"/><path d="M9 11h6"/><circle cx="12" cy="4" r="2"/></svg>
+                    Factual Ground
+                  </h2>
                   <p className="bs-section-sub">
                     Structured facts the writer must use verbatim. This is your direct line to the brain — what gets written here shows up <strong>word-for-word</strong> in generated content. Anchor the writer with real credentials, real claims, real positions.
                   </p>
