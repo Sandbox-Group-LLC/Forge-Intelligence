@@ -3499,12 +3499,98 @@ Return ONLY valid JSON array:
       entitySchema = JSON.parse(es);
     } catch(e) { console.log('[GEO] Tool 3 parse warn:', e.message, '| raw:', entityRes.content[0].text.slice(0,200)); }
 
-    // ── Tool 4: Brief Generator ───────────────────────────────────────────────
-    console.log('[GEO] Tool 4: Brief Generator...');
+    // ── NEW ARCHITECTURE: No auto-brief. Persist opportunities for user cherry-picking. ──
+    // Tool 4 (Brief Generator) moved to Stage 2.1 — runs ONLY on user-selected topics.
+    // Why: burning tokens on 10 briefs when user may only want 2-3 was wasteful.
+    // Unpicked opportunities stay in the table as brain food — "user did NOT pick this" is signal.
+    console.log('[GEO] Persisting opportunities — no auto-brief (user cherry-picks in UI)...');
     const quickWins = geoOpportunities.filter(o => o.quickWin).slice(0, 3);
-    const targetTopic = topicFocus || quickWins[0]?.topic || geoOpportunities[0]?.topic || whitespace || profile.brand_name + ' strategy';
 
-    const briefRes = await anthropic.messages.create({
+    // Generate a session ID that groups all opportunities from this GEO run
+    const discoverySessionId = randomUUID();
+
+    // Deduplicate opportunities by topic before persisting (input array often repeats topics per platform)
+    const opportunitiesByTopic = new Map();
+    for (const opp of geoOpportunities) {
+      const key = (opp.topic || '').trim().toLowerCase();
+      if (!key) continue;
+      if (!opportunitiesByTopic.has(key)) {
+        opportunitiesByTopic.set(key, { ...opp, platformScores: {} });
+      }
+      const existing = opportunitiesByTopic.get(key);
+      // Merge platform-specific scores
+      if (opp.platform && typeof opp.score === 'number') {
+        existing.platformScores[opp.platform.toLowerCase()] = opp.score;
+      } else if (opp.chatgpt !== undefined || opp.perplexity !== undefined) {
+        existing.platformScores = {
+          chatgpt: opp.chatgpt, perplexity: opp.perplexity,
+          aiOverviews: opp.aiOverviews, gemini: opp.gemini
+        };
+      }
+    }
+
+    // Persist each unique opportunity — link topical authority context for user decision-making
+    const persistedOpportunities = [];
+    for (const [topic, opp] of opportunitiesByTopic) {
+      const platforms = opp.platformScores || {};
+      const scores = Object.values(platforms).filter(v => typeof v === 'number');
+      const avgScore = scores.length ? (scores.reduce((a,b) => a+b, 0) / scores.length) : 0;
+      // Find the topical authority writeup for this topic if available
+      const authorityWriteup = (topicalMap || []).find(t => {
+        const tt = (t.topic || t.cluster || '').trim().toLowerCase();
+        return tt === topic || topic.includes(tt) || tt.includes(topic);
+      });
+      const authorityContext = authorityWriteup ? JSON.stringify(authorityWriteup) : '';
+
+      try {
+        const insertRes = await pool.query(
+          `INSERT INTO geo_opportunities (
+            brand_profile_id, brain_version, topic, platform_scores, avg_score, quick_win,
+            topical_authority_context, intent_signals, status, discovery_session_id
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'discovered', $9)
+          RETURNING id`,
+          [
+            brandProfileId, profile.version || 1, opp.topic,
+            JSON.stringify(platforms), avgScore.toFixed(2), !!opp.quickWin,
+            authorityContext, JSON.stringify({ entities: entitySchema.filter(e => e.priority === 'high').slice(0, 5) }),
+            discoverySessionId
+          ]
+        );
+        persistedOpportunities.push({ ...opp, id: insertRes.rows[0].id, avgScore });
+      } catch(e) {
+        console.log('[GEO] opp persist warn:', e.message, '| topic:', topic);
+      }
+    }
+    console.log(`[GEO] Persisted ${persistedOpportunities.length} opportunities in session ${discoverySessionId}`);
+
+    // Build legacy brief shape for response compatibility — stub values, no real brief yet
+    // The actual per-topic brief building happens in Stage 2.1 when user selects topics
+    const briefData = {
+      targetTopic: null,  // no auto-pick anymore
+      executiveSummary: 'Topics surfaced. Select topics in the GEO Opportunities table to build briefs.',
+      h1: null,
+      h2s: [],
+      entities: entitySchema.filter(e => e.priority === 'high').map(e => e.entity).slice(0, 10),
+      faqStructure: [],
+      geoAnchors: [],
+      schemaRequirements: [],
+      overallOpportunityScore: persistedOpportunities.length ? Math.max(...persistedOpportunities.map(o => o.avgScore || 0)) : 0,
+      targetPlatforms: [],
+      contentCalendar: { month1: [], month2: [], month3: [] },
+      quickWins: quickWins.map(q => ({ topic: q.topic, rationale: '', geoTarget: '' })),
+      geoScorecard: {
+        currentReadiness: persistedOpportunities.length ? Math.max(...persistedOpportunities.map(o => o.avgScore || 0)) : 0,
+        primaryGap: 'User selection pending',
+        topOpportunity: quickWins[0]?.topic || persistedOpportunities[0]?.topic || ''
+      },
+      briefRationale: `${persistedOpportunities.length} opportunities discovered. Cherry-pick topics to build briefs.`,
+      discoverySessionId,
+      pendingUserSelection: true
+    };
+
+    // FAKE briefRes to satisfy downstream code until we finish refactor
+    const briefRes = { content: [{ text: JSON.stringify(briefData) }] };
+    if (false) await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 8192,
       messages: [{ role: 'user', content: `You are the GEO Brief Generator for Forge Intelligence.
