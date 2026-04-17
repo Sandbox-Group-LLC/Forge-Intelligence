@@ -1832,3 +1832,44 @@ Isolated and scanned all 4 recurring bug patterns across the entire codebase:
 | Apr 13 | Website scraper, re-analyze fix, promo codes, landing page UX, pipeline overhaul |
 | Apr 14 AM | Mission Control, rogue agent audit, pre-cog fixes, zombie timer, ghost brand cleanup |
 | Apr 14 PM | Brain isolation, staleness system, corrections field, GEO fixes, SSE reliability, HubSpot scope fix, qlty audit |
+
+---
+
+## Apr 17 — GEO Cherry-Pick Architecture + Full Pipeline Refactor
+
+**The flaw we finally fixed.** GEO Strategist discovered 10 strategic topics per run but the code auto-picked a single "winner" via `targetTopic = quickWins[0]?.topic` and built ONE brief around it. The other 9 flashed on screen and got silently discarded. Content Generator blindly grabbed "latest enriched brief" via a single-item dropdown labeled "Latest Enriched Brief (default)." Three stages of illusion-of-choice UX masking a broken data flow.
+
+**What got built:**
+
+- **New DB tables** (`geo_opportunities`, `geo_topic_briefs`) — topics are now first-class entities, not ephemeral LLM output
+- **GEO Strategist refactored** — Tool 4 auto-brief removed; persists dedup'd opportunities with platform scores, avg score, matched topical authority writeup, discovery_session_id
+- **Stage 2.1 Brief Builder** — new endpoint runs Claude per user-selected topic, builds H1/H2s/entities/FAQs/GEO anchors, persists to `geo_topic_briefs` with `status='briefed'`, flips opportunity to `briefed`
+- **Cherry-pick UI** — checkbox column on GEO Opportunities table, "Build Briefs (N)" action bar, multi-brief card view on GEO Brief tab with Enrich Now / Backlog / Discard per brief, Backlog section at bottom
+- **Brain-food loop** — un-picked opportunities get `status='ignored'` on unmount; if they were Quick Wins, a `user_rejection` brain pattern is written so Forge learns what the user DOESN'T value
+- **Topical Map territory injection** — gaps now sorted by citation probability before slicing (stopped silently dropping high-signal entries), top-8 territories rendered into Content Generator prompt as "STRATEGIC TERRITORIES THIS BRAND OPERATES IN" block
+- **Authenticity Enricher per-topic** — accepts `topicBriefId`, joins through topic briefs + opportunities, cache bypass when topicBriefId present (different topics need different enrichments), 404s on invalid IDs, marks brief+opp as 'enriched' on success, auto-fires enrichment on URL arrival
+- **Content Generator batch UI** — replaced blind dropdown with "Your recent batch" card grid; each card shows topic, Quick Win badge, confidence score, date; URL param pre-selects the card user came from
+- **Article SSR body rendering** — full article prose server-rendered inside `<article>` off-screen so AI crawlers (GPTBot, PerplexityBot, Googlebot) see 1700 words instead of 322-byte shell; React hydrates over it
+- **FK relax** — `enriched_briefs.geo_brief_id` FK constraint dropped (topic briefs live in different table; legacy + new both land in same column as soft reference)
+
+**Token caps raised across pipeline:**
+- GEO Tool 1 (Topical Authority Mapper): 2500 → 4000
+- Stage 2.1 Brief Builder: 4096 → 6144
+- Content Gen streaming #1: 8096 → 12000
+
+**Factual Ground + Author Schema deterministic override** — Authenticity Enricher and article SSR JSON-LD both pull Factual Ground authors[0] verbatim (name, title, LinkedIn URL, bio, credentials, expertise). No more LLM-invented .com URLs, null names, or hallucinated credentials. Override applied AFTER assembledBrief spread so LLM output loses the race.
+
+**Attribution-rot cleanup** — purged 12 attribution-contaminated articles, 64 brain mistakes, 10 analytics rows, 11 publishing queue items (5 required manual LinkedIn/X/Webflow deletion). Kept 23 brain patterns (verbatim quotes + writing rules).
+
+**First end-to-end citation-ready article** — "The Bottleneck Isn't Production. It's Intelligence. Here's Why Your Content Engine Keeps Stalling." — 1,696 words, 6 H2s, every section green-approved, 100% Compliance Gate auto-approved with CYA flags on two unverified factual claims, Brian Morgan byline from Factual Ground, hero image via fal.media, Article schema with full Person author block, OG + Twitter cards render cleanly on LinkedIn share card.
+
+### Architecture wins added
+- **Cherry-pick topic repository** — display without control is theater; GEO now gives user agency over which topics advance
+- **Brain-food loop** — un-picked opportunities become signal, not silence
+- **Per-topic enrichment cache bypass** — different topics get different enrichments
+- **Article body SSR** — AI crawlers can now cite Forge articles (closing the final link in the citation pipeline)
+
+### Apr 17 session entry
+| Date | Focus |
+|------|-------|
+| Apr 17 | GEO cherry-pick architecture (Stage 2.1 Brief Builder), Topical Map territory injection, Authenticity Enricher per-topic refactor, Content Generator batch UI, article body SSR, FK relax, token cap audit, first citation-ready article published |
