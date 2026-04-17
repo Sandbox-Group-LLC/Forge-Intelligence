@@ -289,6 +289,23 @@ async function initDB() {
   }
 
   // ── enriched_briefs table ─────────────────────────────────────────────────
+  // Migration: force ON DELETE CASCADE on geo_brief_id FK so GEO re-runs don't throw FK violations.
+  // Older environments may have the constraint without CASCADE — this is idempotent and safe.
+  try {
+    await pool.query(`DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'enriched_briefs_geo_brief_id_fkey'
+            AND pg_get_constraintdef(oid) NOT LIKE '%ON DELETE CASCADE%'
+        ) THEN
+          ALTER TABLE enriched_briefs DROP CONSTRAINT enriched_briefs_geo_brief_id_fkey;
+          ALTER TABLE enriched_briefs ADD CONSTRAINT enriched_briefs_geo_brief_id_fkey
+            FOREIGN KEY (geo_brief_id) REFERENCES geo_briefs(id) ON DELETE CASCADE;
+        END IF;
+      END $$;`).catch(() => {});
+  } catch(e) { /* ignore — table may not exist yet on fresh DB */ }
+
   try {
     await pool.query(`CREATE TABLE IF NOT EXISTS enriched_briefs (
       id TEXT PRIMARY KEY,
