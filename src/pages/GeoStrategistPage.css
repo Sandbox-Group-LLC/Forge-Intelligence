@@ -547,3 +547,11 @@
   font-size: 0.6875rem;
   padding: 2px 8px;
 }
+
+/* Brief card — Summary has its own treatment, visually distinct from H1 */
+.brief-summary {
+  font-size: 0.875rem;
+  font-weight: 400;
+  color: var(--color-text-secondary, #475569);
+  line-height: 1.65;
+}
