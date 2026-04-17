@@ -20,7 +20,6 @@ interface GeoOpportunity {
   quickWin: boolean;
   status: 'discovered' | 'briefed' | 'backlog' | 'enriched' | 'ignored';
   topicalAuthority?: any;
-  discoverySessionId?: string | null;
 }
 
 interface TopicBrief {
@@ -83,6 +82,7 @@ function GeoStrategistContent() {
   const [completedStages, setCompletedStages] = useState<number[]>([]);
   const [result, setResult] = useState<GeoResult | null>(null);
   const [opportunities, setOpportunities] = useState<GeoOpportunity[]>([]);
+  const [discoverySessionId, setDiscoverySessionId] = useState<string | null>(null);
   const brandProfileId = activeBrand?.id;
   const [topicBriefs, setTopicBriefs] = useState<TopicBrief[]>([]);
   const [selectedOppIds, setSelectedOppIds] = useState<Set<string>>(new Set());
@@ -112,7 +112,10 @@ function GeoStrategistContent() {
         headers: { 'Authorization': `Bearer ${authToken}` }
       });
       const d = await r.json();
-      if (d.success) setOpportunities(d.opportunities || []);
+      if (d.success) {
+        setOpportunities(d.opportunities || []);
+        setDiscoverySessionId(d.sessionId || null);
+      }
     } catch(e) { /* silent */ }
   };
 
@@ -138,9 +141,8 @@ function GeoStrategistContent() {
   // Keyed on the session so we only ignore opps from the current discovery run.
   useEffect(() => {
     if (!brandProfileId || !authToken) return;
-    // Compute session ID from the most recent opportunity (they all share one)
-    const sessionId = opportunities.find(o => o.status === 'discovered')?.discoverySessionId
-      || (result as any)?.discoverySessionId;
+    // Session ID comes from the /api/geo/opportunities endpoint response
+    const sessionId = discoverySessionId;
     if (!sessionId) return;
 
     const markIgnored = () => {
@@ -162,7 +164,7 @@ function GeoStrategistContent() {
       const hasDiscovered = opportunities.some(o => o.status === 'discovered');
       if (hasDiscovered) markIgnored();
     };
-  }, [brandProfileId, authToken, opportunities, result]);
+  }, [brandProfileId, authToken, opportunities, discoverySessionId]);
 
   // ── Build Briefs action — calls Stage 2.1 on selected opportunities ──────
   const buildBriefsForSelected = async () => {
