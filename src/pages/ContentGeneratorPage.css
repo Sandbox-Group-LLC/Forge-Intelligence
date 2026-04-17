@@ -742,3 +742,59 @@
   font-size: 0.6875rem;
   color: var(--color-text-secondary, #94a3b8);
 }
+
+
+/* ── Batch Progress Footer — chips showing generated vs pending per cherry-picked brief ── */
+.cg-batch-progress {
+  background: var(--color-bg-elevated, #f8fafc);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-top: 24px;
+}
+.cg-batch-progress-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.cg-batch-progress-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text-primary, #1e293b);
+  letter-spacing: -0.01em;
+}
+.cg-batch-progress-sub {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary, #64748b);
+}
+.cg-batch-progress-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.cg-batch-progress-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: 999px;
+}
+.cg-batch-progress-chip.status-pending {
+  background: rgba(59, 130, 246, 0.08);
+  color: var(--color-text-secondary, #64748b);
+  border: 1px solid rgba(59, 130, 246, 0.15);
+}
+.cg-batch-progress-chip.status-generated {
+  background: rgba(16, 185, 129, 0.08);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+.cg-batch-progress-chip-status {
+  opacity: 0.7;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
