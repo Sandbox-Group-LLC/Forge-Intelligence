@@ -3755,9 +3755,11 @@ app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => 
     }
 
     // ── Cache check ──────────────────────────────────────────────────────────
-    if (!force && !Object.keys(manualInputs).length) {
+    // Skip cache when enriching a specific topic brief — different topics need different enrichments.
+    // Only cache at the brand level for legacy (topic-less) enrichments.
+    if (!force && !topicBriefId && !Object.keys(manualInputs).length) {
       const existing = await pool.query(
-        `SELECT * FROM enriched_briefs WHERE brand_profile_id = $1 ORDER BY version DESC LIMIT 1`, [brandProfileId]
+        `SELECT * FROM enriched_briefs WHERE brand_profile_id = $1 AND (enriched_data->>'topicBriefId') IS NULL ORDER BY version DESC LIMIT 1`, [brandProfileId]
       );
       if (existing.rows.length > 0) {
         const r = existing.rows[0];
