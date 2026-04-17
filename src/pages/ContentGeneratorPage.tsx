@@ -340,8 +340,9 @@ function ContentGeneratorContent() {
         // Current batch = all enriched briefs in the same discovery session as the most recent.
         // Older briefs land below a divider in the dropdown.
         const latestSession = briefs.find(b => b.discoverySessionId)?.discoverySessionId;
+        // Batch cards: show current session + orphan articles (legacy published work)
         const batch = latestSession
-          ? briefs.filter(b => b.discoverySessionId === latestSession)
+          ? briefs.filter(b => b.discoverySessionId === latestSession || b.isOrphan)
           : briefs.slice(0, 1);
         if (!batch.length) return null;
         // Only hide if the batch has just 1 legacy non-topic-brief enrichment (pre-cherry-pick behavior)
