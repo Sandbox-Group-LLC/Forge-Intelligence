@@ -290,223 +290,192 @@ export default function BrandSettingsPage() {
               </div>
 
               {/* ── Factual Ground — user-provided credentials and facts that anchor the writer ── */}
-              <section className="bs-section" style={{ borderLeft: '3px solid #3B82F6', paddingLeft: 20 }}>
-                <div className="bs-section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
-                  <div style={{ flex: 1, minWidth: 300 }}>
-                    <h2 className="bs-section-title" style={{ color: '#3B82F6' }}>🏛️ Factual Ground</h2>
-                    <p className="bs-section-sub">
-                      Structured facts the writer must use verbatim. This is your direct line to the brain — what gets written here shows up <strong>word-for-word</strong> in generated content. Anchor the writer with real credentials, real claims, real positions.
-                    </p>
+              <section className="bs-section">
+                <div className="bs-section-header">
+                  <h2 className="bs-section-title">🏛️ Factual Ground</h2>
+                  <p className="bs-section-sub">
+                    Structured facts the writer must use verbatim. This is your direct line to the brain — what gets written here shows up <strong>word-for-word</strong> in generated content. Anchor the writer with real credentials, real claims, real positions.
+                  </p>
+                </div>
+
+                <div className="bs-save-bar">
+                  {fgSaved && <span className="bs-saved">✓ Saved</span>}
+                  <button className="bs-save-btn" onClick={saveFactualGround} disabled={fgSaving}>
+                    {fgSaving ? 'Saving...' : 'Save Factual Ground'}
+                  </button>
+                </div>
+
+                <div className="bs-fields">
+                  <div className="bs-field">
+                    <label className="bs-label">What we actually do</label>
+                    <p className="bs-field-hint">The concrete, factual version of your value prop. No marketing fluff. Example: "Forge extracts competitive intelligence from brand websites using an 8-stage AI pipeline."</p>
+                    <textarea
+                      className="bs-input"
+                      rows={3}
+                      value={factualGround.whatWeDo}
+                      onChange={e => setFactualGround(p => ({ ...p, whatWeDo: e.target.value }))}
+                      placeholder="We extract competitive intelligence from brand websites using an 8-stage AI pipeline..."
+                    />
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {fgSaved && <span style={{ fontSize: 12, color: '#10b981', fontWeight: 600 }}>✓ Saved</span>}
-                    <button
-                      onClick={saveFactualGround}
-                      disabled={fgSaving}
-                      style={{
-                        padding: '8px 18px', fontSize: 13, fontWeight: 600,
-                        background: '#3B82F6', color: '#fff', border: 'none',
-                        borderRadius: 6, cursor: 'pointer'
-                      }}
-                    >{fgSaving ? 'Saving...' : 'Save Factual Ground'}</button>
+
+                  <div className="bs-field">
+                    <label className="bs-label">What we do NOT do</label>
+                    <p className="bs-field-hint">Guardrails — what the writer should never claim about you. Example: "We are not a content marketing agency. We do not automate marketing workflows."</p>
+                    <textarea
+                      className="bs-input"
+                      rows={3}
+                      value={factualGround.whatWeDontDo}
+                      onChange={e => setFactualGround(p => ({ ...p, whatWeDontDo: e.target.value }))}
+                      placeholder="We are not a content agency. We do not automate marketing workflows..."
+                    />
                   </div>
-                </div>
 
-                {/* Company facts */}
-                <div className="bs-field-group" style={{ marginTop: 16 }}>
-                  <label className="bs-label">What we actually do</label>
-                  <p className="bs-hint">The concrete, factual version of your value prop. No marketing fluff. Example: "Forge extracts competitive intelligence from brand websites using an 8-stage AI pipeline."</p>
-                  <textarea
-                    className="bs-textarea"
-                    rows={3}
-                    value={factualGround.whatWeDo}
-                    onChange={e => setFactualGround(p => ({ ...p, whatWeDo: e.target.value }))}
-                    placeholder="We extract competitive intelligence from brand websites using an 8-stage AI pipeline..."
-                  />
-                </div>
-
-                <div className="bs-field-group">
-                  <label className="bs-label">What we do NOT do</label>
-                  <p className="bs-hint">Guardrails — what the writer should never claim about you. Example: "We are not a content marketing agency. We do not automate marketing workflows. We do not replace human writers."</p>
-                  <textarea
-                    className="bs-textarea"
-                    rows={3}
-                    value={factualGround.whatWeDontDo}
-                    onChange={e => setFactualGround(p => ({ ...p, whatWeDontDo: e.target.value }))}
-                    placeholder="We are not a content agency. We do not automate marketing workflows..."
-                  />
-                </div>
-
-                <div className="bs-field-group">
-                  <label className="bs-label">Company facts</label>
-                  <p className="bs-hint">Founding date, location, funding status, team size, key customer types. Verifiable data only.</p>
-                  <textarea
-                    className="bs-textarea"
-                    rows={3}
-                    value={factualGround.companyFacts}
-                    onChange={e => setFactualGround(p => ({ ...p, companyFacts: e.target.value }))}
-                    placeholder="Founded 2025. Portland, OR. Bootstrapped. 2-person team. Serves mid-market B2B SaaS companies..."
-                  />
-                </div>
-
-                <div className="bs-field-group">
-                  <label className="bs-label">Methodology / Approach</label>
-                  <p className="bs-hint">The technical or procedural detail behind what you do. Lets the writer speak with authority on your process.</p>
-                  <textarea
-                    className="bs-textarea"
-                    rows={4}
-                    value={factualGround.methodology}
-                    onChange={e => setFactualGround(p => ({ ...p, methodology: e.target.value }))}
-                    placeholder="8-stage Context Agent Architecture: Context Hub → GEO Strategist → Authenticity Enricher → Content Generator → Compliance Gate → Publishing Queue → Performance Dashboard → Brain Memory..."
-                  />
-                </div>
-
-                <div className="bs-field-group">
-                  <label className="bs-label">Founding story</label>
-                  <p className="bs-hint">The real origin — why this company exists. Specific enough that the writer can reference it without inventing details.</p>
-                  <textarea
-                    className="bs-textarea"
-                    rows={3}
-                    value={factualGround.foundingStory}
-                    onChange={e => setFactualGround(p => ({ ...p, foundingStory: e.target.value }))}
-                    placeholder="Brian Morgan founded Forge in 2025 after 10 years running Sandbox-XM, frustrated that every AI content tool solved for volume while none solved for intelligence..."
-                  />
-                </div>
-
-                <div className="bs-field-group">
-                  <label className="bs-label">Team composition</label>
-                  <p className="bs-hint">Who's behind the work. Names, roles, disciplines. Supports E-E-A-T signals.</p>
-                  <textarea
-                    className="bs-textarea"
-                    rows={2}
-                    value={factualGround.teamComposition}
-                    onChange={e => setFactualGround(p => ({ ...p, teamComposition: e.target.value }))}
-                    placeholder="Brian Morgan (Founder, 10 years in B2B marketing ops); Claude (AI co-architect)..."
-                  />
-                </div>
-
-                <div className="bs-field-group">
-                  <label className="bs-label">Quotable positions</label>
-                  <p className="bs-hint">Specific beliefs, takes, or phrases you want the writer to use verbatim when relevant. These become brain-certified direct quotes.</p>
-                  <textarea
-                    className="bs-textarea"
-                    rows={4}
-                    value={factualGround.quotablePositions}
-                    onChange={e => setFactualGround(p => ({ ...p, quotablePositions: e.target.value }))}
-                    placeholder={'"Every AI content tool is stateless. Forge inverts that entirely."\n"Share of voice is a scoreboard. Voice of market is an advantage."\n"The $99 content tool is the top of the funnel for a strategic intelligence relationship."'}
-                  />
-                </div>
-
-                {/* Authors */}
-                <div className="bs-field-group">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <label className="bs-label" style={{ margin: 0 }}>Named Authors</label>
-                    <button
-                      onClick={addAuthor}
-                      style={{
-                        padding: '6px 14px', fontSize: 12, fontWeight: 600,
-                        background: '#3B82F6', color: '#fff', border: 'none',
-                        borderRadius: 6, cursor: 'pointer'
-                      }}
-                    >+ Add Author</button>
+                  <div className="bs-field">
+                    <label className="bs-label">Company facts</label>
+                    <p className="bs-field-hint">Founding date, location, funding status, team size, key customer types. Verifiable data only.</p>
+                    <textarea
+                      className="bs-input"
+                      rows={3}
+                      value={factualGround.companyFacts}
+                      onChange={e => setFactualGround(p => ({ ...p, companyFacts: e.target.value }))}
+                      placeholder="Founded 2025. Portland, OR. Bootstrapped. 2-person team. Serves mid-market B2B SaaS companies..."
+                    />
                   </div>
-                  <p className="bs-hint">Real people with real credentials. Fills the <code>name: null</code> gap in schema markup and gives the writer legitimate authority to reference.</p>
 
-                  {factualGround.authors.map(author => (
-                    <div key={author.id} style={{
-                      padding: 16, marginTop: 12,
-                      background: 'rgba(59, 130, 246, 0.03)',
-                      border: '1px solid rgba(59, 130, 246, 0.15)',
-                      borderRadius: 8,
-                      position: 'relative'
-                    }}>
-                      <button
-                        onClick={() => removeAuthor(author.id)}
-                        style={{
-                          position: 'absolute', top: 10, right: 10,
-                          padding: '2px 8px', fontSize: 11,
-                          background: 'none', border: '1px solid #ef4444',
-                          color: '#ef4444', borderRadius: 4, cursor: 'pointer'
-                        }}
-                      >Remove</button>
+                  <div className="bs-field">
+                    <label className="bs-label">Methodology / Approach</label>
+                    <p className="bs-field-hint">The technical or procedural detail behind what you do. Lets the writer speak with authority on your process.</p>
+                    <textarea
+                      className="bs-input"
+                      rows={4}
+                      value={factualGround.methodology}
+                      onChange={e => setFactualGround(p => ({ ...p, methodology: e.target.value }))}
+                      placeholder="8-stage Context Agent Architecture: Context Hub → GEO Strategist → Authenticity Enricher → Content Generator → Compliance Gate → Publishing Queue → Performance Dashboard → Brain Memory..."
+                    />
+                  </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 10 }}>
-                        <div>
-                          <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Full name</label>
+                  <div className="bs-field">
+                    <label className="bs-label">Founding story</label>
+                    <p className="bs-field-hint">The real origin — why this company exists. Specific enough that the writer can reference it without inventing details.</p>
+                    <textarea
+                      className="bs-input"
+                      rows={3}
+                      value={factualGround.foundingStory}
+                      onChange={e => setFactualGround(p => ({ ...p, foundingStory: e.target.value }))}
+                      placeholder="Brian Morgan founded Forge in 2025 after 10 years running Sandbox-XM, frustrated that every AI content tool solved for volume while none solved for intelligence..."
+                    />
+                  </div>
+
+                  <div className="bs-field">
+                    <label className="bs-label">Team composition</label>
+                    <p className="bs-field-hint">Who's behind the work. Names, roles, disciplines. Supports E-E-A-T signals.</p>
+                    <textarea
+                      className="bs-input"
+                      rows={2}
+                      value={factualGround.teamComposition}
+                      onChange={e => setFactualGround(p => ({ ...p, teamComposition: e.target.value }))}
+                      placeholder="Brian Morgan (Founder, 10 years in B2B marketing ops); Claude (AI co-architect)..."
+                    />
+                  </div>
+
+                  <div className="bs-field">
+                    <label className="bs-label">Quotable positions</label>
+                    <p className="bs-field-hint">Specific beliefs, takes, or phrases you want the writer to use verbatim when relevant. These become brain-certified direct quotes.</p>
+                    <textarea
+                      className="bs-input"
+                      rows={4}
+                      value={factualGround.quotablePositions}
+                      onChange={e => setFactualGround(p => ({ ...p, quotablePositions: e.target.value }))}
+                      placeholder={'"Every AI content tool is stateless. Forge inverts that entirely."\n"Share of voice is a scoreboard. Voice of market is an advantage."'}
+                    />
+                  </div>
+
+                  <div className="bs-field">
+                    <div className="fg-authors-header">
+                      <label className="bs-label">Named Authors</label>
+                      <button className="fg-add-btn" onClick={addAuthor}>+ Add Author</button>
+                    </div>
+                    <p className="bs-field-hint">Real people with real credentials. Fills the <code>name: null</code> gap in schema markup and gives the writer legitimate authority to reference.</p>
+
+                    {factualGround.authors.map(author => (
+                      <div key={author.id} className="fg-author-card">
+                        <button className="fg-author-remove" onClick={() => removeAuthor(author.id)}>Remove</button>
+
+                        <div className="fg-author-row">
+                          <div className="bs-field">
+                            <label className="bs-label">Full name</label>
+                            <input
+                              type="text"
+                              value={author.name}
+                              onChange={e => updateAuthor(author.id, 'name', e.target.value)}
+                              placeholder="Brian Morgan"
+                              className="bs-input"
+                            />
+                          </div>
+                          <div className="bs-field">
+                            <label className="bs-label">Title</label>
+                            <input
+                              type="text"
+                              value={author.title}
+                              onChange={e => updateAuthor(author.id, 'title', e.target.value)}
+                              placeholder="Founder & CEO, Forge Intelligence"
+                              className="bs-input"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="bs-field">
+                          <label className="bs-label">LinkedIn URL</label>
                           <input
                             type="text"
-                            value={author.name}
-                            onChange={e => updateAuthor(author.id, 'name', e.target.value)}
-                            placeholder="Brian Morgan"
+                            value={author.linkedinUrl}
+                            onChange={e => updateAuthor(author.id, 'linkedinUrl', e.target.value)}
+                            placeholder="https://linkedin.com/in/brianbodhimorgan"
                             className="bs-input"
                           />
                         </div>
-                        <div>
-                          <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Title</label>
+
+                        <div className="bs-field">
+                          <label className="bs-label">Bio</label>
+                          <textarea
+                            value={author.bio}
+                            onChange={e => updateAuthor(author.id, 'bio', e.target.value)}
+                            placeholder="10 years running Sandbox-XM. Led marketing for [clients]. Based in Portland, OR."
+                            rows={2}
+                            className="bs-input"
+                          />
+                        </div>
+
+                        <div className="bs-field">
+                          <label className="bs-label">Credentials</label>
+                          <textarea
+                            value={author.credentials}
+                            onChange={e => updateAuthor(author.id, 'credentials', e.target.value)}
+                            placeholder="Founded Sandbox-XM (2015). Event marketing experience at [companies]. Speaker at [conferences]."
+                            rows={2}
+                            className="bs-input"
+                          />
+                        </div>
+
+                        <div className="bs-field">
+                          <label className="bs-label">Areas of expertise</label>
                           <input
                             type="text"
-                            value={author.title}
-                            onChange={e => updateAuthor(author.id, 'title', e.target.value)}
-                            placeholder="Founder & CEO, Forge Intelligence"
+                            value={author.expertise}
+                            onChange={e => updateAuthor(author.id, 'expertise', e.target.value)}
+                            placeholder="Brand intelligence, AI content architecture, B2B positioning"
                             className="bs-input"
                           />
                         </div>
                       </div>
+                    ))}
 
-                      <div style={{ marginBottom: 10 }}>
-                        <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>LinkedIn URL</label>
-                        <input
-                          type="text"
-                          value={author.linkedinUrl}
-                          onChange={e => updateAuthor(author.id, 'linkedinUrl', e.target.value)}
-                          placeholder="https://linkedin.com/in/brianbodhimorgan"
-                          className="bs-input"
-                        />
+                    {factualGround.authors.length === 0 && (
+                      <div className="fg-empty">
+                        No authors added yet. Add at least one to fix the <code>name: null</code> in your schema markup.
                       </div>
-
-                      <div style={{ marginBottom: 10 }}>
-                        <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Bio</label>
-                        <textarea
-                          value={author.bio}
-                          onChange={e => updateAuthor(author.id, 'bio', e.target.value)}
-                          placeholder="10 years running Sandbox-XM. Led marketing for [specific clients]. Based in Portland, OR."
-                          rows={2}
-                          className="bs-textarea"
-                        />
-                      </div>
-
-                      <div style={{ marginBottom: 10 }}>
-                        <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Credentials</label>
-                        <textarea
-                          value={author.credentials}
-                          onChange={e => updateAuthor(author.id, 'credentials', e.target.value)}
-                          placeholder={'Founded Sandbox-XM (2015). Event marketing experience at [companies]. Speaker at [conferences].'}
-                          rows={2}
-                          className="bs-textarea"
-                        />
-                      </div>
-
-                      <div>
-                        <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Areas of expertise</label>
-                        <input
-                          type="text"
-                          value={author.expertise}
-                          onChange={e => updateAuthor(author.id, 'expertise', e.target.value)}
-                          placeholder="Brand intelligence, AI content architecture, B2B positioning, event marketing"
-                          className="bs-input"
-                        />
-                      </div>
-                    </div>
-                  ))}
-
-                  {factualGround.authors.length === 0 && (
-                    <div style={{
-                      padding: 20, textAlign: 'center', color: '#94a3b8', fontSize: 13,
-                      background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: 8
-                    }}>
-                      No authors added yet. Add at least one to fix the <code>name: null</code> in your schema markup.
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </section>
 
