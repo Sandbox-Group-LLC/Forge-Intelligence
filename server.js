@@ -3673,7 +3673,7 @@ app.get('/api/authenticity-enricher/briefs', requireAuth, async (req, res) => {
 });
 
 app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => {
-  const { brandProfileId, geoBriefId, manualInputs = {}, force = false } = req.body;
+  const { brandProfileId, geoBriefId, topicBriefId, manualInputs = {}, force = false } = req.body;
   if (!brandProfileId) return res.status(400).json({ success: false, error: 'brandProfileId is required' });
   const startTime = Date.now();
 
