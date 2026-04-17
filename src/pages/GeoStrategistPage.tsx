@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { AppShell } from '../layouts/AppShell';
 import { useApp } from '../context/AppContext';
-import { useAuth } from '@clerk/clerk-react';
 import './GeoStrategistPage.css';
 import GateModal from '../components/GateModal';
 import '../components/GateModal.css';
@@ -103,6 +102,82 @@ function GeoStrategistContent() {
       if (id) setSelectedBrainId(id);
     }
   }, []);
+
+  // ── Cherry-pick: load opportunities + topic briefs for active brand ──────
+  const loadOpportunities = async (brandId: string) => {
+    if (!authToken) return;
+    try {
+      const r = await fetch(`/api/geo/opportunities/${brandId}`, {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      const d = await r.json();
+      if (d.success) setOpportunities(d.opportunities || []);
+    } catch(e) { /* silent */ }
+  };
+
+  const loadTopicBriefs = async (brandId: string) => {
+    if (!authToken) return;
+    try {
+      const r = await fetch(`/api/geo/topic-briefs/${brandId}`, {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      const d = await r.json();
+      if (d.success) setTopicBriefs(d.briefs || []);
+    } catch(e) { /* silent */ }
+  };
+
+  useEffect(() => {
+    if (!brandProfileId || !authToken) return;
+    loadOpportunities(brandProfileId);
+    loadTopicBriefs(brandProfileId);
+  }, [brandProfileId, authToken, result]);
+
+  // ── Build Briefs action — calls Stage 2.1 on selected opportunities ──────
+  const buildBriefsForSelected = async () => {
+    if (!brandProfileId || selectedOppIds.size === 0 || !authToken) return;
+    setBuildingBriefs(true);
+    setBriefBuildError('');
+    try {
+      const r = await fetch('/api/geo/opportunities/build-briefs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+        body: JSON.stringify({ brandProfileId, opportunityIds: Array.from(selectedOppIds) })
+      });
+      const d = await r.json();
+      if (!d.success) throw new Error(d.error || 'Brief build failed');
+      await loadOpportunities(brandProfileId);
+      await loadTopicBriefs(brandProfileId);
+      setSelectedOppIds(new Set());
+      setActiveTab('brief');
+    } catch(e: any) {
+      setBriefBuildError(e.message);
+    } finally {
+      setBuildingBriefs(false);
+    }
+  };
+
+  const backlogBrief = async (briefId: string) => {
+    if (!authToken) return;
+    await fetch(`/api/geo/topic-brief/${briefId}/backlog`, {
+      method: 'POST', headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    if (brandProfileId) await loadTopicBriefs(brandProfileId);
+  };
+
+  const resurfaceBrief = async (briefId: string) => {
+    if (!authToken) return;
+    await fetch(`/api/geo/topic-brief/${briefId}/resurface`, {
+      method: 'POST', headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    if (brandProfileId) await loadTopicBriefs(brandProfileId);
+  };
+
+  const enrichBrief = (briefId: string) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('topicBriefId', briefId);
+    window.history.replaceState({}, '', url.toString());
+    setCurrentView('authenticity-enricher');
+  };
 
   // Re-seed if activeBrand loads after mount
   useEffect(() => {
