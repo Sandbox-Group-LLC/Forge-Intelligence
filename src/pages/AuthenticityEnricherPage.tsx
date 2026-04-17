@@ -138,9 +138,15 @@ function AuthenticityEnricherContent() {
     if (activeBrand?.id && !selectedBrainId) setSelectedBrainId(activeBrand.id);
   }, [activeBrand?.id]);
 
-  // Fetch existing enrichment results on mount
+  // Fetch existing enrichment results on mount — BUT skip if user came with a topicBriefId
+  // (they're here to enrich a SPECIFIC topic, not view cached results from a different one)
   useEffect(() => {
     if (!selectedBrainId || !authToken || result) return;
+    const incomingTopicBriefId = new URLSearchParams(window.location.search).get('topicBriefId');
+    if (incomingTopicBriefId) {
+      // Fresh run for this topic brief — auto-fire analysis, don't load stale cache
+      return;
+    }
     const fetchExisting = async () => {
       try {
         const res = await fetch(`/api/authenticity-enricher/briefs?brandProfileId=${selectedBrainId}`, {
@@ -158,6 +164,18 @@ function AuthenticityEnricherContent() {
     };
     fetchExisting();
   }, [selectedBrainId, authToken]);
+
+  // Auto-fire enrichment when arriving with a topicBriefId (no extra click needed)
+  const [autoFiredFor, setAutoFiredFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (!selectedBrainId || !authToken || isRunning || result) return;
+    const incomingTopicBriefId = new URLSearchParams(window.location.search).get('topicBriefId');
+    if (!incomingTopicBriefId) return;
+    if (autoFiredFor === incomingTopicBriefId) return;  // already fired this one
+    setAutoFiredFor(incomingTopicBriefId);
+    // Kick off the run — runAnalysis will read topicBriefId from URL internally
+    runAnalysis(false, false);
+  }, [selectedBrainId, authToken, isRunning, result]);
 
   // Use historyEntries from context as brain list
   let brains = historyEntries.map(e => ({ id: e.id, brandName: e.brandName, brandUrl: e.brandUrl }));
