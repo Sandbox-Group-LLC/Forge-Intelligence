@@ -595,8 +595,11 @@ function GeoStrategistContent() {
                       {b.briefData?.faqStructure && b.briefData.faqStructure.length > 0 && (
                         <div className="brief-block">
                           <div className="brief-label">FAQ ({b.briefData.faqStructure.length})</div>
-                          {b.briefData.faqStructure.slice(0, 3).map((faq, i) => (
-                            <div key={i} className="brief-faq-item"><div className="faq-q">Q: {faq.question}</div></div>
+                          {b.briefData.faqStructure.map((faq: any, i: number) => (
+                            <div key={i} className="brief-faq-item">
+                              <div className="faq-q">Q: {faq.question}</div>
+                              {faq.answerDirection && <div className="faq-a">A: {faq.answerDirection}</div>}
+                            </div>
                           ))}
                         </div>
                       )}
