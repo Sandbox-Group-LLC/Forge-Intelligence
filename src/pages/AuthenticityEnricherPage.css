@@ -60,20 +60,20 @@
   background: var(--color-accent-muted);
   border: 1px solid var(--color-accent-70);
   border-radius: var(--radius-lg);
-  padding: 16px 24px;
+  padding: 10px 16px;
   text-align: center;
-  min-width: 120px;
+  min-width: auto;
   flex-shrink: 0;
 }
 .score-value {
-  font-size: 42px;
+  font-size: 28px;
   font-weight: 700;
   color: var(--color-accent);
   letter-spacing: -0.03em;
   line-height: 1;
 }
 .score-label {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
