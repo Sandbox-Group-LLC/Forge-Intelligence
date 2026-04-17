@@ -29,6 +29,12 @@ interface EnrichedBrief {
   topicBriefId?: string | null;
   discoverySessionId?: string | null;
   quickWin?: boolean;
+  // Article generation state for batch progress footer
+  hasArticle?: boolean;
+  articleId?: string | null;
+  articleTitle?: string | null;
+  articleStatus?: string | null; // approved | needs_review | etc
+  articlePublishStatus?: string | null; // draft | scheduled | published
 }
 
 interface ArticleSection {
@@ -588,6 +594,33 @@ function ContentGeneratorContent() {
           )}
         </div>
       )}
+
+
+      {briefs.length > 0 && (() => {
+        const latestSession = briefs.find(b => b.discoverySessionId)?.discoverySessionId;
+        const batch = latestSession
+          ? briefs.filter(b => b.discoverySessionId === latestSession)
+          : briefs;
+        if (batch.length === 0) return null;
+        const pending = batch.filter(b => !b.hasArticle).length;
+        const generated = batch.filter(b => b.hasArticle).length;
+        return (
+          <div className="cg-batch-progress">
+            <div className="cg-batch-progress-header">
+              <span className="cg-batch-progress-label">Batch progress</span>
+              <span className="cg-batch-progress-sub">{pending} pending · {generated} generated</span>
+            </div>
+            <div className="cg-batch-progress-chips">
+              {batch.map(b => (
+                <span key={b.id} className={`cg-batch-progress-chip ${b.hasArticle ? 'status-generated' : 'status-pending'}`}>
+                  {b.topic || b.brandName}
+                  <span className="cg-batch-progress-chip-status">· {b.hasArticle ? 'generated' : 'pending'}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
     </div>
   );
