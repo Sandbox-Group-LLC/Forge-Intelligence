@@ -1363,9 +1363,41 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
   <meta name="twitter:description" content="${description}" />
   ${imageUrl ? `<meta name="twitter:image" content="${imageUrl}" />` : ''}`;
 
+    // ── Build SSR body content for AI crawlers (ChatGPT, Perplexity, GPTBot, Googlebot) ──
+    // React hydrates over this on client load. Wrapped in off-screen container so humans don't see it twice.
+    const sectionsHtml = (aj.sections || []).map(s => {
+      const heading = (s.heading || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const body = (s.body || s.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      // Preserve paragraph breaks
+      const paragraphs = body.split(/\n\n+/).map(p => `<p>${p.trim().replace(/\n/g, '<br>')}</p>`).join('\n');
+      return `<section><h2>${heading}</h2>${paragraphs}</section>`;
+    }).join('\n');
+
+    // Build an authorship footer with Factual Ground bio for bot consumption
+    let authorFooter = '';
+    try {
+      const fgRes2 = await pool.query(
+        `SELECT settings->'factualGround' as fg FROM brand_profiles WHERE id = $1`,
+        [matchedBrand.id]
+      );
+      const fg = fgRes2.rows[0]?.fg;
+      const primary = (fg?.authors || []).find(a => a.name && a.name.trim());
+      if (primary) {
+        const safeBio = (primary.bio || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        authorFooter = `<footer><h3>About the author</h3><p><strong>${primary.name.trim()}</strong>${primary.title ? ', ' + primary.title.replace(/</g, '&lt;') : ''}</p><p>${safeBio}</p></footer>`;
+      }
+    } catch(e) { /* silent — non-fatal */ }
+
+    const heroImg = imageUrl ? `<img src="${imageUrl}" alt="${title}" />` : '';
+    const h1Safe = (aj.h1 || article.title).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const metaLine = `<p><em>By ${authorName} · ${readMinutes} min read · ${wordCount} words</em></p>`;
+
+    const ssrBody = `<article style="position:absolute;left:-99999px;top:-99999px" aria-hidden="true"><h1>${h1Safe}</h1>${metaLine}${heroImg}${sectionsHtml}${authorFooter}</article>`;
+
     const injected = html
       .replace(/<title>[^<]*<\/title>/, '')
-      .replace('<head>', '<head>' + ogTags + ldJsonScript);
+      .replace('<head>', '<head>' + ogTags + ldJsonScript)
+      .replace('<div id="root"></div>', `<div id="root">${ssrBody}</div>`);
 
     res.set('Cache-Control', 'no-cache');
     return res.send(injected);
