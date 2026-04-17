@@ -10449,11 +10449,13 @@ app.get('/api/content-generator/enriched-briefs/:brandProfileId', requireAuth, a
            gc.title as article_title,
            gc.compliance_status as article_status,
            gc.status as article_publish_status,
+           pq.status as queue_status,
            false as is_orphan
          FROM enriched_briefs eb
          LEFT JOIN geo_topic_briefs tb ON tb.id::text = eb.enriched_data->>'topicBriefId'
          LEFT JOIN geo_opportunities opp ON opp.id = tb.opportunity_id
          LEFT JOIN generated_content_${safeId} gc ON gc.enriched_brief_id = eb.id::text
+         LEFT JOIN publishing_queue pq ON pq.content_id = gc.id
          WHERE eb.brand_profile_id = $1
       )
       UNION ALL
@@ -10473,8 +10475,10 @@ app.get('/api/content-generator/enriched-briefs/:brandProfileId', requireAuth, a
            gc.title as article_title,
            gc.compliance_status as article_status,
            gc.status as article_publish_status,
+           pq.status as queue_status,
            true as is_orphan
          FROM generated_content_${safeId} gc
+         LEFT JOIN publishing_queue pq ON pq.content_id = gc.id
          WHERE gc.brand_profile_id = $1
            AND gc.enriched_brief_id IS NOT NULL
            AND NOT EXISTS (
@@ -10505,6 +10509,7 @@ app.get('/api/content-generator/enriched-briefs/:brandProfileId', requireAuth, a
         articleTitle: row.article_title,
         articleStatus: row.article_status,
         articlePublishStatus: row.article_publish_status,
+        queueStatus: row.queue_status,  // 'published' means it's shipped to channels
         isOrphan: !!row.is_orphan  // article whose enriched brief has been deleted (legacy)
       }))
     });
