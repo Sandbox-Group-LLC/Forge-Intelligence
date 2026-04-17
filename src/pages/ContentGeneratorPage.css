@@ -798,3 +798,9 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+
+.cg-batch-progress-chip.status-published {
+  background: rgba(53, 99, 255, 0.08);
+  color: #2563eb;
+  border: 1px solid rgba(53, 99, 255, 0.2);
+}
