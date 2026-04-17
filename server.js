@@ -3739,12 +3739,27 @@ app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => 
     const profile = profileResult.rows[0];
     const pd = profile.profile_data || {};
 
-    // ── Load GEO brief if available ──────────────────────────────────────────
+    // ── Load GEO brief — prefer new topic-specific brief if provided ─────────
     let geoBrief = null;
-    if (geoBriefId) {
+    if (topicBriefId) {
+      // New cherry-pick architecture: brief was built for a specific user-selected topic
+      const tbRes = await pool.query(
+        `SELECT tb.*, opp.topic FROM geo_topic_briefs tb
+         JOIN geo_opportunities opp ON opp.id = tb.opportunity_id
+         WHERE tb.id = $1`,
+        [topicBriefId]
+      );
+      if (tbRes.rows.length) {
+        const tb = tbRes.rows[0];
+        geoBrief = { ...tb.brief_data, briefId: tb.id, topic: tb.topic, brandName: profile.brand_name, isTopicBrief: true };
+        console.log(`[ENRICH] Using topic-specific brief: "${tb.topic}"`);
+      }
+    } else if (geoBriefId) {
+      // Legacy path: specific old-style GEO brief ID
       const gbRes = await pool.query(`SELECT * FROM geo_briefs WHERE id = $1`, [geoBriefId]);
       if (gbRes.rows.length) geoBrief = { ...gbRes.rows[0].brief_data, brandName: gbRes.rows[0].brand_name };
     } else {
+      // Fallback: latest GEO brief for this brand
       const gbRes = await pool.query(
         `SELECT * FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY version DESC LIMIT 1`, [brandProfileId]
       );
