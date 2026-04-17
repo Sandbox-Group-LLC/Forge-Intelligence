@@ -86,6 +86,8 @@ export interface HistoryEntry {
   version: number;
   isActive: boolean;
   isCached: boolean;
+  hasFactualGround?: boolean;
+  factualGroundUpdatedAt?: string | null;
 }
 
 export type ViewType = 'new-analysis' | 'active-run' | 'brand-profile' | 'strategy' | 'brain-history' | 'geo-strategist' | 'authenticity-enricher' | 'content-generator' | 'campaign-generator' | 'email-campaign' | 'compliance-gate' | 'integrations' | 'publishing-queue' | 'content-library' | 'content-import' | 'admin' | 'topic-queue' | 'performance' | 'brand-settings';
