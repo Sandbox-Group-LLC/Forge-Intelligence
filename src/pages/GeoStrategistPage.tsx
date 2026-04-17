@@ -572,7 +572,7 @@ function GeoStrategistContent() {
                         <div className="brief-block"><div className="brief-label">H1</div><div className="brief-value">{b.briefData.h1}</div></div>
                       )}
                       {b.briefData?.executiveSummary && (
-                        <div className="brief-block"><div className="brief-label">Summary</div><div className="brief-value">{b.briefData.executiveSummary}</div></div>
+                        <div className="brief-block"><div className="brief-label">Summary</div><div className="brief-summary">{b.briefData.executiveSummary}</div></div>
                       )}
                       {b.briefData?.h2s && b.briefData.h2s.length > 0 && (
                         <div className="brief-block">
