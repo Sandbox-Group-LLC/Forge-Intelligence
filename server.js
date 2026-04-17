@@ -3773,6 +3773,10 @@ app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => 
         const tb = tbRes.rows[0];
         geoBrief = { ...tb.brief_data, briefId: tb.id, topic: tb.topic, brandName: profile.brand_name, isTopicBrief: true };
         console.log(`[ENRICH] Using topic-specific brief: "${tb.topic}"`);
+      } else {
+        // Stale/invalid topicBriefId — don't silently fall through to wrong data
+        console.log(`[ENRICH] Topic brief ${topicBriefId} not found — returning 404`);
+        return res.status(404).json({ success: false, error: 'Topic brief not found. It may have been deleted or expired.' });
       }
     } else if (geoBriefId) {
       // Legacy path: specific old-style GEO brief ID
