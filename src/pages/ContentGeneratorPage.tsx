@@ -602,8 +602,11 @@ function ContentGeneratorContent() {
 
       {briefs.length > 0 && (() => {
         const latestSession = briefs.find(b => b.discoverySessionId)?.discoverySessionId;
+        // Batch = current cherry-pick session's briefs + any orphaned articles (legacy work).
+        // Orphans have no sessionId because their enriched_brief row was deleted by the pre-refactor
+        // "DELETE all on new enrichment" behavior. They're still part of the user's recent work.
         const batch = latestSession
-          ? briefs.filter(b => b.discoverySessionId === latestSession)
+          ? briefs.filter(b => b.discoverySessionId === latestSession || b.isOrphan)
           : briefs;
         if (batch.length === 0) return null;
         const pending = batch.filter(b => !b.hasArticle).length;
