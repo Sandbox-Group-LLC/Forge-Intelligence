@@ -2226,7 +2226,18 @@ app.patch('/api/brand-settings/:brandProfileId', async (req, res) => {
     if (articleBaseUrl    !== undefined) { fields.push(`article_base_url = $${i++}`);    vals.push(articleBaseUrl); }
     if (articleUrlSuffix !== undefined) { fields.push(`article_url_suffix = $${i++}`); vals.push(articleUrlSuffix); }
     if (logoUrl        !== undefined) { fields.push(`logo_url = $${i++}`);           vals.push(logoUrl); }
-    if (settings       !== undefined) { fields.push(`settings = COALESCE(settings, '{}'::jsonb) || $${i++}::jsonb`); vals.push(JSON.stringify(settings)); }
+    if (settings       !== undefined) {
+      // If factualGround is being saved, stamp it with a timestamp so UI can show "user enrichment applied"
+      const settingsWithTimestamp = { ...settings };
+      if (settings.factualGround) {
+        settingsWithTimestamp.factualGround = {
+          ...settings.factualGround,
+          _updatedAt: new Date().toISOString(),
+        };
+      }
+      fields.push(`settings = COALESCE(settings, '{}'::jsonb) || $${i++}::jsonb`);
+      vals.push(JSON.stringify(settingsWithTimestamp));
+    }
     // Bump version when factualGround is saved — it is a meaningful brain update
     if (settings?.factualGround !== undefined) { fields.push(`version = COALESCE(version, 1) + 1`); }
     if (!fields.length) return res.status(400).json({ error: 'Nothing to update' });
@@ -2262,7 +2273,9 @@ app.get('/api/context-hub/history/:encodedUrl', async (req, res) => {
   try {
     const brandUrl = decodeURIComponent(req.params.encodedUrl);
     const result = await pool.query(
-      `SELECT id, brand_url, brand_name, version, is_active, cache_status, created_at, updated_at
+      `SELECT id, brand_url, brand_name, version, is_active, cache_status, created_at, updated_at,
+              (settings->'factualGround') IS NOT NULL AND settings->'factualGround' != '{}'::jsonb as has_factual_ground,
+              settings->'factualGround'->>'_updatedAt' as factual_ground_updated_at
        FROM brand_profiles WHERE brand_url = $1 ORDER BY version DESC`, [brandUrl]
     );
     res.json({ success: true, data: result.rows });
