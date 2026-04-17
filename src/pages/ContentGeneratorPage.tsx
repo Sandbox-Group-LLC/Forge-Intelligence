@@ -20,7 +20,16 @@ const Zap = ({ size = 16 }: { size?: number }) => (
 );
 
 interface Brain { id: string; brandName: string; brandUrl: string; }
-interface EnrichedBrief { id: string; brandName: string; confidenceScore: number; createdAt: string; }
+interface EnrichedBrief {
+  id: string;
+  brandName: string;
+  confidenceScore: number;
+  createdAt: string;
+  topic?: string | null;
+  topicBriefId?: string | null;
+  discoverySessionId?: string | null;
+  quickWin?: boolean;
+}
 
 interface ArticleSection {
   id: string;
@@ -82,7 +91,14 @@ function StreamProgress({ text }: { text: string }) {
 function ContentGeneratorContent() {
   const [briefs, setBriefs] = useState<EnrichedBrief[]>([]);
   const [selectedBrainId, setSelectedBrainId] = useState('');
-  const [selectedBriefId, setSelectedBriefId] = useState('');
+  const [selectedBriefId, setSelectedBriefId] = useState(() => {
+    // Pre-select if we came from Enricher with ?enrichedBriefId=... in URL
+    if (typeof window !== 'undefined') {
+      const urlId = new URLSearchParams(window.location.search).get('enrichedBriefId');
+      return urlId || '';
+    }
+    return '';
+  });
   const [isRunning, setIsRunning] = useState(false);
   const [streamText, setStreamText] = useState('');
   const [article, setArticle] = useState<GeneratedArticle | null>(null);
@@ -139,9 +155,22 @@ function ContentGeneratorContent() {
     if (!selectedBrainId) { setBriefs([]); setSelectedBriefId(''); return; }
     if (!authToken) return;
     loadIdeas(selectedBrainId);
-    fetch(`/api/authenticity-enricher/briefs?brandProfileId=${selectedBrainId}`, { headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {} })
+    // Use new endpoint with topic + cherry-pick session context
+    fetch(`/api/content-generator/enriched-briefs/${selectedBrainId}`, { headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {} })
       .then(r => r.json())
-      .then(d => { if (d.success) setBriefs(d.data); });
+      .then(d => {
+        if (d.success) {
+          setBriefs(d.briefs || []);
+          // Clean URL once we've captured the pre-selection
+          if (typeof window !== 'undefined') {
+            const urlObj = new URL(window.location.href);
+            if (urlObj.searchParams.has('enrichedBriefId')) {
+              urlObj.searchParams.delete('enrichedBriefId');
+              window.history.replaceState({}, '', urlObj.toString());
+            }
+          }
+        }
+      });
 
 
   }, [selectedBrainId, authToken]);
@@ -324,7 +353,12 @@ function ContentGeneratorContent() {
               <div className="geo-select-wrap" style={{ flex: 1, minWidth: '220px' }}>
                 <select className="geo-select" value={selectedBriefId} onChange={e => setSelectedBriefId(e.target.value)}>
                   <option value="">Latest Enriched Brief (default)</option>
-                  {briefs.map(b => <option key={b.id} value={b.id}>{b.brandName} — {new Date(b.createdAt).toLocaleDateString()} (confidence: {b.confidenceScore})</option>)}
+                  {briefs.map(b => {
+                    const label = b.topic
+                      ? `${b.topic}${b.quickWin ? ' ⚡' : ''} — ${new Date(b.createdAt).toLocaleDateString()}`
+                      : `${b.brandName} — ${new Date(b.createdAt).toLocaleDateString()} (confidence: ${b.confidenceScore})`;
+                    return <option key={b.id} value={b.id}>{label}</option>;
+                  })}
                 </select>
               </div>
             )}
