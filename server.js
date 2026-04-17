@@ -2227,6 +2227,8 @@ app.patch('/api/brand-settings/:brandProfileId', async (req, res) => {
     if (articleUrlSuffix !== undefined) { fields.push(`article_url_suffix = $${i++}`); vals.push(articleUrlSuffix); }
     if (logoUrl        !== undefined) { fields.push(`logo_url = $${i++}`);           vals.push(logoUrl); }
     if (settings       !== undefined) { fields.push(`settings = COALESCE(settings, '{}'::jsonb) || $${i++}::jsonb`); vals.push(JSON.stringify(settings)); }
+    // Bump version when factualGround is saved — it is a meaningful brain update
+    if (settings?.factualGround !== undefined) { fields.push(`version = COALESCE(version, 1) + 1`); }
     if (!fields.length) return res.status(400).json({ error: 'Nothing to update' });
     fields.push(`updated_at = NOW()`);
     vals.push(brandProfileId);
