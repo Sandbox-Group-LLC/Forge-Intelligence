@@ -92,6 +92,7 @@ interface ChannelDef {
   liveStatus: 'live' | 'staged' | 'legacy';
   oauthFlow?: boolean;
   pipedreamApp?: string;
+  pipedreamOauthAppId?: string;
   setupGuide: SetupGuide;
 }
 
