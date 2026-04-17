@@ -340,6 +340,41 @@ function ContentGeneratorContent() {
         </div>
       </div>
 
+      {!isRunning && !article && briefs.length > 0 && (() => {
+        // Current batch = all enriched briefs in the same discovery session as the most recent.
+        // Older briefs land below a divider in the dropdown.
+        const latestSession = briefs.find(b => b.discoverySessionId)?.discoverySessionId;
+        const batch = latestSession
+          ? briefs.filter(b => b.discoverySessionId === latestSession)
+          : briefs.slice(0, 1);
+        if (!batch.length || (batch.length === 1 && !batch[0].topic)) return null;
+        return (
+          <div className="cg-batch-section">
+            <div className="cg-batch-header">
+              <span className="cg-batch-label">Your recent batch</span>
+              <span className="cg-batch-sub">{batch.length} enriched {batch.length === 1 ? 'brief' : 'briefs'} ready to generate</span>
+            </div>
+            <div className="cg-batch-grid">
+              {batch.map(b => (
+                <button
+                  key={b.id}
+                  type="button"
+                  className={`cg-batch-card ${selectedBriefId === b.id ? 'selected' : ''}`}
+                  onClick={() => setSelectedBriefId(b.id)}
+                >
+                  <div className="cg-batch-card-top">
+                    {b.quickWin && <span className="cg-batch-qw">⚡ Quick Win</span>}
+                    <span className="cg-batch-confidence">Confidence {b.confidenceScore}</span>
+                  </div>
+                  <div className="cg-batch-topic">{b.topic || b.brandName}</div>
+                  <div className="cg-batch-date">{new Date(b.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {!isRunning && !article && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <div className="geo-input-bar">
