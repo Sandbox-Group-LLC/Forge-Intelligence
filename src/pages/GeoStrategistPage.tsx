@@ -20,6 +20,7 @@ interface GeoOpportunity {
   quickWin: boolean;
   status: 'discovered' | 'briefed' | 'backlog' | 'enriched' | 'ignored';
   topicalAuthority?: any;
+  discoverySessionId?: string | null;
 }
 
 interface TopicBrief {
@@ -143,19 +144,14 @@ function GeoStrategistContent() {
     if (!sessionId) return;
 
     const markIgnored = () => {
-      // Fire-and-forget — beacon API survives page unload
-      const payload = JSON.stringify({ brandProfileId, sessionId });
-      // Use sendBeacon when available (works even during unload); fall back to fetch
-      if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
-        const blob = new Blob([payload], { type: 'application/json' });
-        // NOTE: sendBeacon can't set custom auth headers. Use fetch with keepalive instead.
-      }
+      // keepalive: true keeps the request alive through SPA unmount + page unload.
+      // We can't use sendBeacon here because it can't send custom Authorization headers.
       try {
         fetch('/api/geo/opportunities/mark-ignored', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
-          body: payload,
-          keepalive: true  // survives page unload
+          body: JSON.stringify({ brandProfileId, sessionId }),
+          keepalive: true
         }).catch(() => {});
       } catch { /* silent */ }
     };
