@@ -3785,6 +3785,51 @@ Respond with this exact JSON structure:
       console.log('[ENRICH] Tool 4 fallback brief built from GEO brief —', fallbackSections.length, 'sections');
     }
 
+    // ── Factual Ground takes over authorSchema when present ──
+    // DB brand_url is the source of truth for URL. Named authors from Factual Ground
+    // replace any LLM-generated author schema. Never let Tool 3 hallucinate URLs or names.
+    let finalAuthorSchema = injectionData.authorSchema || {};
+    try {
+      const fgRes = await pool.query(
+        `SELECT settings->'factualGround' as fg, brand_url FROM brand_profiles WHERE id = $1`,
+        [brandProfileId]
+      );
+      const fg = fgRes.rows[0]?.fg;
+      const realBrandUrl = fgRes.rows[0]?.brand_url || '';
+      const fgAuthors = fg?.authors || [];
+      const primaryAuthor = fgAuthors.find(a => a.name && a.name.trim()) || null;
+
+      if (primaryAuthor) {
+        const sameAs = [];
+        if (primaryAuthor.linkedinUrl && primaryAuthor.linkedinUrl.trim()) sameAs.push(primaryAuthor.linkedinUrl.trim());
+
+        finalAuthorSchema = {
+          "@context": "https://schema.org",
+          "@type": "Person",
+          "name": primaryAuthor.name.trim(),
+          "jobTitle": primaryAuthor.title || '',
+          "url": realBrandUrl,  // from DB, never LLM
+          "sameAs": sameAs,
+          "knowsAbout": (primaryAuthor.expertise || '').split(',').map(s => s.trim()).filter(Boolean),
+          "description": primaryAuthor.bio || '',
+          "affiliation": {
+            "@type": "Organization",
+            "name": brandName,
+            "url": realBrandUrl,  // from DB, never LLM
+            ...(fg?.companyFacts ? { "description": fg.companyFacts.slice(0, 500) } : {})
+          },
+          ...(primaryAuthor.credentials ? { "hasCredential": primaryAuthor.credentials.split(/[,.]/).map(s => s.trim()).filter(Boolean) } : {})
+        };
+        console.log(`[ENRICH] Author schema overridden with Factual Ground: ${primaryAuthor.name}`);
+      } else if (realBrandUrl) {
+        // Even without named author, at minimum fix the URL field if LLM generated one
+        if (finalAuthorSchema.url) finalAuthorSchema.url = realBrandUrl;
+        if (finalAuthorSchema.affiliation?.url) finalAuthorSchema.affiliation.url = realBrandUrl;
+      }
+    } catch(e) {
+      console.log('[ENRICH] Author schema FG override failed (non-fatal):', e.message);
+    }
+
     const enrichedData = {
       eeatScores: scorerData.scores,
       overallEEATScore: scorerData.overallEEATScore,
@@ -3793,7 +3838,7 @@ Respond with this exact JSON structure:
       smeSignals: scorerData.smeSignals,
       injectionMap: injectionData.injectionMap,
       powerPhrases: injectionData.powerPhrases,
-      authorSchema: injectionData.authorSchema,
+      authorSchema: finalAuthorSchema,
       contentHooks: injectionData.contentHooks,
       voiceConsistencyScore: injectionData.voiceConsistencyScore,
       ...assembledBrief,
