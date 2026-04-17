@@ -3470,7 +3470,7 @@ BRAIN MISTAKES (DO NOT repeat for this brand): ${JSON.stringify(brainMistakes)}`
     console.log('[GEO] Tool 1: Topical Authority Mapper...');
     const topicalRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 2500,
+      max_tokens: 4000,
       messages: [{ role: 'user', content: `You are the Topical Authority Mapper for Forge Intelligence GEO Strategist.
 
 BRAND: ${profile.brand_name} (${profile.brand_url})
@@ -4346,7 +4346,7 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
     let fullText = '';
     const stream = await client.messages.stream({
       model: 'claude-sonnet-4-6',
-      max_tokens: 8096,
+      max_tokens: 12000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }]
     });
@@ -10248,7 +10248,7 @@ app.post('/api/geo/opportunities/build-briefs', requireAuth, express.json(), asy
       try {
         const briefRes = await anthropic.messages.create({
           model: 'claude-sonnet-4-6',
-          max_tokens: 4096,
+          max_tokens: 6144,
           messages: [{ role: 'user', content: `You are the Topic Brief Builder (Stage 2.1) for Forge Intelligence.
 
 BRAND: ${profile.brand_name}
