@@ -35,6 +35,7 @@ interface EnrichedBrief {
   articleTitle?: string | null;
   articleStatus?: string | null; // approved | needs_review | etc
   articlePublishStatus?: string | null; // draft | scheduled | published
+  queueStatus?: string | null; // from publishing_queue: pending | scheduled | published | failed
   isOrphan?: boolean; // article whose enriched brief was deleted (legacy)
 }
 
@@ -607,10 +608,11 @@ function ContentGeneratorContent() {
         if (batch.length === 0) return null;
         const pending = batch.filter(b => !b.hasArticle).length;
         const generated = batch.filter(b => b.hasArticle).length;
-        const published = batch.filter(b => b.hasArticle && b.articlePublishStatus === 'published').length;
+        const published = batch.filter(b => b.hasArticle && b.queueStatus === 'published').length;
         const generatedOnly = generated - published;
         const statusFor = (b: EnrichedBrief) => {
-          if (b.hasArticle && b.articlePublishStatus === 'published') return 'published';
+          // Published = shipped to a channel (LinkedIn, etc) via publishing_queue
+          if (b.hasArticle && b.queueStatus === 'published') return 'published';
           if (b.hasArticle) return 'generated';
           return 'pending';
         };
