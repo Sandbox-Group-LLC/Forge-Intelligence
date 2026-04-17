@@ -10052,6 +10052,261 @@ app.get('/api/geo/debug/:brandProfileId', async (req, res) => {
 
 // POST /api/geo/track/:brandProfileId — fire-and-forget citation check
 // Responds immediately, processes in background to avoid Render timeout
+// ═══════════════════════════════════════════════════════════════════════════
+// GEO CHERRY-PICK ARCHITECTURE — New endpoints for topic selection + brief building
+// ═══════════════════════════════════════════════════════════════════════════
+
+// GET /api/geo/opportunities/:brandProfileId — latest session's opportunities
+app.get('/api/geo/opportunities/:brandProfileId', requireAuth, async (req, res) => {
+  try {
+    const { brandProfileId } = req.params;
+    // Get most recent session_id for this brand
+    const latestSession = await pool.query(
+      `SELECT discovery_session_id FROM geo_opportunities
+       WHERE brand_profile_id = $1 AND discovery_session_id IS NOT NULL
+       ORDER BY discovered_at DESC LIMIT 1`,
+      [brandProfileId]
+    );
+    if (!latestSession.rows.length) return res.json({ success: true, opportunities: [], sessionId: null });
+
+    const sessionId = latestSession.rows[0].discovery_session_id;
+    const opps = await pool.query(
+      `SELECT id, topic, platform_scores, avg_score, quick_win, topical_authority_context,
+              status, discovered_at, status_changed_at
+       FROM geo_opportunities
+       WHERE brand_profile_id = $1 AND discovery_session_id = $2
+       ORDER BY quick_win DESC, avg_score DESC`,
+      [brandProfileId, sessionId]
+    );
+    res.json({
+      success: true,
+      sessionId,
+      opportunities: opps.rows.map(r => ({
+        id: r.id, topic: r.topic,
+        platformScores: r.platform_scores, avgScore: parseFloat(r.avg_score),
+        quickWin: r.quick_win,
+        topicalAuthority: r.topical_authority_context ? JSON.parse(r.topical_authority_context) : null,
+        status: r.status, discoveredAt: r.discovered_at, statusChangedAt: r.status_changed_at
+      }))
+    });
+  } catch(e) {
+    console.error('[GEO-OPP-LIST]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/geo/opportunities/build-briefs — Stage 2.1 Brief Builder
+// Body: { opportunityIds: string[], brandProfileId: string }
+app.post('/api/geo/opportunities/build-briefs', requireAuth, express.json(), async (req, res) => {
+  const { opportunityIds, brandProfileId } = req.body;
+  if (!Array.isArray(opportunityIds) || !opportunityIds.length) {
+    return res.status(400).json({ success: false, error: 'opportunityIds required' });
+  }
+  if (!brandProfileId) return res.status(400).json({ success: false, error: 'brandProfileId required' });
+
+  try {
+    const profileRes = await pool.query(
+      `SELECT id, brand_url, brand_name, version, profile_data, settings FROM brand_profiles WHERE id = $1`,
+      [brandProfileId]
+    );
+    if (!profileRes.rows.length) return res.status(404).json({ success: false, error: 'Brand not found' });
+    const profile = profileRes.rows[0];
+    const pd = profile.profile_data || {};
+    const voiceProfile = pd.voice_profile || pd.voiceProfile || {};
+    const personas = pd.personas || [];
+
+    // Fetch brain context for the brief builder
+    const patternsRes = await pool.query(
+      `SELECT pattern_type, description FROM brain_patterns WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 20`,
+      [brandProfileId]
+    );
+    const brainContext = patternsRes.rows.length
+      ? 'BRAIN PATTERNS (respect these):\n' + patternsRes.rows.map(p => `- [${p.pattern_type}] ${p.description}`).join('\n')
+      : 'No brain patterns yet.';
+
+    // Also pull Factual Ground for context
+    const fg = (profile.settings || {}).factualGround || {};
+    const factualContext = [
+      fg.whatWeDo && `What we do: ${fg.whatWeDo}`,
+      fg.whatWeDontDo && `What we don't do: ${fg.whatWeDontDo}`,
+      fg.methodology && `Methodology: ${fg.methodology.slice(0, 400)}`
+    ].filter(Boolean).join('\n\n');
+
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const builtBriefs = [];
+
+    // Build brief for each opportunity in parallel (with concurrency cap)
+    for (const oppId of opportunityIds) {
+      const oppRes = await pool.query(
+        `SELECT * FROM geo_opportunities WHERE id = $1 AND brand_profile_id = $2`,
+        [oppId, brandProfileId]
+      );
+      if (!oppRes.rows.length) continue;
+      const opp = oppRes.rows[0];
+      const authorityWriteup = opp.topical_authority_context ? JSON.parse(opp.topical_authority_context) : null;
+
+      try {
+        const briefRes = await anthropic.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 4096,
+          messages: [{ role: 'user', content: `You are the Topic Brief Builder (Stage 2.1) for Forge Intelligence.
+
+BRAND: ${profile.brand_name}
+VOICE: ${JSON.stringify(voiceProfile).slice(0, 400)}
+PERSONAS: ${JSON.stringify(personas).slice(0, 400)}
+
+${factualContext ? 'FACTUAL GROUND (use verbatim):\n' + factualContext + '\n\n' : ''}${brainContext}
+
+TOPIC THE USER SELECTED: "${opp.topic}"
+PLATFORM SCORES: ${JSON.stringify(opp.platform_scores)}
+QUICK WIN: ${opp.quick_win}
+TOPICAL AUTHORITY CONTEXT: ${authorityWriteup ? JSON.stringify(authorityWriteup).slice(0, 600) : 'N/A'}
+
+Build a GEO-optimized content brief for THIS SPECIFIC TOPIC. Return ONLY valid JSON:
+{
+  "h1": "string — compelling H1 with topic + differentiated angle",
+  "executiveSummary": "string — 2-3 sentences on what this article accomplishes",
+  "h2s": [{"heading":"string","intent":"string explaining why this section exists","geoAnchor":"string — key phrase for AI citation"}],
+  "entities": ["string"],
+  "faqStructure": [{"question":"string","answerDirection":"string"}],
+  "geoAnchors": ["string"],
+  "schemaRequirements": ["string"],
+  "targetPlatforms": ["string"],
+  "briefRationale": "string — why this angle, for this brand, now"
+}
+
+Generate 5-7 H2s that build a coherent argument. Align entities with schema requirements.`
+          }]
+        });
+
+        let briefData;
+        try {
+          const raw = briefRes.content[0].text;
+          const json = extractJSON(raw, 'object');
+          briefData = JSON.parse(json);
+        } catch(parseErr) {
+          console.log('[STAGE-2.1] parse warn for', opp.topic, ':', parseErr.message);
+          briefData = {
+            h1: opp.topic, executiveSummary: 'Brief generation incomplete — retry needed.',
+            h2s: [], entities: [], faqStructure: [], geoAnchors: [],
+            schemaRequirements: [], targetPlatforms: [], briefRationale: 'parse-error'
+          };
+        }
+
+        // Persist the brief
+        const briefInsert = await pool.query(
+          `INSERT INTO geo_topic_briefs (opportunity_id, brand_profile_id, brief_data, brain_version, status)
+           VALUES ($1, $2, $3, $4, 'briefed') RETURNING id, created_at`,
+          [oppId, brandProfileId, JSON.stringify(briefData), profile.version || 1]
+        );
+
+        // Flip opportunity to "briefed"
+        await pool.query(
+          `UPDATE geo_opportunities SET status = 'briefed', status_changed_at = NOW() WHERE id = $1`,
+          [oppId]
+        );
+
+        builtBriefs.push({
+          briefId: briefInsert.rows[0].id,
+          opportunityId: oppId,
+          topic: opp.topic,
+          briefData,
+          createdAt: briefInsert.rows[0].created_at
+        });
+      } catch(briefErr) {
+        console.error('[STAGE-2.1] brief build failed for', opp.topic, ':', briefErr.message);
+      }
+    }
+
+    // Log activity
+    await pool.query(
+      `INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms) VALUES ($1, $2, $3, $4, $5)`,
+      ['stage2_1_brief_builder', brandProfileId, 'success', builtBriefs.length * 3000, 0]
+    ).catch(() => {});
+
+    res.json({ success: true, briefs: builtBriefs, builtCount: builtBriefs.length });
+  } catch(e) {
+    console.error('[STAGE-2.1]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /api/geo/topic-briefs/:brandProfileId — briefed topics (includes backlog)
+app.get('/api/geo/topic-briefs/:brandProfileId', requireAuth, async (req, res) => {
+  try {
+    const statusFilter = req.query.status;  // optional: 'briefed' | 'backlog' | 'enriched'
+    const sql = statusFilter
+      ? `SELECT tb.*, opp.topic, opp.quick_win, opp.avg_score
+         FROM geo_topic_briefs tb
+         JOIN geo_opportunities opp ON opp.id = tb.opportunity_id
+         WHERE tb.brand_profile_id = $1 AND tb.status = $2 AND tb.superseded_by IS NULL
+         ORDER BY tb.created_at DESC`
+      : `SELECT tb.*, opp.topic, opp.quick_win, opp.avg_score
+         FROM geo_topic_briefs tb
+         JOIN geo_opportunities opp ON opp.id = tb.opportunity_id
+         WHERE tb.brand_profile_id = $1 AND tb.superseded_by IS NULL
+         ORDER BY tb.created_at DESC`;
+    const params = statusFilter ? [req.params.brandProfileId, statusFilter] : [req.params.brandProfileId];
+    const r = await pool.query(sql, params);
+    res.json({
+      success: true,
+      briefs: r.rows.map(row => ({
+        id: row.id, opportunityId: row.opportunity_id, topic: row.topic,
+        briefData: row.brief_data, quickWin: row.quick_win,
+        avgScore: parseFloat(row.avg_score), status: row.status,
+        brainVersion: row.brain_version, createdAt: row.created_at
+      }))
+    });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/geo/topic-brief/:id/backlog
+app.post('/api/geo/topic-brief/:id/backlog', requireAuth, async (req, res) => {
+  try {
+    await pool.query(`UPDATE geo_topic_briefs SET status = 'backlog', updated_at = NOW() WHERE id = $1`, [req.params.id]);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// POST /api/geo/topic-brief/:id/resurface
+app.post('/api/geo/topic-brief/:id/resurface', requireAuth, async (req, res) => {
+  try {
+    await pool.query(`UPDATE geo_topic_briefs SET status = 'briefed', updated_at = NOW() WHERE id = $1`, [req.params.id]);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// POST /api/geo/opportunities/mark-ignored — sweep called when user leaves GEO page
+// Marks any still-'discovered' opps in the session as 'ignored' (brain food)
+app.post('/api/geo/opportunities/mark-ignored', requireAuth, express.json(), async (req, res) => {
+  try {
+    const { brandProfileId, sessionId } = req.body;
+    if (!brandProfileId || !sessionId) return res.status(400).json({ success: false, error: 'params required' });
+    const r = await pool.query(
+      `UPDATE geo_opportunities SET status = 'ignored', status_changed_at = NOW()
+       WHERE brand_profile_id = $1 AND discovery_session_id = $2 AND status = 'discovered'
+       RETURNING id, topic, quick_win`,
+      [brandProfileId, sessionId]
+    );
+    // Write brain signal — "user rejected these quick wins" is useful context
+    for (const ignored of r.rows) {
+      if (ignored.quick_win) {
+        await pool.query(
+          `INSERT INTO brain_patterns (id, brand_profile_id, pattern_type, description, confidence_score, created_at)
+           VALUES (gen_random_uuid(), $1, 'user_rejection', $2, 0.3, NOW())
+           ON CONFLICT DO NOTHING`,
+          [brandProfileId, `User did not select Quick Win topic "${ignored.topic}" when surfaced. Consider deprioritizing this angle.`]
+        ).catch(() => {});
+      }
+    }
+    res.json({ success: true, ignoredCount: r.rowCount });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 app.post('/api/geo/track/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
   // Allow cron/admin bypass with adminPassword, otherwise require Clerk JWT
