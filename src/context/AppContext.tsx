@@ -49,6 +49,8 @@ function mapBrainToHistoryEntry(b: any): HistoryEntry {
     version: b.version,
     isActive: b.isActive,
     isCached: b.cacheStatus === 'cached',
+    hasFactualGround: b.hasFactualGround ?? false,
+    factualGroundUpdatedAt: b.factualGroundUpdatedAt ?? null,
   };
 }
 
