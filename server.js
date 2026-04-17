@@ -4345,7 +4345,25 @@ GEO BRIEF:
 ${geoBrief ? trimTo(geoBrief, 4000) : 'Not available — infer topical strategy from brand profile.'}
 
 ENRICHED BRIEF:
-${enrichedBrief ? trimTo(enrichedBrief, 6000) : 'Not available — use brand profile voice and personas.'}
+${enrichedBrief ? (() => {
+  // Extract ONLY the fields the writer needs — skip diagnostic bloat (EEAT scores, gaps, injection maps, sonar signals).
+  // Full enriched brief is 30-40KB; writer only needs ~3-5KB of article-directing content.
+  const slim = {
+    enrichedTitle: enrichedBrief.enrichedTitle,
+    enrichedH1: enrichedBrief.enrichedH1,
+    topic: enrichedBrief.topic,
+    enrichedSections: (enrichedBrief.enrichedSections || []).map(s => ({
+      heading: s.heading, body: s.body || s.content,
+      confidenceTier: s.confidenceTier,
+      eeatInjections: s.eeatInjections, smeHooks: s.smeHooks
+    })),
+    enrichedFAQ: enrichedBrief.enrichedFAQ,
+    powerPhrases: enrichedBrief.powerPhrases,
+    contentHooks: enrichedBrief.contentHooks,
+    authorSchema: enrichedBrief.authorSchema ? { name: enrichedBrief.authorSchema.name, jobTitle: enrichedBrief.authorSchema.jobTitle } : null
+  };
+  return trimTo(slim, 12000);
+})() : 'Not available — use brand profile voice and personas.'}
 
 BRAIN PATTERNS — WHAT WORKS FOR THIS BRAND (extracted from real published content analytics):
 ${patternsRes.rows.length > 0 ? trimTo(patternsRes.rows, 2000) : 'No patterns extracted yet — generate strong content to seed future patterns.'}
