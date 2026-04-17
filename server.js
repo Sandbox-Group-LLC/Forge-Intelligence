@@ -3588,50 +3588,8 @@ Return ONLY valid JSON array:
       pendingUserSelection: true
     };
 
-    // FAKE briefRes to satisfy downstream code until we finish refactor
-    const briefRes = { content: [{ text: JSON.stringify(briefData) }] };
-    if (false) await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 8192,
-      messages: [{ role: 'user', content: `You are the GEO Brief Generator for Forge Intelligence.
-
-MANDATORY BRAIN-FIRST CHECK:
-${brainContext}
-DO NOT repeat patterns flagged as mistakes above.
-
-BRAND: ${profile.brand_name} | Voice: ${JSON.stringify(voiceProfile).slice(0, 400)}
-Personas: ${JSON.stringify(personas).slice(0, 400)}
-Whitespace: ${whitespace}
-TARGET TOPIC: ${targetTopic}
-TOP OPPORTUNITIES: ${JSON.stringify(geoOpportunities.slice(0, 6))}
-HIGH-PRIORITY ENTITIES: ${JSON.stringify(entitySchema.filter(e => e.priority === 'high'))}
-${additionalContext ? 'Additional context: ' + additionalContext : ''}
-
-Generate a complete GEO-optimized content brief structured for AI citation.
-
-Return ONLY valid JSON:
-{
-  "targetTopic":"string","executiveSummary":"string","h1":"string",
-  "h2s":[{"heading":"string","intent":"string","geoAnchor":"string"}],
-  "entities":["string"],"faqStructure":[{"question":"string","answerDirection":"string"}],
-  "geoAnchors":["string"],"schemaRequirements":["string"],
-  "overallOpportunityScore":0,"targetPlatforms":["string"],
-  "contentCalendar":{"month1":["string"],"month2":["string"],"month3":["string"]},
-  "quickWins":[{"topic":"string","rationale":"string","geoTarget":"string"}],
-  "geoScorecard":{"currentReadiness":0,"primaryGap":"string","topOpportunity":"string"},
-  "briefRationale":"string"
-}` }]
-    });
-    let briefData = {};
-    try {
-      const bd = extractJSON(briefRes.content[0].text, 'object');
-      if (!bd) throw new Error('No JSON object found in Tool 4 response');
-      briefData = JSON.parse(bd);
-    } catch(e) { console.log('[GEO] Tool 4 parse warn:', e.message, '| raw:', briefRes.content[0].text.slice(0,200)); briefData = { targetTopic, overallOpportunityScore: 50 }; }
-
-    const opportunityScore = briefData.overallOpportunityScore || 0;
-
-    // ── Persist to geo_briefs ─────────────────────────────────────────────────
+    // Legacy geo_briefs row kept as stub for backward-compat with older code paths
+    // New architecture uses geo_opportunities + geo_topic_briefs instead.
     const versionResult = await pool.query(
       `SELECT COALESCE(MAX(version), 0) as max_v FROM geo_briefs WHERE brand_profile_id = $1`, [brandProfileId]
     );
@@ -3639,6 +3597,7 @@ Return ONLY valid JSON:
     const id = randomUUID();
     const { topicalAuthorityMap, geoOpportunities: geoOpportunitiesNorm, entitySchemaMap, geoBrief } = normalizeGeoData(briefData, topicalMap, geoOpportunities, entitySchema, profile);
     const fullBriefData = { ...briefData, topicalMap, geoOpportunities, entitySchema, topicalAuthorityMap, geoOpportunitiesNorm, entitySchemaMap, geoBrief };
+    const opportunityScore = briefData.overallOpportunityScore || 0;
 
     // Nuke stale GEO briefs — re-run means old data is superseded
     await pool.query('DELETE FROM geo_briefs WHERE brand_profile_id = $1', [brandProfileId]);
@@ -3648,19 +3607,6 @@ Return ONLY valid JSON:
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [id, null, brandProfileId, profile.brand_url, profile.brand_name, nextVersion, opportunityScore, JSON.stringify(fullBriefData), profile.version || 1]
     );
-
-    // ── Write pattern if score >= 75 ──────────────────────────────────────────
-    if (opportunityScore >= 75) {
-      try {
-        await pool.query(
-          `INSERT INTO patterns (id, pattern_type, success_rate, confidence_score, tags, created_at)
-           VALUES ($1, $2, $3, $4, $5, NOW()) ON CONFLICT DO NOTHING`,
-          [randomUUID(), 'geo-brief-high-score', opportunityScore / 100, opportunityScore / 100,
-           JSON.stringify({ topic: briefData.targetTopic, platforms: briefData.targetPlatforms, score: opportunityScore, brandUrl: profile.brand_url })]
-        );
-        console.log(`[GEO] Pattern written — score ${opportunityScore} >= 75`);
-      } catch(e) { console.log('[GEO] Pattern write skipped:', e.message); }
-    }
 
     const latencyMs = Date.now() - startTime;
     console.log(`[GEO] Complete — Score: ${opportunityScore} | Latency: ${latencyMs}ms | QuickWins: ${quickWins.length}`);
