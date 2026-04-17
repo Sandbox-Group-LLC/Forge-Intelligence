@@ -133,29 +133,11 @@ function ContentGeneratorContent() {
     if (activeBrand?.id && !selectedBrainId) setSelectedBrainId(activeBrand.id);
   }, [activeBrand?.id]);
 
-  // Restore last generated article on return — but NOT if user arrived with ?enrichedBriefId=...
-  // (they're here to generate from a SPECIFIC brief, not view a stale article from a different one).
-  useEffect(() => {
-    if (!selectedBrainId || !authToken || article) return;
-    const incomingBriefId = typeof window !== 'undefined'
-      ? new URLSearchParams(window.location.search).get('enrichedBriefId')
-      : null;
-    if (incomingBriefId) return;  // user intent is a fresh generation, skip auto-hydrate
-
-    fetch(`/api/compliance/latest/${selectedBrainId}`, { headers: { 'Authorization': `Bearer ${authToken}` } })
-      .then(r => r.json())
-      .then(d => {
-        if (d.success && d.articles?.length > 0) {
-          const latest = d.articles[0];
-          const aj = typeof latest.article_json === 'string' ? JSON.parse(latest.article_json) : latest.article_json;
-          if (aj?.title && aj?.sections?.length > 0) {
-            setArticle(aj as GeneratedArticle);
-            if (latest.hero_image_url) setArticleImageUrl(latest.hero_image_url);
-          }
-        }
-      })
-      .catch(() => {});
-  }, [selectedBrainId, authToken]);
+  // Auto-hydrate REMOVED: Content Generator no longer silently restores the last finished article.
+  // The user's current context is their cherry-pick batch, not whichever article happens to be latest.
+  // If they arrived with ?enrichedBriefId=X, the batch card for that brief is pre-selected (see state init).
+  // If no param, they see the full batch and pick what to work on next.
+  // The only way to see a previously-generated article is via Content Library, where it belongs.
 
   useEffect(() => {
     if (!selectedBrainId) { setBriefs([]); setSelectedBriefId(''); return; }
