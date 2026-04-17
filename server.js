@@ -1318,12 +1318,16 @@ app.get('/api/context-hub/brains', softAuth, async (req, res) => {
     const result = isSuperAdmin
       ? await pool.query(
           `SELECT id, brand_url, brand_name, version, is_active, cache_status,
-                  created_at, updated_at, profile_data
+                  created_at, updated_at, profile_data,
+                  (settings->'factualGround') IS NOT NULL AND settings->'factualGround' != '{}'::jsonb as has_factual_ground,
+                  settings->'factualGround'->>'_updatedAt' as factual_ground_updated_at
            FROM brand_profiles WHERE is_active = true ORDER BY updated_at DESC`
         )
       : await pool.query(
           `SELECT id, brand_url, brand_name, version, is_active, cache_status,
-                  created_at, updated_at, profile_data
+                  created_at, updated_at, profile_data,
+                  (settings->'factualGround') IS NOT NULL AND settings->'factualGround' != '{}'::jsonb as has_factual_ground,
+                  settings->'factualGround'->>'_updatedAt' as factual_ground_updated_at
            FROM brand_profiles WHERE is_active = true AND clerk_user_id = $1 ORDER BY updated_at DESC`,
           [req.userId]
         );
@@ -1336,6 +1340,8 @@ app.get('/api/context-hub/brains', softAuth, async (req, res) => {
       cacheStatus: r.cache_status,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
+      hasFactualGround: r.has_factual_ground,
+      factualGroundUpdatedAt: r.factual_ground_updated_at,
       ...r.profile_data
     }));
     res.json({ success: true, data });
