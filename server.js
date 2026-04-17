@@ -10418,7 +10418,8 @@ app.post('/api/geo/opportunities/mark-ignored', requireAuth, express.json(), asy
 app.get('/api/content-generator/enriched-briefs/:brandProfileId', requireAuth, async (req, res) => {
   try {
     const { brandProfileId } = req.params;
-    // LEFT JOIN to topic briefs + opportunities so we get topic label + session ID when applicable
+    const safeId = brandProfileId.replace(/-/g, '_');
+    // Join enrichment data with topic context + article generation status
     const r = await pool.query(
       `SELECT
          eb.id, eb.brand_profile_id, eb.brand_name, eb.version, eb.confidence_score,
@@ -10426,10 +10427,15 @@ app.get('/api/content-generator/enriched-briefs/:brandProfileId', requireAuth, a
          eb.enriched_data->>'topicBriefId' as topic_brief_id,
          opp.topic as topic,
          opp.discovery_session_id as discovery_session_id,
-         opp.quick_win as quick_win
+         opp.quick_win as quick_win,
+         gc.id as article_id,
+         gc.title as article_title,
+         gc.compliance_status as article_status,
+         gc.status as article_publish_status
        FROM enriched_briefs eb
        LEFT JOIN geo_topic_briefs tb ON tb.id = (eb.enriched_data->>'topicBriefId')::uuid
        LEFT JOIN geo_opportunities opp ON opp.id = tb.opportunity_id
+       LEFT JOIN generated_content_${safeId} gc ON gc.enriched_brief_id = eb.id
        WHERE eb.brand_profile_id = $1
        ORDER BY eb.created_at DESC
        LIMIT 30`,
@@ -10446,9 +10452,15 @@ app.get('/api/content-generator/enriched-briefs/:brandProfileId', requireAuth, a
         createdAt: row.created_at,
         brainVersion: row.brain_version,
         topicBriefId: row.topic_brief_id,
-        topic: row.topic,  // null if this enrichment didn't come from a topic brief
+        topic: row.topic,
         discoverySessionId: row.discovery_session_id,
-        quickWin: row.quick_win
+        quickWin: row.quick_win,
+        // Article generation state for batch progress UI
+        hasArticle: !!row.article_id,
+        articleId: row.article_id,
+        articleTitle: row.article_title,
+        articleStatus: row.article_status, // approved | needs_review | etc
+        articlePublishStatus: row.article_publish_status // draft | scheduled | published
       }))
     });
   } catch(e) {
