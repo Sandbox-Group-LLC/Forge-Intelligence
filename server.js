@@ -10439,7 +10439,7 @@ app.get('/api/content-generator/enriched-briefs/:brandProfileId', requireAuth, a
     const r = await pool.query(
       `(
         SELECT
-           eb.id, eb.brand_profile_id, eb.brand_name, eb.version, eb.confidence_score,
+           eb.id::text as id, eb.brand_profile_id, eb.brand_name, eb.version, eb.confidence_score,
            eb.created_at, eb.brain_version,
            eb.enriched_data->>'topicBriefId' as topic_brief_id,
            opp.topic as topic,
