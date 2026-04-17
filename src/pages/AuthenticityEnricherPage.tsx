@@ -174,13 +174,17 @@ function AuthenticityEnricherContent() {
     setCompletedStages([]);
     setCurrentStage(1);
 
+    // Pull topicBriefId from URL if present (set by GEO page's Enrich Now action)
+    const topicBriefId = new URLSearchParams(window.location.search).get('topicBriefId');
+
     const analyzePromise = fetch('/api/authenticity-enricher/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         brandProfileId: selectedBrainId,
         manualInputs: withManual ? manualInputs : {},
-        force: withManual || forceRefresh
+        force: withManual || forceRefresh,
+        ...(topicBriefId ? { topicBriefId } : {})
       })
     });
 
@@ -191,6 +195,13 @@ function AuthenticityEnricherContent() {
       setCompletedStages(prev => [...prev, i + 1]);
     }
     setCurrentStage(5);
+
+    // Clean the URL now that we've captured topicBriefId
+    if (topicBriefId) {
+      const u = new URL(window.location.href);
+      u.searchParams.delete('topicBriefId');
+      window.history.replaceState({}, '', u.toString());
+    }
 
     try {
       const res = await analyzePromise;
