@@ -3686,6 +3686,24 @@ app.get('/api/authenticity-enricher/briefs', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
+// ── Truncate long text at last sentence boundary within budget ──
+// Prefers ending on a full sentence (. ! ?) rather than mid-word.
+// Falls back to word boundary if no sentence break found in window.
+function truncateAtSentence(text, maxChars) {
+  if (!text || typeof text !== 'string') return '';
+  if (text.length <= maxChars) return text.trim();
+  const window = text.slice(0, maxChars);
+  // Look for last sentence-ending punctuation followed by space/newline or at end
+  const sentenceMatch = window.match(/^.*[.!?](?=\s|$)/s);
+  if (sentenceMatch && sentenceMatch[0].length >= maxChars * 0.5) {
+    return sentenceMatch[0].trim();
+  }
+  // Fallback: last complete word
+  const lastSpace = window.lastIndexOf(' ');
+  if (lastSpace > maxChars * 0.5) return window.slice(0, lastSpace).trim() + '…';
+  return window.trim() + '…';
+}
+
 app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => {
   const { brandProfileId, geoBriefId, topicBriefId, manualInputs = {}, force = false } = req.body;
   if (!brandProfileId) return res.status(400).json({ success: false, error: 'brandProfileId is required' });
@@ -3979,7 +3997,7 @@ Respond with this exact JSON structure:
             "@type": "Organization",
             "name": brandName,
             "url": realBrandUrl,  // from DB, never LLM
-            ...(fg?.companyFacts ? { "description": fg.companyFacts.slice(0, 500) } : {})
+            ...(fg?.companyFacts ? { "description": truncateAtSentence(fg.companyFacts, 500) } : {})
           },
           ...(primaryAuthor.credentials ? { "hasCredential": primaryAuthor.credentials.split(/[,.]/).map(s => s.trim()).filter(Boolean) } : {})
         };
