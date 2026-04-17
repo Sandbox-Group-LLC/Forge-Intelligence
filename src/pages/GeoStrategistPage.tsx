@@ -173,10 +173,9 @@ function GeoStrategistContent() {
   };
 
   const enrichBrief = (briefId: string) => {
-    const url = new URL(window.location.href);
-    url.searchParams.set('topicBriefId', briefId);
-    window.history.replaceState({}, '', url.toString());
-    setCurrentView('authenticity-enricher');
+    // Hard navigate to the Enricher route with topicBriefId in query string.
+    // The router is URL-based (not view-state-based), so we need a real navigation.
+    window.location.href = `/app/authenticity-enricher?topicBriefId=${encodeURIComponent(briefId)}`;
   };
 
   // Re-seed if activeBrand loads after mount
