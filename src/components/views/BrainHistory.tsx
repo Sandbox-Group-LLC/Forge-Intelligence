@@ -162,7 +162,7 @@ export function BrainHistory() {
             <div className="brand-group-header">
               <div className="brand-info">
                 <h3 className="brand-name">{brandName}</h3>
-                <span className="brand-versions">{entries.length} version{entries.length !== 1 ? 's' : ''}</span>
+                <span className="brand-versions">v{Math.max(...entries.map(e => e.version || 1))}{entries.length > 1 ? ` · ${entries.length} snapshots` : ''}</span>
               </div>
               <div className="brand-status">
                 {entries.some(e => e.isActive) && (
