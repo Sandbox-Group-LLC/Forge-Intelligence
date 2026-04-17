@@ -788,9 +788,9 @@
   border: 1px solid rgba(59, 130, 246, 0.15);
 }
 .cg-batch-progress-chip.status-generated {
-  background: rgba(16, 185, 129, 0.08);
-  color: #059669;
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  background: rgba(53, 99, 255, 0.08);
+  color: #2563eb;
+  border: 1px solid rgba(53, 99, 255, 0.2);
 }
 .cg-batch-progress-chip-status {
   opacity: 0.7;
@@ -800,7 +800,7 @@
 }
 
 .cg-batch-progress-chip.status-published {
-  background: rgba(53, 99, 255, 0.08);
-  color: #2563eb;
-  border: 1px solid rgba(53, 99, 255, 0.2);
+  background: rgba(16, 185, 129, 0.08);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.2);
 }
