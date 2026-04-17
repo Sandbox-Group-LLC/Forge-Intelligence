@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { AppShell } from '../layouts/AppShell';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '@clerk/clerk-react';
 import './GeoStrategistPage.css';
 import GateModal from '../components/GateModal';
 import '../components/GateModal.css';
@@ -12,10 +13,43 @@ interface BrainEntry {
   updatedAt: string;
 }
 
+interface GeoOpportunity {
+  id: string;
+  topic: string;
+  platformScores: { chatgpt?: number; perplexity?: number; aiOverviews?: number; gemini?: number };
+  avgScore: number;
+  quickWin: boolean;
+  status: 'discovered' | 'briefed' | 'backlog' | 'enriched' | 'ignored';
+  topicalAuthority?: any;
+}
+
+interface TopicBrief {
+  id: string;
+  opportunityId: string;
+  topic: string;
+  briefData: {
+    h1?: string;
+    executiveSummary?: string;
+    h2s?: Array<{ heading: string; intent?: string; geoAnchor?: string }>;
+    entities?: string[];
+    faqStructure?: Array<{ question: string; answerDirection?: string }>;
+    geoAnchors?: string[];
+    schemaRequirements?: string[];
+    targetPlatforms?: string[];
+    briefRationale?: string;
+  };
+  quickWin?: boolean;
+  avgScore?: number;
+  status: 'briefed' | 'backlog' | 'enriched';
+  createdAt: string;
+}
+
 interface GeoResult {
   opportunityScore: number;
   brainVersion?: number;
   currentBrainVersion?: number;
+  discoverySessionId?: string;
+  pendingUserSelection?: boolean;
   topicalAuthorityMap: Array<{ topic: string; coverage: string; citationProbability: number; priority: string }>;
   geoOpportunities: Array<{ topic: string; chatgpt: number; perplexity: number; aiOverviews: number; gemini: number; quickWin: boolean }>;
   entitySchemaMap: Array<{ entity: string; schemaType: string; competitorCited: boolean; recommendation: string }>;
@@ -48,6 +82,12 @@ function GeoStrategistContent() {
   const [currentStage, setCurrentStage] = useState(0);
   const [completedStages, setCompletedStages] = useState<number[]>([]);
   const [result, setResult] = useState<GeoResult | null>(null);
+  const [opportunities, setOpportunities] = useState<GeoOpportunity[]>([]);
+  const brandProfileId = activeBrand?.id;
+  const [topicBriefs, setTopicBriefs] = useState<TopicBrief[]>([]);
+  const [selectedOppIds, setSelectedOppIds] = useState<Set<string>>(new Set());
+  const [buildingBriefs, setBuildingBriefs] = useState(false);
+  const [briefBuildError, setBriefBuildError] = useState('');
   const [activeTab, setActiveTab] = useState<'topical' | 'geo' | 'entity' | 'brief'>('topical');
   const [error, setError] = useState('');
   const [isRerun, setIsRerun] = useState(false);
