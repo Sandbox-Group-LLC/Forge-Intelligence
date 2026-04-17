@@ -162,7 +162,18 @@ export function BrainHistory() {
             <div className="brand-group-header">
               <div className="brand-info">
                 <h3 className="brand-name">{brandName}</h3>
-                <span className="brand-versions">v{Math.max(...entries.map(e => e.version || 1))}{entries.length > 1 ? ` · ${entries.length} snapshots` : ''}</span>
+                <div className="brand-badges">
+                  <span className="brand-versions">v{Math.max(...entries.map(e => e.version || 1))}{entries.length > 1 ? ` · ${entries.length} snapshots` : ''}</span>
+                  {entries.some(e => e.hasFactualGround) && (() => {
+                    const fgEntry = entries.find(e => e.hasFactualGround && e.factualGroundUpdatedAt);
+                    const ts = fgEntry?.factualGroundUpdatedAt;
+                    return (
+                      <span className="brand-factual-ground-badge" title="Founder-provided facts, credentials, and quotable positions feeding the writer directly">
+                        🏛️ Factual Ground applied{ts ? ` · ${formatRelativeTime(ts)}` : ''}
+                      </span>
+                    );
+                  })()}
+                </div>
               </div>
               <div className="brand-status">
                 {entries.some(e => e.isActive) && (
