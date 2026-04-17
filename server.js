@@ -1235,6 +1235,57 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
     const readMinutes = Math.max(1, Math.round(wordCount / 200));
 
     const html = await fs.promises.readFile(path.join(__dirname, 'dist', 'index.html'), 'utf8');
+    // ── Build JSON-LD schema for Google ──
+    // Pull Factual Ground author + DB brand_url for deterministic author block
+    let ldJsonScript = '';
+    try {
+      const fgRes = await pool.query(
+        `SELECT settings->'factualGround' as fg, brand_url FROM brand_profiles WHERE id = $1`,
+        [matchedBrand.id]
+      );
+      const fg = fgRes.rows[0]?.fg;
+      const realUrl = fgRes.rows[0]?.brand_url || `https://${artBaseDomain}`;
+      const primary = (fg?.authors || []).find(a => a.name && a.name.trim()) || null;
+
+      const authorBlock = primary ? {
+        "@type": "Person",
+        "name": primary.name.trim(),
+        "jobTitle": primary.title || '',
+        "url": realUrl,
+        "sameAs": (primary.linkedinUrl && primary.linkedinUrl.trim()) ? [primary.linkedinUrl.trim()] : [],
+        "knowsAbout": (primary.expertise || '').split(',').map(s => s.trim()).filter(Boolean),
+        "description": primary.bio || '',
+        ...(primary.credentials ? { "hasCredential": primary.credentials.split(/[,.]/).map(s => s.trim()).filter(Boolean) } : {})
+      } : {
+        "@type": "Organization",
+        "name": brandName,
+        "url": realUrl,
+      };
+
+      const ldJson = {
+        "@context": "https://schema.org",
+        "@type": "Article",
+        "headline": article.title,
+        "description": description,
+        ...(imageUrl ? { "image": imageUrl } : {}),
+        "author": authorBlock,
+        "publisher": {
+          "@type": "Organization",
+          "name": brandName,
+          "url": realUrl,
+          ...(matchedBrand.profile_data?.voice_profile?.logo_url ? { "logo": { "@type": "ImageObject", "url": matchedBrand.profile_data.voice_profile.logo_url } } : {})
+        },
+        "datePublished": article.created_at || new Date().toISOString(),
+        "dateModified": article.updated_at || article.created_at || new Date().toISOString(),
+        "mainEntityOfPage": { "@type": "WebPage", "@id": canonicalUrl },
+        "wordCount": wordCount,
+        "timeRequired": `PT${readMinutes}M`,
+      };
+      ldJsonScript = `\n  <script type="application/ld+json">${JSON.stringify(ldJson, null, 2)}</script>`;
+    } catch(e) {
+      console.error('[ARTICLE-SSR] JSON-LD build failed (non-fatal):', e.message);
+    }
+
     const ogTags = `
   <title>${title} | ${brandName}</title>
   <meta name="description" content="${description}" />
@@ -1258,7 +1309,7 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
 
     const injected = html
       .replace(/<title>[^<]*<\/title>/, '')
-      .replace('<head>', '<head>' + ogTags);
+      .replace('<head>', '<head>' + ogTags + ldJsonScript);
 
     res.set('Cache-Control', 'no-cache');
     return res.send(injected);
