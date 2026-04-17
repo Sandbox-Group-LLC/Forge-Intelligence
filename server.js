@@ -3862,8 +3862,41 @@ app.get('/api/content-generator/generate', requireAuth, async (req, res) => {
       const s = JSON.stringify(obj, null, 2);
       return s.length > maxChars ? s.substring(0, maxChars) + '\n...[truncated for token budget]' : s;
     };
-    const userPrompt = `Generate a long-form article using the following Brand Intelligence context.
-${topicPrompt ? `\nUSER TOPIC DIRECTION (write the article around this specific topic/angle — this overrides the enriched brief's default topic selection):\n"${topicPrompt}"\n` : ''}
+    // Load Factual Ground — user-verified facts the writer MUST use verbatim
+    let factualGround = null;
+    try {
+      const fgRes = await pool.query(
+        `SELECT settings->'factualGround' as fg FROM brand_profiles WHERE id = $1`,
+        [brandProfileId]
+      );
+      if (fgRes.rows[0]?.fg) factualGround = fgRes.rows[0].fg;
+    } catch(e) { console.log('[CONTENT-GEN] No factual ground:', e.message); }
+
+    const factualGroundBlock = factualGround && Object.values(factualGround).some(v => v && (typeof v === 'string' ? v.trim() : (Array.isArray(v) && v.length)))
+      ? `\n═══════════════════════════════════════════════════════════════════════════
+FACTUAL GROUND — USER-VERIFIED FACTS YOU MUST USE VERBATIM
+═══════════════════════════════════════════════════════════════════════════
+
+These are NOT scraped from the website. These are direct statements from the brand owner.
+They OVERRIDE anything else you know or infer about this company.
+When referencing company facts, credentials, or methodology — use these exact phrasings.
+NEVER invent credentials, titles, dates, methodology steps, or quotes that contradict this section.
+NEVER hedge on what is stated here — these are facts, not suggestions.
+
+${factualGround.whatWeDo ? `WHAT THIS COMPANY DOES (use this language):\n${factualGround.whatWeDo}\n` : ''}
+${factualGround.whatWeDontDo ? `WHAT THIS COMPANY DOES NOT DO (never claim otherwise):\n${factualGround.whatWeDontDo}\n` : ''}
+${factualGround.companyFacts ? `COMPANY FACTS (only reference these):\n${factualGround.companyFacts}\n` : ''}
+${factualGround.methodology ? `METHODOLOGY / APPROACH (describe in these terms):\n${factualGround.methodology}\n` : ''}
+${factualGround.foundingStory ? `FOUNDING STORY (reference only these details):\n${factualGround.foundingStory}\n` : ''}
+${factualGround.teamComposition ? `TEAM (only reference these people/roles):\n${factualGround.teamComposition}\n` : ''}
+${factualGround.quotablePositions ? `QUOTABLE POSITIONS (use these phrases verbatim when making bold claims):\n${factualGround.quotablePositions}\n` : ''}
+${factualGround.authors && factualGround.authors.length ? `NAMED AUTHORS (use ONLY these people for author attribution, credentials, and bylines):\n${factualGround.authors.map(a => `  • ${a.name || '[unnamed]'} — ${a.title || ''}\n    LinkedIn: ${a.linkedinUrl || 'N/A'}\n    Bio: ${a.bio || 'N/A'}\n    Credentials: ${a.credentials || 'N/A'}\n    Expertise: ${a.expertise || 'N/A'}`).join('\n\n')}\n` : ''}
+═══════════════════════════════════════════════════════════════════════════
+`
+      : '';
+
+        const userPrompt = `Generate a long-form article using the following Brand Intelligence context.
+${topicPrompt ? `\nUSER TOPIC DIRECTION (write the article around this specific topic/angle — this overrides the enriched brief's default topic selection):\n"${topicPrompt}"\n` : ''}${factualGroundBlock}
 BRAND PROFILE:
 ${trimTo(profileData, 6000)}
 
@@ -3879,7 +3912,7 @@ ${patternsRes.rows.length > 0 ? trimTo(patternsRes.rows, 2000) : 'No patterns ex
 BRAIN MISTAKES — WHAT TO AVOID FOR THIS BRAND (extracted from underperforming published content):
 ${mistakesRes.rows.length > 0 ? trimTo(mistakesRes.rows, 1500) : 'No mistakes logged yet.'}
 
-CRITICAL: If brain patterns are present, your article MUST reinforce the proven angles and avoid the logged mistakes. These are real signals from published content performance — treat them as hard constraints on tone, angle, and format.
+CRITICAL: Factual Ground (if present above) is the source of truth for any claim about this company — use it verbatim and never contradict it. Brain patterns reinforce proven angles. Brain mistakes are what to avoid. These are real signals from published content performance — treat them as hard constraints on tone, angle, and format.
 
 Return ONLY valid JSON matching the specified output format. No markdown, no code fences, no commentary.`;
 
@@ -4331,7 +4364,40 @@ app.get('/api/campaign/generate/:id', requireAuth, async (req, res) => {
         [articleRow.id]
       );
 
-      const userPrompt = `Generate a long-form article using the following Brand Intelligence context.
+      // Load Factual Ground — user-verified facts the writer MUST use verbatim
+    let factualGround = null;
+    try {
+      const fgRes = await pool.query(
+        `SELECT settings->'factualGround' as fg FROM brand_profiles WHERE id = $1`,
+        [brandProfileId]
+      );
+      if (fgRes.rows[0]?.fg) factualGround = fgRes.rows[0].fg;
+    } catch(e) { console.log('[CONTENT-GEN] No factual ground:', e.message); }
+
+    const factualGroundBlock = factualGround && Object.values(factualGround).some(v => v && (typeof v === 'string' ? v.trim() : (Array.isArray(v) && v.length)))
+      ? `\n═══════════════════════════════════════════════════════════════════════════
+FACTUAL GROUND — USER-VERIFIED FACTS YOU MUST USE VERBATIM
+═══════════════════════════════════════════════════════════════════════════
+
+These are NOT scraped from the website. These are direct statements from the brand owner.
+They OVERRIDE anything else you know or infer about this company.
+When referencing company facts, credentials, or methodology — use these exact phrasings.
+NEVER invent credentials, titles, dates, methodology steps, or quotes that contradict this section.
+NEVER hedge on what is stated here — these are facts, not suggestions.
+
+${factualGround.whatWeDo ? `WHAT THIS COMPANY DOES (use this language):\n${factualGround.whatWeDo}\n` : ''}
+${factualGround.whatWeDontDo ? `WHAT THIS COMPANY DOES NOT DO (never claim otherwise):\n${factualGround.whatWeDontDo}\n` : ''}
+${factualGround.companyFacts ? `COMPANY FACTS (only reference these):\n${factualGround.companyFacts}\n` : ''}
+${factualGround.methodology ? `METHODOLOGY / APPROACH (describe in these terms):\n${factualGround.methodology}\n` : ''}
+${factualGround.foundingStory ? `FOUNDING STORY (reference only these details):\n${factualGround.foundingStory}\n` : ''}
+${factualGround.teamComposition ? `TEAM (only reference these people/roles):\n${factualGround.teamComposition}\n` : ''}
+${factualGround.quotablePositions ? `QUOTABLE POSITIONS (use these phrases verbatim when making bold claims):\n${factualGround.quotablePositions}\n` : ''}
+${factualGround.authors && factualGround.authors.length ? `NAMED AUTHORS (use ONLY these people for author attribution, credentials, and bylines):\n${factualGround.authors.map(a => `  • ${a.name || '[unnamed]'} — ${a.title || ''}\n    LinkedIn: ${a.linkedinUrl || 'N/A'}\n    Bio: ${a.bio || 'N/A'}\n    Credentials: ${a.credentials || 'N/A'}\n    Expertise: ${a.expertise || 'N/A'}`).join('\n\n')}\n` : ''}
+═══════════════════════════════════════════════════════════════════════════
+`
+      : '';
+
+        const userPrompt = `Generate a long-form article using the following Brand Intelligence context.
 
 CAMPAIGN ANGLE (follow this precisely):
 ${JSON.stringify(angle, null, 2)}
