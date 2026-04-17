@@ -133,9 +133,15 @@ function ContentGeneratorContent() {
     if (activeBrand?.id && !selectedBrainId) setSelectedBrainId(activeBrand.id);
   }, [activeBrand?.id]);
 
-  // Restore last generated article on return
+  // Restore last generated article on return — but NOT if user arrived with ?enrichedBriefId=...
+  // (they're here to generate from a SPECIFIC brief, not view a stale article from a different one).
   useEffect(() => {
     if (!selectedBrainId || !authToken || article) return;
+    const incomingBriefId = typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('enrichedBriefId')
+      : null;
+    if (incomingBriefId) return;  // user intent is a fresh generation, skip auto-hydrate
+
     fetch(`/api/compliance/latest/${selectedBrainId}`, { headers: { 'Authorization': `Bearer ${authToken}` } })
       .then(r => r.json())
       .then(d => {
