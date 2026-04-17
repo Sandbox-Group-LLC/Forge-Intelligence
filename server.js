@@ -359,6 +359,20 @@ async function initDB() {
 }
 
 
+  // ── Relax enriched_briefs.geo_brief_id FK — allow topic-brief-derived enrichments ──
+  // Historically FK'd hard to geo_briefs. New architecture derives enrichment from
+  // geo_topic_briefs, whose IDs won't exist in geo_briefs. Drop the hard FK and use
+  // SET NULL on delete instead — cleaner for both old and new paths.
+  try {
+    await pool.query(`ALTER TABLE enriched_briefs DROP CONSTRAINT IF EXISTS enriched_briefs_geo_brief_id_fkey`);
+    // Only recreate as soft FK if the column still exists — belt and suspenders
+    const colCheck = await pool.query(`SELECT 1 FROM information_schema.columns WHERE table_name='enriched_briefs' AND column_name='geo_brief_id'`);
+    if (colCheck.rows.length) {
+      // leave it unconstrained — topic-brief IDs and legacy geo-brief IDs both land here
+      console.log('[MIGRATION] enriched_briefs.geo_brief_id FK relaxed (no constraint, soft reference)');
+    }
+  } catch(e) { console.log('[MIGRATION] enriched_briefs FK relax:', e.message); }
+
   // ── geo_opportunities table ───────────────────────────────────────────────
   // Topics surfaced by GEO Strategist but not yet briefed. User cherry-picks from here.
   // Unpicked rows preserved as brain food — "user did NOT pick this" is a signal.
@@ -3996,7 +4010,10 @@ Respond with this exact JSON structure:
       authorSchemaMarkup: finalAuthorSchema,
       sonarSignals,
       manualInputsProvided: manualInputs,
-      geoBriefId: geoBrief?.briefId || geoBriefId || null
+      // If source is a topic brief, don't write its ID into geo_brief_id column (different table)
+      geoBriefId: (geoBrief?.isTopicBrief ? null : (geoBrief?.briefId || geoBriefId || null)),
+      // Track topic brief linkage separately so it survives in the enriched blob
+      topicBriefId: (geoBrief?.isTopicBrief ? geoBrief.briefId : null)
     };
 
     const confidenceScore = assembledBrief.overallConfidence || scorerData.overallEEATScore || 0;
