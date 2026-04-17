@@ -10434,26 +10434,55 @@ app.get('/api/content-generator/enriched-briefs/:brandProfileId', requireAuth, a
   try {
     const { brandProfileId } = req.params;
     const safeId = brandProfileId.replace(/-/g, '_');
-    // Join enrichment data with topic context + article generation status
+    // Complete picture: every enriched brief (with or without article) + every article whose
+    // enriched brief has been deleted (legacy orphans from pre-cherry-pick DELETE-all behavior).
     const r = await pool.query(
-      `SELECT
-         eb.id, eb.brand_profile_id, eb.brand_name, eb.version, eb.confidence_score,
-         eb.created_at, eb.brain_version,
-         eb.enriched_data->>'topicBriefId' as topic_brief_id,
-         opp.topic as topic,
-         opp.discovery_session_id as discovery_session_id,
-         opp.quick_win as quick_win,
-         gc.id as article_id,
-         gc.title as article_title,
-         gc.compliance_status as article_status,
-         gc.status as article_publish_status
-       FROM enriched_briefs eb
-       LEFT JOIN geo_topic_briefs tb ON tb.id::text = eb.enriched_data->>'topicBriefId'
-       LEFT JOIN geo_opportunities opp ON opp.id = tb.opportunity_id
-       LEFT JOIN generated_content_${safeId} gc ON gc.enriched_brief_id = eb.id::text
-       WHERE eb.brand_profile_id = $1
-       ORDER BY eb.created_at DESC
-       LIMIT 30`,
+      `(
+        SELECT
+           eb.id, eb.brand_profile_id, eb.brand_name, eb.version, eb.confidence_score,
+           eb.created_at, eb.brain_version,
+           eb.enriched_data->>'topicBriefId' as topic_brief_id,
+           opp.topic as topic,
+           opp.discovery_session_id as discovery_session_id,
+           opp.quick_win as quick_win,
+           gc.id as article_id,
+           gc.title as article_title,
+           gc.compliance_status as article_status,
+           gc.status as article_publish_status,
+           false as is_orphan
+         FROM enriched_briefs eb
+         LEFT JOIN geo_topic_briefs tb ON tb.id::text = eb.enriched_data->>'topicBriefId'
+         LEFT JOIN geo_opportunities opp ON opp.id = tb.opportunity_id
+         LEFT JOIN generated_content_${safeId} gc ON gc.enriched_brief_id = eb.id::text
+         WHERE eb.brand_profile_id = $1
+      )
+      UNION ALL
+      (
+        SELECT
+           gc.enriched_brief_id as id,
+           gc.brand_profile_id,
+           NULL as brand_name,
+           NULL as version,
+           NULL as confidence_score,
+           gc.created_at, NULL as brain_version,
+           NULL as topic_brief_id,
+           gc.title as topic,
+           NULL as discovery_session_id,
+           false as quick_win,
+           gc.id as article_id,
+           gc.title as article_title,
+           gc.compliance_status as article_status,
+           gc.status as article_publish_status,
+           true as is_orphan
+         FROM generated_content_${safeId} gc
+         WHERE gc.brand_profile_id = $1
+           AND gc.enriched_brief_id IS NOT NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM enriched_briefs eb WHERE eb.id::text = gc.enriched_brief_id
+           )
+      )
+      ORDER BY created_at DESC
+      LIMIT 30`,
       [brandProfileId]
     );
     res.json({
@@ -10474,8 +10503,9 @@ app.get('/api/content-generator/enriched-briefs/:brandProfileId', requireAuth, a
         hasArticle: !!row.article_id,
         articleId: row.article_id,
         articleTitle: row.article_title,
-        articleStatus: row.article_status, // approved | needs_review | etc
-        articlePublishStatus: row.article_publish_status // draft | scheduled | published
+        articleStatus: row.article_status,
+        articlePublishStatus: row.article_publish_status,
+        isOrphan: !!row.is_orphan  // article whose enriched brief has been deleted (legacy)
       }))
     });
   } catch(e) {
