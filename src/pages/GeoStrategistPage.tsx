@@ -132,6 +132,42 @@ function GeoStrategistContent() {
     loadTopicBriefs(brandProfileId);
   }, [brandProfileId, authToken, result]);
 
+  // ── Brain food: when user leaves the page, flag any unpicked 'discovered' opps as 'ignored' ─
+  // This writes brain patterns for the un-cherry-picked topics so Forge learns what the user DOESN'T want.
+  // Keyed on the session so we only ignore opps from the current discovery run.
+  useEffect(() => {
+    if (!brandProfileId || !authToken) return;
+    // Compute session ID from the most recent opportunity (they all share one)
+    const sessionId = opportunities.find(o => o.status === 'discovered')?.discoverySessionId
+      || (result as any)?.discoverySessionId;
+    if (!sessionId) return;
+
+    const markIgnored = () => {
+      // Fire-and-forget — beacon API survives page unload
+      const payload = JSON.stringify({ brandProfileId, sessionId });
+      // Use sendBeacon when available (works even during unload); fall back to fetch
+      if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+        const blob = new Blob([payload], { type: 'application/json' });
+        // NOTE: sendBeacon can't set custom auth headers. Use fetch with keepalive instead.
+      }
+      try {
+        fetch('/api/geo/opportunities/mark-ignored', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+          body: payload,
+          keepalive: true  // survives page unload
+        }).catch(() => {});
+      } catch { /* silent */ }
+    };
+
+    // Fire on unmount (navigate away within SPA)
+    return () => {
+      // Only fire if there are still discovered opps to flag
+      const hasDiscovered = opportunities.some(o => o.status === 'discovered');
+      if (hasDiscovered) markIgnored();
+    };
+  }, [brandProfileId, authToken, opportunities, result]);
+
   // ── Build Briefs action — calls Stage 2.1 on selected opportunities ──────
   const buildBriefsForSelected = async () => {
     if (!brandProfileId || selectedOppIds.size === 0 || !authToken) return;
