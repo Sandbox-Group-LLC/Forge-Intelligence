@@ -10373,6 +10373,53 @@ app.post('/api/geo/opportunities/mark-ignored', requireAuth, express.json(), asy
   }
 });
 
+// GET /api/content-generator/enriched-briefs/:brandProfileId
+// Returns all enriched briefs for a brand, with topic context + cherry-pick session info.
+// Content Generator uses this to show the user their full batch of enriched work,
+// not just the "latest" one (which was picking blindly in the old architecture).
+app.get('/api/content-generator/enriched-briefs/:brandProfileId', requireAuth, async (req, res) => {
+  try {
+    const { brandProfileId } = req.params;
+    // LEFT JOIN to topic briefs + opportunities so we get topic label + session ID when applicable
+    const r = await pool.query(
+      `SELECT
+         eb.id, eb.brand_profile_id, eb.brand_name, eb.version, eb.confidence_score,
+         eb.created_at, eb.brain_version,
+         eb.enriched_data->>'topicBriefId' as topic_brief_id,
+         opp.topic as topic,
+         opp.discovery_session_id as discovery_session_id,
+         opp.quick_win as quick_win
+       FROM enriched_briefs eb
+       LEFT JOIN geo_topic_briefs tb ON tb.id = (eb.enriched_data->>'topicBriefId')::uuid
+       LEFT JOIN geo_opportunities opp ON opp.id = tb.opportunity_id
+       WHERE eb.brand_profile_id = $1
+       ORDER BY eb.created_at DESC
+       LIMIT 30`,
+      [brandProfileId]
+    );
+    res.json({
+      success: true,
+      briefs: r.rows.map(row => ({
+        id: row.id,
+        brandProfileId: row.brand_profile_id,
+        brandName: row.brand_name,
+        version: row.version,
+        confidenceScore: row.confidence_score,
+        createdAt: row.created_at,
+        brainVersion: row.brain_version,
+        topicBriefId: row.topic_brief_id,
+        topic: row.topic,  // null if this enrichment didn't come from a topic brief
+        discoverySessionId: row.discovery_session_id,
+        quickWin: row.quick_win
+      }))
+    });
+  } catch(e) {
+    console.error('[CG-BRIEFS]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+
 app.post('/api/geo/track/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
   // Allow cron/admin bypass with adminPassword, otherwise require Clerk JWT
