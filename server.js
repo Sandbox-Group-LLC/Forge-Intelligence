@@ -10433,7 +10433,7 @@ app.get('/api/content-generator/enriched-briefs/:brandProfileId', requireAuth, a
          gc.compliance_status as article_status,
          gc.status as article_publish_status
        FROM enriched_briefs eb
-       LEFT JOIN geo_topic_briefs tb ON tb.id = (eb.enriched_data->>'topicBriefId')::uuid
+       LEFT JOIN geo_topic_briefs tb ON tb.id::text = eb.enriched_data->>'topicBriefId'
        LEFT JOIN geo_opportunities opp ON opp.id = tb.opportunity_id
        LEFT JOIN generated_content_${safeId} gc ON gc.enriched_brief_id = eb.id
        WHERE eb.brand_profile_id = $1
