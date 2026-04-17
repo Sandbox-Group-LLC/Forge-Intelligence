@@ -35,6 +35,7 @@ interface EnrichedBrief {
   articleTitle?: string | null;
   articleStatus?: string | null; // approved | needs_review | etc
   articlePublishStatus?: string | null; // draft | scheduled | published
+  isOrphan?: boolean; // article whose enriched brief was deleted (legacy)
 }
 
 interface ArticleSection {
@@ -341,7 +342,9 @@ function ContentGeneratorContent() {
         const batch = latestSession
           ? briefs.filter(b => b.discoverySessionId === latestSession)
           : briefs.slice(0, 1);
-        if (!batch.length || (batch.length === 1 && !batch[0].topic)) return null;
+        if (!batch.length) return null;
+        // Only hide if the batch has just 1 legacy non-topic-brief enrichment (pre-cherry-pick behavior)
+        if (batch.length === 1 && !batch[0].topic && !batch[0].articleTitle) return null;
         return (
           <div className="cg-batch-section">
             <div className="cg-batch-header">
@@ -360,7 +363,7 @@ function ContentGeneratorContent() {
                     {b.quickWin && <span className="cg-batch-qw">⚡ Quick Win</span>}
                     <span className="cg-batch-confidence">Confidence {b.confidenceScore}</span>
                   </div>
-                  <div className="cg-batch-topic">{b.topic || b.brandName}</div>
+                  <div className="cg-batch-topic">{b.topic || b.articleTitle || b.brandName}</div>
                   <div className="cg-batch-date">{new Date(b.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
                 </button>
               ))}
@@ -604,19 +607,34 @@ function ContentGeneratorContent() {
         if (batch.length === 0) return null;
         const pending = batch.filter(b => !b.hasArticle).length;
         const generated = batch.filter(b => b.hasArticle).length;
+        const published = batch.filter(b => b.hasArticle && b.articlePublishStatus === 'published').length;
+        const generatedOnly = generated - published;
+        const statusFor = (b: EnrichedBrief) => {
+          if (b.hasArticle && b.articlePublishStatus === 'published') return 'published';
+          if (b.hasArticle) return 'generated';
+          return 'pending';
+        };
+        const segments = [
+          pending > 0 ? `${pending} pending` : null,
+          generatedOnly > 0 ? `${generatedOnly} generated` : null,
+          published > 0 ? `${published} published` : null,
+        ].filter(Boolean).join(' · ');
         return (
           <div className="cg-batch-progress">
             <div className="cg-batch-progress-header">
               <span className="cg-batch-progress-label">Batch progress</span>
-              <span className="cg-batch-progress-sub">{pending} pending · {generated} generated</span>
+              <span className="cg-batch-progress-sub">{segments || `${batch.length} total`}</span>
             </div>
             <div className="cg-batch-progress-chips">
-              {batch.map(b => (
-                <span key={b.id} className={`cg-batch-progress-chip ${b.hasArticle ? 'status-generated' : 'status-pending'}`}>
-                  {b.topic || b.brandName}
-                  <span className="cg-batch-progress-chip-status">· {b.hasArticle ? 'generated' : 'pending'}</span>
-                </span>
-              ))}
+              {batch.map(b => {
+                const st = statusFor(b);
+                return (
+                  <span key={b.id} className={`cg-batch-progress-chip status-${st}`}>
+                    {b.topic || b.articleTitle || b.brandName}
+                    <span className="cg-batch-progress-chip-status">· {st}</span>
+                  </span>
+                );
+              })}
             </div>
           </div>
         );
