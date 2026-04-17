@@ -321,26 +321,116 @@ function GeoStrategistContent() {
           {activeTab === 'geo' && (
             <div className="geo-tab-content">
               <div className="geo-section-header">
-                <h3>GEO Opportunity Scores</h3>
-                <span className="geo-count">{(result.geoOpportunities || []).filter(o => o.quickWin).length} quick wins</span>
+                <div>
+                  <h3>GEO Opportunity Scores</h3>
+                  <p className="geo-section-sub">Cherry-pick topics to build briefs. Unselected topics stay in the repository as brain signal.</p>
+                </div>
+                <span className="geo-count">
+                  {opportunities.filter(o => o.status === 'discovered' && o.quickWin).length} quick wins
+                  {' · '}
+                  {opportunities.filter(o => o.status === 'discovered').length} available
+                </span>
               </div>
+
+              {opportunities.filter(o => o.status === 'discovered').length > 0 && (
+                <div className="geo-cherry-bar">
+                  <div className="geo-cherry-selected">
+                    {selectedOppIds.size} selected
+                  </div>
+                  <div className="geo-cherry-actions">
+                    <button
+                      className="geo-cherry-btn-secondary"
+                      onClick={() => setSelectedOppIds(new Set())}
+                      disabled={selectedOppIds.size === 0}
+                    >
+                      Clear
+                    </button>
+                    <button
+                      className="geo-cherry-btn-primary"
+                      onClick={buildBriefsForSelected}
+                      disabled={selectedOppIds.size === 0 || buildingBriefs}
+                    >
+                      {buildingBriefs ? 'Building briefs...' : `Build Briefs (${selectedOppIds.size})`}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {briefBuildError && <div className="geo-error">{briefBuildError}</div>}
+
               <div className="geo-table-wrap">
                 <table className="geo-table">
-                  <thead><tr><th>Topic</th><th>ChatGPT</th><th>Perplexity</th><th>AI Overviews</th><th>Gemini</th><th></th></tr></thead>
+                  <thead>
+                    <tr>
+                      <th style={{ width: 36 }}>
+                        <input
+                          type="checkbox"
+                          checked={opportunities.filter(o => o.status === 'discovered').length > 0 && opportunities.filter(o => o.status === 'discovered').every(o => selectedOppIds.has(o.id))}
+                          onChange={e => {
+                            if (e.target.checked) {
+                              setSelectedOppIds(new Set(opportunities.filter(o => o.status === 'discovered').map(o => o.id)));
+                            } else {
+                              setSelectedOppIds(new Set());
+                            }
+                          }}
+                        />
+                      </th>
+                      <th>Topic</th>
+                      <th>ChatGPT</th>
+                      <th>Perplexity</th>
+                      <th>AI Overviews</th>
+                      <th>Gemini</th>
+                      <th></th>
+                    </tr>
+                  </thead>
                   <tbody>
-                    {(result.geoOpportunities || []).map((opp, i) => (
-                      <tr key={i} className={opp.quickWin ? 'quick-win-row' : ''}>
+                    {opportunities.filter(o => o.status === 'discovered').map(opp => (
+                      <tr key={opp.id} className={opp.quickWin ? 'quick-win-row' : ''}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selectedOppIds.has(opp.id)}
+                            onChange={e => {
+                              const next = new Set(selectedOppIds);
+                              if (e.target.checked) next.add(opp.id); else next.delete(opp.id);
+                              setSelectedOppIds(next);
+                            }}
+                          />
+                        </td>
                         <td className="geo-topic-cell">{opp.topic}</td>
-                        <td><ScoreCell score={opp.chatgpt} /></td>
-                        <td><ScoreCell score={opp.perplexity} /></td>
-                        <td><ScoreCell score={opp.aiOverviews} /></td>
-                        <td><ScoreCell score={opp.gemini} /></td>
+                        <td><ScoreCell score={opp.platformScores?.chatgpt || 0} /></td>
+                        <td><ScoreCell score={opp.platformScores?.perplexity || 0} /></td>
+                        <td><ScoreCell score={opp.platformScores?.aiOverviews || 0} /></td>
+                        <td><ScoreCell score={opp.platformScores?.gemini || 0} /></td>
                         <td>{opp.quickWin && <span className="quick-win-badge">⚡ Quick Win</span>}</td>
                       </tr>
                     ))}
+                    {opportunities.filter(o => o.status === 'discovered').length === 0 && (
+                      <tr>
+                        <td colSpan={7} style={{ textAlign: 'center', padding: 32, color: 'var(--color-text-secondary, #64748b)' }}>
+                          No opportunities available — all have been briefed or moved to backlog.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
+
+              {opportunities.filter(o => o.status === 'briefed' || o.status === 'enriched').length > 0 && (
+                <div className="geo-already-briefed">
+                  <div className="geo-section-sub" style={{ marginTop: 24, marginBottom: 8 }}>
+                    Briefed topics ({opportunities.filter(o => o.status === 'briefed').length} pending · {opportunities.filter(o => o.status === 'enriched').length} enriched)
+                  </div>
+                  <div className="geo-briefed-chips">
+                    {opportunities.filter(o => o.status !== 'discovered' && o.status !== 'ignored').map(o => (
+                      <span key={o.id} className={`geo-briefed-chip status-${o.status}`}>
+                        {o.topic}
+                        <span className="geo-chip-status">· {o.status}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -365,33 +455,96 @@ function GeoStrategistContent() {
             </div>
           )}
 
-          {activeTab === 'brief' && result.geoBrief && (
+          {activeTab === 'brief' && (
             <div className="geo-tab-content">
               <div className="geo-section-header">
-                <h3>GEO Brief</h3>
-                <span className="geo-count">Est. citation lift: {result.geoBrief.estimatedCitationLift}</span>
+                <div>
+                  <h3>Content Briefs</h3>
+                  <p className="geo-section-sub">Briefs built from topics you cherry-picked. Send to Enricher or park in Backlog.</p>
+                </div>
+                <span className="geo-count">
+                  {topicBriefs.filter(b => b.status === 'briefed').length} ready
+                  {' · '}
+                  {topicBriefs.filter(b => b.status === 'backlog').length} in backlog
+                </span>
               </div>
-              <div className="geo-brief-card">
-                <div className="brief-block"><div className="brief-label">Title Tag</div><div className="brief-value">{result.geoBrief.title}</div></div>
-                <div className="brief-block"><div className="brief-label">H1</div><div className="brief-value">{result.geoBrief.h1}</div></div>
-                <div className="brief-block">
-                  <div className="brief-label">H2 Structure</div>
-                  {(result.geoBrief.h2s || []).map((h2, i) => <div key={i} className="brief-h2">{h2}</div>)}
+
+              {topicBriefs.length === 0 && (
+                <div className="geo-brief-empty">
+                  <div className="geo-brief-empty-title">No briefs built yet</div>
+                  <div className="geo-brief-empty-body">
+                    Head to <strong>GEO Opportunities</strong>, cherry-pick the topics you want to write about, and click <strong>Build Briefs</strong>.
+                    Forge will generate a per-topic brief (H1, H2s, entities, FAQs) for each selected topic.
+                  </div>
+                  <button className="geo-cherry-btn-primary" onClick={() => setActiveTab('geo')}>Go to Opportunities →</button>
                 </div>
-                <div className="brief-block">
-                  <div className="brief-label">GEO Anchors</div>
-                  <div className="brief-anchors">{(result.geoBrief.geoAnchors || []).map((a, i) => <span key={i} className="brief-anchor-tag">{a}</span>)}</div>
-                </div>
-                <div className="brief-block">
-                  <div className="brief-label">FAQ Structure</div>
-                  {(result.geoBrief.faqItems || []).map((faq, i) => (
-                    <div key={i} className="brief-faq-item">
-                      <div className="faq-q">Q: {faq.q}</div>
-                      <div className="faq-a">A: {faq.a}</div>
+              )}
+
+              {topicBriefs.filter(b => b.status === 'briefed').length > 0 && (
+                <div className="geo-briefs-list">
+                  {topicBriefs.filter(b => b.status === 'briefed').map(b => (
+                    <div key={b.id} className="geo-brief-card-v2">
+                      <div className="brief-card-header">
+                        <div>
+                          <div className="brief-card-topic">{b.topic}</div>
+                          {b.quickWin && <span className="quick-win-badge small">⚡ Quick Win</span>}
+                        </div>
+                        <div className="brief-card-actions">
+                          <button className="brief-card-btn-backlog" onClick={() => backlogBrief(b.id)}>→ Backlog</button>
+                          <button className="brief-card-btn-enrich" onClick={() => enrichBrief(b.id)}>Enrich Now →</button>
+                        </div>
+                      </div>
+                      {b.briefData?.h1 && (
+                        <div className="brief-block"><div className="brief-label">H1</div><div className="brief-value">{b.briefData.h1}</div></div>
+                      )}
+                      {b.briefData?.executiveSummary && (
+                        <div className="brief-block"><div className="brief-label">Summary</div><div className="brief-value">{b.briefData.executiveSummary}</div></div>
+                      )}
+                      {b.briefData?.h2s && b.briefData.h2s.length > 0 && (
+                        <div className="brief-block">
+                          <div className="brief-label">H2 Structure ({b.briefData.h2s.length})</div>
+                          {b.briefData.h2s.map((h2, i) => (
+                            <div key={i} className="brief-h2">
+                              <div className="brief-h2-heading">{h2.heading}</div>
+                              {h2.intent && <div className="brief-h2-intent">{h2.intent}</div>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {b.briefData?.geoAnchors && b.briefData.geoAnchors.length > 0 && (
+                        <div className="brief-block">
+                          <div className="brief-label">GEO Anchors</div>
+                          <div className="brief-anchors">{b.briefData.geoAnchors.map((a, i) => <span key={i} className="brief-anchor-tag">{a}</span>)}</div>
+                        </div>
+                      )}
+                      {b.briefData?.faqStructure && b.briefData.faqStructure.length > 0 && (
+                        <div className="brief-block">
+                          <div className="brief-label">FAQ ({b.briefData.faqStructure.length})</div>
+                          {b.briefData.faqStructure.slice(0, 3).map((faq, i) => (
+                            <div key={i} className="brief-faq-item"><div className="faq-q">Q: {faq.question}</div></div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
-              </div>
+              )}
+
+              {topicBriefs.filter(b => b.status === 'backlog').length > 0 && (
+                <>
+                  <div className="geo-section-sub" style={{ marginTop: 32, marginBottom: 12 }}>
+                    Backlog — topics parked for later ({topicBriefs.filter(b => b.status === 'backlog').length})
+                  </div>
+                  <div className="geo-backlog-list">
+                    {topicBriefs.filter(b => b.status === 'backlog').map(b => (
+                      <div key={b.id} className="geo-backlog-item">
+                        <span>{b.topic}</span>
+                        <button className="brief-card-btn-resurface" onClick={() => resurfaceBrief(b.id)}>Resurface →</button>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
