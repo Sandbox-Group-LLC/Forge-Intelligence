@@ -3572,7 +3572,12 @@ Return ONLY valid JSON array:
       const existing = opportunitiesByTopic.get(key);
       // Merge platform-specific scores
       if (opp.platform && typeof opp.score === 'number') {
-        existing.platformScores[opp.platform.toLowerCase()] = opp.score;
+        const _p = opp.platform.toLowerCase().replace(/\s/g, '');
+        const _key = _p.includes('overview') || _p.includes('google') ? 'aiOverviews'
+          : _p.includes('chatgpt') || _p.includes('openai') ? 'chatgpt'
+          : _p.includes('perplexity') ? 'perplexity'
+          : _p.includes('gemini') ? 'gemini' : _p;
+        existing.platformScores[_key] = opp.score;
       } else if (opp.chatgpt !== undefined || opp.perplexity !== undefined) {
         existing.platformScores = {
           chatgpt: opp.chatgpt, perplexity: opp.perplexity,
