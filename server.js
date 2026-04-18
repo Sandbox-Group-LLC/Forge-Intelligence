@@ -3764,7 +3764,7 @@ app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => 
 
     // ── Load brand profile ───────────────────────────────────────────────────
     const profileResult = await pool.query(`SELECT * FROM brand_profiles WHERE id = $1`, [brandProfileId]);
-    if (!profileResult.rows.length) return res.status(404).json({ success: false, error: 'Brand profile not found. Run Stage 1 first.' });
+    if (!profileResult.rows.length) { send('error', { error: 'Brand profile not found. Run Stage 1 first.' }); return res.end(); }
     const profile = profileResult.rows[0];
     const pd = profile.profile_data || {};
 
@@ -3786,7 +3786,7 @@ app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => 
       } else {
         // Stale/invalid topicBriefId — don't silently fall through to wrong data
         console.log(`[ENRICH] Topic brief ${topicBriefId} not found — returning 404`);
-        return res.status(404).json({ success: false, error: 'Topic brief not found. It may have been deleted or expired.' });
+        send('error', { error: 'Topic brief not found. It may have been deleted or expired.' }); return res.end();
       }
     } else if (geoBriefId) {
       // Legacy path: specific old-style GEO brief ID
@@ -3822,7 +3822,7 @@ app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => 
           console.log(`[ENRICH] Cache stale — built on brain v${r.brain_version || 1}, current is v${profile.version || 1}, forcing fresh run`);
         } else if (isReal) {
           console.log(`[ENRICH] Cache hit for ${r.brand_url} — eeat:${hasEEAT} injections:${hasInjections} brief:${hasBrief}`);
-          return res.json({ success: true, cached: true, data: {
+          send('result', { success: true, cached: true, data: {
             id: r.id, brandProfileId: r.brand_profile_id, geoBriefId: r.geo_brief_id,
             brandUrl: r.brand_url, brandName: r.brand_name, version: r.version,
             confidenceScore: r.confidence_score,
@@ -3830,6 +3830,7 @@ app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => 
             createdAt: r.created_at, updatedAt: r.updated_at,
             ...r.enriched_data
           }});
+          return res.end();
         }
         console.log(`[ENRICH] Cache stale — eeat:${hasEEAT} injections:${hasInjections} brief:${hasBrief} — forcing fresh run`);
       }
@@ -4131,16 +4132,18 @@ Respond with this exact JSON structure:
     console.log(`[ENRICH] Complete — Score: ${confidenceScore} | Gaps: ${gaps.length} | NeedsManual: ${needsManualInput} | Latency: ${latencyMs}ms`);
 
     await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms) VALUES ($1,$2,$3,$4,$5)', ['stage3_authenticity_enricher', brandProfileId, 'success', 0, latencyMs]).catch(e => console.error('[ACTIVITY LOG]', e.message));
-            res.json({ success: true, cached: false, data: {
+            send('result', { success: true, cached: false, data: {
       id: newId, brandProfileId, brandUrl: profile.brand_url, brandName,
       version: nextVersion, confidenceScore, latencyMs, needsManualInput,
       brainVersion: profile.version || 1, currentBrainVersion: profile.version || 1,
       ...enrichedData
     }});
+    res.end();
 
   } catch (err) {
     console.error('[ENRICH] Error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    send('error', { error: err.message });
+    res.end();
   }
 });
 
