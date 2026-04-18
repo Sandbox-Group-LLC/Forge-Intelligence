@@ -352,12 +352,20 @@ function AuthenticityEnricherContent() {
       {/* Stage progress */}
       {isRunning && (
         <div className="geo-stages">
+          {enrichTopic && isRunning && (
+            <div className="enrich-topic-banner">{enrichTopic}</div>
+          )}
           {STAGES.map(s => (
             <div key={s.id} className={`geo-stage ${completedStages.includes(s.id) ? 'completed' : currentStage === s.id ? 'active' : ''}`}>
               <div className="geo-stage-dot">
                 {completedStages.includes(s.id) ? <CheckCircle2 size={14} /> : <span>{s.id}</span>}
               </div>
-              <span className="geo-stage-label">{s.label}</span>
+              <div className="geo-stage-text">
+                <span className="geo-stage-label">{s.label}</span>
+                {stageDetails[s.id] && (currentStage === s.id || completedStages.includes(s.id)) && (
+                  <span className="geo-stage-detail">{stageDetails[s.id]}</span>
+                )}
+              </div>
             </div>
           ))}
         </div>
