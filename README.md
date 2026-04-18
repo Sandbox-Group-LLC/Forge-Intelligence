@@ -37,7 +37,7 @@
 
 ---
 
-## Platform Status (April 14, 2026)
+## Platform Status (April 17, 2026)
 
 ### All 8 Stages Live
 
@@ -108,15 +108,19 @@
 - **All GateModal instances** pass `brandProfileId={activeBrand?.id}` — required for promo codes to flip `is_paid`
 - **Neon daily snapshots** enabled on production branch (expires rolling 35 days)
 
-### Pipeline UX Flow (Critical)
+### Pipeline UX Flow (Critical — updated April 17, 2026)
 Every stage persists results and points forward:
 1. **New Analysis** → "View Strategy Brief →" | "Skip to GEO Strategy"
 2. **Brand Profile** → Re-analyze | Export JSON | Strategy Brief → | Run GEO Strategy →
 3. **Strategy Brief** → Export Brief | Run GEO Strategy →
-4. **GEO Strategist** → Re-run | Continue to Authenticity Enricher → (results persist on return)
-5. **Authenticity Enricher** → Re-run | Continue to Content Generator → (results persist on return)
-6. **Content Generator** → Generate Another | View in Content Library | Send to Compliance Gate (last article restores on return)
-7. **Compliance Gate** → Approve → Publishing Queue
+4. **GEO Strategist** → 10 topics surfaced → user cherry-picks → **Build Briefs (N)** → Stage 2.1 builds per-topic briefs
+5. **GEO Brief tab** → N brief cards with H1/H2s/FAQs → **Enrich Now →** (per brief) | **→ Backlog** (park for later)
+6. **Authenticity Enricher** → auto-fires when arriving with `?topicBriefId=X` → Continue to Content Generator →
+7. **Content Generator** → "Your recent batch" shows all enriched briefs as selectable cards → Generate from selected → batch progress footer tracks pending/generated/published
+8. **Compliance Gate** → Approve → Publishing Queue
+9. Published channel badges are links to the live post (no accidental republish)
+
+**Cherry-pick architecture (April 17):** GEO Strategist no longer auto-picks one topic and builds one brief. Users cherry-pick which topics to brief. Unpicked topics stay in the repo as brain food (`user_rejection` patterns). Each topic gets its own brief → enrichment → article.
 - All CTA buttons use consistent 36px height, `<button>` elements only, inline styles (no CSS class interference)
 - TopBar title updates dynamically per Brain sub-view (Brand Profile, Strategy Brief, Brain History)
 - Landing page has Sign In button in header
@@ -253,6 +257,8 @@ Each brand gets isolated storage. Multi-agent shared memory.
 brand_profiles                  ← voice profile, personas, competitive gaps
 generated_content_{uuid}        ← per-brand article table (auto-provisioned)
 publishing_queue                ← staged → approved → published
+geo_opportunities              ← discovered → briefed → enriched → ignored (brain food)
+geo_topic_briefs               ← briefed → backlog → enriched (per user-selected topic)
 publish_log                     ← channel publish results
 content_analytics               ← impressions, clicks, engagement per article
 brain_patterns                  ← what worked (confidence, recency weighted)
@@ -277,8 +283,15 @@ BEFORE generating:
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | POST | `/api/context-hub/analyze` | optional | Stage 1 — brand analysis + caching |
-| POST | `/api/geo-strategist/analyze` | required | Stage 2 — GEO opportunities |
-| POST | `/api/authenticity-enricher/analyze` | required | Stage 3 — E-E-A-T enrichment |
+| POST | `/api/geo-strategist/analyze` | required | Stage 2 — GEO opportunities (persists to `geo_opportunities`) |
+| GET | `/api/geo/opportunities/:brandProfileId` | required | Stage 2 — list discovered topics |
+| POST | `/api/geo/opportunities/build-briefs` | required | Stage 2.1 — build per-topic briefs |
+| GET | `/api/geo/topic-briefs/:brandProfileId` | required | Stage 2.1 — list topic briefs |
+| POST | `/api/geo/topic-brief/:id/backlog` | optional | Park a topic brief |
+| POST | `/api/geo/topic-brief/:id/resurface` | optional | Unpark a topic brief |
+| POST | `/api/geo/opportunities/mark-ignored` | auto | Brain food — unpicked topics become patterns |
+| POST | `/api/authenticity-enricher/analyze` | required | Stage 3 — E-E-A-T enrichment (accepts `topicBriefId`) |
+| GET | `/api/content-generator/enriched-briefs/:brandProfileId` | required | Stage 4 — batch UI data with article status |
 | GET | `/api/content-generator/generate` | required | Stage 4 — SSE article stream |
 | POST | `/api/campaign/plan` | required | Stage 4.5 — 8 angle profiles |
 | POST | `/api/campaign/create` | required | Save campaign to DB |
@@ -328,6 +341,15 @@ BEFORE generating:
 
 ---
 
+### Key Architecture Additions (April 17, 2026)
+
+- **Factual Ground** — user-verified facts in `brand_profiles.settings.factualGround` (JSONB). Fields: whatWeDo, whatWeDontDo, companyFacts, methodology, foundingStory, teamComposition, quotablePositions, authors[]. Injected as "USER-VERIFIED FACTS YOU MUST USE VERBATIM" at TOP of Content Generator prompt.
+- **Territory injection** — Topical Authority Map sorted by citation probability, top 8 rendered as "STRATEGIC TERRITORIES THIS BRAND OPERATES IN" block in Content Generator prompt. Writer can't drift outside brand's territory.
+- **Article SSR body** — full article prose server-rendered inside `<article>` off-screen for AI crawlers. GPTBot/PerplexityBot/Googlebot see complete content, not empty SPA shell.
+- **Enriched brief slimming** — writer prompt receives only article-directing fields (title, H1, sections, FAQs, powerPhrases, contentHooks), not full 38KB diagnostic blob.
+- **Per-topic enrichment** — Enricher cache bypassed when `topicBriefId` present. Each topic gets independent enrichment.
+- **Facebook publish** — posts directly to stored `pageId` via Pipedream proxy (skips `/me/accounts` discovery). Blocked on Pipedream token permissions (#36).
+
 ## For AI Sessions — Start Here
 
 1. Read this README top to bottom
@@ -344,7 +366,7 @@ Sandbox Group: **Sandbox-XM** (experience marketing) + **Sandbox-GTM** (event re
 
 ---
 
-## Updated: April 11, 2026
+## Updated: April 17, 2026
 
 ### Auth Architecture
 - Clerk JWT template `jwt-template-600` — 600 second token lifetime
