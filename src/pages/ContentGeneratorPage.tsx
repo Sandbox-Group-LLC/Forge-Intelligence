@@ -27,6 +27,8 @@ interface EnrichedBrief {
   createdAt: string;
   topic?: string | null;
   topicBriefId?: string | null;
+  enrichedTitle?: string | null;
+  enrichedH1?: string | null;
   discoverySessionId?: string | null;
   quickWin?: boolean;
   // Article generation state for batch progress footer
@@ -340,11 +342,11 @@ function ContentGeneratorContent() {
         // Current batch = all enriched briefs in the same discovery session as the most recent.
         // Older briefs land below a divider in the dropdown.
         const latestSession = briefs.find(b => b.discoverySessionId)?.discoverySessionId;
-        // Batch cards = actively selectable work only. Published orphans are done and
-        // belong in the progress badge at the bottom, not in the selection grid.
+        // Batch cards = actively selectable work only.
+        // Published articles are DONE — they belong in the progress footer, not the selection grid.
         const batch = latestSession
-          ? briefs.filter(b => b.discoverySessionId === latestSession)
-          : briefs.slice(0, 1);
+          ? briefs.filter(b => b.discoverySessionId === latestSession && !(b.hasArticle && b.queueStatus === 'published'))
+          : briefs.filter(b => !(b.hasArticle && b.queueStatus === 'published')).slice(0, 1);
         if (!batch.length) return null;
         // Only hide if the batch has just 1 legacy non-topic-brief enrichment (pre-cherry-pick behavior)
         if (batch.length === 1 && !batch[0].topic && !batch[0].articleTitle) return null;
@@ -366,7 +368,7 @@ function ContentGeneratorContent() {
                     {b.quickWin && <span className="cg-batch-qw">⚡ Quick Win</span>}
                     <span className="cg-batch-confidence">Confidence {b.confidenceScore}</span>
                   </div>
-                  <div className="cg-batch-topic">{b.topic || b.articleTitle || b.brandName}</div>
+                  <div className="cg-batch-topic">{b.enrichedH1 || b.enrichedTitle || b.articleTitle || b.topic || b.brandName}</div>
                   <div className="cg-batch-date">{new Date(b.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
                 </button>
               ))}
@@ -389,8 +391,9 @@ function ContentGeneratorContent() {
                 <select className="geo-select" value={selectedBriefId} onChange={e => setSelectedBriefId(e.target.value)}>
                   <option value="">Latest Enriched Brief (default)</option>
                   {briefs.map(b => {
-                    const label = b.topic
-                      ? `${b.topic}${b.quickWin ? ' ⚡' : ''} — ${new Date(b.createdAt).toLocaleDateString()}`
+                    const displayTitle = b.enrichedH1 || b.enrichedTitle || b.topic;
+                    const label = displayTitle
+                      ? `${displayTitle}${b.quickWin ? ' ⚡' : ''} — ${new Date(b.createdAt).toLocaleDateString()}`
                       : `${b.brandName} — ${new Date(b.createdAt).toLocaleDateString()} (confidence: ${b.confidenceScore})`;
                     return <option key={b.id} value={b.id}>{label}</option>;
                   })}
@@ -637,7 +640,7 @@ function ContentGeneratorContent() {
                 const st = statusFor(b);
                 return (
                   <span key={b.id} className={`cg-batch-progress-chip status-${st}`}>
-                    {b.topic || b.articleTitle || b.brandName}
+                    {b.enrichedH1 || b.enrichedTitle || b.articleTitle || b.topic || b.brandName}
                     <span className="cg-batch-progress-chip-status">· {st}</span>
                   </span>
                 );
