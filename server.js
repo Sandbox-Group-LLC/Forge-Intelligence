@@ -10531,7 +10531,15 @@ app.get('/api/geo/opportunities/:brandProfileId', requireAuth, async (req, res) 
       sessionId,
       opportunities: opps.rows.map(r => ({
         id: r.id, topic: r.topic,
-        platformScores: r.platform_scores, avgScore: parseFloat(r.avg_score),
+        platformScores: (() => {
+          const ps = r.platform_scores || {};
+          return {
+            chatgpt: ps.chatgpt || ps['ChatGPT'] || 0,
+            perplexity: ps.perplexity || ps['Perplexity'] || 0,
+            aiOverviews: ps.aiOverviews || ps['google ai overviews'] || ps['Google AI Overviews'] || ps['aio'] || 0,
+            gemini: ps.gemini || ps['Gemini'] || 0
+          };
+        })(), avgScore: parseFloat(r.avg_score),
         quickWin: r.quick_win,
         topicalAuthority: r.topical_authority_context ? JSON.parse(r.topical_authority_context) : null,
         status: r.status, discoveredAt: r.discovered_at, statusChangedAt: r.status_changed_at
