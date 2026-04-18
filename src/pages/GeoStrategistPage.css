@@ -560,10 +560,10 @@
 .enrich-topic-banner {
   font-size: 0.85rem;
   font-weight: 600;
-  color: var(--text-primary, #e2e8f0);
+  color: #ffffff;
   padding: 8px 14px;
   margin-bottom: 12px;
-  background: rgba(53, 99, 255, 0.06);
+  background: rgba(53, 99, 255, 0.12);
   border: 1px solid rgba(53, 99, 255, 0.15);
   border-radius: 8px;
   letter-spacing: 0.01em;
