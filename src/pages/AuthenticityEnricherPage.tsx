@@ -121,6 +121,8 @@ function AuthenticityEnricherContent() {
   const [activeTab, setActiveTab] = useState<'eeat' | 'injections' | 'brief' | 'author'>('eeat');
   const [completedStages, setCompletedStages] = useState<number[]>([]);
   const [currentStage, setCurrentStage] = useState(0);
+  const [stageDetails, setStageDetails] = useState<Record<number, string>>({});
+  const [enrichTopic, setEnrichTopic] = useState<string | null>(null);
   const [manualInputs, setManualInputs] = useState<Record<string, string>>({});
   const [showManualForm, setShowManualForm] = useState(false);
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
@@ -192,11 +194,16 @@ function AuthenticityEnricherContent() {
     setError('');
     setCompletedStages([]);
     setCurrentStage(1);
+    setStageDetails({});
+    setEnrichTopic(null);
 
     // Pull topicBriefId from URL if present (set by GEO page's Enrich Now action)
     const topicBriefId = new URLSearchParams(window.location.search).get('topicBriefId');
 
-    const analyzePromise = fetch('/api/authenticity-enricher/analyze', {
+    setStageDetails({});
+    setEnrichTopic(null);
+
+    const response = await fetch('/api/authenticity-enricher/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -207,13 +214,35 @@ function AuthenticityEnricherContent() {
       })
     });
 
-    const timings = [2000, 3000, 3500, 3000];
-    for (let i = 0; i < timings.length; i++) {
-      setCurrentStage(i + 1);
-      await new Promise(r => setTimeout(r, timings[i]));
-      setCompletedStages(prev => [...prev, i + 1]);
+    // Read SSE stream — server sends progress events as each tool runs
+    let sseResult: any = null;
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    if (reader) {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const parts = buf.split('\n');
+        buf = parts.pop() || '';
+        for (const part of parts) {
+          if (!part.startsWith('data: ')) continue;
+          try {
+            const evt = JSON.parse(part.slice(6));
+            if (evt.type === 'topic') setEnrichTopic(evt.topic);
+            else if (evt.type === 'progress') {
+              setCurrentStage(evt.stage);
+              setStageDetails(prev => ({ ...prev, [evt.stage]: evt.detail }));
+            } else if (evt.type === 'detail') {
+              setStageDetails(prev => ({ ...prev, [evt.stage]: evt.detail }));
+              setCompletedStages(prev => prev.includes(evt.stage) ? prev : [...prev, evt.stage]);
+            } else if (evt.type === 'result') sseResult = evt;
+            else if (evt.type === 'error') throw new Error(evt.error);
+          } catch (pe: any) { if (pe.message && !pe.message.includes('JSON')) throw pe; }
+        }
+      }
     }
-    setCurrentStage(5);
 
     // Clean the URL now that we've captured topicBriefId
     if (topicBriefId) {
@@ -223,13 +252,11 @@ function AuthenticityEnricherContent() {
     }
 
     try {
-      const res = await analyzePromise;
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'Analysis failed');
+      if (!sseResult?.success) throw new Error(sseResult?.error || 'Analysis failed');
       setCompletedStages([1,2,3,4,5]);
       setCurrentStage(0);
-      setResult(data.data);
-      if (data.data.needsManualInput && !withManual) {
+      setResult(sseResult.data as EnrichResult);
+      if (sseResult.data?.needsManualInput && !withManual) {
         setShowManualForm(true);
         setActiveTab('eeat');
       } else {
@@ -314,12 +341,20 @@ function AuthenticityEnricherContent() {
       {/* Stage progress */}
       {isRunning && (
         <div className="geo-stages">
+          {enrichTopic && isRunning && (
+            <div className="enrich-topic-banner">{enrichTopic}</div>
+          )}
           {STAGES.map(s => (
             <div key={s.id} className={`geo-stage ${completedStages.includes(s.id) ? 'completed' : currentStage === s.id ? 'active' : ''}`}>
               <div className="geo-stage-dot">
                 {completedStages.includes(s.id) ? <CheckCircle2 size={14} /> : <span>{s.id}</span>}
               </div>
-              <span className="geo-stage-label">{s.label}</span>
+              <div className="geo-stage-text">
+                <span className="geo-stage-label">{s.label}</span>
+                {stageDetails[s.id] && (currentStage === s.id || completedStages.includes(s.id)) && (
+                  <span className="geo-stage-detail">{stageDetails[s.id]}</span>
+                )}
+              </div>
             </div>
           ))}
         </div>
