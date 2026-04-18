@@ -7661,45 +7661,29 @@ Output only the post text.` }]
           }
 
           if (pipedreamAccountId) {
-            // Pipedream Connect path — uses Proxy API (Pipedream holds credentials, we never see them)
+            // Pipedream Connect path — post directly to stored page ID via proxy.
+            // Pipedream holds the page access token from the OAuth consent flow.
+            // We do NOT call /me/accounts — that requires permissions Pipedream's built-in app doesn't have.
             try {
-              // Step 1: List Pages via the proxy — Pipedream injects the user OAuth token
-              const pagesResp = await pipedreamProxy({
+              const pageId = creds.pageId;
+              if (!pageId) {
+                throw new Error('No Facebook Page ID configured. Go to Integrations → Facebook → select a page.');
+              }
+              console.log('[FB-PIPEDREAM] Publishing to page', pageId, 'via proxy account', pipedreamAccountId);
+
+              // Post directly to /{pageId}/feed — Pipedream proxy injects the page token
+              const fbRes = await pipedreamProxy({
                 externalUserId: item.brand_profile_id,
                 accountId: pipedreamAccountId,
-                url: 'https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,tasks',
-                method: 'GET',
-              });
-              
-              const pages = pagesResp?.data || [];
-              if (!pages.length) {
-                throw new Error('No Facebook Pages found on your account, OR the Pipedream connection is missing the pages_show_list scope. Go to Integrations → Facebook → Reconnect, and ensure you grant ALL permissions on the Facebook consent screen (especially "Manage your Pages" and "Create and manage content on Pages").');
-              }
-              
-              // Prefer stored pageId, fall back to first page the user can post to
-              let targetPage = null;
-              if (creds.pageId) targetPage = pages.find(p => p.id === creds.pageId);
-              if (!targetPage) {
-                // Pick first page that has CREATE_CONTENT task permission
-                targetPage = pages.find(p => (p.tasks || []).includes('CREATE_CONTENT')) || pages[0];
-              }
-              
-              if (!targetPage) throw new Error('No Facebook Page with publish permission found. Reconnect Facebook.');
-              if (!targetPage.access_token) throw new Error('Facebook Page found but no Page access token returned. The connection is missing pages_manage_posts scope — reconnect and grant all permissions.');
-              
-              const pageToken = targetPage.access_token;
-              const pageId = targetPage.id;
-              
-              const fbRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}/feed`, {
+                url: `https://graph.facebook.com/v21.0/${pageId}/feed`,
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: fbMessage, link: utmUrl, access_token: pageToken })
+                data: { message: fbMessage, link: utmUrl },
               });
-              const fbData = await fbRes.json();
-              if (!fbRes.ok || fbData.error) throw new Error(fbData.error?.message || 'Facebook publish failed');
-              
-              const fbPostUrl = `https://www.facebook.com/${fbData.id?.replace('_', '/posts/')}`;
-              results[channel] = { status: 'published', url: fbPostUrl, postId: fbData.id, utmParams };
+
+              console.log('[FB-PIPEDREAM] Post response:', JSON.stringify(fbRes).slice(0, 300));
+              if (fbRes.error) throw new Error(fbRes.error.message || 'Facebook publish failed');
+              const fbPostId = fbRes.id || fbRes.post_id;
+              results[channel] = { status: 'published', postId: fbPostId, url: `https://facebook.com/${fbPostId}`, utmParams };
               
               // Cache pageId so next publish skips discovery
               if (!creds.pageId) {
