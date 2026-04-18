@@ -1819,3 +1819,24 @@ a.pq-chip {
 a.pq-chip:hover {
   opacity: 0.85;
 }
+
+.pq-copy-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-muted, #94a3b8);
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.pq-copy-btn:hover {
+  color: var(--text-primary, #e2e8f0);
+  border-color: rgba(148, 163, 184, 0.4);
+  background: rgba(148, 163, 184, 0.06);
+}
