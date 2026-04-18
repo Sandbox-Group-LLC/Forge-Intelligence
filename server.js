@@ -3741,15 +3741,6 @@ app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => 
   if (!brandProfileId) return res.status(400).json({ success: false, error: 'brandProfileId is required' });
   const startTime = Date.now();
 
-  // SSE streaming for real-time progress
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-  const send = (type, payload) => {
-    try { res.write(`data: ${JSON.stringify({ type, ...payload })}\n\n`); } catch {}
-  };
-
   try {
     // ── Brain-First ──────────────────────────────────────────────────────────
     let brainPatterns = [], brainMistakes = [];
@@ -3764,7 +3755,7 @@ app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => 
 
     // ── Load brand profile ───────────────────────────────────────────────────
     const profileResult = await pool.query(`SELECT * FROM brand_profiles WHERE id = $1`, [brandProfileId]);
-    if (!profileResult.rows.length) { send('error', { error: 'Brand profile not found. Run Stage 1 first.' }); return res.end(); }
+    if (!profileResult.rows.length) return res.status(404).json({ success: false, error: 'Brand profile not found. Run Stage 1 first.' });
     const profile = profileResult.rows[0];
     const pd = profile.profile_data || {};
 
@@ -3782,11 +3773,10 @@ app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => 
         const tb = tbRes.rows[0];
         geoBrief = { ...tb.brief_data, briefId: tb.id, topic: tb.topic, brandName: profile.brand_name, isTopicBrief: true };
         console.log(`[ENRICH] Using topic-specific brief: "${tb.topic}"`);
-      send('topic', { topic: tb.topic });
       } else {
         // Stale/invalid topicBriefId — don't silently fall through to wrong data
         console.log(`[ENRICH] Topic brief ${topicBriefId} not found — returning 404`);
-        send('error', { error: 'Topic brief not found. It may have been deleted or expired.' }); return res.end();
+        return res.status(404).json({ success: false, error: 'Topic brief not found. It may have been deleted or expired.' });
       }
     } else if (geoBriefId) {
       // Legacy path: specific old-style GEO brief ID
@@ -3822,7 +3812,7 @@ app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => 
           console.log(`[ENRICH] Cache stale — built on brain v${r.brain_version || 1}, current is v${profile.version || 1}, forcing fresh run`);
         } else if (isReal) {
           console.log(`[ENRICH] Cache hit for ${r.brand_url} — eeat:${hasEEAT} injections:${hasInjections} brief:${hasBrief}`);
-          send('result', { success: true, cached: true, data: {
+          return res.json({ success: true, cached: true, data: {
             id: r.id, brandProfileId: r.brand_profile_id, geoBriefId: r.geo_brief_id,
             brandUrl: r.brand_url, brandName: r.brand_name, version: r.version,
             confidenceScore: r.confidence_score,
@@ -3830,7 +3820,6 @@ app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => 
             createdAt: r.created_at, updatedAt: r.updated_at,
             ...r.enriched_data
           }});
-          return res.end();
         }
         console.log(`[ENRICH] Cache stale — eeat:${hasEEAT} injections:${hasInjections} brief:${hasBrief} — forcing fresh run`);
       }
@@ -3853,7 +3842,6 @@ app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => 
       : correctionsCtx || '';
 
     // ── Tool 1: SME Signal Scraper ────────────────────────────────────────────
-    send('progress', { stage: 1, label: 'SME Signal Scraper', detail: 'Scanning for named experts, awards, certifications...' });
     console.log('[ENRICH] Tool 1: SME Signal Scraper...');
 
     let sonarSignals = {};
@@ -3894,7 +3882,6 @@ Return empty arrays if not found. Be factual and accurate.`
     }).join(', ') || 'none');
 
     // ── Tool 2: E-E-A-T Confidence Scorer + Gap Detector ─────────────────────
-    send('progress', { stage: 2, label: 'E-E-A-T Confidence Scorer', detail: 'Scoring experience, expertise, authoritativeness, trust...' });
     console.log('[ENRICH] Tool 2: E-E-A-T Confidence Scorer...');
 
     const scorerRes = await anthropic.messages.create({
@@ -3926,7 +3913,6 @@ Respond with this exact JSON structure:
     console.log(`[ENRICH] E-E-A-T score: ${scorerData.overallEEATScore} | Gaps: ${gaps.length} | NeedsManual: ${needsManualInput}`);
 
     // ── Tool 3: Voice + Persona Injection Mapper ──────────────────────────────
-    send('progress', { stage: 3, label: 'Voice & Persona Injection Mapper', detail: 'Mapping brand voice patterns into section-level injections...' });
     console.log('[ENRICH] Tool 3: Voice & Persona Injection Mapper...');
 
     const injectionRes = await anthropic.messages.create({
@@ -3956,7 +3942,6 @@ Respond with this exact JSON structure:
     } catch(e) { console.log('[ENRICH] Tool 3 parse warn:', e.message, '| raw:', injectionRes.content[0].text.slice(0,200)); injectionData = { injectionMap: [], powerPhrases: [], authorSchema: {}, contentHooks: [] }; }
 
     // ── Tool 4: Enriched Brief Assembler ─────────────────────────────────────
-    send('progress', { stage: 4, label: 'Enriched Brief Assembler', detail: 'Compiling enriched H1, sections, FAQs, schema markup...' });
     console.log('[ENRICH] Tool 4: Enriched Brief Assembler...');
 
     const assemblerRes = await anthropic.messages.create({
@@ -4132,18 +4117,16 @@ Respond with this exact JSON structure:
     console.log(`[ENRICH] Complete — Score: ${confidenceScore} | Gaps: ${gaps.length} | NeedsManual: ${needsManualInput} | Latency: ${latencyMs}ms`);
 
     await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms) VALUES ($1,$2,$3,$4,$5)', ['stage3_authenticity_enricher', brandProfileId, 'success', 0, latencyMs]).catch(e => console.error('[ACTIVITY LOG]', e.message));
-            send('result', { success: true, cached: false, data: {
+            res.json({ success: true, cached: false, data: {
       id: newId, brandProfileId, brandUrl: profile.brand_url, brandName,
       version: nextVersion, confidenceScore, latencyMs, needsManualInput,
       brainVersion: profile.version || 1, currentBrainVersion: profile.version || 1,
       ...enrichedData
     }});
-    res.end();
 
   } catch (err) {
     console.error('[ENRICH] Error:', err);
-    send('error', { error: err.message });
-    res.end();
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
