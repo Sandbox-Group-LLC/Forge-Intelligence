@@ -4117,7 +4117,7 @@ Respond with this exact JSON structure:
     console.log(`[ENRICH] Complete — Score: ${confidenceScore} | Gaps: ${gaps.length} | NeedsManual: ${needsManualInput} | Latency: ${latencyMs}ms`);
 
     await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms) VALUES ($1,$2,$3,$4,$5)', ['stage3_authenticity_enricher', brandProfileId, 'success', 0, latencyMs]).catch(e => console.error('[ACTIVITY LOG]', e.message));
-            send('result', { success: true, cached: false, data: {
+            res.json({ success: true, cached: false, data: {
       id: newId, brandProfileId, brandUrl: profile.brand_url, brandName,
       version: nextVersion, confidenceScore, latencyMs, needsManualInput,
       brainVersion: profile.version || 1, currentBrainVersion: profile.version || 1,
