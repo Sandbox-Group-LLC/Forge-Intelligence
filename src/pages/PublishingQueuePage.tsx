@@ -1182,8 +1182,7 @@ ${bodyHtml}
                           const def = CHANNEL_LABELS[ch];
                           const isSelected = sel.includes(ch);
                           const result = results[ch];
-                          return (
-                            {(() => {
+                          return (() => {
                               const logEntry = (publishLog[item.id] || []).find(l => l.channel === ch);
                               const liveStatus = logEntry?.live_status;
                               const isPublished = liveStatus === 'published' || (!logEntry && result?.status === 'published');
@@ -1230,8 +1229,7 @@ ${bodyHtml}
                                   {def?.label || ch}
                                 </button>
                               );
-                            })()}
-                          );
+                          })();
                         })
                       )}
                     </div>
@@ -1500,8 +1498,7 @@ return (
                           const def = CHANNEL_LABELS[ch];
                           const isSelected = sel.includes(ch);
                           const result = results[ch];
-                          return (
-                            {(() => {
+                          return (() => {
                               const logEntry = (publishLog[item.id] || []).find(l => l.channel === ch);
                               const liveStatus = logEntry?.live_status;
                               const isPublished = liveStatus === 'published' || (!logEntry && result?.status === 'published');
@@ -1548,8 +1545,7 @@ return (
                                   {def?.label || ch}
                                 </button>
                               );
-                            })()}
-                          );
+                          })();
                         })
                       )}
                     </div>
