@@ -1183,10 +1183,11 @@ ${bodyHtml}
                           const isSelected = sel.includes(ch);
                           const result = results[ch];
                           return (
-                            <button
-                              key={ch}
-                              className={`pq-chip ${isSelected ? 'selected' : ''} ${(() => {
-                                const logEntry = (publishLog[item.id] || []).find(l => l.channel === ch);
+                            {(() => {
+                              const logEntry = (publishLog[item.id] || []).find(l => l.channel === ch);
+                              const liveStatus = logEntry?.live_status;
+                              const isPublished = liveStatus === 'published' || (!logEntry && result?.status === 'published');
+                              const chipClass = (() => {
                                 if (!logEntry) {
                                   if (result?.status === 'published') return 'published';
                                   if (result?.status === 'error') return 'error';
@@ -1198,18 +1199,38 @@ ${bodyHtml}
                                 if (logEntry.live_status === 'error') return 'error';
                                 if (result?.status === 'error') return 'error';
                                 return result?.status === 'published' ? 'published' : '';
-                              })()}`}
-                              style={{ '--chip-color': def?.color } as React.CSSProperties}
-                              onClick={() => toggleChannel(item.id, ch)}
-                              title={result ? `${result.status}${result.url ? ': ' + result.url : result.error ? ': ' + result.error : ''}` : ''}
-                            >
-                              {def?.label || ch}
-                              {result?.status === 'published' && result.url && (
-                                <a href={result.url} target="_blank" rel="noreferrer" className="pq-chip-link" onClick={e => e.stopPropagation()}>
-                                  <ExternalLink />
-                                </a>
-                              )}
-                            </button>
+                              })();
+
+                              // Published + has URL → non-interactive link to the live post
+                              if (isPublished && result?.url) {
+                                return (
+                                  <a
+                                    key={ch}
+                                    href={result.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={`pq-chip published`}
+                                    style={{ '--chip-color': def?.color } as React.CSSProperties}
+                                    title={`View on ${def?.label || ch}`}
+                                  >
+                                    {def?.label || ch} <ExternalLink />
+                                  </a>
+                                );
+                              }
+
+                              // Not published → toggle button for channel selection
+                              return (
+                                <button
+                                  key={ch}
+                                  className={`pq-chip ${isSelected ? 'selected' : ''} ${chipClass}`}
+                                  style={{ '--chip-color': def?.color } as React.CSSProperties}
+                                  onClick={() => toggleChannel(item.id, ch)}
+                                  title={result ? `${result.status}${result.url ? ': ' + result.url : result.error ? ': ' + result.error : ''}` : ''}
+                                >
+                                  {def?.label || ch}
+                                </button>
+                              );
+                            })()}
                           );
                         })
                       )}
@@ -1480,10 +1501,11 @@ return (
                           const isSelected = sel.includes(ch);
                           const result = results[ch];
                           return (
-                            <button
-                              key={ch}
-                              className={`pq-chip ${isSelected ? 'selected' : ''} ${(() => {
-                                const logEntry = (publishLog[item.id] || []).find(l => l.channel === ch);
+                            {(() => {
+                              const logEntry = (publishLog[item.id] || []).find(l => l.channel === ch);
+                              const liveStatus = logEntry?.live_status;
+                              const isPublished = liveStatus === 'published' || (!logEntry && result?.status === 'published');
+                              const chipClass = (() => {
                                 if (!logEntry) {
                                   if (result?.status === 'published') return 'published';
                                   if (result?.status === 'error') return 'error';
@@ -1495,18 +1517,38 @@ return (
                                 if (logEntry.live_status === 'error') return 'error';
                                 if (result?.status === 'error') return 'error';
                                 return result?.status === 'published' ? 'published' : '';
-                              })()}`}
-                              style={{ '--chip-color': def?.color } as React.CSSProperties}
-                              onClick={() => toggleChannel(item.id, ch)}
-                              title={result ? `${result.status}${result.url ? ': ' + result.url : result.error ? ': ' + result.error : ''}` : ''}
-                            >
-                              {def?.label || ch}
-                              {result?.status === 'published' && result.url && (
-                                <a href={result.url} target="_blank" rel="noreferrer" className="pq-chip-link" onClick={e => e.stopPropagation()}>
-                                  <ExternalLink />
-                                </a>
-                              )}
-                            </button>
+                              })();
+
+                              // Published + has URL → non-interactive link to the live post
+                              if (isPublished && result?.url) {
+                                return (
+                                  <a
+                                    key={ch}
+                                    href={result.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={`pq-chip published`}
+                                    style={{ '--chip-color': def?.color } as React.CSSProperties}
+                                    title={`View on ${def?.label || ch}`}
+                                  >
+                                    {def?.label || ch} <ExternalLink />
+                                  </a>
+                                );
+                              }
+
+                              // Not published → toggle button for channel selection
+                              return (
+                                <button
+                                  key={ch}
+                                  className={`pq-chip ${isSelected ? 'selected' : ''} ${chipClass}`}
+                                  style={{ '--chip-color': def?.color } as React.CSSProperties}
+                                  onClick={() => toggleChannel(item.id, ch)}
+                                  title={result ? `${result.status}${result.url ? ': ' + result.url : result.error ? ': ' + result.error : ''}` : ''}
+                                >
+                                  {def?.label || ch}
+                                </button>
+                              );
+                            })()}
                           );
                         })
                       )}
