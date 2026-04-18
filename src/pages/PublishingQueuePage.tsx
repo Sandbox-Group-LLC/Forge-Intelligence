@@ -1865,6 +1865,13 @@ return (
                               <span className="pq-copy-over"> · over 280!</span>
                             )}
                           </span>
+                          <button
+                            className="pq-copy-btn"
+                            onClick={() => { navigator.clipboard.writeText(postCopy[ch] || ''); setSuccessMsg('Copied!'); setTimeout(() => setSuccessMsg(''), 2000); }}
+                            title="Copy to clipboard"
+                          >
+                            <Copy size={13} /> Copy
+                          </button>
                         </div>
                         <textarea
                           className="pq-copy-textarea"
