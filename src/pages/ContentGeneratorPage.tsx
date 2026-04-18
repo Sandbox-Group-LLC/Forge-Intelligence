@@ -386,10 +386,9 @@ function ContentGeneratorContent() {
                 {brains.map(b => <option key={b.id} value={b.id}>{b.brandName} — {b.brandUrl}</option>)}
               </select>
             </div>
-            {briefs.length > 0 && (
-              <div className="geo-select-wrap" style={{ flex: 1, minWidth: '220px' }}>
+            <div className="geo-select-wrap" style={{ flex: 1, minWidth: '220px' }}>
                 <select className="geo-select" value={selectedBriefId} onChange={e => setSelectedBriefId(e.target.value)}>
-                  <option value="">Latest Enriched Brief (default)</option>
+                  <option value="">{briefs.length > 0 ? 'Select an enriched brief...' : 'No enriched briefs — run Enricher first'}</option>
                   {briefs.map(b => {
                     const displayTitle = b.enrichedH1 || b.enrichedTitle || b.topic;
                     const label = displayTitle
@@ -399,12 +398,11 @@ function ContentGeneratorContent() {
                   })}
                 </select>
               </div>
-            )}
           </div>
           <div className="geo-input-bar">
           <div style={{ flex: 1 }}>
             <input
-              className="geo-input cg-topic-input" placeholder="Optional: direct the topic — e.g. 'Why neuroscience matters for event ROI'"
+              className="geo-input cg-topic-input" placeholder="Optional: refine the angle within this brief"
               value={topicPrompt}
               onChange={e => { setTopicPrompt(e.target.value); setPreflight({ status: 'idle' }); }}
               onBlur={checkTopic}
@@ -435,7 +433,7 @@ function ContentGeneratorContent() {
               </div>
             )}
           </div>
-          <button className="geo-run-btn" onClick={runGeneration} disabled={!selectedBrainId}>
+          <button className="geo-run-btn" onClick={runGeneration} disabled={!selectedBrainId || !selectedBriefId}>
             <FileText size={14} /> Generate Article
           </button>
           </div>
