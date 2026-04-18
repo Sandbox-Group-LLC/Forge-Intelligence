@@ -18,7 +18,8 @@
     "react-router-dom": "^6.20.0",
     "@pipedream/sdk": "^2.4.3",
     "@clerk/clerk-react": "^5.61.3",
-    "jose": "^5.9.6"
+    "jose": "^5.9.6",
+    "lucide-react": "^0.383.0"
   },
   "devDependencies": {
     "@types/pg": "^8.11.0",
