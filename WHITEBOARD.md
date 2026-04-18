@@ -1873,3 +1873,59 @@ Isolated and scanned all 4 recurring bug patterns across the entire codebase:
 | Date | Focus |
 |------|-------|
 | Apr 17 | GEO cherry-pick architecture (Stage 2.1 Brief Builder), Topical Map territory injection, Authenticity Enricher per-topic refactor, Content Generator batch UI, article body SSR, FK relax, token cap audit, first citation-ready article published |
+
+### Apr 17 (continued) — Production port + pipeline hardening + UX polish
+
+**Ported cherry-pick architecture to production** — all frontend pages (GEO Strategist, Authenticity Enricher, Content Generator + CSS) and server.js surgical file-level commits. Both branches architecturally identical.
+
+**Critical bugs found and fixed during production testing:**
+
+1. **Enriched brief 38KB prompt truncation** — Content Generator was sending `trimTo(enrichedBrief, 6000)` but the enriched brief was 38,672 chars. JSON alphabetical ordering meant `enrichedTitle`, `enrichedH1`, `enrichedSections` (all starting with 'e') got truncated while diagnostic data survived. Writer never saw the article's actual H1 — just brain patterns saying "intelligence vs production" — so it regenerated the first article's topic. Fix: extract only writer-directing fields (title, H1, sections, FAQs, powerPhrases, contentHooks) into a slim object, 12KB cap.
+
+2. **Enricher DELETE-all broke batch workflow** — `DELETE FROM enriched_briefs WHERE brand_profile_id = $1` nuked ALL enrichments on each new run, orphaning generated articles. Fix: delete only the enrichment matching the current topicBriefId; legacy (non-topic) enrichments delete only legacy rows.
+
+3. **UNION type mismatches (5 occurrences)** — `eb.id` (uuid) vs `gc.enriched_brief_id` (text), `pq.content_id` (text) vs `gc.id` (uuid), and UNION column position types. Each required `::text` casts. Root cause: never checked `information_schema.columns` before writing JOINs.
+
+4. **Topic-briefs endpoint crash** — debug log referenced undefined `brandProfileId` (should be `req.params.brandProfileId`). Crashed silently, frontend showed empty GEO Brief tab.
+
+5. **Enricher cache served wrong topic** — brand-level cache hit returned whatever was most recently enriched, regardless of which topic the user clicked Enrich Now on. Fix: skip cache entirely when `topicBriefId` present.
+
+6. **Enricher auto-hydrate showed wrong brief** — page mount fetched latest cached enrichment instead of starting fresh for the incoming `topicBriefId`. Fix: skip auto-hydrate when URL has topicBriefId, auto-fire enrichment immediately.
+
+**Content Generator UX:**
+- Removed auto-hydrate of last finished article (was showing stale article from different topic)
+- Batch cards (top): only show un-published briefs ready for generation
+- Batch progress footer (bottom): shows ALL work — pending (gray), generated (blue), published (green)
+- All labels use enrichedH1 (not original GEO topic) for consistency
+- Orphaned articles (enriched brief deleted by legacy code) surfaced via UNION query
+- Chip text vertically centered
+
+**Publishing Queue UX:**
+- Published channel badges are now `<a>` links to the live post, not `<button>` toggles
+- No more accidental republish — click opens the post in a new tab
+
+**Facebook publish flow rewrite:**
+- Removed `/me/accounts` discovery (was failing — Pipedream token lacks page management permissions)
+- Now posts directly to stored `pageId` via Pipedream proxy
+- Blocked on Facebook permissions: token gets 3 of 8 scopes granted, page management silently dropped
+- #36 reopened, pending Pipedream community response
+
+**Article SSR body rendering:**
+- Full article prose (1700-2250 words) now server-rendered inside `<article>` tag
+- AI crawlers (GPTBot, PerplexityBot, Googlebot) see complete content, not empty SPA shell
+- Author footer with Factual Ground bio included
+- Verified on LinkedIn Post Inspector — OG card renders clean
+
+**Token caps raised:**
+- GEO Tool 1 (Topical Authority Mapper): 2500 → 4000
+- Stage 2.1 Brief Builder: 4096 → 6144
+- Content Gen streaming #1: 8096 → 12000
+
+**Score badge cosmetic fixes:**
+- GEO Strategist + Authenticity Enricher score badges shrunk (42px → 28px font, 24px → 16px padding, min-width auto)
+- Header buttons get `whiteSpace: nowrap` to prevent arrow wrapping
+
+**First two citation-ready articles published:**
+1. "The Bottleneck Isn't Production. It's Intelligence." — 1,696 words, 100% auto-approved
+2. "Is Your Content Team Actually AI Ready? The Five-Dimension Framework" — 2,250 words, 88% confidence, 1 factual claim CYA flag
+
