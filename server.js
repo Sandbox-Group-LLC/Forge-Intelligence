@@ -4123,7 +4123,6 @@ Respond with this exact JSON structure:
       brainVersion: profile.version || 1, currentBrainVersion: profile.version || 1,
       ...enrichedData
     }});
-    res.end();
 
   } catch (err) {
     console.error('[ENRICH] Error:', err);
