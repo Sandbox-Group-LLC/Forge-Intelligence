@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { ClerkProvider } from '@clerk/clerk-react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import WelcomePage from './pages/WelcomePage';
 import { AppProvider } from './context/AppContext';
 import Landing from './Landing';
 import Product from './Product';
@@ -78,6 +79,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/acceptable-use" element={<AcceptableUsePage />} />
         <Route path="/product" element={<Product />} />
+        <Route path="/welcome" element={<WelcomePage />} />
 
         {/* App — all product routes live under /app/ */}
         <Route
