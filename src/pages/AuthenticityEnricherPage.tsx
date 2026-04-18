@@ -121,6 +121,8 @@ function AuthenticityEnricherContent() {
   const [activeTab, setActiveTab] = useState<'eeat' | 'injections' | 'brief' | 'author'>('eeat');
   const [completedStages, setCompletedStages] = useState<number[]>([]);
   const [currentStage, setCurrentStage] = useState(0);
+  const [stageDetails, setStageDetails] = useState<Record<number, string>>({});
+  const [enrichTopic, setEnrichTopic] = useState<string | null>(null);
   const [manualInputs, setManualInputs] = useState<Record<string, string>>({});
   const [showManualForm, setShowManualForm] = useState(false);
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
