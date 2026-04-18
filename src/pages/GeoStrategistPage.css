@@ -555,3 +555,35 @@
   color: var(--color-text-secondary, #475569);
   line-height: 1.65;
 }
+
+/* Enricher real-time progress */
+.enrich-topic-banner {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary, #e2e8f0);
+  padding: 8px 14px;
+  margin-bottom: 12px;
+  background: rgba(53, 99, 255, 0.06);
+  border: 1px solid rgba(53, 99, 255, 0.15);
+  border-radius: 8px;
+  letter-spacing: 0.01em;
+}
+.geo-stage-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.geo-stage-detail {
+  font-size: 0.7rem;
+  color: var(--text-muted, #94a3b8);
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+.geo-stage.active .geo-stage-detail {
+  color: var(--accent, #3563ff);
+  opacity: 1;
+}
