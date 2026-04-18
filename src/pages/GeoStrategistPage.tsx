@@ -524,21 +524,7 @@ function GeoStrategistContent() {
                 </table>
               </div>
 
-              {opportunities.filter(o => o.status === 'briefed' || o.status === 'enriched').length > 0 && (
-                <div className="geo-already-briefed">
-                  <div className="geo-section-sub" style={{ marginTop: 24, marginBottom: 8 }}>
-                    Briefed topics ({opportunities.filter(o => o.status === 'briefed').length} pending · {opportunities.filter(o => o.status === 'enriched').length} enriched)
-                  </div>
-                  <div className="geo-briefed-chips">
-                    {opportunities.filter(o => o.status !== 'discovered' && o.status !== 'ignored').map(o => (
-                      <span key={o.id} className={`geo-briefed-chip status-${o.status}`}>
-                        {o.topic}
-                        <span className="geo-chip-status">· {o.status}</span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
+
             </div>
           )}
 
@@ -655,6 +641,22 @@ function GeoStrategistContent() {
                     ))}
                   </div>
                 </>
+              )}
+
+              {opportunities.filter(o => o.status === 'briefed' || o.status === 'enriched').length > 0 && (
+                <div className="geo-already-briefed">
+                  <div className="geo-section-sub" style={{ marginTop: 24, marginBottom: 8 }}>
+                    Briefed topics ({opportunities.filter(o => o.status === 'briefed').length} pending · {opportunities.filter(o => o.status === 'enriched').length} enriched)
+                  </div>
+                  <div className="geo-briefed-chips">
+                    {opportunities.filter(o => o.status !== 'discovered' && o.status !== 'ignored').map(o => (
+                      <span key={o.id} className={`geo-briefed-chip status-${o.status}`}>
+                        {o.topic}
+                        <span className="geo-chip-status">· {o.status}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           )}
