@@ -4150,6 +4150,309 @@ Respond with this exact JSON structure:
 });
 
 
+// ── Strategy Intelligence: PVA + Messaging Fault Lines ────────────────────────
+app.post('/api/strategy/competitive-intel/:brandProfileId', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.params;
+  const { force = false } = req.body;
+  if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
+
+  // SSE streaming for real-time progress
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+  const send = (type, payload) => {
+    try { res.write('data: ' + JSON.stringify({ type, ...payload }) + '\n\n'); } catch {}
+  };
+
+  try {
+    const profile = await pool.query('SELECT * FROM brand_profiles WHERE id = $1', [brandProfileId]);
+    if (!profile.rows.length) { send('error', { error: 'Brand not found' }); return res.end(); }
+    const brand = profile.rows[0];
+    const pd = brand.profile_data || {};
+    const competitors = pd.discoveredCompetitors || [];
+
+    if (!competitors.length) {
+      send('error', { error: 'No competitors discovered. Run Context Hub first to discover competitors.' });
+      return res.end();
+    }
+
+    send('progress', { stage: 'init', detail: `${competitors.length} competitors: ${competitors.join(', ')}` });
+
+    // ── Cache check ──
+    if (!force) {
+      const existing = await pool.query(
+        'SELECT * FROM competitive_intelligence WHERE brand_profile_id = $1 ORDER BY created_at DESC',
+        [brandProfileId]
+      );
+      if (existing.rows.length > 0) {
+        const stale = existing.rows[0].brain_version < (brand.version || 1);
+        if (!stale) {
+          send('result', {
+            success: true, cached: true,
+            competitors: existing.rows.map(r => ({
+              url: r.competitor_url, name: r.competitor_name,
+              pva: r.pva_data, faultLines: r.fault_lines_data,
+              scrapedLength: r.scraped_content_length, createdAt: r.created_at
+            }))
+          });
+          return res.end();
+        }
+        send('progress', { stage: 'cache', detail: 'Brain updated since last analysis — running fresh' });
+      }
+    }
+
+    // ── Scrape each competitor ──
+    const stripHtml = (html) => html
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
+      .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&[a-z]+;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const competitorData = [];
+    for (let ci = 0; ci < competitors.length; ci++) {
+      const compUrl = competitors[ci];
+      const normalizedUrl = compUrl.startsWith('http') ? compUrl : `https://${compUrl}`;
+      send('progress', { stage: 'scrape', competitor: compUrl, index: ci + 1, total: competitors.length, detail: `Scraping ${compUrl}...` });
+
+      let scraped = '';
+      let compName = compUrl.replace(/https?:\/\/(www\.)?/, '').replace(/\/$/, '');
+      try {
+        // Homepage
+        const homeRes = await fetch(normalizedUrl, {
+          headers: { 'User-Agent': 'ForgeIntelligence/1.0 (Competitive Analysis)' },
+          signal: AbortSignal.timeout(12000)
+        }).catch(() => null);
+
+        let homeHtml = '';
+        if (homeRes?.ok) {
+          homeHtml = await homeRes.text();
+          // Extract title as competitor name
+          const titleMatch = homeHtml.match(/<title[^>]*>([^<]+)<\/title>/i);
+          if (titleMatch) compName = titleMatch[1].split(/[|–—-]/)[0].trim();
+          scraped += `HOMEPAGE:\n${stripHtml(homeHtml).slice(0, 4000)}\n\n`;
+        }
+
+        // Find positioning pages — product, solutions, about, pricing
+        const linkMatches = homeHtml.match(/href=["'](\/[^"'#?]+)["']/g) || [];
+        const positioningPaths = [...new Set(
+          linkMatches
+            .map(m => m.match(/href=["'](\/[^"'#?]+)["']/)?.[1])
+            .filter(Boolean)
+            .filter(p => /\/(product|solution|platform|why|about|pricing|enterprise|feature)/i.test(p))
+        )].slice(0, 5);
+
+        const fallbackPaths = positioningPaths.length >= 2 ? positioningPaths : [...positioningPaths, '/about', '/products', '/solutions'].slice(0, 4);
+
+        for (const path of fallbackPaths) {
+          try {
+            const pageUrl = new URL(path, normalizedUrl).href;
+            const pageRes = await fetch(pageUrl, {
+              headers: { 'User-Agent': 'ForgeIntelligence/1.0 (Competitive Analysis)' },
+              signal: AbortSignal.timeout(8000)
+            }).catch(() => null);
+            if (pageRes?.ok) {
+              const pageHtml = await pageRes.text();
+              const pageText = stripHtml(pageHtml).slice(0, 3000);
+              if (pageText.length > 100) {
+                scraped += `PAGE (${path}):\n${pageText}\n\n`;
+              }
+            }
+          } catch { /* skip */ }
+        }
+
+        send('detail', { stage: 'scrape', competitor: compUrl, detail: `Scraped ${scraped.length} chars from ${compName}` });
+      } catch(e) {
+        send('detail', { stage: 'scrape', competitor: compUrl, detail: `Scrape failed: ${e.message} — will use Sonar context only` });
+      }
+
+      competitorData.push({ url: compUrl, name: compName, scraped, scrapedLength: scraped.length });
+    }
+
+    // ── Tool 1: Positioning Vulnerability Analysis ──
+    send('progress', { stage: 'pva', detail: 'Running Positioning Vulnerability Analysis across all competitors...' });
+    console.log('[STRATEGY] Tool 1: PVA...');
+
+    const pvaPrompt = `You are a competitive intelligence analyst producing a Positioning Vulnerability Analysis.
+
+BRAND BEING ANALYZED FOR: ${brand.brand_name} (${brand.brand_url})
+BRAND CONTEXT: ${JSON.stringify({ marketCategory: pd.marketCategory, competitiveGaps: (pd.competitiveGaps || []).slice(0, 3) }).slice(0, 800)}
+
+COMPETITORS AND THEIR SCRAPED PUBLIC CONTENT:
+${competitorData.map(c => `--- ${c.name} (${c.url}) ---\n${c.scraped.slice(0, 5000)}`).join('\n\n')}
+
+TASK: Analyze each competitor's public positioning. For each, identify:
+1. OVEREXPOSED CLAIMS: Positioning anchors repeated so heavily they become targets (vendor lock-in objections, pricing backlash, etc.)
+2. WEAK CLAIMS: Assertions without proof — vague superlatives, unsubstantiated metrics, promises that don't hold up
+3. VULNERABILITY: The strategic opening this creates for ${brand.brand_name}
+
+CONSTRAINTS:
+- Every vulnerability MUST be grounded in actual content you can see above. No speculation.
+- Quote the competitor's exact language when citing a claim.
+- Tone: intelligence briefing, not attack ad. Board-ready.
+- Limit to 2-4 vulnerabilities per competitor (highest signal only).
+
+Respond with ONLY valid JSON — no markdown, no code fences:
+{
+  "competitors": [
+    {
+      "url": "string",
+      "name": "string",
+      "vulnerabilities": [
+        {
+          "type": "overexposed | weak_claim | unsubstantiated",
+          "claim": "the exact quote or paraphrased claim from their content",
+          "evidence": "where you found it and how prominent it is",
+          "vulnerability": "the strategic opening this creates",
+          "severity": "high | medium | low"
+        }
+      ]
+    }
+  ]
+}`;
+
+    const pvaRes = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 6000,
+      system: 'You are a JSON API. Respond with valid JSON only — no markdown, no explanation, no code fences.',
+      messages: [{ role: 'user', content: pvaPrompt }]
+    });
+
+    let pvaData = { competitors: [] };
+    try {
+      const raw = pvaRes.content[0].text;
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) pvaData = JSON.parse(jsonMatch[0]);
+    } catch(e) { console.log('[STRATEGY] PVA parse warn:', e.message); }
+
+    const pvaCount = pvaData.competitors?.reduce((sum, c) => sum + (c.vulnerabilities?.length || 0), 0) || 0;
+    send('detail', { stage: 'pva', detail: `${pvaCount} vulnerabilities identified across ${pvaData.competitors?.length || 0} competitors` });
+
+    // ── Tool 2: Messaging Fault Lines ──
+    send('progress', { stage: 'faultlines', detail: 'Extracting Messaging Fault Lines — mapping competitor language...' });
+    console.log('[STRATEGY] Tool 2: Messaging Fault Lines...');
+
+    const faultLinesPrompt = `You are a competitive messaging analyst extracting Messaging Fault Lines.
+
+BRAND BEING ANALYZED FOR: ${brand.brand_name} (${brand.brand_url})
+BRAND POSITIONING: ${JSON.stringify({ marketCategory: pd.marketCategory, voiceProfile: pd.voiceProfile }).slice(0, 600)}
+
+COMPETITORS AND THEIR SCRAPED PUBLIC CONTENT:
+${competitorData.map(c => `--- ${c.name} (${c.url}) ---\n${c.scraped.slice(0, 5000)}`).join('\n\n')}
+
+TASK: For each competitor, extract the EXACT LANGUAGE they use in their public messaging and surface differentiation opportunities for ${brand.brand_name}.
+
+For each fault line identify:
+1. THEIR LANGUAGE: The literal phrases, repeated claims, and specific word choices they use
+2. FREQUENCY: How prominent this language is (headline-level, repeated across pages, etc.)
+3. DIFFERENTIATION ANGLE: A concrete counter-position ${brand.brand_name} can use
+
+CONSTRAINTS:
+- Include the competitor's ACTUAL quoted language. Not sentiment. Not vibes. Literal phrases.
+- Tone: clinical, not combative. Maps messaging terrain, doesn't bash.
+- Every fault line must include quoted language + frequency + counter-position.
+- Limit to 2-4 fault lines per competitor (highest signal only).
+- Board-ready. A CMO presents this.
+
+Respond with ONLY valid JSON — no markdown, no code fences:
+{
+  "competitors": [
+    {
+      "url": "string",
+      "name": "string",
+      "faultLines": [
+        {
+          "theirLanguage": "exact quoted phrase or repeated claim",
+          "frequency": "how prominent — headline, repeated N times, section headers, etc.",
+          "context": "where and how they use it",
+          "differentiationAngle": "concrete counter-position for ${brand.brand_name}",
+          "priority": "high | medium | low"
+        }
+      ]
+    }
+  ]
+}`;
+
+    const flRes = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 6000,
+      system: 'You are a JSON API. Respond with valid JSON only — no markdown, no explanation, no code fences.',
+      messages: [{ role: 'user', content: faultLinesPrompt }]
+    });
+
+    let faultLinesData = { competitors: [] };
+    try {
+      const raw = flRes.content[0].text;
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) faultLinesData = JSON.parse(jsonMatch[0]);
+    } catch(e) { console.log('[STRATEGY] Fault Lines parse warn:', e.message); }
+
+    const flCount = faultLinesData.competitors?.reduce((sum, c) => sum + (c.faultLines?.length || 0), 0) || 0;
+    send('detail', { stage: 'faultlines', detail: `${flCount} fault lines mapped across ${faultLinesData.competitors?.length || 0} competitors` });
+
+    // ── Persist per competitor ──
+    send('progress', { stage: 'persist', detail: 'Saving competitive intelligence...' });
+
+    for (const comp of competitorData) {
+      const pvaForComp = (pvaData.competitors || []).find(c => c.url === comp.url) || { vulnerabilities: [] };
+      const flForComp = (faultLinesData.competitors || []).find(c => c.url === comp.url) || { faultLines: [] };
+
+      await pool.query(
+        `INSERT INTO competitive_intelligence (brand_profile_id, competitor_url, competitor_name, pva_data, fault_lines_data, scraped_content_length, brain_version, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+         ON CONFLICT (brand_profile_id, competitor_url)
+         DO UPDATE SET competitor_name = $3, pva_data = $4, fault_lines_data = $5, scraped_content_length = $6,
+                       brain_version = $7, version = competitive_intelligence.version + 1, updated_at = NOW()`,
+        [brandProfileId, comp.url, comp.name, JSON.stringify(pvaForComp.vulnerabilities || []),
+         JSON.stringify(flForComp.faultLines || []), comp.scrapedLength, brand.version || 1]
+      );
+    }
+
+    // Build result
+    const result = competitorData.map(comp => ({
+      url: comp.url,
+      name: comp.name,
+      scrapedLength: comp.scrapedLength,
+      pva: ((pvaData.competitors || []).find(c => c.url === comp.url) || {}).vulnerabilities || [],
+      faultLines: ((faultLinesData.competitors || []).find(c => c.url === comp.url) || {}).faultLines || []
+    }));
+
+    console.log(`[STRATEGY] Complete — ${result.length} competitors, ${pvaCount} vulnerabilities, ${flCount} fault lines`);
+    send('result', { success: true, cached: false, competitors: result });
+    res.end();
+
+  } catch(err) {
+    console.error('[STRATEGY] Error:', err);
+    send('error', { error: err.message });
+    res.end();
+  }
+});
+
+// GET /api/strategy/competitive-intel/:brandProfileId — fetch cached results
+app.get('/api/strategy/competitive-intel/:brandProfileId', requireAuth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      'SELECT * FROM competitive_intelligence WHERE brand_profile_id = $1 ORDER BY competitor_name',
+      [req.params.brandProfileId]
+    );
+    res.json({
+      success: true,
+      competitors: r.rows.map(row => ({
+        url: row.competitor_url, name: row.competitor_name,
+        pva: row.pva_data, faultLines: row.fault_lines_data,
+        scrapedLength: row.scraped_content_length,
+        version: row.version, createdAt: row.created_at
+      }))
+    });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // ── Waitlist ──────────────────────────────────────────────────────────────────
 app.post('/api/waitlist', async function (req, res) {
   const { email } = req.body;
