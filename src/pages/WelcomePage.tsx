@@ -19,6 +19,12 @@ export default function WelcomePage() {
         }]
       }
     });
+
+    // User is already authenticated via Clerk — redirect to the app
+    const timer = setTimeout(() => {
+      window.location.href = '/app/context-hub';
+    }, 3000);
+    return () => clearTimeout(timer);
   }, []);
 
   return (
@@ -37,28 +43,9 @@ export default function WelcomePage() {
       <div style={{ fontSize: '2.5rem', fontWeight: 700, marginBottom: '0.75rem' }}>
         Welcome to Forge Intelligence
       </div>
-      <div style={{ fontSize: '1.1rem', color: '#94a3b8', maxWidth: 480, marginBottom: '2rem' }}>
-        Payment received. Create your account to get started.
+      <div style={{ fontSize: '1.1rem', color: '#94a3b8', maxWidth: 480 }}>
+        Your account is active. Redirecting you to the platform...
       </div>
-      <a
-        href="https://accounts.forgeintelligence.ai/sign-up"
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          height: 48,
-          padding: '0 32px',
-          background: '#3563ff',
-          color: '#fff',
-          fontSize: '1rem',
-          fontWeight: 600,
-          borderRadius: 10,
-          textDecoration: 'none',
-          transition: 'opacity 0.15s'
-        }}
-      >
-        Create Your Account →
-      </a>
     </div>
   );
 }
