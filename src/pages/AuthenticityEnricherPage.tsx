@@ -260,14 +260,11 @@ function AuthenticityEnricherContent() {
       if (!enrichResult?.success) throw new Error(enrichResult?.error || 'Analysis failed');
       setCompletedStages([1,2,3,4,5]);
       setCurrentStage(0);
-      setResult(enrichResult.data || enrichResult.enrichedBrief ? {
-        enrichedBrief: enrichResult.enrichedBrief,
-        confidenceScore: enrichResult.confidenceScore,
-        needsManualInput: enrichResult.needsManualInput,
-        manualInputSuggestions: enrichResult.manualInputSuggestions,
-        timing: enrichResult.timing
-      } : enrichResult);
-      if ((enrichResult.needsManualInput || enrichResult.enrichedBrief?.needsManualInput) && !withManual) {
+      // SSE result event shape: { type: 'result', success, data: { id, confidenceScore, ...enrichedData } }
+      // data matches what the old res.json({ data: {...} }) sent — pass through directly
+      const resultData = enrichResult.data as EnrichResult;
+      setResult(resultData);
+      if (resultData?.needsManualInput && !withManual) {
         setShowManualForm(true);
         setActiveTab('eeat');
       } else {
