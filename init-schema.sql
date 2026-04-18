@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS brand_profiles (
   article_base_url TEXT DEFAULT '',
   logo_url TEXT DEFAULT '',
   article_url_suffix TEXT DEFAULT '',
+  client_id UUID,
+  voice_profile JSONB,
   clerk_user_id TEXT,
   expires_at TIMESTAMPTZ,
   is_paid BOOLEAN DEFAULT false,
@@ -28,6 +30,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_bp_active_url ON brand_profiles (brand_url
 -- ── Brain ──
 CREATE TABLE IF NOT EXISTS brain_patterns (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id UUID,
   brand_profile_id TEXT NOT NULL,
   pattern_type VARCHAR,
   description TEXT,
@@ -43,6 +46,7 @@ CREATE TABLE IF NOT EXISTS brain_patterns (
 
 CREATE TABLE IF NOT EXISTS brain_mistakes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id UUID,
   brand_profile_id TEXT NOT NULL,
   mistake_type VARCHAR,
   description TEXT,
