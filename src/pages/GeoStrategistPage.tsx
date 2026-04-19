@@ -82,7 +82,7 @@ function GeoStrategistContent() {
   const [completedStages, setCompletedStages] = useState<number[]>([]);
   const [result, setResult] = useState<GeoResult | null>(null);
   const [opportunities, setOpportunities] = useState<GeoOpportunity[]>([]);
-  const [discoverySessionId, setDiscoverySessionId] = useState<string | null>(null);
+  const [, setDiscoverySessionId] = useState<string | null>(null);
   const brandProfileId = activeBrand?.id;
   const [topicBriefs, setTopicBriefs] = useState<TopicBrief[]>([]);
   const [selectedOppIds, setSelectedOppIds] = useState<Set<string>>(new Set());
