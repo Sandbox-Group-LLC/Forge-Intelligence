@@ -368,7 +368,7 @@ function ContentGeneratorContent() {
                     {b.quickWin && <span className="cg-batch-qw">⚡ Quick Win</span>}
                     <span className="cg-batch-confidence">Confidence {b.confidenceScore}</span>
                   </div>
-                  <div className="cg-batch-topic">{b.enrichedH1 || b.enrichedTitle || b.articleTitle || b.topic || b.brandName}</div>
+                  <div className="cg-batch-topic">{b.topic || b.enrichedTitle || b.enrichedH1 || b.articleTitle || b.brandName}</div>
                   <div className="cg-batch-date">{new Date(b.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
                 </button>
               ))}
@@ -638,7 +638,7 @@ function ContentGeneratorContent() {
                 const st = statusFor(b);
                 return (
                   <span key={b.id} className={`cg-batch-progress-chip status-${st}`}>
-                    {b.enrichedH1 || b.enrichedTitle || b.articleTitle || b.topic || b.brandName}
+                    {b.topic || b.enrichedTitle || b.enrichedH1 || b.articleTitle || b.brandName}
                     <span className="cg-batch-progress-chip-status">· {st}</span>
                   </span>
                 );
