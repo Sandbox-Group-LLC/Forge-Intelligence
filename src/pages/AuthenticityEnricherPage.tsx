@@ -360,7 +360,7 @@ function AuthenticityEnricherContent() {
 
 
       {/* Topic brief queue — shows ready-to-enrich briefs from GEO */}
-      {!result && !isRunning && topicBriefs.length > 0 && (
+      {!isRunning && topicBriefs.length > 0 && (
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-text-muted, #94a3b8)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
             {topicBriefs.length} brief{topicBriefs.length === 1 ? '' : 's'} ready to enrich
