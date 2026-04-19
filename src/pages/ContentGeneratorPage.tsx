@@ -345,8 +345,8 @@ function ContentGeneratorContent() {
         // Batch cards = actively selectable work only.
         // Published articles are DONE — they belong in the progress footer, not the selection grid.
         const batch = latestSession
-          ? briefs.filter(b => b.discoverySessionId === latestSession && !(b.hasArticle && b.queueStatus === 'published'))
-          : briefs.filter(b => !(b.hasArticle && b.queueStatus === 'published')).slice(0, 1);
+          ? briefs.filter(b => b.discoverySessionId === latestSession && !b.hasArticle)
+          : briefs.filter(b => !b.hasArticle).slice(0, 1);
         if (!batch.length) return null;
         // Only hide if the batch has just 1 legacy non-topic-brief enrichment (pre-cherry-pick behavior)
         if (batch.length === 1 && !batch[0].topic && !batch[0].articleTitle) return null;
@@ -389,7 +389,7 @@ function ContentGeneratorContent() {
             <div className="geo-select-wrap" style={{ flex: 1, minWidth: '220px' }}>
                 <select className="geo-select" value={selectedBriefId} onChange={e => setSelectedBriefId(e.target.value)}>
                   <option value="">{briefs.length > 0 ? 'Select an enriched brief...' : 'No enriched briefs — run Enricher first'}</option>
-                  {briefs.map(b => {
+                  {briefs.filter(b => !b.hasArticle).map(b => {
                     const displayTitle = b.enrichedH1 || b.enrichedTitle || b.topic;
                     const label = displayTitle
                       ? `${displayTitle}${b.quickWin ? ' ⚡' : ''} — ${new Date(b.createdAt).toLocaleDateString()}`
@@ -637,9 +637,15 @@ function ContentGeneratorContent() {
               {batch.map(b => {
                 const st = statusFor(b);
                 return (
-                  <span key={b.id} className={`cg-batch-progress-chip status-${st}`}>
+                  <span
+                    key={b.id}
+                    className={`cg-batch-progress-chip status-${st}${st === 'generated' ? ' clickable' : ''}`}
+                    onClick={() => { if (st === 'generated' && b.articleId) window.location.href = `/app/compliance-gate?articleId=${b.articleId}&brandProfileId=${selectedBrainId}`; }}
+                    title={st === 'generated' ? 'Continue to Compliance Gate →' : undefined}
+                    style={st === 'generated' ? { cursor: 'pointer' } : undefined}
+                  >
                     {b.topic || b.enrichedTitle || b.enrichedH1 || b.articleTitle || b.brandName}
-                    <span className="cg-batch-progress-chip-status">· {st}</span>
+                    <span className="cg-batch-progress-chip-status">· {st}{st === 'generated' ? ' →' : ''}</span>
                   </span>
                 );
               })}
