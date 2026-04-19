@@ -3053,14 +3053,28 @@ Generate exactly ${numEmails} emails. Return ONLY valid JSON matching the output
     await pool.query(`UPDATE email_campaigns SET status = 'generating', updated_at = NOW() WHERE id = $1`, [req.params.id]);
     send('status', { message: 'Brain loaded. Generating sequence...' });
 
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 8000,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userPrompt }]
+    // ── Mistral Large for email — optimized for lead-gen focused writing ──
+    const mistralEmailRes = await fetch('https://api.mistral.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.MISTRAL_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'mistral-large-latest',
+        max_tokens: 8000,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ]
+      })
     });
-
-    const raw = message.content[0].text;
+    if (!mistralEmailRes.ok) {
+      const errBody = await mistralEmailRes.text();
+      throw new Error(`Mistral API ${mistralEmailRes.status}: ${errBody.slice(0, 300)}`);
+    }
+    const mistralEmailData = await mistralEmailRes.json();
+    const raw = mistralEmailData.choices?.[0]?.message?.content || '';
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     let parsed;
     try {
