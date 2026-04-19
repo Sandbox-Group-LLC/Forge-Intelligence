@@ -2747,10 +2747,18 @@ Return ONLY valid JSON (no markdown, no explanation, no newlines inside string v
   "thirdPartySignals": [{ "source": "string", "signalType": "string", "value": "string or null", "confidence": 0-100, "lastChecked": "ISO8601" }],
   "competitiveGaps": [{ "topic": "string", "ownedBy": "string or null", "whitespaceOpportunity": "string", "priority": "high|medium|low" }],
   "strategicRecommendations": [{ "id": "string", "category": "string", "title": "string", "description": "string", "impact": "high|medium|low", "effort": "high|medium|low" }],
+  "businessProfile": {
+    "whatTheyDo": "string — plain-language description of the core business, e.g. 'Designs and sells vegan skincare products direct to consumer' or 'Provides experiential marketing services for premium consumer brands'",
+    "productsOrServices": ["string — specific offerings, e.g. 'Brand activations', 'Event production', 'AI-powered content platform', 'Rose hip face serum'"],
+    "revenueModel": "string — how they make money, e.g. 'Project-based creative services', 'Monthly SaaS subscription', 'DTC e-commerce', 'Retainer + project fees'",
+    "targetBuyer": "string — who writes the check, e.g. 'CMO at premium consumer brands', 'Individual skincare consumers age 25-45', 'VP Marketing at mid-market B2B'",
+    "companyScale": "string — rough size indicator, e.g. 'Boutique agency (<50 people)', 'Enterprise ($50B+ revenue)', 'Early-stage startup', 'Mid-market SaaS'",
+    "geography": "string — where they operate, e.g. 'NYC-based, US clients', 'Global', 'Portland OR, primarily US west coast'"
+  },
   "discoveredCompetitors": ["string"],
   "marketCategory": "string"
 }
-Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competitiveGaps, 4-6 strategicRecommendations. Use the ICP and market context provided to make personas and gaps highly specific. For visualStyle and accentColor: infer carefully from the brand website design, color palette, imagery, and overall aesthetic — these feed directly into AI hero image generation and must reflect the real brand identity. For industry, positioning, and targetPersona: be specific and commercially precise, not generic.`;
+Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competitiveGaps, 4-6 strategicRecommendations, 1 businessProfile (all fields required). Use the ICP and market context provided to make personas and gaps highly specific. For visualStyle and accentColor: infer carefully from the brand website design, color palette, imagery, and overall aesthetic — these feed directly into AI hero image generation and must reflect the real brand identity. For industry, positioning, and targetPersona: be specific and commercially precise, not generic.`;
 
     const message = await anthropic.messages.create({
       model: 'claude-opus-4-6',
