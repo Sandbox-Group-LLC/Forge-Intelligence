@@ -10714,6 +10714,7 @@ app.get('/api/geo/topic-briefs/:brandProfileId', requireAuth, async (req, res) =
          ORDER BY tb.created_at DESC`;
     const params = statusFilter ? [req.params.brandProfileId, statusFilter] : [req.params.brandProfileId];
     const r = await pool.query(sql, params);
+    console.log(`[CG-BRIEFS] Returning ${r.rows.length} rows for brand ${req.params.brandProfileId || brandProfileId}`);
     res.json({
       success: true,
       briefs: r.rows.map(row => ({
@@ -10781,6 +10782,7 @@ app.get('/api/content-generator/enriched-briefs/:brandProfileId', requireAuth, a
   try {
     const { brandProfileId } = req.params;
     const safeId = brandProfileId.replace(/-/g, '_');
+    console.log(`[CG-BRIEFS] Request for brand ${brandProfileId}`);
     // Complete picture: every enriched brief (with or without article) + every article whose
     // enriched brief has been deleted (legacy orphans from pre-cherry-pick DELETE-all behavior).
     const r = await pool.query(
