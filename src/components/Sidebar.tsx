@@ -172,7 +172,6 @@ interface TopNavItem {
 // Route map — single source of truth for all nav paths
 const NAV_ROUTES: Partial<Record<ViewType, string>> = {
   'geo-strategist':       '/app/geo-strategist',
-  'strategy-intel':       '/app/strategy-intel',
   'authenticity-enricher':'/app/authenticity-enricher',
   'content-generator':    '/app/content-generator',
   'campaign-generator':   '/app/campaign-generator',
@@ -208,7 +207,6 @@ const settingsNavItems = [
 
 const topNavItems: TopNavItem[] = [
   { id: 'geo-strategist',        label: 'GEO Strategist',        icon: 'zap',        href: '/app/geo-strategist' },
-  { id: 'strategy-intel',        label: 'Competitive Intel',     icon: 'target',     href: '/app/strategy-intel' },
   { id: 'authenticity-enricher', label: 'Authenticity Enricher', icon: 'shieldCheck',href: '/app/authenticity-enricher' },
   { id: 'content-generator',     label: 'Content Generator',     icon: 'fileText',   href: '/app/content-generator' },
   { id: 'campaign-generator',    label: 'Campaign Generator',    icon: 'layers',     href: '/app/campaign-generator' },
@@ -222,7 +220,7 @@ export function Sidebar() {
   const { currentView, setCurrentView, setAnalysisInput, analysisInput, sidebarCollapsed, setSidebarCollapsed, isProcessing, brandProfile, isPaid, brandLoading, activeBrand, refetchBrand, isSuperAdmin } = useApp();
   const [gateFeature, setGateFeature] = useState<string | null>(null);
   const LOCKED_ROUTES = [
-    '/app/geo-strategist', '/app/strategy-intel', '/app/authenticity-enricher', '/app/content-generator',
+    '/app/geo-strategist', '/app/authenticity-enricher', '/app/content-generator',
     '/app/campaign-generator', '/app/compliance-gate', '/app/publishing-queue',
     '/app/content-library', '/app/content-import', '/app/topic-queue',
     '/app/performance', '/app/integrations', '/app/mc', '/app/email-campaign',
