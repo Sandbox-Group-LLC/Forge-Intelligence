@@ -249,7 +249,7 @@ function GeoStrategistContent() {
       body: JSON.stringify({ brandProfileId: selectedBrainId, force: shouldForce })
     });
 
-    const timings = [1500, 3000, 3500, 2500];
+    const timings = [5000, 12000, 15000, 10000];
     for (let i = 0; i < timings.length; i++) {
       setCurrentStage(i + 1);
       await new Promise(r => setTimeout(r, timings[i]));
