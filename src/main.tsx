@@ -3,7 +3,6 @@ import { ClerkProvider } from '@clerk/clerk-react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import WelcomePage from './pages/WelcomePage';
-import StrategyIntelPage from './pages/StrategyIntelPage';
 import { AppProvider } from './context/AppContext';
 import Landing from './Landing';
 import Product from './Product';
@@ -101,7 +100,6 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/app/mc" element={<AppProvider><AdminPage /></AppProvider>} />
         <Route path="/app/topic-queue" element={<AppProvider><TopicQueuePage /></AppProvider>} />
         <Route path="/app/brand-settings" element={<AppProvider><BrandSettingsPage /></AppProvider>} />
-        <Route path="/app/strategy-intel" element={<AppProvider><StrategyIntelPage /></AppProvider>} />
 
         {/* Public article viewer — no AppProvider needed */}
         <Route path="/articles/:brandSlug/:articleSlug" element={<PublicArticlePage />} />
