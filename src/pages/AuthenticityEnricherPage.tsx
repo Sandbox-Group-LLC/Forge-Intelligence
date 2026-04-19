@@ -169,6 +169,7 @@ function AuthenticityEnricherContent() {
 
   // Auto-fire enrichment when arriving with a topicBriefId (no extra click needed)
   const [autoFiredFor, setAutoFiredFor] = useState<string | null>(null);
+  const [topicBriefs, setTopicBriefs] = useState<{id: string; topic: string; quickWin: boolean; avgScore: number; status: string}[]>([]);
   useEffect(() => {
     if (!selectedBrainId || !authToken || isRunning || result) return;
     const incomingTopicBriefId = new URLSearchParams(window.location.search).get('topicBriefId');
@@ -179,6 +180,17 @@ function AuthenticityEnricherContent() {
     runAnalysis(false, false);
   }, [selectedBrainId, authToken, isRunning, result]);
 
+  // Load available topic briefs for the enrichment queue
+  useEffect(() => {
+    if (!selectedBrainId || !authToken) return;
+    fetch(`/api/geo/topic-briefs/${selectedBrainId}?status=briefed`, {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    })
+      .then(r => r.json())
+      .then(d => { if (d.success) setTopicBriefs(d.briefs || []); })
+      .catch(() => {});
+  }, [selectedBrainId, authToken, result]);
+
   // Use historyEntries from context as brain list
   let brains = historyEntries.map(e => ({ id: e.id, brandName: e.brandName, brandUrl: e.brandUrl }));
 
@@ -186,6 +198,14 @@ function AuthenticityEnricherContent() {
   if (brains.length === 0 && activeBrand) {
     brains.push({ id: activeBrand.id, brandName: activeBrand.brandName || activeBrand.brandUrl, brandUrl: activeBrand.brandUrl });
   }
+
+  const enrichBrief = (briefId: string) => {
+    const u = new URL(window.location.href);
+    u.searchParams.set('topicBriefId', briefId);
+    window.history.replaceState({}, '', u.toString());
+    setResult(null);
+    setTimeout(() => runAnalysis(false, false), 50);
+  };
 
   const runAnalysis = async (withManual = false, forceRefresh = false) => {
     if (!selectedBrainId) return;
