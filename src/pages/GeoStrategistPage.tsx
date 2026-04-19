@@ -158,11 +158,12 @@ function GeoStrategistContent() {
       } catch { /* silent */ }
     };
 
-    // Fire on unmount (navigate away within SPA)
+    // Fire on unmount ONLY if user actually cherry-picked at least one opp.
+    // If they never interacted with the selection UI, leave everything as 'discovered'.
     return () => {
-      // Only fire if there are still discovered opps to flag
       const hasDiscovered = opportunities.some(o => o.status === 'discovered');
-      if (hasDiscovered) markIgnored();
+      const userPickedSome = opportunities.some(o => o.status === 'briefed' || o.status === 'backlog');
+      if (hasDiscovered && userPickedSome) markIgnored();
     };
   }, [brandProfileId, authToken, opportunities, discoverySessionId]);
 
