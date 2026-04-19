@@ -432,7 +432,7 @@ function GeoStrategistContent() {
               <div className="geo-section-header">
                 <div>
                   <h3>GEO Opportunity Scores</h3>
-                  <p className="geo-section-sub">Cherry-pick topics to build briefs. Unselected topics stay in the repository as brain signal.</p>
+                  <p className="geo-section-sub">Cherry-pick topics to build briefs. Unselected topics will be cleared from this view when you navigate away.</p>
                 </div>
                 <span className="geo-count">
                   {opportunities.filter(o => o.status === 'discovered' && o.quickWin).length} quick wins
