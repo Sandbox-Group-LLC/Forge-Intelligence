@@ -358,6 +358,44 @@ function AuthenticityEnricherContent() {
         )}
       </div>
 
+
+      {/* Topic brief queue — shows ready-to-enrich briefs from GEO */}
+      {!result && !isRunning && topicBriefs.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-text-muted, #94a3b8)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+            {topicBriefs.length} brief{topicBriefs.length === 1 ? '' : 's'} ready to enrich
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {topicBriefs.map(tb => (
+              <div key={tb.id} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                background: 'var(--color-bg-card, #1a1c23)', border: '1px solid var(--color-border, #2a2d35)',
+                borderRadius: 8, padding: '10px 14px', gap: 12
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--color-text-primary, #e2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {tb.topic}
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted, #94a3b8)', marginTop: 2 }}>
+                    {tb.quickWin ? '\u26a1 Quick Win \u00b7 ' : ''}Score: {tb.avgScore}
+                  </div>
+                </div>
+                <button
+                  onClick={() => enrichBrief(tb.id)}
+                  style={{
+                    flexShrink: 0, height: 30, padding: '0 14px', fontSize: '0.75rem', fontWeight: 600,
+                    background: 'var(--color-accent, #3563ff)', color: '#fff', border: 'none',
+                    borderRadius: 6, cursor: 'pointer'
+                  }}
+                >
+                  Enrich
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Stage progress */}
       {isRunning && (
         <div className="geo-stages">
