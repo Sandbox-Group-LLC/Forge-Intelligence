@@ -136,36 +136,8 @@ function GeoStrategistContent() {
     loadTopicBriefs(brandProfileId);
   }, [brandProfileId, authToken, result]);
 
-  // ── Brain food: when user leaves the page, flag any unpicked 'discovered' opps as 'ignored' ─
-  // This writes brain patterns for the un-cherry-picked topics so Forge learns what the user DOESN'T want.
-  // Keyed on the session so we only ignore opps from the current discovery run.
-  useEffect(() => {
-    if (!brandProfileId || !authToken) return;
-    // Session ID comes from the /api/geo/opportunities endpoint response
-    const sessionId = discoverySessionId;
-    if (!sessionId) return;
-
-    const markIgnored = () => {
-      // keepalive: true keeps the request alive through SPA unmount + page unload.
-      // We can't use sendBeacon here because it can't send custom Authorization headers.
-      try {
-        fetch('/api/geo/opportunities/mark-ignored', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
-          body: JSON.stringify({ brandProfileId, sessionId }),
-          keepalive: true
-        }).catch(() => {});
-      } catch { /* silent */ }
-    };
-
-    // Fire on unmount ONLY if user actually cherry-picked at least one opp.
-    // If they never interacted with the selection UI, leave everything as 'discovered'.
-    return () => {
-      const hasDiscovered = opportunities.some(o => o.status === 'discovered');
-      const userPickedSome = opportunities.some(o => o.status === 'briefed' || o.status === 'backlog');
-      if (hasDiscovered && userPickedSome) markIgnored();
-    };
-  }, [brandProfileId, authToken, opportunities, discoverySessionId]);
+  // Brain food: discovered opps expire server-side after 24 hours (handled in GET endpoint).
+  // No unmount cleanup needed — users can leave and come back within 24h.
 
   // ── Build Briefs action — calls Stage 2.1 on selected opportunities ──────
   const buildBriefsForSelected = async () => {
@@ -432,7 +404,7 @@ function GeoStrategistContent() {
               <div className="geo-section-header">
                 <div>
                   <h3>GEO Opportunity Scores</h3>
-                  <p className="geo-section-sub">Cherry-pick topics to build briefs. Unselected topics will be cleared from this view when you navigate away.</p>
+                  <p className="geo-section-sub">Cherry-pick topics to build briefs. Unselected topics expire after 24 hours.</p>
                 </div>
                 <span className="geo-count">
                   {opportunities.filter(o => o.status === 'discovered' && o.quickWin).length} quick wins
