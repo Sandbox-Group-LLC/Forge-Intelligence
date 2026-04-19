@@ -10518,6 +10518,15 @@ app.get('/api/geo/opportunities/:brandProfileId', requireAuth, async (req, res) 
     if (!latestSession.rows.length) return res.json({ success: true, opportunities: [], sessionId: null });
 
     const sessionId = latestSession.rows[0].discovery_session_id;
+
+    // Auto-expire: mark 'discovered' opportunities older than 24h as 'ignored'
+    await pool.query(
+      `UPDATE geo_opportunities SET status = 'ignored', status_changed_at = NOW()
+       WHERE brand_profile_id = $1 AND status = 'discovered'
+         AND discovered_at < NOW() - INTERVAL '24 hours'`,
+      [brandProfileId]
+    );
+
     const opps = await pool.query(
       `SELECT id, topic, platform_scores, avg_score, quick_win, topical_authority_context,
               status, discovered_at, status_changed_at
