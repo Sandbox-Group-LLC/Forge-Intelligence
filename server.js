@@ -812,38 +812,31 @@ async function buildImagePrompt(title, voiceProfile = {}, firstBody = '') {
   const hasBrandVisual = !!(visualStyle || accentColor);
 
   const imagePromptInstruction = hasBrandVisual
-    ? `Write a single-sentence Flux image generation prompt for a B2B article hero image that authentically reflects this brand's visual identity and the article topic.
+    ? `Write a single-sentence Flux image generation prompt for an article hero image that reflects this brand's visual identity and the article topic.
 
 Article title: "${title}"
 ${brandContext ? brandContext + '\n' : ''}${bodySnippet ? 'Article context: ' + bodySnippet : ''}
 
 Rules:
-- Let the brand's visual style and color palette drive the aesthetic — do not impose a generic look
-- Photorealistic editorial or commercial photography appropriate to this brand's industry and tone
-- Think high-end magazine editorial or Bloomberg Businessweek — grounded, sophisticated, real-world
-- Prefer environmental scenes, workspace settings, lifestyle moments, or textural details over product close-ups
-- NEVER interpret the brand name literally — 'Forge' is a software company, not a metalwork shop or architecture firm
-- NO surrealist compositions, impossible physics, floating objects, or dreamlike distortions
-- NO AI art signatures: hyperreal skin textures, metallic liquids, abstract blob shapes, oversaturated macro shots
-- NO floating UI elements, holographic screens, neon data walls, or sci-fi aesthetics
-- NO stock-photo clichés (handshakes, lightbulbs, generic offices, people pointing at whiteboards)
+- Let the brand's visual style, tone, and color palette drive the entire aesthetic
+- Photorealistic only — no illustrations, cartoons, animations, or 3D renders
+- No cartoon-looking or distorted humans
+- No surrealist compositions, impossible physics, or floating objects
+- No AI art signatures: hyperreal skin textures, metallic liquids, abstract blob shapes
+- NEVER interpret the brand name literally (e.g. 'Forge' is software, not a blacksmith)
 - 1 sentence only, no explanation, no quotes
 
 Output only the prompt.`
-    : `Write a single-sentence Flux image generation prompt for a B2B article hero image.
+    : `Write a single-sentence Flux image generation prompt for an article hero image.
 
 Article title: "${title}"
 ${bodySnippet ? 'Article context: ' + bodySnippet : ''}
 
 Rules:
-- Photorealistic editorial photography — clean, high-contrast, professional
-- Architectural detail, workspace environments, natural textures, or environmental storytelling
-- Think Bloomberg Businessweek or Monocle magazine photography — sophisticated and grounded
-- Neutral palette with strong composition, natural lighting
-- NO surrealist compositions, impossible physics, floating objects, or dreamlike distortions
-- NO AI art signatures: hyperreal textures, metallic liquids, abstract blob shapes, oversaturated macro shots
-- NO floating UI elements, holographic screens, neon data walls, or sci-fi aesthetics
-- NO stock-photo clichés (handshakes, lightbulbs, generic offices, people pointing at whiteboards)
+- Photorealistic only — no illustrations, cartoons, animations, or 3D renders
+- No cartoon-looking or distorted humans
+- No surrealist compositions, impossible physics, or floating objects
+- No AI art signatures: hyperreal skin textures, metallic liquids, abstract blob shapes
 - 1 sentence only, no explanation, no quotes
 
 Output only the prompt.`;
