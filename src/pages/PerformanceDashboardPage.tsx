@@ -901,7 +901,7 @@ export default function PerformanceDashboardPage() {
                         { label: 'Total Clicks', value: fmt(data?.totals?.clicks || 0), sub: 'Organic search clicks', icon: 'click' },
                         { label: 'Impressions', value: fmt(data?.totals?.impressions || 0), sub: 'Search result appearances', icon: 'eye' },
                         { label: 'Avg CTR', value: `${data?.totals?.avgCtr || '0'}%`, sub: 'Click-through rate', icon: 'trend' },
-                        { label: 'Avg Position', value: data?.totals?.avgEngagementRate || '—', sub: 'Search ranking position', icon: 'trend' },
+                        { label: 'Avg Position', value: data?.totals?.avgEngagementRate && parseFloat(data.totals.avgEngagementRate) > 0 ? `#${parseFloat(data.totals.avgEngagementRate).toFixed(1)}` : '—', sub: 'Impression-weighted rank', icon: 'trend' },
                       ].map(kpi => (
                         <div key={kpi.label} className="perf-kpi-card">
                           <div className="perf-kpi-top"><span className="perf-kpi-label">{kpi.label}</span><KpiIcon type={kpi.icon} /></div>
