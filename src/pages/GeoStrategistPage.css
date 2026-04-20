@@ -236,10 +236,8 @@
 /* ── Cards grid ── */
 .geo-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  grid-auto-flow: row dense;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 16px;
-  align-items: stretch;
 }
 .geo-card {
   background: var(--color-bg-card);
@@ -249,8 +247,6 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  min-width: 0;
-  word-break: break-word;
 }
 .geo-card.priority-high { border-left: 3px solid var(--color-accent); }
 .geo-card.priority-medium { border-left: 3px solid var(--color-warning); }
