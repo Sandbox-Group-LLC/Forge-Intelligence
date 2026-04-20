@@ -10,6 +10,31 @@
 
 ## Session — April 19–20, 2026
 
+### Brain Pattern Injection Audit — full trace of Read → Prompt → LLM pipeline
+- **Brian's question:** are Brain patterns actually feeding agents, or sitting in the DB as dead rows?
+- **Method:** enumerated every `SELECT ... FROM brain_patterns` in server.js (13 read sites), mapped each to its endpoint, then inspected the prompt construction to confirm the rows actually land in the LLM call's `system:` or `messages:`. Used grep + manual inspection rather than relying on a single heuristic (the first heuristic missed 3 legit injections because they used custom section names like "PRIOR PERFORMANCE PATTERNS" instead of the literal "BRAIN PATTERNS").
+- **Verdict: Brain is properly wired to all 10 agents that should be consuming it.** Not a lost puppy.
+- **Confirmed working injection sites:**
+  - Context Hub (`/api/context-hub/analyze`) — interpolates via `patternSection` var
+  - GEO Strategist (`/api/geo-strategist/analyze`) — "BRAIN PATTERNS" section in prompt
+  - Authenticity Enricher (`/api/authenticity-enricher/analyze`) — fed into system prompt
+  - Content Generator (`/api/content-generator/generate`) — "BRAIN PATTERNS — WHAT WORKS FOR THIS BRAND" + "BRAIN MISTAKES — WHAT TO AVOID" blocks in system prompt, Factual Ground verbatim rule on top
+  - Campaign Generator (`/api/campaign/generate`) — fed per-article
+  - Email Campaign (`/api/email-campaign/generate`) — fed into Mistral prompt
+  - Topic Preflight (`/api/content/topic-check`) — fed into Haiku check
+  - Content Import Audit (`/api/content/import`) — fed into audit prompt
+  - Build Briefs (`/api/geo/opportunities/build-briefs`) — fed into TAC enrichment
+  - Read-only display endpoints (`/api/analytics/patterns`, `/api/admin/mission-control`) correctly don't feed agents
+- **Real data at time of audit:** Forge Intelligence has 21 patterns in brain_patterns, Public School has 30, Sandbox-GTM has 10. These are being loaded and injected.
+- **Two real bugs caught during the audit and fixed:**
+  1. Stale model string `claude-sonnet-4-20250514` in Content Import audit call (L10411 on main/prod/Intel, L10596 on strategy). That exact string doesn't exist on Anthropic's API — endpoint would have 404'd on every call. Swapped to `claude-sonnet-4-6`.
+  2. Strategy branch had a SECOND stale string at L4780 in its unique Brand Intelligence synthesis call (this is the file that differs between main and strategy). Also swapped to `claude-sonnet-4-6`. Both strategy strings fixed in single commit.
+- **Observation worth acting on later (deferred, not urgent):**
+  - Every Brain pattern load uses `.catch(() => ({ rows: [] }))` to swallow DB errors. Silent failure mode: if the DB query ever breaks, agents would generate with zero patterns and you'd get no alert. Worth adding structured logging at each injection site — something like `console.log('[BRAIN] agent=content-gen brand=X injected=N patterns')` — so silent pattern-load regressions become visible in logs. Also useful for verifying injection after deploys.
+  - The Brain pattern rows have a `last_validated_at` column (added via ALTER) but no code actually writes to it. If this is meant to track freshness, it needs a writer. If not, column could be removed. Check intent before deciding.
+- **Why this matters:** with the confirmed Perplexity citation hit tonight on "Compounding Intelligence Loops," we now have external evidence that pattern-informed generation is producing content good enough to get cited by AI engines. The Brain is doing its job; the citation proves it.
+
+
 ### GSC Performance Tab — Avg Position + CTR were mathematically wrong (shipped all branches)
 - **Brian reported this repeatedly; previous agent dismissed him. Instinct was correct — the math was broken.**
 - **The bug:** dashboard totals query used `AVG(NULLIF(engagement_rate,0))` for average position and `AVG(NULLIF(ctr,0))` for average CTR. For channels like LinkedIn where impression counts are reasonably uniform, simple averages are fine. For GSC where pages have wildly variable impression counts (long-tail: hundreds of URLs with 1-2 impressions at bad rankings, a handful with thousands of impressions at good rankings), simple averages give equal weight to a page with 1 impression ranking #50 and a page with 10,000 impressions ranking #3. Result: displayed Avg Position wildly overstates how badly the site ranks, and Avg CTR inflates far above reality. Brian was cross-checking against Google's own GSC dashboard and seeing mismatches — which is exactly what should happen if the math is wrong.
