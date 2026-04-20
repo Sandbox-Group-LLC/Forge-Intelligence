@@ -4018,6 +4018,22 @@ app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => 
     const brandUrl = profile.brand_url;
     const brandName = profile.brand_name;
 
+    // Load factualGround EARLY so we can disambiguate the Sonar call below. Without this,
+    // Sonar gets only the brand name and URL, which for generic-sounding names like "Forge" or
+    // "Apex" or "Nova" causes it to pull data from similarly-named unrelated companies. Real
+    // bug that bit us: Sonar conflated Forge Intelligence (Portland, 2025, Brian Morgan) with
+    // Forge.AI (Cambridge, 2017, Jim and Greg) and polluted the enriched brief with the wrong
+    // founding story, wrong named experts, wrong location. Downstream content generation would
+    // have embedded those hallucinations. Factual ground fixes it at the source.
+    let earlyFactualGround = null;
+    try {
+      const fgRes = await pool.query(
+        `SELECT settings->'factualGround' as fg FROM brand_profiles WHERE id = $1`,
+        [brandProfileId]
+      );
+      if (fgRes.rows[0]?.fg) earlyFactualGround = fgRes.rows[0].fg;
+    } catch(e) { /* silent — enricher continues with empty disambiguation */ }
+
     // Build manual inputs context string
     const correctionsCtx = manualInputs.corrections
       ? `\nCRITICAL CORRECTIONS FROM BRAND OWNER (these OVERRIDE any AI-discovered data — do NOT include incorrect information):\n${manualInputs.corrections}`
@@ -4032,6 +4048,19 @@ app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => 
     send('progress', { stage: 1, label: 'SME Signal Scraper', detail: 'Scanning for named experts, awards, certifications...' });
     console.log('[ENRICH] Tool 1: SME Signal Scraper...');
 
+    // Build disambiguation block from factual ground. Each line is a hard filter — Sonar is
+    // instructed to only return data compatible with these known facts. Empty facts = no block,
+    // which gracefully falls back to legacy behavior for brands that haven't set factual ground.
+    const fgAuthor = earlyFactualGround?.authors?.[0]?.name || '';
+    const fgAuthorTitle = earlyFactualGround?.authors?.[0]?.title || '';
+    const fgCompanyFacts = earlyFactualGround?.companyFacts || '';
+    const fgFoundingStory = earlyFactualGround?.foundingStory || '';
+    const fgWhatWeDo = earlyFactualGround?.whatWeDo || '';
+    const fgWhatWeDontDo = earlyFactualGround?.whatWeDontDo || '';
+    const disambiguationBlock = (fgAuthor || fgCompanyFacts || fgFoundingStory)
+      ? `\n\nKNOWN FACTS ABOUT THIS SPECIFIC COMPANY (use as disambiguation filter — do NOT return data that contradicts these):\n${fgAuthor ? `- Founder/leader: ${fgAuthor}${fgAuthorTitle ? ` (${fgAuthorTitle})` : ''}\n` : ''}${fgCompanyFacts ? `- Company facts: ${fgCompanyFacts.slice(0, 400)}\n` : ''}${fgFoundingStory ? `- Founding story: ${fgFoundingStory.slice(0, 400)}\n` : ''}${fgWhatWeDo ? `- What they do: ${fgWhatWeDo.slice(0, 300)}\n` : ''}${fgWhatWeDontDo ? `- What they DO NOT do: ${fgWhatWeDontDo.slice(0, 200)}\n` : ''}\nIf any information you find (founding year, location, named founders, business focus) contradicts the facts above, it belongs to a DIFFERENT company with a similar name — return empty arrays rather than that data. Only return information that matches or is consistent with the known facts.`
+      : '';
+
     let sonarSignals = {};
     try {
       const sonarRes = await fetch('https://api.perplexity.ai/chat/completions', {
@@ -4041,7 +4070,9 @@ app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => 
           model: 'sonar',
           messages: [{
             role: 'user',
-            content: `Research ${brandName} (${brandUrl}) and return ONLY valid JSON (no markdown):
+            content: `Research ${brandName} (${brandUrl}) — specifically this company and NO OTHER similarly-named company.${disambiguationBlock}
+
+Return ONLY valid JSON (no markdown):
 {
   "awards": ["award name and year if known"],
   "certifications": ["certifications, accreditations, standards"],
@@ -4053,7 +4084,7 @@ app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => 
   "foundingStory": "brief founding/origin story if notable",
   "notableClients": ["notable clients or logos if public"]
 }
-Return empty arrays if not found. Be factual and accurate.`
+Return empty arrays if not found. Be factual and accurate. When in doubt, return less rather than potentially wrong data.`
           }],
           max_tokens: 2000
         })
@@ -4064,6 +4095,27 @@ Return empty arrays if not found. Be factual and accurate.`
         if (match) sonarSignals = JSON.parse(match[0]);
       }
     } catch(e) { console.log('[ENRICH] Sonar scrape failed:', e.message); }
+
+    // Post-Sonar validation: if factual ground is set, cross-check returned foundingStory
+    // against known facts. Simple year/location conflict detection — drops obviously wrong data
+    // rather than letting it flow through the pipeline. Belt-and-suspenders behind the prompt-
+    // level disambiguation above.
+    if (earlyFactualGround && sonarSignals.foundingStory) {
+      const knownText = (fgCompanyFacts + ' ' + fgFoundingStory).toLowerCase();
+      const returnedStory = (sonarSignals.foundingStory || '').toLowerCase();
+      // Extract 4-digit years from both
+      const knownYears = knownText.match(/\b(19|20)\d{2}\b/g) || [];
+      const returnedYears = returnedStory.match(/\b(19|20)\d{2}\b/g) || [];
+      // If we have known years and returned years, and they don't overlap, drop the founding story
+      if (knownYears.length > 0 && returnedYears.length > 0) {
+        const overlap = returnedYears.some(y => knownYears.includes(y));
+        if (!overlap) {
+          console.log(`[ENRICH] Dropping Sonar foundingStory — year mismatch. Known: ${knownYears.join(',')} vs returned: ${returnedYears.join(',')}`);
+          sonarSignals.foundingStory = '';
+          sonarSignals.namedExperts = []; // named experts likely also from wrong company
+        }
+      }
+    }
 
     console.log('[ENRICH] Sonar signals found:', Object.keys(sonarSignals).filter(k => {
       const v = sonarSignals[k]; return Array.isArray(v) ? v.length > 0 : !!v;
