@@ -68,7 +68,12 @@
 - `isPaid` derived from `activeBrand?.isPaid` — computed, not state
 - `GateModal` returns null if `!isLoaded || isSignedIn` — never flashes for authed users
 - All gated pages: `if (brandLoading) return null` before gate check
-- **Super Admins:** `user_3BtC7nusm7CShN7EdUYaaLZcDwp` (brian@sandbox-xm.com), `user_3CJmE0WkOj1RJC5yF99scEuwUpO` (therosethyme). FI account intentionally excluded for dogfooding.
+- **Super Admins** (hardcoded in `server.js` `SUPER_ADMIN_IDS`):
+  - `user_3BtC7nusm7CShN7EdUYaaLZcDwp` (brian@sandbox-xm.com) — primary login, owns Sandbox-XM + 10 other flagship brands
+  - `user_3CJmE0WkOj1RJC5yF99scEuwUpO` (therosethyme) — super-admin viewer only, owns no brands
+- **Other Brian-owned logins (NOT super admin):**
+  - `user_3BvMphl4EThg9WSOdhH5BNVXIHL` — legacy login, permanently tethered to `Sandbox-GTM` (61d1f187-c00a-443c-ada2-a073afa005cd) as the "second user" test account
+- FI account intentionally excluded from super-admin list for dogfooding.
 - Auto-marks `is_paid = true` on every Clerk auth in `/api/auth/me`
 
 ### Brand Scoping (Critical)
