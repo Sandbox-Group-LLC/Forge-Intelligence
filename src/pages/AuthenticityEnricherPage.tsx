@@ -163,6 +163,7 @@ function AuthenticityEnricherContent() {
   const [autoFiredFor, setAutoFiredFor] = useState<string | null>(null);
   const [topicBriefs, setTopicBriefs] = useState<{id: string; topic: string; quickWin: boolean; avgScore: number; status: string}[]>([]);
   const [enrichedBriefs, setEnrichedBriefs] = useState<EnrichResult[]>([]);
+  const [publishedBriefIds, setPublishedBriefIds] = useState<Set<string>>(new Set());
   useEffect(() => {
     if (!selectedBrainId || !authToken || isRunning || result) return;
     const incomingTopicBriefId = new URLSearchParams(window.location.search).get('topicBriefId');
@@ -172,6 +173,23 @@ function AuthenticityEnricherContent() {
     // Kick off the run — runAnalysis will read topicBriefId from URL internally
     runAnalysis(false, false);
   }, [selectedBrainId, authToken, isRunning, result]);
+
+  // Load published status — filter out briefs that already have published articles
+  useEffect(() => {
+    if (!selectedBrainId || !authToken) return;
+    fetch(`/api/content-generator/enriched-briefs/${selectedBrainId}`, {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) {
+          const published = new Set<string>();
+          (d.briefs || []).forEach((b: any) => { if (b.hasArticle) published.add(b.id); });
+          setPublishedBriefIds(published);
+        }
+      })
+      .catch(() => {});
+  }, [selectedBrainId, authToken, result]);
 
   // Load available topic briefs for the enrichment queue
   useEffect(() => {
@@ -332,31 +350,6 @@ function AuthenticityEnricherContent() {
         </div>
       )}
 
-      {/* Enriched brief selector — pick which completed enrichment to view */}
-      {!isRunning && enrichedBriefs.length > 0 && (
-        <div className="geo-input-bar" style={{ marginBottom: 12 }}>
-          <div className="geo-select-wrap" style={{ flex: 1 }}>
-            <select
-              className="geo-select"
-              value={result?.id || ''}
-              onChange={e => {
-                const picked = enrichedBriefs.find(b => b.id === e.target.value);
-                if (picked) { setResult(picked); setActiveTab('eeat'); }
-                else setResult(null);
-              }}
-            >
-              <option value="">Select an enriched brief to view...</option>
-              {enrichedBriefs.map(b => (
-                <option key={b.id} value={b.id}>
-                  {(b as any).enrichedTitle || (b as any).enrichedH1 || b.brandName}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      )}
-
-
       {/* Topic brief queue — shows ready-to-enrich briefs from GEO */}
       {!isRunning && topicBriefs.length > 0 && (
         <div style={{ marginBottom: 16 }}>
@@ -393,6 +386,31 @@ function AuthenticityEnricherContent() {
           </div>
         </div>
       )}
+
+      {/* Enriched brief selector — pick which completed enrichment to view */}
+      {!isRunning && enrichedBriefs.filter(b => !publishedBriefIds.has(b.id)).length > 0 && (
+        <div className="geo-input-bar" style={{ marginBottom: 12 }}>
+          <div className="geo-select-wrap" style={{ flex: 1 }}>
+            <select
+              className="geo-select"
+              value={result?.id || ''}
+              onChange={e => {
+                const picked = enrichedBriefs.find(b => b.id === e.target.value);
+                if (picked) { setResult(picked); setActiveTab('eeat'); }
+                else setResult(null);
+              }}
+            >
+              <option value="">Select an enriched brief to view...</option>
+              {enrichedBriefs.filter(b => !publishedBriefIds.has(b.id)).map(b => (
+                <option key={b.id} value={b.id}>
+                  {(b as any).enrichedTitle || (b as any).enrichedH1 || b.brandName}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
 
       {/* Stage progress */}
       {isRunning && (
