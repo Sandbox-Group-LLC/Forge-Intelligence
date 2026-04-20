@@ -430,11 +430,19 @@ function AuthenticityEnricherContent() {
               }}
             >
               <option value="">Select an enriched brief to view...</option>
-              {enrichedBriefs.filter(b => b.id && !briefsWithArticles.has(b.id)).map(b => (
-                <option key={b.id} value={b.id}>
-                  {(b as any).enrichedTitle || (b as any).enrichedH1 || b.brandName}
-                </option>
-              ))}
+              {enrichedBriefs.filter(b => b.id && !briefsWithArticles.has(b.id)).map(b => {
+                // Match Content Generator's display: prefer enrichedH1 (on-page headline, more distinctive)
+                // over enrichedTitle (SEO meta, often "Brand | Thing" format). Same brief should read the
+                // same string in both places.
+                const displayTitle = (b as any).enrichedH1 || (b as any).enrichedTitle || b.brandName;
+                const dateStr = (b as any).createdAt || (b as any).created_at;
+                const dateSuffix = dateStr ? ` — ${new Date(dateStr).toLocaleDateString()}` : '';
+                return (
+                  <option key={b.id} value={b.id}>
+                    {displayTitle}{dateSuffix}
+                  </option>
+                );
+              })}
             </select>
           </div>
         </div>
