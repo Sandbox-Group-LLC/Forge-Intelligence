@@ -1342,9 +1342,13 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
       console.error('[ARTICLE-SSR] JSON-LD build failed (non-fatal):', e.message);
     }
 
+    const publishedTime = article.created_at ? new Date(article.created_at).toISOString() : new Date().toISOString();
+    const modifiedTime = article.updated_at ? new Date(article.updated_at).toISOString() : publishedTime;
     const ogTags = `
   <title>${title} | ${brandName}</title>
   <meta name="description" content="${description}" />
+  <link rel="canonical" href="${canonicalUrl}" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
   <meta property="og:type" content="article" />
   <meta property="og:site_name" content="${brandName}" />
   <meta property="og:title" content="${title}" />
@@ -1356,7 +1360,8 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
   <meta property="og:image:height" content="720" />
   <meta property="og:image:type" content="image/jpeg" />` : ''}
   <meta property="article:author" content="${authorName}" />
-  <meta property="article:published_time" content="${new Date().toISOString()}" />
+  <meta property="article:published_time" content="${publishedTime}" />
+  <meta property="article:modified_time" content="${modifiedTime}" />
   <meta name="author" content="${authorName}" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${title}" />
@@ -1453,19 +1458,59 @@ const MARKETING_META = {
   }
 };
 
-function renderMarketingPage(meta, html) {
+// Shared JSON-LD blocks — Organization + WebSite go on every marketing page for Knowledge Panel eligibility
+// and site-wide entity grounding. The SearchAction on WebSite is what enables Google's sitelinks search box.
+const ORG_JSON_LD = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "Forge Intelligence",
+  "url": "https://forgeintelligence.ai",
+  "logo": "https://forgeintelligence.ai/forge-logo-white.png",
+  "description": "Forge Intelligence extracts competitive intelligence from brand websites using an 8-stage AI pipeline. Intelligence compounds. The content proves it.",
+  "foundingDate": "2025",
+  "founder": { "@type": "Person", "name": "Brian Morgan" },
+  "address": { "@type": "PostalAddress", "addressLocality": "Portland", "addressRegion": "OR", "addressCountry": "US" },
+  "knowsAbout": ["B2B content marketing", "Generative Engine Optimization", "brand intelligence", "AI content generation", "competitive intelligence", "E-E-A-T optimization"]
+};
+const WEBSITE_JSON_LD = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "Forge Intelligence",
+  "url": "https://forgeintelligence.ai",
+  "publisher": { "@type": "Organization", "name": "Forge Intelligence" },
+  "potentialAction": {
+    "@type": "SearchAction",
+    "target": { "@type": "EntryPoint", "urlTemplate": "https://forgeintelligence.ai/?q={search_term_string}" },
+    "query-input": "required name=search_term_string"
+  }
+};
+// TODO: replace `/1.png` (product screenshot, 1920x1080) with a dedicated 1200x630 branded OG card at `/og-card.png`
+const DEFAULT_OG_IMAGE = 'https://forgeintelligence.ai/1.png';
+
+function renderMarketingPage(meta, html, pathOverride = '/') {
   const escapedDesc = meta.description.replace(/"/g, '&quot;');
   const escapedTitle = meta.title.replace(/"/g, '&quot;');
+  const canonicalUrl = `https://forgeintelligence.ai${pathOverride}`;
+  const ogImage = meta.ogImage || DEFAULT_OG_IMAGE;
   const headTags = `
   <title>${escapedTitle}</title>
   <meta name="description" content="${escapedDesc}" />
+  <link rel="canonical" href="${canonicalUrl}" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Forge Intelligence" />
   <meta property="og:title" content="${escapedTitle}" />
   <meta property="og:description" content="${escapedDesc}" />
+  <meta property="og:url" content="${canonicalUrl}" />
+  <meta property="og:image" content="${ogImage}" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${escapedTitle}" />
-  <meta name="twitter:description" content="${escapedDesc}" />`;
+  <meta name="twitter:description" content="${escapedDesc}" />
+  <meta name="twitter:image" content="${ogImage}" />
+  <script type="application/ld+json">${JSON.stringify(ORG_JSON_LD)}</script>
+  <script type="application/ld+json">${JSON.stringify(WEBSITE_JSON_LD)}</script>`;
   // Inject head tags AND body content. Content sits inside #root so React hydrates over it on the client.
   const withMeta = html.replace(/<title>[^<]*<\/title>/, '').replace('<head>', '<head>' + headTags);
   const withBody = withMeta.replace('<div id="root"></div>', `<div id="root"><div style="position:absolute;left:-99999px;top:-99999px" aria-hidden="true">${meta.bodyContent}</div></div>`);
@@ -1481,7 +1526,7 @@ app.get(['/', '/product'], async (req, res, next) => {
     if (!meta) return next();
     const html = await fs.promises.readFile(path.join(__dirname, 'dist', 'index.html'), 'utf8');
     res.set('Cache-Control', 'public, max-age=300');
-    return res.send(renderMarketingPage(meta, html));
+    return res.send(renderMarketingPage(meta, html, req.path));
   } catch(e) {
     console.error('[MARKETING-SSR]', e.message);
     return next();
@@ -10168,25 +10213,54 @@ app.post('/api/analytics/manual', requireAuth, async (req, res) => {
 });
 
 // ── Sitemap.xml ──────────────────────────────────────────────────────────────
-app.get('/sitemap.xml', (req, res) => {
+app.get('/sitemap.xml', async (req, res) => {
   const isProduction = req.hostname === 'forgeintelligence.ai';
   if (!isProduction) return res.status(404).send('No sitemap for dev');
-  
+
   const urls = [
-    { loc: 'https://forgeintelligence.ai/', priority: '1.0', changefreq: 'weekly' },
-    { loc: 'https://forgeintelligence.ai/product', priority: '0.9', changefreq: 'weekly' },
+    { loc: 'https://forgeintelligence.ai/', priority: '1.0', changefreq: 'weekly', lastmod: new Date().toISOString() },
+    { loc: 'https://forgeintelligence.ai/product', priority: '0.9', changefreq: 'weekly', lastmod: new Date().toISOString() },
   ];
-  
+
+  // Pull the Forge Intelligence brand's own published articles so Google indexes them.
+  // Only this brand's articles (not customer brands) — customer articles live on their own domains.
+  try {
+    const brandRes = await pool.query(`SELECT id, brand_name FROM brand_profiles WHERE brand_name = 'Forge Intelligence' LIMIT 1`);
+    if (brandRes.rows.length) {
+      const brand = brandRes.rows[0];
+      const safeId = brand.id.replace(/-/g, '_');
+      const brandSlug = (brand.brand_name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      const articlesRes = await pool.query(
+        `SELECT title, created_at, updated_at FROM generated_content_${safeId} WHERE compliance_status IN ('approved', 'ready') ORDER BY created_at DESC LIMIT 500`
+      ).catch(() => ({ rows: [] }));
+      for (const a of articlesRes.rows) {
+        const articleSlug = (a.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+        if (articleSlug) {
+          urls.push({
+            loc: `https://forgeintelligence.ai/articles/${brandSlug}/${articleSlug}`,
+            priority: '0.7',
+            changefreq: 'monthly',
+            lastmod: (a.updated_at || a.created_at || new Date()).toISOString ? new Date(a.updated_at || a.created_at).toISOString() : new Date().toISOString()
+          });
+        }
+      }
+    }
+  } catch(e) {
+    console.error('[SITEMAP] article enumeration failed (non-fatal):', e.message);
+  }
+
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${urls.map(u => `  <url>
     <loc>${u.loc}</loc>
+    <lastmod>${u.lastmod}</lastmod>
     <changefreq>${u.changefreq}</changefreq>
     <priority>${u.priority}</priority>
   </url>`).join('\n')}
 </urlset>`;
-  
+
   res.set('Content-Type', 'application/xml');
+  res.set('Cache-Control', 'public, max-age=3600');
   res.send(xml);
 });
 
