@@ -10,6 +10,13 @@
 
 ## Session — April 19–20, 2026
 
+### LinkedIn Post Copy — Stop Bitly Shortening (shipped all branches)
+- Problem: LinkedIn detects Bitly short links in post copy and skips OG unfurl, so the article preview card never renders — posts looked bare
+- Fix: PublishingQueuePage no longer shortens the LinkedIn URL. Full canonical URL (with UTMs) is used in both the default fallback copy and the `/api/publishing/generate-post-copy` Haiku call
+- X still uses `xShort` — post-length economy matters for X, and X unfurls its own cards regardless
+- Bitly endpoint `/api/utils/shorten-url` stays live; only LinkedIn stops calling it
+
+
 ### Factual Ground Ported to Strategy Branch (cross-branch parity restored)
 - Previous session flagged: strategy branch was missing the Factual Ground UI (backend was already wired, frontend never ported)
 - Ported this session — strategy BrandSettingsPage.tsx now matches main/production/Intel for the FG feature
