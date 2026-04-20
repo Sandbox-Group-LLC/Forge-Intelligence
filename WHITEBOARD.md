@@ -83,6 +83,24 @@
 - Kept 4 v4 quick win opportunities
 - Cleared orphaned publishing queue entries
 
+### Enricher UX Refactor (late session, shipped all branches)
+- Removed brand dropdown entirely — brand is set by context, dropdown was legacy single-article flow
+- Added enriched brief selector dropdown — user picks which completed enrichment to view
+- Published briefs filtered from dropdown OPTIONS (not from dropdown visibility) — dropdown stays visible even when empty
+- Tabs (E-E-A-T, Injection Map, Enriched Brief, Author Schema) only render when user picks a brief
+- No more stale auto-load of most recent cached result on page load
+- Fresh enrichments auto-added to dropdown after completing
+- "Run Again" / "Force Fresh" buttons removed — topic brief queue with individual "Enrich" buttons is the interface
+
+### Key Decisions
+- [DECISION] Content Generator requires enriched brief — pipeline enforced, no free-topic generation
+- [DECISION] Mistral Large for email campaigns, Claude Sonnet for articles — model economics by output type
+- [DECISION] GEO opportunities persist 24h server-side, no unmount cleanup
+- [DECISION] Image gen prompt driven by brand brain only — no hardcoded aesthetic bias
+- [DECISION] businessProfile in Context Hub Opus prompt — what they do, sell, revenue model, buyer, scale, geography
+- [DECISION] Brand Intelligence (strategy branch only) — not public until all 6 deliverables complete
+- [DECISION] Enricher dropdown filters published briefs from options but stays visible when empty
+
 
 ## Session — April 12, 2026
 
