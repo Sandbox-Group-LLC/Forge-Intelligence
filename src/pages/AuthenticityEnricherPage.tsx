@@ -332,28 +332,29 @@ function AuthenticityEnricherContent() {
         </div>
       )}
 
-      {/* Brain selector */}
-      <div className="geo-input-bar">
-        <div className="geo-select-wrap">
-        <select className="geo-select" value={selectedBrainId} onChange={e => setSelectedBrainId(e.target.value)}>
-          <option value="">Select a Brain...</option>
-          {brains.map(b => <option key={b.id} value={b.id}>{b.brandName} — {b.brandUrl}</option>)}
-        </select>
+      {/* Enriched brief selector — pick which completed enrichment to view */}
+      {!isRunning && enrichedBriefs.length > 0 && (
+        <div className="geo-input-bar" style={{ marginBottom: 12 }}>
+          <div className="geo-select-wrap" style={{ flex: 1 }}>
+            <select
+              className="geo-select"
+              value={result?.id || ''}
+              onChange={e => {
+                const picked = enrichedBriefs.find(b => b.id === e.target.value);
+                if (picked) { setResult(picked); setActiveTab('eeat'); }
+                else setResult(null);
+              }}
+            >
+              <option value="">Select an enriched brief to view...</option>
+              {enrichedBriefs.map(b => (
+                <option key={b.id} value={b.id}>
+                  {(b as any).enrichedTitle || (b as any).enrichedH1 || b.brandName}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-        {topicBriefs.length === 0 && (
-          <button className="geo-run-btn" onClick={() => runAnalysis(false)} disabled={!selectedBrainId || isRunning}>
-            <ShieldCheck size={14} />{isRunning ? 'Enriching...' : result ? 'Run Again' : 'Run Enrichment'}
-          </button>
-        )}
-        {topicBriefs.length === 0 && result && !isRunning && (
-          <button
-            onClick={() => runAnalysis(false, true)}
-            style={{ background: 'transparent', border: '1px solid var(--color-border)', borderRadius: '8px', padding: '8px 14px', color: 'var(--color-text-muted, #94a3b8)', fontSize: '13px', cursor: 'pointer', marginLeft: '8px' }}
-          >
-            Force Fresh
-          </button>
-        )}
-      </div>
+      )}
 
 
       {/* Topic brief queue — shows ready-to-enrich briefs from GEO */}
