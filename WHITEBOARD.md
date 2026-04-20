@@ -10,6 +10,19 @@
 
 ## Session — April 19–20, 2026
 
+### GSC Performance Tab — Avg Position + CTR were mathematically wrong (shipped all branches)
+- **Brian reported this repeatedly; previous agent dismissed him. Instinct was correct — the math was broken.**
+- **The bug:** dashboard totals query used `AVG(NULLIF(engagement_rate,0))` for average position and `AVG(NULLIF(ctr,0))` for average CTR. For channels like LinkedIn where impression counts are reasonably uniform, simple averages are fine. For GSC where pages have wildly variable impression counts (long-tail: hundreds of URLs with 1-2 impressions at bad rankings, a handful with thousands of impressions at good rankings), simple averages give equal weight to a page with 1 impression ranking #50 and a page with 10,000 impressions ranking #3. Result: displayed Avg Position wildly overstates how badly the site ranks, and Avg CTR inflates far above reality. Brian was cross-checking against Google's own GSC dashboard and seeing mismatches — which is exactly what should happen if the math is wrong.
+- **Confirmed on real data before fix:** Sandbox-GTM's 2 GSC rows showed unweighted avg position 3.80 vs impression-weighted 3.39. Tiny sample, divergent already. On a realistic dataset the gap would be much larger.
+- **Fix:** branched aggregation in the dashboard totals query by channel. When `channel='gsc'`, use impression-weighted math matching Google's own GSC UI:
+  - Avg CTR: `SUM(clicks) * 100.0 / SUM(impressions)`
+  - Avg Position: `SUM(position * impressions) / SUM(impressions)` (recall: `engagement_rate` column is overloaded to store position for GSC rows — schema reuse decision made elsewhere).
+  - Other channels (LinkedIn/X/Facebook): unchanged. No surprise number changes in channels Brian wasn't reporting issues on.
+- **Secondary polish:** KPI card now formats position as `#3.4` (one decimal, rank notation) instead of `3.39`. Sub-label changed from "Search ranking position" to "Impression-weighted rank" so users understand what they're looking at.
+- **Schema smell NOT addressed (deferred):** the `engagement_rate` column is overloaded to mean position for GSC rows. The proper fix long-term is a dedicated `position` column (or a `metric_type` enum on the row) so future engineers aren't confused. Not urgent — defensive comments added at both sync write site and aggregation read site.
+- **Lesson for future sessions:** when Brian says something "feels off," check the code carefully before defending it. His instincts on his own product are calibrated.
+
+
 ### SEO Hardening — close gaps vs forge-intelligence.com squatter (shipped all branches)
 - **Context:** a new LLC (FORGE Intelligence LLC, Atlanta, est. 2026) is squatting `forge-intelligence.com` with a thin landing page using positioning language suspiciously close to Brian's. They're currently outranking forgeintelligence.ai for brand-name searches despite having no real content.
 - **Audit identified four concrete gaps:**
