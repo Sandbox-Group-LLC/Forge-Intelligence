@@ -465,99 +465,6 @@ function AuthenticityEnricherContent() {
 
       {error && <div className="geo-error">{error}</div>}
 
-      {/* Manual Input Prompt Card — shows when user clicks Corrections button OR after fresh run with gaps.
-          Corrections textarea is always rendered so users can override AI hallucinations even when the
-          enricher found no explicit gaps. Gap fields render conditionally below. */}
-      {showManualForm && result && (
-        <div style={{ background: '#F5B94208', border: '1px solid #F5B94230', borderRadius: '12px', padding: '20px 24px', marginBottom: '24px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                <AlertTriangle size={16} color="#F5B942" />
-                <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-text-primary, #1e293b)' }}>Correct or strengthen this brief.</span>
-              </div>
-              <p style={{ fontSize: '13px', color: 'var(--color-text-muted, #94a3b8)', margin: 0 }}>
-                Fill in missing signals or fix anything the AI got wrong — we'll re-run with your inputs and weave them in automatically.
-              </p>
-            </div>
-            <button onClick={() => setShowManualForm(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted, #94a3b8)', padding: '4px' }}>
-              <X size={16} />
-            </button>
-          </div>
-          {result.gaps && result.gaps.filter(g => g.severity === 'high').length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
-            {result.gaps.filter(g => g.severity === 'high').map((gap, i) => {
-              const Icon = GAP_ICONS[gap.gapType] || FileText;
-              return (
-                <div key={i} style={{ background: 'var(--color-bg-elevated, #f4f7ff)', borderRadius: '8px', padding: '14px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                    <Icon size={14} color="#3563FF" />
-                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-primary, #1e293b)' }}>{GAP_TYPE_LABELS[gap.gapType] || gap.gapType}</span>
-                    <div style={{ position: 'relative', marginLeft: 'auto' }}>
-                      <button
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-secondary, #475569)', padding: 0 }}
-                        onMouseEnter={() => setActiveTooltip(`gap-${i}`)}
-                        onMouseLeave={() => setActiveTooltip(null)}
-                      >
-                        <Info size={13} />
-                      </button>
-                      {activeTooltip === `gap-${i}` && (
-                        <div style={{ position: 'absolute', right: 0, top: '20px', background: 'var(--color-bg-card, #ffffff)', border: '1px solid var(--color-bg-card)', borderRadius: '8px', padding: '10px 12px', width: '220px', zIndex: 10 }}>
-                          <p style={{ fontSize: '12px', color: 'var(--color-text-secondary, #475569)', margin: '0 0 6px' }}>{gap.tooltip}</p>
-                          <p style={{ fontSize: '11px', color: '#3563FF', margin: 0 }}>💡 {gap.whyItMatters}</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <textarea
-                    placeholder={gap.placeholder}
-                    value={manualInputs[gap.gapType] || ''}
-                    onChange={e => setManualInputs(prev => ({ ...prev, [gap.gapType]: e.target.value }))}
-                    style={{
-                      width: '100%', background: 'var(--color-bg-card, #ffffff)', border: '1px solid var(--color-border)',
-                      borderRadius: '6px', padding: '8px 10px', color: 'var(--color-text-primary, #1e293b)',
-                      fontSize: '12px', resize: 'vertical', minHeight: '60px',
-                      fontFamily: 'Inter, system-ui, sans-serif', boxSizing: 'border-box'
-                    }}
-                  />
-                </div>
-              );
-            })}
-          </div>
-          )}
-          <div style={{ background: 'var(--color-bg-elevated, #f4f7ff)', borderRadius: '8px', padding: '14px', marginTop: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-              <AlertTriangle size={14} color="#EF4444" />
-              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-primary, #1e293b)' }}>Corrections & Clarifications</span>
-            </div>
-            <textarea
-              placeholder="Fix anything the AI got wrong — e.g. 'We are based in Portland, OR — not Cambridge, MA. Do not confuse us with the defense contractor Forge Intelligence.'"
-              value={manualInputs['corrections'] || ''}
-              onChange={e => setManualInputs(prev => ({ ...prev, corrections: e.target.value }))}
-              style={{
-                width: '100%', background: 'var(--color-bg-card, #ffffff)', border: '1px solid var(--color-border)',
-                borderRadius: '6px', padding: '10px', fontSize: '13px', minHeight: '70px', resize: 'vertical',
-                fontFamily: 'Inter, system-ui, sans-serif', boxSizing: 'border-box'
-              }}
-            />
-          </div>
-          <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
-            <button
-              onClick={() => runAnalysis(true)}
-              disabled={isRunning || Object.keys(manualInputs).every(k => !manualInputs[k])}
-              style={{ background: '#3563FF', border: 'none', borderRadius: '8px', padding: '8px 20px', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
-            >
-              Re-run with my inputs
-            </button>
-            <button
-              onClick={() => setShowManualForm(false)}
-              style={{ background: 'transparent', border: '1px solid var(--color-border)', borderRadius: '8px', padding: '8px 16px', color: 'var(--color-text-secondary, #475569)', fontSize: '13px', cursor: 'pointer' }}
-            >
-              Skip — use what you found
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Results */}
       {result && !isRunning && (
@@ -590,6 +497,101 @@ function AuthenticityEnricherContent() {
               )}
             </button>
           </div>
+
+          {/* Manual Input Prompt Card — shows when user clicks Corrections button OR after fresh run with gaps.
+              Corrections textarea is always rendered so users can override AI hallucinations even when the
+              enricher found no explicit gaps. Gap fields render conditionally below. */}
+          {showManualForm && result && (
+            <div style={{ background: '#F5B94208', border: '1px solid #F5B94230', borderRadius: '12px', padding: '20px 24px', marginBottom: '24px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                    <AlertTriangle size={16} color="#F5B942" />
+                    <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-text-primary, #1e293b)' }}>Correct or strengthen this brief.</span>
+                  </div>
+                  <p style={{ fontSize: '13px', color: 'var(--color-text-muted, #94a3b8)', margin: 0 }}>
+                    Fill in missing signals or fix anything the AI got wrong — we'll re-run with your inputs and weave them in automatically.
+                  </p>
+                </div>
+                <button onClick={() => setShowManualForm(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted, #94a3b8)', padding: '4px' }}>
+                  <X size={16} />
+                </button>
+              </div>
+              {result.gaps && result.gaps.filter(g => g.severity === 'high').length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
+                {result.gaps.filter(g => g.severity === 'high').map((gap, i) => {
+                  const Icon = GAP_ICONS[gap.gapType] || FileText;
+                  return (
+                    <div key={i} style={{ background: 'var(--color-bg-elevated, #f4f7ff)', borderRadius: '8px', padding: '14px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                        <Icon size={14} color="#3563FF" />
+                        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-primary, #1e293b)' }}>{GAP_TYPE_LABELS[gap.gapType] || gap.gapType}</span>
+                        <div style={{ position: 'relative', marginLeft: 'auto' }}>
+                          <button
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-secondary, #475569)', padding: 0 }}
+                            onMouseEnter={() => setActiveTooltip(`gap-${i}`)}
+                            onMouseLeave={() => setActiveTooltip(null)}
+                          >
+                            <Info size={13} />
+                          </button>
+                          {activeTooltip === `gap-${i}` && (
+                            <div style={{ position: 'absolute', right: 0, top: '20px', background: 'var(--color-bg-card, #ffffff)', border: '1px solid var(--color-bg-card)', borderRadius: '8px', padding: '10px 12px', width: '220px', zIndex: 10 }}>
+                              <p style={{ fontSize: '12px', color: 'var(--color-text-secondary, #475569)', margin: '0 0 6px' }}>{gap.tooltip}</p>
+                              <p style={{ fontSize: '11px', color: '#3563FF', margin: 0 }}>💡 {gap.whyItMatters}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <textarea
+                        placeholder={gap.placeholder}
+                        value={manualInputs[gap.gapType] || ''}
+                        onChange={e => setManualInputs(prev => ({ ...prev, [gap.gapType]: e.target.value }))}
+                        style={{
+                          width: '100%', background: 'var(--color-bg-card, #ffffff)', border: '1px solid var(--color-border)',
+                          borderRadius: '6px', padding: '8px 10px', color: 'var(--color-text-primary, #1e293b)',
+                          fontSize: '12px', resize: 'vertical', minHeight: '60px',
+                          fontFamily: 'Inter, system-ui, sans-serif', boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              )}
+              <div style={{ background: 'var(--color-bg-elevated, #f4f7ff)', borderRadius: '8px', padding: '14px', marginTop: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <AlertTriangle size={14} color="#EF4444" />
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-primary, #1e293b)' }}>Corrections & Clarifications</span>
+                </div>
+                <textarea
+                  placeholder="Fix anything the AI got wrong — e.g. 'We are based in Portland, OR — not Cambridge, MA. Do not confuse us with the defense contractor Forge Intelligence.'"
+                  value={manualInputs['corrections'] || ''}
+                  onChange={e => setManualInputs(prev => ({ ...prev, corrections: e.target.value }))}
+                  style={{
+                    width: '100%', background: 'var(--color-bg-card, #ffffff)', border: '1px solid var(--color-border)',
+                    borderRadius: '6px', padding: '10px', fontSize: '13px', minHeight: '70px', resize: 'vertical',
+                    fontFamily: 'Inter, system-ui, sans-serif', boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+                <button
+                  onClick={() => runAnalysis(true)}
+                  disabled={isRunning || Object.keys(manualInputs).every(k => !manualInputs[k])}
+                  style={{ background: '#3563FF', border: 'none', borderRadius: '8px', padding: '8px 20px', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Re-run with my inputs
+                </button>
+                <button
+                  onClick={() => setShowManualForm(false)}
+                  style={{ background: 'transparent', border: '1px solid var(--color-border)', borderRadius: '8px', padding: '8px 16px', color: 'var(--color-text-secondary, #475569)', fontSize: '13px', cursor: 'pointer' }}
+                >
+                  Skip — use what you found
+                </button>
+              </div>
+            </div>
+          )}
+
 
           {/* E-E-A-T Scores Tab */}
           {activeTab === 'eeat' && (
