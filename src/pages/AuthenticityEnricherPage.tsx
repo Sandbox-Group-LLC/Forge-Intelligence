@@ -388,7 +388,7 @@ function AuthenticityEnricherContent() {
       )}
 
       {/* Enriched brief selector — pick which completed enrichment to view */}
-      {!isRunning && enrichedBriefs.filter(b => !publishedBriefIds.has(b.id)).length > 0 && (
+      {!isRunning && enrichedBriefs.filter(b => b.id && !publishedBriefIds.has(b.id)).length > 0 && (
         <div className="geo-input-bar" style={{ marginBottom: 12 }}>
           <div className="geo-select-wrap" style={{ flex: 1 }}>
             <select
@@ -401,7 +401,7 @@ function AuthenticityEnricherContent() {
               }}
             >
               <option value="">Select an enriched brief to view...</option>
-              {enrichedBriefs.filter(b => !publishedBriefIds.has(b.id)).map(b => (
+              {enrichedBriefs.filter(b => b.id && !publishedBriefIds.has(b.id)).map(b => (
                 <option key={b.id} value={b.id}>
                   {(b as any).enrichedTitle || (b as any).enrichedH1 || b.brandName}
                 </option>
