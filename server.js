@@ -1484,8 +1484,8 @@ const WEBSITE_JSON_LD = {
     "query-input": "required name=search_term_string"
   }
 };
-// TODO: replace `/1.png` (product screenshot, 1920x1080) with a dedicated 1200x630 branded OG card at `/og-card.png`
-const DEFAULT_OG_IMAGE = 'https://forgeintelligence.ai/1.png';
+// Branded OG card — 2500x1313 (aspect ratio 1.904:1, same as 1200x630). Social platforms scale as needed.
+const DEFAULT_OG_IMAGE = 'https://forgeintelligence.ai/og-card.png';
 
 function renderMarketingPage(meta, html, pathOverride = '/') {
   const escapedDesc = meta.description.replace(/"/g, '&quot;');
@@ -1503,8 +1503,8 @@ function renderMarketingPage(meta, html, pathOverride = '/') {
   <meta property="og:description" content="${escapedDesc}" />
   <meta property="og:url" content="${canonicalUrl}" />
   <meta property="og:image" content="${ogImage}" />
-  <meta property="og:image:width" content="1200" />
-  <meta property="og:image:height" content="630" />
+  <meta property="og:image:width" content="2500" />
+  <meta property="og:image:height" content="1313" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${escapedTitle}" />
   <meta name="twitter:description" content="${escapedDesc}" />
