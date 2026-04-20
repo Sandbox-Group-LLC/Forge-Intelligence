@@ -153,19 +153,23 @@ Every stage persists results and points forward:
 - **Brand name from Claude:** Added `brandName` to Claude response schema — actual website name instead of domain parse
 - GitHub Contents API commits require a freshly fetched SHA — stale SHAs fail
 
-### Branch Strategy (April 12, 2026)
+### Branch Strategy (updated April 19, 2026)
 
-**Branches are now identical.** Main was reset to match production on April 12, 2026.
+**Four branches. Three are identical. One has a feature flag.**
 
 | Branch | Role |
 |--------|------|
 | `main` | Staging — new features built and tested on `dev.forgeintelligence.ai` |
-| `production` | Live — validated work ported via surgical patches only |
+| `production` | Live — validated work ported via surgical patches only (`forgeintelligence.ai`) |
+| `Intel` | Identical to main/production — separate deployment target |
+| `strategy` | Identical to the rest **except** Brand Intelligence menu item is exposed in the sidebar (all other branches hide it) |
 
 **Rules:**
-- Never `git merge main → production` — surgical patches only
-- Both branches share the same architecture (super admin brand switcher, single brand for regular users)
-- Test on dev first, port to production when validated
+- Never `git merge` between branches — surgical patches only
+- `main`, `production`, and `Intel` must stay byte-identical across shared files
+- `strategy` differs **only** on the Brand Intelligence sidebar/page files — never let other deltas creep in
+- When shipping any fix, port to all four branches in the same session unless it's strategy-specific
+- Test on dev first, port to production (+ Intel + strategy) when validated
 
 ---
 
