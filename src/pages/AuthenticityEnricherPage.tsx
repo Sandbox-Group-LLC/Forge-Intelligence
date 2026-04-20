@@ -140,36 +140,29 @@ function AuthenticityEnricherContent() {
     if (activeBrand?.id && !selectedBrainId) setSelectedBrainId(activeBrand.id);
   }, [activeBrand?.id]);
 
-  // Fetch existing enrichment results on mount — BUT skip if user came with a topicBriefId
-  // (they're here to enrich a SPECIFIC topic, not view cached results from a different one)
+  // Load all enriched briefs for the brand — user picks which to view
   useEffect(() => {
-    if (!selectedBrainId || !authToken || result) return;
-    const incomingTopicBriefId = new URLSearchParams(window.location.search).get('topicBriefId');
-    if (incomingTopicBriefId) {
-      // Fresh run for this topic brief — auto-fire analysis, don't load stale cache
-      return;
-    }
-    const fetchExisting = async () => {
+    if (!selectedBrainId || !authToken) return;
+    const fetchBriefs = async () => {
       try {
         const res = await fetch(`/api/authenticity-enricher/briefs?brandProfileId=${selectedBrainId}`, {
           headers: { 'Authorization': `Bearer ${authToken}` }
         });
         const d = await res.json();
         if (d.success && d.data?.length > 0) {
-          const b = d.data[0];
-          setResult(b as EnrichResult);
-          if (b.needsManualInput && b.gaps?.some((g: any) => g.severity === 'high')) {
-            setShowManualForm(true);
-          }
+          setEnrichedBriefs(d.data as EnrichResult[]);
+        } else {
+          setEnrichedBriefs([]);
         }
       } catch { /* silent */ }
     };
-    fetchExisting();
-  }, [selectedBrainId, authToken]);
+    fetchBriefs();
+  }, [selectedBrainId, authToken, result]);
 
   // Auto-fire enrichment when arriving with a topicBriefId (no extra click needed)
   const [autoFiredFor, setAutoFiredFor] = useState<string | null>(null);
   const [topicBriefs, setTopicBriefs] = useState<{id: string; topic: string; quickWin: boolean; avgScore: number; status: string}[]>([]);
+  const [enrichedBriefs, setEnrichedBriefs] = useState<EnrichResult[]>([]);
   useEffect(() => {
     if (!selectedBrainId || !authToken || isRunning || result) return;
     const incomingTopicBriefId = new URLSearchParams(window.location.search).get('topicBriefId');
@@ -275,7 +268,9 @@ function AuthenticityEnricherContent() {
       if (!sseResult?.success) throw new Error(sseResult?.error || 'Analysis failed');
       setCompletedStages([1,2,3,4,5]);
       setCurrentStage(0);
-      setResult(sseResult.data as EnrichResult);
+      const freshResult = sseResult.data as EnrichResult;
+      setResult(freshResult);
+      setEnrichedBriefs(prev => [freshResult, ...prev.filter(b => b.id !== freshResult.id)]);
       if (sseResult.data?.needsManualInput && !withManual) {
         setShowManualForm(true);
         setActiveTab('eeat');
@@ -515,24 +510,6 @@ function AuthenticityEnricherContent() {
       {/* Results */}
       {result && !isRunning && (
         <>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <div>
-              <div style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-text-muted, #94a3b8)', marginBottom: 2 }}>
-                Viewing enrichment
-              </div>
-              <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-text-primary, #e2e8f0)' }}>
-                {result.enrichedTitle || result.enrichedH1 || result.brandName || 'Enriched Brief'}
-              </div>
-            </div>
-            {topicBriefs.length > 0 && (
-              <button
-                onClick={() => setResult(null)}
-                style={{ background: 'transparent', border: '1px solid var(--color-border, #2a2d35)', borderRadius: 6, padding: '4px 12px', fontSize: '0.75rem', color: 'var(--color-text-muted, #94a3b8)', cursor: 'pointer' }}
-              >
-                Dismiss
-              </button>
-            )}
-          </div>
           <div className="geo-tabs">
             {[
               { id: 'eeat', label: 'E-E-A-T Scores' },
