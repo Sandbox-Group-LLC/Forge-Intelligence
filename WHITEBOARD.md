@@ -10,6 +10,14 @@
 
 ## Session — April 19–20, 2026
 
+### Factual Ground Discovery Callout (shipped main/production/Intel)
+- Problem: users didn't discover Factual Ground existed until well after forming opinions about profile accuracy — no surface-level path from Brand Profile to the override UI
+- Fix: teal info callout added to Brand Profile view, directly below the scraper-success warning zone. Text: "Something look off? Anything you add to [Factual Ground] is used verbatim in every generated article…"
+- Deep link: `/app/brand-settings#factual-ground` — added `id="factual-ground"` to the Factual Ground section in BrandSettings + scroll-to-hash useEffect with brief teal highlight pulse so users clearly land on the target
+- Uses react-router `useNavigate` (no full page reload) + preserves href for right-click/cmd-click behavior
+- Not shipped to strategy branch: Factual Ground feature doesn't exist there (pre-existing branch drift — strategy BrandSettings is a slimmer 441-line version missing the FG section entirely). Flagged for future reconciliation — see Known Issues below.
+
+
 ### Scaffolding Artifact Sanitizer (shipped all branches)
 - Problem: enrichment briefs use bracketed scaffolding markers (`[SME Hook: ...]`, `[CTA: ...]`, `[TODO: ...]`, `[Author Quote: ...]`) that the writer is supposed to expand into prose or drop. It sometimes copied them verbatim into final articles and they leaked past human compliance review twice.
 - Fix: new top-level `stripScaffoldingArtifacts(article)` utility in server.js (next to `extractJSON`). Two-layer regex: inline keyword-gated strip (safe — won't touch `[1]` citations or `[Appendix A]` refs) + standalone-paragraph strip for any paragraph that is entirely `[word: details]`.
