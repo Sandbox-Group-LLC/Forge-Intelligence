@@ -137,6 +137,25 @@ export default function BrandSettingsPage() {
     }).catch(() => {});
   }, [selected]);
 
+  // Scroll to hash target (e.g. #factual-ground) once page has rendered.
+  // Browser doesn't auto-scroll on client-side navigation; we polyfill that.
+  useEffect(() => {
+    const hash = window.location.hash?.slice(1);
+    if (!hash) return;
+    // Small delay so section DOM is present (Factual Ground renders conditionally on load)
+    const t = setTimeout(() => {
+      const el = document.getElementById(hash);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Brief highlight pulse so users see where they landed
+        el.style.transition = 'box-shadow 0.4s ease';
+        el.style.boxShadow = '0 0 0 3px rgba(20, 184, 166, 0.35)';
+        setTimeout(() => { el.style.boxShadow = ''; }, 2000);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [selected]);
+
   const addReviewer = async () => {
     if (!revName.trim() || !revEmail.trim()) { setRevError('Name and email required'); return; }
     setRevSaving(true); setRevError('');
@@ -290,7 +309,7 @@ export default function BrandSettingsPage() {
               </div>
 
               {/* ── Factual Ground — user-provided credentials and facts that anchor the writer ── */}
-              <section className="bs-section">
+              <section id="factual-ground" className="bs-section">
                 <div className="bs-section-header">
                   <h2 className="bs-section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 6v16"/><path d="m19 13 2-1a9 9 0 0 1-18 0l2 1"/><path d="M9 11h6"/><circle cx="12" cy="4" r="2"/></svg>
