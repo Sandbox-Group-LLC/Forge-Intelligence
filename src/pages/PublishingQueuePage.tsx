@@ -873,14 +873,16 @@ ${bodyHtml}
         } catch { return url; }
       };
 
-      const [liShort, xShort] = await Promise.all([shorten(liUrl, 'linkedin'), shorten(xUrl, 'x')]);
+      // LinkedIn uses the full canonical URL — Bitly links break OG unfurl and kill the preview card.
+      // X still uses a short URL for post-length economy.
+      const xShort = await shorten(xUrl, 'x');
 
-      let liCopy = `${article?.title || item.title}\n\nRead more: ${liShort}`;
+      let liCopy = `${article?.title || item.title}\n\nRead more: ${liUrl}`;
       try {
         const copyRes = await fetch('/api/publishing/generate-post-copy', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...ah },
-          body: JSON.stringify({ title: article?.title || item.title, headings, readMinutes: readMin, articleUrl: liShort })
+          body: JSON.stringify({ title: article?.title || item.title, headings, readMinutes: readMin, articleUrl: liUrl })
         });
         const copyData = await copyRes.json();
         if (copyData.copy) liCopy = copyData.copy;
