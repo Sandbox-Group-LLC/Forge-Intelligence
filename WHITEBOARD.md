@@ -10,6 +10,20 @@
 
 ## Session — April 19–20, 2026
 
+### Context Hub Scraper Resilience + Diagnostics (shipped all branches)
+- Problem: sandbox-xm.com "scrape failed" with zero explanation — the scraper's `fetch(...).catch(() => null)` ate every error, so logs always said the same generic "minimal content" regardless of whether it was DNS, a 403, a timeout, or a TLS issue
+- Investigation: log ran 71ms start-to-fail (too fast for any real network call), confirming silent throw. Cloudflare DNS lookup revealed root cause — `sandbox-xm.com` apex has **no A record** (only SOA/NS), and `www.sandbox-xm.com` is a CNAME chain through forgeos-sandbox-xm.onrender.com → gcp-us-west1-1.origin.onrender.com. From Render's resolver both returned DNS-NOT-FOUND, likely due to negative-caching after the apex miss.
+- Fix (all 4 branches) — `server.js` Tool 1.5 rewritten:
+  - `describeFetchFailure(err)` helper surfaces actual cause: `DNS-NOT-FOUND`, `CONNECTION-REFUSED`, `CONNECTION-RESET`, `TIMEOUT`, `TLS-ERROR`, `HTTP-4xx/5xx`
+  - `fetchWithDiag()` wrapper always returns `{res, html, error}` — never swallows
+  - www ↔ apex auto-fallback: if `example.com` fails, tries `www.example.com` and vice versa
+  - Chrome UA retry on any 4xx: if Forge UA gets blocked, retries same URL with a standard Mac Chrome UA before giving up
+  - Added `Accept` + `Accept-Language` headers (some origins 403 on requests missing these)
+  - Subpage crawl now uses `workingBaseUrl` instead of `normalizedUrl` — if we fell back to www, the /about crawl also uses www
+- Verified live: re-ran scrape on production, logs now show `Homepage fetch failed for https://sandbox-xm.com — DNS-NOT-FOUND (fetch failed)` + same for www. Zero ambiguity.
+- Outstanding for Brian (DNS side, not code): add an A record, ALIAS, or URL redirect on the apex for sandbox-xm.com at Namecheap (nameservers: dns1.registrar-servers.com). Easiest: URL Redirect Record on `@` → `https://www.sandbox-xm.com` 301. Once fixed, re-analyze and the scraper will pick up content.
+
+
 ### LinkedIn Post Copy — Stop Bitly Shortening (shipped all branches)
 - Problem: LinkedIn detects Bitly short links in post copy and skips OG unfurl, so the article preview card never renders — posts looked bare
 - Fix: PublishingQueuePage no longer shortens the LinkedIn URL. Full canonical URL (with UTMs) is used in both the default fallback copy and the `/api/publishing/generate-post-copy` Haiku call
