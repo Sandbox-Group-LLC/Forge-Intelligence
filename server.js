@@ -8533,17 +8533,38 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
             ? parseFloat((totalEngagement / impressions * 100).toFixed(2))
             : 0;
 
+          // Skip entirely when API returned no useful data — no point creating/overwriting a row with zeros.
+          // This also prevents wiping manually-entered metrics (which only survive if we DON'T touch the row).
+          if (dataSource === 'none') {
+            console.log(`[LINKEDIN-SYNC] Skipping ${postId} — no API data (MDP not granted, socialActions failed). Manual entries preserved.`);
+            continue;
+          }
+
+          // Smart upsert — protects manually-entered analytics from being wiped by API zeros.
+          // Before MDP approval: shareStatistics returns 0 for impressions/clicks. The socialActions-only
+          // path still gets reactions/comments/reposts, but impressions/clicks default to 0. If we
+          // overwrote unconditionally (old bug), those zeros would clobber Brian's manual 847 impressions.
+          //
+          // New logic:
+          //  - impressions/clicks/ctr/engagement_rate: only overwrite when we have REAL shareStatistics
+          //    data (EXCLUDED.impressions > 0 — only possible with MDP). Otherwise preserve existing.
+          //  - reactions/comments/reposts: use GREATEST so API blips can never lower numbers.
+          //  - raw_data: merge via || so a {"source":"manual"} marker in existing row survives.
           await pool.query(
             `INSERT INTO content_analytics
                (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at, campaign_id)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),$14)
              ON CONFLICT (content_id, channel) DO UPDATE SET
-               impressions=EXCLUDED.impressions, clicks=EXCLUDED.clicks,
-               reactions=EXCLUDED.reactions, comments=EXCLUDED.comments,
-               reposts=EXCLUDED.reposts, ctr=EXCLUDED.ctr,
-               engagement_rate=EXCLUDED.engagement_rate,
-               raw_data=EXCLUDED.raw_data, synced_at=NOW(),
-               campaign_id=COALESCE(EXCLUDED.campaign_id, content_analytics.campaign_id)`,
+               impressions      = CASE WHEN EXCLUDED.impressions > 0 THEN EXCLUDED.impressions ELSE content_analytics.impressions END,
+               clicks           = CASE WHEN EXCLUDED.impressions > 0 THEN EXCLUDED.clicks      ELSE content_analytics.clicks      END,
+               ctr              = CASE WHEN EXCLUDED.impressions > 0 THEN EXCLUDED.ctr         ELSE content_analytics.ctr         END,
+               engagement_rate  = CASE WHEN EXCLUDED.impressions > 0 THEN EXCLUDED.engagement_rate ELSE content_analytics.engagement_rate END,
+               reactions        = GREATEST(COALESCE(content_analytics.reactions, 0), EXCLUDED.reactions),
+               comments         = GREATEST(COALESCE(content_analytics.comments, 0),  EXCLUDED.comments),
+               reposts          = GREATEST(COALESCE(content_analytics.reposts, 0),   EXCLUDED.reposts),
+               raw_data         = COALESCE(content_analytics.raw_data, '{}'::jsonb) || EXCLUDED.raw_data,
+               synced_at        = NOW(),
+               campaign_id      = COALESCE(EXCLUDED.campaign_id, content_analytics.campaign_id)`,
             [brandProfileId, row.content_id, 'linkedin', postId,
              impressions, clicks, reactions, comments, reposts, ctr, engagementRate,
              JSON.stringify(rawData), row.published_at, row.campaign_id || null]
