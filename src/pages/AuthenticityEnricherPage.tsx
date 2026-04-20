@@ -345,10 +345,12 @@ function AuthenticityEnricherContent() {
           {brains.map(b => <option key={b.id} value={b.id}>{b.brandName} — {b.brandUrl}</option>)}
         </select>
         </div>
-        <button className="geo-run-btn" onClick={() => runAnalysis(false)} disabled={!selectedBrainId || isRunning}>
-          <ShieldCheck size={14} />{isRunning ? 'Enriching...' : result ? 'Run Again' : 'Run Enrichment'}
-        </button>
-        {result && !isRunning && (
+        {topicBriefs.length === 0 && (
+          <button className="geo-run-btn" onClick={() => runAnalysis(false)} disabled={!selectedBrainId || isRunning}>
+            <ShieldCheck size={14} />{isRunning ? 'Enriching...' : result ? 'Run Again' : 'Run Enrichment'}
+          </button>
+        )}
+        {topicBriefs.length === 0 && result && !isRunning && (
           <button
             onClick={() => runAnalysis(false, true)}
             style={{ background: 'transparent', border: '1px solid var(--color-border)', borderRadius: '8px', padding: '8px 14px', color: 'var(--color-text-muted, #94a3b8)', fontSize: '13px', cursor: 'pointer', marginLeft: '8px' }}
