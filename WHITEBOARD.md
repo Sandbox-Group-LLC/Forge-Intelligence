@@ -10,6 +10,12 @@
 
 ## Session — April 19–20, 2026
 
+### Factual Ground Ported to Strategy Branch (cross-branch parity restored)
+- Previous session flagged: strategy branch was missing the Factual Ground UI (backend was already wired, frontend never ported)
+- Ported this session — strategy BrandSettingsPage.tsx now matches main/production/Intel for the FG feature
+- "strategy differs only on Brand Intelligence files" invariant restored
+
+
 ### Factual Ground Discovery Callout (shipped main/production/Intel)
 - Problem: users didn't discover Factual Ground existed until well after forming opinions about profile accuracy — no surface-level path from Brand Profile to the override UI
 - Fix: teal info callout added to Brand Profile view, directly below the scraper-success warning zone. Text: "Something look off? Anything you add to [Factual Ground] is used verbatim in every generated article…"
