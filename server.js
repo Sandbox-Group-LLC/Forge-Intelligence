@@ -10933,7 +10933,7 @@ app.get('/api/content-generator/enriched-briefs/:brandProfileId', requireAuth, a
          FROM enriched_briefs eb
          LEFT JOIN geo_topic_briefs tb ON tb.id::text = eb.enriched_data->>'topicBriefId'
          LEFT JOIN geo_opportunities opp ON opp.id = tb.opportunity_id
-         LEFT JOIN generated_content_${safeId} gc ON gc.enriched_brief_id = eb.id::text
+         LEFT JOIN generated_content_${safeId} gc ON gc.enriched_brief_id::text = eb.id::text
          LEFT JOIN publishing_queue pq ON pq.content_id = gc.id::text
          WHERE eb.brand_profile_id = $1
       )
@@ -10963,7 +10963,7 @@ app.get('/api/content-generator/enriched-briefs/:brandProfileId', requireAuth, a
          WHERE gc.brand_profile_id = $1
            AND gc.enriched_brief_id IS NOT NULL
            AND NOT EXISTS (
-             SELECT 1 FROM enriched_briefs eb WHERE eb.id::text = gc.enriched_brief_id
+             SELECT 1 FROM enriched_briefs eb WHERE eb.id::text = gc.enriched_brief_id::text
            )
       )
       ORDER BY created_at DESC
