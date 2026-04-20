@@ -484,14 +484,39 @@ function AuthenticityEnricherContent() {
                 Styled like a tab for consistency but visually distinct via accent color. Badge shows when
                 user has pending un-submitted corrections so they're nudged back. */}
             <button
-              className="geo-tab"
               onClick={() => setShowManualForm(v => !v)}
-              style={{ marginLeft: 'auto', color: '#F5B942', borderColor: '#F5B94230' }}
               title="Open the corrections form to fix AI errors or add missing signals"
+              style={{
+                marginLeft: 'auto',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '7px 14px',
+                fontSize: 13,
+                fontWeight: 600,
+                borderRadius: 8,
+                border: showManualForm ? '1.5px solid #D97706' : '1.5px solid transparent',
+                background: showManualForm ? '#FEF3C7' : '#D97706',
+                color: showManualForm ? '#92400E' : '#ffffff',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                lineHeight: 1
+              }}
             >
+              <AlertTriangle size={14} />
               {showManualForm ? 'Hide Corrections' : 'Corrections'}
               {Object.keys(manualInputs).some(k => manualInputs[k]) && (
-                <span style={{ marginLeft: 6, background: '#F5B942', color: '#fff', borderRadius: 10, padding: '1px 7px', fontSize: 10, fontWeight: 700 }}>
+                <span style={{
+                  marginLeft: 2,
+                  background: showManualForm ? '#D97706' : '#ffffff',
+                  color: showManualForm ? '#ffffff' : '#D97706',
+                  borderRadius: 10,
+                  padding: '1px 7px',
+                  fontSize: 10,
+                  fontWeight: 800,
+                  minWidth: 18,
+                  textAlign: 'center'
+                }}>
                   {Object.keys(manualInputs).filter(k => manualInputs[k]).length}
                 </span>
               )}
