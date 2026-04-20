@@ -2619,6 +2619,21 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
     let scrapedContent = '';
     let homeHtml = '';
     let workingBaseUrl = '';
+    // Masked-subdomain support: if the user set a scrapeUrlOverride in Brand Settings
+    // (e.g., brand_url is a vanity domain pointing to a Render subservice), use the
+    // override as the actual scrape target instead of the public-facing URL.
+    let scrapeInputUrl = brandUrl;
+    try {
+      const ovRes = await pool.query(
+        `SELECT settings->>'scrapeUrlOverride' as override FROM brand_profiles WHERE brand_url = $1 ORDER BY version DESC LIMIT 1`,
+        [brandUrl]
+      );
+      const override = ovRes.rows[0]?.override?.trim();
+      if (override) {
+        scrapeInputUrl = override;
+        console.log(`[Context Hub] Using scrape URL override: ${override} (public: ${brandUrl})`);
+      }
+    } catch { /* no profile yet, use brandUrl directly */ }
     try {
       // Chrome UA — some sites (Squarespace, Vercel edge, etc.) 403 on unknown UAs. Forge UA tried first for honesty, Chrome as fallback.
       const FORGE_UA = 'ForgeIntelligence/1.0 (Brand Analysis)';
@@ -2665,7 +2680,7 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
 
       // Build candidate base URLs. Brands saved as "example.com" may have apex-only or www-only DNS —
       // try both, and try Chrome UA as a fallback if the Forge UA gets 403.
-      const inputUrl = brandUrl.startsWith('http') ? brandUrl : `https://${brandUrl}`;
+      const inputUrl = scrapeInputUrl.startsWith('http') ? scrapeInputUrl : `https://${scrapeInputUrl}`;
       const u = new URL(inputUrl);
       const bareHost = u.hostname.replace(/^www\./, '');
       const candidates = [];
