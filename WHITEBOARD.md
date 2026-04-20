@@ -10,6 +10,35 @@
 
 ## Session — April 19–20, 2026
 
+### Authenticity Enricher — Corrections UX + Root-Cause Name Collision Fix (shipped all branches)
+- **Brian's report:** toggling away from Authenticity Enricher and back wiped all corrections he was entering. Additionally, an enriched brief for "Why Your Content Strategy Isn't Generating Pipeline" contained fabricated founder info — Forge was supposedly "founded in 2017 in Cambridge by Jim and Greg." These were two separate bugs that needed independent fixes.
+
+#### UX Fix — Correction form persistence + always-available access
+- **Three compounding UX problems:**
+  1. `manualInputs` and `showManualForm` were component-local state — unmounting the page wiped everything Brian typed.
+  2. Manual form only opened via `setShowManualForm(true)` inside the post-run handler (server returned `needsManualInput: true`). No way to reopen after selecting an existing brief from the dropdown.
+  3. Form was gated on `result.gaps.filter(g => g.severity === 'high').length > 0`. For hallucination cases (where enricher doesn't KNOW it got things wrong), there are no high-severity gaps — form would never show.
+- **Shipped:**
+  - `manualInputs` persists to localStorage keyed by brief ID (`forge_enricher_manual_<briefId>`). Corrections survive navigation, page refresh, and return-trips.
+  - New `Corrections` tab-button added to the tabs row — always visible when any brief is selected. Shows yellow badge with count of filled fields so users are nudged back when they have pending corrections.
+  - Form gate relaxed from `showManualForm && result && highGapsExist` to `showManualForm && result`. Gap fields still render conditionally inside, but the free-form "Corrections & Clarifications" textarea is always available.
+
+#### Root Cause Fix — Sonar name-collision contamination
+- **Investigation:** pulled the contaminated brief from DB. The AI didn't hallucinate — it identified a REAL different company called Forge.AI (founded 2017, Cambridge MA, financial data transformation for financial firms and government agencies, named experts Jim and Greg) and attributed their facts to Brian's Forge Intelligence. Classic name collision. Perplexity Sonar was given only `Research Forge Intelligence (forgeintelligence.ai)` with zero disambiguation context, so it pulled any company named "Forge" it could find.
+- **The Enricher actually caught the conflict downstream** and flagged it as "FOUNDING STORY CONFLICT — BLOCKING" in humanReviewItems. So no article was ever generated with the wrong data. But the contamination in the brief itself was a real pollution vector.
+- **Fix — 3 layers of defense:**
+  1. Load `settings.factualGround` EARLY (before the Sonar call). Previously it was only loaded hundreds of lines later during E-E-A-T scoring, too late to disambiguate the scrape.
+  2. Inject a disambiguation block into the Sonar prompt containing known founder name, founder title, company facts, founding story, what-we-do, what-we-don't-do. Sonar is explicitly instructed: "if data you find contradicts these, it belongs to a different company — return empty arrays."
+  3. Post-Sonar validation: extract 4-digit years from known factual ground vs. returned foundingStory. If there's no overlap, drop the foundingStory AND namedExperts (named experts tend to come from the same wrong-company source). Console-logs the drop with the year mismatch so it's debuggable.
+- **Why this matters beyond Forge Intelligence:** every customer brand with a generic-ish name is at risk for this same collision. "Apex Software" could get conflated with any of the dozen companies named Apex. "Nova Analytics" with any Nova. Factual Ground being required-ish (Brian prompts users to fill it in during onboarding) is what makes the disambiguation possible — without it the fix gracefully falls back to legacy behavior.
+- **Graceful degradation:** if a brand has no factualGround set, the disambiguation block is empty and Sonar behaves exactly as before. No regression risk for brands that haven't filled in their ground truth yet.
+
+#### Cleanup
+- Brian can now re-enter the "Why Your Content Strategy Isn't Generating Pipeline" brief, click Corrections, drop in the override ("founded 2025 by Brian Morgan, Portland, do NOT confuse with Forge.AI"), and re-enrich. The re-enrichment will also hit the fixed Sonar prompt so even without his correction, the disambiguation block should prevent Jim-and-Greg from reappearing on the next run.
+- Verified no published articles (5 total for Forge Intelligence brand) contain Cambridge/Jim/Greg/2017 — Compliance Gate held the line.
+- **Strategic note:** Forge.AI (Cambridge, 2017) is another entity to mentally track alongside the Atlanta LLC squatter. Different vertical (financial data transformation vs. B2B content marketing), so low trademark conflict risk — but worth knowing the name-collision landscape.
+
+
 ### LinkedIn Sync Wiped Manual Analytics — root cause + fix (shipped all branches)
 - **The bug:** Brian had been manually entering LinkedIn analytics (impressions/clicks) per article because LinkedIn Marketing Developer Platform (MDP) approval hasn't come through yet. He accidentally hit Sync. All 5 Forge Intelligence article analytics zeroed out at 21:01:31Z on 4/20/2026.
 - **Why it happened:** the LinkedIn sync at server.js:~8510 makes two API calls — `socialActions` (always works, returns reactions/comments/reposts) and `shareStatistics` (requires MDP, returns impressions/clicks). Without MDP, shareStatistics silently fails and leaves `impressions = 0, clicks = 0`. The upsert then ran `ON CONFLICT DO UPDATE SET impressions=EXCLUDED.impressions, clicks=EXCLUDED.clicks, ...` — unconditionally clobbering every field including zeros over manual entries.
