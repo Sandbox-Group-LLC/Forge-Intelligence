@@ -52,13 +52,5 @@
 
   .view-container {
     padding: 20px 16px 80px;
-    /* Skip the translateY portion of fadeIn on mobile — iOS Safari mid-scroll repaints with
-       transform animations cause sporadic card-clip glitches. Opacity-only fade is safe. */
-    animation: fadeInOpacityOnly 0.3s ease;
   }
-}
-
-@keyframes fadeInOpacityOnly {
-  from { opacity: 0; }
-  to { opacity: 1; }
 }
