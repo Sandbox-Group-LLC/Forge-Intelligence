@@ -353,8 +353,8 @@ function ContentGeneratorContent() {
         return (
           <div className="cg-batch-section">
             <div className="cg-batch-header">
-              <span className="cg-batch-label">Your recent batch</span>
-              <span className="cg-batch-sub">{batch.length} enriched {batch.length === 1 ? 'brief' : 'briefs'} ready to generate</span>
+              <span className="cg-batch-label">Most recent discovery session</span>
+              <span className="cg-batch-sub">{batch.length} {batch.length === 1 ? 'brief' : 'briefs'} from this batch · use the dropdown below to pick any enriched brief</span>
             </div>
             <div className="cg-batch-grid">
               {batch.map(b => (
