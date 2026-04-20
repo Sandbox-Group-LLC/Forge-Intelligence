@@ -6,6 +6,84 @@
 
 ---
 
+---
+
+## Session — April 19–20, 2026
+
+### businessProfile — Context Hub Opus Prompt (shipped all branches)
+- Added `businessProfile` block to Opus JSON schema: `whatTheyDo`, `productsOrServices`, `revenueModel`, `targetBuyer`, `companyScale`, `geography`
+- Tested on Public School: "Provides experiential marketing, branding, and social media services for premium consumer brands" — GEO topics shifted from streetwear/culture (client industries) to experiential production storytelling (actual business)
+- v3→v4 brain upgrade showed dramatically more accurate strategic recommendations
+- This was the missing piece that prevented Factual Ground from being necessary for basic business context
+
+### Model Economics — Multi-Model Architecture (shipped all branches)
+- Tested Mistral Large on content generation vs Claude Sonnet 4.6
+- Mistral: faster, good prose, reads like lead-gen content marketing. CTA-heavy closings.
+- Sonnet: slower, strategic depth, reads like a strategist wrote it. Earns the brand position.
+- **Decision:** Sonnet stays on content generation. Mistral Large deployed to email campaigns across all branches — right model for lead-gen writing.
+- Perplexity Sonar confirmed as live-web research layer (Context Hub competitor discovery, Enricher SME signals, GEO citation tracking)
+- Flux Schnell (fal.ai) confirmed for hero image generation
+
+### Enricher SSE Real-Time Progress (shipped all branches)
+- All 6 response paths converted from res.json() to SSE send() + res.end()
+- Progress events at each tool step with detail text
+- Topic banner shows which brief is being enriched
+- Stage detail text updates in real time
+- Critical lesson: fresh result path was still using res.json() after SSE headers — one orphaned call broke everything
+
+### Enricher UX Overhaul (shipped all branches)
+- Topic brief queue: shows ready-to-enrich briefs from GEO with one-click "Enrich" buttons
+- No more bouncing back to GEO to click "Enrich Now" on each brief individually
+- "Run Again" / "Force Fresh" buttons hidden when queue has items — queue IS the interface
+- Result tabs labeled with "Viewing enrichment: [title]" + dismiss button
+- Queue visible alongside cached results — not hidden behind stale data
+
+### Content Generator Pipeline Enforcement (shipped all branches)
+- Generate button requires enriched brief selection — no more free-topic generation
+- Brief dropdown always visible: "Select an enriched brief..." or "No enriched briefs — run Enricher first"
+- Topic input relabeled: "Optional: refine the angle within this brief"
+- Generated briefs filtered from batch cards + dropdown — no re-generating existing articles
+- Batch progress chips: generated articles clickable → navigates to Compliance Gate
+- Batch cards + footer show topic name instead of H1
+
+### GEO Opportunities — 24h Expiry (shipped all branches)
+- Removed unmount mark-ignored handler — was nuking all opportunities when user navigated away
+- Server-side 24h expiry: discovered opportunities auto-expire on next page load
+- Only marks ignored if user actually cherry-picked (briefed/backlogged) at least one
+- Tooltip updated: "Unselected topics expire after 24 hours"
+
+### Image Generation Prompt (shipped all branches)
+- Stripped hardcoded aesthetic bias ("Bloomberg Businessweek", "Monocle", neutral palette, architectural detail)
+- Only technical constraints remain: photorealistic, no cartoons, no surrealism, no AI artifacts
+- Brand's visual style, tone, and color palette drive everything else
+
+### GEO Stage Timers (shipped all branches)
+- Spread fake timers to match real run times: [5s, 12s, 15s, 10s] = 42s total
+- Previous: [1.5s, 3s, 3.5s, 2.5s] = 10.5s — stage 5 froze for 40+ seconds
+
+### Brand Intelligence — Strategy Branch Only
+- Restructured Competitive Intel page → Brand Intelligence with 6 tabs
+- Gap Map tab fully wired: SSE progress, expand/collapse cards, triple-sourced evidence, board implication callout
+- Sidebar renamed to "Brand Intelligence", moved below Performance
+- Removed from production/main/Intel — strategy-only until ready
+- Gap Map endpoint: aggregates gapsByCluster + discoveredCompetitors + competitive_intelligence
+
+### Infrastructure
+- GTM Web Container: GTM-5SH7Q5X4 (installed on site)
+- GTM Server Container: GTM-N3W38S7S (Cloud Run preview server at forgeintelligencess-410491316773.us-west1.run.app)
+- GA4: G-XVQQJRKZMS (installed on site)
+- /welcome purchase confirmation page: fires Reddit conversion, auto-redirects to app after 3s
+- Intel generated_content table created in isolated DB
+- brand_intelligence table created (dev + prod)
+- lucide-react added to package.json (was missing, relying on build cache)
+- All 4 branches synced: main=production=Intel, strategy differs only on Brand Intelligence files
+
+### Stale Data Cleanups
+- Public School: nuked all pre-v4 GEO opps, topic briefs, enriched briefs, generated content
+- Kept 4 v4 quick win opportunities
+- Cleared orphaned publishing queue entries
+
+
 ## Session — April 12, 2026
 
 
