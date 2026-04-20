@@ -8834,6 +8834,20 @@ app.get('/api/analytics/dashboard/:brandProfileId', requireAuth, async (req, res
     const safeId = brandProfileId.replace(/-/g, '_');
 
     // Totals
+    // GSC math bug fix: for channel='gsc', the engagement_rate column stores search-ranking position
+    // (schema overload — see sync-gsc handler). Simple AVG(position) gives equal weight to a page with
+    // 1 impression at rank #50 and a page with 10,000 impressions at rank #3 — wildly overstating
+    // average rank. Same problem for AVG(ctr). Google Search Console's own dashboard uses
+    // impression-weighted math: SUM(metric * impressions) / SUM(impressions). Branch here so GSC
+    // matches what Brian sees in GSC directly; other channels keep their existing behavior.
+    const isGsc = channel === 'gsc';
+    const ctrExpr = isGsc
+      ? `CASE WHEN COALESCE(SUM(impressions),0) > 0 THEN SUM(clicks)::float * 100.0 / SUM(impressions) ELSE 0 END`
+      : `COALESCE(AVG(NULLIF(ctr,0)),0)`;
+    const engExpr = isGsc
+      ? `CASE WHEN COALESCE(SUM(impressions),0) > 0 THEN SUM(engagement_rate * impressions)::float / SUM(impressions) ELSE 0 END`
+      : `COALESCE(AVG(NULLIF(engagement_rate,0)),0)`;
+
     const totals = await pool.query(
       `SELECT
          COUNT(*) as total_posts,
@@ -8842,8 +8856,8 @@ app.get('/api/analytics/dashboard/:brandProfileId', requireAuth, async (req, res
          COALESCE(SUM(reactions),0) as total_reactions,
          COALESCE(SUM(comments),0) as total_comments,
          COALESCE(SUM(reposts),0) as total_reposts,
-         COALESCE(AVG(NULLIF(ctr,0)),0) as avg_ctr,
-         COALESCE(AVG(NULLIF(engagement_rate,0)),0) as avg_engagement_rate,
+         ${ctrExpr} as avg_ctr,
+         ${engExpr} as avg_engagement_rate,
          MAX(synced_at) as last_synced
        FROM content_analytics
        WHERE brand_profile_id=$1 AND channel=$2`,
