@@ -10,6 +10,19 @@
 
 ## Session — April 19–20, 2026
 
+### Rendering Artifacts on GEO Strategist — Multi-fix (shipped all branches)
+- Brian reported strange rendering on /app/geo-strategist: duplicate "Sandbox-XM" labels, a ghost overlay on a card, and large empty vertical gaps between cards (both mobile + tablet).
+- Investigation: data was clean (all 12 topicalAuthorityMap items had topic + coverage + priority + citationProbability populated). Not a data issue. Three separate UI causes identified:
+
+1. **Duplicate brand label:** TopBar rendered `topbar-brand-pill` unconditionally alongside the super-admin brand switcher. Both showed the same brand name. Fix: hide the pill when `allBrands.length > 0` (switcher present). Customer (non-super-admin) view is unchanged — they never had `allBrands`, so they still see the pill. Version indicator preserved via a small text tag next to the title when on Brand Profile.
+
+2. **Empty grid holes:** `.geo-grid` used `auto-fill` which creates empty tracks when items don't fill all columns, and default `row` flow which stops placing items when it hits a row with variable heights. Fix: switched to `auto-fit` (collapses empty tracks) + `grid-auto-flow: row dense` (back-fills gaps with smaller items). Also added `align-items: stretch` so cards in the same row match heights visually.
+
+3. **iOS Safari mid-scroll content clipping:** `.view-container` had `animation: fadeIn 0.3s ease` with `transform: translateY(8px)`. On iOS Safari, transform animations during scroll can cause sporadic content-clip repaint glitches — a card's internal content visibly cuts mid-paragraph with no overflow:hidden anywhere in CSS. Fix: swapped to `fadeInOpacityOnly` keyframe on mobile (≤768px) — same fade, no transform. Defensive `min-width: 0` + `word-break: break-word` added to `.geo-card` as well.
+
+- Ghost overlay in Brian's Image 1 was likely one of: (a) the minimized OnboardingBot panel (fixed position, sticks to viewport mid-scroll and overlays whatever's underneath — legitimate behavior, not a bug), or (b) the priority-medium border-left edge anti-aliasing on iOS. Not addressed in this pass — waiting for Brian to confirm it persists after the layout fixes ship.
+
+
 ### Scrape URL Override (shipped all branches)
 - Why: brands often use masked subdomains, vanity domains, or reverse proxies where the public `brand_url` doesn't point directly at the real origin. For sandbox-xm.com specifically, the public domain is a Render custom-domain alias for `sandbox-xm.forge-os.ai` — a cost-saving wildcard setup. Previously the scraper just failed on those brands and we'd fall back to Sonar-only context.
 - New field: `settings.scrapeUrlOverride` (JSONB) in `brand_profiles`. If set, Context Hub Tool 1.5 uses it as the actual fetch target instead of `brand_url`.
