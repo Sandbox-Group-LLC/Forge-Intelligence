@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useAuth } from '@clerk/clerk-react';
 import { AppShell } from '../layouts/AppShell';
 import { useApp } from '../context/AppContext';
 import './GeoStrategistPage.css';
@@ -76,6 +77,7 @@ const STAGES = [
 
 function GeoStrategistContent() {
   const { setCurrentView, historyEntries, activeBrand, authToken } = useApp();
+  const { getToken } = useAuth();
   const [selectedBrainId, setSelectedBrainId] = useState('');
   const [isRunning, setIsRunning] = useState(false);
   const [currentStage, setCurrentStage] = useState(0);
@@ -141,15 +143,35 @@ function GeoStrategistContent() {
 
   // ── Build Briefs action — calls Stage 2.1 on selected opportunities ──────
   const buildBriefsForSelected = async () => {
-    if (!brandProfileId || selectedOppIds.size === 0 || !authToken) return;
+    if (!brandProfileId || selectedOppIds.size === 0) return;
     setBuildingBriefs(true);
     setBriefBuildError('');
     try {
+      // JWT chars only (base64url + dots). If authToken fails this check (empty, mid-refresh,
+      // or somehow corrupted), pull a fresh token directly from Clerk. Safari throws
+      // "The string did not match the expected pattern" when the Authorization header
+      // value contains any invalid char, so we validate before using.
+      const jwtOk = (t: string | null | undefined): boolean => !!t && /^[A-Za-z0-9_\-.]+$/.test(t);
+      let token: string | null = jwtOk(authToken) ? authToken : null;
+      if (!token) {
+        try { token = await getToken({ template: 'jwt-template-600' }); } catch { token = null; }
+      }
+      if (!jwtOk(token)) {
+        throw new Error('Authentication is still initializing — give it a moment and tap Build again.');
+      }
+
+      // Ensure opportunityIds is a clean string array (defensive against stale state edge cases)
+      const ids = Array.from(selectedOppIds).filter(id => typeof id === 'string' && id.length > 0);
+      if (!ids.length) throw new Error('No valid opportunities selected.');
+
       const r = await fetch('/api/geo/opportunities/build-briefs', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
-        body: JSON.stringify({ brandProfileId, opportunityIds: Array.from(selectedOppIds) })
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ brandProfileId, opportunityIds: ids })
       });
+      if (!r.ok) {
+        throw new Error(`Request failed (${r.status}${r.statusText ? ' ' + r.statusText : ''}) — try fewer topics per batch, or retry in a moment.`);
+      }
       const d = await r.json();
       if (!d.success) throw new Error(d.error || 'Brief build failed');
       await loadOpportunities(brandProfileId);
@@ -157,7 +179,9 @@ function GeoStrategistContent() {
       setSelectedOppIds(new Set());
       setActiveTab('brief');
     } catch(e: any) {
-      setBriefBuildError(e.message);
+      // Preserve the full error object + stack in console so a repeat is diagnosable
+      console.error('[buildBriefsForSelected] failed:', e, { name: e?.name, message: e?.message });
+      setBriefBuildError(e?.message || 'Brief build failed — check console for details.');
     } finally {
       setBuildingBriefs(false);
     }
