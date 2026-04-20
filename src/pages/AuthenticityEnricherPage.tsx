@@ -163,7 +163,7 @@ function AuthenticityEnricherContent() {
   const [autoFiredFor, setAutoFiredFor] = useState<string | null>(null);
   const [topicBriefs, setTopicBriefs] = useState<{id: string; topic: string; quickWin: boolean; avgScore: number; status: string}[]>([]);
   const [enrichedBriefs, setEnrichedBriefs] = useState<EnrichResult[]>([]);
-  const [publishedBriefIds, setPublishedBriefIds] = useState<Set<string>>(new Set());
+  const [briefsWithArticles, setBriefsWithArticles] = useState<Set<string>>(new Set());
   useEffect(() => {
     if (!selectedBrainId || !authToken || isRunning || result) return;
     const incomingTopicBriefId = new URLSearchParams(window.location.search).get('topicBriefId');
@@ -183,9 +183,12 @@ function AuthenticityEnricherContent() {
       .then(r => r.json())
       .then(d => {
         if (d.success) {
-          const published = new Set<string>();
-          (d.briefs || []).forEach((b: any) => { if (b.hasArticle) published.add(b.id); });
-          setPublishedBriefIds(published);
+          // Track briefs that have already been run through Content Generator
+          // (they have an article) — these are filtered out of the Enricher dropdown
+          // since Enricher is for briefs that haven't been turned into content yet.
+          const withArticles = new Set<string>();
+          (d.briefs || []).forEach((b: any) => { if (b.hasArticle) withArticles.add(b.id); });
+          setBriefsWithArticles(withArticles);
         }
       })
       .catch(() => {});
@@ -401,7 +404,7 @@ function AuthenticityEnricherContent() {
               }}
             >
               <option value="">Select an enriched brief to view...</option>
-              {enrichedBriefs.filter(b => b.id && !publishedBriefIds.has(b.id)).map(b => (
+              {enrichedBriefs.filter(b => b.id && !briefsWithArticles.has(b.id)).map(b => (
                 <option key={b.id} value={b.id}>
                   {(b as any).enrichedTitle || (b as any).enrichedH1 || b.brandName}
                 </option>
