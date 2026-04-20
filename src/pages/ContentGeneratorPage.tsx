@@ -338,67 +338,75 @@ function ContentGeneratorContent() {
         </div>
       </div>
 
-      {!isRunning && !article && briefs.length > 0 && (() => {
-        // Current batch = all enriched briefs in the same discovery session as the most recent.
-        // Older briefs land below a divider in the dropdown.
-        const latestSession = briefs.find(b => b.discoverySessionId)?.discoverySessionId;
-        // Batch cards = actively selectable work only.
-        // Published articles are DONE — they belong in the progress footer, not the selection grid.
-        const batch = latestSession
-          ? briefs.filter(b => b.discoverySessionId === latestSession && !b.hasArticle)
-          : briefs.filter(b => !b.hasArticle).slice(0, 1);
-        if (!batch.length) return null;
-        // Only hide if the batch has just 1 legacy non-topic-brief enrichment (pre-cherry-pick behavior)
-        if (batch.length === 1 && !batch[0].topic && !batch[0].articleTitle) return null;
-        return (
-          <div className="cg-batch-section">
-            <div className="cg-batch-header">
-              <span className="cg-batch-label">Most recent discovery session</span>
-              <span className="cg-batch-sub">{batch.length} {batch.length === 1 ? 'brief' : 'briefs'} from this batch · use the dropdown below to pick any enriched brief</span>
-            </div>
-            <div className="cg-batch-grid">
-              {batch.map(b => (
-                <button
-                  key={b.id}
-                  type="button"
-                  className={`cg-batch-card ${selectedBriefId === b.id ? 'selected' : ''}`}
-                  onClick={() => setSelectedBriefId(b.id)}
-                >
-                  <div className="cg-batch-card-top">
-                    {b.quickWin && <span className="cg-batch-qw">⚡ Quick Win</span>}
-                    <span className="cg-batch-confidence">Confidence {b.confidenceScore}</span>
-                  </div>
-                  <div className="cg-batch-topic">{b.topic || b.enrichedTitle || b.enrichedH1 || b.articleTitle || b.brandName}</div>
-                  <div className="cg-batch-date">{new Date(b.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-        );
-      })()}
-
       {!isRunning && !article && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <div className="geo-input-bar">
-            <div className="geo-select-wrap" style={{ flex: 1, minWidth: '220px' }}>
-              <select className="geo-select" value={selectedBrainId} onChange={e => setSelectedBrainId(e.target.value)}>
-                <option value="">Select a Brain...</option>
-                {brains.map(b => <option key={b.id} value={b.id}>{b.brandName} — {b.brandUrl}</option>)}
-              </select>
-            </div>
-            <div className="geo-select-wrap" style={{ flex: 1, minWidth: '220px' }}>
-                <select className="geo-select" value={selectedBriefId} onChange={e => setSelectedBriefId(e.target.value)}>
-                  <option value="">{briefs.length > 0 ? 'Select an enriched brief...' : 'No enriched briefs — run Enricher first'}</option>
-                  {briefs.filter(b => !b.hasArticle).map(b => {
-                    const displayTitle = b.enrichedH1 || b.enrichedTitle || b.topic;
-                    const label = displayTitle
-                      ? `${displayTitle}${b.quickWin ? ' ⚡' : ''} — ${new Date(b.createdAt).toLocaleDateString()}`
-                      : `${b.brandName} — ${new Date(b.createdAt).toLocaleDateString()} (confidence: ${b.confidenceScore})`;
-                    return <option key={b.id} value={b.id}>{label}</option>;
-                  })}
+          {/* Brand (Brain) selector — only needed for users with multiple brands */}
+          {brains.length > 1 && (
+            <div className="geo-input-bar">
+              <div className="geo-select-wrap" style={{ flex: 1 }}>
+                <select className="geo-select" value={selectedBrainId} onChange={e => setSelectedBrainId(e.target.value)}>
+                  <option value="">Select a Brain...</option>
+                  {brains.map(b => <option key={b.id} value={b.id}>{b.brandName} — {b.brandUrl}</option>)}
                 </select>
               </div>
-          </div>
+            </div>
+          )}
+
+          {/* Unified enriched-brief selection — replaces the old dual surface (batch cards + dropdown).
+              All ungenerated enriched briefs render as cards, sorted newest-first. The most recent
+              discovery session gets a subtle "Latest" chip on its cards for visual grouping without
+              needing a separate batch section. */}
+          {briefs.length === 0 ? (
+            <div className="cg-batch-section" style={{ textAlign: 'center', padding: '32px 24px' }}>
+              <div style={{ color: 'var(--color-text-muted, #94a3b8)', fontSize: 14, marginBottom: 6 }}>No enriched briefs yet</div>
+              <div style={{ color: 'var(--color-text-secondary, #475569)', fontSize: 13 }}>Run the Authenticity Enricher on a GEO topic brief to generate one.</div>
+            </div>
+          ) : (() => {
+            // All ungenerated briefs, newest first
+            const available = briefs
+              .filter(b => !b.hasArticle)
+              .slice()
+              .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+            if (available.length === 0) {
+              return (
+                <div className="cg-batch-section" style={{ textAlign: 'center', padding: '24px' }}>
+                  <div style={{ color: 'var(--color-text-muted, #94a3b8)', fontSize: 14 }}>All enriched briefs have been generated into articles. Run Enricher on more topics to queue new work.</div>
+                </div>
+              );
+            }
+            // Identify the most recent discovery session so we can visually flag its cards
+            const latestSession = available.find(b => b.discoverySessionId)?.discoverySessionId;
+            return (
+              <div className="cg-batch-section">
+                <div className="cg-batch-header">
+                  <span className="cg-batch-label">Enriched briefs ready to generate</span>
+                  <span className="cg-batch-sub">{available.length} {available.length === 1 ? 'brief' : 'briefs'} · newest first</span>
+                </div>
+                <div className="cg-batch-grid">
+                  {available.map(b => {
+                    const isLatest = latestSession && b.discoverySessionId === latestSession;
+                    return (
+                      <button
+                        key={b.id}
+                        type="button"
+                        className={`cg-batch-card ${selectedBriefId === b.id ? 'selected' : ''}`}
+                        onClick={() => setSelectedBriefId(b.id)}
+                      >
+                        <div className="cg-batch-card-top">
+                          {b.quickWin && <span className="cg-batch-qw">⚡ Quick Win</span>}
+                          {isLatest && !b.quickWin && <span className="cg-batch-qw" style={{ background: '#DBEAFE', color: '#1E40AF' }}>Latest</span>}
+                          <span className="cg-batch-confidence">Confidence {b.confidenceScore}</span>
+                        </div>
+                        <div className="cg-batch-topic">{b.enrichedH1 || b.enrichedTitle || b.topic || b.articleTitle || b.brandName}</div>
+                        <div className="cg-batch-date">{new Date(b.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
           <div className="geo-input-bar">
           <div style={{ flex: 1 }}>
             <input
