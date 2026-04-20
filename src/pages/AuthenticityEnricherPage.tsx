@@ -125,6 +125,32 @@ function AuthenticityEnricherContent() {
   const [enrichTopic, setEnrichTopic] = useState<string | null>(null);
   const [manualInputs, setManualInputs] = useState<Record<string, string>>({});
   const [showManualForm, setShowManualForm] = useState(false);
+
+  // Persist manualInputs to localStorage keyed by brief id — survives navigation away/back.
+  // Previously these were plain component state and any toggle to another view wiped every field
+  // the user was typing. That was especially painful for hallucination corrections (e.g. 'no, we
+  // are NOT founded by Jim and Greg in Cambridge 2017') because the user usually needs to look up
+  // facts across tabs, and each trip back meant retyping everything.
+  const MANUAL_INPUTS_KEY = (briefId: string) => `forge_enricher_manual_${briefId}`;
+
+  // Load persisted corrections whenever the selected brief changes
+  useEffect(() => {
+    if (!result?.id) { setManualInputs({}); return; }
+    try {
+      const raw = localStorage.getItem(MANUAL_INPUTS_KEY(result.id));
+      setManualInputs(raw ? JSON.parse(raw) : {});
+    } catch { setManualInputs({}); }
+  }, [result?.id]);
+
+  // Save on every change
+  useEffect(() => {
+    if (!result?.id) return;
+    const hasAny = Object.keys(manualInputs).some(k => manualInputs[k]);
+    try {
+      if (hasAny) localStorage.setItem(MANUAL_INPUTS_KEY(result.id), JSON.stringify(manualInputs));
+      else localStorage.removeItem(MANUAL_INPUTS_KEY(result.id));
+    } catch { /* quota exceeded — silent */ }
+  }, [manualInputs, result?.id]);
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
 
   const { setCurrentView, historyEntries, activeBrand, authToken } = useApp();
@@ -439,23 +465,26 @@ function AuthenticityEnricherContent() {
 
       {error && <div className="geo-error">{error}</div>}
 
-      {/* Manual Input Prompt Card */}
-      {showManualForm && result && result.gaps && result.gaps.filter(g => g.severity === 'high').length > 0 && (
+      {/* Manual Input Prompt Card — shows when user clicks Corrections button OR after fresh run with gaps.
+          Corrections textarea is always rendered so users can override AI hallucinations even when the
+          enricher found no explicit gaps. Gap fields render conditionally below. */}
+      {showManualForm && result && (
         <div style={{ background: '#F5B94208', border: '1px solid #F5B94230', borderRadius: '12px', padding: '20px 24px', marginBottom: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                 <AlertTriangle size={16} color="#F5B942" />
-                <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-text-primary, #1e293b)' }}>Got 2 minutes? Your brief will be significantly stronger.</span>
+                <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-text-primary, #1e293b)' }}>Correct or strengthen this brief.</span>
               </div>
               <p style={{ fontSize: '13px', color: 'var(--color-text-muted, #94a3b8)', margin: 0 }}>
-                We couldn't find enough E-E-A-T signals online. Drop in what you have — we'll weave it all in automatically.
+                Fill in missing signals or fix anything the AI got wrong — we'll re-run with your inputs and weave them in automatically.
               </p>
             </div>
             <button onClick={() => setShowManualForm(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted, #94a3b8)', padding: '4px' }}>
               <X size={16} />
             </button>
           </div>
+          {result.gaps && result.gaps.filter(g => g.severity === 'high').length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
             {result.gaps.filter(g => g.severity === 'high').map((gap, i) => {
               const Icon = GAP_ICONS[gap.gapType] || FileText;
@@ -495,6 +524,7 @@ function AuthenticityEnricherContent() {
               );
             })}
           </div>
+          )}
           <div style={{ background: 'var(--color-bg-elevated, #f4f7ff)', borderRadius: '8px', padding: '14px', marginTop: '12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
               <AlertTriangle size={14} color="#EF4444" />
@@ -543,6 +573,22 @@ function AuthenticityEnricherContent() {
                 {tab.label}
               </button>
             ))}
+            {/* Corrections is a non-state action button — it opens the manual-inputs form rather than switching tab content.
+                Styled like a tab for consistency but visually distinct via accent color. Badge shows when
+                user has pending un-submitted corrections so they're nudged back. */}
+            <button
+              className="geo-tab"
+              onClick={() => setShowManualForm(v => !v)}
+              style={{ marginLeft: 'auto', color: '#F5B942', borderColor: '#F5B94230' }}
+              title="Open the corrections form to fix AI errors or add missing signals"
+            >
+              {showManualForm ? 'Hide Corrections' : 'Corrections'}
+              {Object.keys(manualInputs).some(k => manualInputs[k]) && (
+                <span style={{ marginLeft: 6, background: '#F5B942', color: '#fff', borderRadius: 10, padding: '1px 7px', fontSize: 10, fontWeight: 700 }}>
+                  {Object.keys(manualInputs).filter(k => manualInputs[k]).length}
+                </span>
+              )}
+            </button>
           </div>
 
           {/* E-E-A-T Scores Tab */}
