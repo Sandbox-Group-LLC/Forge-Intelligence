@@ -3270,6 +3270,39 @@ function normalizeGeoData(briefData, topicalMap, geoOpportunities, entitySchema,
 // ── GEO Strategist API (Stage 2) ──────────────────────────────────────────────
 
 // Extracts the first complete JSON object or array from a string — handles trailing text/markdown
+// ── Strip LLM scaffolding artifacts from article section bodies ──────────────
+// Enrichment briefs give the writer bracketed placeholders like "[SME Hook: ...]",
+// "[CTA: ...]", "[Author Quote: ...]" that the model is supposed to expand into
+// prose or drop. It sometimes copies them verbatim, and they leak past human
+// compliance review. This is the final safety net — called at every article
+// write path (content-gen, campaign, compliance approve, content-import).
+function stripScaffoldingArtifacts(article) {
+  if (!article || typeof article !== 'object' || !Array.isArray(article.sections)) return article;
+
+  // Inline: keyword-gated bracketed instructions (safe — won't nuke legit refs like [1] or [Appendix A])
+  const INLINE_RX = /\[(?:SME[\s-]?Hook|Author[\s-]?(?:Quote|Citation|Bio)|Writer[\s-]?Note|(?:Note|Editor[\s-]?Note)[\s-]?to[\s-]?(?:writer|editor|self)?|Insert|TODO|Placeholder|NEEDS[\s-]?CITATION|CITATION|SOURCE|CTA|Pull[\s-]?Quote|Hook|Quote|Link|Image|Tip|Callout|Stat|Fact[\s-]?Check)\s*[:\s][^\]]*\]/gi;
+  // Standalone paragraph: entire paragraph is just a bracketed instruction with a colon
+  // (e.g. "[Something: details]" alone on its own line — the scaffolding signature)
+  const STANDALONE_COLON_BRACKET_RX = /^\s*\[[^\]]*:[^\]]*\]\s*$/;
+
+  const cleanBody = (text) => {
+    if (!text || typeof text !== 'string') return text;
+    const parts = text.split(/\n\s*\n/);
+    const filtered = parts
+      .map(p => p.replace(INLINE_RX, '').replace(/[ \t]{2,}/g, ' ').trim())
+      .filter(p => p && !STANDALONE_COLON_BRACKET_RX.test(p));
+    return filtered.join('\n\n').trim();
+  };
+
+  article.sections = article.sections.map(s => {
+    const updated = { ...s };
+    if (typeof s.body === 'string') updated.body = cleanBody(s.body);
+    if (typeof s.content === 'string') updated.content = cleanBody(s.content);
+    return updated;
+  });
+  return article;
+}
+
 function extractJSON(text, type = 'object') {
   const open = type === 'array' ? '[' : '{';
   const close = type === 'array' ? ']' : '}';
@@ -4798,15 +4831,8 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
       return res.end();
     }
 
-    // Strip AI artifact placeholders from section bodies before saving
-    if (parsed.sections) {
-      const artifactRx = /\[NEEDS CITATION:[^\]]*\]|\[CITATION:[^\]]*\]|\[SOURCE:[^\]]*\]/gi;
-      parsed.sections = parsed.sections.map((s) => ({
-        ...s,
-        body: s.body ? s.body.replace(artifactRx, '').trim() : s.body,
-        content: s.content ? s.content.replace(artifactRx, '').trim() : s.content,
-      }));
-    }
+    // Strip LLM scaffolding artifacts (SME Hook, CTA, TODO, NEEDS CITATION, etc.)
+    parsed = stripScaffoldingArtifacts(parsed);
 
     const tableName = await ensureGeneratedContentTable(brandProfileId);
     const contentInsert = await pool.query(
@@ -5284,6 +5310,7 @@ Return ONLY valid JSON matching the content generator output format.`;
       // This is what connects campaign articles to publishing_queue, UTM tracking, and analytics.
       try {
         const contentTableName = await ensureGeneratedContentTable(campaign.brand_profile_id);
+        parsed = stripScaffoldingArtifacts(parsed);
         const insertedContent = await pool.query(
           `INSERT INTO ${contentTableName}
             (brand_profile_id, title, article_json, overall_confidence, status, campaign_id, campaign_article_index, created_at, updated_at)
@@ -5818,6 +5845,9 @@ app.post('/api/compliance/approve', requireAuth, async (req, res) => {
     // Handle red section decisions
     const finalStatus = reviewMode === 'auto-ship' ? 'approved' :
       decisions && Object.values(decisions).some(d => d === 'rejected') ? 'rejected' : 'approved';
+
+    // Final safety net — strip any LLM scaffolding that slipped past human review
+    articleJson = stripScaffoldingArtifacts(articleJson);
 
     await pool.query(
       `UPDATE ${tableName} SET article_json = $1, compliance_status = $2, review_mode = $3, reviewed_at = NOW(), updated_at = NOW() WHERE id = $4`,
@@ -10258,14 +10288,15 @@ Return ONLY valid JSON:
     const parsed = JSON.parse(auditText.replace(/```json|```/g, '').trim());
 
     // 5. Insert into generated_content as 'imported' status
+    const cleanedParsed = stripScaffoldingArtifacts(parsed);
     const insertRes = await pool.query(
       `INSERT INTO ${tableName} (brand_profile_id, title, article_json, overall_confidence, brain_match_score, status, review_mode, compliance_status)
        VALUES ($1, $2, $3, $4, $5, 'staged', 'approve-to-ship', 'pending') RETURNING id`,
       [
         brandProfileId,
-        parsed.title || sourceTitle || 'Imported Article',
+        cleanedParsed.title || sourceTitle || 'Imported Article',
         JSON.stringify({
-          ...parsed,
+          ...cleanedParsed,
           importedFrom: url || 'manual',
           importedAt: new Date().toISOString()
         }),
