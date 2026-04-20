@@ -10,6 +10,20 @@
 
 ## Session — April 19–20, 2026
 
+### GEO Strategist — "The string did not match the expected pattern" hardening (shipped all branches)
+- Brian reported this error when building a batch of briefs. Classic Safari/WebKit DOMException — almost always from the `fetch()` header value validator rejecting a control char or non-ASCII byte in the `Authorization: Bearer <token>` value.
+- Server logs for the past 6h had zero hits for STAGE-2.1, build-briefs, or "did not match" — confirming the error was client-side and the request never reached the server. (One successful 65s/223KB build-briefs request was present from Brian's iPhone; that was a different attempt that worked.)
+- Root cause hypothesis: `authToken` state in AppContext refreshes every 55s from Clerk. If Build Briefs is tapped during a mid-refresh window, during a Clerk sign-out/sign-in transition, or after a tab wake, `authToken` can briefly be empty/malformed. Safari validates the Authorization header and throws before sending the request.
+- Hardening in `buildBriefsForSelected`:
+  - JWT shape validator: `/^[A-Za-z0-9_\-.]+$/` — rejects anything that isn't base64url + dots before it gets into the header
+  - Fallback to fresh `getToken({ template: 'jwt-template-600' })` if the state token fails validation
+  - User-friendly error if token still isn't ready ("Authentication is still initializing — give it a moment and tap Build again.")
+  - Defensive filter on `opportunityIds` array (string + non-empty only)
+  - `r.ok` check with HTTP status context so 413/502/504 surface meaningfully instead of falling into `r.json()` and blowing up
+  - `console.error` with full error object + name + message so next occurrence has a stack trace
+- Left intact: `loadOpportunities` and `loadTopicBriefs` still use the state token — they have silent catch blocks, so a transient failure there is harmless.
+
+
 ### Rendering Artifacts on GEO Strategist — Multi-fix (shipped all branches)
 - Brian reported strange rendering on /app/geo-strategist: duplicate "Sandbox-XM" labels, a ghost overlay on a card, and large empty vertical gaps between cards (both mobile + tablet).
 - Investigation: data was clean (all 12 topicalAuthorityMap items had topic + coverage + priority + citationProbability populated). Not a data issue. Three separate UI causes identified:
