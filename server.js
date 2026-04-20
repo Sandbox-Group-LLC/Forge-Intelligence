@@ -783,7 +783,34 @@ initDB().catch(err => console.error('DB init error:', err));
 
 app.use(express.json());
 
-// ── Shared: Build brand-voice-aware Flux image prompt ────────────────────────
+// ── Hero image generation — Ideogram v2 via fal.ai ───────────────────────────
+// Swapped from Flux Schnell (4-step distilled, plastic skin, "Kim K" vibe on humans)
+// to Ideogram v2 (realistic style, built-in MagicPrompt expansion, reliable faces/hands).
+// Cost: ~$0.08/image vs $0.003 prior. Quality difference is enormous for B2B marketing imagery.
+const HERO_IMAGE_NEGATIVE_PROMPT = "airbrushed skin, smooth skin, plastic skin, waxy skin, overproduced, HDR, oversaturated, hyperreal, AI art, digital painting, 3D render, cartoon, illustration, distorted hands, extra fingers, malformed fingers, mutated anatomy, stock photo, generic corporate stock image, blurry faces in background blobbing together, text artifacts";
+
+async function generateHeroImage(prompt) {
+  const falRes = await fetch('https://fal.run/fal-ai/ideogram/v2', {
+    method: 'POST',
+    headers: { 'Authorization': `Key ${process.env.FAL_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      prompt,
+      aspect_ratio: '16:9',
+      style: 'realistic',
+      expand_prompt: true,            // Ideogram's MagicPrompt — expands our terse prompt into a richer one before generation
+      negative_prompt: HERO_IMAGE_NEGATIVE_PROMPT,
+      num_images: 1
+    })
+  });
+  if (!falRes.ok) throw new Error(`fal.ai ${falRes.status}: ${await falRes.text()}`);
+  const falData = await falRes.json();
+  const imageUrl = falData?.images?.[0]?.url;
+  if (!imageUrl) throw new Error('No image URL returned from fal.ai');
+  return imageUrl;
+}
+
+
+// ── Shared: Build brand-voice-aware image prompt ─────────────────────────────
 async function buildImagePrompt(title, voiceProfile = {}, firstBody = '') {
   const brandName = voiceProfile.brand_name || '';
   // tone: handle both snake_case (legacy) and camelCase (Context Agent output)
@@ -812,34 +839,30 @@ async function buildImagePrompt(title, voiceProfile = {}, firstBody = '') {
   const hasBrandVisual = !!(visualStyle || accentColor);
 
   const imagePromptInstruction = hasBrandVisual
-    ? `Write a single-sentence Flux image generation prompt for an article hero image that reflects this brand's visual identity and the article topic.
+    ? `Write a single-sentence image generation prompt for an article hero image that reflects this brand's visual identity and the article topic.
 
 Article title: "${title}"
 ${brandContext ? brandContext + '\n' : ''}${bodySnippet ? 'Article context: ' + bodySnippet : ''}
 
 Rules:
-- Let the brand's visual style, tone, and color palette drive the entire aesthetic
-- Photorealistic only — no illustrations, cartoons, animations, or 3D renders
-- No cartoon-looking or distorted humans
-- No surrealist compositions, impossible physics, or floating objects
-- No AI art signatures: hyperreal skin textures, metallic liquids, abstract blob shapes
-- NEVER interpret the brand name literally (e.g. 'Forge' is software, not a blacksmith)
-- 1 sentence only, no explanation, no quotes
-
-Output only the prompt.`
-    : `Write a single-sentence Flux image generation prompt for an article hero image.
+- One sentence. Describe the concrete scene — what's happening, who is in it (if anyone), where, what the mood is.
+- Editorial/documentary photography feel: natural available light, real moment, candid — not posed. If humans are present, describe what they are doing, not how they look.
+- Let the brand's visual style, tone, and color palette shape the aesthetic.
+- Avoid words that signal AI-generated stock imagery: "photorealistic", "professional", "polished", "corporate", "stock", "perfect", "high-quality". Use concrete sensory details instead.
+- No illustrations, 3D renders, cartoons, or surrealism.
+- NEVER interpret the brand name literally (e.g. 'Forge' is software, not a blacksmith).
+- Output only the prompt. No quotes, no preamble, no explanation.`
+    : `Write a single-sentence image generation prompt for an article hero image.
 
 Article title: "${title}"
 ${bodySnippet ? 'Article context: ' + bodySnippet : ''}
 
 Rules:
-- Photorealistic only — no illustrations, cartoons, animations, or 3D renders
-- No cartoon-looking or distorted humans
-- No surrealist compositions, impossible physics, or floating objects
-- No AI art signatures: hyperreal skin textures, metallic liquids, abstract blob shapes
-- 1 sentence only, no explanation, no quotes
-
-Output only the prompt.`;
+- One sentence. Describe the concrete scene — what's happening, who is in it (if anyone), where, what the mood is.
+- Editorial/documentary photography feel: natural available light, real moment, candid — not posed. If humans are present, describe what they are doing, not how they look.
+- Avoid words that signal AI-generated stock imagery: "photorealistic", "professional", "polished", "corporate", "stock", "perfect", "high-quality". Use concrete sensory details instead.
+- No illustrations, 3D renders, cartoons, or surrealism.
+- Output only the prompt. No quotes, no preamble, no explanation.`;
 
   const res = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
@@ -849,7 +872,7 @@ Output only the prompt.`;
 
   return res.content[0]?.type === 'text'
     ? res.content[0].text.trim()
-    : `Professional B2B editorial photography for article about ${title}, dark cinematic lighting`;
+    : `A candid documentary moment capturing the world of ${title}, natural available light, shallow depth of field`;
 }
 
 
@@ -1152,15 +1175,7 @@ app.post('/api/content/regenerate-image/:contentId', requireAuth, async (req, re
     const regenBody = (article.article_json?.sections?.[0]?.body || article.article_json?.sections?.[0]?.content || '').slice(0, 250);
     const fluxPrompt = await buildImagePrompt(article.title, profileData?.voice_profile || {}, regenBody);
 
-    const falRes = await fetch('https://fal.run/fal-ai/flux/schnell', {
-      method: 'POST',
-      headers: { 'Authorization': `Key ${process.env.FAL_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: fluxPrompt, image_size: 'landscape_16_9', num_inference_steps: 4, num_images: 1 })
-    });
-    if (!falRes.ok) throw new Error(`fal.ai ${falRes.status}: ${await falRes.text()}`);
-    const falData = await falRes.json();
-    const imageUrl = falData?.images?.[0]?.url;
-    if (!imageUrl) throw new Error('No image URL returned');
+    const imageUrl = await generateHeroImage(fluxPrompt);
 
     await pool.query(`UPDATE ${tableName} SET hero_image_url = $1, hero_image_prompt = $2, updated_at = NOW() WHERE id = $3`,
       [imageUrl, fluxPrompt, contentId]);
@@ -1214,15 +1229,7 @@ app.post('/api/articles/:brandSlug/:articleSlug/ensure-image', async (req, res) 
     });
     const fluxPrompt = imgPromptRes.content[0]?.type === 'text' ? imgPromptRes.content[0].text.trim() : `Professional B2B editorial hero image for article about ${article.title}`;
 
-    const falRes = await fetch('https://fal.run/fal-ai/flux/schnell', {
-      method: 'POST',
-      headers: { 'Authorization': `Key ${process.env.FAL_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: fluxPrompt, image_size: 'landscape_16_9', num_inference_steps: 4, num_images: 1 })
-    });
-    if (!falRes.ok) throw new Error(`fal.ai ${falRes.status}: ${await falRes.text()}`);
-    const falData = await falRes.json();
-    const imageUrl = falData?.images?.[0]?.url;
-    if (!imageUrl) throw new Error('No image URL returned');
+    const imageUrl = await generateHeroImage(fluxPrompt);
 
     await pool.query(`UPDATE ${tableName} SET hero_image_url = $1, hero_image_prompt = $2, updated_at = NOW() WHERE id = $3`,
       [imageUrl, fluxPrompt, article.id]);
@@ -4936,25 +4943,7 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
         const streamFirstBody = (parsed.sections?.[0]?.body || parsed.sections?.[0]?.content || '').slice(0, 250);
         const fluxPrompt = await buildImagePrompt(parsed.title, profileData?.voice_profile || {}, streamFirstBody);
 
-        const falRes = await fetch('https://fal.run/fal-ai/flux/schnell', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Key ${process.env.FAL_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            prompt: fluxPrompt,
-            image_size: 'landscape_16_9',
-            num_inference_steps: 4,
-            num_images: 1,
-            enable_safety_checker: true,
-          })
-        });
-
-        if (!falRes.ok) throw new Error(`fal.ai ${falRes.status}`);
-        const falData = await falRes.json();
-        const imageUrl = falData?.images?.[0]?.url;
-        if (!imageUrl) throw new Error('No image URL from fal.ai');
+        const imageUrl = await generateHeroImage(fluxPrompt);
 
         // Persist hero image URL + prompt to the content record
         await pool.query(
@@ -5231,15 +5220,7 @@ app.get('/api/campaign/generate/:id', requireAuth, async (req, res) => {
         const batchBody = (parsed.sections?.[0]?.body || parsed.sections?.[0]?.content || angle.description || '').slice(0, 250);
         const fluxPrompt = await buildImagePrompt(parsed.title || angle.title, profileData?.voice_profile || {}, batchBody);
 
-        const falRes = await fetch('https://fal.run/fal-ai/flux/schnell', {
-          method: 'POST',
-          headers: { 'Authorization': `Key ${process.env.FAL_API_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: fluxPrompt, image_size: 'landscape_16_9', num_inference_steps: 4, num_images: 1 })
-        });
-        if (!falRes.ok) throw new Error(`fal.ai error ${falRes.status}`);
-        const falData = await falRes.json();
-        const imageUrl = falData?.images?.[0]?.url;
-        if (!imageUrl) throw new Error('No image URL');
+        const imageUrl = await generateHeroImage(fluxPrompt);
 
         const safeId2 = articleRow.brand_profile_id?.replace(/-/g, '_');
         await pool.query(
@@ -7774,23 +7755,13 @@ app.post('/api/publishing/publish', async (req, res) => {
           ? imgPromptRes.content[0].text.trim()
           : `Professional B2B editorial hero image for: ${article.title}`;
 
-        const falRes = await fetch('https://fal.run/fal-ai/flux/schnell', {
-          method: 'POST',
-          headers: { 'Authorization': `Key ${process.env.FAL_API_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: fluxPrompt, image_size: 'landscape_16_9', num_inference_steps: 4, num_images: 1 })
-        });
-        if (falRes.ok) {
-          const falData = await falRes.json();
-          const imageUrl = falData?.images?.[0]?.url;
-          if (imageUrl) {
-            await pool.query(
-              `UPDATE ${contentTable} SET hero_image_url = $1, hero_image_prompt = $2, updated_at = NOW() WHERE id = $3`,
-              [imageUrl, fluxPrompt, article.id]
-            );
-            article.hero_image_url = imageUrl;
-            console.log(`[PUBLISH] Generated hero image for "${article.title}"`);
-          }
-        }
+        const imageUrl = await generateHeroImage(fluxPrompt);
+        await pool.query(
+          `UPDATE ${contentTable} SET hero_image_url = $1, hero_image_prompt = $2, updated_at = NOW() WHERE id = $3`,
+          [imageUrl, fluxPrompt, article.id]
+        );
+        article.hero_image_url = imageUrl;
+        console.log(`[PUBLISH] Generated hero image for "${article.title}"`);
       } catch (imgErr) {
         console.warn('[PUBLISH] Hero image generation failed, continuing without:', imgErr.message);
         // Non-fatal — publish continues without image
