@@ -10,6 +10,24 @@
 
 ## Session — April 19–20, 2026
 
+### LinkedIn Sync Wiped Manual Analytics — root cause + fix (shipped all branches)
+- **The bug:** Brian had been manually entering LinkedIn analytics (impressions/clicks) per article because LinkedIn Marketing Developer Platform (MDP) approval hasn't come through yet. He accidentally hit Sync. All 5 Forge Intelligence article analytics zeroed out at 21:01:31Z on 4/20/2026.
+- **Why it happened:** the LinkedIn sync at server.js:~8510 makes two API calls — `socialActions` (always works, returns reactions/comments/reposts) and `shareStatistics` (requires MDP, returns impressions/clicks). Without MDP, shareStatistics silently fails and leaves `impressions = 0, clicks = 0`. The upsert then ran `ON CONFLICT DO UPDATE SET impressions=EXCLUDED.impressions, clicks=EXCLUDED.clicks, ...` — unconditionally clobbering every field including zeros over manual entries.
+- **Data loss:** confirmed — 5 rows zeroed. No audit table, no backup (this is a known infra gap — nothing logs content_analytics mutations). Verified with relay query. Brian re-enters manually.
+- **The fix (applied at the single LinkedIn sync upsert site):**
+  1. **Skip the upsert entirely when `dataSource === 'none'`** — if the API returned nothing useful, don't touch the row. This alone would have saved Brian today.
+  2. **For impressions/clicks/ctr/engagement_rate:** only overwrite when `EXCLUDED.impressions > 0`. That can only happen when shareStatistics returned real data (which requires MDP). Before MDP: existing values are preserved. After MDP: real data takes over seamlessly.
+  3. **For reactions/comments/reposts:** use `GREATEST(existing, new)`. socialActions is reliable, but a transient API blip should never lower numbers someone entered manually.
+  4. **For `raw_data`:** merge via `||` (right side wins on conflict, but the sync payload never includes a `source` key, so a `{"source":"manual"}` marker from manual entries survives the merge).
+- **Cleanup:** deleted the 5 zero rows via admin relay so Brian's re-entry starts from clean slate (no stale zero values to confuse the UI).
+- **NOT addressed (deferred) — same-shape risks on other channels:**
+  - X, Facebook, Ghost, etc. have the same `ON CONFLICT DO UPDATE SET ...=EXCLUDED...` pattern at lines ~8635, ~8728, ~8767, ~8804. They're less at risk because Brian isn't manually entering data for those channels yet, but the same wipe scenario exists. If manual entry workflow expands, port this same fix pattern to each.
+  - No audit table on `content_analytics`. An `INSERT/UPDATE/DELETE` trigger writing to `content_analytics_audit` would let us RECOVER lost data next time someone hits a destructive bug. ~30 min of work, worth doing before next time.
+  - Manual entry endpoint (`/api/analytics/manual`) uses `GREATEST` on all fields — so if Brian enters 100 and wants to correct to 50, GREATEST prevents the correction. Not a critical bug (he can delete via relay) but worth flagging. Fix = separate "correct" vs "increment" modes.
+- **UI side (not shipped, propose for later):** the Sync button currently has no confirmation, no "manual entries will be preserved" copy, no indication of MDP status. With the backend fix in place, manual entries are now safe regardless. But a small "Your manual entries are protected from sync" tooltip next to the LinkedIn sync button would rebuild user trust. Low urgency — functionally solved.
+- **Lesson:** `ON CONFLICT DO UPDATE` blindly replacing fields is a destructive pattern. Any field that users can author directly should use `GREATEST`, `COALESCE`, or conditional update — never blind EXCLUDED overwrite.
+
+
 ### Brain Pattern Injection Audit — full trace of Read → Prompt → LLM pipeline
 - **Brian's question:** are Brain patterns actually feeding agents, or sitting in the DB as dead rows?
 - **Method:** enumerated every `SELECT ... FROM brain_patterns` in server.js (13 read sites), mapped each to its endpoint, then inspected the prompt construction to confirm the rows actually land in the LLM call's `system:` or `messages:`. Used grep + manual inspection rather than relying on a single heuristic (the first heuristic missed 3 legit injections because they used custom section names like "PRIOR PERFORMANCE PATTERNS" instead of the literal "BRAIN PATTERNS").
