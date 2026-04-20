@@ -10,6 +10,27 @@
 
 ## Session — April 19–20, 2026
 
+### SEO Hardening — close gaps vs forge-intelligence.com squatter (shipped all branches)
+- **Context:** a new LLC (FORGE Intelligence LLC, Atlanta, est. 2026) is squatting `forge-intelligence.com` with a thin landing page using positioning language suspiciously close to Brian's. They're currently outranking forgeintelligence.ai for brand-name searches despite having no real content.
+- **Audit identified four concrete gaps:**
+  1. Homepage had NO canonical URL, NO og:image/twitter:image, NO JSON-LD Organization or WebSite schema. Links shared in Slack/LinkedIn previewed naked. No Knowledge Panel eligibility.
+  2. Article SSR was missing `<link rel="canonical">` entirely — every article page was at risk of duplicate-content classification.
+  3. Sitemap only listed `/` and `/product` — every published article was invisible to Google.
+  4. `article:published_time` was hardcoded to `new Date().toISOString()` — a real bug that made every article look freshly published on every crawl, killing the "fresh content" and "established authority" signals simultaneously.
+- **Shipped:**
+  - `renderMarketingPage` now emits: canonical, og:url, og:image (1200x630, ref'd as `DEFAULT_OG_IMAGE` constant), twitter:image, robots meta (`index, follow, max-image-preview:large, max-snippet:-1`), Organization JSON-LD (name, url, logo, founder, address, knowsAbout), WebSite JSON-LD with SearchAction for sitelinks search box eligibility.
+  - Article SSR: canonical, `article:modified_time`, fixed `article:published_time` to use real `created_at`/`updated_at` instead of current timestamp.
+  - Sitemap: async handler now enumerates Forge Intelligence brand's approved articles from `generated_content_<safeId>`, adds them with `<lastmod>` dates. Caches 1h. Only production host (dev subdomain still 404s).
+- **Key constants (single points of change for future):**
+  - `ORG_JSON_LD` + `WEBSITE_JSON_LD` at top of marketing section
+  - `DEFAULT_OG_IMAGE = 'https://forgeintelligence.ai/1.png'` — TODO flagged to replace with dedicated 1200x630 branded card at `/og-card.png` once Brian creates one.
+- **Not addressed this commit (future work):**
+  - SSR body content is wrapped in `position: absolute; left: -99999px; aria-hidden="true"` — this is the classic "hidden content for crawlers" pattern. Google has said they're generally OK with off-screen content if it matches what users see, but it's a yellow flag. Better pattern would be to hydrate React over the existing DOM instead of replacing it. Larger refactor, deferred.
+  - Organization schema doesn't include `sameAs` array linking to Brian's social profiles (LinkedIn, etc.). Add when profile URLs are known.
+  - Sitemap enumerates only the "Forge Intelligence" brand's articles. If Brian wants customer brands' articles on forgeintelligence.ai in the sitemap (for brands without their own `article_base_url`), that's a followup.
+- **Brian's non-code TODOs:** (1) submit sitemap to Google Search Console, (2) same for Bing Webmaster Tools, (3) trademark lawyer 30-min call for UDRP/TTAB exploration against the squatter.
+
+
 ### Hero Image Generation: Flux Schnell → Ideogram v2 (shipped all branches)
 - **Problem:** Brian compared a Byword-generated image (realistic, documentary feel) to a Forge-generated one (plastic "Kim K airbrushed" skin, audience faces blobbing together). Root cause was Flux Schnell — the 4-step distilled budget-tier Flux model that trades quality for speed. ~$0.003/image, famously bad at human faces + hands at small scale.
 - **Migration:** swapped endpoint `fal-ai/flux/schnell` → `fal-ai/ideogram/v2` across 5 call sites. Ideogram v2 pricing: ~$0.08/image. ~27x cost increase, but the quality jump pays for itself immediately for a B2B platform where hero image quality is a visible product signal.
