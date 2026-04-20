@@ -10,6 +10,21 @@
 
 ## Session — April 19–20, 2026
 
+### Brand Ownership Cleanup — Sandbox brands reassigned + old Sandbox-GTM nuked
+- **Discovery:** while investigating a "power user" pulling 4.7MB in 5 min on prod (turned out to be a Nevada Android user loading their Brand Profile page at midnight PST), noticed that `Sandbox-XM` (dd482396-6673-4675-9892-841dad29fbc3) was owned by `user_3BvMphl4EThg9WSOdhH5BNVXIHL` — a Clerk login Brian doesn't use day-to-day. Brian primarily uses `user_3BtC7nusm7CShN7EdUYaaLZcDwp` (brian@sandbox-xm.com) and `user_3CJmE0WkOj1RJC5yF99scEuwUpO` (therosethyme, super-admin viewer) for real work.
+- **Also found:** duplicate `Sandbox-GTM` — an old v1 from March 27 owned by the legacy `3BvMph` login, plus a newer v2 from April 12 owned by `3BtC7`.
+- **Executed per Brian's direction:**
+  1. `Sandbox-XM` (dd482396) ownership: `3BvMph` → `3BtC7`. Sandbox-XM now lives with Brian's primary login. v5 brain, all briefs, all 3 approved articles preserved.
+  2. `Sandbox-GTM` new (61d1f187) ownership: `3BtC7` → `3BvMph`. The legacy login now has exactly one brand — Sandbox-GTM becomes the permanent "second user" test account.
+  3. Old `Sandbox-GTM` (10981923-0642-43fc-a5ae-8939caddb420) DELETED along with all dependents:
+     - 5 publish_log, 10 publishing_queue, 6 publishing_channels (all untested/no real OAuth), 9 content_analytics, 24 campaign_articles, 1 geo_briefs, 1 enriched_briefs rows deleted
+     - Per-brand table `generated_content_10981923_0642_43fc_a5ae_8939caddb420` dropped (had 14 unpublished draft articles, all battlecard-themed from early March testing)
+     - `brand_profiles` row removed
+  4. README updated on all 4 branches to document `3BvMph` as a legacy Brian login tethered to the new Sandbox-GTM, and to clarify that `3CJmE0` is a super-admin viewer that owns no brands.
+- **No code changes needed** to super-admin list — `3BtC7` was already in `SUPER_ADMIN_IDS` (server.js:89).
+- **Final state:** 11 unique users, 21 brands (was 22). Clean ownership map, no orphans, no duplicates.
+
+
 ### Build-Briefs Root Cause Found + Parallelized (shipped all branches)
 - **Root cause of "The string did not match the expected pattern":** Brian's 9-brief batch on prod at ~05:41:57Z was killed mid-run by commit `94c878bd` ("docs: log GEO Strategist rendering multi-fix") which auto-deployed 05:40:59Z → 05:42:03Z. The docs-only commit still triggers a full redeploy on Render. Old instance got SIGTERM at ~05:42:03Z; had ~30s grace before SIGKILL. Brian's batch needed ~90s (serial, 9 × 10s Anthropic calls). Request died mid-loop, connection dropped, Safari threw the pattern-mismatch DOMException. Exactly 1 brief saved before the kill (Event Tech Stack @ 05:42:55Z) — the other 8 never happened.
 - **Not caused by:** JWT token state, Authorization header encoding, malformed TAC JSON, bad Anthropic response, or client-side validation. My earlier auth-hardening hypothesis was wrong (though the defensive hardening stays — still good to have).
