@@ -30,13 +30,13 @@ export default function PrivacyPage() {
             Back
           </a>
           <h1 style={styles.title}>Privacy Policy</h1>
-          <p style={styles.subtitle}>Effective: April 2026 &nbsp;·&nbsp; Sandbox Group LLC &nbsp;·&nbsp; Portland, OR</p>
+          <p style={styles.subtitle}>Effective: April 20, 2026 &nbsp;·&nbsp; Forge Intelligence LLC &nbsp;·&nbsp; Portland, OR</p>
         </div>
 
         <div style={styles.card}>
 
           <Section title="1. Who We Are">
-            <P>Forge Intelligence is a B2B marketing intelligence platform operated by Sandbox Group LLC, a company based in Portland, Oregon. References to "Forge," "we," "us," or "our" throughout this policy mean Sandbox Group LLC. Our platform is available at forgeintelligence.ai.</P>
+            <P>Forge Intelligence is a B2B marketing intelligence platform operated by Forge Intelligence LLC, a company based in Portland, Oregon. References to "Forge," "we," "us," or "our" throughout this policy mean Forge Intelligence LLC. Our platform is available at forgeintelligence.ai.</P>
             <P>This policy explains what data we collect, why we collect it, how it is protected, and your rights regarding it. If you have questions, reach us at <a href="mailto:hello@forgeintelligence.ai" style={styles.link}>hello@forgeintelligence.ai</a>.</P>
           </Section>
 
@@ -136,7 +136,7 @@ export default function PrivacyPage() {
           </Section>
 
           <Section title="11. Contact">
-            <P>Sandbox Group LLC<br />Portland, Oregon, USA<br /><a href="mailto:hello@forgeintelligence.ai" style={styles.link}>hello@forgeintelligence.ai</a></P>
+            <P>Forge Intelligence LLC<br />Portland, Oregon, USA<br /><a href="mailto:hello@forgeintelligence.ai" style={styles.link}>hello@forgeintelligence.ai</a></P>
           </Section>
 
         </div>
