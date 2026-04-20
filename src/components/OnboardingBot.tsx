@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useAuth } from '@clerk/clerk-react';
+import { useAuth, useUser } from '@clerk/clerk-react';
 import { useApp } from '../context/AppContext';
 import { useNavigate } from 'react-router-dom';
 import './OnboardingBot.css';
@@ -148,6 +148,7 @@ const STORAGE_KEY = (userId: string) => `forge_onboarding_${userId}`;
 
 export function OnboardingBot() {
   const { isSignedIn, userId } = useAuth();
+  const { user, isLoaded: userLoaded } = useUser();
   const { isPaid } = useApp();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -157,27 +158,52 @@ export function OnboardingBot() {
   const [faqOpen, setFaqOpen] = useState<number | null>(null);
   const [faqQuery, setFaqQuery] = useState('');
   const [minimized, setMinimized] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!isSignedIn || !userId || !isPaid) return;
+    // Wait until Clerk user is fully loaded — otherwise unsafeMetadata reads false-negative
+    if (!isSignedIn || !userId || !isPaid || !userLoaded) return;
+    if (hydrated) return;
+
+    // Source of truth priority: Clerk unsafeMetadata (cross-device) > localStorage (local cache)
+    const clerkState = (user?.unsafeMetadata as any)?.onboarding as
+      | { completedAt?: string | null; stepReached?: number }
+      | undefined;
     const stored = localStorage.getItem(STORAGE_KEY(userId));
-    if (stored) {
-      const { completedAt, stepReached } = JSON.parse(stored);
-      if (completedAt) {
-        setCompleted(true);
-        setMode('faq');
-      } else if (stepReached != null) {
-        setStep(stepReached);
-      }
+    const localState = stored ? JSON.parse(stored) : null;
+
+    // Clerk wins if it has completion; otherwise take whichever has data
+    const state = clerkState?.completedAt
+      ? clerkState
+      : localState?.completedAt
+        ? localState
+        : (clerkState || localState);
+
+    // If Clerk has completion but local doesn't, backfill local cache so trigger button shows immediately next load
+    if (clerkState?.completedAt && !localState?.completedAt) {
+      localStorage.setItem(STORAGE_KEY(userId), JSON.stringify(clerkState));
     }
-    // Auto-open only for users who haven't completed onboarding
-    const parsed = stored ? JSON.parse(stored) : null;
-    if (!parsed?.completedAt) {
-      const timer = setTimeout(() => setOpen(true), 1200);
-      return () => clearTimeout(timer);
+    // If local has completion but Clerk doesn't, backfill Clerk (legacy users who onboarded pre-fix)
+    if (localState?.completedAt && !clerkState?.completedAt && user) {
+      user.update({
+        unsafeMetadata: { ...(user.unsafeMetadata || {}), onboarding: localState }
+      }).catch(() => {});
     }
-  }, [isSignedIn, userId, isPaid]);
+
+    if (state?.completedAt) {
+      setCompleted(true);
+      setMode('faq');
+      setHydrated(true);
+      return; // never auto-open for users who have finished onboarding
+    }
+    if (state?.stepReached != null) {
+      setStep(state.stepReached);
+    }
+    setHydrated(true);
+    const timer = setTimeout(() => setOpen(true), 1200);
+    return () => clearTimeout(timer);
+  }, [isSignedIn, userId, isPaid, userLoaded, user, hydrated]);
 
   // Scroll to top of body on step change
   useEffect(() => {
@@ -188,10 +214,18 @@ export function OnboardingBot() {
 
   const saveProgress = (s: number, done = false) => {
     if (!userId) return;
-    localStorage.setItem(STORAGE_KEY(userId), JSON.stringify({
+    const payload = {
       stepReached: s,
       completedAt: done ? new Date().toISOString() : null
-    }));
+    };
+    // Fast local cache (prevents flash on next load)
+    localStorage.setItem(STORAGE_KEY(userId), JSON.stringify(payload));
+    // Durable cross-device source of truth — fire and forget
+    if (user) {
+      user.update({
+        unsafeMetadata: { ...(user.unsafeMetadata || {}), onboarding: payload }
+      }).catch(err => console.warn('[onboarding] clerk sync failed:', err));
+    }
   };
 
   const handleNext = () => {
