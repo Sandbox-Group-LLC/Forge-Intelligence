@@ -10,6 +10,16 @@
 
 ## Session — April 19–20, 2026
 
+### Build-Briefs Root Cause Found + Parallelized (shipped all branches)
+- **Root cause of "The string did not match the expected pattern":** Brian's 9-brief batch on prod at ~05:41:57Z was killed mid-run by commit `94c878bd` ("docs: log GEO Strategist rendering multi-fix") which auto-deployed 05:40:59Z → 05:42:03Z. The docs-only commit still triggers a full redeploy on Render. Old instance got SIGTERM at ~05:42:03Z; had ~30s grace before SIGKILL. Brian's batch needed ~90s (serial, 9 × 10s Anthropic calls). Request died mid-loop, connection dropped, Safari threw the pattern-mismatch DOMException. Exactly 1 brief saved before the kill (Event Tech Stack @ 05:42:55Z) — the other 8 never happened.
+- **Not caused by:** JWT token state, Authorization header encoding, malformed TAC JSON, bad Anthropic response, or client-side validation. My earlier auth-hardening hypothesis was wrong (though the defensive hardening stays — still good to have).
+- **Real fix:** Converted the serial `for (const oppId of opportunityIds)` loop to `Promise.allSettled(opportunityIds.map(...))`. All briefs now fire concurrently. Wall-clock ≈ slowest single call (~10-15s instead of ~90s). Dramatically smaller window for a deploy to kill the batch.
+- **Side benefit:** malformed TAC on one opportunity no longer kills the entire batch — per-opp JSON.parse now wrapped in try/catch, falls back to `null` and continues.
+- **Data integrity after the kill:** verified clean. 9 of 10 opportunities stayed at `discovered`, only the 1 that actually persisted is `briefed`. No orphaned records, no cleanup needed. Brian can re-run the batch on the 8 stranded topics any time.
+- **Open question not addressed here:** 9 concurrent Anthropic calls might hit tier rate limits for a larger batch (20+). If that starts failing with 429s, add a p-limit-style concurrency cap (e.g. max 5 in flight). Not needed until we see evidence of rate-limiting.
+- **Bigger lesson (logged for later):** any endpoint that does long serial I/O on the request thread is structurally fragile to Render deploys. Content generation (Stage 3), full-run GEO analysis, campaign generation are all candidates for the same treatment. File for later — not shipping broadly tonight without testing.
+
+
 ### Reverted GEO Grid + Mobile Animation Changes (shipped all branches)
 - Earlier this session I shipped `grid-auto-flow: row dense` + `auto-fit` + `align-items: stretch` to `.geo-grid`, `min-width: 0` + `word-break: break-word` to `.geo-card`, and swapped `.view-container`'s mobile fadeIn from a transform animation to opacity-only.
 - After those changes landed, Brian reported a much worse rendering bug on mobile: the GEO Strategist page header, tabs, and opportunity cards all stacked/overlapped visually — elements rendering on top of each other mid-scroll with content bleeding through z-index boundaries.
