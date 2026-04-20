@@ -37,22 +37,31 @@
 
 ---
 
-## Platform Status (April 17, 2026)
+## Platform Status (April 20, 2026)
 
 ### All 8 Stages Live
 
 | Stage | Name | Status | Model |
 |-------|------|--------|-------|
-| 1 | Context Hub | ✅ LIVE | Perplexity Sonar + Website Scraper + Claude Sonnet 4.6 |
-| 2 | GEO Strategist | ✅ LIVE | Claude Sonnet 4.6 |
-| 3 | Authenticity Enricher | ✅ LIVE | Claude Sonnet 4.6 |
-| 4 | Content Generator | ✅ LIVE | Claude Sonnet 4.6 |
+| 1 | Context Hub | ✅ LIVE | Perplexity Sonar + Website Scraper + Claude Opus 4.6 (profile) + Claude Haiku 4.5 (brain ops) |
+| 2 | GEO Strategist | ✅ LIVE | Claude Sonnet 4.6 (3 tools) |
+| 3 | Authenticity Enricher | ✅ LIVE | Perplexity Sonar (SME signals) + Claude Sonnet 4.6 (EEAT/injection/assembly) — SSE real-time progress |
+| 4 | Content Generator | ✅ LIVE | Claude Sonnet 4.6 — requires enriched brief selection |
 | 4.5 | Campaign Generator | ✅ LIVE | Claude Sonnet 4.6 |
-| 4.6 | Email Campaign Generator | ✅ LIVE | Claude Sonnet 4.6 |
+| 4.6 | Email Campaign Generator | ✅ LIVE | Mistral Large (optimized for lead-gen writing) |
 | 5 | Compliance Gate | ✅ LIVE | Claude Sonnet 4.6 |
 | 6 | Publishing & Distribution | ✅ LIVE | Queue + multi-channel |
 | 7 | Performance Intelligence | ✅ LIVE | LinkedIn + X + Ghost + GSC + GEO |
 | 8 | Feedback Loop | ✅ LIVE | Pattern Extractor (Claude Haiku 4.5) |
+| — | Hero Image Generation | ✅ LIVE | Claude Haiku 4.5 (prompt) + Flux Schnell via fal.ai (render) |
+
+### Model Economics (Multi-Model Architecture)
+- **Claude Opus 4.6** — Context Hub brand profile construction (foundational analysis that conditions every downstream decision)
+- **Claude Sonnet 4.6** — GEO, Enricher, Content Gen, Compliance (strategic depth + voice fidelity)
+- **Claude Haiku 4.5** — Brain pattern matching, topic preflight, image prompts (speed over depth)
+- **Perplexity Sonar** — Live web research: competitor discovery, SME signals, citation tracking
+- **Mistral Large** — Email campaigns (lead-gen focused, conversational, fast)
+- **Flux Schnell (fal.ai)** — Hero image generation (brand-voice-aware prompts, sub-2s render)
 
 ### Auth Architecture
 - **Clerk** — Google, GitHub, email/password
