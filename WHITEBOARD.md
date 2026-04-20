@@ -10,6 +10,15 @@
 
 ## Session — April 19–20, 2026
 
+### Scrape URL Override (shipped all branches)
+- Why: brands often use masked subdomains, vanity domains, or reverse proxies where the public `brand_url` doesn't point directly at the real origin. For sandbox-xm.com specifically, the public domain is a Render custom-domain alias for `sandbox-xm.forge-os.ai` — a cost-saving wildcard setup. Previously the scraper just failed on those brands and we'd fall back to Sonar-only context.
+- New field: `settings.scrapeUrlOverride` (JSONB) in `brand_profiles`. If set, Context Hub Tool 1.5 uses it as the actual fetch target instead of `brand_url`.
+- UI: new "Scrape URL Override" field in Brand Settings → Identity section, marked "advanced · optional", with clear hint text. Saves via existing `handleSave` (PATCH merges into settings JSONB).
+- Server: Tool 1.5 queries `settings->>'scrapeUrlOverride'` at scrape start; if present, logs `Using scrape URL override: <override> (public: <brand_url>)` for transparency.
+- Backfilled the sandbox-xm.com brand with `scrapeUrlOverride = https://sandbox-xm.forge-os.ai`. Re-scrape verified: `scraperSuccess: True`, 22KB homepage + 4 subpages scraped cleanly.
+- Works alongside the earlier scraper resilience work (www ↔ apex fallback, Chrome UA retry, detailed error surfacing) — override just gives the scraper a better starting point.
+
+
 ### Context Hub Scraper Resilience + Diagnostics (shipped all branches)
 - Problem: sandbox-xm.com "scrape failed" with zero explanation — the scraper's `fetch(...).catch(() => null)` ate every error, so logs always said the same generic "minimal content" regardless of whether it was DNS, a 403, a timeout, or a TLS issue
 - Investigation: log ran 71ms start-to-fail (too fast for any real network call), confirming silent throw. Cloudflare DNS lookup revealed root cause — `sandbox-xm.com` apex has **no A record** (only SOA/NS), and `www.sandbox-xm.com` is a CNAME chain through forgeos-sandbox-xm.onrender.com → gcp-us-west1-1.origin.onrender.com. From Render's resolver both returned DNS-NOT-FOUND, likely due to negative-caching after the apex miss.
