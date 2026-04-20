@@ -83,6 +83,9 @@ export default function BrandSettingsPage() {
   const [digestOptOut, setDigestOptOut] = useState(false);
   const [digestSaving, setDigestSaving] = useState(false);
 
+  // Scrape URL override — for masked subdomains / vanity domains pointing to a different origin
+  const [scrapeUrlOverride, setScrapeUrlOverride] = useState('');
+
   // Factual Ground — direct user input to anchor writer claims
   const [factualGround, setFactualGround] = useState<FactualGround>({
     companyFacts: '',
@@ -105,6 +108,7 @@ export default function BrandSettingsPage() {
         if (d.success) {
           setForm(d.settings);
           setDigestOptOut(!!d.settings?.digest_unsubscribed);
+          setScrapeUrlOverride(d.settings?.settings?.scrapeUrlOverride || '');
           if (d.settings?.settings?.factualGround) {
             setFactualGround({
               companyFacts: d.settings.settings.factualGround.companyFacts || '',
@@ -188,6 +192,7 @@ export default function BrandSettingsPage() {
           articleBaseUrl: form.article_base_url,
           articleUrlSuffix: form.article_url_suffix,
           logoUrl: form.logo_url,
+          settings: { scrapeUrlOverride: scrapeUrlOverride.trim() || null }
         })
       });
       const d = await r.json();
@@ -521,6 +526,17 @@ export default function BrandSettingsPage() {
                     <label className="bs-label">Logo URL <span className="bs-optional">optional</span></label>
                     <input className="bs-input" value={form.logo_url || ''} onChange={e => set('logo_url', e.target.value)} placeholder="https://yoursite.com/logo.png" />
                     <span className="bs-field-hint">Used in article page headers and OG meta images.</span>
+                  </div>
+                  <div className="bs-field">
+                    <label className="bs-label">Scrape URL Override <span className="bs-optional">advanced · optional</span></label>
+                    <input
+                      className="bs-input"
+                      type="url"
+                      value={scrapeUrlOverride}
+                      onChange={e => setScrapeUrlOverride(e.target.value)}
+                      placeholder="https://actual-origin.example.com"
+                    />
+                    <span className="bs-field-hint">If your brand URL is a masked subdomain, reverse proxy, or vanity domain pointing to a different origin, Forge will scrape this URL instead. Leave blank to scrape your Brand URL directly.</span>
                   </div>
                 </div>
               </section>
