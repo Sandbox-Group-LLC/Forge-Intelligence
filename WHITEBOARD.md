@@ -10,6 +10,15 @@
 
 ## Session — April 19–20, 2026
 
+### Onboarding Walkthrough — Cross-Device Persistence Fix (shipped all branches)
+- Bug: walkthrough re-triggered for returning users who had already completed it — logging in from a new browser/device or after localStorage wipe reset the flow
+- Root cause: OnboardingBot stored completion state in localStorage only (`forge_onboarding_{userId}`) — browser-scoped, not user-scoped
+- Fix: Clerk `unsafeMetadata.onboarding` is now the source of truth (persists on the user record across all devices). localStorage remains as a fast local cache to prevent flash-on-first-paint
+- Backfill logic: if Clerk has completion but local doesn't → writes local cache; if local has completion but Clerk doesn't (legacy users who onboarded pre-fix) → writes Clerk metadata
+- Effect waits for `useUser().isLoaded` before reading, prevents false-negative that would re-open the modal
+- `hydrated` guard prevents effect re-runs from re-opening the panel when `isPaid` or `user` churns
+
+
 ### businessProfile — Context Hub Opus Prompt (shipped all branches)
 - Added `businessProfile` block to Opus JSON schema: `whatTheyDo`, `productsOrServices`, `revenueModel`, `targetBuyer`, `companyScale`, `geography`
 - Tested on Public School: "Provides experiential marketing, branding, and social media services for premium consumer brands" — GEO topics shifted from streetwear/culture (client industries) to experiential production storytelling (actual business)
