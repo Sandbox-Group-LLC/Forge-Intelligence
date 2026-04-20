@@ -10715,17 +10715,24 @@ app.post('/api/geo/opportunities/build-briefs', requireAuth, express.json(), asy
     ].filter(Boolean).join('\n\n');
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const builtBriefs = [];
 
-    // Build brief for each opportunity in parallel (with concurrency cap)
-    for (const oppId of opportunityIds) {
+    // Build briefs CONCURRENTLY — was serial, which made a 9-brief batch take ~90s of
+    // wall-clock and left it wide open to being killed mid-run by a Render redeploy
+    // (which gives the old instance only ~30s SIGTERM grace before SIGKILL).
+    // Now total wall-clock ≈ slowest single Anthropic call (~10-15s). Much smaller window.
+    const results = await Promise.allSettled(opportunityIds.map(async (oppId) => {
       const oppRes = await pool.query(
         `SELECT * FROM geo_opportunities WHERE id = $1 AND brand_profile_id = $2`,
         [oppId, brandProfileId]
       );
-      if (!oppRes.rows.length) continue;
+      if (!oppRes.rows.length) return null;
       const opp = oppRes.rows[0];
-      const authorityWriteup = opp.topical_authority_context ? JSON.parse(opp.topical_authority_context) : null;
+      let authorityWriteup = null;
+      try {
+        authorityWriteup = opp.topical_authority_context ? JSON.parse(opp.topical_authority_context) : null;
+      } catch {
+        // Malformed TAC — treat as absent. Don't let one bad row kill the whole batch.
+      }
 
       try {
         const briefRes = await anthropic.messages.create({
@@ -10788,17 +10795,22 @@ Generate 5-7 H2s that build a coherent argument. Align entities with schema requ
           [oppId]
         );
 
-        builtBriefs.push({
+        return {
           briefId: briefInsert.rows[0].id,
           opportunityId: oppId,
           topic: opp.topic,
           briefData,
           createdAt: briefInsert.rows[0].created_at
-        });
+        };
       } catch(briefErr) {
         console.error('[STAGE-2.1] brief build failed for', opp.topic, ':', briefErr.message);
+        return null;
       }
-    }
+    }));
+
+    const builtBriefs = results
+      .filter(r => r.status === 'fulfilled' && r.value)
+      .map(r => r.value);
 
     // Log activity
     await pool.query(
