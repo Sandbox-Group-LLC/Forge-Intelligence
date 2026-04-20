@@ -513,6 +513,24 @@ function AuthenticityEnricherContent() {
       {/* Results */}
       {result && !isRunning && (
         <>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-text-muted, #94a3b8)', marginBottom: 2 }}>
+                Viewing enrichment
+              </div>
+              <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-text-primary, #e2e8f0)' }}>
+                {result.enrichedTitle || result.enrichedH1 || result.brandName || 'Enriched Brief'}
+              </div>
+            </div>
+            {topicBriefs.length > 0 && (
+              <button
+                onClick={() => setResult(null)}
+                style={{ background: 'transparent', border: '1px solid var(--color-border, #2a2d35)', borderRadius: 6, padding: '4px 12px', fontSize: '0.75rem', color: 'var(--color-text-muted, #94a3b8)', cursor: 'pointer' }}
+              >
+                Dismiss
+              </button>
+            )}
+          </div>
           <div className="geo-tabs">
             {[
               { id: 'eeat', label: 'E-E-A-T Scores' },
