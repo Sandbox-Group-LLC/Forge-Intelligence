@@ -614,13 +614,17 @@ function ContentGeneratorContent() {
           ? briefs.filter(b => b.discoverySessionId === latestSession || b.isOrphan)
           : briefs;
         if (batch.length === 0) return null;
+        // Treat both 'published' (all channels shipped) AND 'partial' (at least one channel shipped)
+        // as published. The user's mental model: "is this article in the wild being seen" — yes in
+        // both cases. 'partial' happens when one channel shipped (e.g., LinkedIn) but another errored
+        // or is still queued; it's a production state, not a generation state.
+        const isPublishedState = (b: EnrichedBrief) => b.hasArticle && (b.queueStatus === 'published' || b.queueStatus === 'partial');
         const pending = batch.filter(b => !b.hasArticle).length;
         const generated = batch.filter(b => b.hasArticle).length;
-        const published = batch.filter(b => b.hasArticle && b.queueStatus === 'published').length;
+        const published = batch.filter(isPublishedState).length;
         const generatedOnly = generated - published;
         const statusFor = (b: EnrichedBrief) => {
-          // Published = shipped to a channel (LinkedIn, etc) via publishing_queue
-          if (b.hasArticle && b.queueStatus === 'published') return 'published';
+          if (isPublishedState(b)) return 'published';
           if (b.hasArticle) return 'generated';
           return 'pending';
         };
@@ -646,7 +650,7 @@ function ContentGeneratorContent() {
                     title={st === 'generated' ? 'Continue to Compliance Gate →' : undefined}
                     style={st === 'generated' ? { cursor: 'pointer' } : undefined}
                   >
-                    {b.topic || b.enrichedTitle || b.enrichedH1 || b.articleTitle || b.brandName}
+                    {b.enrichedH1 || b.enrichedTitle || b.articleTitle || b.topic || b.brandName}
                     <span className="cg-batch-progress-chip-status">· {st}{st === 'generated' ? ' →' : ''}</span>
                   </span>
                 );
