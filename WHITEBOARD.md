@@ -10,6 +10,17 @@
 
 ## Session — April 19–20, 2026
 
+### Content Generator dropdown empty on Sandbox-XM — schema drift root cause (shipped all branches)
+- **Symptom:** Brian's enriched brief "Experience Marketing Strategy for Enterprise B2B..." for Sandbox-XM existed in DB (status=pending_review, confidence 71) but wasn't appearing in the Content Generator dropdown.
+- **Not the cause:** `readyForStage4: false` was a red herring — the dropdown backend has no such filter. The client only filters on `!b.hasArticle`.
+- **Real cause: schema drift across per-brand `generated_content_*` tables.** Out of 13 brands, 11 had `enriched_brief_id` + `brand_profile_id` as TEXT, but 2 had them as UUID: `dd482396...` (Sandbox-XM) + `7456631a...` (Lenovo). The Content Generator endpoint's JOIN `gc.enriched_brief_id = eb.id::text` compares UUID to TEXT on these 2 brands, which PostgreSQL rejects with `operator does not exist: uuid = text`. Endpoint returned 500.
+- **Why it was invisible:** the client does `if (d.success) setBriefs(d.briefs || [])`. When `d.success` is false, `setBriefs` is never called — `briefs` stays at its default `[]` and the dropdown shows "No enriched briefs — run Enricher first" OR stays blank. No error surfaced.
+- **Fix 1 (query hardening):** cast both sides of the joins to `::text` so the query works regardless of column type. Changed `gc.enriched_brief_id = eb.id::text` → `gc.enriched_brief_id::text = eb.id::text` and `eb.id::text = gc.enriched_brief_id` → `eb.id::text = gc.enriched_brief_id::text`. Shipped to all 4 branches.
+- **Fix 2 (data migration):** `ALTER COLUMN ... TYPE text USING ::text` on `enriched_brief_id` + `brand_profile_id` on both outlier tables. PostgreSQL implicitly casts UUID→TEXT (string representation). Schema is now consistent across all 13 `generated_content_*` tables. No FKs depended on these columns (only PK on `id`).
+- **Verified post-fix:** endpoint query returns both Sandbox-XM briefs correctly. "Experience Marketing Strategy..." has `article_id: null` → will appear in dropdown on next page load.
+- **Likely origin of drift:** two tables were created via a different code path that defaulted to UUID instead of TEXT. Lines 4644 / 9639 / 9811 all CREATE TABLE with TEXT explicitly, so it wasn't those — somewhere there's a 4th CREATE path with UUID. Didn't hunt it down tonight since the migration fixed the stragglers and the defensive casts protect against future drift. Worth a future audit to find + remove the UUID-defaulting path.
+
+
 ### Brand Ownership Cleanup — Sandbox brands reassigned + old Sandbox-GTM nuked
 - **Discovery:** while investigating a "power user" pulling 4.7MB in 5 min on prod (turned out to be a Nevada Android user loading their Brand Profile page at midnight PST), noticed that `Sandbox-XM` (dd482396-6673-4675-9892-841dad29fbc3) was owned by `user_3BvMphl4EThg9WSOdhH5BNVXIHL` — a Clerk login Brian doesn't use day-to-day. Brian primarily uses `user_3BtC7nusm7CShN7EdUYaaLZcDwp` (brian@sandbox-xm.com) and `user_3CJmE0WkOj1RJC5yF99scEuwUpO` (therosethyme, super-admin viewer) for real work.
 - **Also found:** duplicate `Sandbox-GTM` — an old v1 from March 27 owned by the legacy `3BvMph` login, plus a newer v2 from April 12 owned by `3BtC7`.
