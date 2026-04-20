@@ -10,6 +10,18 @@
 
 ## Session — April 19–20, 2026
 
+### Scaffolding Artifact Sanitizer (shipped all branches)
+- Problem: enrichment briefs use bracketed scaffolding markers (`[SME Hook: ...]`, `[CTA: ...]`, `[TODO: ...]`, `[Author Quote: ...]`) that the writer is supposed to expand into prose or drop. It sometimes copied them verbatim into final articles and they leaked past human compliance review twice.
+- Fix: new top-level `stripScaffoldingArtifacts(article)` utility in server.js (next to `extractJSON`). Two-layer regex: inline keyword-gated strip (safe — won't touch `[1]` citations or `[Appendix A]` refs) + standalone-paragraph strip for any paragraph that is entirely `[word: details]`.
+- Applied at all 4 article save paths:
+  - Content Generator SSE (replaced the narrow `artifactRx` that only caught NEEDS CITATION/CITATION/SOURCE)
+  - Campaign Generator mirror INSERT
+  - Compliance Gate approve UPDATE (final safety net before publish)
+  - Content Import INSERT
+- Tested against the exact leaked string + 6 edge cases — 7/7 pass, legit bracketed references preserved
+- Legacy article `GEO Citation Probability...` cleaned manually via SQL relay before fix shipped
+
+
 ### Onboarding Walkthrough — Cross-Device Persistence Fix (shipped all branches)
 - Bug: walkthrough re-triggered for returning users who had already completed it — logging in from a new browser/device or after localStorage wipe reset the flow
 - Root cause: OnboardingBot stored completion state in localStorage only (`forge_onboarding_{userId}`) — browser-scoped, not user-scoped
