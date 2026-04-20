@@ -2617,8 +2617,13 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
     // ── Tool 1.5: Website Scraper — actual content extraction ─────────────────
     console.log(`[Context Hub] Tool 1.5: Scraping website content for ${brandUrl}...`);
     let scrapedContent = '';
+    let homeHtml = '';
+    let workingBaseUrl = '';
     try {
-      const normalizedUrl = brandUrl.startsWith('http') ? brandUrl : `https://${brandUrl}`;
+      // Chrome UA — some sites (Squarespace, Vercel edge, etc.) 403 on unknown UAs. Forge UA tried first for honesty, Chrome as fallback.
+      const FORGE_UA = 'ForgeIntelligence/1.0 (Brand Analysis)';
+      const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+
       const stripHtml = (html) => html
         .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
         .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
@@ -2630,17 +2635,67 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
         .replace(/\s+/g, ' ')
         .trim();
 
-      // Fetch homepage
-      const homeRes = await fetch(normalizedUrl, {
-        headers: { 'User-Agent': 'ForgeIntelligence/1.0 (Brand Analysis)' },
-        signal: AbortSignal.timeout(10000)
-      }).catch(() => null);
-      
-      let homeHtml = '';
-      if (homeRes?.ok) {
-        homeHtml = await homeRes.text();
+      // Tell the developer exactly why a fetch failed (not just "it didn't work")
+      const describeFetchFailure = (err) => {
+        if (!err) return 'unknown';
+        const code = err.cause?.code || err.code || '';
+        if (code === 'ENOTFOUND' || /ENOTFOUND|getaddrinfo/i.test(err.message || '')) return `DNS-NOT-FOUND (${err.message || code})`;
+        if (code === 'ECONNREFUSED') return 'CONNECTION-REFUSED';
+        if (code === 'ECONNRESET') return 'CONNECTION-RESET';
+        if (err.name === 'TimeoutError' || /timeout/i.test(err.message || '')) return 'TIMEOUT';
+        if (/certificate|TLS|SSL/i.test(err.message || '')) return `TLS-ERROR (${err.message})`;
+        return `${err.name || 'Error'}: ${err.message || code || 'no detail'}`;
+      };
+
+      // Fetch with detailed error surfacing. Returns { res, html, error } — never throws.
+      const fetchWithDiag = async (url, { ua = FORGE_UA, timeout = 10000 } = {}) => {
+        try {
+          const res = await fetch(url, {
+            headers: { 'User-Agent': ua, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9' },
+            redirect: 'follow',
+            signal: AbortSignal.timeout(timeout)
+          });
+          if (!res.ok) return { res, html: '', error: `HTTP-${res.status}` };
+          const html = await res.text();
+          return { res, html, error: null };
+        } catch(e) {
+          return { res: null, html: '', error: describeFetchFailure(e) };
+        }
+      };
+
+      // Build candidate base URLs. Brands saved as "example.com" may have apex-only or www-only DNS —
+      // try both, and try Chrome UA as a fallback if the Forge UA gets 403.
+      const inputUrl = brandUrl.startsWith('http') ? brandUrl : `https://${brandUrl}`;
+      const u = new URL(inputUrl);
+      const bareHost = u.hostname.replace(/^www\./, '');
+      const candidates = [];
+      if (u.hostname.startsWith('www.')) {
+        candidates.push(`${u.protocol}//${u.hostname}`, `${u.protocol}//${bareHost}`);
+      } else {
+        candidates.push(`${u.protocol}//${u.hostname}`, `${u.protocol}//www.${u.hostname}`);
+      }
+
+      // Try each candidate with Forge UA, then Chrome UA
+      for (const candidate of candidates) {
+        let attempt = await fetchWithDiag(candidate, { ua: FORGE_UA });
+        if (!attempt.html && /HTTP-4\d\d/.test(attempt.error || '')) {
+          // Some sites 403/406 unknown UAs. Retry same URL with a standard Chrome UA.
+          console.log(`[Context Hub] ${candidate} returned ${attempt.error} with Forge UA — retrying with Chrome UA`);
+          attempt = await fetchWithDiag(candidate, { ua: CHROME_UA });
+        }
+        if (attempt.html) {
+          homeHtml = attempt.html;
+          workingBaseUrl = candidate;
+          console.log(`[Context Hub] Homepage scraped from ${candidate} (${attempt.html.length} bytes)`);
+          break;
+        } else {
+          console.log(`[Context Hub] Homepage fetch failed for ${candidate} — ${attempt.error}`);
+        }
+      }
+
+      if (homeHtml) {
         const homeText = stripHtml(homeHtml).slice(0, 3000);
-        scrapedContent += `HOMEPAGE CONTENT:\n${homeText}\n\n`;
+        if (homeText.length > 80) scrapedContent += `HOMEPAGE CONTENT:\n${homeText}\n\n`;
       }
 
       // Extract internal links from homepage for deeper crawl
@@ -2655,25 +2710,26 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
       // Also try common about paths if none found
       const aboutPaths = internalPaths.length > 0 ? internalPaths : ['/about', '/about-us', '/pages/about'];
 
-      for (const path of aboutPaths) {
-        try {
-          const pageUrl = new URL(path, normalizedUrl).href;
-          const pageRes = await fetch(pageUrl, {
-            headers: { 'User-Agent': 'ForgeIntelligence/1.0 (Brand Analysis)' },
-            signal: AbortSignal.timeout(8000)
-          }).catch(() => null);
-          if (pageRes?.ok) {
-            const pageHtml = await pageRes.text();
-            const pageText = stripHtml(pageHtml).slice(0, 2000);
+      if (workingBaseUrl) {
+        for (const path of aboutPaths) {
+          const pageUrl = new URL(path, workingBaseUrl).href;
+          let pageAttempt = await fetchWithDiag(pageUrl, { ua: FORGE_UA, timeout: 8000 });
+          if (!pageAttempt.html && /HTTP-4\d\d/.test(pageAttempt.error || '')) {
+            pageAttempt = await fetchWithDiag(pageUrl, { ua: CHROME_UA, timeout: 8000 });
+          }
+          if (pageAttempt.html) {
+            const pageText = stripHtml(pageAttempt.html).slice(0, 2000);
             if (pageText.length > 100) {
               scrapedContent += `PAGE (${path}):\n${pageText}\n\n`;
             }
+          } else {
+            console.log(`[Context Hub] Subpage ${path} failed — ${pageAttempt.error}`);
           }
-        } catch { /* skip failed pages */ }
+        }
       }
 
       if (scrapedContent.length > 200) {
-        console.log(`[Context Hub] Scraped ${scrapedContent.length} chars from ${aboutPaths.length + 1} pages`);
+        console.log(`[Context Hub] Scraped ${scrapedContent.length} chars from ${aboutPaths.length + 1} pages (base: ${workingBaseUrl})`);
       } else {
         console.log(`[Context Hub] Scraping returned minimal content — Claude will rely on Sonar context`);
       }
