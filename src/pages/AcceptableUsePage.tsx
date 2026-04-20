@@ -37,7 +37,7 @@ export default function AcceptableUsePage() {
             Back
           </a>
           <h1 style={styles.title}>Acceptable Use Policy</h1>
-          <p style={styles.subtitle}>Effective: April 13, 2026 &nbsp;·&nbsp; Sandbox Group LLC &nbsp;·&nbsp; Portland, OR</p>
+          <p style={styles.subtitle}>Effective: April 20, 2026 &nbsp;·&nbsp; Forge Intelligence LLC &nbsp;·&nbsp; Portland, OR</p>
         </div>
 
         <div style={styles.card}>
@@ -195,7 +195,7 @@ export default function AcceptableUsePage() {
           </Section>
 
           <div style={{ textAlign: 'center', paddingTop: 16, color: '#64748B', fontSize: 13 }}>
-            <P>Sandbox Group LLC &nbsp;·&nbsp; Portland, Oregon &nbsp;·&nbsp; <a href="mailto:hello@forgeintelligence.ai" style={styles.link}>hello@forgeintelligence.ai</a> &nbsp;·&nbsp; <a href="https://forgeintelligence.ai" style={styles.link}>forgeintelligence.ai</a></P>
+            <P>Forge Intelligence LLC &nbsp;·&nbsp; Portland, Oregon &nbsp;·&nbsp; <a href="mailto:hello@forgeintelligence.ai" style={styles.link}>hello@forgeintelligence.ai</a> &nbsp;·&nbsp; <a href="https://forgeintelligence.ai" style={styles.link}>forgeintelligence.ai</a></P>
           </div>
 
         </div>
