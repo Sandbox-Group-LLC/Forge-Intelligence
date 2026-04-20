@@ -10,6 +10,18 @@
 
 ## Session — April 19–20, 2026
 
+### Hero Image Generation: Flux Schnell → Ideogram v2 (shipped all branches)
+- **Problem:** Brian compared a Byword-generated image (realistic, documentary feel) to a Forge-generated one (plastic "Kim K airbrushed" skin, audience faces blobbing together). Root cause was Flux Schnell — the 4-step distilled budget-tier Flux model that trades quality for speed. ~$0.003/image, famously bad at human faces + hands at small scale.
+- **Migration:** swapped endpoint `fal-ai/flux/schnell` → `fal-ai/ideogram/v2` across 5 call sites. Ideogram v2 pricing: ~$0.08/image. ~27x cost increase, but the quality jump pays for itself immediately for a B2B platform where hero image quality is a visible product signal.
+- **Added HERO_IMAGE_NEGATIVE_PROMPT** global constant: fights the specific AI-plastic tells ("airbrushed", "smooth skin", "HDR", "oversaturated", "hyperreal", "cartoon", "distorted hands", "extra fingers", "stock photo", "blurry faces blobbing").
+- **Centralized via `generateHeroImage(prompt)` helper** — future model swaps become a one-line change instead of a 5-site hunt. Helper lives alongside `buildImagePrompt` near the top of server.js.
+- **Rewrote `buildImagePrompt` instruction rules:** dropped "photorealistic" (AI-art coded — models trained on it overproduce HDR/plastic), "Professional" (stock-photo coded), and "B2B editorial" (corporate-generic coded). Replaced with affirmative photojournalism language: "editorial/documentary photography feel, natural available light, candid not posed, concrete sensory details." Used Ideogram's realistic-style + MagicPrompt expansion to amplify.
+- **Fallback prompt** also rewritten from "Professional B2B editorial photography for article about X, dark cinematic lighting" (every AI tell in one line) to "A candid documentary moment capturing the world of X, natural available light, shallow depth of field."
+- **Config per call:** `aspect_ratio: '16:9'`, `style: 'realistic'`, `expand_prompt: true` (MagicPrompt), `negative_prompt: HERO_IMAGE_NEGATIVE_PROMPT`, `num_images: 1`.
+- **Side note:** L1217 + L7777 each still have their OWN inline prompt-writing Haiku calls (separate from `buildImagePrompt`) with some residual "Professional editorial" language. They still benefit from the Ideogram endpoint + negative prompt, but their prompt-writing is less polished than `buildImagePrompt`. Worth refactoring to use `buildImagePrompt` centrally — deferred to a future focused session.
+- **Cost visibility:** at Brian's current scale (11 real users, ~10 articles/week each), this is ~$35/month additional spend. For any platform where hero image quality affects perception of the product, this is trivial ROI.
+
+
 ### Content Generator dropdown empty on Sandbox-XM — schema drift root cause (shipped all branches)
 - **Symptom:** Brian's enriched brief "Experience Marketing Strategy for Enterprise B2B..." for Sandbox-XM existed in DB (status=pending_review, confidence 71) but wasn't appearing in the Content Generator dropdown.
 - **Not the cause:** `readyForStage4: false` was a red herring — the dropdown backend has no such filter. The client only filters on `!b.hasArticle`.
