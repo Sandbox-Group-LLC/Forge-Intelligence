@@ -10,6 +10,15 @@
 
 ## Session — April 19–20, 2026
 
+### Reverted GEO Grid + Mobile Animation Changes (shipped all branches)
+- Earlier this session I shipped `grid-auto-flow: row dense` + `auto-fit` + `align-items: stretch` to `.geo-grid`, `min-width: 0` + `word-break: break-word` to `.geo-card`, and swapped `.view-container`'s mobile fadeIn from a transform animation to opacity-only.
+- After those changes landed, Brian reported a much worse rendering bug on mobile: the GEO Strategist page header, tabs, and opportunity cards all stacked/overlapped visually — elements rendering on top of each other mid-scroll with content bleeding through z-index boundaries.
+- Root cause hypothesis: the `fadeInOpacityOnly` change removed the transform on `.view-container`, which also removed its compositing-layer promotion on iOS Safari. Without a dedicated layer, iOS paints the animation onto a shared surface where child elements (cards, tabs, header) can interleave during repaint. Combined with `grid-auto-flow: dense` re-ordering items during layout, the result was severe visual corruption.
+- Reverted: `.geo-grid` back to `auto-fill` + default flow, `.geo-card` back to no min-width/word-break, `.view-container` mobile back to inheriting the desktop fadeIn animation with its transform intact.
+- TopBar de-dupe (separate fix from the same batch) stays — that one's clean and addresses a different issue.
+- **Lesson:** don't compound CSS changes across grid layout + animation compositing in the same commit. Isolate variables. The original "content clip" symptom Brian described in IMG_1563/1564 was never confirmed to be from my code — could have been a legitimate iOS Safari repaint glitch from their beta OS (26.5). Better to leave it alone until a clear reproducer exists.
+
+
 ### GEO Strategist — "The string did not match the expected pattern" hardening (shipped all branches)
 - Brian reported this error when building a batch of briefs. Classic Safari/WebKit DOMException — almost always from the `fetch()` header value validator rejecting a control char or non-ASCII byte in the `Authorization: Bearer <token>` value.
 - Server logs for the past 6h had zero hits for STAGE-2.1, build-briefs, or "did not match" — confirming the error was client-side and the request never reached the server. (One successful 65s/223KB build-briefs request was present from Brian's iPhone; that was a different attempt that worked.)
