@@ -45,8 +45,8 @@
 |-------|------|--------|-------|
 | 1 | Context Hub | ✅ LIVE | Perplexity Sonar + Website Scraper + Claude Opus 4.6 (profile) + Claude Haiku 4.5 (brain ops) |
 | 2 | GEO Strategist | ✅ LIVE | Claude Sonnet 4.6 (3 tools) |
-| 3 | Authenticity Enricher | ✅ LIVE | Perplexity Sonar (SME signals) + Claude Sonnet 4.6 (EEAT/injection/assembly) — SSE real-time progress |
-| 4 | Content Generator | ✅ LIVE | Claude Sonnet 4.6 — requires enriched brief selection |
+| 3 | Authenticity Enricher | ✅ LIVE | Perplexity Sonar (SME signals) + Claude Sonnet 4.6 (EEAT/injection/assembly) — SSE progress, enriched brief selector |
+| 4 | Content Generator | ✅ LIVE | Claude Sonnet 4.6 — requires enriched brief, published briefs filtered |
 | 4.5 | Campaign Generator | ✅ LIVE | Claude Sonnet 4.6 |
 | 4.6 | Email Campaign Generator | ✅ LIVE | Mistral Large (optimized for lead-gen writing) |
 | 5 | Compliance Gate | ✅ LIVE | Claude Sonnet 4.6 |
