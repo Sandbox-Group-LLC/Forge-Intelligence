@@ -11559,6 +11559,28 @@ app.get('/api/content-generator/enriched-briefs/:brandProfileId', requireAuth, a
     const { brandProfileId } = req.params;
     const safeId = brandProfileId.replace(/-/g, '_');
     console.log(`[CG-BRIEFS] Request for brand ${brandProfileId}`);
+
+    // Ensure the per-brand generated_content table exists before JOINing against it.
+    // Fresh brands (scanned but no article ever generated) don't have this table yet —
+    // attempting the JOIN throws "relation does not exist" and the whole endpoint returns
+    // an empty array, which hides all their enriched briefs from the Content Generator UI.
+    // CREATE TABLE IF NOT EXISTS is idempotent and cheap; safer than query-order optimism.
+    await pool.query(`CREATE TABLE IF NOT EXISTS generated_content_${safeId} (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      brand_profile_id TEXT NOT NULL,
+      enriched_brief_id TEXT,
+      title TEXT,
+      article_json JSONB DEFAULT '{}',
+      overall_confidence INTEGER,
+      brain_match_score INTEGER,
+      status VARCHAR(30) DEFAULT 'draft',
+      review_mode TEXT DEFAULT 'approve-to-ship',
+      compliance_status TEXT DEFAULT 'pending',
+      compliance_report JSONB,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+
     // Complete picture: every enriched brief (with or without article) + every article whose
     // enriched brief has been deleted (legacy orphans from pre-cherry-pick DELETE-all behavior).
     const r = await pool.query(
