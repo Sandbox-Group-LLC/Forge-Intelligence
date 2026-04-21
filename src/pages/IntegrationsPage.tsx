@@ -295,6 +295,9 @@ interface SavedChannel {
   test_status: string;
   last_tested_at: string | null;
   updated_at: string;
+  // Credentials shape varies per channel (pageId/pageName for facebook, pipedream_account_id for pipedream-connected, etc.).
+  // Using Record<string, any> instead of a discriminated union because the surface is lightweight and channel-specific reads cast site-locally.
+  credentials?: Record<string, any>;
 }
 
 export default function IntegrationsPage() {
