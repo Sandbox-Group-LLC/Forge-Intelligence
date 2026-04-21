@@ -4647,12 +4647,16 @@ app.post('/api/strategy/competitive-intel/:brandProfileId', requireAuth, async (
     for (let ci = 0; ci < competitors.length; ci++) {
       const compObj = competitors[ci];
       const compUrl = compObj.url;
-      const compName = compObj.name;
+      let compName = compObj.name; // may be refined from <title> if user provided a bare domain
       const normalizedUrl = compUrl; // already normalized in toUrlObject
       send('progress', { stage: 'scrape', competitor: compName, index: ci + 1, total: competitors.length, detail: `Scraping ${compName}...` });
 
       let scraped = '';
-      let compName = compUrl.replace(/https?:\/\/(www\.)?/, '').replace(/\/$/, '');
+      // compName is already set from compObj.name in the loop head. If the user-provided name
+      // looks like a bare domain (e.g. fell through from a URL-only entry), prefer extracting a
+      // cleaner name from the page <title>. If the user provided a real brand name (e.g. "Alma"),
+      // respect it and don't overwrite.
+      const userProvidedRealName = compName && !/\.[a-z]{2,}$/i.test(compName) && !/^https?:/i.test(compName);
       try {
         // Homepage
         const homeRes = await fetch(normalizedUrl, {
@@ -4663,9 +4667,11 @@ app.post('/api/strategy/competitive-intel/:brandProfileId', requireAuth, async (
         let homeHtml = '';
         if (homeRes?.ok) {
           homeHtml = await homeRes.text();
-          // Extract title as competitor name
-          const titleMatch = homeHtml.match(/<title[^>]*>([^<]+)<\/title>/i);
-          if (titleMatch) compName = titleMatch[1].split(/[|–—-]/)[0].trim();
+          // Extract title as competitor name (only if we don't already have a real user-provided name)
+          if (!userProvidedRealName) {
+            const titleMatch = homeHtml.match(/<title[^>]*>([^<]+)<\/title>/i);
+            if (titleMatch) compName = titleMatch[1].split(/[|–—-]/)[0].trim();
+          }
           scraped += `HOMEPAGE:\n${stripHtml(homeHtml).slice(0, 4000)}\n\n`;
         }
 
