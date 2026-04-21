@@ -4296,8 +4296,10 @@ HIGH GAPS: ${JSON.stringify(gaps.filter(g => g.severity === 'high').map(g => g.g
 
 Assemble enriched brief. Flag sections green/yellow/red by confidence. Mark smeRequired where needed.
 
+CRITICAL SHAPE RULE for eeatInjections: this field is an array of PLAIN ENGLISH PROSE STRINGS ONLY — never JSON objects, never structured data. Each string is the actual text the writer should weave into the article body. Convert each relevant INJECTION above into a natural-language instruction by taking ONLY its suggestedContent field and rewriting it as a prose direction. Example: if an injection has {"type":"sme_quote","suggestedContent":"Open with a Lili Gil Valletta pull quote..."}, the eeatInjection string becomes "Open with a pull quote from Lili Gil Valletta establishing the revenue framing, followed by parenthetical credentials (UN, WEF, TED)." DO NOT copy the JSON keys, braces, or field names into the string.
+
 Respond with this exact JSON structure:
-{"enrichedTitle":"","enrichedH1":"","enrichedSections":[{"heading":"","eeatInjections":[],"confidenceFlag":"green|yellow|red","flagReason":null,"smeRequired":false}],"enrichedFAQ":[{"q":"","a":"","eeatSignal":""}],"overallConfidence":0,"readyForStage4":true,"humanReviewItems":[]}` },
+{"enrichedTitle":"","enrichedH1":"","enrichedSections":[{"heading":"","eeatInjections":["prose string only"],"confidenceFlag":"green|yellow|red","flagReason":null,"smeRequired":false}],"enrichedFAQ":[{"q":"","a":"","eeatSignal":""}],"overallConfidence":0,"readyForStage4":true,"humanReviewItems":[]}` },
       ]
     });
 
@@ -4307,6 +4309,42 @@ Respond with this exact JSON structure:
       if (!ab) throw new Error('No JSON in Tool 4');
       assembledBrief = JSON.parse(ab);
     } catch(e) { console.log('[ENRICH] Tool 4 parse warn:', e.message, '| raw:', assemblerRes.content[0].text.slice(0,200)); assembledBrief = { enrichedSections: [], overallConfidence: 0, readyForStage4: false }; }
+
+    // ── Sanitize eeatInjections: catch any raw-JSON leakage ─────────────────────
+    // Defensive: even with a tightened prompt, Sonnet occasionally returns injectionMap objects
+    // as stringified JSON inside eeatInjections instead of prose strings. This unwraps any that
+    // slipped through into plain-English directives so Content Gen doesn't ingest raw JSON.
+    const unwrapInjection = (item) => {
+      if (typeof item !== 'string') {
+        // If it's somehow an object, pull suggestedContent
+        if (item && typeof item === 'object' && typeof item.suggestedContent === 'string') return item.suggestedContent;
+        return String(item);
+      }
+      const trimmed = item.trim();
+      // Detect stringified JSON object — starts with { and contains quoted "suggestedContent" key
+      if (trimmed.startsWith('{') && /"suggestedContent"\s*:/.test(trimmed)) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (parsed && typeof parsed.suggestedContent === 'string') return parsed.suggestedContent;
+        } catch { /* fall through to return original */ }
+      }
+      return item;
+    };
+    if (Array.isArray(assembledBrief.enrichedSections)) {
+      let unwrapCount = 0;
+      assembledBrief.enrichedSections = assembledBrief.enrichedSections.map(s => {
+        if (!s || !Array.isArray(s.eeatInjections)) return s;
+        const cleaned = s.eeatInjections.map(inj => {
+          const unwrapped = unwrapInjection(inj);
+          if (unwrapped !== inj) unwrapCount++;
+          return unwrapped;
+        });
+        return { ...s, eeatInjections: cleaned };
+      });
+      if (unwrapCount > 0) {
+        console.log(`[ENRICH] Unwrapped ${unwrapCount} raw-JSON injections into prose directives`);
+      }
+    }
 
     // ── Persist to enriched_briefs ────────────────────────────────────────────
 
@@ -5241,6 +5279,29 @@ Return ONLY the JSON object.`;
       name: factualGround.authors[0].name || null,
       jobTitle: factualGround.authors[0].title || null
     };
+  }
+
+  // Sanitize eeatInjections + smeHooks: unwrap any stringified JSON back to its suggestedContent prose.
+  const unwrapLeakedJSON = (item) => {
+    if (typeof item !== 'string') {
+      if (item && typeof item === 'object' && typeof item.suggestedContent === 'string') return item.suggestedContent;
+      return typeof item === 'string' ? item : String(item);
+    }
+    const trimmed = item.trim();
+    if (trimmed.startsWith('{') && /"suggestedContent"\s*:/.test(trimmed)) {
+      try {
+        const p = JSON.parse(trimmed);
+        if (p && typeof p.suggestedContent === 'string') return p.suggestedContent;
+      } catch { /* pass */ }
+    }
+    return item;
+  };
+  if (Array.isArray(parsed.enrichedSections)) {
+    parsed.enrichedSections = parsed.enrichedSections.map(s => ({
+      ...s,
+      eeatInjections: Array.isArray(s?.eeatInjections) ? s.eeatInjections.map(unwrapLeakedJSON) : [],
+      smeHooks: Array.isArray(s?.smeHooks) ? s.smeHooks.map(unwrapLeakedJSON) : []
+    }));
   }
   return parsed;
 }
