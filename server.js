@@ -2572,6 +2572,59 @@ app.get('/api/context-hub/history/:encodedUrl', async (req, res) => {
   }
 });
 
+// POST /api/domain/check — pre-scan claim check for Landing page
+// Returns { claimed: boolean, reason: string, ownedByUser: bool, reservedBySession: bool }
+// Logic:
+//   1. If no active brand_profile exists for the URL OR it's expired → not claimed (fair game)
+//   2. If the row has a clerk_user_id (paid user owns it) → claimed, must sign in
+//   3. If the row has only onboard_session_id AND it matches caller's sessionId → not claimed (your own scan)
+//   4. If onboard_session_id differs AND expires_at > NOW() → claimed (24h reservation by another scanner)
+app.post('/api/domain/check', async (req, res) => {
+  const { url, sessionId } = req.body;
+  if (!url) return res.status(400).json({ error: 'url required' });
+  const brandUrl = url.startsWith('http') ? url : `https://${url}`;
+  try {
+    const r = await pool.query(
+      `SELECT id, clerk_user_id, onboard_session_id, expires_at, brand_name
+       FROM brand_profiles
+       WHERE brand_url = $1 AND is_active = true
+         AND (expires_at IS NULL OR expires_at > NOW())
+       ORDER BY version DESC LIMIT 1`,
+      [brandUrl]
+    );
+    if (!r.rows.length) {
+      return res.json({ claimed: false, reason: 'not_scanned' });
+    }
+    const row = r.rows[0];
+    if (row.clerk_user_id) {
+      return res.json({
+        claimed: true,
+        ownedByUser: true,
+        reason: 'owned_by_account',
+        message: 'This domain is already claimed by an active Forge account. If this is your brand, sign in to access it. If you believe this is an error, contact hello@forgeintelligence.ai with proof of domain ownership.'
+      });
+    }
+    if (row.onboard_session_id && sessionId && row.onboard_session_id === sessionId) {
+      return res.json({ claimed: false, reason: 'your_own_scan', brandId: row.id });
+    }
+    if (row.onboard_session_id && row.expires_at) {
+      const expiresAt = new Date(row.expires_at);
+      const hoursRemaining = Math.max(0, Math.round((expiresAt - new Date()) / 36e5));
+      return res.json({
+        claimed: true,
+        reservedBySession: true,
+        reason: 'reserved_by_other_session',
+        hoursRemaining,
+        message: `Someone else scanned this domain in the past 24 hours and has ${hoursRemaining} hour${hoursRemaining === 1 ? '' : 's'} to claim it. After that the reservation expires and you can scan it. If you believe this is an error (e.g. you own this domain), contact hello@forgeintelligence.ai to dispute.`
+      });
+    }
+    return res.json({ claimed: false, reason: 'no_owner_or_session' });
+  } catch (e) {
+    console.error('[DOMAIN-CHECK]', e.message);
+    return res.status(500).json({ error: 'check failed', claimed: false });
+  }
+});
+
 app.post('/api/context-hub/analyze', softAuth, async (req, res) => {
   const { brandUrl, competitorUrls = [], audienceNotes = '', strategicNotes = '', checkBrainFirst = true, saveToBrain = true } = req.body;
   if (!brandUrl) {
@@ -2595,42 +2648,57 @@ app.post('/api/context-hub/analyze', softAuth, async (req, res) => {
   const startTime = Date.now();
 
   try {
-    // ── Brain-First: cache check + 24-hour claim gate ────────────────────────
+    // ── Brain-First: cache check ──────────────────────────────────────────────
+    // Claim-gate aware: only return cached data if the caller is authorized to see it.
+    //   - The signed-in account that owns it (clerk_user_id match)
+    //   - The anonymous session that originally scanned it (onboard_session_id match) AND within 24h window
+    // Everyone else gets 409 with a human-readable message. This prevents User B from reading
+    // User A's scan inside the 24h window; after 24h the row is expired and not considered active.
     if (checkBrainFirst) {
       const existing = await pool.query(
-        `SELECT * FROM brand_profiles WHERE brand_url = $1 AND is_active = true ORDER BY version DESC LIMIT 1`,
+        `SELECT * FROM brand_profiles
+         WHERE brand_url = $1 AND is_active = true
+           AND (expires_at IS NULL OR expires_at > NOW())
+         ORDER BY version DESC LIMIT 1`,
         [brandUrl]
       );
       if (existing.rows.length > 0) {
         const r = existing.rows[0];
-        const isExpired        = r.expires_at ? new Date(r.expires_at) < new Date() : false;
-        const currentUserId    = req.userId || null;
-        const currentSessionId = req.body.sessionId || req.headers['x-session-id'] || null;
-        const profileOwner     = r.clerk_user_id || null;
-        const profileSession   = r.onboard_session_id || null;
+        const callerSessionId = req.body.sessionId || null;
+        const callerUserId = req.userId || null;
 
-        // ── Determine if the requester owns this profile ──
-        const isAuthOwner    = currentUserId && profileOwner && currentUserId === profileOwner;
-        const isSessionOwner = currentSessionId && profileSession && currentSessionId === profileSession;
-        const isOwner        = isAuthOwner || isSessionOwner;
+        const isOwnerByAccount = r.clerk_user_id && callerUserId && r.clerk_user_id === callerUserId;
+        const isOwnerBySession = r.onboard_session_id && callerSessionId && r.onboard_session_id === callerSessionId;
 
-        // ── Claim block: active profile owned by someone else ──
-        if (!isExpired && (profileOwner || profileSession) && !isOwner) {
-          return res.status(409).json({
-            success: false,
-            claimed: true,
-            error: `This URL was recently scanned and is reserved for 24 hours. If this is your brand and you believe this reservation was made in error, you can dispute this claim at forgeintelligence.ai/dispute or email hello@forgeintelligence.ai with your domain and we will resolve it within 2 hours.`
-          });
+        if (isOwnerByAccount || isOwnerBySession) {
+          await pool.query(`UPDATE brand_profiles SET cache_status = 'cached' WHERE id = $1`, [r.id]);
+          console.log(`[Context Hub] Cache hit for ${brandUrl} (authorized: ${isOwnerByAccount ? 'account' : 'session'})`);
+          return res.json({ success: true, cached: true, data: {
+            id: r.id, brandUrl: r.brand_url, brandName: r.brand_name,
+            version: r.version, isActive: r.is_active, cacheStatus: 'cached',
+            createdAt: r.created_at, updatedAt: r.updated_at, ...r.profile_data
+          }});
         }
 
-        // ── Owner match or expired: serve cached profile ──
-        await pool.query(`UPDATE brand_profiles SET cache_status = 'cached' WHERE id = $1`, [r.id]);
-        console.log(`[Context Hub] Cache hit for ${brandUrl} | session: ${profileSession || 'none'} | user: ${profileOwner || 'guest'}`);
-        return res.json({ success: true, cached: true, data: {
-          id: r.id, brandUrl: r.brand_url, brandName: r.brand_name,
-          version: r.version, isActive: r.is_active, cacheStatus: 'cached',
-          createdAt: r.created_at, updatedAt: r.updated_at, ...r.profile_data
-        }});
+        // Unauthorized cache hit — someone else has an active claim/reservation.
+        if (r.clerk_user_id) {
+          return res.status(409).json({
+            success: false,
+            reason: 'owned_by_account',
+            message: 'This domain is already claimed by an active Forge account. If this is your brand, sign in. If you believe this is an error, contact hello@forgeintelligence.ai with proof of domain ownership.'
+          });
+        }
+        if (r.onboard_session_id && r.expires_at) {
+          const expiresAt = new Date(r.expires_at);
+          const hoursRemaining = Math.max(0, Math.round((expiresAt - new Date()) / 36e5));
+          return res.status(409).json({
+            success: false,
+            reason: 'reserved_by_other_session',
+            hoursRemaining,
+            message: `Someone else scanned this domain in the past 24 hours and has ${hoursRemaining} hour${hoursRemaining === 1 ? '' : 's'} left to claim it. After that the reservation expires. If you believe this is an error, contact hello@forgeintelligence.ai to dispute.`
+          });
+        }
+        // Orphan row with no owner info — treat as not claimed; let the scan proceed
       }
     }
 
