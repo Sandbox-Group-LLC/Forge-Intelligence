@@ -10,6 +10,32 @@
 
 ## Session — April 19–20, 2026
 
+### Campaign Generator — Raw-Dogged Articles Fixed (shipped all branches)
+- **Brian's gut report:** "I think it's actually raw doggin 8 articles with no briefs at all." Fully correct.
+- **Code audit confirmed:**
+  - `/api/campaign/generate/:id` SSE loop was loading a SINGLE `enriched_briefs` row (`ORDER BY created_at DESC LIMIT 1`) once, outside the per-article loop, and injecting it into all 8 article prompts.
+  - The 8 campaign angles are typically about 8 different topics, personas, funnel positions, and content types. Exactly one of them (on average) might align with the most recent enriched brief. The other 7 articles got a brief that didn't match the angle — the model was asked to reconcile angle-A persona with brief-B signal, producing flat triangulated output.
+  - This defeated the core value prop: Brain-directed content. The injection layer (EEAT signals, SME hooks, power phrases, content hooks, factual ground) was effectively missing from campaign articles. Per-article Content Generator workflow (running Enricher manually then generating) was higher quality than Campaign Generator bulk output. Upside-down economics.
+- **Additional observations:**
+  - Models were correct: `claude-sonnet-4-6` for both planner and generator. No model-swap needed.
+  - `campaign_articles.angle_profile` JSONB column was storing each angle correctly. The angle was being used in the Content Gen prompt. The bug was purely the missing per-angle enriched brief.
+  - Topical territories + Factual Ground blocks were already being injected correctly inside the loop, but downstream of the generic brief so they couldn't rescue output quality.
+- **Shipped — per-angle enrichment before per-article generation:**
+  1. **New helper `enrichAngleForCampaign(...)`** — synthesizes an enrichedBrief in the exact shape Content Gen expects (enrichedTitle, enrichedH1, topic, enrichedSections, enrichedFAQ, powerPhrases, contentHooks, authorSchema). Uses Sonnet 4.6 seeded with the angle profile + brand voice profile + factual ground + top 5 brain patterns + top 5 brain mistakes. Strict JSON schema, ~4096 max_tokens. Cost ~$0.20-0.25 per angle; latency ~8-12s per angle.
+  2. **Not the full Enricher.** The real `/api/authenticity-enricher/analyze` is a 467-line SSE handler with 8 tools (Sonar scrape, EEAT scoring, gap analysis, humanReviewItems, etc.). Extracting it as a library function would be a heavy refactor and a perpetual drift risk. The helper is the injection-surface subset — enough to direct the writer correctly, not the full diagnostic pipeline. Per-angle Sonar scraping specifically is what we skipped; factual ground covers the disambiguation need for now.
+  3. **Wired into the generate loop** — removed the single-brief load outside the loop; loaded Factual Ground + brain patterns + brain mistakes once (brand-level, identical for all 8 articles); call `enrichAngleForCampaign` per iteration; `enrichedBrief` now points at the per-angle synthesized brief. On LLM error, falls back to null — article still generates, just without brain injection, logged.
+  4. **Added SSE progress event** `article_progress` with `stage: 'enriching'` so the UI can show "Building per-angle intelligence brief" for ~10s before content generation streams.
+- **Impact per campaign:**
+  - +$1.60-2.00 added (~$0.25 × 8 angles)
+  - +6-8 minutes added (~10s × 8 angles, sequential)
+  - Articles now ship with full injection-surface context matching each angle. Should feel dramatically better — more like the hand-run per-article Content Gen workflow that Brian already trusts.
+- **Deferred / worth knowing:**
+  - The full Enricher includes a Sonar scrape per run, which is what catches name-collision contamination (the Jim-and-Greg-of-Cambridge class of bug). Per-angle enrichment here skips the Sonar step. For brands with generic-ish names whose Factual Ground is thin, some name-collision risk remains in campaign articles. Mitigation: the Content Generator itself still reads Factual Ground downstream, so as long as FG is populated the author/founding/whatWeDo statements are locked verbatim even if the angle brief accidentally hallucinated. Real defense-in-depth.
+  - Long-term, full Enricher-per-angle is probably the right shape for high-value customers. Adding it would bump per-campaign cost to ~$4-5 and latency to ~15 min. Worth reconsidering when we have usage data to trade off against.
+  - UI doesn't currently surface the per-angle briefs to the user — they exist only in the LLM context window and disappear after generation. If users want to see/edit the per-angle briefs before content generates, that's a future feature. Would require persisting them to `enriched_briefs` or a new `campaign_article_briefs` table, and adding a review step to the campaign UI.
+- **Tested:** deploy live on all 4 branches (dev, prod, intel, strategy). Next campaign Brian runs should show the new "Building per-angle intelligence brief" stage label for ~10s per article, then proceed to content generation. Output quality should feel like per-article Content Gen, not generic bulk.
+
+
 ### 24-Hour Claim Gate — Full Fix (all branches aligned, verified live)
 - **Brian's audit request:** validate that the 24-hour reservation gate worked as intended — URL scanned by visitor A gets reserved for 24 hours via localStorage session ID, User B in that window sees "claimed" with dispute email, after 24h it's fair game.
 - **Diagnosis — gate was half-built:**
