@@ -4544,14 +4544,38 @@ app.post('/api/strategy/competitive-intel/:brandProfileId', requireAuth, async (
     if (!profile.rows.length) { send('error', { error: 'Brand not found' }); return res.end(); }
     const brand = profile.rows[0];
     const pd = brand.profile_data || {};
-    const competitors = pd.discoveredCompetitors || [];
+    const factualGround = brand.settings?.factualGround || null;
+
+    // Prefer user-verified competitors from factualGround over Context Hub's discoveredCompetitors.
+    // Context Hub can misidentify competitors when a brand appears in press alongside unrelated
+    // companies (e.g., Culture+ Group showed up next to talent agencies like 88rising/UTA/WME
+    // because of entertainment press proximity, even though Culture+ is a multicultural marketing
+    // firm competing with Alma, GlobalHue, Sensis — not talent reps). User-saved factualGround
+    // competitors override the scraped discovery whenever present.
+    let competitors = [];
+    let competitorSource = 'context_hub';
+    const fgCompetitors = factualGround?.competitors;
+    if (fgCompetitors && (Array.isArray(fgCompetitors) ? fgCompetitors.length : String(fgCompetitors).trim().length)) {
+      const fgList = Array.isArray(fgCompetitors) ? fgCompetitors : String(fgCompetitors).split(',').map(s => s.trim()).filter(Boolean);
+      // Map bare brand names → URLs. Accept either 'Alma', 'alma.co', or 'https://alma.co'. Pass through as-is
+      // if it already looks like a URL; otherwise emit as a name-only entry (scraper will attempt best-effort).
+      competitors = fgList.map(c => {
+        const s = String(c).trim();
+        if (/^https?:\/\//.test(s)) return s;
+        if (/\./.test(s) && !/\s/.test(s)) return `https://${s}`;
+        return s; // name-only — scraper will derive or skip
+      });
+      competitorSource = 'factual_ground';
+    } else {
+      competitors = pd.discoveredCompetitors || [];
+    }
 
     if (!competitors.length) {
-      send('error', { error: 'No competitors discovered. Run Context Hub first to discover competitors.' });
+      send('error', { error: 'No competitors available. Either save verified competitors in Factual Ground or run Context Hub to discover them.' });
       return res.end();
     }
 
-    send('progress', { stage: 'init', detail: `${competitors.length} competitors: ${competitors.join(', ')}` });
+    send('progress', { stage: 'init', detail: `${competitors.length} competitors from ${competitorSource === 'factual_ground' ? 'Factual Ground (user-verified)' : 'Context Hub scan'}: ${competitors.join(', ')}` });
 
     // ── Cache check ──
     if (!force) {
