@@ -3728,6 +3728,23 @@ BRAIN MISTAKES (DO NOT repeat for this brand): ${JSON.stringify(brainMistakes)}`
     const whitespace = typeof competitiveGaps === 'string' ? competitiveGaps : (competitiveGaps.whitespace || '');
     const competitorTopics = Array.isArray(competitiveGaps) ? competitiveGaps : (competitiveGaps.competitorOwnedTopics || []);
 
+    // ── Factual Ground + Strategic Moats injection ───────────────────────────
+    // GEO Strategist previously read only Context Hub's profile_data. That meant user-saved
+    // corrections (what they actually do, deliberate non-choices, verified competitors) didn't
+    // influence topic discovery. Topics that contradicted the brand's own stated positioning
+    // could surface as "opportunities" — wasting downstream work. Load both here so Tool 1
+    // (Topical Authority Mapper) can respect them.
+    const factualGround = profile.settings?.factualGround || null;
+    const strategicMoats = Array.isArray(pd.strategicMoats) ? pd.strategicMoats : [];
+    const factualGroundBlock = factualGround && Object.values(factualGround).some(v => v && (typeof v === 'string' ? v.trim() : (Array.isArray(v) && v.length)))
+      ? `\nUSER-VERIFIED FACTS (authoritative — topics must not contradict these):
+${factualGround.whatWeDo ? `- What this brand does: ${String(factualGround.whatWeDo).slice(0, 400)}\n` : ''}${factualGround.whatWeDontDo ? `- What this brand does NOT do: ${String(factualGround.whatWeDontDo).slice(0, 400)}\n` : ''}${factualGround.competitors?.length ? `- Verified competitors (use these, ignore Context Hub's discoveries if they conflict): ${(Array.isArray(factualGround.competitors) ? factualGround.competitors : [factualGround.competitors]).slice(0, 8).join(', ')}\n` : ''}${factualGround.methodology ? `- Methodology/frameworks: ${String(factualGround.methodology).slice(0, 300)}\n` : ''}`
+      : '';
+    const strategicMoatsBlock = strategicMoats.length
+      ? `\nSTRATEGIC MOATS (things the brand deliberately does NOT do — do NOT suggest topics in these areas, they are intentional exclusions, not gaps):
+${strategicMoats.map(m => `- ${m.capability}${m.rationale ? ` (${String(m.rationale).slice(0, 120)})` : ''}`).join('\n')}`
+      : '';
+
     // ── Tool 1: Topical Authority Mapper ─────────────────────────────────────
     console.log('[GEO] Tool 1: Topical Authority Mapper...');
     const topicalRes = await anthropic.messages.create({
@@ -3739,9 +3756,9 @@ BRAND: ${profile.brand_name} (${profile.brand_url})
 PERSONAS: ${JSON.stringify(personas).slice(0, 400)}
 COMPETITOR TOPICS: ${JSON.stringify(competitorTopics).slice(0, 400)}
 WHITESPACE: ${whitespace.slice(0, 300)}
-${topicFocus ? 'FOCUS: ' + topicFocus : ''}
+${topicFocus ? 'FOCUS: ' + topicFocus : ''}${factualGroundBlock}${strategicMoatsBlock}
 
-Identify 8-12 topical gaps where this brand has low AI citation probability vs competitors.
+Identify 8-12 topical gaps where this brand has low AI citation probability vs competitors. Topics must be consistent with the USER-VERIFIED FACTS above and must NOT fall inside the STRATEGIC MOATS (those are intentional exclusions, not opportunities).
 
 YOU MUST return a raw JSON array using EXACTLY these field names: topic, geoCitationScore, owner, rationale.
 Example:
@@ -3799,7 +3816,7 @@ Return ONLY a raw JSON array (no markdown, no explanation):
 
 BRAND: ${profile.brand_name}
 COMPETITIVE GAPS: ${JSON.stringify(competitorTopics).slice(0, 400)}
-TOP GEO OPPORTUNITIES: ${JSON.stringify(geoOpportunities.slice(0, 8))}
+TOP GEO OPPORTUNITIES: ${JSON.stringify(geoOpportunities.slice(0, 8))}${factualGround?.competitors?.length ? `\nVERIFIED COMPETITORS (use these, do not include entities from different companies with similar names): ${(Array.isArray(factualGround.competitors) ? factualGround.competitors : [factualGround.competitors]).slice(0, 8).join(', ')}` : ''}
 
 Identify entities needing structured markup for AI citation. Flag competitor entities this brand is NOT being cited for.
 
