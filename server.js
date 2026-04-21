@@ -2868,7 +2868,8 @@ Return ONLY valid JSON (no markdown, no explanation, no newlines inside string v
     "skepticism": "string", "motivations": ["string"]
   }],
   "thirdPartySignals": [{ "source": "string", "signalType": "string", "value": "string or null", "confidence": 0-100, "lastChecked": "ISO8601" }],
-  "competitiveGaps": [{ "topic": "string", "ownedBy": "string or null", "whitespaceOpportunity": "string", "priority": "high|medium|low" }],
+  "competitiveGaps": [{ "topic": "string — a topic where competitors own the conversation AND the brand could plausibly compete. Do NOT include topics the brand explicitly and strategically excludes (e.g., 'we don't execute projects', 'we don't take commissions', 'we don't build X') — those are moats, not gaps. A competitiveGap is a real missed opportunity, not a deliberate positioning choice.", "ownedBy": "string or null", "whitespaceOpportunity": "string", "priority": "high|medium|low" }],
+  "strategicMoats": [{ "capability": "string — something the brand deliberately does NOT do, stated on their site or implied by positioning. Examples: 'Does not execute projects (planning-only layer)', 'Does not take vendor commissions', 'No long-term contracts'", "rationale": "string — why this non-action is strategically valuable to them", "protects": "string — what this moat protects: independence, pricing power, trust, speed, etc." }],
   "strategicRecommendations": [{ "id": "string", "category": "string", "title": "string", "description": "string", "impact": "high|medium|low", "effort": "high|medium|low" }],
   "businessProfile": {
     "whatTheyDo": "string — plain-language description of the core business, e.g. 'Designs and sells vegan skincare products direct to consumer' or 'Provides experiential marketing services for premium consumer brands'",
@@ -2881,7 +2882,7 @@ Return ONLY valid JSON (no markdown, no explanation, no newlines inside string v
   "discoveredCompetitors": ["string"],
   "marketCategory": "string"
 }
-Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competitiveGaps, 4-6 strategicRecommendations, 1 businessProfile (all fields required). Use the ICP and market context provided to make personas and gaps highly specific. For visualStyle and accentColor: infer carefully from the brand website design, color palette, imagery, and overall aesthetic — these feed directly into AI hero image generation and must reflect the real brand identity. For industry, positioning, and targetPersona: be specific and commercially precise, not generic.`;
+Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competitiveGaps (ACTUAL missed opportunities, not strategic non-choices), 0-4 strategicMoats (include only if the brand explicitly states what they don't do as a strategy — some brands won't have any), 4-6 strategicRecommendations, 1 businessProfile (all fields required). Use the ICP and market context provided to make personas and gaps highly specific. For visualStyle and accentColor: infer carefully from the brand website design, color palette, imagery, and overall aesthetic — these feed directly into AI hero image generation and must reflect the real brand identity. For industry, positioning, and targetPersona: be specific and commercially precise, not generic.`;
 
     const message = await anthropic.messages.create({
       model: 'claude-opus-4-6',
