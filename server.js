@@ -8196,13 +8196,7 @@ Output only the post text.` }]
               const fbPostId = fbRes.id || fbRes.post_id;
               results[channel] = { status: 'published', postId: fbPostId, url: `https://facebook.com/${fbPostId}`, utmParams };
               
-              // Cache pageId so next publish skips discovery
-              if (!creds.pageId) {
-                await pool.query(
-                  `UPDATE publishing_channels SET credentials = credentials || $1 WHERE brand_profile_id = $2 AND channel = 'facebook'`,
-                  [JSON.stringify({ pageId, pageName: targetPage.name }), item.brand_profile_id]
-                ).catch(() => {});
-              }
+              // Page ID is set via Integrations page picker (/api/facebook/pipedream/select-page), no runtime discovery needed.
             } catch(e) {
               console.error('[FB-PIPEDREAM]', e.message);
               throw new Error(e.message);
@@ -9340,13 +9334,84 @@ app.post('/api/pipedream/account', requireAuth, async (req, res) => {
   const { brandProfileId, channel, accountId, appSlug } = req.body;
   if (!brandProfileId || !channel || !accountId) return res.status(400).json({ error: 'missing fields' });
   try {
+    // Preserve per-channel auxiliary state across reconnects. Previously this endpoint
+    // wrote the whole credentials object fresh on every OAuth completion, wiping
+    // state like Facebook's selected pageId/pageName when users hit "Reconnect".
+    // Now: read existing credentials, overwrite only the Pipedream-owned keys.
+    const existing = await pool.query(
+      'SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = $2',
+      [brandProfileId, channel]
+    );
+    const prev = existing.rows[0]?.credentials || {};
+    const merged = {
+      ...prev,
+      pipedream_account_id: accountId,
+      app_slug: appSlug,
+      connected_via: 'pipedream_connect'
+    };
     await pool.query(`
       INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active, updated_at)
       VALUES ($1, $2, $3, true, NOW())
       ON CONFLICT (brand_profile_id, channel) DO UPDATE SET credentials = $3, is_active = true, updated_at = NOW()
-    `, [brandProfileId, channel, JSON.stringify({ pipedream_account_id: accountId, app_slug: appSlug, connected_via: 'pipedream_connect' })]);
+    `, [brandProfileId, channel, JSON.stringify(merged)]);
     res.json({ success: true });
   } catch(e) { console.error('[PD-ACCOUNT]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/facebook/pipedream/list-pages?brandProfileId=...
+// Lists the Facebook Pages the connected Pipedream account admins. Required because Pipedream
+// OAuth completes at the user level — it doesn't know which Page the user wants to publish to.
+// Returns [{ id, name, category, access_token }] so the UI can render a picker.
+app.get('/api/facebook/pipedream/list-pages', requireAuth, async (req, res) => {
+  const brandProfileId = req.query.brandProfileId;
+  if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
+  try {
+    const r = await pool.query(
+      'SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = $2',
+      [brandProfileId, 'facebook']
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'Facebook not connected for this brand' });
+    const creds = r.rows[0].credentials || {};
+    const accountId = creds.pipedream_account_id;
+    if (!accountId) return res.status(400).json({ error: 'No Pipedream account linked. Connect Facebook via Integrations first.' });
+
+    const graphRes = await pipedreamProxy({
+      externalUserId: brandProfileId,
+      accountId,
+      url: 'https://graph.facebook.com/v21.0/me/accounts?fields=id,name,category,tasks',
+      method: 'GET',
+    });
+    if (graphRes.error) {
+      console.error('[FB-LIST-PAGES] Graph error:', graphRes.error);
+      return res.status(502).json({ error: graphRes.error.message || 'Facebook returned an error' });
+    }
+    const pages = (graphRes.data || []).map(p => ({
+      id: p.id, name: p.name, category: p.category,
+      canPost: Array.isArray(p.tasks) ? p.tasks.includes('CREATE_CONTENT') : true
+    }));
+    res.json({ pages, selectedPageId: creds.pageId || null });
+  } catch(e) {
+    console.error('[FB-LIST-PAGES]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/facebook/pipedream/select-page
+// Persists the chosen pageId + pageName to publishing_channels.credentials so the publisher can use it.
+app.post('/api/facebook/pipedream/select-page', requireAuth, async (req, res) => {
+  const { brandProfileId, pageId, pageName } = req.body;
+  if (!brandProfileId || !pageId) return res.status(400).json({ error: 'brandProfileId and pageId required' });
+  try {
+    await pool.query(
+      `UPDATE publishing_channels SET credentials = credentials || $1, updated_at = NOW()
+       WHERE brand_profile_id = $2 AND channel = 'facebook'`,
+      [JSON.stringify({ pageId, pageName: pageName || null }), brandProfileId]
+    );
+    res.json({ success: true, pageId, pageName });
+  } catch(e) {
+    console.error('[FB-SELECT-PAGE]', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // GET /api/pipedream/config — send project config to frontend SDK
