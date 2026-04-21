@@ -5245,22 +5245,53 @@ Return ONLY the JSON object.`;
   return parsed;
 }
 
-// POST /api/campaign/plan — generate 8 angle profiles
+// GET /api/campaign/arcs/:brandProfileId — list Context Hub-generated campaign arcs
+// Returns the campaignArcs array from Context Hub's output. If none exist (brand scanned before
+// campaignArcs were added to the schema), returns []. UI will prompt user to re-scan Context Hub
+// or fall back to the custom-prompt flow.
+app.get('/api/campaign/arcs/:brandProfileId', requireAuth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT profile_data->'campaignArcs' as arcs, brand_name FROM brand_profiles WHERE id = $1`,
+      [req.params.brandProfileId]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'Brand profile not found' });
+    const arcs = Array.isArray(r.rows[0].arcs) ? r.rows[0].arcs : [];
+    res.json({ success: true, arcs, brandName: r.rows[0].brand_name });
+  } catch (err) {
+    console.error('[CAMPAIGN-ARCS]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/campaign/plan — generate 8 campaign angle profiles
+// Accepts EITHER:
+//   { brandProfileId, campaignArcId }  — Context Hub arc expansion (preferred path)
+//   { brandProfileId, topicPrompt }    — user-typed custom campaign prompt (power user path)
+//   { brandProfileId }                 — no direction; planner infers from brand brain (legacy/fallback)
 app.post('/api/campaign/plan', requireAuth, async (req, res) => {
-  const { brandProfileId, topicPrompt } = req.body;
+  const { brandProfileId, topicPrompt, campaignArcId } = req.body;
   if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
 
   try {
-    // Load brand brain from DB
     const profileResult = await pool.query(
       `SELECT * FROM brand_profiles WHERE id = $1`, [brandProfileId]
     );
     if (!profileResult.rows.length) {
       return res.status(404).json({ error: 'Brand profile not found. Run Stage 1 first.' });
     }
-    const profileData = profileResult.rows[0].profile_data || profileResult.rows[0];
+    const profileData = profileResult.rows[0].profile_data || {};
 
-    // Load GEO brief and enriched brief from DB
+    // Resolve the campaign arc if an id was provided
+    let selectedArc = null;
+    if (campaignArcId) {
+      const arcs = Array.isArray(profileData.campaignArcs) ? profileData.campaignArcs : [];
+      selectedArc = arcs.find(a => a.id === campaignArcId) || null;
+      if (!selectedArc) {
+        return res.status(404).json({ error: 'Campaign arc not found. It may have been deleted or the brand was rescanned. Pick a different arc or use a custom topic prompt.' });
+      }
+    }
+
     const geoRes = await pool.query(
       `SELECT brief_data FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
       [brandProfileId]
@@ -5269,7 +5300,6 @@ app.post('/api/campaign/plan', requireAuth, async (req, res) => {
       `SELECT enriched_data FROM enriched_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
       [brandProfileId]
     );
-
     const geoBrief = geoRes.rows[0]?.brief_data || null;
     const enrichedBrief = enrichedRes.rows[0]?.enriched_data || null;
 
@@ -5282,8 +5312,32 @@ app.post('/api/campaign/plan', requireAuth, async (req, res) => {
       path.join(__dirname, 'src/agents/stage4_campaign_planner/system_prompt.md'), 'utf8'
     );
 
+    // Build the direction block — arc expansion is the strongest signal, custom prompt is medium, nothing is fallback.
+    let directionBlock = '';
+    if (selectedArc) {
+      directionBlock = `\nCAMPAIGN ARC — EXPAND THIS INTO 8 ARTICLES:
+The user has selected a Context Hub-generated narrative arc for this campaign. You MUST expand this arc's thesis and acts into exactly 8 distinct but narratively-connected articles, scheduled 2/week across 4 weeks. Think of it as a season of television: the same thesis told across 8 episodes, each building on the last.
+
+ARC TITLE: ${selectedArc.title}
+ARC THESIS: ${selectedArc.thesis}
+TARGET PERSONA: ${selectedArc.targetPersona || 'infer from brand'}
+NATURAL ACT STRUCTURE (${selectedArc.recommendedLength || selectedArc.acts?.length || 3} acts):
+${(selectedArc.acts || []).map(a => `  Act ${a.actNumber} — ${a.actTitle}: ${a.actPremise}`).join('\n')}
+
+EXPANSION GUIDANCE:
+- If the arc has 3 acts: expand to roughly 3+3+2 or 2+3+3 articles per act, so each act gets multi-article development.
+- If 4-5 acts: each act gets ~2 articles, with the opening and closing acts possibly getting 1 or 3 depending on narrative weight.
+- If 6-8 acts: roughly 1 article per act, with the 1-2 strongest acts getting a supporting companion piece.
+- Each article must be a distinct angle/persona-funnel combination BUT must build on the arc's thesis and the act it sits within.
+- Article 1 = opening salvo establishing the problem. Articles 7-8 = payoff/resolution. Middle = progressive proof, case studies, contrarian takes, depth dives.
+- Reference which act each article belongs to in its description so the campaign scheduler can maintain narrative coherence.
+`;
+    } else if (topicPrompt) {
+      directionBlock = `\nUSER TOPIC DIRECTION: The user wants this campaign focused on: "${topicPrompt}". Build all 8 article angles around this theme. The brain patterns below should inform HOW you approach this topic, not WHETHER you cover it.\n`;
+    }
+
     const userPrompt = `Generate 8 campaign angle profiles for the following brand brain.
-${topicPrompt ? `\nUSER TOPIC DIRECTION: The user wants this campaign focused on: "${topicPrompt}". Build all 8 article angles around this theme. The brain patterns below should inform HOW you approach this topic, not WHETHER you cover it.\n` : ''}
+${directionBlock}
 BRAND PROFILE:
 ${trimTo(profileData, 4000)}
 
@@ -5305,6 +5359,9 @@ Return ONLY valid JSON matching the output format. No markdown, no commentary.`;
     const raw = message.content[0].text;
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     const plan = safeParseLLM(jsonMatch ? jsonMatch[0] : raw, 'object', 'campaign-plan');
+
+    // Annotate the plan with the arc context so the UI can show which arc drove this campaign
+    if (selectedArc) plan.sourceArc = { id: selectedArc.id, title: selectedArc.title, thesis: selectedArc.thesis };
 
     res.json({ success: true, plan });
   } catch (err) {
