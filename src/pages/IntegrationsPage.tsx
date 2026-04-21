@@ -313,12 +313,26 @@ export default function IntegrationsPage() {
   const [disconnecting, setDisconnecting] = useState<ChannelId | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  // Facebook page-picker state — loaded when user opens the FB card and is Pipedream-connected.
+  const [fbPages, setFbPages] = useState<Array<{ id: string; name: string; category?: string; canPost: boolean }>>([]);
+  const [fbPagesLoading, setFbPagesLoading] = useState(false);
+  const [fbPagesError, setFbPagesError] = useState('');
+  const [fbSavingPage, setFbSavingPage] = useState(false);
 
   // Load channels whenever active brand resolves
   useEffect(() => {
     const brandId = activeBrand?.id || '';
     if (brandId) loadChannels(brandId);
   }, [activeBrand?.id]);
+
+  // Auto-load Facebook Pages when the FB card is expanded AND the brand has a Pipedream connection.
+  useEffect(() => {
+    if (expanded !== 'facebook' || !selectedBrand) return;
+    const fbChannel = (savedChannels as any)['facebook'];
+    const connected = !!(fbChannel && fbChannel.credentials?.pipedream_account_id);
+    if (connected) loadFbPages();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded, selectedBrand, savedChannels]);
 
   const loadChannels = (brandId: string) => {
     fetch(`/api/publishing/channels/${brandId}`)
@@ -465,6 +479,43 @@ export default function IntegrationsPage() {
       setError('Connection failed');
     } finally {
       setSaving(null);
+    }
+  };
+
+  const loadFbPages = async () => {
+    if (!selectedBrand) return;
+    setFbPagesLoading(true);
+    setFbPagesError('');
+    try {
+      const r = await fetch(`/api/facebook/pipedream/list-pages?brandProfileId=${selectedBrand}`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Failed to load pages');
+      setFbPages(d.pages || []);
+    } catch(e: any) {
+      setFbPagesError(e.message);
+      setFbPages([]);
+    } finally {
+      setFbPagesLoading(false);
+    }
+  };
+
+  const selectFbPage = async (pageId: string, pageName: string) => {
+    if (!selectedBrand) return;
+    setFbSavingPage(true);
+    try {
+      const r = await fetch('/api/facebook/pipedream/select-page', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brandProfileId: selectedBrand, pageId, pageName })
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Failed to save page selection');
+      setSuccess(`Publishing to "${pageName}" ✓`);
+      setTimeout(() => setSuccess(''), 3000);
+      loadChannels(selectedBrand);
+    } catch(e: any) {
+      setError(e.message);
+    } finally {
+      setFbSavingPage(false);
     }
   };
 
