@@ -5660,24 +5660,87 @@ RULES:
   }
 });
 
+// ── Source citation agent ──────────────────────────────────────────────────────
+// Called from Compliance Gate when a user clicks "Find Sources" on a factual_claim or legal_risk flag.
+// Uses Perplexity sonar-pro (reasoning model) to find sources that actually SUPPORT the claim,
+// with prompt-level guidance on what counts as credible, result-level filtering for quality,
+// and brand/domain context so it doesn't return self-citations or cross-company contamination.
+//
+// Known low-quality source domains — we drop these before returning to the user. Not an exhaustive
+// list; it's the ones that most commonly show up as noise in citation searches.
+const LOW_QUALITY_CITATION_DOMAINS = new Set([
+  'quora.com', 'answers.yahoo.com', 'reddit.com', 'stackexchange.com',
+  'wikihow.com', 'ehow.com', 'ask.com',
+  // AI content farms / SEO spam that often crowd the top results
+  'contentatscale.ai', 'seowriting.ai', 'copyai.com',
+  // LinkedIn posts are user-generated opinion — not a citation-grade source (LinkedIn company
+  // pages/articles are fine, but /pulse/ and /posts/ URLs come back as random user posts)
+]);
+
 app.post('/api/compliance/find-sources', requireAuth, async (req, res) => {
-  const { claim, sectionBody } = req.body;
+  const { claim, sectionBody, brandProfileId } = req.body;
   if (!claim && !sectionBody) return res.status(400).json({ error: 'claim or sectionBody required' });
   try {
-    const query = (claim || sectionBody || '').slice(0, 200);
+    // Pull brand context for self-domain exclusion and claim disambiguation.
+    // Without this, Perplexity can (and does) return forgeintelligence.ai as a source for
+    // a Forge Intelligence article's own claim — instant trust collapse for the user.
+    let brandDomain = '';
+    let brandName = '';
+    let factualGround = null;
+    if (brandProfileId) {
+      try {
+        const r = await pool.query(
+          'SELECT brand_name, brand_url, settings FROM brand_profiles WHERE id = $1',
+          [brandProfileId]
+        );
+        if (r.rows[0]) {
+          brandName = r.rows[0].brand_name || '';
+          // Extract bare domain (drop scheme + www + trailing path)
+          const rawUrl = r.rows[0].brand_url || '';
+          brandDomain = rawUrl.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].toLowerCase();
+          factualGround = r.rows[0].settings?.factualGround || null;
+        }
+      } catch(e) { /* non-fatal — proceed without brand context */ }
+    }
 
-    // Perplexity sonar — use search_results directly, no JSON parsing needed
+    // Truncate claim and section separately rather than concatenating. Claim is the authoritative
+    // thing to verify; sectionBody is context for understanding the claim, not part of the search.
+    const claimText = (claim || '').trim().slice(0, 500);
+    const sectionContext = (sectionBody || '').trim().slice(0, 800);
+
+    // Per-claim system prompt. Guides sonar-pro's reasoning, not a generic "be helpful" preamble.
+    const systemPrompt = `You are a citation researcher finding sources for a B2B thought-leadership article. Return sources that ACTUALLY SUPPORT the specific claim — not just topically-related articles. Prioritize in this order:
+1. Primary sources (peer-reviewed research, government data, original surveys, SEC filings, company earnings reports)
+2. Industry research firms (Gartner, Forrester, IDC, McKinsey, Deloitte, HubSpot/Salesforce/similar with original data)
+3. Established trade publications (HBR, MIT Sloan, Wall Street Journal, Bloomberg, industry-leader publications)
+4. Authoritative trade publications with named authors and clear methodology
+
+Avoid: forums (Quora, Reddit, Stack Exchange), personal blogs, AI-generated content farms, press release aggregators, Wikipedia (except for well-sourced definitional claims), and LinkedIn user posts. Avoid sources older than 3 years for statistical claims unless they remain industry-standard references.
+
+If the claim is definitional (e.g. "X is defined as..."), return authoritative definitional sources. If statistical (e.g. "73% of..."), return the primary survey/study. If a trend (e.g. "X is growing"), return recent industry reports with specific data points.`;
+
+    // Build claim-type hints so sonar-pro knows which strategy to apply.
+    const claimTypeHints = [];
+    if (/\b\d+\s*%|\b\d+x|\b\d+-fold/.test(claimText)) claimTypeHints.push('STATISTICAL — return the primary survey or study containing this exact data point.');
+    if (/\bis defined as|means that|refers to\b/i.test(claimText)) claimTypeHints.push('DEFINITIONAL — return an authoritative industry or academic definition source.');
+    if (/\bincreasing|growing|declining|trending|shift toward\b/i.test(claimText)) claimTypeHints.push('TREND — return recent (past 24 months) industry reports with data.');
+    if (/\breport(ed)?|announced|stated\b/i.test(claimText) && /[A-Z][a-zA-Z]+\s+(Inc|LLC|Corp|Ltd)/.test(claimText)) claimTypeHints.push('COMPANY-SPECIFIC — return that company\'s own press release, earnings, or official blog.');
+
+    // User message — explicit structure.
+    const userMessage = `CLAIM TO SUPPORT:\n"${claimText}"\n\nCONTEXT (surrounding article text, for understanding — do NOT cite this):\n${sectionContext}\n${claimTypeHints.length ? '\nCLAIM TYPE: ' + claimTypeHints.join(' ') : ''}${brandDomain ? `\n\nDO NOT return sources from these domains (self-citation or untrusted): ${brandDomain}${factualGround?.competitors ? ', ' + (Array.isArray(factualGround.competitors) ? factualGround.competitors.join(', ') : factualGround.competitors) : ''}` : ''}${brandName && factualGround?.foundingStory ? `\n\nNOTE: "${brandName}" refers specifically to the company with this founding story — "${String(factualGround.foundingStory).slice(0,200)}". Do not return sources about other similarly-named companies.` : ''}\n\nReturn 3-5 credible sources that actually contain data or analysis supporting this specific claim.`;
+
     let sonarData = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       const sonarRes = await fetch('https://api.perplexity.ai/chat/completions', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'sonar',
+          model: 'sonar-pro',  // reasoning-tier Sonar — significantly better citation quality vs. base 'sonar'
           messages: [
-            { role: 'system', content: 'You are a research assistant. Find credible sources.' },
-            { role: 'user', content: `Find research, statistics, or studies supporting: "${query}"` }
-          ]
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage }
+          ],
+          search_recency_filter: 'year',  // bias toward recent sources; claim-type hints can override for definitional
         })
       });
       if (sonarRes.status === 429) {
@@ -5695,18 +5758,44 @@ app.post('/api/compliance/find-sources', requireAuth, async (req, res) => {
 
     if (!sonarData) return res.status(500).json({ success: false, error: 'Source search timed out — try again' });
 
-    // search_results has everything we need — title, url, snippet, date
     const searchResults = sonarData.search_results || [];
-    const sources = searchResults.slice(0, 3).map(r => ({
-      title: r.title || '',
-      url: r.url || '',
-      snippet: r.snippet || '',
-      year: r.date ? r.date.slice(0, 4) : (r.last_updated ? r.last_updated.slice(0, 4) : ''),
-    }));
 
-    if (!sources.length) return res.json({ success: false, error: 'No sources found — try a different section' });
+    // Filter + dedupe + rank.
+    const getDomain = (url) => {
+      try { return new URL(url).hostname.replace(/^www\./, '').toLowerCase(); } catch { return ''; }
+    };
+    const seenDomains = new Set();
+    const filtered = [];
+    for (const r of searchResults) {
+      const url = r.url || '';
+      if (!url) continue;
+      const domain = getDomain(url);
+      // Self-citation guard
+      if (brandDomain && domain === brandDomain) continue;
+      // Dedupe by domain — don't return 3 articles from the same site
+      if (seenDomains.has(domain)) continue;
+      // Drop known low-quality domains
+      if (LOW_QUALITY_CITATION_DOMAINS.has(domain)) continue;
+      // Drop LinkedIn user posts specifically (company pages/articles are fine; /pulse/ and /posts/ are user posts)
+      if (domain === 'linkedin.com' && /\/(pulse|posts)\//i.test(url)) continue;
+      seenDomains.add(domain);
+      filtered.push({
+        title: r.title || '',
+        url,
+        snippet: r.snippet || '',
+        year: r.date ? String(r.date).slice(0, 4) : (r.last_updated ? String(r.last_updated).slice(0, 4) : ''),
+        domain,
+      });
+      if (filtered.length >= 5) break;
+    }
 
-    res.json({ success: true, sources: sources.slice(0, 3) });
+    if (!filtered.length) {
+      console.log('[FIND-SOURCES] No qualifying sources after filtering. Raw count:', searchResults.length);
+      return res.json({ success: false, error: 'No credible sources found for this claim. Try rewriting without a citation, or rephrase to be less specific.' });
+    }
+
+    console.log(`[FIND-SOURCES] claim="${claimText.slice(0,80)}..." returned=${filtered.length} (from ${searchResults.length} raw)`);
+    res.json({ success: true, sources: filtered.slice(0, 3) });
   } catch (e) {
     console.error('[FIND-SOURCES] caught:', e.message);
     res.status(500).json({ success: false, error: e.message });
