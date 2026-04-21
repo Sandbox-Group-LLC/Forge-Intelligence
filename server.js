@@ -2619,7 +2619,7 @@ app.post('/api/context-hub/analyze', softAuth, async (req, res) => {
           return res.status(409).json({
             success: false,
             claimed: true,
-            error: `This URL was recently scanned and is reserved for 24 hours. If this is your brand, use the same browser session or sign in with the account that ran the original scan.`
+            error: `This URL was recently scanned and is reserved for 24 hours. If this is your brand and you believe this reservation was made in error, you can dispute this claim at forgeintelligence.ai/dispute or email hello@forgeintelligence.ai with your domain and we will resolve it within 2 hours.`
           });
         }
 
