@@ -5158,6 +5158,92 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
 
 // ── Campaign Generator ────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// enrichAngleForCampaign — per-angle lightweight enrichment for Campaign Generator
+// ─────────────────────────────────────────────────────────────────────────────
+// Campaigns generate 8 articles from 8 distinct angles. Previously the whole campaign
+// shared one enriched brief (from whatever the latest Enricher run happened to produce),
+// which meant 7 of 8 articles got a brief that didn't match the angle — articles were
+// "raw-dogged" with just angle + brand profile, bypassing the brain injection layer.
+//
+// This helper calls Sonnet 4.6 with the angle + brand brain + factual ground + brain
+// patterns to synthesize a per-angle enrichedBrief in the same shape Content Gen expects
+// (enrichedTitle, enrichedH1, enrichedSections, enrichedFAQ, powerPhrases, contentHooks).
+// It is NOT the full 8-tool Enricher (Sonar scrape, EEAT scoring, gap analysis etc.) —
+// that's ~60s per angle and stateful. This is the injection-surface subset, ~8-12s per
+// angle and deterministic, giving campaign articles the same brain-directing structure
+// as per-topic briefs without the full pipeline cost.
+async function enrichAngleForCampaign({ angle, profileData, factualGround, brainPatterns, brainMistakes, brandName }) {
+  const fgBlock = factualGround && Object.values(factualGround).some(v => v && (typeof v === 'string' ? v.trim() : (Array.isArray(v) && v.length)))
+    ? `FACTUAL GROUND (verbatim, do not contradict):
+${factualGround.whatWeDo ? `- What this company does: ${factualGround.whatWeDo}\n` : ''}${factualGround.whatWeDontDo ? `- What this company does NOT do: ${factualGround.whatWeDontDo}\n` : ''}${factualGround.companyFacts ? `- Company facts: ${factualGround.companyFacts}\n` : ''}${factualGround.foundingStory ? `- Founding: ${factualGround.foundingStory}\n` : ''}${factualGround.methodology ? `- Methodology: ${factualGround.methodology}\n` : ''}${factualGround.authors?.length ? `- Named authors/SMEs: ${factualGround.authors.map(a => `${a.name} (${a.title || 'unspecified'})`).join('; ')}\n` : ''}`
+    : '';
+  const patternsBlock = brainPatterns?.length
+    ? `BRAIN PATTERNS (successful approaches — emulate these):\n${brainPatterns.slice(0,5).map(p => `- [${p.pattern_type}] ${p.description}`).join('\n')}`
+    : '';
+  const mistakesBlock = brainMistakes?.length
+    ? `BRAIN MISTAKES (avoid these — hard constraints):\n${brainMistakes.slice(0,5).map(m => `- [${m.mistake_type}] ${m.description}`).join('\n')}`
+    : '';
+  const voiceBlock = profileData?.voiceProfile
+    ? `VOICE PROFILE (tone + style anchors):\n${JSON.stringify(profileData.voiceProfile, null, 2).slice(0, 1500)}`
+    : '';
+  const personaName = angle.persona?.name || angle.persona || 'the target persona';
+
+  const systemPrompt = `You are a content strategist producing a per-angle enriched brief for a long-form B2B article. Your output directs the article writer on exactly what to cover, what angle to take, what authority signals to inject, and what the brand's user-verified facts are. Every field must be specific to THIS angle and THIS brand — never generic.
+
+Output STRICT JSON matching this schema (no markdown, no commentary):
+{
+  "enrichedTitle": "SEO-optimized meta title, 55-70 chars, format: 'Primary phrase | Brand' or 'Primary phrase — Brand'",
+  "enrichedH1": "on-page headline, declarative, 7-14 words, more punchy than the meta title",
+  "topic": "core topic of the article in 3-8 words",
+  "enrichedSections": [
+    { "heading": "H2 section heading", "body": "2-3 sentences summarizing what the writer should cover in this section — be SPECIFIC to this angle", "confidenceTier": "high|medium|low", "eeatInjections": ["Specific proof point, named source, data point, or expertise signal the writer should weave in"], "smeHooks": ["Quote-worthy position the SME can stand behind"] }
+  ],
+  "enrichedFAQ": [{ "q": "FAQ question this article should answer", "a": "Concise 1-2 sentence answer" }],
+  "powerPhrases": ["Short, declarative phrases the writer should use verbatim — ~5 words each, specific to brand voice"],
+  "contentHooks": ["Opening-paragraph hooks that would grab ${personaName}"],
+  "authorSchema": { "name": "author name from factual ground authors, or null", "jobTitle": "author job title, or null" }
+}
+
+Requirements: 4-6 enrichedSections, 3-5 enrichedFAQ, 4-6 powerPhrases, 2-3 contentHooks.`;
+
+  const userPrompt = `Produce the enriched brief for this specific campaign angle:
+
+ANGLE:
+${JSON.stringify(angle, null, 2)}
+
+BRAND: ${brandName}
+
+${voiceBlock}
+
+${fgBlock}
+
+${patternsBlock}
+
+${mistakesBlock}
+
+Return ONLY the JSON object.`;
+
+  const message = await anthropic.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 4096,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userPrompt }]
+  });
+  const raw = message.content[0].text;
+  const match = raw.match(/\{[\s\S]*\}/);
+  const parsed = safeParseLLM(match ? match[0] : raw, 'object', 'campaign-angle-enrichment');
+
+  // Attach author schema from factualGround if the LLM didn't emit one
+  if ((!parsed.authorSchema || !parsed.authorSchema.name) && factualGround?.authors?.length) {
+    parsed.authorSchema = {
+      name: factualGround.authors[0].name || null,
+      jobTitle: factualGround.authors[0].title || null
+    };
+  }
+  return parsed;
+}
+
 // POST /api/campaign/plan — generate 8 angle profiles
 app.post('/api/campaign/plan', requireAuth, async (req, res) => {
   const { brandProfileId, topicPrompt } = req.body;
@@ -5374,21 +5460,31 @@ app.get('/api/campaign/generate/:id', requireAuth, async (req, res) => {
       `SELECT brief_data FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
       [campaign.brand_profile_id]
     );
-    const enrichedRes = await pool.query(
-      `SELECT enriched_data FROM enriched_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
-      [campaign.brand_profile_id]
-    );
     const patternsRes = await pool.query(
-      `SELECT pattern_type, description, confidence_score FROM brain_patterns WHERE brand_profile_id = $1 ORDER BY confidence_score DESC LIMIT 5`,
+      `SELECT pattern_type, description, success_rate, confidence_score, tags FROM brain_patterns WHERE brand_profile_id = $1 ORDER BY COALESCE(success_rate, confidence_score) DESC LIMIT 10`,
       [campaign.brand_profile_id]
     );
     const mistakesRes = await pool.query(
-      `SELECT mistake_type, description FROM brain_mistakes WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 5`,
+      `SELECT mistake_type, description FROM brain_mistakes WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 10`,
       [campaign.brand_profile_id]
     );
 
     const geoBrief = geoRes.rows[0]?.brief_data || null;
-    const enrichedBrief = enrichedRes.rows[0]?.enriched_data || null;
+    // NOTE: we deliberately do NOT load a single "latest enriched brief" here anymore —
+    // each of the 8 articles gets its OWN per-angle enriched brief synthesized from the
+    // angle profile + factual ground + brain patterns. See enrichAngleForCampaign below.
+    // Prior behavior: 7-of-8 articles received a brief that didn't match their angle,
+    // which defeated the whole point of the brain injection layer.
+
+    // Load Factual Ground once — it's brand-level, identical for all 8 articles.
+    let campaignFactualGround = null;
+    try {
+      const fgRes = await pool.query(
+        `SELECT settings->'factualGround' as fg FROM brand_profiles WHERE id = $1`,
+        [campaign.brand_profile_id]
+      );
+      if (fgRes.rows[0]?.fg) campaignFactualGround = fgRes.rows[0].fg;
+    } catch(e) { /* non-fatal */ }
 
     const trimTo = (obj, maxChars = 6000) => {
       const s = typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2);
@@ -5429,6 +5525,27 @@ app.get('/api/campaign/generate/:id', requireAuth, async (req, res) => {
         `UPDATE campaign_articles SET status = 'generating', updated_at = NOW() WHERE id = $1`,
         [articleRow.id]
       );
+
+      // ── Per-angle enrichment ────────────────────────────────────────────────
+      // Synthesize an enriched brief specific to THIS angle so the writer has proper
+      // brain-directing structure (sections, FAQ, power phrases, hooks) rather than
+      // inheriting a stale brief from a prior topic.
+      send('article_progress', { index: angle.index, stage: 'enriching', label: 'Building per-angle intelligence brief' });
+      let enrichedBrief = null;
+      try {
+        enrichedBrief = await enrichAngleForCampaign({
+          angle,
+          profileData,
+          factualGround: campaignFactualGround,
+          brainPatterns: patternsRes.rows,
+          brainMistakes: mistakesRes.rows,
+          brandName: profileData?.brandName || profileResult.rows[0].brand_name || ''
+        });
+        console.log(`[CAMPAIGN] Angle ${angle.index} enriched: "${enrichedBrief?.enrichedH1 || enrichedBrief?.enrichedTitle || '(untitled)'}"`);
+      } catch(enrichErr) {
+        console.error(`[CAMPAIGN] Per-angle enrichment failed for angle ${angle.index}: ${enrichErr.message} — falling back to angle-only generation`);
+        enrichedBrief = null;
+      }
 
       // Load Topical Authority Map — strategic context for where this content lives
     let topicalTerritories = [];
