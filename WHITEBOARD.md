@@ -10,6 +10,37 @@
 
 ## Session — April 19–20, 2026
 
+### 24-Hour Claim Gate — Full Fix (all branches aligned, verified live)
+- **Brian's audit request:** validate that the 24-hour reservation gate worked as intended — URL scanned by visitor A gets reserved for 24 hours via localStorage session ID, User B in that window sees "claimed" with dispute email, after 24h it's fair game.
+- **Diagnosis — gate was half-built:**
+  1. UI fully wired: Landing.tsx listens for `forge:scan-blocked` event, renders claim state with "sign in" + dispute-email links, has localStorage `forge_session_id` generator. Dispute path goes to hello@forgeintelligence.ai.
+  2. Backend had NO `/api/domain/check` endpoint. Landing's pre-scan check silently failed (fetch caught) and fell through to Context Hub analyze.
+  3. `/api/context-hub/analyze` brain-first cache blindly returned cached data to anyone. User B would get User A's full scan results. Zero enforcement.
+  4. Backend NEVER returned 409 anywhere. The AppContext.tsx 409 handler dispatching `forge:scan-blocked` was dead code.
+  5. **Branch drift discovered mid-fix:** `main` had an earlier partial implementation (never reached production) with its own bug — the conditional `if (!isExpired && ... && !isOwner)` meant EXPIRED rows fell through to the "serve cached" path. Opposite of what should happen: expired rows should be treated as gone, not served stale.
+- **Shipped — three-layer fix, aligned across all 4 branches:**
+  1. **New `POST /api/domain/check`** — pre-scan endpoint for Landing. Returns `{claimed, reason, ownedByUser, reservedBySession, hoursRemaining, message}`. Same logic Landing was already trying to call but the endpoint didn't exist.
+  2. **Guarded brain-first cache** in `/api/context-hub/analyze` — SQL query now filters `AND (expires_at IS NULL OR expires_at > NOW())` so expired rows don't return at all. If a row returns: only served cached to clerk_user_id match OR onboard_session_id match. Everyone else gets 409 with reason + message.
+  3. **Three distinct 409 variants** with human-readable messages:
+     - `owned_by_account` → "This domain is already claimed by an active Forge account. If this is your brand, sign in. If you believe this is an error, contact hello@forgeintelligence.ai with proof of domain ownership."
+     - `reserved_by_other_session` → computes hoursRemaining, message: "Someone else scanned this domain in the past 24 hours and has N hours left to claim it. After that the reservation expires. If you believe this is an error, contact hello@forgeintelligence.ai to dispute."
+     - Orphan row (no clerk_user_id, no session_id) → passthrough as not-claimed (defensive default; these shouldn't exist in normal flow but we don't want to brick legit scans on edge-case rows).
+- **Branch reconciliation:** replaced main's old partial implementation (which had the expired-rows-served-as-cached bug) with the unified new version. All 4 branches now carry identical claim-gate code.
+- **Tested end-to-end against production via synthetic DB rows:**
+  - Scenario: no row → `{claimed:false, reason:'not_scanned'}` ✓
+  - Scenario: paid-user-owned → `{claimed:true, ownedByUser:true}` ✓
+  - Scenario: matching session → `{claimed:false, reason:'your_own_scan', brandId}` ✓
+  - Scenario: different session, 22h left → `{claimed:true, reservedBySession:true, hoursRemaining:22}` ✓
+  - Scenario: expired row → `{claimed:false, reason:'not_scanned'}` (fair game after 24h) ✓
+- **Deployed commits:**
+  - dev: c8ab517f ✓
+  - prod: d3445c36 ✓
+  - intel: 9200ab3e ✓
+  - strategy: 42ffb7db ✓
+- **Dispute channel:** all user-facing claim-gate messages route to `hello@forgeintelligence.ai`, matching Brian's stated intent.
+- **Worth knowing about the trust shape:** the gate is session-based, and sessions live in browser localStorage. If User A clears their localStorage, they lose the ability to resume their own scan within the 24h window — the backend can't distinguish them from User B at that point. This is consistent with how product tools like this generally work (Figma, Notion onboarding, etc.) but worth being aware of for support tickets. Eventually when users sign in, clerk_user_id takes over as the durable ownership signal.
+
+
 ### Context Hub — Strategic Moats vs. Competitive Gaps (shipped all branches + Houspire correction)
 - **Bug class found via Houspire onboarding:** Context Hub's Opus prompt was reading deliberately-excluded capabilities as competitive gaps. Houspire's Hindustan Metro feature explicitly states "planning and execution should not be tied together — we don't execute projects, don't sign contractors, don't take commissions" as their strategic moat. Context Hub interpreted this as "execution support is a missing capability" and flagged it as a high-priority gap. If GEO Strategist had run with this, it would have suggested topics positioning Houspire AGAINST their own stated strategy.
 - **Why rerunning Context Hub wouldn't have fixed it:** same website content + same parsing prompt = same interpretation. Re-running burns LLM cost for an identical wrong answer.
