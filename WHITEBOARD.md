@@ -10,6 +10,30 @@
 
 ## Session — April 19–20, 2026
 
+### Compliance Gate — Source Citation Agent Rewrite (shipped all branches)
+- **Brian's report:** sources the agent came back with were "weird" — not matching the claim, random blog posts, sometimes Forge's own site.
+- **Root cause audit** of `/api/compliance/find-sources` revealed 6 problems compounding:
+  1. System prompt was `"You are a research assistant. Find credible sources."` — zero actual guidance.
+  2. User prompt was `"Find research, statistics, or studies supporting: [claim]"` with no claim-type distinction (a definitional claim and a statistical claim need completely different source strategies).
+  3. Using basic `sonar` model instead of `sonar-pro` — base sonar returns top-web results with minimal reasoning; sonar-pro actually reasons about whether results support the specific claim.
+  4. No brand context passed — Perplexity had no way to know forgeintelligence.ai is the site being WRITTEN for, so self-citation happened (absurd trust collapse for the user).
+  5. No FactualGround context — same name-collision risk as the Enricher's Jim-and-Greg bug (could return data about a similarly-named company as citation support).
+  6. Zero result filtering — just `.slice(0, 3)` of raw Perplexity results. Quora answers, LinkedIn user posts, AI content farms, duplicate domains all passing through.
+- **Shipped — full rewrite with 5 layers of quality control:**
+  1. **System prompt:** ranks source types explicitly (primary research > industry research firms > trade pubs > authoritative trade publications), lists what to avoid (forums, blogs, AI content farms, LinkedIn user posts, stale data), and tells Sonar to verify the source actually SUPPORTS the claim (not just topically related).
+  2. **Claim-type hints:** regex-detects whether the claim is STATISTICAL (has `%` or `Nx`), DEFINITIONAL (`"is defined as"`), TREND (`"increasing/growing"`), or COMPANY-SPECIFIC (named corporate entity). Appends strategy guidance to the prompt per type.
+  3. **Brand context injection:** `brandProfileId` now passed from UI. Backend looks up brand domain (extracted from brand_url, normalized) and passes to Sonar as a "DO NOT return sources from these domains" instruction. Also pulls `settings.factualGround` for disambiguation on brand-specific claims.
+  4. **Model upgrade:** `sonar` → `sonar-pro`. Cost diff is ~3x but still pennies per query (~$0.004 vs $0.001). At 50 queries/week estimated, this is <$5/month for meaningfully better results.
+  5. **Post-response filtering pipeline:** domain dedupe (no 3 sources from same site), self-domain exclusion, LOW_QUALITY_CITATION_DOMAINS blocklist (quora/reddit/answers.yahoo/stackexchange/wikihow/ai content farms), LinkedIn user post path exclusion (`/pulse/` and `/posts/` URLs). Also added `search_recency_filter: 'year'` to bias toward recent sources.
+- **Why this matters:** citation quality is one of the few visible things to the end reader. A single Quora link as a citation reads like "AI slop" — even if everything else is great, that one bad link undermines trust. The new filter stack is aggressive by design: better to return 0 sources with a "rewrite without a citation" suggestion than 3 weak sources that hurt the article.
+- **Request shape change:** `/api/compliance/find-sources` now accepts `brandProfileId` in addition to `claim`+`sectionBody`. It's optional — if missing, agent falls back to no-brand-context behavior (gracefully degrades). UI passes it from existing scope (brandProfileId state is already populated from activeBrand/localStorage).
+- **Response shape:** still `{ success, sources: [{title, url, snippet, year}] }` — added `domain` field for UI flexibility. No breaking changes; UI works unchanged.
+- **Deferred / follow-on:**
+  - Competitor-domain exclusion relies on `factualGround.competitors` being populated. Many brand profiles won't have this filled in. Worth prompting users during onboarding to list 3-5 named competitors for better citation filtering.
+  - Model calibration: sonar-pro is still an LLM, and sometimes returns results that look authoritative but don't actually contain the claimed data. A true fact-check pass (fetch the source URL, extract content, verify the claim appears) would be a future quality tier. Not urgent; current quality should be a significant step up.
+  - The low-quality domain blocklist is curated manually. If/when a pattern emerges of bad sources we want to block, add them to `LOW_QUALITY_CITATION_DOMAINS` in server.js.
+
+
 ### Facebook Publishing — Full Debug Arc + Honest Empty State (Meta-side blocker, not a Forge bug)
 - **Context:** Brian's Facebook publish was throwing 'No Page ID configured'. Worked through it end-to-end across ~4 hours, shipped Page picker infrastructure, then uncovered the real blocker is on Meta's side.
 - **Initial surface (fixed first):** No Page picker UI existed. Pipedream OAuth completes at the user level — a user who admins multiple Pages must choose which one Forge publishes to, but nothing was asking. Also: the `/api/pipedream/account` endpoint was wiping stored credentials on every OAuth completion, so even a manually-poked pageId wouldn't survive a reconnect.
