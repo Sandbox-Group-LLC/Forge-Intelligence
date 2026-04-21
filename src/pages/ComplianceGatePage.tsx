@@ -309,7 +309,7 @@ function ComplianceGateContent() {
       const r = await authFetch('/api/compliance/find-sources', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ claim, sectionBody }),
+        body: JSON.stringify({ claim, sectionBody, brandProfileId }),
       });
       const d = await r.json();
       if (d.success && d.sources?.length) {
