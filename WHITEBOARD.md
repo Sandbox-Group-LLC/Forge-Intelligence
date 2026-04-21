@@ -10,6 +10,27 @@
 
 ## Session — April 19–20, 2026
 
+### Facebook Pages Publishing — missing Page picker + reconnect wipe + TS blocker (all fixed, all branches)
+- **Brian's report:** Facebook publish throwing `[FB-PIPEDREAM] No Facebook Page ID configured. Go to Integrations → Facebook → select a page.`
+- **Investigation chain:**
+  1. Queried `publishing_channels` for FB rows — both connected brands had `pipedream_account_id` but no `pageId`. The error was accurate; no page ever got saved.
+  2. Audited IntegrationsPage.tsx — Pipedream Connect completes at the user level (OAuth scope is per-user, not per-page). A user who admins multiple Pages needs to pick one. The UI had no picker anywhere; nothing was asking.
+  3. Audited server.js publish path (~L8150) — expected `creds.pageId` to come from a UI step that didn't exist, with a comment referencing stale discovery logic that claimed `/me/accounts` didn't work via Pipedream (wrong — it works fine when the `facebook_pages` app is provisioned with `pages_show_list`).
+- **Fix shipped — three layers:**
+  1. **Backend endpoints:**
+     - `GET /api/facebook/pipedream/list-pages?brandProfileId=...` — reads stored `pipedream_account_id`, proxies `GET /me/accounts?fields=id,name,category,tasks` through Pipedream, returns `[{ id, name, category, canPost }]`. `canPost` = does the `tasks` array include `CREATE_CONTENT` (Page-level permission gate).
+     - `POST /api/facebook/pipedream/select-page` — persists chosen pageId + pageName to `publishing_channels.credentials` via JSONB `||` merge (preserves other keys).
+  2. **Reconnect-wipe fix in `/api/pipedream/account`:** previously this endpoint wrote a fresh credentials object on every OAuth completion, destroying per-channel state like `pageId`. Now it reads existing credentials first and merges only the Pipedream-owned keys. Protects all current and future per-channel state across reconnects.
+  3. **Frontend picker UI inside IntegrationsPage.tsx:**
+     - State hooks: `fbPages`, `fbPagesLoading`, `fbPagesError`, `fbSavingPage`.
+     - `loadFbPages()` / `selectFbPage()` helpers.
+     - Auto-load `useEffect` that fires when the FB card is expanded AND the brand is Pipedream-connected.
+     - Picker renders inside the "Connected via Pipedream" block with radio-button-style cards: name + category + ID + active indicator + disabled state when `canPost === false`.
+- **Build broke once.** Commit `fda20a34` failed Render's `tsc && vite build` because `SavedChannel` interface didn't have a `credentials` field. `(saved?.credentials as any)` passes Vite but fails `tsc --noEmit`. Fixed by adding `credentials?: Record<string, any>` to the interface. Commit `148fc888` live on all 4 branches.
+- **Cleanup:** removed stale post-publish `pageId` cache block in server.js publisher (referenced `targetPage.name` that never existed; the discovery logic it described was abandoned). Page ID now comes exclusively from the UI picker.
+- **Known scope:** this fix covers facebook_pages. If/when Instagram via Pipedream ships, similar Page-picker pattern will likely be needed. The shape is now proven.
+
+
 ### Authenticity Enricher — Corrections UX + Root-Cause Name Collision Fix (shipped all branches)
 - **Brian's report:** toggling away from Authenticity Enricher and back wiped all corrections he was entering. Additionally, an enriched brief for "Why Your Content Strategy Isn't Generating Pipeline" contained fabricated founder info — Forge was supposedly "founded in 2017 in Cambridge by Jim and Greg." These were two separate bugs that needed independent fixes.
 
