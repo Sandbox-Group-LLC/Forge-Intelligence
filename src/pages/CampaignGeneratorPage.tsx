@@ -89,6 +89,12 @@ function CampaignGeneratorContent() {
   const [step, setStep] = useState<'setup' | 'plan' | 'generating' | 'complete'>('setup');
   const [isPlanning, setIsPlanning] = useState(false);
   const [topicPrompt, setTopicPrompt] = useState('');
+  // Campaign arc state — Context Hub generates 2-4 narrative arcs per scan. User picks one to expand
+  // into the 8-article campaign. Textarea below is for power-users who want to override with a custom premise.
+  const [campaignArcs, setCampaignArcs] = useState<Array<{ id: string; title: string; thesis: string; acts: Array<{ actNumber: number; actTitle: string; actPremise: string }>; recommendedLength?: number; targetPersona?: string }>>([]);
+  const [selectedArcId, setSelectedArcId] = useState<string>('');
+  const [arcsLoading, setArcsLoading] = useState(false);
+  const [customPromptMode, setCustomPromptMode] = useState(false);
   const [preflight, setPreflight] = useState<{ status: string; signal?: string; confidence?: string; reframe?: string; reason?: string }>({ status: 'idle' });
   const [plan, setPlan] = useState<{ campaign_name: string; topic_cluster: string; articles: AngleProfile[] } | null>(null);
   const [articleStatuses, setArticleStatuses] = useState<ArticleStatus[]>([]);
@@ -99,6 +105,38 @@ function CampaignGeneratorContent() {
   const { historyEntries, activeBrand } = useApp();
 
   const brains: Brain[] = historyEntries.map(e => ({ id: e.id, brandName: e.brandName, brandUrl: e.brandUrl }));
+
+  // Load Context Hub campaign arcs whenever the selected brain changes.
+  // If arcs list comes back empty, the brand was scanned before campaignArcs was added to Context Hub's
+  // output schema — user can fall back to the custom prompt flow (toggle handles this).
+  useEffect(() => {
+    if (!selectedBrainId) { setCampaignArcs([]); setSelectedArcId(''); return; }
+    let cancelled = false;
+    (async () => {
+      setArcsLoading(true);
+      try {
+        const res = await fetch(`/api/campaign/arcs/${selectedBrainId}`, {
+          headers: { ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {}) }
+        });
+        if (!res.ok) throw new Error('Failed to load arcs');
+        const d = await res.json();
+        if (cancelled) return;
+        setCampaignArcs(d.arcs || []);
+        setSelectedArcId('');
+        // If no arcs exist, auto-switch to custom prompt mode so user isn't stuck.
+        if (!d.arcs || d.arcs.length === 0) setCustomPromptMode(true);
+        else setCustomPromptMode(false);
+      } catch {
+        if (cancelled) return;
+        setCampaignArcs([]);
+        setCustomPromptMode(true);
+      } finally {
+        if (!cancelled) setArcsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBrainId]);
 
   // Seed selected brain from active brand context
   useEffect(() => {
@@ -215,7 +253,11 @@ function CampaignGeneratorContent() {
     try {
       const res = await fetch('/api/campaign/plan', {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {}) },
-        body: JSON.stringify({ brandProfileId: selectedBrainId, topicPrompt: topicPrompt.trim() || undefined }),
+        body: JSON.stringify({
+          brandProfileId: selectedBrainId,
+          campaignArcId: (!customPromptMode && selectedArcId) ? selectedArcId : undefined,
+          topicPrompt: (customPromptMode && topicPrompt.trim()) ? topicPrompt.trim() : undefined,
+        }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
@@ -372,14 +414,106 @@ function CampaignGeneratorContent() {
             ))}
           </div>
           <div style={{ width: '100%' }}>
-            <input
-              className="geo-input"
-              placeholder="Optional: direct the campaign topic — e.g. 'Competitive intelligence for sales teams'"
-              value={topicPrompt}
-              onChange={e => { setTopicPrompt(e.target.value); setPreflight({ status: 'idle' }); }}
-              onBlur={checkTopic}
-              style={{ width: '100%', boxSizing: 'border-box', marginBottom: '8px' }}
-            />
+            {/* Campaign storyline picker — Context Hub arcs are the default entry point. */}
+            {!customPromptMode && (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary, #1e293b)' }}>
+                    Pick a campaign storyline
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { setCustomPromptMode(true); setSelectedArcId(''); }}
+                    style={{ background: 'none', border: 'none', color: 'var(--color-accent, #3563FF)', cursor: 'pointer', fontSize: 12, padding: 0, textDecoration: 'underline' }}
+                  >
+                    Or describe your own campaign idea
+                  </button>
+                </div>
+                {arcsLoading && (
+                  <div style={{ fontSize: 13, color: 'var(--color-text-muted, #94a3b8)', padding: '10px 0' }}>
+                    Loading storylines from Context Hub…
+                  </div>
+                )}
+                {!arcsLoading && campaignArcs.length === 0 && (
+                  <div style={{ fontSize: 13, color: 'var(--color-text-secondary, #475569)', padding: '10px 14px', background: 'var(--color-bg-elevated, #F4F7FF)', borderRadius: 8, marginBottom: 10 }}>
+                    No campaign storylines found for this brand. Rescan the brand through Context Hub to generate storylines, or describe your own campaign idea.
+                  </div>
+                )}
+                {!arcsLoading && campaignArcs.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
+                    {campaignArcs.map(arc => {
+                      const isSelected = arc.id === selectedArcId;
+                      return (
+                        <div
+                          key={arc.id}
+                          style={{
+                            padding: '12px 14px',
+                            background: isSelected ? 'rgba(53, 99, 255, 0.04)' : 'var(--color-bg-card, #FFFFFF)',
+                            border: `1.5px solid ${isSelected ? 'var(--color-accent, #3563FF)' : 'var(--color-border, #E2E8F0)'}`,
+                            borderRadius: 8,
+                            cursor: 'pointer',
+                            boxShadow: isSelected ? '0 0 0 3px rgba(53, 99, 255, 0.1)' : 'none',
+                            transition: 'all 0.15s'
+                          }}
+                          onClick={() => setSelectedArcId(arc.id)}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary, #1e293b)', marginBottom: 4 }}>{arc.title}</div>
+                              <div style={{ fontSize: 12, color: 'var(--color-text-secondary, #475569)', lineHeight: 1.5 }}>{arc.thesis}</div>
+                            </div>
+                            <div style={{ flex: '0 0 auto', fontSize: 11, color: 'var(--color-text-muted, #94a3b8)', whiteSpace: 'nowrap' }}>
+                              {(arc.acts?.length || arc.recommendedLength || 3)} acts → 8 articles
+                            </div>
+                          </div>
+                          {isSelected && arc.acts && arc.acts.length > 0 && (
+                            <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--color-border-subtle, #E2E8F0)' }}>
+                              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted, #94a3b8)', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 6 }}>
+                                Narrative acts
+                              </div>
+                              {arc.acts.map(a => (
+                                <div key={a.actNumber} style={{ fontSize: 12, color: 'var(--color-text-secondary, #475569)', marginBottom: 4, lineHeight: 1.5 }}>
+                                  <span style={{ fontWeight: 600, color: 'var(--color-text-primary, #1e293b)' }}>Act {a.actNumber}:</span> {a.actTitle} — <span style={{ color: 'var(--color-text-muted, #94a3b8)' }}>{a.actPremise}</span>
+                                </div>
+                              ))}
+                              {arc.targetPersona && (
+                                <div style={{ fontSize: 11, color: 'var(--color-text-muted, #94a3b8)', marginTop: 6, fontStyle: 'italic' }}>Target: {arc.targetPersona}</div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+            {customPromptMode && (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary, #1e293b)' }}>
+                    Describe your campaign
+                  </span>
+                  {campaignArcs.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => { setCustomPromptMode(false); setTopicPrompt(''); setPreflight({ status: 'idle' }); }}
+                      style={{ background: 'none', border: 'none', color: 'var(--color-accent, #3563FF)', cursor: 'pointer', fontSize: 12, padding: 0, textDecoration: 'underline' }}
+                    >
+                      ← Back to storylines
+                    </button>
+                  )}
+                </div>
+                <input
+                  className="geo-input"
+                  placeholder="Describe the campaign — e.g. 'How AI changes content attribution in B2B'"
+                  value={topicPrompt}
+                  onChange={e => { setTopicPrompt(e.target.value); setPreflight({ status: 'idle' }); }}
+                  onBlur={checkTopic}
+                  style={{ width: '100%', boxSizing: 'border-box', marginBottom: '8px' }}
+                />
+              </>
+            )}
             {preflight.status === 'checking' && (
               <div className="cg-preflight-checking">Brain checking topic alignment...</div>
             )}
