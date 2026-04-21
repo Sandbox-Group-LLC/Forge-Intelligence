@@ -10,6 +10,26 @@
 
 ## Session — April 19–20, 2026
 
+### Facebook Publishing — Full Debug Arc + Honest Empty State (Meta-side blocker, not a Forge bug)
+- **Context:** Brian's Facebook publish was throwing 'No Page ID configured'. Worked through it end-to-end across ~4 hours, shipped Page picker infrastructure, then uncovered the real blocker is on Meta's side.
+- **Initial surface (fixed first):** No Page picker UI existed. Pipedream OAuth completes at the user level — a user who admins multiple Pages must choose which one Forge publishes to, but nothing was asking. Also: the `/api/pipedream/account` endpoint was wiping stored credentials on every OAuth completion, so even a manually-poked pageId wouldn't survive a reconnect.
+- **Shipped (working):** `/api/facebook/pipedream/list-pages` + `/select-page` endpoints, frontend Page picker with radio-button cards inside the Connected-via-Pipedream block, auto-load on card expand, credentials preservation on reconnect. One TS build failure on the way (SavedChannel interface needed credentials field) — fixed.
+- **Then the real blocker surfaced:** Page picker called `/me/accounts` and got `{ data: [] }` despite Brian being a verified admin of a Page (in Meta Business Suite).
+- **Diagnostic endpoint added** (`/api/admin/facebook/diag`) — returns raw /me, /me/accounts, /me/permissions through Pipedream proxy. Revealed:
+  - Granted: `email, pages_show_list, public_profile` (Pipedream's shared-app scope set)
+  - NOT granted: `pages_manage_posts` (publish), `pages_read_engagement` (metrics), `business_management` (needed for Business-Suite-owned Pages to appear in /me/accounts)
+- **Also discovered:** `PIPEDREAM_OAUTH_APP_ID_FACEBOOK` env is unset on Render, so Pipedream falls back to their shared default Facebook OAuth app. The shared app's scopes are minimal by Meta's design — shared apps cannot request write-level Page permissions because it's exactly the vector used for Page takeover spam.
+- **Meta's gate (the actual blocker):** to get `pages_manage_posts` + `business_management` you MUST register your own Meta Developer App and attach it to a Pipedream Custom OAuth App. There is no workaround at the Pipedream layer. Brian's Meta account is too new for Dev App creation (Meta requires Business Verification or Identity Confirmation via ID upload).
+- **Paths forward for Brian** (non-code):
+  1. Complete Meta Business Verification via Business Manager (often faster than direct Dev App verification for new accounts)
+  2. Identity Confirmation via passport/DL upload (1-3 day turnaround)
+  3. Wait 30 days for new-account flag to lift naturally
+  4. Defer Facebook entirely (B2B distribution value is ≤5% of the LinkedIn + X + organic search + AI-citation mix Brian is already getting)
+- **What we shipped for the defer path:** honest empty state on the Facebook integration card. When `/me/accounts` returns empty, instead of a misleading 'make sure you admin a Page' message, the card now explains the actual Meta OAuth policy, lists the 3-step unblock path (Meta Dev App → Pipedream Custom OAuth → Render env), and reassures that other channels remain fully functional. This means the integration sits there coherently until verification is done, instead of looking broken.
+- **Scope of the deferred work:** when Brian does complete Meta verification, the path to live FB publishing is: (1) register Meta Dev App, (2) register it as Pipedream Custom OAuth App to get the `oa_xxxxxxxx` ID, (3) set `PIPEDREAM_OAUTH_APP_ID_FACEBOOK` on Render, (4) reconnect in Integrations. The Page picker UI + backend endpoints are already in place and will light up automatically once `/me/accounts` returns real data.
+- **Knowledge worth carrying forward:** any customer brand we onboard will hit this same wall. The honest empty state helps them see it as a known gate rather than a product bug, but it's a real friction point for any FB-first customer. Worth considering: for v1 launch, do we just not ship Facebook as an available channel and add it in v2 when we have a verified Meta Dev App centrally managed? Alternative: make Facebook a BYO-Dev-App integration where customers bring their own Meta Dev App credentials — more work per customer, but sidesteps our needing to host a verified Meta partnership.
+
+
 ### Facebook Pages Publishing — missing Page picker + reconnect wipe + TS blocker (all fixed, all branches)
 - **Brian's report:** Facebook publish throwing `[FB-PIPEDREAM] No Facebook Page ID configured. Go to Integrations → Facebook → select a page.`
 - **Investigation chain:**
