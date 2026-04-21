@@ -10,6 +10,25 @@
 
 ## Session — April 19–20, 2026
 
+### Context Hub — Strategic Moats vs. Competitive Gaps (shipped all branches + Houspire correction)
+- **Bug class found via Houspire onboarding:** Context Hub's Opus prompt was reading deliberately-excluded capabilities as competitive gaps. Houspire's Hindustan Metro feature explicitly states "planning and execution should not be tied together — we don't execute projects, don't sign contractors, don't take commissions" as their strategic moat. Context Hub interpreted this as "execution support is a missing capability" and flagged it as a high-priority gap. If GEO Strategist had run with this, it would have suggested topics positioning Houspire AGAINST their own stated strategy.
+- **Why rerunning Context Hub wouldn't have fixed it:** same website content + same parsing prompt = same interpretation. Re-running burns LLM cost for an identical wrong answer.
+- **Why factualGround alone doesn't fix it:** factualGround has no field that overrides profile_data.competitiveGaps. Three agents read competitiveGaps directly (GEO Strategist L3636, Strategy Competitive Intel L4511, Content Import L10615). The Enricher + Content Gen pathways DO read factualGround, so those are covered — but GEO Strategist's topic discovery is not.
+- **Shipped — Context Hub prompt patch:**
+  1. Tightened `competitiveGaps` schema description to explicitly exclude strategic non-choices ("Do NOT include topics the brand explicitly and strategically excludes — those are moats, not gaps").
+  2. Added parallel `strategicMoats` field with structure `{capability, rationale, protects}` capturing intentional non-actions. Schema: 0-4 moats, include only if the brand makes explicit non-action statements.
+  3. Updated the schema requirements line to reflect both changes.
+- **Scope of the prompt fix:** applies to all future Context Hub runs for all brands. Every new customer onboarded going forward gets the moats-vs-gaps distinction baked in.
+- **Houspire-specific correction (admin relay, one-off):** directly updated `profile_data`:
+  - Removed 1 of 5 competitiveGaps ("Post-design execution support and project management" — this was the misread)
+  - Added 3 strategicMoats: (a) does not execute projects, (b) does not sign contractors or earn referral commissions, (c) does not operate as a marketplace
+  - Kept the 4 legitimate gaps: verified third-party reviews, AI-powered real-time customization, tier-2/3 city content, educational content hub
+- **Not addressed (deferred):**
+  - Agents that currently read competitiveGaps don't yet read strategicMoats. Worth extending GEO Strategist, Content Gen, and Compliance critique to incorporate strategicMoats as "topics to frame positively" rather than "topics to compete in." Small follow-on — 3 sites to touch.
+  - No UI surface for strategicMoats anywhere. Brand Profile page doesn't render them. Brand Settings doesn't let users manually add them. Worth adding when customer-facing polish is the priority.
+- **Lesson for future diagnoses:** when Context Hub misreads something, ask whether it's a stale-data problem (website changed, rerun helps) or a prompt-interpretation problem (same input gives same output, rerun wastes cost). The diagnostic path is: does the website literally say the thing Context Hub got wrong? If yes, rerun won't help; fix the prompt or correct profile_data directly.
+
+
 ### Compliance Gate — Source Citation Agent Rewrite (shipped all branches)
 - **Brian's report:** sources the agent came back with were "weird" — not matching the claim, random blog posts, sometimes Forge's own site.
 - **Root cause audit** of `/api/compliance/find-sources` revealed 6 problems compounding:
