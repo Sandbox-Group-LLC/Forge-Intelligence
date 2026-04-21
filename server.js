@@ -9362,6 +9362,42 @@ app.post('/api/pipedream/account', requireAuth, async (req, res) => {
 // Lists the Facebook Pages the connected Pipedream account admins. Required because Pipedream
 // OAuth completes at the user level — it doesn't know which Page the user wants to publish to.
 // Returns [{ id, name, category, access_token }] so the UI can render a picker.
+// DIAGNOSTIC: GET /api/admin/facebook/diag?brandProfileId=...&adminPassword=...
+// Returns raw /me, /me/accounts, /me/permissions from the Graph API through the Pipedream proxy.
+// Exists purely for debugging why no Pages are being returned — useful when user is admin of Pages
+// but the OAuth token can't see them (scope/permission issue at the Meta level, not a Forge bug).
+app.get('/api/admin/facebook/diag', async (req, res) => {
+  const { brandProfileId, adminPassword } = req.query;
+  if (adminPassword !== process.env.ADMIN_PASSWORD) return res.status(401).json({ error: 'unauthorized' });
+  if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
+  try {
+    const r = await pool.query(
+      'SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = $2',
+      [brandProfileId, 'facebook']
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'no facebook channel' });
+    const accountId = r.rows[0].credentials?.pipedream_account_id;
+    if (!accountId) return res.status(400).json({ error: 'no pipedream account linked' });
+
+    const results = {};
+    for (const [label, url] of [
+      ['me', 'https://graph.facebook.com/v21.0/me?fields=id,name,email'],
+      ['accounts', 'https://graph.facebook.com/v21.0/me/accounts?fields=id,name,category,tasks,access_token&limit=100'],
+      ['permissions', 'https://graph.facebook.com/v21.0/me/permissions'],
+    ]) {
+      try {
+        results[label] = await pipedreamProxy({ externalUserId: brandProfileId, accountId, url, method: 'GET' });
+      } catch (e) {
+        results[label] = { error: e.message };
+      }
+    }
+    res.json({ accountId, brandProfileId, results });
+  } catch (e) {
+    console.error('[FB-DIAG]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/facebook/pipedream/list-pages', requireAuth, async (req, res) => {
   const brandProfileId = req.query.brandProfileId;
   if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
