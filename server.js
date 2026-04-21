@@ -6211,7 +6211,11 @@ Return ONLY valid JSON in this exact structure:
       headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 4096,
+        // Raised from 4096 -> 8192 to prevent truncation on long articles. A full compliance report on an
+        // 8-section, 30kb article with 4-6 flags + verbatim section quotes can easily exceed 4096 tokens.
+        // Previous failure mode: truncated JSON → safeParseLLM nuclear recovery returns {} → UI gets an empty
+        // report but compliance_status = 'reviewed', making the Gate appear "passed" when it actually crashed.
+        max_tokens: 8192,
         system: systemPrompt,
         messages: [{ role: 'user', content: `Article to audit:\n\n${(() => {
           const sections = articleJson?.sections || [];
@@ -6221,8 +6225,42 @@ Return ONLY valid JSON in this exact structure:
     });
     const critiqueData = await critiqueRes.json();
     const rawText = critiqueData.content?.[0]?.text || '{}';
-    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-    const report = safeParseLLM(rawText, 'object', 'compliance-gate');
+    const stopReason = critiqueData.stop_reason || 'unknown';
+    if (stopReason === 'max_tokens') {
+      console.warn(`[COMPLIANCE] Critique hit max_tokens ceiling — response truncated. Article ${contentId} has ${(articleJson?.sections || []).length} sections / ${Math.round(JSON.stringify(articleJson).length / 1024)}kb`);
+    }
+
+    let report;
+    try {
+      report = safeParseLLM(rawText, 'object', 'compliance-gate');
+    } catch (parseErr) {
+      console.error(`[COMPLIANCE] JSON parse failed on article ${contentId}: ${parseErr.message} | stop_reason=${stopReason} | raw first 400:`, rawText.slice(0, 400));
+      // Fail loud instead of silent. Do NOT mark article 'reviewed' — leave it 'pending' so
+      // the user can retry. Return a meaningful error so the UI can surface it.
+      return res.status(502).json({
+        success: false,
+        error: stopReason === 'max_tokens'
+          ? 'Compliance review response was truncated. Article may be too long — try splitting into two articles or contact support.'
+          : `Compliance review response could not be parsed: ${parseErr.message}. Please retry.`,
+        stopReason
+      });
+    }
+
+    // Empty-object guard: if the parse succeeded but the report has no real fields, treat that
+    // as a failure too. Silent {} write was the original bug shape.
+    const hasAnyContent = report && (
+      typeof report.overallScore === 'number' ||
+      typeof report.summary === 'string' && report.summary.trim().length > 0 ||
+      Array.isArray(report.flags)
+    );
+    if (!hasAnyContent) {
+      console.error(`[COMPLIANCE] Parsed report is empty for article ${contentId}. stop_reason=${stopReason}, raw first 400:`, rawText.slice(0, 400));
+      return res.status(502).json({
+        success: false,
+        error: 'Compliance review returned an empty response. This usually means the article is too long or the model hit an internal limit. Please retry.',
+        stopReason
+      });
+    }
 
     // Normalise sectionIndex to 0-based — Claude sometimes returns 1-based
     if (report.flags?.length && articleJson?.sections?.length) {
