@@ -2603,24 +2603,29 @@ app.post('/api/context-hub/analyze', softAuth, async (req, res) => {
       );
       if (existing.rows.length > 0) {
         const r = existing.rows[0];
-        const currentUserId = req.userId || null;
-        const profileOwner  = r.clerk_user_id || null;
-        const isExpired     = r.expires_at ? new Date(r.expires_at) < new Date() : false;
-        const isOwner       = currentUserId && profileOwner && currentUserId === profileOwner;
-        const isGuest       = !profileOwner; // profile was created by an unauthenticated guest scan
+        const isExpired        = r.expires_at ? new Date(r.expires_at) < new Date() : false;
+        const currentUserId    = req.userId || null;
+        const currentSessionId = req.body.sessionId || req.headers['x-session-id'] || null;
+        const profileOwner     = r.clerk_user_id || null;
+        const profileSession   = r.onboard_session_id || null;
 
-        // ── Claim block: URL is actively claimed by a different authenticated user ──
-        if (!isExpired && profileOwner && !isOwner) {
+        // ── Determine if the requester owns this profile ──
+        const isAuthOwner    = currentUserId && profileOwner && currentUserId === profileOwner;
+        const isSessionOwner = currentSessionId && profileSession && currentSessionId === profileSession;
+        const isOwner        = isAuthOwner || isSessionOwner;
+
+        // ── Claim block: active profile owned by someone else ──
+        if (!isExpired && (profileOwner || profileSession) && !isOwner) {
           return res.status(409).json({
             success: false,
             claimed: true,
-            error: `This URL has been claimed and is reserved for 24 hours. If this is your brand, sign in with the account that ran the original scan or wait for the reservation to expire.`
+            error: `This URL was recently scanned and is reserved for 24 hours. If this is your brand, use the same browser session or sign in with the account that ran the original scan.`
           });
         }
 
-        // ── Owner or guest-unclaimed: serve cached profile ──
+        // ── Owner match or expired: serve cached profile ──
         await pool.query(`UPDATE brand_profiles SET cache_status = 'cached' WHERE id = $1`, [r.id]);
-        console.log(`[Context Hub] Cache hit for ${brandUrl} | owner: ${profileOwner || 'guest'} | requester: ${currentUserId || 'guest'}`);
+        console.log(`[Context Hub] Cache hit for ${brandUrl} | session: ${profileSession || 'none'} | user: ${profileOwner || 'guest'}`);
         return res.json({ success: true, cached: true, data: {
           id: r.id, brandUrl: r.brand_url, brandName: r.brand_name,
           version: r.version, isActive: r.is_active, cacheStatus: 'cached',
