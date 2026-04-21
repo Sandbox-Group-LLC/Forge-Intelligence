@@ -10,6 +10,28 @@
 
 ## Session — April 19–20, 2026
 
+### GEO Strategist — factualGround + strategicMoats integration (closes loop across all 4 downstream agents)
+- **The gap:** Factual Ground was influencing Enricher, Content Gen, and Compliance citation agent — but NOT GEO Strategist, the topic discovery layer. That meant user-saved corrections about what they do / don't do / who their real competitors are had no effect on which topics the Strategist suggested. A brand could correct factualGround to say "we don't do DEI training" and the Strategist would still suggest DEI-training topics because it only read Context Hub's profile_data.
+- **Why this mattered:** topic discovery is upstream of every article. A Strategist-suggested topic that contradicts the brand's stated positioning wastes downstream Enricher + Content Gen cost AND produces articles that position the brand against its own strategy. Caught while prepping Culture+ for a live demo — Context Hub had surfaced talent-agency competitors (88rising, UTA, WME) because Culture+ Group appears in entertainment press adjacent to those firms. Factual Ground had the correct competitor set (Alma, GlobalHue, Sensis, Casanova/McCann, Lopez Negrete) but the Strategist was ignoring it.
+- **Shipped:**
+  1. GEO Strategist `/api/geo-strategist/analyze` now loads `settings.factualGround` + `profile_data.strategicMoats` after the brand profile load, builds two context blocks:
+     - `USER-VERIFIED FACTS` block: what the brand does, what it does NOT do, verified competitors (overrides Context Hub discoveries), methodology/frameworks.
+     - `STRATEGIC MOATS` block: capabilities the brand deliberately excludes, with rationale.
+  2. Tool 1 (Topical Authority Mapper) receives both blocks with an explicit instruction: "Topics must be consistent with the USER-VERIFIED FACTS and must NOT fall inside the STRATEGIC MOATS (those are intentional exclusions, not opportunities)."
+  3. Tool 3 (Entity & Schema Mapper) receives the verified competitors list with disambiguation guidance: "use these, do not include entities from different companies with similar names." Catches cross-company entity confusion for brands with common names.
+- **Graceful degradation:** if factualGround is empty (new brand, never corrected), blocks render as empty strings and the prompt behaves identically to pre-patch. Zero risk for existing brands without FG.
+- **Cache behavior:** when factualGround is saved, brand version bumps. Existing geo_briefs carry their old brain_version, and the cache check (L3705) already considers `brain_version < brand version` as stale → forces a fresh run on next call. So the fix self-activates on the next Strategist analyze call for any brand with Factual Ground, no manual cache invalidation needed.
+- **Culture+ specifically:** brand v2 (FG saved today 17:40 UTC), existing geo_brief is v1 on brain_version 1. Next Analyze click for Culture+ will recompute with the new prompt + Lili's verified competitors + "we don't do talent rep / DEI training" exclusions.
+- **Downstream completion:** factualGround now flows into all 4 Context Hub consumers:
+  - Authenticity Enricher — Sonar disambiguation block (prior fix, April 19-20)
+  - Content Generator — factual ground verbatim injection at top of writer prompt (prior fix)
+  - Compliance Gate citation agent — brand domain exclusion + competitor exclusion (prior fix tonight)
+  - GEO Strategist — topic discovery now factual-ground-aware (this fix)
+  - The pitch "Factual Ground is a compounding intelligence layer" is now architecturally true across every agent that reads brand intelligence.
+- **Still deferred:** `/api/strategy/competitive-intel` and `/api/content/import` also read profile_data without factualGround. Lower priority (not in the main article pipeline) but should be swept eventually for consistency.
+- **Deploys:** main 2f22fc0f, prod 46d23060, intel 9cf9b733, strategy 6645a701. All live.
+
+
 ### Context Hub Campaign Arcs → Campaign Generator Pipeline (shipped all branches)
 - **Brian's insight that drove this:** Context Hub has been organically suggesting 3-8 part content series in its strategic recommendations (e.g. Forge's own "Competitive Worldview vs Content Calendar" manifesto series), but nothing downstream was consuming them as campaigns. Campaign Generator was planning 8 unrelated angles from scratch with no narrative thesis. Two systems with overlapping shape that never talked.
 - **Root architectural shift shipped:** Context Hub is now the campaign *storyline author* — it produces narrative thesis + act structure. Campaign Generator is the *storyline expander* — it takes Context Hub's natural-length arc (3-8 acts) and expands it into the scheduler-compatible 8-article × 2/week × 4-week format that already exists.
