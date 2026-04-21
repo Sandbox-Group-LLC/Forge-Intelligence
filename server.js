@@ -4544,70 +4544,23 @@ app.post('/api/strategy/competitive-intel/:brandProfileId', requireAuth, async (
     if (!profile.rows.length) { send('error', { error: 'Brand not found' }); return res.end(); }
     const brand = profile.rows[0];
     const pd = brand.profile_data || {};
-    const factualGround = brand.settings?.factualGround || null;
 
-    // Prefer user-verified competitors from factualGround over Context Hub's discoveredCompetitors.
-    // Context Hub can misidentify competitors when a brand appears in press alongside unrelated
-    // companies (e.g., Culture+ Group showed up next to talent agencies because of entertainment
-    // press proximity). User-saved factualGround competitors override scraped discovery.
-    //
-    // Input normalization: factualGround.competitors can be in three shapes historically:
-    //   1. Array of strings, could be URLs, bare domains, or brand names
-    //   2. Array of objects {name, url} (preferred shape — name for display, url for scraping)
-    //   3. Comma-separated string (legacy paste-from-form entry)
-    // Output: array of {name, url} where url is always scrapable. Items with no resolvable URL
-    // (bare name, no domain info anywhere) are dropped with a warning because the scraper
-    // can't do anything useful with just a brand name.
-    let competitors = [];
-    let competitorSource = 'context_hub';
-    const fgCompetitors = factualGround?.competitors;
-
-    const toUrlObject = (item) => {
-      // Already in {name, url} object form
-      if (item && typeof item === 'object' && item.url) {
-        const url = String(item.url).trim();
-        return {
-          name: item.name || url.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0],
-          url: /^https?:\/\//.test(url) ? url : `https://${url}`
-        };
-      }
-      const s = String(item || '').trim();
-      if (!s) return null;
-      if (/^https?:\/\//.test(s)) {
-        return { name: s.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0], url: s };
-      }
-      // Looks like a bare domain (has a dot, no spaces)
-      if (/\./.test(s) && !/\s/.test(s)) {
-        return { name: s.replace(/^www\./, '').split('/')[0], url: `https://${s}` };
-      }
-      // Just a brand name — we can't scrape without a URL. Return the name with null url so the
-      // caller can report it and skip. Users can fix by editing Factual Ground with actual URLs.
-      return { name: s, url: null };
-    };
-
-    if (fgCompetitors && (Array.isArray(fgCompetitors) ? fgCompetitors.length : String(fgCompetitors).trim().length)) {
-      const fgList = Array.isArray(fgCompetitors) ? fgCompetitors : String(fgCompetitors).split(',').map(s => s.trim()).filter(Boolean);
-      competitors = fgList.map(toUrlObject).filter(Boolean);
-      competitorSource = 'factual_ground';
-    } else {
-      // discoveredCompetitors is historically an array of strings. Run through the same normalizer.
-      competitors = (pd.discoveredCompetitors || []).map(toUrlObject).filter(Boolean);
-    }
-
-    // Separate scrapable (has URL) from unscrapable (bare name, no URL). Warn on unscrapable.
-    const unscrapable = competitors.filter(c => !c.url);
-    competitors = competitors.filter(c => c.url);
-    if (unscrapable.length) {
-      console.warn(`[STRATEGY] Dropping ${unscrapable.length} competitor(s) with no resolvable URL:`, unscrapable.map(c => c.name).join(', '));
-      send('progress', { stage: 'init', detail: `Skipping ${unscrapable.length} competitor(s) without URLs: ${unscrapable.map(c => c.name).join(', ')}. Add URLs in Factual Ground to include them.` });
-    }
+    // Competitors source: prefer factualGround.competitors (user-verified URLs) when present,
+    // otherwise use Context Hub's discoveredCompetitors. No shape-munging here — the expected
+    // shape is an array of URL strings, same as what Context Hub produces. If a user hand-edits
+    // factualGround with bad data, they'll see the scrape produce empty results and know to fix.
+    const fgUrls = (brand.settings?.factualGround?.competitors || [])
+      .map(c => (typeof c === 'object' && c?.url) ? c.url : String(c).trim())
+      .filter(u => /^https?:\/\//.test(u) || /\.[a-z]{2,}/i.test(u))
+      .map(u => /^https?:\/\//.test(u) ? u : `https://${u}`);
+    const competitors = fgUrls.length ? fgUrls : (pd.discoveredCompetitors || []);
 
     if (!competitors.length) {
-      send('error', { error: 'No scrapable competitors. Add competitor URLs in Factual Ground (e.g. "https://example.com") or run Context Hub to discover them.' });
+      send('error', { error: 'No competitors discovered. Run Context Hub first to discover competitors.' });
       return res.end();
     }
 
-    send('progress', { stage: 'init', detail: `${competitors.length} competitors from ${competitorSource === 'factual_ground' ? 'Factual Ground (user-verified)' : 'Context Hub scan'}: ${competitors.map(c => c.name).join(', ')}` });
+    send('progress', { stage: 'init', detail: `${competitors.length} competitors: ${competitors.join(', ')}` });
 
     // ── Cache check ──
     if (!force) {
@@ -4645,18 +4598,12 @@ app.post('/api/strategy/competitive-intel/:brandProfileId', requireAuth, async (
 
     const competitorData = [];
     for (let ci = 0; ci < competitors.length; ci++) {
-      const compObj = competitors[ci];
-      const compUrl = compObj.url;
-      let compName = compObj.name; // may be refined from <title> if user provided a bare domain
-      const normalizedUrl = compUrl; // already normalized in toUrlObject
-      send('progress', { stage: 'scrape', competitor: compName, index: ci + 1, total: competitors.length, detail: `Scraping ${compName}...` });
+      const compUrl = competitors[ci];
+      const normalizedUrl = compUrl.startsWith('http') ? compUrl : `https://${compUrl}`;
+      send('progress', { stage: 'scrape', competitor: compUrl, index: ci + 1, total: competitors.length, detail: `Scraping ${compUrl}...` });
 
       let scraped = '';
-      // compName is already set from compObj.name in the loop head. If the user-provided name
-      // looks like a bare domain (e.g. fell through from a URL-only entry), prefer extracting a
-      // cleaner name from the page <title>. If the user provided a real brand name (e.g. "Alma"),
-      // respect it and don't overwrite.
-      const userProvidedRealName = compName && !/\.[a-z]{2,}$/i.test(compName) && !/^https?:/i.test(compName);
+      let compName = compUrl.replace(/https?:\/\/(www\.)?/, '').replace(/\/$/, '');
       try {
         // Homepage
         const homeRes = await fetch(normalizedUrl, {
@@ -4667,11 +4614,9 @@ app.post('/api/strategy/competitive-intel/:brandProfileId', requireAuth, async (
         let homeHtml = '';
         if (homeRes?.ok) {
           homeHtml = await homeRes.text();
-          // Extract title as competitor name (only if we don't already have a real user-provided name)
-          if (!userProvidedRealName) {
-            const titleMatch = homeHtml.match(/<title[^>]*>([^<]+)<\/title>/i);
-            if (titleMatch) compName = titleMatch[1].split(/[|–—-]/)[0].trim();
-          }
+          // Extract title as competitor name
+          const titleMatch = homeHtml.match(/<title[^>]*>([^<]+)<\/title>/i);
+          if (titleMatch) compName = titleMatch[1].split(/[|–—-]/)[0].trim();
           scraped += `HOMEPAGE:\n${stripHtml(homeHtml).slice(0, 4000)}\n\n`;
         }
 
