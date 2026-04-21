@@ -656,6 +656,83 @@ export default function IntegrationsPage() {
                           <span className="int-pipedream-sub">OAuth managed by Pipedream · Token auto-refreshes · Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}</span>
                           <button className="int-reauth-btn" onClick={() => handleSave(ch.id)}>Reconnect</button>
                         </div>
+
+                        {/* Facebook-specific: Page picker. Pipedream OAuth grants access at the user level,
+                            so a user who admins multiple Pages must choose which one Forge publishes to.
+                            The backend endpoint calls /me/accounts via the Pipedream proxy and returns the
+                            list. Selection is persisted to publishing_channels.credentials.pageId. */}
+                        {ch.id === 'facebook' && (
+                          <div style={{ marginTop: 16, padding: 16, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: '#1E293B', marginBottom: 8 }}>Publishing destination</div>
+                            <div style={{ fontSize: 12, color: '#64748B', marginBottom: 12 }}>Choose which Facebook Page Forge should publish to.</div>
+
+                            {fbPagesLoading && (
+                              <div style={{ fontSize: 13, color: '#64748B', padding: '8px 0' }}>Loading your Pages…</div>
+                            )}
+
+                            {fbPagesError && !fbPagesLoading && (
+                              <div style={{ fontSize: 13, color: '#B91C1C', background: '#FEE2E2', padding: '8px 12px', borderRadius: 6, marginBottom: 8 }}>
+                                {fbPagesError}
+                                <button
+                                  type="button"
+                                  onClick={loadFbPages}
+                                  style={{ marginLeft: 8, background: 'none', border: 'none', color: '#B91C1C', textDecoration: 'underline', cursor: 'pointer', fontSize: 13, padding: 0 }}
+                                >
+                                  Retry
+                                </button>
+                              </div>
+                            )}
+
+                            {!fbPagesLoading && !fbPagesError && fbPages.length === 0 && (
+                              <div style={{ fontSize: 13, color: '#64748B', padding: '8px 0' }}>
+                                No Facebook Pages found for this account. Make sure the Facebook account you connected admins at least one Page.
+                              </div>
+                            )}
+
+                            {!fbPagesLoading && fbPages.length > 0 && (() => {
+                              const currentPageId = (saved?.credentials as any)?.pageId || null;
+                              return (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                  {fbPages.map(p => {
+                                    const isSelected = p.id === currentPageId;
+                                    return (
+                                      <button
+                                        key={p.id}
+                                        type="button"
+                                        disabled={fbSavingPage || !p.canPost}
+                                        onClick={() => selectFbPage(p.id, p.name)}
+                                        title={p.canPost ? '' : 'This Page does not grant CREATE_CONTENT permission to the connected account.'}
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'space-between',
+                                          padding: '10px 12px',
+                                          background: isSelected ? '#EFF6FF' : '#FFFFFF',
+                                          border: `1.5px solid ${isSelected ? '#3563FF' : '#E2E8F0'}`,
+                                          borderRadius: 6,
+                                          cursor: (fbSavingPage || !p.canPost) ? 'not-allowed' : 'pointer',
+                                          opacity: p.canPost ? 1 : 0.55,
+                                          textAlign: 'left',
+                                          transition: 'all 0.15s'
+                                        }}
+                                      >
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                          <span style={{ fontSize: 13, fontWeight: 600, color: '#1E293B' }}>{p.name}</span>
+                                          <span style={{ fontSize: 11, color: '#94A3B8' }}>
+                                            {p.category || 'Page'} · ID: {p.id}{!p.canPost ? ' · no post permission' : ''}
+                                          </span>
+                                        </div>
+                                        {isSelected && (
+                                          <span style={{ fontSize: 12, fontWeight: 700, color: '#3563FF' }}>✓ Active</span>
+                                        )}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        )}
                       </div>
                     )}
 
