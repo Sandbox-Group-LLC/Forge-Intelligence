@@ -2595,7 +2595,7 @@ app.post('/api/context-hub/analyze', softAuth, async (req, res) => {
   const startTime = Date.now();
 
   try {
-    // ── Brain-First: cache check ──────────────────────────────────────────────
+    // ── Brain-First: cache check + 24-hour claim gate ────────────────────────
     if (checkBrainFirst) {
       const existing = await pool.query(
         `SELECT * FROM brand_profiles WHERE brand_url = $1 AND is_active = true ORDER BY version DESC LIMIT 1`,
@@ -2603,8 +2603,24 @@ app.post('/api/context-hub/analyze', softAuth, async (req, res) => {
       );
       if (existing.rows.length > 0) {
         const r = existing.rows[0];
+        const currentUserId = req.userId || null;
+        const profileOwner  = r.clerk_user_id || null;
+        const isExpired     = r.expires_at ? new Date(r.expires_at) < new Date() : false;
+        const isOwner       = currentUserId && profileOwner && currentUserId === profileOwner;
+        const isGuest       = !profileOwner; // profile was created by an unauthenticated guest scan
+
+        // ── Claim block: URL is actively claimed by a different authenticated user ──
+        if (!isExpired && profileOwner && !isOwner) {
+          return res.status(409).json({
+            success: false,
+            claimed: true,
+            error: `This URL has been claimed and is reserved for 24 hours. If this is your brand, sign in with the account that ran the original scan or wait for the reservation to expire.`
+          });
+        }
+
+        // ── Owner or guest-unclaimed: serve cached profile ──
         await pool.query(`UPDATE brand_profiles SET cache_status = 'cached' WHERE id = $1`, [r.id]);
-        console.log(`[Context Hub] Cache hit for ${brandUrl}`);
+        console.log(`[Context Hub] Cache hit for ${brandUrl} | owner: ${profileOwner || 'guest'} | requester: ${currentUserId || 'guest'}`);
         return res.json({ success: true, cached: true, data: {
           id: r.id, brandUrl: r.brand_url, brandName: r.brand_name,
           version: r.version, isActive: r.is_active, cacheStatus: 'cached',
