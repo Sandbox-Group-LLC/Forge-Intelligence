@@ -542,17 +542,18 @@
   gap: 8px;
 }
 .comp-edit-section-btn {
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 600;
   color: var(--color-text-secondary, #94A3B8);
   background: transparent;
   border: 1px solid var(--color-border, rgba(255,255,255,0.18));
-  border-radius: 6px;
-  padding: 3px 10px;
+  border-radius: 5px;
+  padding: 2px 9px;
   cursor: pointer;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.02em;
   transition: all 0.15s ease;
   font-family: inherit;
+  line-height: 1.4;
 }
 .comp-edit-section-btn:hover {
   color: var(--color-accent, #3563FF);
