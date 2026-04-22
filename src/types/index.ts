@@ -43,6 +43,15 @@ export interface StrategicRecommendation {
   effort: 'high' | 'medium' | 'low';
 }
 
+export interface BusinessProfile {
+  whatTheyDo?: string;
+  targetBuyer?: string;
+  geography?: string;
+  companyScale?: string;
+  revenueModel?: string;
+  productsOrServices?: string[];
+}
+
 export interface BrandProfile {
   id: string;
   brandUrl: string;
@@ -58,6 +67,10 @@ export interface BrandProfile {
   competitiveGaps: CompetitiveGap[];
   strategicRecommendations: StrategicRecommendation[];
   scraperSuccess?: boolean;
+  // Added: fields Context Hub already produces but BrandProfile UI wasn't surfacing
+  businessProfile?: BusinessProfile;
+  discoveredCompetitors?: string[];
+  marketCategory?: string;
 }
 
 export interface AnalysisInput {
