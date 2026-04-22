@@ -36,6 +36,7 @@ interface FactualGround {
   teamComposition: string;
   authors: FactualGroundAuthor[];
   quotablePositions: string;
+  competitors: string;
 }
 
 const IconRefresh = () => (
@@ -96,6 +97,7 @@ export default function BrandSettingsPage() {
     teamComposition: '',
     authors: [],
     quotablePositions: '',
+    competitors: '',
   });
   const [fgSaving, setFgSaving] = useState(false);
   const [fgSaved, setFgSaved] = useState(false);
@@ -110,6 +112,21 @@ export default function BrandSettingsPage() {
           setDigestOptOut(!!d.settings?.digest_unsubscribed);
           setScrapeUrlOverride(d.settings?.settings?.scrapeUrlOverride || '');
           if (d.settings?.settings?.factualGround) {
+            // Normalize competitors into a textarea-friendly string. Field may be saved as:
+            //   - string (newline- or comma-separated, current preferred shape)
+            //   - string[] (legacy)
+            //   - {name, url}[] (from an earlier experiment)
+            let competitorsStr = '';
+            const rawComps = d.settings.settings.factualGround.competitors;
+            if (typeof rawComps === 'string') {
+              competitorsStr = rawComps;
+            } else if (Array.isArray(rawComps)) {
+              competitorsStr = rawComps.map((c: any) => {
+                if (typeof c === 'string') return c;
+                if (c && typeof c === 'object') return c.url || c.name || '';
+                return '';
+              }).filter(Boolean).join('\n');
+            }
             setFactualGround({
               companyFacts: d.settings.settings.factualGround.companyFacts || '',
               whatWeDo: d.settings.settings.factualGround.whatWeDo || '',
@@ -119,6 +136,7 @@ export default function BrandSettingsPage() {
               teamComposition: d.settings.settings.factualGround.teamComposition || '',
               authors: d.settings.settings.factualGround.authors || [],
               quotablePositions: d.settings.settings.factualGround.quotablePositions || '',
+              competitors: competitorsStr,
             });
           }
         }
@@ -378,6 +396,18 @@ export default function BrandSettingsPage() {
                       value={factualGround.methodology}
                       onChange={e => setFactualGround(p => ({ ...p, methodology: e.target.value }))}
                       placeholder="8-stage Context Agent Architecture: Context Hub → GEO Strategist → Authenticity Enricher → Content Generator → Compliance Gate → Publishing Queue → Performance Dashboard → Brain Memory..."
+                    />
+                  </div>
+
+                  <div className="bs-field">
+                    <label className="bs-label">Competitors</label>
+                    <p className="bs-field-hint">The companies you actually compete with. One per line — use URLs for the strongest scraping signal, or brand names (e.g. "Alma" or "https://almaagency.com"). Feeds Brand Intelligence gap maps and keeps the Context Hub scan from wandering into lookalike industries.</p>
+                    <textarea
+                      className="bs-input"
+                      rows={4}
+                      value={factualGround.competitors}
+                      onChange={e => setFactualGround(p => ({ ...p, competitors: e.target.value }))}
+                      placeholder={'https://almaagency.com\nhttps://globalhue.com\nhttps://sensisagency.com'}
                     />
                   </div>
 
