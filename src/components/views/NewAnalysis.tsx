@@ -183,101 +183,25 @@ export function NewAnalysis() {
           </div>
         </div>
 
-        {/* ── Advanced overrides — collapsed by default ── */}
-        <div className="form-section advanced-section">
-          <button
-            type="button"
-            className="advanced-toggle"
-            onClick={() => setShowAdvanced(!showAdvanced)}
-          >
-            <span>Advanced Overrides</span>
-            {icons.chevron(showAdvanced)}
-          </button>
-
-          {showAdvanced && (
-            <div className="advanced-content">
-              <div className="form-group">
-                <label className="form-label">Competitor URLs</label>
-                <div className="competitor-input-row">
-                  <input
-                    type="url"
-                    className="form-input"
-                    placeholder="https://competitor.com"
-                    value={competitorInput}
-                    onChange={(e) => setCompetitorInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddCompetitor(); }}}
-                  />
-                  <button type="button" className="btn-add" onClick={handleAddCompetitor} disabled={!competitorInput.trim()}>
-                    <span className="btn-icon">{icons.plus}</span>Add
-                  </button>
-                </div>
-                {analysisInput.competitorUrls.length > 0 && (
-                  <div className="competitor-tags">
-                    {analysisInput.competitorUrls.map((url) => (
-                      <span key={url} className="competitor-tag">
-                        {url.replace(/^https?:\/\//, '').replace(/\/$/, '')}
-                        <button type="button" className="tag-remove" onClick={() => handleRemoveCompetitor(url)}>
-                          {icons.x}
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <span className="form-hint">Override auto-discovered competitors</span>
+        {/* Check Brain First toggle — single user-facing option. Competitor/audience/strategic
+            overrides were removed once Brand Facts + Factual Ground became the course-correction
+            path. Save-to-Brain toggle removed (nobody unchecked it; server defaults true). */}
+        <div className="form-section">
+          <div className="toggle-group">
+            <label className="toggle-row">
+              <div className="toggle-content">
+                <span className="toggle-label">Check Brain first</span>
+                <span className="toggle-hint">Return cached profile if one exists. Turn off to force a fresh scan.</span>
               </div>
-
-              <div className="form-group">
-                <label className="form-label">Audience / ICP Notes</label>
-                <textarea
-                  className="form-textarea"
-                  placeholder="Override auto-discovered ICP with specific context..."
-                  rows={3}
-                  value={analysisInput.audienceNotes}
-                  onChange={(e) => setAnalysisInput({ ...analysisInput, audienceNotes: e.target.value })}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Strategic Notes</label>
-                <textarea
-                  className="form-textarea"
-                  placeholder="Any specific positioning goals or messaging challenges..."
-                  rows={3}
-                  value={analysisInput.strategicNotes}
-                  onChange={(e) => setAnalysisInput({ ...analysisInput, strategicNotes: e.target.value })}
-                />
-              </div>
-
-              <div className="toggle-group">
-                <label className="toggle-row">
-                  <div className="toggle-content">
-                    <span className="toggle-label">Check Brain first</span>
-                    <span className="toggle-hint">Return cached profile if one exists</span>
-                  </div>
-                  <button
-                    type="button"
-                    className={`toggle-switch ${analysisInput.checkBrainFirst ? 'active' : ''}`}
-                    onClick={() => setAnalysisInput({ ...analysisInput, checkBrainFirst: !analysisInput.checkBrainFirst })}
-                    role="switch"
-                    aria-checked={analysisInput.checkBrainFirst}
-                  ><span className="toggle-knob" /></button>
-                </label>
-                <label className="toggle-row">
-                  <div className="toggle-content">
-                    <span className="toggle-label">Save to Brain</span>
-                    <span className="toggle-hint">Persist this analysis for future sessions</span>
-                  </div>
-                  <button
-                    type="button"
-                    className={`toggle-switch ${analysisInput.saveToBrain ? 'active' : ''}`}
-                    onClick={() => setAnalysisInput({ ...analysisInput, saveToBrain: !analysisInput.saveToBrain })}
-                    role="switch"
-                    aria-checked={analysisInput.saveToBrain}
-                  ><span className="toggle-knob" /></button>
-                </label>
-              </div>
-            </div>
-          )}
+              <button
+                type="button"
+                className={`toggle-switch ${analysisInput.checkBrainFirst ? 'active' : ''}`}
+                onClick={() => setAnalysisInput({ ...analysisInput, checkBrainFirst: !analysisInput.checkBrainFirst })}
+                role="switch"
+                aria-checked={analysisInput.checkBrainFirst}
+              ><span className="toggle-knob" /></button>
+            </label>
+          </div>
         </div>
       </div>
     </div>
