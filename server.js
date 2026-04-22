@@ -4545,11 +4545,19 @@ app.post('/api/strategy/competitive-intel/:brandProfileId', requireAuth, async (
     const brand = profile.rows[0];
     const pd = brand.profile_data || {};
 
-    // Competitors source: prefer factualGround.competitors (user-verified URLs) when present,
-    // otherwise use Context Hub's discoveredCompetitors. No shape-munging here — the expected
-    // shape is an array of URL strings, same as what Context Hub produces. If a user hand-edits
-    // factualGround with bad data, they'll see the scrape produce empty results and know to fix.
-    const fgUrls = (brand.settings?.factualGround?.competitors || [])
+    // Competitors source: prefer factualGround.competitors (user-verified) when present,
+    // otherwise use Context Hub's discoveredCompetitors. Field shape can be:
+    //   - string (newline or comma separated, textarea input from Brand Settings UI)
+    //   - string[] (legacy)
+    //   - {name, url}[] (earlier experiment)
+    const rawFg = brand.settings?.factualGround?.competitors;
+    let fgList = [];
+    if (Array.isArray(rawFg)) {
+      fgList = rawFg;
+    } else if (typeof rawFg === 'string') {
+      fgList = rawFg.split(/[\n,]/).map(s => s.trim()).filter(Boolean);
+    }
+    const fgUrls = fgList
       .map(c => (typeof c === 'object' && c?.url) ? c.url : String(c).trim())
       .filter(u => /^https?:\/\//.test(u) || /\.[a-z]{2,}/i.test(u))
       .map(u => /^https?:\/\//.test(u) ? u : `https://${u}`);
