@@ -588,23 +588,8 @@ function ComplianceGateContent() {
                           {section.confidence}%
                         </span>
                       </div>
-                      {section.confidenceTier === 'green' && mode !== 'full-review' && !flag && (
-                        <div className="comp-green-approve-group">
-                          <span className="comp-green-approve">✓ Auto-approved</span>
-                          {!manualEditSections[idx] && (
-                            <button
-                              className="comp-edit-section-btn"
-                              onClick={() => {
-                                setManualEditSections(p => ({ ...p, [idx]: true }));
-                                setEditedSections(p => ({ ...p, [idx]: section.body || section.content || '' }));
-                              }}
-                              title="Make edits to this section before publishing"
-                            >
-                              Edit
-                            </button>
-                          )}
-                        </div>
-                      )}
+                      {/* Header right-side slot is empty for green/no-flag sections — clean heading only.
+                          The Edit affordance lives at the section footer (beside the "Auto-approved" label). */}
                       {section.confidenceTier === 'red' && (
                         <div className="comp-decision-btns">
                           <button
@@ -740,11 +725,12 @@ function ComplianceGateContent() {
                       </div>
                     )}
 
-                    {/* Highlighted section body — only render when it adds visual value.
-                        Without a flag/placeholder to highlight, its content duplicates the
-                        editor below verbatim, making each section card look like it has
-                        the same copy twice. Read-only (non-editing) path always renders. */}
-                    {(!isEditing || !!flag || hasPlaceholder) && (
+                    {/* One-card model: render EITHER the static published copy OR the editor,
+                        never both. When a flag exists, we still want the highlighted read-only
+                        preview ABOVE the editor so the user can see what Claude flagged while
+                        editing — in that case HighlightedBody renders. When there's no flag and
+                        the user has clicked Edit (manualEditSections[idx]), just the textarea. */}
+                    {isEditing && !!flag && (
                       <HighlightedBody body={section.body || section.content || ''} flag={flag} />
                     )}
 
@@ -799,11 +785,29 @@ function ComplianceGateContent() {
                         )}
                       </div>
                     ) : (
-                      <p className="comp-section-body">{section.body || section.content}</p>
+                      <HighlightedBody body={section.body || section.content || ''} flag={null} />
                     )}
                     {/* Section footer — confidence + decision status */}
                     <div className="comp-section-footer">
-                      <span>{(!flag) ? (manualEditSections[idx] ? 'Editing' : 'Auto-approved — will publish as-is') : decisions[idx] === 'approved' ? 'Approved' : decisions[idx] === 'rejected' ? 'Rejected' : 'Pending review'}</span>
+                      <span>
+                        {flag
+                          ? (decisions[idx] === 'approved' ? 'Approved' : decisions[idx] === 'rejected' ? 'Rejected' : 'Pending review')
+                          : manualEditSections[idx]
+                            ? 'Editing'
+                            : (
+                                <>
+                                  Auto-approved
+                                  <button
+                                    type="button"
+                                    className="comp-edit-section-link"
+                                    onClick={() => {
+                                      setManualEditSections(p => ({ ...p, [idx]: true }));
+                                      setEditedSections(p => ({ ...p, [idx]: section.body || section.content || '' }));
+                                    }}
+                                  >Edit</button>
+                                </>
+                              )}
+                      </span>
                       <span>{section.confidence}% confidence · {flag ? flag.type.replace(/_/g, ' ') : 'No flags'}</span>
                     </div>
                   </div>
