@@ -62,9 +62,20 @@ export default function StrategyIntelPage() {
     try {
       const response = await fetch(`/api/strategy/competitive-intel/${brandProfileId}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {}),
+        },
         body: JSON.stringify({ force })
       });
+      // 401 = token expired/missing. Surface clearly instead of silently draining an empty body.
+      if (response.status === 401) {
+        throw new Error('Your session expired. Refresh the page and try again.');
+      }
+      if (!response.ok && response.status !== 200) {
+        const errBody = await response.text().catch(() => '');
+        throw new Error(`Server returned ${response.status}: ${errBody.slice(0, 200) || 'no body'}`);
+      }
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
