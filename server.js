@@ -8585,12 +8585,37 @@ Output only the post text.` }]
 
         } else if (channel === 'x') {
           // ── X (Twitter) API v2 publish — OAuth 2.0 preferred, 1.0a fallback ──
-          const articleJson = article.article_json || {};
-          const sections = articleJson.sections || [];
           const articleUrl = forgeArticleUrl;
           const fullTweetUrl = `${articleUrl}${utmString ? '?' + utmString : ''}`;
-          const excerpt = (sections[0]?.content || sections[0]?.body || article.title || '').slice(0, 250);
-          const tweetText = `${excerpt}...\n\n${fullTweetUrl}`;
+
+          // Priority 1: user-edited/generated post copy from the UI (postCopy[channel]).
+          // Priority 2: fallback to a trimmed title + URL that fits X's 280-char limit.
+          // Previously this endpoint was slicing the first 250 chars of the article body and
+          // posting that — ignoring the generated + user-edited post copy entirely.
+          const postCopyOverride = (req.body.postCopy || {})[channel];
+          let tweetText;
+          if (postCopyOverride && postCopyOverride.trim()) {
+            tweetText = postCopyOverride.trim();
+            // Hard enforce 280 limit — X API rejects over-length tweets
+            if (tweetText.length > 280) {
+              console.warn(`[X] Post copy was ${tweetText.length} chars, truncating to 280`);
+              // If the URL is at the end, preserve it and truncate the body
+              const urlIdx = tweetText.lastIndexOf(fullTweetUrl);
+              if (urlIdx > 0) {
+                const bodyPart = tweetText.slice(0, urlIdx).trim();
+                const urlPart = tweetText.slice(urlIdx);
+                const maxBody = 280 - urlPart.length - 2; // 2 for \n\n separator
+                tweetText = bodyPart.slice(0, Math.max(0, maxBody)).trim() + '\n\n' + urlPart;
+              } else {
+                tweetText = tweetText.slice(0, 277) + '...';
+              }
+            }
+          } else {
+            // Fallback — title-first, fits under 280
+            const titleMax = 280 - fullTweetUrl.length - 4; // 4 for \n\n and any ellipsis
+            const titleTrimmed = (article.title || '').slice(0, Math.max(0, titleMax));
+            tweetText = `${titleTrimmed}\n\n${fullTweetUrl}`;
+          }
           const tweetEndpoint = 'https://api.twitter.com/2/tweets';
 
           let authHeader;
@@ -8670,20 +8695,28 @@ Output only the post text.` }]
           const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
           const utmUrl = articleUrl + '?' + new URLSearchParams({ ...utmCtx, utm_source: 'facebook', utm_medium: 'social' }).toString();
 
-          // Generate FB post copy via Claude Haiku
-          let fbMessage = `${item.title}\n\n${utmUrl}`;
-          try {
-            const haiku = await anthropic.messages.create({
-              model: 'claude-haiku-4-5-20251001',
-              max_tokens: 600,
-              messages: [{
-                role: 'user',
-                content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant tags. Include the URL on its own line at the end.\n\nArticle title: ${item.title}\nArticle URL: ${utmUrl}`
-              }]
-            });
-            fbMessage = haiku.content[0]?.text || fbMessage;
-          } catch (e) {
-            console.warn('[FB] Haiku post copy failed, using fallback:', e.message);
+          // Priority 1: user-edited/generated post copy from the UI.
+          // Priority 2: generate via Haiku at publish time.
+          // Priority 3 (fallback): title + URL.
+          const fbPostCopyOverride = (req.body.postCopy || {})[channel];
+          let fbMessage;
+          if (fbPostCopyOverride && fbPostCopyOverride.trim()) {
+            fbMessage = fbPostCopyOverride.trim();
+          } else {
+            fbMessage = `${item.title}\n\n${utmUrl}`;
+            try {
+              const haiku = await anthropic.messages.create({
+                model: 'claude-haiku-4-5-20251001',
+                max_tokens: 600,
+                messages: [{
+                  role: 'user',
+                  content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant tags. Include the URL on its own line at the end.\n\nArticle title: ${item.title}\nArticle URL: ${utmUrl}`
+                }]
+              });
+              fbMessage = haiku.content[0]?.text || fbMessage;
+            } catch (e) {
+              console.warn('[FB] Haiku post copy failed, using fallback:', e.message);
+            }
           }
 
           if (pipedreamAccountId) {
