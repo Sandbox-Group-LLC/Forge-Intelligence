@@ -110,6 +110,33 @@ export function BrandProfile() {
     return 'var(--color-warning)';
   };
 
+  // Empty-state guard — if the brand profile has no analysis data (freshly wiped brain, new brand
+  // that hasn't been scanned, or data migration in progress), render a CTA instead of crashing on
+  // brandProfile.voiceProfile.toneAttributes.map(...) etc. below.
+  const hasAnalysisData = brandProfile && brandProfile.voiceProfile && Array.isArray(brandProfile.personas);
+  if (!brandProfile || !hasAnalysisData) {
+    return (
+      <div className="brand-profile" style={{ padding: 48, textAlign: 'center' }}>
+        <div style={{ maxWidth: 520, margin: '0 auto' }}>
+          <h2 style={{ fontSize: '1.35rem', fontWeight: 700, marginBottom: 12, color: 'var(--color-text-primary)' }}>
+            {brandProfile?.brandName ? `${brandProfile.brandName}'s Brain is empty` : 'No brand intelligence yet'}
+          </h2>
+          <p style={{ fontSize: '0.95rem', color: 'var(--color-text-secondary, #64748B)', lineHeight: 1.6, marginBottom: 24 }}>
+            {brandProfile?.brandName
+              ? `This Brain hasn't been analyzed yet or was recently reset. Run Context Hub to rebuild the intelligence profile.`
+              : 'Select a brand from the sidebar or run a new analysis to get started.'}
+          </p>
+          <button
+            onClick={() => setCurrentView('new-analysis')}
+            style={{ padding: '10px 20px', background: 'var(--color-accent, #3563FF)', color: '#fff', border: 'none', borderRadius: 8, fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+          >
+            Run new analysis
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="brand-profile">
       <div className="profile-header">
