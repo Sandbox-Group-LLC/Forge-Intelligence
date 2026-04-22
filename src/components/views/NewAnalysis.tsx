@@ -33,8 +33,6 @@ const icons = {
 
 export function NewAnalysis() {
   const { analysisInput, setAnalysisInput, startAnalysis, activeBrand, isPaid, setCurrentView } = useApp();
-  const [competitorInput, setCompetitorInput] = useState('');
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [scanError, setScanError] = useState('');
 
   // Listen for scan errors from ContextAgentPage and AppContext
@@ -48,18 +46,6 @@ export function NewAnalysis() {
       window.removeEventListener('forge:scan-blocked', onBlocked);
     };
   }, []);
-
-  const handleAddCompetitor = () => {
-    const val = competitorInput.trim();
-    if (val && !analysisInput.competitorUrls.includes(val)) {
-      setAnalysisInput({ ...analysisInput, competitorUrls: [...analysisInput.competitorUrls, val] });
-      setCompetitorInput('');
-    }
-  };
-
-  const handleRemoveCompetitor = (url: string) => {
-    setAnalysisInput({ ...analysisInput, competitorUrls: analysisInput.competitorUrls.filter(u => u !== url) });
-  };
 
   const canSubmit = analysisInput.brandUrl.trim().length > 0;
 
