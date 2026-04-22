@@ -588,8 +588,19 @@ function ComplianceGateContent() {
                           {section.confidence}%
                         </span>
                       </div>
-                      {/* Header right-side slot is empty for green/no-flag sections — clean heading only.
-                          The Edit affordance lives at the section footer (beside the "Auto-approved" label). */}
+                      {section.confidenceTier === 'green' && mode !== 'full-review' && !flag && !manualEditSections[idx] && (
+                        <button
+                          type="button"
+                          className="comp-edit-section-btn"
+                          onClick={() => {
+                            setManualEditSections(p => ({ ...p, [idx]: true }));
+                            setEditedSections(p => ({ ...p, [idx]: section.body || section.content || '' }));
+                          }}
+                          title="Edit this section before publishing"
+                        >
+                          Edit
+                        </button>
+                      )}
                       {section.confidenceTier === 'red' && (
                         <div className="comp-decision-btns">
                           <button
@@ -794,19 +805,7 @@ function ComplianceGateContent() {
                           ? (decisions[idx] === 'approved' ? 'Approved' : decisions[idx] === 'rejected' ? 'Rejected' : 'Pending review')
                           : manualEditSections[idx]
                             ? 'Editing'
-                            : (
-                                <>
-                                  Auto-approved
-                                  <button
-                                    type="button"
-                                    className="comp-edit-section-link"
-                                    onClick={() => {
-                                      setManualEditSections(p => ({ ...p, [idx]: true }));
-                                      setEditedSections(p => ({ ...p, [idx]: section.body || section.content || '' }));
-                                    }}
-                                  >Edit</button>
-                                </>
-                              )}
+                            : 'Auto-approved'}
                       </span>
                       <span>{section.confidence}% confidence · {flag ? flag.type.replace(/_/g, ' ') : 'No flags'}</span>
                     </div>
