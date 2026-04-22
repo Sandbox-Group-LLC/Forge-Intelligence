@@ -610,3 +610,156 @@
   background: var(--color-accent-hover);
   text-decoration: none;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   BRAND FACTS TAB — surfaces Context Hub's businessProfile + discoveredCompetitors.
+   Course-correction moment right after scan. Links to Factual Ground for edits.
+   ═══════════════════════════════════════════════════════════════════════ */
+.facts-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.facts-intro-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 14px 18px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-accent, #3563FF) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent, #3563FF) 22%, transparent);
+}
+.facts-intro-eyebrow {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-accent, #3563FF);
+  margin-bottom: 4px;
+}
+.facts-intro-text {
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--color-text-secondary, #cbd5e1);
+  max-width: 680px;
+}
+.facts-intro-text strong { color: var(--color-text-primary, #f8fafc); font-weight: 600; }
+.facts-intro-btn {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border-radius: 8px;
+  background: var(--color-accent, #3563FF);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s ease;
+  white-space: nowrap;
+}
+.facts-intro-btn:hover {
+  background: var(--color-accent-hover, #2952db);
+}
+
+.facts-card {
+  background: var(--color-bg-elevated, rgba(255,255,255,0.03));
+  border: 1px solid var(--color-border, rgba(255,255,255,0.08));
+  border-radius: 10px;
+  padding: 18px 20px;
+}
+.facts-card .card-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text-primary, #f8fafc);
+  margin: 0 0 10px;
+}
+.facts-card .section-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text-muted, #94A3B8);
+  margin: 0 0 8px;
+}
+
+.facts-body {
+  font-size: 0.95rem;
+  line-height: 1.65;
+  color: var(--color-text-primary, #f8fafc);
+  margin: 0;
+}
+.facts-body-sm {
+  font-size: 0.86rem;
+  line-height: 1.55;
+  color: var(--color-text-primary, #f8fafc);
+  margin: 0;
+}
+.facts-muted {
+  color: var(--color-text-muted, #94A3B8);
+  font-style: italic;
+}
+
+.facts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.facts-list {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.facts-list li {
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--color-text-primary, #f8fafc);
+}
+
+.facts-competitor-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.facts-competitor-list li {
+  padding: 5px 10px;
+  font-size: 0.82rem;
+  background: color-mix(in srgb, var(--color-accent, #3563FF) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent, #3563FF) 22%, transparent);
+  border-radius: 6px;
+  color: var(--color-text-primary, #f8fafc);
+}
+.facts-competitor-list a {
+  color: inherit;
+  text-decoration: none;
+}
+.facts-competitor-list a:hover {
+  color: var(--color-accent, #3563FF);
+  text-decoration: underline;
+}
+
+.facts-footnote {
+  margin: 14px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--color-text-muted, #94A3B8);
+  font-style: italic;
+}
+
+@media (max-width: 640px) {
+  .facts-intro-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .facts-intro-btn {
+    width: 100%;
+  }
+}
