@@ -496,6 +496,47 @@
   display: block;
 }
 
+/* ── Sections layout caption ──────────────────────────────────── */
+.comp-sections-caption {
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary, #cbd5e1);
+  background: color-mix(in srgb, var(--color-accent, #3563FF) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent, #3563FF) 20%, transparent);
+  border-radius: 8px;
+}
+.comp-sections-caption strong {
+  color: var(--color-text-primary, #f8fafc);
+  font-weight: 600;
+}
+
+/* ── Green auto-approved pill + Edit button group ─────────────── */
+.comp-green-approve-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.comp-edit-section-btn {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-text-secondary, #94A3B8);
+  background: transparent;
+  border: 1px solid var(--color-border, rgba(255,255,255,0.18));
+  border-radius: 6px;
+  padding: 3px 10px;
+  cursor: pointer;
+  letter-spacing: 0.01em;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+.comp-edit-section-btn:hover {
+  color: var(--color-accent, #3563FF);
+  border-color: var(--color-accent, #3563FF);
+  background: color-mix(in srgb, var(--color-accent, #3563FF) 8%, transparent);
+}
+
 /* ── Make edits button for auto-approved sections ─────────────── */
 .comp-manual-edit-link {
   display: inline-block;
