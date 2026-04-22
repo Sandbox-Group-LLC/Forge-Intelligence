@@ -6215,44 +6215,72 @@ Return ONLY valid JSON in this exact structure:
   "mistakesApplied": ["<list of mistake patterns that influenced this critique>"]
 }`;
 
-    const critiqueRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        // Raised from 4096 -> 8192 to prevent truncation on long articles. A full compliance report on an
-        // 8-section, 30kb article with 4-6 flags + verbatim section quotes can easily exceed 4096 tokens.
-        // Previous failure mode: truncated JSON → safeParseLLM nuclear recovery returns {} → UI gets an empty
-        // report but compliance_status = 'reviewed', making the Gate appear "passed" when it actually crashed.
-        max_tokens: 8192,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: `Article to audit:\n\n${(() => {
-          const sections = articleJson?.sections || [];
-          return sections.map((s, i) => `[SECTION ${i}] heading: ${s.heading || s.title || 'Untitled'}\n${s.body || s.content || ''}`).join('\n\n---\n\n');
-        })()}` }]
-      })
-    });
-    const critiqueData = await critiqueRes.json();
-    const rawText = critiqueData.content?.[0]?.text || '{}';
-    const stopReason = critiqueData.stop_reason || 'unknown';
+    // Build the article-to-audit text once — reused on retry
+    const articleAuditText = (() => {
+      const sections = articleJson?.sections || [];
+      return sections.map((s, i) => `[SECTION ${i}] heading: ${s.heading || s.title || 'Untitled'}\n${s.body || s.content || ''}`).join('\n\n---\n\n');
+    })();
+
+    // Attempt 1: standard prompt
+    const callCritique = async (extraGuidance = '') => {
+      const userContent = extraGuidance
+        ? `${extraGuidance}\n\nArticle to audit:\n\n${articleAuditText}`
+        : `Article to audit:\n\n${articleAuditText}`;
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 8192,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userContent }]
+        })
+      });
+      return resp.json();
+    };
+
+    let critiqueData = await callCritique();
+    let rawText = critiqueData.content?.[0]?.text || '{}';
+    let stopReason = critiqueData.stop_reason || 'unknown';
     if (stopReason === 'max_tokens') {
-      console.warn(`[COMPLIANCE] Critique hit max_tokens ceiling — response truncated. Article ${contentId} has ${(articleJson?.sections || []).length} sections / ${Math.round(JSON.stringify(articleJson).length / 1024)}kb`);
+      console.warn(`[COMPLIANCE] Critique hit max_tokens ceiling on attempt 1 — response truncated. Article ${contentId} has ${(articleJson?.sections || []).length} sections / ${Math.round(JSON.stringify(articleJson).length / 1024)}kb`);
     }
 
     let report;
     try {
       report = safeParseLLM(rawText, 'object', 'compliance-gate');
     } catch (parseErr) {
-      console.error(`[COMPLIANCE] JSON parse failed on article ${contentId}: ${parseErr.message} | stop_reason=${stopReason} | raw first 400:`, rawText.slice(0, 400));
-      // Fail loud instead of silent. Do NOT mark article 'reviewed' — leave it 'pending' so
-      // the user can retry. Return a meaningful error so the UI can surface it.
-      return res.status(502).json({
-        success: false,
-        error: stopReason === 'max_tokens'
-          ? 'Compliance review response was truncated. Article may be too long — try splitting into two articles or contact support.'
-          : `Compliance review response could not be parsed: ${parseErr.message}. Please retry.`,
-        stopReason
-      });
+      // Attempt 2: retry with stricter JSON directive. The most common parse failure on 'end_turn'
+      // responses is unescaped inner double quotes or literal newlines inside flaggedExcerpt strings
+      // (Claude quotes article text verbatim and occasionally forgets to escape).
+      console.warn(`[COMPLIANCE] Attempt 1 parse failed (${parseErr.message}, stop_reason=${stopReason}). Retrying with strict JSON directive...`);
+      const retryGuidance = `IMPORTANT JSON OUTPUT REQUIREMENTS:
+- Return a single JSON object. No markdown code fences. No prose before or after.
+- Every string value MUST have all inner double quotes escaped as \\".
+- Every string value MUST have all literal newlines escaped as \\n (never raw line breaks inside a string).
+- When quoting article excerpts in flaggedExcerpt, you MAY paraphrase if the verbatim quote contains characters that would complicate escaping.
+- Validate your JSON is parseable before responding.`;
+      const retryData = await callCritique(retryGuidance);
+      const retryRaw = retryData.content?.[0]?.text || '{}';
+      const retryStop = retryData.stop_reason || 'unknown';
+      console.warn(`[COMPLIANCE] Retry stop_reason=${retryStop}, first 200: ${retryRaw.slice(0, 200).replace(/\n/g, ' ')}`);
+      try {
+        report = safeParseLLM(retryRaw, 'object', 'compliance-gate-retry');
+        rawText = retryRaw;
+        stopReason = retryStop;
+        console.log(`[COMPLIANCE] Retry succeeded for article ${contentId}`);
+      } catch (retryErr) {
+        console.error(`[COMPLIANCE] Both attempts failed for article ${contentId}. Attempt 1: ${parseErr.message} | Retry: ${retryErr.message} | Retry raw first 800:`, retryRaw.slice(0, 800));
+        return res.status(502).json({
+          success: false,
+          error: retryStop === 'max_tokens'
+            ? 'Compliance review response was truncated even after retry. Article may be too long — try splitting into two articles.'
+            : `Compliance review could not produce parseable JSON after retry. This can happen if the article contains tricky punctuation. Retry once more, or manually approve if you've reviewed the draft.`,
+          stopReason: retryStop,
+          // Include a preview of the raw response so the UI can optionally show it for manual review
+          rawPreview: retryRaw.slice(0, 1500)
+        });
+      }
     }
 
     // Empty-object guard: if the parse succeeded but the report has no real fields, treat that
