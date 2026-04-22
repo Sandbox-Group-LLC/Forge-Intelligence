@@ -718,8 +718,13 @@ function ComplianceGateContent() {
                       </div>
                     )}
 
-                    {/* Highlighted section body — shows flagged excerpts inline */}
-                    <HighlightedBody body={section.body || section.content || ''} flag={flag} />
+                    {/* Highlighted section body — only render when it adds visual value.
+                        Without a flag/placeholder to highlight, its content duplicates the
+                        editor below verbatim, making each section card look like it has
+                        the same copy twice. Read-only (non-editing) path always renders. */}
+                    {(!isEditing || !!flag || hasPlaceholder) && (
+                      <HighlightedBody body={section.body || section.content || ''} flag={flag} />
+                    )}
 
                     {isEditing ? (
                       <div className="comp-edit-wrap" style={{ position: 'relative' }}>
