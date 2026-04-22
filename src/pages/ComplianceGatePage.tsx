@@ -561,6 +561,14 @@ function ComplianceGateContent() {
               </div>
             )}
 
+            {/* Sections layout caption */}
+            <div className="comp-sections-caption">
+              <strong>All {selectedArticle.article_json?.sections?.length || 0} sections below will be included in the published article.</strong>{' '}
+              <span style={{ color: 'var(--color-text-muted)' }}>
+                Green sections passed AI review — shown read-only, but you can still edit them before publishing. Yellow/red sections have flags that need your decision.
+              </span>
+            </div>
+
             {/* Sections */}
             <div className="comp-sections">
               {selectedArticle.article_json?.sections?.map((section, idx) => {
@@ -581,7 +589,21 @@ function ComplianceGateContent() {
                         </span>
                       </div>
                       {section.confidenceTier === 'green' && mode !== 'full-review' && !flag && (
-                        <span className="comp-green-approve">✓ Auto-approved</span>
+                        <div className="comp-green-approve-group">
+                          <span className="comp-green-approve">✓ Auto-approved</span>
+                          {!manualEditSections[idx] && (
+                            <button
+                              className="comp-edit-section-btn"
+                              onClick={() => {
+                                setManualEditSections(p => ({ ...p, [idx]: true }));
+                                setEditedSections(p => ({ ...p, [idx]: section.body || section.content || '' }));
+                              }}
+                              title="Make edits to this section before publishing"
+                            >
+                              Edit
+                            </button>
+                          )}
+                        </div>
                       )}
                       {section.confidenceTier === 'red' && (
                         <div className="comp-decision-btns">
@@ -781,7 +803,7 @@ function ComplianceGateContent() {
                     )}
                     {/* Section footer — confidence + decision status */}
                     <div className="comp-section-footer">
-                      <span>{(!flag) ? <><span>Auto-approved</span>{!manualEditSections[idx] && <span className="comp-manual-edit-link" onClick={() => { setManualEditSections(p => ({ ...p, [idx]: true })); setEditedSections(p => ({ ...p, [idx]: section.body || section.content || '' })); }}>Make edits</span>}</> : decisions[idx] === 'approved' ? 'Approved' : decisions[idx] === 'rejected' ? 'Rejected' : 'Pending review'}</span>
+                      <span>{(!flag) ? (manualEditSections[idx] ? 'Editing' : 'Auto-approved — will publish as-is') : decisions[idx] === 'approved' ? 'Approved' : decisions[idx] === 'rejected' ? 'Rejected' : 'Pending review'}</span>
                       <span>{section.confidence}% confidence · {flag ? flag.type.replace(/_/g, ' ') : 'No flags'}</span>
                     </div>
                   </div>
