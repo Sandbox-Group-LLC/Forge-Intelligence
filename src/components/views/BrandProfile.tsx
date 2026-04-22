@@ -34,13 +34,13 @@ const icons = {
   )
 };
 
-type TabType = 'voice' | 'personas' | 'signals' | 'gaps';
+type TabType = 'facts' | 'voice' | 'personas' | 'signals' | 'gaps';
 
 export function BrandProfile() {
   const { brandProfile, setBrandProfile, setCurrentView } = useApp();
   const { getToken } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<TabType>('voice');
+  const [activeTab, setActiveTab] = useState<TabType>('facts');
   const [reanalyzing, setReanalyzing] = useState(false);
 
   const handleReanalyze = useCallback(async () => {
@@ -222,6 +222,12 @@ export function BrandProfile() {
 
       <div className="profile-tabs">
         <button
+          className={`tab-button ${activeTab === 'facts' ? 'active' : ''}`}
+          onClick={() => setActiveTab('facts')}
+        >
+          Brand Facts
+        </button>
+        <button
           className={`tab-button ${activeTab === 'voice' ? 'active' : ''}`}
           onClick={() => setActiveTab('voice')}
         >
@@ -248,6 +254,93 @@ export function BrandProfile() {
       </div>
 
       <div className="profile-content">
+        {activeTab === 'facts' && (
+          <div className="tab-content facts-content">
+            <div className="facts-intro-banner">
+              <div>
+                <div className="facts-intro-eyebrow">Double-check what Forge learned</div>
+                <div className="facts-intro-text">
+                  Anything wrong here?  Correct it in <strong>Factual Ground</strong> — then re-run the analysis. Forge will use your corrections everywhere else: topics, articles, compliance, brand intelligence.
+                </div>
+              </div>
+              <button
+                className="facts-intro-btn"
+                onClick={() => navigate('/app/brand-settings')}
+                title="Edit Factual Ground for this brand"
+              >
+                Correct these? →
+              </button>
+            </div>
+
+            <div className="facts-card">
+              <h3 className="card-title">What Forge thinks you do</h3>
+              <p className="facts-body">
+                {brandProfile.businessProfile?.whatTheyDo || <em className="facts-muted">No business summary captured — this brand may have been scanned before this field was added. Run a new analysis to produce one.</em>}
+              </p>
+            </div>
+
+            <div className="facts-grid">
+              <div className="facts-card">
+                <h3 className="section-label">MARKET CATEGORY</h3>
+                <p className="facts-body-sm">{brandProfile.marketCategory || <em className="facts-muted">—</em>}</p>
+              </div>
+              <div className="facts-card">
+                <h3 className="section-label">TARGET BUYER</h3>
+                <p className="facts-body-sm">{brandProfile.businessProfile?.targetBuyer || <em className="facts-muted">—</em>}</p>
+              </div>
+              <div className="facts-card">
+                <h3 className="section-label">GEOGRAPHY</h3>
+                <p className="facts-body-sm">{brandProfile.businessProfile?.geography || <em className="facts-muted">—</em>}</p>
+              </div>
+              <div className="facts-card">
+                <h3 className="section-label">COMPANY SCALE</h3>
+                <p className="facts-body-sm">{brandProfile.businessProfile?.companyScale || <em className="facts-muted">—</em>}</p>
+              </div>
+              <div className="facts-card">
+                <h3 className="section-label">REVENUE MODEL</h3>
+                <p className="facts-body-sm">{brandProfile.businessProfile?.revenueModel || <em className="facts-muted">—</em>}</p>
+              </div>
+            </div>
+
+            {Array.isArray(brandProfile.businessProfile?.productsOrServices) && brandProfile.businessProfile.productsOrServices.length > 0 && (
+              <div className="facts-card">
+                <h3 className="card-title">Products & services</h3>
+                <ul className="facts-list">
+                  {brandProfile.businessProfile.productsOrServices.map((p, i) => (
+                    <li key={i}>{p}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="facts-card">
+              <h3 className="card-title">Who Forge thinks you compete with</h3>
+              {Array.isArray(brandProfile.discoveredCompetitors) && brandProfile.discoveredCompetitors.length > 0 ? (
+                <ul className="facts-competitor-list">
+                  {brandProfile.discoveredCompetitors.map((c, i) => {
+                    const url = typeof c === 'string' ? c : '';
+                    const label = url.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '');
+                    return (
+                      <li key={i}>
+                        {url.startsWith('http') ? (
+                          <a href={url} target="_blank" rel="noopener noreferrer">{label}</a>
+                        ) : (
+                          <span>{label || c}</span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="facts-muted"><em>No competitors discovered yet. If you know your competitors, add them in Factual Ground.</em></p>
+              )}
+              <p className="facts-footnote">
+                If any of these are wrong, fix them in Factual Ground's Competitors field. Forge uses that list for everything downstream.
+              </p>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'voice' && (
           <div className="tab-content voice-content">
             <div className="voice-summary-card">
