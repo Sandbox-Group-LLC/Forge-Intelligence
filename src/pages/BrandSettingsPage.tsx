@@ -101,6 +101,9 @@ export default function BrandSettingsPage() {
   });
   const [fgSaving, setFgSaving] = useState(false);
   const [fgSaved, setFgSaved] = useState(false);
+  // Persistent banner shown after save — prompts user to re-run analysis so Forge
+  // can incorporate the new Factual Ground into the Brain. Dismissible.
+  const [fgSavedBanner, setFgSavedBanner] = useState(false);
 
   useEffect(() => {
     if (!selected) return;
@@ -229,7 +232,12 @@ export default function BrandSettingsPage() {
         body: JSON.stringify({ settings: { factualGround } })
       });
       const d = await r.json();
-      if (d.success) { setFgSaved(true); setTimeout(() => setFgSaved(false), 3000); }
+      if (d.success) {
+        setFgSaved(true);
+        setTimeout(() => setFgSaved(false), 3000);
+        // Persistent post-save banner — prompts a rescan since Factual Ground is only applied on next analysis
+        setFgSavedBanner(true);
+      }
     } finally { setFgSaving(false); }
   };
 
@@ -342,6 +350,29 @@ export default function BrandSettingsPage() {
                     Structured facts the writer must use verbatim. This is your direct line to the brain — what gets written here shows up <strong>word-for-word</strong> in generated content. Anchor the writer with real credentials, real claims, real positions.
                   </p>
                 </div>
+
+                {fgSavedBanner && (
+                  <div className="bs-fg-rescan-banner">
+                    <div className="bs-fg-rescan-copy">
+                      <strong>Factual Ground saved.</strong> Your corrections only apply on the next analysis. Run a new scan so Forge can rebuild the Brain with your updated facts.
+                    </div>
+                    <div className="bs-fg-rescan-actions">
+                      <button
+                        className="bs-fg-rescan-primary"
+                        onClick={() => { window.location.href = '/app/context-hub'; }}
+                      >
+                        Run new analysis
+                      </button>
+                      <button
+                        className="bs-fg-rescan-dismiss"
+                        onClick={() => setFgSavedBanner(false)}
+                        title="Dismiss"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <div className="bs-save-bar">
                   {fgSaved && <span className="bs-saved">✓ Saved</span>}
