@@ -4571,14 +4571,31 @@ app.post('/api/strategy/competitive-intel/:brandProfileId', requireAuth, async (
     send('progress', { stage: 'init', detail: `${competitors.length} competitors: ${competitors.join(', ')}` });
 
     // ── Cache check ──
+    // Previously checked staleness via existing.rows[0].brain_version. That was the FIRST row
+    // (newest by created_at), so a single fresh row would mask all stale rows and the user got
+    // mixed v5/v11 data returned. Now: consider the cache stale if ANY row is older than the
+    // current brand version, OR if any row's competitor_url is no longer in the current
+    // competitors list (user removed a competitor from factualGround → should purge that row).
     if (!force) {
       const existing = await pool.query(
         'SELECT * FROM competitive_intelligence WHERE brand_profile_id = $1 ORDER BY created_at DESC',
         [brandProfileId]
       );
       if (existing.rows.length > 0) {
-        const stale = existing.rows[0].brain_version < (brand.version || 1);
-        if (!stale) {
+        const brandV = brand.version || 1;
+        const currentCompetitorSet = new Set(competitors.map(c => {
+          try { return new URL(c).hostname.replace(/^www\./, ''); } catch { return c; }
+        }));
+        const anyStale = existing.rows.some(r => (r.brain_version || 1) < brandV);
+        const anyOrphan = existing.rows.some(r => {
+          try { return !currentCompetitorSet.has(new URL(r.competitor_url).hostname.replace(/^www\./, '')); } catch { return true; }
+        });
+        const freshRows = existing.rows.filter(r => (r.brain_version || 1) >= brandV && (() => {
+          try { return currentCompetitorSet.has(new URL(r.competitor_url).hostname.replace(/^www\./, '')); } catch { return false; }
+        })());
+
+        if (!anyStale && !anyOrphan && freshRows.length === existing.rows.length) {
+          // All rows are fresh and match current competitor list — return cached
           send('result', {
             success: true, cached: true,
             competitors: existing.rows.map(r => ({
@@ -4589,7 +4606,23 @@ app.post('/api/strategy/competitive-intel/:brandProfileId', requireAuth, async (
           });
           return res.end();
         }
-        send('progress', { stage: 'cache', detail: 'Brain updated since last analysis — running fresh' });
+
+        // Purge stale + orphan rows so the fresh analysis below doesn't blend with them
+        const stalePurge = await pool.query(
+          'DELETE FROM competitive_intelligence WHERE brand_profile_id = $1 AND (brain_version < $2 OR brain_version IS NULL) RETURNING id',
+          [brandProfileId, brandV]
+        );
+        const orphanPurge = await pool.query(
+          `DELETE FROM competitive_intelligence WHERE brand_profile_id = $1 AND NOT (competitor_url = ANY($2::text[])) RETURNING id`,
+          [brandProfileId, Array.from(new Set([...competitors, ...competitors.map(c => { try { return 'https://' + new URL(c).hostname; } catch { return c; } })]))]
+        );
+        const purgedTotal = (stalePurge.rows.length || 0) + (orphanPurge.rows.length || 0);
+        if (purgedTotal > 0) {
+          console.log(`[BRAND-INTEL] Purged ${stalePurge.rows.length} stale + ${orphanPurge.rows.length} orphan cache rows for brand ${brandProfileId}`);
+          send('progress', { stage: 'cache', detail: `Purged ${purgedTotal} stale/orphan cache rows — running fresh` });
+        } else {
+          send('progress', { stage: 'cache', detail: 'Brain updated since last analysis — running fresh' });
+        }
       }
     }
 
