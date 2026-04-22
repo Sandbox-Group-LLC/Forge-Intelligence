@@ -8,6 +8,98 @@
 
 ---
 
+## Session — April 21-22, 2026
+
+### Brand Intelligence — reverted over-engineered factualGround integration
+- **Brian's catch:** Culture+ Brand Intel came back with 8 competitors and 0 vulnerabilities. Intel Corp's earlier run came back rich. The thing that changed between the two was my added scaffolding — not a real improvement.
+- **What I had added (and removed):** a ~60-line shape normalizer, unscrapable-item warning/skip logic, conditional user-provided-name logic, title extraction gating. All solving hypothetical input-shape problems instead of trusting the agent's existing prompt.
+- **Reverted to Intel Corp-era shape:** `factualGround.competitors || discoveredCompetitors`, one-line override. Same scrape + synthesis path that worked before. All 4 branches identical (hash `16814e7e89c80ba1`).
+- **Lesson carried:** trust user input shape. Trust agent focus. Don't add validation scaffolding that changes agent focus. Factual Ground support should have been 4 lines, not 60.
+
+### Compliance Gate — retry on JSON parse failure
+- **Symptom:** `[COMPLIANCE] JSON parse failed on article ...: LLM JSON parse failed after recovery | stop_reason=end_turn`. Clean finish, 388-byte response, 4 recovery strategies in safeParseLLM fail.
+- **Root cause:** Sonnet was quoting verbatim article excerpts into `flaggedExcerpt` strings with unescaped inner double quotes or literal newlines. JSON structurally broken; no amount of regex recovery fixes it.
+- **Shipped:** retry-on-parse-fail. Attempt 1 uses standard prompt. On parse failure, attempt 2 re-prompts with explicit "no fences, escape inner quotes as \", escape newlines as \n, paraphrase tricky quotes" directive. Retry succeeds transparently. Double-failure still fails loudly (502 + raw text preview in response).
+- **Deferred structural fix:** move to Anthropic tool-use API for structured JSON output. Eliminates entire class of parse failures. Not urgent while retry catches most cases.
+
+### Factual Ground — Competitors field added to Brand Settings UI
+- **The gap Brian called out:** "We need competitors in factual ground. Forge keeps wondering in the brand intelligence run."
+- **Why Brand Intel wanders but Content Gen doesn't:** Content Gen reads factualGround as verbatim prose (competitors mentioned in whatWeDo/whatWeDontDo text stay anchored). Brand Intel reads a discrete `competitors` field that had no UI entry surface — only Context Hub's `discoveredCompetitors` existed, which drifts for brands with press adjacency to unrelated companies (Culture+ → talent agencies).
+- **Shipped:** new Competitors textarea in Brand Settings → Factual Ground, between Methodology and Founding story. One URL per line (or comma-separated). Loader normalizes 3 legacy shapes (string, string[], {name,url}[]) to textarea-friendly string. Backend `/api/strategy/competitive-intel` updated to accept string-shape input (splits on newlines/commas).
+- **Still deferred:** Context Hub's own rediscovery doesn't read factualGround.competitors — the override is downstream-only. Right design (discovery layer stays uncontaminated) but means a rescan can still produce wrong `discoveredCompetitors`. User-entered competitors trump at every downstream agent but don't stop Context Hub from wandering at scan time.
+
+### Culture+ — full brain rip (all brand-scoped tables except brand_profiles row)
+- **Brian's principle:** "No Theranos up in here. Forge has to run itself, not be ran by Claude code. No faked or staged demos."
+- **Pre-demo cleanup for Lili Gil Valletta's session:** wiped 25 tables of Culture+ data. Preserved: brand_profiles row, is_paid flag, Clerk linkage. Nuked: all brain_mistakes, brain_patterns, enriched_briefs, geo_briefs, geo_opportunities, geo_topic_briefs, articles, competitive_intelligence, brand_intelligence (legacy orphan), publishing_queue. Reset `profile_data = '{}'`, `cache_status = 'fresh'`, `version = 1`.
+- **Earlier full-table-audit discovery:** `brand_intelligence` is an orphan table with legacy deliverables (`gap_map`, `blind_spots`, `pivot`, `whitespace`, `compliance`). Zero current code references in server.js. Rows still being created from some ghost path — worth a sweep/deletion migration later. `competitive_intelligence` (the active table) is the per-competitor PVA storage used by current Brand Intel agent. Only tested code path.
+- **Source-of-truth discovery for gap map cards:** the UI gap map renders from `profile_data.competitiveGaps` (Context Hub output) at `BrandProfile.tsx:365` and `Strategy.tsx:63`. NOT from `brand_intelligence` table. That's why the earlier table wipes didn't clear gap cards from Culture+ sidebar views — gaps lived in `profile_data` JSONB.
+
+### BrandProfile + Strategy empty-state guards (fixed blank-blue-screen bug)
+- **Symptom:** After Culture+ brain rip, clicking "New Analysis" → blank light blue screen, clean console.
+- **Diagnosis:** React 18 production mode catches render errors and renders blank container. No red console error because error was caught by React's internal boundary. BrandProfile.tsx had 8+ unguarded reads (`brandProfile.voiceProfile.toneAttributes.map`, `personas.map`, `thirdPartySignals.filter`, `competitiveGaps.map`) that crash immediately on a wiped profile.
+- **Shipped:**
+  - BrandProfile.tsx: empty-state guard at top of render — detects missing voiceProfile/personas → renders "Brain is empty, run new analysis" CTA instead of crashing.
+  - Strategy.tsx: tightened existing `!brandProfile` guard to also check `Array.isArray(strategicRecommendations)` — prevents `.reduce()` crash on wiped brain.
+- **Broader pattern worth a sweep later:** any component that reads `brandProfile.X.map` or `.reduce` without a null-guard will crash on wiped/new brains. Confirmed BrandProfile + Strategy. Unknown for other views. Not urgent until it bites.
+
+### 24-hour claim gate — full fix, verified live
+- **Earlier state:** Gate was half-built — UI listened for `forge:scan-blocked` events, backend never dispatched. `/api/domain/check` didn't exist. Brain-first cache returned cached data to anyone regardless of session ownership.
+- **Shipped:** new `POST /api/domain/check` pre-scan verification endpoint, guarded brain-first cache (SQL expiry filter + session/account match), three distinct 409 response types (`owned_by_account`, `reserved_by_other_session` with hoursRemaining, orphan passthrough).
+- **Verified live:** Brian scanned aa.com logged in, then in incognito got correct `reserved_by_other_session` response with hoursRemaining. Dispute path routes to hello@forgeintelligence.ai.
+
+### Sandbox-XM article skill audit + corrected deliverable
+- **Brian's ask:** existing Forge-OS skill for Sandbox-XM article creation was drifting from the real site structure.
+- **Compared skill template to `sandbox-xm.com/sandbox.html` + `/articles/turning-attendee-signals-into-pipeline.html`.** Major gaps:
+  - Skill template had zero SEO metadata beyond `<title>`. Real articles carry full meta description, keywords, canonical, Open Graph, Twitter cards, `article:published_time`, `article:modified_time`, `article:section`, `article:author`.
+  - Skill had zero JSON-LD. Real articles have 3 blocks: BlogPosting + FAQPage + BreadcrumbList. **Critical miss** — without these, a GEO-platform's own articles are invisible to Perplexity/ChatGPT/Google AI citation flows.
+  - Skill missing favicon link.
+  - Skill missing `.article-tldr` "Key takeaway" callout block at top of body.
+  - Skill said explicitly DON'T include Forge-OS analytics snippet, but real articles HAVE it (`PROJECT_ID = "sandbox-xm"`, beacon to `https://forge-os.ai/api/analytics/events`). Skill was actively wrong.
+  - Skill hardcoded `© 2025`; real site uses `© 2026` on sandbox.html (but articles are inconsistent — flagged but not fixed on the source site).
+  - Skill missing outer `.sandbox-articles > .sandbox-articles-inner > .section-heading > .articles-grid` wrapper documentation.
+  - Skill included a legacy `.article-cta-section` inline CTA block not present in current articles.
+- **Delivered:** corrected skill MD with full SEO block, 3 JSON-LD blocks, TLDR block, analytics snippet, accurate footer, proper wrapper docs. For Brian to paste into Forge-OS skill system.
+
+### Campaign Generator + Content Gen + Enricher — earlier fixes this session (compressed from prior transcript)
+- **Campaign Generator per-angle enrichment** — was raw-dogging 8 articles sharing one stale enriched brief outside the per-article loop. Shipped `enrichAngleForCampaign()` helper (Sonnet 4.6, +$1.60-2.00/campaign, +6-8 min, per-angle enrichedBrief). Added SSE `article_progress` event.
+- **Context Hub campaign arcs → Campaign Generator pipeline** — new `campaignArcs` field in Context Hub output schema (2-4 narrative arcs per scan), new `GET /api/campaign/arcs/:brandProfileId`, arc-aware planner. UI: storyline picker as default, "or describe your own" toggle for custom topic prompts.
+- **eeatInjections JSON leak fix** — Tool 4 (Enricher Assembler) was copying injectionMap objects verbatim into `eeatInjections[]` as stringified JSON. Tightened prompt + added defensive `unwrapInjection` sanitizer. Same treatment in `enrichAngleForCampaign`.
+- **Content Generator endpoint fix** — `/api/content-generator/enriched-briefs/:brandProfileId` was LEFT JOINing against `generated_content_<safeId>` which is created lazily on first article. Fresh brands threw "relation does not exist," endpoint returned empty. Fixed with `CREATE TABLE IF NOT EXISTS` at handler top. Same pattern at 10+ other references to `generated_content_${safeId}` — worth a read-path sweep.
+
+### Compliance Gate — earlier fix (truncation)
+- **Prior failure:** Culture+ article 31kb / 8 sections hit Sonnet's 4096 max_tokens ceiling. Response truncated mid-JSON. `safeParseLLM` nuclear recovery silently returned `{}`. Server wrote `{}` with `compliance_status='reviewed'`. UI showed empty report appearing to pass.
+- **Fix 1:** raised `max_tokens` 4096 → 8192. Log `stop_reason`. Fail LOUDLY on truncation OR empty parse with 502 + retry message. Never persist `{}` as successful.
+- **Fix 2 (this session):** auto-retry once on `end_turn` parse failure — see Compliance Gate section above.
+
+### Lili Gil Valletta / Culture+ — commercial signal (ongoing)
+- **Who:** CEO of Culture+ Group. UN/WEF/TED speaker. Harvard Kennedy School. Inc. Female Founders 500. Independent board director at Zumiez (ZUMZ) and RCN Televisión. Scanned Forge Intelligence morning of April 21.
+- **What happened:** mid-conversation asked *"do you want to sale this"* — acquisition overture. For Forge to become an internal Culture+ tool.
+- **Decision (pending Brian's response):** Charter Partner counter-offer, NOT acquisition. Framing: "Forge isn't for sale — I'm building for a long horizon. What you want is the tool working inside Culture+ forever, not the company on your balance sheet. Let me put together Charter Partner proposal this week — $2.5-5k/mo, up to 10 brands, annual upfront, founder access, quarterly calls."
+- **Lili is not your ICP. Lili is your Trojan horse into enterprise CMO network.** Force-multiplier channel partner, not direct customer.
+- **Agency GTM roadmap:**
+  - Phase 1 (2-4 weeks): Charter Partner beta. Culture+ and 1-2 others as proving ground.
+  - Phase 2 (1-2 months): Agency Tier — Clerk Organizations for multi-tenancy, agency dashboard, bulk client onboarding, multi-brand Performance Dashboard.
+  - Phase 3 (3-6 months): White-label — only if multiple agencies ask. Don't pivot primary GTM.
+
+### Deferred code work (accumulating)
+- Port smart-upsert pattern to X / Facebook / Ghost sync paths
+- `content_analytics` audit trigger
+- L1217 + L7777 image prompt paths refactor through `buildImagePrompt`
+- `brain_patterns.last_validated_at` column — writer or drop decision
+- iOS 26.5 mobile content-clip ghost (upstream Safari beta)
+- GEO Strategist + Content Gen + Compliance agents should read `strategicMoats` alongside `competitiveGaps`
+- Manual entry endpoint's `GREATEST` edge-case
+- Sweep 10+ read-path references to `generated_content_${safeId}` for lazy CREATE TABLE pattern
+- `factualGround.competitors` schema drift (`{name,url}` vs string array vs comma-string) — normalize across all consumers
+- Section-by-section compliance critique for 50kb+ articles (plus tool-use/structured JSON approach)
+- Unguarded `brandProfile.X.map` crashes in other views beyond BrandProfile + Strategy
+- Orphaned `brand_intelligence` table cleanup — has legacy deliverables from April 19-20 but zero code reads/writes
+- `/api/strategy/competitive-intel` and `/api/content/import` should read factualGround (currently only read profile_data)
+- Context Hub should read factualGround.competitors to inform (not override) its own discovery pass
+- Agency Tier scaffolding (Phase 1 Charter Partner beta UX polish) if Lili signs
+
+---
+
 ## Session — April 19–20, 2026
 
 ### GEO Strategist — factualGround + strategicMoats integration (closes loop across all 4 downstream agents)
