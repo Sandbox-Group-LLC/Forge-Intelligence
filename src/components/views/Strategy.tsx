@@ -21,13 +21,18 @@ const icons = {
 export function Strategy() {
   const { brandProfile } = useApp();
 
-  if (!brandProfile) {
+  // Guard for fully-missing brand OR wiped-brain state (brand row exists but profile_data is empty).
+  // Without the strategicRecommendations check, brandProfile.strategicRecommendations.reduce() below
+  // crashes silently in React 18 production (blank screen, no console output).
+  if (!brandProfile || !Array.isArray(brandProfile.strategicRecommendations)) {
     return (
       <div className="strategy empty-state">
         <div className="empty-icon">{icons.compass}</div>
         <h2 className="empty-title">No Strategy Available</h2>
         <p className="empty-description">
-          Complete a brand analysis to generate strategic recommendations.
+          {brandProfile?.brandName
+            ? `${brandProfile.brandName}'s Brain is empty or hasn't been analyzed. Run Context Hub to generate strategic recommendations.`
+            : 'Complete a brand analysis to generate strategic recommendations.'}
         </p>
       </div>
     );
