@@ -4,7 +4,6 @@
    ═══════════════════════════════════════════════════════════════════════ */
 
 .cal-page {
-  padding: 16px 8px 64px;
   display: flex;
   flex-direction: column;
   gap: 16px;
