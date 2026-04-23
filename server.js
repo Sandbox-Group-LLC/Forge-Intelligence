@@ -1300,7 +1300,16 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
 
     const aj = article.article_json || {};
     const title = (article.title || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-    const description = (aj.metaDescription || (aj.sections?.[0]?.body || aj.sections?.[0]?.content || '').slice(0, 200)).replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    // Meta description: clamp at 155 chars so Bing + Google don't truncate mid-sentence.
+    // Truncate at word boundary + add ellipsis if the raw source exceeds the ceiling.
+    const rawDescription = aj.metaDescription || (aj.sections?.[0]?.body || aj.sections?.[0]?.content || '');
+    let clampedDescription = rawDescription.trim();
+    if (clampedDescription.length > 155) {
+      const sliced = clampedDescription.slice(0, 152);
+      const lastSpace = sliced.lastIndexOf(' ');
+      clampedDescription = (lastSpace > 120 ? sliced.slice(0, lastSpace) : sliced) + '…';
+    }
+    const description = clampedDescription.replace(/"/g, '&quot;').replace(/</g, '&lt;');
     const imageUrl = article.hero_image_url || '';
     const artBaseDomain = process.env.BASE_DOMAIN || 'forgeintelligence.ai';
 
@@ -1519,7 +1528,8 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
 const MARKETING_META = {
   '/': {
     title: 'Forge Intelligence — Brand Intelligence That Compounds',
-    description: 'Forge extracts competitive intelligence from brand websites using an 8-stage AI pipeline. Find undefended market positions, audience blind spots, and messaging fault lines your competitors haven\'t claimed. Intelligence compounds. The content proves it.',
+    // Meta description: 150 chars. Bing truncates at 160; Google at ~155. Keep strongest hook + specific claim.
+    description: 'Forge extracts competitive intelligence from brand websites using an 8-stage AI pipeline. Intelligence compounds. The content proves it.',
     bodyContent: `
       <h1>Brand Intelligence That Compounds</h1>
       <p>Forge Intelligence extracts competitive intelligence from brand websites using an 8-stage AI pipeline. Every stage conditions the next. By the time content is generated, it's not writing from a prompt — it's writing from a fully constructed competitive worldview unique to your brand.</p>
@@ -1535,7 +1545,8 @@ const MARKETING_META = {
   },
   '/product': {
     title: 'The Forge Product — Context Agent Architecture',
-    description: 'Eight specialized AI agents. One compounding intelligence system. Context Hub, GEO Strategist, Authenticity Enricher, Content Generator, Compliance Gate, Publishing Queue, Performance Dashboard, Brain Memory.',
+    // 155-char ceiling — dropped the agent name list (it's in the page body already).
+    description: 'Eight specialized AI agents. One compounding intelligence system. Each stage conditions the next — from brand scrape to published content that cites.',
     bodyContent: `
       <h1>The Forge Product</h1>
       <p>Eight specialized agents. One compounding system. Each stage doesn't just execute — it conditions the next.</p>
