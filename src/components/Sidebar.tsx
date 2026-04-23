@@ -194,6 +194,7 @@ const NAV_ROUTES: Partial<Record<ViewType, string>> = {
 
 const publishingNavItems = [
   { id: 'publishing-queue', label: 'Queue',           icon: 'sendCloud',  href: '/app/publishing-queue' },
+  { id: 'calendar',         label: 'Calendar',        icon: 'calendar',   href: '/app/calendar' },
   { id: 'content-library',  label: 'Content Library', icon: 'bookOpen',   href: '/app/content-library' },
   { id: 'content-import',   label: 'Import Article',  icon: 'fileImport', href: '/app/content-import' },
   { id: 'topic-queue',      label: 'Topic Queue',     icon: 'fileText',   href: '/app/topic-queue' },
@@ -221,7 +222,7 @@ export function Sidebar() {
   const [gateFeature, setGateFeature] = useState<string | null>(null);
   const LOCKED_ROUTES = [
     '/app/geo-strategist', '/app/authenticity-enricher', '/app/content-generator',
-    '/app/campaign-generator', '/app/compliance-gate', '/app/publishing-queue',
+    '/app/campaign-generator', '/app/compliance-gate', '/app/publishing-queue', '/app/calendar',
     '/app/content-library', '/app/content-import', '/app/topic-queue',
     '/app/performance', '/app/integrations', '/app/mc', '/app/email-campaign',
   ];
@@ -233,7 +234,7 @@ export function Sidebar() {
     }
   };
   const [brainGroupOpen, setBrainGroupOpen] = useState(() => window.location.pathname.startsWith('/app/context-hub'));
-  const [publishingGroupOpen, setPublishingGroupOpen] = useState(() => ['/app/publishing-queue','/app/content-library','/app/content-import','/app/topic-queue'].some(r => window.location.pathname.startsWith(r)));
+  const [publishingGroupOpen, setPublishingGroupOpen] = useState(() => ['/app/publishing-queue','/app/calendar','/app/content-library','/app/content-import','/app/topic-queue'].some(r => window.location.pathname.startsWith(r)));
   const [settingsGroupOpen, setSettingsGroupOpen] = useState(() => ['/app/brand-settings','/app/integrations','/app/mc'].some(r => window.location.pathname.startsWith(r)));
   const [mobileExpanded, setMobileExpanded] = useState(false);
 
@@ -248,7 +249,7 @@ export function Sidebar() {
   useEffect(() => {
     const p = window.location.pathname;
     setPath(p);
-    if (['/app/publishing-queue','/app/content-library','/app/content-import','/app/topic-queue'].some(r => p.startsWith(r))) {
+    if (['/app/publishing-queue','/app/calendar','/app/content-library','/app/content-import','/app/topic-queue'].some(r => p.startsWith(r))) {
       setPublishingGroupOpen(true);
     }
     if (['/app/brand-settings','/app/integrations','/app/mc'].some(r => p.startsWith(r))) {
@@ -418,7 +419,7 @@ export function Sidebar() {
         {topNavItems.map(item => {
           // Insert Publishing group before Performance
           if (item.id === 'performance') {
-            const isPublishingActive = ['/app/publishing-queue','/app/content-library','/app/content-import','/app/topic-queue'].some(r => path.startsWith(r));
+            const isPublishingActive = ['/app/publishing-queue','/app/calendar','/app/content-library','/app/content-import','/app/topic-queue'].some(r => path.startsWith(r));
             return (
               <div key="publishing-group">
                 {/* Publishing group header */}
