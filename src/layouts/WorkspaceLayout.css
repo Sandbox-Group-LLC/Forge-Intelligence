@@ -33,6 +33,22 @@
   animation: fadeIn 0.3s ease;
 }
 
+/* Calendar page opt-out — needs full viewport width so day cells can breathe.
+   Using :has() keeps the override scoped to the one page; fallback below
+   covers older browsers (Chrome <105, Firefox <121) via an explicit body class. */
+.view-container:has(.cal-page),
+.view-container.view-container-wide {
+  max-width: none;
+  padding: 24px 24px 64px;
+}
+
+@media (max-width: 768px) {
+  .view-container:has(.cal-page),
+  .view-container.view-container-wide {
+    padding: 16px 12px 80px;
+  }
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
