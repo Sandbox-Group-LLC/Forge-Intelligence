@@ -343,3 +343,90 @@
     justify-content: center;
   }
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   KEY TAKEAWAY / TL;DR BLOCK — primary LLM extraction target.
+   Styled as a distinct visual block so human readers use it as a skim
+   anchor and LLMs weight its contents as the canonical article summary.
+   ════════════════════════════════════════════════════════════════════════ */
+.pa-tldr {
+  margin: 24px 0 40px;
+  padding: 20px 24px;
+  border-left: 4px solid #3563FF;
+  background: rgba(53,99,255,0.06);
+  border-radius: 0 10px 10px 0;
+}
+
+.pa-tldr-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #3563FF;
+  margin-bottom: 8px;
+}
+
+.pa-tldr-body {
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: #0F172A;
+  margin: 0;
+  font-weight: 500;
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   FAQ SECTION — DOM-level Q&A structure complements FAQPage JSON-LD.
+   <details>/<summary> is semantic and gives accordion behavior for free.
+   ════════════════════════════════════════════════════════════════════════ */
+.pa-faqs {
+  margin: 56px 0 32px;
+  padding-top: 32px;
+  border-top: 1px solid rgba(15,23,42,0.08);
+}
+
+.pa-faq-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 24px;
+}
+
+.pa-faq-item {
+  border-bottom: 1px solid rgba(15,23,42,0.08);
+  padding: 16px 0;
+}
+.pa-faq-item:last-child { border-bottom: none; }
+
+.pa-faq-question {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #0F172A;
+  cursor: pointer;
+  list-style: none;
+  padding-right: 32px;
+  position: relative;
+  line-height: 1.4;
+}
+.pa-faq-question::-webkit-details-marker { display: none; }
+.pa-faq-question::after {
+  content: '+';
+  position: absolute;
+  right: 0;
+  top: 0;
+  font-size: 1.4rem;
+  font-weight: 300;
+  color: #64748B;
+  transition: transform 0.2s ease;
+}
+.pa-faq-item[open] .pa-faq-question::after {
+  content: '−';
+}
+
+.pa-faq-answer {
+  margin-top: 12px;
+  font-size: 0.97rem;
+  line-height: 1.65;
+  color: #334155;
+}
+.pa-faq-answer p { margin-bottom: 0.75rem; }
+.pa-faq-answer p:last-child { margin-bottom: 0; }
