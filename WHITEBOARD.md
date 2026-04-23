@@ -81,6 +81,45 @@
   - Phase 2 (1-2 months): Agency Tier — Clerk Organizations for multi-tenancy, agency dashboard, bulk client onboarding, multi-brand Performance Dashboard.
   - Phase 3 (3-6 months): White-label — only if multiple agencies ask. Don't pivot primary GTM.
 
+### Brand Facts tab on Brand Profile + post-save rescan banner on Brand Settings
+- **The missing moment:** after Context Hub produces `businessProfile` + `discoveredCompetitors` + `marketCategory` inside `profile_data`, users had no way to see what Forge learned — the BrandProfile UI only rendered voice/personas/signals/gaps. The course-correction loop (scan → "this is wrong" → fix → rescan) had no entry point.
+- **Shipped (Brand Profile):** new Brand Facts tab, default first tab. Renders businessProfile.whatTheyDo prose, 5-card grid (market category, target buyer, geography, company scale, revenue model), products & services list, discovered competitor pills. Prominent blue intro banner at top: "Double-check what Forge learned" + "Correct these? →" button routes to Brand Settings. Context Hub endpoint already passed fields through via `...row.profile_data` spread — no backend change needed.
+- **Shipped (Brand Settings):** persistent green banner after Factual Ground save: "Factual Ground saved. Your corrections only apply on the next analysis. Run a new scan so Forge can rebuild the Brain with your updated facts." + [Run new analysis] button → /app/context-hub. Dismissible. Users were saving FG and walking away without re-running; Brain stayed out of date with their corrections.
+- **The course-correction loop is now explicit and obvious:** Scan → Brand Facts tab → "this is wrong" → Correct these → Brand Settings/Factual Ground → Save → rescan banner → Run new analysis → Brain rebuilt.
+- **Validated live:** Lili/Sandbox-XM test case — "Forge thinks you compete with X/Y/Z but you actually compete with A/B/C" became a 90-second fix instead of an invisible drift.
+
+### New Analysis form simplified — removed Advanced Overrides collapse
+- **Why:** Brand Facts + Factual Ground rescan is now the course-correction path. Pre-scan overrides (Competitor URLs, Audience Notes, Strategic Notes, Save-to-Brain toggle) were redundant and buried the primary URL-driven flow behind a chevron nobody clicked.
+- **Removed from UI:** Competitor URLs input with tag list, Audience/ICP Notes textarea, Strategic Notes textarea, Save-to-Brain toggle. Also removed orphaned `competitorInput` / `showAdvanced` state + `handleAddCompetitor` / `handleRemoveCompetitor` handlers (TS caught them at compile).
+- **Kept:** Check Brain First toggle — always visible now, not collapsed. Copy clarified: "Return cached profile if one exists. Turn off to force a fresh scan." Brian's stated use case for keeping it: force a rescan to pick up new Factual Ground corrections.
+- **Server-side:** defaults unchanged. `competitorUrls = []`, `audienceNotes = ''`, `strategicNotes = ''`, `saveToBrain = true` still apply. No API contract break.
+
+### X + Facebook post copy override — Brian caught it
+- **Brian's bug report:** "Our X posts are sending the article body as the post copy and not the generated post copy."
+- **Root cause (X):** server.js L8594 was literally slicing first 250 chars of sections[0].content and posting that + URL as the tweet. Never read `postCopy[channel]` from the request body. Only LinkedIn (L8527) had the override wired. Culture+ and Sandbox-XM tweets had been shipping as raw article lede excerpts the whole time.
+- **Same-shape bug caught in FB path (L8666):** Facebook was always re-generating copy via Haiku at publish time, ignoring any user edits from the preview UI. Different symptom, same pattern: override silently discarded.
+- **Shipped:** both X and FB now follow LinkedIn's pattern — postCopy[channel] override first, fall back to generation/title+URL. X also gets strict 280-char enforcement with URL preservation: if override too long, truncates body while keeping full URL intact at end.
+- **UI side was always right:** PublishingQueuePage sent `postCopy: { x: '...', linkedin: '...', facebook: '...' }` at publish time. Server was just ignoring 2 of 3 channels.
+
+### Strategy branch — 12 endpoints restored (44KB of code recovered)
+- **Symptom:** on strategy.forgeintelligence.ai Brand Intel page, clicking "Run Blind Spots" / "Run Whitespace" flashed analyzing screen for half a second then returned to idle. Network tab showed 2ms POST responses (~450 bytes) — endpoints returning fast errors.
+- **Diagnosis via git history:** on 4/19 02:17-05:45 the strategy branch had 16 `/api/strategy/*` endpoints working (gap-map, blind-spots, whitespace, pivot, share, shares, brief, compliance, compliance-fix + competitive-intel). On 4/19 19:12 commit `7fd4a9a50e` "sync: port server.js from production — 24h opportunity expiry" overwrote server.js with the production version, wiping all 8 strategy-specific endpoints. Follow-up commit at 19:14 ("re-add Gap Map — accidentally overwritten during server.js sync") restored only gap-map. Blind-spots, whitespace, pivot, share, shares, brief, compliance, compliance-fix — 12 handlers totaling 44KB of working code — sat dead for 3 days.
+- **UI had been calling them the whole time.** StrategyIntelPage has 6 tabs (gap_map, pva, blind_spots, faultlines, whitespace, pivot) + share brief button + compliance audit — all hitting 404s.
+- **Fix:** pulled server.js at commit `5b1ac6e9c6` (last known-good before the sync wipe), extracted each missing handler block surgically via brace-depth tracking, inserted all 12 back into current strategy server.js right after the gap-map POST block. Node `--check` passed clean, deploy landed, 6-tab Brand Intel flow fully functional again.
+- **⚠ Architectural concern deferred:** "sync from production" is dangerous for the strategy branch because strategy has divergent endpoints. Every sync-from-prod wipes strategy-specific work. Needs solution — options: (a) isolate strategy endpoints into a separate file that server.js imports, (b) maintain a checklist of strategy-only routes to reapply after any sync, (c) prefer merge commits over source-replacement. Not urgent but this has now happened twice — will happen again without a structural change.
+
+### Content Calendar — new page
+- **Brian's observation:** "Cranking out articles for three companies, queue and content library are great but I'm missing a calendar view." Monthly grid, stage-colored items, brand-scoped, one calendar with filter toggles per stage.
+- **Shipped:** new `/app/calendar` route + CalendarPage.tsx + CalendarPage.css + sidebar nav entry between Queue and Content Library (new calendar icon). 6-week monthly grid (42 cells), local-midnight date math to avoid UTC drift, today cell highlighted with blue outline. Three stage color filters as toggleable pills with live counts. Click any item for detail modal with scheduled/published timestamps + channels + "Open in Queue" button.
+- **Data shape works perfectly:** existing `/api/publishing/queue/:brandProfileId` already returns everything needed — no new endpoint. Stage derived from (status, scheduled_at, published_at):
+  - Staged = `status='staged'`, anchor date = `created_at`
+  - Scheduled = `status='scheduled'` with `scheduled_at`, anchor date = `scheduled_at`
+  - Published = `status='published'` with `published_at`, anchor date = `published_at`
+  - (archived + partial deliberately excluded from calendar)
+- **Wide-mode layout pattern established:** Added `.view-container:has(.cal-page)` + `.view-container-wide` class override in WorkspaceLayout.css that unsets global max-width (1200px) and reduces padding (40px → 24px) ONLY for Calendar. `useWideLayout()` hook applies `.view-container-wide` class as fallback for browsers without `:has()`. **Pattern reusable for any future grid-heavy pages** (matrices, wide dashboards). All other pages unaffected.
+- **Pill styling match Content Catalogue (Brian's call):** iterated through desaturated tinted pills (bad contrast on light theme) → matched Content Catalogue's `statusColor` map exactly. Solid saturated backgrounds + white text: staged #3563FF (brand blue, same as catalogue), scheduled #F59E0B (amber, catalogue's medium-confidence color since Scheduled is calendar-specific), published #10B981 (emerald, same as catalogue). Modal badge + filter pills get same treatment. Visual language now continuous across Queue, Library, and Calendar.
+- **Deliberately NOT in v1:** drag-to-reschedule, week view, all-brands-with-brand-colors mode, multi-day spanning. All deferred until real usage signals demand.
+
 ### Deferred code work (accumulating)
 - Port smart-upsert pattern to X / Facebook / Ghost sync paths
 - `content_analytics` audit trigger
