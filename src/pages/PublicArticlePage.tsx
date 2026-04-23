@@ -30,6 +30,7 @@ function renderBody(raw: string): React.ReactNode {
 
 
 interface ArticleSection { heading: string; content?: string; body?: string; }
+interface ArticleFAQ { question: string; answer: string; }
 interface ArticleData {
   title: string;
   sections: ArticleSection[];
@@ -40,6 +41,8 @@ interface ArticleData {
   brandUrl?: string;
   createdAt?: string;
   metaDescription?: string;
+  keyTakeaway?: string;
+  faqs?: ArticleFAQ[];
 }
 
 export default function PublicArticlePage() {
@@ -154,6 +157,18 @@ export default function PublicArticlePage() {
             <p className="pa-lede">{article.metaDescription}</p>
           )}
 
+          {/* ── TL;DR / Key Takeaway block ──
+              First 150-200 words LLMs weight heaviest for extraction. This is the
+              primary machine-readable summary of the article. Rendered as a distinct
+              visual block so human readers also use it as a skim anchor. Gracefully
+              skipped for articles generated before keyTakeaway was part of the schema. */}
+          {article.keyTakeaway && (
+            <aside className="pa-tldr" aria-label="Key takeaway">
+              <div className="pa-tldr-label">Key takeaway</div>
+              <p className="pa-tldr-body">{article.keyTakeaway}</p>
+            </aside>
+          )}
+
           {/* First section body as lead — larger text */}
           {firstSection && (
             <div className="pa-section pa-section-lead">
@@ -172,6 +187,24 @@ export default function PublicArticlePage() {
               </div>
             </section>
           ))}
+
+          {/* ── FAQ section ──
+              Rendered as visible HTML so readers see it AND LLMs can parse it directly
+              from the page DOM (FAQPage JSON-LD is in the <head>, but DOM-level Q&A
+              structure is what crawlers actually index for featured snippets). */}
+          {Array.isArray(article.faqs) && article.faqs.length > 0 && (
+            <section className="pa-faqs" aria-label="Frequently asked questions">
+              <h2 className="pa-section-heading">Frequently asked questions</h2>
+              <div className="pa-faq-list">
+                {article.faqs.map((faq, i) => (
+                  <details key={i} className="pa-faq-item">
+                    <summary className="pa-faq-question">{faq.question}</summary>
+                    <div className="pa-faq-answer">{renderBody(faq.answer)}</div>
+                  </details>
+                ))}
+              </div>
+            </section>
+          )}
 
           {/* ── CTA ─── */}
           <div className="pa-cta">
