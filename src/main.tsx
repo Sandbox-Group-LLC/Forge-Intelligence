@@ -14,6 +14,7 @@ import CampaignGeneratorPage from './pages/CampaignGeneratorPage';
 import ComplianceGatePage from './pages/ComplianceGatePage';
 import IntegrationsPage from './pages/IntegrationsPage';
 import PublishingQueuePage from './pages/PublishingQueuePage';
+import CalendarPage from './pages/CalendarPage';
 import PublicArticlePage from './pages/PublicArticlePage';
 import PublicArticlesLibraryPage from './pages/PublicArticlesLibraryPage';
 import PerformanceDashboardPage from './pages/PerformanceDashboardPage';
@@ -94,6 +95,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/app/compliance-gate" element={<AppProvider><ComplianceGatePage /></AppProvider>} />
         <Route path="/app/integrations" element={<AppProvider><IntegrationsPage /></AppProvider>} />
         <Route path="/app/publishing-queue" element={<AppProvider><PublishingQueuePage /></AppProvider>} />
+        <Route path="/app/calendar" element={<AppProvider><CalendarPage /></AppProvider>} />
         <Route path="/app/performance" element={<AppProvider><PerformanceDashboardPage /></AppProvider>} />
         <Route path="/app/content-library" element={<AppProvider><ContentLibraryPage /></AppProvider>} />
         <Route path="/app/content-import" element={<AppProvider><ContentImportPage /></AppProvider>} />
