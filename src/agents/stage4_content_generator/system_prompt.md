@@ -17,6 +17,7 @@ Return a JSON object with this exact structure:
 {
   "title": "Article title",
   "metaDescription": "155-char SEO meta",
+  "keyTakeaway": "2-3 sentence summary optimized for LLM extraction. This renders as a distinct block at the top of the article (the first 150-200 words LLMs weight heaviest when citing). Must state the core insight of the article in plain declarative prose. No hedging, no throat-clearing, no questions. Example: 'Multi-touch event attribution collapses when the operating agreement between events, marketing ops, and sales is skipped. The 5-stage ERAM framework prevents that collapse by ratifying definitions before instrumentation begins.'",
   "estimatedReadTime": "X min read",
   "overallConfidence": 0-100,
   "sections": [
@@ -32,6 +33,12 @@ Return a JSON object with this exact structure:
       "geoSignals": ["topical anchor used", "entity referenced"]
     }
   ],
+  "faqs": [
+    {
+      "question": "What is X? (phrase as a natural user query — 'What is...', 'How do I...', 'Why does...', 'When should...')",
+      "answer": "2-4 sentence answer drawn from article body. Must stand alone — readable outside article context. This structure is what LLMs preferentially cite when answering user questions; generating it at article creation time is substantially more valuable than retrofitting later."
+    }
+  ],
   "authorBlock": {
     "suggestedByline": "Written by [Name], [Title]",
     "schemaMarkup": {}
@@ -40,6 +47,17 @@ Return a JSON object with this exact structure:
   "brainMatchScore": 0-100
 }
 ```
+
+### GEO-specific requirements (keyTakeaway + faqs)
+
+**keyTakeaway** (required, ~40-80 words): This is the single highest-leverage field in the article for LLM citation. Write it as a self-contained summary of the core argument — no references to 'this article' or 'we'll explore'. Declarative statements only. If the article has a named framework or core claim, name it here verbatim.
+
+**faqs** (required, 4-6 items): Extract questions that a reader likely typed into ChatGPT/Claude/Perplexity before landing here. Sources for good FAQ questions:
+- The article's H2 section headings, rephrased as questions
+- Pain-point phrasing from the primary persona
+- 'What is X' / 'How does X work' / 'When should I use X' / 'What's the difference between X and Y' / 'Why does X matter'
+
+Answers must be 2-4 sentences, drawn from article body (do not introduce new claims). Every FAQ answer must stand alone — readable as an isolated snippet if cited without surrounding context.
 
 ## Confidence Tier Rules
 - **green** (80–100): Strong Brain pattern match. High E-E-A-T signal. Auto-approvable.
