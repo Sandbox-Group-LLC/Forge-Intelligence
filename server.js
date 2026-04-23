@@ -3926,21 +3926,64 @@ Return ONLY valid JSON array:
       });
       const authorityContext = authorityWriteup ? JSON.stringify(authorityWriteup) : '';
 
+      // Ignore propagation — if the user has already dismissed a very similar topic,
+      // don't resurface it under a near-duplicate name. Checks for:
+      //  (1) any previously-ignored topic whose trigram similarity ≥ 0.55 to this one, OR
+      //  (2) any previously-ignored topic that contains / is contained in this one (substring).
+      // If found, insert with status='ignored' so the user's prior decision propagates.
+      let inheritedStatus = 'discovered';
+      try {
+        const dupRes = await pool.query(
+          `SELECT id, topic FROM geo_opportunities
+           WHERE brand_profile_id = $1
+             AND status = 'ignored'
+             AND (LOWER(topic) = LOWER($2)
+                  OR LOWER(topic) LIKE '%' || LOWER($2) || '%'
+                  OR LOWER($2) LIKE '%' || LOWER(topic) || '%'
+                  OR similarity(LOWER(topic), LOWER($2)) >= 0.55)
+           LIMIT 1`,
+          [brandProfileId, opp.topic]
+        );
+        if (dupRes.rows.length > 0) {
+          inheritedStatus = 'ignored';
+          console.log(`[GEO] ignore-propagate: "${opp.topic}" inherits ignored from "${dupRes.rows[0].topic}"`);
+        }
+      } catch(e) {
+        // pg_trgm extension may not be installed — fall back to substring-only check
+        if (e.message && e.message.includes('similarity')) {
+          try {
+            const fbRes = await pool.query(
+              `SELECT id, topic FROM geo_opportunities
+               WHERE brand_profile_id = $1 AND status = 'ignored'
+                 AND (LOWER(topic) = LOWER($2)
+                      OR LOWER(topic) LIKE '%' || LOWER($2) || '%'
+                      OR LOWER($2) LIKE '%' || LOWER(topic) || '%')
+               LIMIT 1`,
+              [brandProfileId, opp.topic]
+            );
+            if (fbRes.rows.length > 0) {
+              inheritedStatus = 'ignored';
+              console.log(`[GEO] ignore-propagate (fallback): "${opp.topic}" inherits ignored from "${fbRes.rows[0].topic}"`);
+            }
+          } catch(e2) { /* give up silently — default to 'discovered' */ }
+        }
+      }
+
       try {
         const insertRes = await pool.query(
           `INSERT INTO geo_opportunities (
             brand_profile_id, brain_version, topic, platform_scores, avg_score, quick_win,
             topical_authority_context, intent_signals, status, discovery_session_id
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'discovered', $9)
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $10, $9)
           RETURNING id`,
           [
             brandProfileId, profile.version || 1, opp.topic,
             JSON.stringify(platforms), avgScore.toFixed(2), !!opp.quickWin,
             authorityContext, JSON.stringify({ entities: entitySchema.filter(e => e.priority === 'high').slice(0, 5) }),
-            discoverySessionId
+            discoverySessionId, inheritedStatus
           ]
         );
-        persistedOpportunities.push({ ...opp, id: insertRes.rows[0].id, avgScore });
+        persistedOpportunities.push({ ...opp, id: insertRes.rows[0].id, avgScore, status: inheritedStatus });
       } catch(e) {
         console.log('[GEO] opp persist warn:', e.message, '| topic:', topic);
       }
@@ -11082,10 +11125,56 @@ app.get('/robots.txt', (req, res) => {
   const host = req.headers.host || '';
   const isDev = host.includes('dev.');
   res.type('text/plain');
-  res.send(isDev
-    ? 'User-agent: *\nDisallow: /'
-    : 'User-agent: *\nAllow: /\nDisallow: /app/\nSitemap: https://forgeintelligence.ai/sitemap.xml'
-  );
+
+  if (isDev) {
+    res.send('User-agent: *\nDisallow: /');
+    return;
+  }
+
+  // Explicit per-crawler allow-list. Passive `Allow: /` with wildcard was permitting crawlers
+  // but not signaling discovery preference. Naming each AI crawler explicitly raises the
+  // likelihood of indexation (particularly for young domains like forgeintelligence.ai where
+  // GPTBot/ClaudeBot are slower to crawl). Covers:
+  //   • AI search crawlers: GPTBot, OAI-SearchBot, ChatGPT-User, ClaudeBot, anthropic-ai,
+  //     PerplexityBot, Perplexity-User, Google-Extended, Applebot-Extended, Bytespider,
+  //     Amazonbot, cohere-ai, CCBot, FacebookBot, meta-externalagent, Omgili, Bingbot-AI
+  //   • Traditional search: Googlebot, Bingbot, DuckDuckBot, Slurp (Yahoo), YandexBot
+  //   • Wildcard fallback for anything else: allow all, same as before.
+  const aiCrawlers = [
+    'GPTBot', 'OAI-SearchBot', 'ChatGPT-User',
+    'ClaudeBot', 'anthropic-ai', 'Claude-Web',
+    'PerplexityBot', 'Perplexity-User',
+    'Google-Extended',
+    'Applebot-Extended',
+    'Bytespider',
+    'Amazonbot',
+    'cohere-ai',
+    'CCBot',
+    'FacebookBot', 'meta-externalagent',
+    'Omgilibot', 'Omgili',
+    'DiffBot',
+    'YouBot',
+  ];
+  const searchCrawlers = ['Googlebot', 'Bingbot', 'DuckDuckBot', 'Slurp', 'YandexBot', 'Applebot'];
+
+  const allowBlock = (ua) => `User-agent: ${ua}\nAllow: /\nDisallow: /app/\nDisallow: /api/\n`;
+
+  const lines = [
+    '# Forge Intelligence — robots.txt',
+    '# AI crawlers and search engines explicitly welcomed. App routes and API are blocked from all.',
+    '',
+    ...aiCrawlers.map(allowBlock),
+    ...searchCrawlers.map(allowBlock),
+    '# Default — permissive for everything else',
+    'User-agent: *',
+    'Allow: /',
+    'Disallow: /app/',
+    'Disallow: /api/',
+    '',
+    'Sitemap: https://forgeintelligence.ai/sitemap.xml'
+  ];
+
+  res.send(lines.join('\n'));
 });
 
 // ── Neon SQL Relay ────────────────────────────────────────────────────────────
@@ -11926,15 +12015,26 @@ app.post('/api/geo/track/:brandProfileId', async (req, res) => {
       await Promise.allSettled(articlesRes.rows.map(async article => {
         const sections = article.article_json?.sections || [];
         const title = article.title || 'Untitled';
-        // Extract meaningful topic keywords from title for natural GEO queries
-        const topicWords = title.replace(/[^a-zA-Z0-9 ]/g, '').split(' ')
-          .filter(w => w.length > 4 && !['about','using','your','with','that','this','from','have','will','what','when','where','which'].includes(w.toLowerCase()))
-          .slice(0, 5).join(' ');
+        const faqs = Array.isArray(article.article_json?.faqs) ? article.article_json.faqs : [];
+
+        // ── Probe query construction — stable, article-anchored, natural user phrasing ──
+        // Previously: queries were title-derived and reconstructed every run, producing
+        // awkward keyword mashups ("Forge Intelligence Bottleneck Production Intelligence MidMarket Teams")
+        // and breaking week-over-week comparability since titles change.
+        //
+        // Now: FAQ questions are the primary probe source — they're the literal questions
+        // a user would type into ChatGPT/Perplexity, written at article creation time and
+        // stable across probe runs. Plus the title itself and a canonical brand query.
+        const faqQueries = faqs
+          .map(f => f?.question)
+          .filter(q => typeof q === 'string' && q.length > 10 && q.length < 200)
+          .slice(0, 3);  // cap at 3 FAQ probes to control per-article API cost
+
         const probeQuestions = [
+          ...faqQueries,                                            // natural user questions from the article's FAQ block
           title,                                                    // exact article title — tests direct citation
-          `${brandName} ${topicWords}`.trim(),                      // brand + topic — tests brand authority on this subject
-          `What is ${brandName}?`,                                  // brand awareness query
-        ].filter(Boolean).slice(0, 3);
+          `What is ${brandName}?`,                                  // brand awareness query (stable across all articles)
+        ].filter(Boolean).slice(0, 5);  // hard cap per article
 
         await Promise.allSettled(probeQuestions.map(async question => {
 
