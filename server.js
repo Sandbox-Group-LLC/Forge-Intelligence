@@ -11481,9 +11481,12 @@ app.post('/api/content/import', requireAuth, requireApiKeyScope('content:import'
       }
     }
 
-    // 2. Load brand profile for Brain context
+    // 2. Load brand profile for Brain context.
+    // voice_profile lives inside profile_data JSONB (not as a top-level column) — extract it here.
+    // personas/competitive_gaps were previously SELECTed but never used in the audit prompt, so dropped.
     const brandRes = await pool.query(
-      'SELECT brand_name, brand_url, voice_profile, personas, competitive_gaps FROM brand_profiles WHERE id = $1',
+      `SELECT brand_name, brand_url, profile_data->'voice_profile' as voice_profile
+       FROM brand_profiles WHERE id = $1`,
       [brandProfileId]
     );
     const brand = brandRes.rows[0];
