@@ -1303,7 +1303,36 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
     const description = (aj.metaDescription || (aj.sections?.[0]?.body || aj.sections?.[0]?.content || '').slice(0, 200)).replace(/"/g, '&quot;').replace(/</g, '&lt;');
     const imageUrl = article.hero_image_url || '';
     const artBaseDomain = process.env.BASE_DOMAIN || 'forgeintelligence.ai';
-    const canonicalUrl = `https://${artBaseDomain}/articles/${brandSlug}/${articleSlug}`;
+
+    // ── Publisher identity check ──────────────────────────────────────────
+    // Forge Intelligence's OWN brand articles should be indexed on forgeintelligence.ai
+    // (they're Forge's content, on Forge's domain, and we WANT AI citation here).
+    // All other brands are customers previewing their content — we must NOT let crawlers
+    // index these pages on our domain. Canonical points at the customer's real domain
+    // if known; noindex meta is injected unconditionally so even non-canonical-respecting
+    // crawlers (some AI crawlers) still get the directive.
+    const FORGE_OWN_BRAND_ID = 'cde5feeb-b3d7-4990-adee-a54977ab9c52';
+    const isForgeOwnContent = matchedBrand.id === FORGE_OWN_BRAND_ID;
+
+    // Build canonical URL. For Forge own: forgeintelligence.ai. For customers: their real domain.
+    let canonicalUrl;
+    if (isForgeOwnContent) {
+      canonicalUrl = `https://${artBaseDomain}/articles/${brandSlug}/${articleSlug}`;
+    } else if (matchedBrand.article_base_url && matchedBrand.article_base_url.trim()) {
+      // Customer has explicitly configured an article_base_url (e.g., Sandbox-XM's sandbox-xm.com/articles)
+      const base = matchedBrand.article_base_url.replace(/\/+$/, '');
+      canonicalUrl = `${base}/${articleSlug}`;
+    } else if (matchedBrand.brand_url) {
+      // No article_base_url set — fall back to just the brand root. Better than pointing at Forge.
+      const rootUrl = matchedBrand.brand_url.startsWith('http')
+        ? matchedBrand.brand_url.replace(/\/+$/, '')
+        : `https://${matchedBrand.brand_url.replace(/\/+$/, '')}`;
+      canonicalUrl = rootUrl;
+    } else {
+      // Last resort — still use Forge URL but noindex will prevent indexing anyway
+      canonicalUrl = `https://${artBaseDomain}/articles/${brandSlug}/${articleSlug}`;
+    }
+
     const brandName = (matchedBrand.brand_name || matchedBrand.profile_data?.voice_profile?.brand_name || brandSlug).replace(/"/g, '&quot;');
     const authorName = (matchedBrand.profile_data?.voice_profile?.author_name || brandName).replace(/"/g, '&quot;');
     const wordCount = (aj.sections || []).reduce((acc, s) => acc + ((s.body || s.content || '').split(' ').length), 0);
@@ -1311,9 +1340,13 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
 
     const html = await fs.promises.readFile(path.join(__dirname, 'dist', 'index.html'), 'utf8');
     // ── Build JSON-LD schema for Google ──
-    // Pull Factual Ground author + DB brand_url for deterministic author block
+    // For customer previews (noindex), we skip schema emission entirely. Emitting
+    // Article/FAQPage/BreadcrumbList schemas on a noindex page just creates confusing
+    // signal — crawlers that DO crawl the page see rich schemas pointing at Forge as
+    // publisher, contradicting the canonical + noindex directives. Cleaner to emit
+    // nothing and let the customer's real domain be the sole schema source.
     let ldJsonScript = '';
-    try {
+    if (isForgeOwnContent) try {
       const fgRes = await pool.query(
         `SELECT settings->'factualGround' as fg, brand_url FROM brand_profiles WHERE id = $1`,
         [matchedBrand.id]
@@ -1405,11 +1438,18 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
 
     const publishedTime = article.created_at ? new Date(article.created_at).toISOString() : new Date().toISOString();
     const modifiedTime = article.updated_at ? new Date(article.updated_at).toISOString() : publishedTime;
+    // Robots directive — indexable for Forge's own content, noindex for customer previews.
+    // noindex is a hard directive (all crawlers respect it); nofollow prevents link-graph
+    // pollution; noarchive prevents Google/Bing from caching the page.
+    const robotsMeta = isForgeOwnContent
+      ? 'index, follow, max-image-preview:large, max-snippet:-1'
+      : 'noindex, nofollow, noarchive';
+
     const ogTags = `
   <title>${title} | ${brandName}</title>
   <meta name="description" content="${description}" />
   <link rel="canonical" href="${canonicalUrl}" />
-  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+  <meta name="robots" content="${robotsMeta}" />
   <meta property="og:type" content="article" />
   <meta property="og:site_name" content="${brandName}" />
   <meta property="og:title" content="${title}" />
@@ -11205,7 +11245,7 @@ ${urls.map(u => `  <url>
 });
 
 // ── Robots.txt — block crawlers on dev, allow on production ──────────────────
-app.get('/robots.txt', (req, res) => {
+app.get('/robots.txt', async (req, res) => {
   const host = req.headers.host || '';
   const isDev = host.includes('dev.');
   res.type('text/plain');
@@ -11213,6 +11253,31 @@ app.get('/robots.txt', (req, res) => {
   if (isDev) {
     res.send('User-agent: *\nDisallow: /');
     return;
+  }
+
+  // ── Customer preview paths — block crawling ─────────────────────────
+  // Customer brand articles are previewable on forgeintelligence.ai but must NOT be
+  // indexed. Dynamically disallow /articles/<brand-slug>/ for every brand except
+  // Forge Intelligence's own. This is a belt-and-suspenders measure alongside the
+  // noindex meta tag injected at the article SSR layer.
+  const FORGE_OWN_BRAND_ID = 'cde5feeb-b3d7-4990-adee-a54977ab9c52';
+  let customerDisallows = '';
+  try {
+    const brandsRes = await pool.query(
+      `SELECT id, brand_url, brand_name FROM brand_profiles WHERE id != $1`,
+      [FORGE_OWN_BRAND_ID]
+    );
+    const slugs = new Set();
+    for (const b of brandsRes.rows) {
+      // Same slug derivation as the article router uses (L1264-ish)
+      const s1 = (b.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+      const s2 = (b.brand_name || '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+      if (s1) slugs.add(s1.replace(/^-+|-+$/g, ''));
+      if (s2) slugs.add(s2.replace(/^-+|-+$/g, ''));
+    }
+    customerDisallows = [...slugs].filter(Boolean).map(s => `Disallow: /articles/${s}/`).join('\n');
+  } catch(e) {
+    console.warn('[robots.txt] customer brand lookup failed:', e.message);
   }
 
   // Explicit per-crawler allow-list. Passive `Allow: /` with wildcard was permitting crawlers
@@ -11241,7 +11306,7 @@ app.get('/robots.txt', (req, res) => {
   ];
   const searchCrawlers = ['Googlebot', 'Bingbot', 'DuckDuckBot', 'Slurp', 'YandexBot', 'Applebot'];
 
-  const allowBlock = (ua) => `User-agent: ${ua}\nAllow: /\nDisallow: /app/\nDisallow: /api/\n`;
+  const allowBlock = (ua) => `User-agent: ${ua}\nAllow: /\nDisallow: /app/\nDisallow: /api/\n${customerDisallows ? customerDisallows + '\n' : ''}`;
 
   const lines = [
     '# Forge Intelligence — robots.txt',
@@ -11254,6 +11319,7 @@ app.get('/robots.txt', (req, res) => {
     'Allow: /',
     'Disallow: /app/',
     'Disallow: /api/',
+    ...(customerDisallows ? customerDisallows.split('\n') : []),
     '',
     'Sitemap: https://forgeintelligence.ai/sitemap.xml'
   ];
