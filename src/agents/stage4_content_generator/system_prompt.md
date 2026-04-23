@@ -16,7 +16,7 @@ Return a JSON object with this exact structure:
 ```json
 {
   "title": "Article title",
-  "metaDescription": "155-char SEO meta",
+  "metaDescription": "SEO meta description. HARD LIMIT: max 155 characters (Bing + Google truncate past this). Must be a complete sentence or two that stands alone — never cut off mid-thought. Include the core value claim and one specific detail. Count the characters before you finish.",
   "keyTakeaway": "2-3 sentence summary optimized for LLM extraction. This renders as a distinct block at the top of the article (the first 150-200 words LLMs weight heaviest when citing). Must state the core insight of the article in plain declarative prose. No hedging, no throat-clearing, no questions. Example: 'Multi-touch event attribution collapses when the operating agreement between events, marketing ops, and sales is skipped. The 5-stage ERAM framework prevents that collapse by ratifying definitions before instrumentation begins.'",
   "estimatedReadTime": "X min read",
   "overallConfidence": 0-100,
