@@ -10621,7 +10621,7 @@ async function verifyBrandAccess(brandProfileId, userId) {
 // where env is 'live' or 'test'. ~256 bits of entropy — no brute-force risk,
 // no need for bcrypt/argon2 (which exist for low-entropy human passwords).
 function hashApiKey(plaintext) {
-  return crypto.createHash('sha256').update(plaintext).digest('hex');
+  return createHash('sha256').update(plaintext).digest('hex');
 }
 
 // Look up an api_keys row by the plaintext header value. Returns the row or null.
@@ -11277,8 +11277,8 @@ app.post('/api/admin/api-keys', express.json({ limit: '50kb' }), async (req, res
   if (!Array.isArray(scopes) || scopes.length === 0) return res.status(400).json({ error: 'scopes must be a non-empty array' });
   const envPrefix = env === 'test' ? 'test' : 'live';
   try {
-    const randomBytes = crypto.randomBytes(32).toString('hex');
-    const plaintext = `fik_${envPrefix}_${randomBytes}`;
+    const keySuffix = randomBytes(32).toString('hex');
+    const plaintext = `fik_${envPrefix}_${keySuffix}`;
     const keyHash = hashApiKey(plaintext);
     const r = await pool.query(
       `INSERT INTO api_keys (key_hash, label, brand_profile_ids, scopes)
