@@ -12404,9 +12404,22 @@ app.post('/api/geo/track/:brandProfileId', async (req, res) => {
           .filter(q => typeof q === 'string' && q.length > 10 && q.length < 200)
           .slice(0, 3);  // cap at 3 FAQ probes to control per-article API cost
 
+        // Extract 3-5 meaningful topic keywords from title for brand-anchored probe.
+        // Why brand-anchored? Young domains need the brand signal in the query for Perplexity
+        // to pull their corpus — a bare topical query ("content operations problem") returns
+        // generic competitors, not the brand. Previous implementation did this with ugly
+        // mashups; this version phrases it naturally using 3-5 content words from the title.
+        const titleWords = (title || '').replace(/[^a-zA-Z0-9 ]/g, '').split(/\s+/)
+          .filter(w => w.length > 4 && !['about','using','your','with','that','this','from','have','will','what','when','where','which','their','these','those','would','could','should','content'].includes(w.toLowerCase()))
+          .slice(0, 4);
+        const brandAnchoredQuery = titleWords.length >= 2
+          ? `${brandName} ${titleWords.join(' ')}`.trim()
+          : null;
+
         const probeQuestions = [
           ...faqQueries,                                            // natural user questions from the article's FAQ block
-          title,                                                    // exact article title — tests direct citation
+          title,                                                    // exact article title — tests pure topical authority
+          brandAnchoredQuery,                                       // brand + topic keywords — tests brand authority on this subject (young domains need this)
           `What is ${brandName}?`,                                  // brand awareness query (stable across all articles)
         ].filter(Boolean).slice(0, 5);  // hard cap per article
 
