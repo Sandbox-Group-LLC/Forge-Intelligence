@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import pkg from 'pg';
 import Anthropic from '@anthropic-ai/sdk';
@@ -489,6 +490,23 @@ async function initDB() {
       UNIQUE(brand_profile_id, content_id, engine, query)
     )`).catch(() => {});
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_geo_citations_brand ON geo_citations(brand_profile_id, is_cited)`).catch(() => {});
+
+    // api_keys — narrow-scoped authentication tokens for machine-to-machine integrations
+    // (e.g., Frank/ForgeOS reporting edits back via /api/content/import). Keys are SHA-256
+    // hashed at rest, never stored in plaintext. Each key is scoped to specific brand IDs
+    // and endpoint scopes so a leaked key can't be used against unauthorized brands or endpoints.
+    await pool.query(`CREATE TABLE IF NOT EXISTS api_keys (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      key_hash TEXT UNIQUE NOT NULL,
+      label TEXT NOT NULL,
+      brand_profile_ids UUID[] NOT NULL DEFAULT '{}',
+      scopes TEXT[] NOT NULL DEFAULT '{}',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      last_used_at TIMESTAMPTZ,
+      last_used_ip TEXT,
+      revoked_at TIMESTAMPTZ
+    )`).catch(() => {});
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash) WHERE revoked_at IS NULL`).catch(() => {});
 
     // Decay monitoring table
     await pool.query(`CREATE TABLE IF NOT EXISTS decay_alerts (
@@ -10599,9 +10617,58 @@ async function verifyBrandAccess(brandProfileId, userId) {
 // ── Brand ownership verification ─────────────────────────────────────────────
 
 
+// ── API key helpers ────────────────────────────────────────────────────
+// Keys are SHA-256 hashed at rest. Plaintext format: `fik_<env>_<64-hex>`
+// where env is 'live' or 'test'. ~256 bits of entropy — no brute-force risk,
+// no need for bcrypt/argon2 (which exist for low-entropy human passwords).
+function hashApiKey(plaintext) {
+  return crypto.createHash('sha256').update(plaintext).digest('hex');
+}
+
+// Look up an api_keys row by the plaintext header value. Returns the row or null.
+// Updates last_used_at/last_used_ip opportunistically (fire-and-forget).
+async function lookupApiKey(rawKey, clientIp) {
+  if (!rawKey || typeof rawKey !== 'string' || rawKey.length < 20) return null;
+  const keyHash = hashApiKey(rawKey.trim());
+  try {
+    const r = await pool.query(
+      `SELECT id, label, brand_profile_ids, scopes, revoked_at FROM api_keys WHERE key_hash = $1 LIMIT 1`,
+      [keyHash]
+    );
+    if (!r.rows.length) return null;
+    const row = r.rows[0];
+    if (row.revoked_at) return null;
+    // Record usage without blocking the request
+    pool.query(`UPDATE api_keys SET last_used_at = NOW(), last_used_ip = $1 WHERE id = $2`, [clientIp || null, row.id]).catch(() => {});
+    return row;
+  } catch(e) {
+    console.error('[API-KEY] lookup error:', e.message);
+    return null;
+  }
+}
+
 async function requireAuth(req, res, next) {
   try {
-    // Accept token from Authorization header OR ?token= query param (needed for EventSource SSE)
+    // ── Path 1: API key via X-Api-Key header ──
+    // Used by machine-to-machine integrations (Frank/ForgeOS, future CI jobs, etc.).
+    // Scoped by brand_profile_ids + scopes; downstream handlers should enforce.
+    const apiKey = req.headers['x-api-key'];
+    if (apiKey) {
+      const keyRow = await lookupApiKey(apiKey, req.ip || req.headers['x-forwarded-for']);
+      if (!keyRow) {
+        return res.status(401).json({ error: 'Invalid API key' });
+      }
+      req.apiKeyAuth = {
+        keyId: keyRow.id,
+        label: keyRow.label,
+        brandIds: keyRow.brand_profile_ids || [],
+        scopes: keyRow.scopes || []
+      };
+      // userId stays unset — handlers check req.apiKeyAuth vs req.userId to distinguish
+      return next();
+    }
+
+    // ── Path 2: Clerk JWT (unchanged) ──
     const authHeader = req.headers.authorization;
     const queryToken = req.query?.token;
     const rawToken = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : queryToken;
@@ -10616,6 +10683,24 @@ async function requireAuth(req, res, next) {
   } catch(e) {
     return res.status(401).json({ error: 'Invalid token' });
   }
+}
+
+// Scope guard for API-key-authenticated requests. If req.apiKeyAuth is set,
+// verify (a) the key has the required scope and (b) the brandProfileId in
+// the request body is in the key's allowed brand list. No-op for JWT auth
+// (JWT auth already goes through verifyBrandAccess downstream).
+function requireApiKeyScope(scope) {
+  return (req, res, next) => {
+    if (!req.apiKeyAuth) return next();  // JWT path — skip, verifyBrandAccess handles it
+    if (!req.apiKeyAuth.scopes.includes(scope)) {
+      return res.status(403).json({ error: `API key missing required scope: ${scope}` });
+    }
+    const bodyBrandId = req.body?.brandProfileId || req.params?.brandProfileId;
+    if (bodyBrandId && !req.apiKeyAuth.brandIds.includes(bodyBrandId)) {
+      return res.status(403).json({ error: 'API key not authorized for this brand' });
+    }
+    next();
+  };
 }
 
 // Soft auth — attaches userId if present, continues either way (for public + authed routes)
@@ -11177,6 +11262,78 @@ app.get('/robots.txt', (req, res) => {
   res.send(lines.join('\n'));
 });
 
+// ── API Key Management ────────────────────────────────────────────────────────
+// Admin endpoints for minting, listing, and revoking API keys. Gated by adminPassword
+// since key management is privileged (a key grants long-lived access without user rotation).
+
+// POST /api/admin/api-keys — mint a new key. Plaintext returned ONCE; thereafter only hash.
+// Body: { adminPassword, label, brandProfileIds: [uuid], scopes: [string], env?: 'live'|'test' }
+app.post('/api/admin/api-keys', express.json({ limit: '50kb' }), async (req, res) => {
+  if (req.body?.adminPassword !== process.env.ADMIN_PASSWORD) {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+  const { label, brandProfileIds, scopes, env } = req.body;
+  if (!label || typeof label !== 'string') return res.status(400).json({ error: 'label required' });
+  if (!Array.isArray(brandProfileIds) || brandProfileIds.length === 0) return res.status(400).json({ error: 'brandProfileIds must be a non-empty array' });
+  if (!Array.isArray(scopes) || scopes.length === 0) return res.status(400).json({ error: 'scopes must be a non-empty array' });
+  const envPrefix = env === 'test' ? 'test' : 'live';
+  try {
+    const randomBytes = crypto.randomBytes(32).toString('hex');
+    const plaintext = `fik_${envPrefix}_${randomBytes}`;
+    const keyHash = hashApiKey(plaintext);
+    const r = await pool.query(
+      `INSERT INTO api_keys (key_hash, label, brand_profile_ids, scopes)
+       VALUES ($1, $2, $3, $4) RETURNING id, label, created_at`,
+      [keyHash, label, brandProfileIds, scopes]
+    );
+    res.json({
+      success: true,
+      id: r.rows[0].id,
+      label: r.rows[0].label,
+      key: plaintext,
+      warning: 'Store this key securely. It will not be shown again.',
+      createdAt: r.rows[0].created_at
+    });
+  } catch(e) {
+    console.error('[API-KEY mint]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/admin/api-keys?adminPassword=... — list (metadata only, no plaintext)
+app.get('/api/admin/api-keys', async (req, res) => {
+  if (req.query?.adminPassword !== process.env.ADMIN_PASSWORD) {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+  try {
+    const r = await pool.query(
+      `SELECT id, label, brand_profile_ids, scopes, created_at, last_used_at, last_used_ip, revoked_at
+       FROM api_keys ORDER BY created_at DESC`
+    );
+    res.json({ success: true, keys: r.rows });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/admin/api-keys/:id — revoke (soft-delete via revoked_at)
+app.delete('/api/admin/api-keys/:id', express.json({ limit: '10kb' }), async (req, res) => {
+  if (req.body?.adminPassword !== process.env.ADMIN_PASSWORD) {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+  try {
+    const r = await pool.query(
+      `UPDATE api_keys SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL RETURNING id, label`,
+      [req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'Key not found or already revoked' });
+    res.json({ success: true, revoked: r.rows[0] });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
 // ── Neon SQL Relay ────────────────────────────────────────────────────────────
 app.post('/api/admin/relay', express.json({ limit: '500kb' }), async (req, res) => {
   const { adminPassword, query, values } = req.body;
@@ -11193,8 +11350,10 @@ app.post('/api/admin/relay', express.json({ limit: '500kb' }), async (req, res) 
 
 // ── Content Import (Bring Your Own Article) ──────────────────────────────────
 
-// POST /api/content/import — parse + score an externally written article
-app.post('/api/content/import', requireAuth, async (req, res) => {
+// POST /api/content/import — parse + score an externally written article.
+// Accepts auth via Clerk JWT (UI) OR API key (Frank/ForgeOS and similar machine integrations).
+// API-key path requires scope 'content:import' + brand must be in the key's allowed list.
+app.post('/api/content/import', requireAuth, requireApiKeyScope('content:import'), async (req, res) => {
   const { brandProfileId, url, rawText, title: manualTitle, originalContentId, editReason } = req.body;
   if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
   if (!url && !rawText) return res.status(400).json({ error: 'url or rawText required' });
