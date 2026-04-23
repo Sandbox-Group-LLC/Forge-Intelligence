@@ -1318,6 +1318,11 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
         "url": realUrl,
       };
 
+      // ── Article / BlogPosting schema (existing) ──
+      // Enriched with keywords + about arrays when generator produces them
+      const articleKeywords = Array.isArray(aj.keywords) ? aj.keywords : [];
+      const articleAbout = Array.isArray(aj.about) ? aj.about.map(t => ({ "@type": "Thing", "name": t })) : [];
+
       const ldJson = {
         "@context": "https://schema.org",
         "@type": "Article",
@@ -1336,8 +1341,45 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
         "mainEntityOfPage": { "@type": "WebPage", "@id": canonicalUrl },
         "wordCount": wordCount,
         "timeRequired": `PT${readMinutes}M`,
+        "inLanguage": "en-US",
+        ...(articleKeywords.length ? { "keywords": articleKeywords } : {}),
+        ...(articleAbout.length ? { "about": articleAbout } : {}),
       };
       ldJsonScript = `\n  <script type="application/ld+json">${JSON.stringify(ldJson, null, 2)}</script>`;
+
+      // ── FAQPage schema — HIGHEST GEO impact ──
+      // LLMs (ChatGPT, Claude, Perplexity) preferentially cite FAQPage-structured content
+      // when answering user questions. Articles without FAQs compete using unstructured prose.
+      // Generator emits `faqs: [{question, answer}]` at article creation time.
+      const faqs = Array.isArray(aj.faqs) ? aj.faqs.filter(f => f?.question && f?.answer) : [];
+      if (faqs.length) {
+        const faqSchema = {
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          "mainEntity": faqs.map(f => ({
+            "@type": "Question",
+            "name": String(f.question).trim(),
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": String(f.answer).trim()
+            }
+          }))
+        };
+        ldJsonScript += `\n  <script type="application/ld+json">${JSON.stringify(faqSchema, null, 2)}</script>`;
+      }
+
+      // ── BreadcrumbList schema — site hierarchy context for LLMs ──
+      // Helps LLMs understand where this article sits in the brand's knowledge graph.
+      const breadcrumbSchema = {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": brandName, "item": realUrl },
+          { "@type": "ListItem", "position": 2, "name": "Articles", "item": `https://${artBaseDomain}/articles/${brandSlug}` },
+          { "@type": "ListItem", "position": 3, "name": article.title, "item": canonicalUrl }
+        ]
+      };
+      ldJsonScript += `\n  <script type="application/ld+json">${JSON.stringify(breadcrumbSchema, null, 2)}</script>`;
     } catch(e) {
       console.error('[ARTICLE-SSR] JSON-LD build failed (non-fatal):', e.message);
     }
