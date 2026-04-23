@@ -924,6 +924,8 @@ app.get('/api/articles/:brandSlug/:articleSlug', async (req, res) => {
       overallConfidence: matchedArticle.overall_confidence,
       heroImageUrl: matchedArticle.hero_image_url || null,
       metaDescription: articleJson.metaDescription || null,
+      keyTakeaway: articleJson.keyTakeaway || null,
+      faqs: Array.isArray(articleJson.faqs) ? articleJson.faqs : [],
       brandName: matchedBrand?.brand_name || matchedBrand?.profile_data?.voice_profile?.brand_name || brandSlug,
       createdAt: matchedArticle.created_at,
     });
