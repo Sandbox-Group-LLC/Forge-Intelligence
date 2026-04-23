@@ -106,22 +106,13 @@
   border-radius: 50%;
   display: inline-block;
 }
-.cal-filter-btn.stage-staged .cal-filter-dot { background: #334155; }
-.cal-filter-btn.stage-scheduled .cal-filter-dot { background: #B45309; }
-.cal-filter-btn.stage-published .cal-filter-dot { background: #166534; }
+.cal-filter-btn.stage-staged .cal-filter-dot { background: #3563FF; }
+.cal-filter-btn.stage-scheduled .cal-filter-dot { background: #F59E0B; }
+.cal-filter-btn.stage-published .cal-filter-dot { background: #10B981; }
 
-.cal-filter-btn.stage-staged.on { color: #334155; border-color: rgba(71,85,105,0.4); }
-.cal-filter-btn.stage-scheduled.on { color: #B45309; border-color: rgba(180,83,9,0.4); }
-.cal-filter-btn.stage-published.on { color: #166534; border-color: rgba(22,101,52,0.4); }
-
-@media (prefers-color-scheme: dark) {
-  .cal-filter-btn.stage-staged .cal-filter-dot { background: #CBD5E1; }
-  .cal-filter-btn.stage-scheduled .cal-filter-dot { background: #FCD34D; }
-  .cal-filter-btn.stage-published .cal-filter-dot { background: #86EFAC; }
-  .cal-filter-btn.stage-staged.on { color: #CBD5E1; }
-  .cal-filter-btn.stage-scheduled.on { color: #FCD34D; }
-  .cal-filter-btn.stage-published.on { color: #86EFAC; }
-}
+.cal-filter-btn.stage-staged.on { color: #3563FF; border-color: rgba(53,99,255,0.35); background: rgba(53,99,255,0.08); }
+.cal-filter-btn.stage-scheduled.on { color: #D97706; border-color: rgba(245,158,11,0.4); background: rgba(245,158,11,0.08); }
+.cal-filter-btn.stage-published.on { color: #059669; border-color: rgba(16,185,129,0.35); background: rgba(16,185,129,0.08); }
 
 .cal-filter-count {
   background: var(--color-bg-elevated, rgba(255,255,255,0.08));
@@ -256,46 +247,31 @@
   word-break: break-word;
 }
 
-/* Pill text matches the dot's base color exactly — gives strong contrast on both
-   light and dark cell backgrounds without theme-switching. Background is the same
-   base hue at low opacity so pills look tinted but remain highly legible. */
+/* Match the Content Catalogue pill language — solid saturated backgrounds, white text.
+   Theme-agnostic (reads well on light OR dark cell backgrounds because the pill IS the
+   color, not a tinted hint). Colors sourced from ContentLibraryPage's statusColor map:
+   Published #10B981 emerald, Staged #3563FF brand blue. Scheduled uses amber #F59E0B
+   (the catalogue's medium-confidence color) since Scheduled is unique to the calendar. */
 .cal-item.stage-staged {
-  background: rgba(71,85,105,0.14);
-  color: #334155;
+  background: #3563FF;
+  color: #fff;
 }
-.cal-item.stage-staged .cal-item-dot { background: #334155; }
-.cal-item.stage-staged:hover { background: rgba(71,85,105,0.24); }
+.cal-item.stage-staged .cal-item-dot { background: rgba(255,255,255,0.7); }
+.cal-item.stage-staged:hover { background: #2952DB; }
 
 .cal-item.stage-scheduled {
-  background: rgba(180,83,9,0.14);
-  color: #B45309;
+  background: #F59E0B;
+  color: #fff;
 }
-.cal-item.stage-scheduled .cal-item-dot { background: #B45309; }
-.cal-item.stage-scheduled:hover { background: rgba(180,83,9,0.24); }
+.cal-item.stage-scheduled .cal-item-dot { background: rgba(255,255,255,0.7); }
+.cal-item.stage-scheduled:hover { background: #D97706; }
 
 .cal-item.stage-published {
-  background: rgba(22,101,52,0.14);
-  color: #166534;
+  background: #10B981;
+  color: #fff;
 }
-.cal-item.stage-published .cal-item-dot { background: #166534; }
-.cal-item.stage-published:hover { background: rgba(22,101,52,0.24); }
-
-/* Dark-mode override — if the app is in a dark theme, swap to lighter variants that read
-   well on a dark cell background. Uses a prefers-color-scheme fallback; if the app sets
-   its own dark class, this can be extended. */
-@media (prefers-color-scheme: dark) {
-  .cal-item.stage-staged { color: #CBD5E1; background: rgba(100,116,139,0.18); }
-  .cal-item.stage-staged .cal-item-dot { background: #CBD5E1; }
-  .cal-item.stage-staged:hover { background: rgba(100,116,139,0.30); }
-
-  .cal-item.stage-scheduled { color: #FCD34D; background: rgba(245,158,11,0.18); }
-  .cal-item.stage-scheduled .cal-item-dot { background: #FCD34D; }
-  .cal-item.stage-scheduled:hover { background: rgba(245,158,11,0.30); }
-
-  .cal-item.stage-published { color: #86EFAC; background: rgba(34,197,94,0.18); }
-  .cal-item.stage-published .cal-item-dot { background: #86EFAC; }
-  .cal-item.stage-published:hover { background: rgba(34,197,94,0.30); }
-}
+.cal-item.stage-published .cal-item-dot { background: rgba(255,255,255,0.7); }
+.cal-item.stage-published:hover { background: #059669; }
 
 /* ── Misc states ───────────────────────────────────────────────────────── */
 .cal-loading {
@@ -369,9 +345,10 @@
   letter-spacing: 0.08em;
   margin-bottom: 12px;
 }
-.cal-modal-stage.stage-staged { background: rgba(100,116,139,0.18); color: #CBD5E1; }
-.cal-modal-stage.stage-scheduled { background: rgba(245,158,11,0.18); color: #FCD34D; }
-.cal-modal-stage.stage-published { background: rgba(34,197,94,0.18); color: #86EFAC; }
+.cal-modal-stage.stage-staged { background: #3563FF; color: #fff; }
+.cal-modal-stage.stage-scheduled { background: #F59E0B; color: #fff; }
+.cal-modal-stage.stage-published { background: #10B981; color: #fff; }
+.cal-modal-stage .cal-item-dot { background: rgba(255,255,255,0.7); }
 
 .cal-modal-title {
   font-size: 1.1rem;
