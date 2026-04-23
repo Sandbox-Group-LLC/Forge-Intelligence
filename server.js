@@ -11195,9 +11195,31 @@ app.post('/api/admin/relay', express.json({ limit: '500kb' }), async (req, res) 
 
 // POST /api/content/import — parse + score an externally written article
 app.post('/api/content/import', requireAuth, async (req, res) => {
-  const { brandProfileId, url, rawText, title: manualTitle } = req.body;
+  const { brandProfileId, url, rawText, title: manualTitle, originalContentId, editReason } = req.body;
   if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
   if (!url && !rawText) return res.status(400).json({ error: 'url or rawText required' });
+
+  // Edit-reconciliation mode: if originalContentId is provided, we're importing
+  // an externally-edited version of a Forge-generated article. The audit shifts
+  // from 'score this net-new piece' to 'diff this edit vs. the draft and extract
+  // brain-worthy deltas.' Powered by Frank (ForgeOS webmaster) who edits articles
+  // before publishing them to Sandbox-XM and whose edits we want to learn from.
+  let originalArticle = null;
+  if (originalContentId) {
+    try {
+      const safeIdLookup = brandProfileId.replace(/-/g, '_');
+      const origRes = await pool.query(
+        `SELECT id, title, article_json FROM generated_content_${safeIdLookup} WHERE id = $1`,
+        [originalContentId]
+      );
+      if (origRes.rows.length) {
+        originalArticle = origRes.rows[0];
+      }
+    } catch(e) {
+      // Non-fatal — fall through to standard audit mode if original not found
+      console.warn('[IMPORT] originalContentId lookup failed:', e.message);
+    }
+  }
 
   try {
     const safeId = brandProfileId.replace(/-/g, '_');
@@ -11253,8 +11275,70 @@ app.post('/api/content/import', requireAuth, async (req, res) => {
       [brandProfileId]
     ).catch(() => ({ rows: [] }));
 
-    // 4. Claude Sonnet: parse + audit the article against the Brain
-    const auditPrompt = `You are the Forge Intelligence Brain Auditor. An article was written OUTSIDE of Forge and is being imported for scoring.
+    // 4. Claude Sonnet: parse + audit. Two modes:
+    //   (a) standard import — score an outside article against the brand brain
+    //   (b) edit-reconciliation — compare Frank's edit to the Forge draft and
+    //       extract brain-worthy deltas (patterns Frank applied, mistakes he caught)
+    const originalBody = originalArticle
+      ? (originalArticle.article_json?.sections || [])
+          .map(s => `### ${s.heading || ''}\n${s.body || s.content || ''}`)
+          .join('\n\n').slice(0, 6000)
+      : '';
+
+    const auditPrompt = originalArticle ? `You are the Forge Intelligence Brain Auditor in EDIT-RECONCILIATION mode.
+
+Frank, an external editor (ForgeOS), reviewed and edited a Forge-generated article before publishing. Your job is to extract brain-worthy signal from Frank's edits — not to score the article, but to learn from the delta.
+
+BRAND: ${brand.brand_name} (${brand.brand_url})
+VOICE PROFILE: ${JSON.stringify(brand.voice_profile || {}).slice(0, 500)}
+EXISTING BRAIN PATTERNS: ${patternsRes.rows.map(p => p.description).join('; ').slice(0, 600)}
+EXISTING BRAIN MISTAKES: ${mistakesRes.rows.map(m => m.description).join('; ').slice(0, 400)}
+
+ARTICLE TITLE: ${originalArticle.title}
+EDITOR'S STATED REASON: ${editReason || '(not provided)'}
+
+═══ FORGE DRAFT (original) ═══
+${originalBody}
+
+═══ FRANK'S EDIT (published version) ═══
+${rawContent.slice(0, 6000)}
+
+Your job:
+1. Identify what Frank CHANGED between the draft and the published version.
+2. For each meaningful change, classify: is it a PATTERN (something Frank improved that Forge should do next time) or a MISTAKE (something Forge got wrong that Frank had to fix)?
+3. Ignore purely cosmetic edits (whitespace, punctuation, inline typos). Focus on structural, voice, factual, or strategic changes.
+4. Be specific. 'Frank tightened the intro' is useless. 'Frank removed hedging language (maybe, perhaps, somewhat) that softened the core claim' is useful.
+5. Skip changes that are one-off (specific to this article only). Only surface patterns Forge could apply going forward.
+
+Return ONLY valid JSON:
+{
+  "title": "article title",
+  "editSummary": "1-2 sentence summary of what Frank changed overall",
+  "editImpactScore": 0-100,
+  "sections": [
+    {
+      "heading": "section heading",
+      "body": "section body text from FRANK'S EDIT (published version)",
+      "confidence": 0-100,
+      "flags": []
+    }
+  ],
+  "brainPatterns": [
+    {
+      "pattern_type": "voice|structural|factual|strategic",
+      "description": "specific, actionable pattern Forge should apply next time",
+      "evidence": "quote or paraphrase of the Frank edit that demonstrates it"
+    }
+  ],
+  "brainMistakes": [
+    {
+      "mistake_type": "voice|structural|factual|strategic",
+      "description": "specific mistake Forge made that Frank had to fix",
+      "severity": "low|medium|high",
+      "evidence": "quote from the Forge draft showing the mistake"
+    }
+  ]
+}` : `You are the Forge Intelligence Brain Auditor. An article was written OUTSIDE of Forge and is being imported for scoring.
 
 BRAND: ${brand.brand_name} (${brand.brand_url})
 VOICE PROFILE: ${JSON.stringify(brand.voice_profile || {}).slice(0, 500)}
@@ -11305,36 +11389,102 @@ Return ONLY valid JSON:
     const auditText = auditData.content?.[0]?.text || '';
     const parsed = JSON.parse(auditText.replace(/```json|```/g, '').trim());
 
-    // 5. Insert into generated_content as 'imported' status
+    // 5. Insert (net-new) or UPDATE (edit-reconciliation) into generated_content.
+    //    Edit-reconciliation preserves the original article's id + queue placement
+    //    so Frank's edit replaces the draft in-place rather than spawning a dup.
     const cleanedParsed = stripScaffoldingArtifacts(parsed);
-    const insertRes = await pool.query(
-      `INSERT INTO ${tableName} (brand_profile_id, title, article_json, overall_confidence, brain_match_score, status, review_mode, compliance_status)
-       VALUES ($1, $2, $3, $4, $5, 'staged', 'approve-to-ship', 'pending') RETURNING id`,
-      [
-        brandProfileId,
-        cleanedParsed.title || sourceTitle || 'Imported Article',
-        JSON.stringify({
-          ...cleanedParsed,
-          importedFrom: url || 'manual',
-          importedAt: new Date().toISOString()
-        }),
-        parsed.overallConfidence || 50,
-        parsed.brainMatchScore || 50
-      ]
-    );
-    const contentId = insertRes.rows[0].id;
+    let contentId;
+    if (originalArticle) {
+      // Merge cleanedParsed (which has Frank's edited sections) into the existing article_json,
+      // preserving any fields we don't want to overwrite (keyTakeaway, faqs, hero_image, etc.
+      // unless Frank's audit produced new values).
+      const mergedJson = {
+        ...(originalArticle.article_json || {}),
+        ...cleanedParsed,
+        editedBy: 'external_editor',
+        editedAt: new Date().toISOString(),
+        editReason: editReason || null,
+        editImpactScore: parsed.editImpactScore || null,
+      };
+      await pool.query(
+        `UPDATE ${tableName} SET article_json = $1, title = $2, updated_at = NOW() WHERE id = $3`,
+        [JSON.stringify(mergedJson), cleanedParsed.title || originalArticle.title, originalArticle.id]
+      );
+      contentId = originalArticle.id;
+    } else {
+      const insertRes = await pool.query(
+        `INSERT INTO ${tableName} (brand_profile_id, title, article_json, overall_confidence, brain_match_score, status, review_mode, compliance_status)
+         VALUES ($1, $2, $3, $4, $5, 'staged', 'approve-to-ship', 'pending') RETURNING id`,
+        [
+          brandProfileId,
+          cleanedParsed.title || sourceTitle || 'Imported Article',
+          JSON.stringify({
+            ...cleanedParsed,
+            importedFrom: url || 'manual',
+            importedAt: new Date().toISOString()
+          }),
+          parsed.overallConfidence || 50,
+          parsed.brainMatchScore || 50
+        ]
+      );
+      contentId = insertRes.rows[0].id;
+    }
 
-    // 6. Stage in publishing queue
-    await pool.query(
-      `INSERT INTO publishing_queue (brand_profile_id, content_id, title, status, created_at, updated_at)
-       VALUES ($1, $2, $3, 'staged', NOW(), NOW())
-       ON CONFLICT (content_id) DO NOTHING`,
-      [brandProfileId, contentId, parsed.title || sourceTitle]
-    );
+    // 6. Stage in publishing queue (only for net-new imports, not edit-reconciliation
+    //    — edit-reconciliation updates an EXISTING article, it doesn't create a new queue item)
+    if (!originalArticle) {
+      await pool.query(
+        `INSERT INTO publishing_queue (brand_profile_id, content_id, title, status, created_at, updated_at)
+         VALUES ($1, $2, $3, 'staged', NOW(), NOW())
+         ON CONFLICT (content_id) DO NOTHING`,
+        [brandProfileId, contentId, parsed.title || sourceTitle]
+      );
+    }
+
+    // 7. Close the learning loop — stage brain contributions from this import/edit.
+    //    Uses source_channel='external_editor' so Brian can filter these in review
+    //    and they don't silently influence future generations until promoted.
+    let brainPatternsAdded = 0;
+    let brainMistakesAdded = 0;
+    try {
+      if (originalArticle && Array.isArray(parsed.brainPatterns)) {
+        for (const p of parsed.brainPatterns) {
+          if (!p?.description) continue;
+          const description = String(p.description).slice(0, 1000);
+          const evidence = p.evidence ? String(p.evidence).slice(0, 500) : null;
+          const tags = [p.pattern_type || 'general', 'source:external_editor'].filter(Boolean);
+          await pool.query(
+            `INSERT INTO brain_patterns (brand_profile_id, pattern_type, description, confidence_score, success_rate, tags, source_channel, example_titles)
+             VALUES ($1, $2, $3, 50, 0, $4, 'external_editor', $5)`,
+            [brandProfileId, p.pattern_type || 'voice', evidence ? `${description}\n\nEvidence: ${evidence}` : description, JSON.stringify(tags), JSON.stringify([originalArticle.title])]
+          );
+          brainPatternsAdded++;
+        }
+      }
+      if (originalArticle && Array.isArray(parsed.brainMistakes)) {
+        for (const m of parsed.brainMistakes) {
+          if (!m?.description) continue;
+          const description = String(m.description).slice(0, 1000);
+          const evidence = m.evidence ? String(m.evidence).slice(0, 500) : null;
+          await pool.query(
+            `INSERT INTO brain_mistakes (brand_profile_id, mistake_type, description, human_feedback, severity, guardrail_created)
+             VALUES ($1, $2, $3, $4, $5, false)`,
+            [brandProfileId, m.mistake_type || 'voice', evidence ? `${description}\n\nEvidence: ${evidence}` : description, `source: external_editor | article: ${originalArticle.title}`, m.severity || 'medium']
+          );
+          brainMistakesAdded++;
+        }
+      }
+    } catch(brainErr) {
+      // Brain writes are best-effort — don't fail the import if they error
+      console.error('[IMPORT] brain write failed (non-fatal):', brainErr.message);
+    }
 
     res.json({
       success: true,
       contentId,
+      editMode: !!originalArticle,
+      brainPatternsAdded,
+      brainMistakesAdded,
       title: parsed.title || sourceTitle,
       overallConfidence: parsed.overallConfidence,
       brainMatchScore: parsed.brainMatchScore,
