@@ -1,7 +1,21 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useLayoutEffect } from 'react';
 import { AppShell } from '../layouts/AppShell';
 import { useApp } from '../context/AppContext';
 import './CalendarPage.css';
+
+// Apply wide-mode class to the outer .view-container as a fallback for browsers
+// that don't support :has(). Runs synchronously on mount so the layout is correct
+// before paint, then cleans up on unmount so other pages aren't affected.
+function useWideLayout() {
+  useLayoutEffect(() => {
+    const el = document.querySelector('.view-container');
+    if (el) el.classList.add('view-container-wide');
+    return () => {
+      const el2 = document.querySelector('.view-container');
+      if (el2) el2.classList.remove('view-container-wide');
+    };
+  }, []);
+}
 
 type Stage = 'staged' | 'scheduled' | 'published';
 
@@ -60,6 +74,7 @@ function sameDay(a: Date, b: Date): boolean {
 }
 
 function CalendarPage() {
+  useWideLayout();
   const { activeBrand } = useApp();
   const [items, setItems] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(false);
