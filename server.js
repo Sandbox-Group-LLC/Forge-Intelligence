@@ -11256,6 +11256,110 @@ ${urls.map(u => `  <url>
 });
 
 // ── Robots.txt — block crawlers on dev, allow on production ──────────────────
+// ── IndexNow integration ──────────────────────────────────────────────────────
+// IndexNow is Bing/Yandex/Seznam's push-indexing protocol. POST a URL → crawler
+// prioritizes it within hours instead of waiting days for organic discovery.
+// Google does NOT honor IndexNow (yet) but everyone else in the IndexNow consortium does.
+//
+// Implementation: https://www.indexnow.org/documentation
+//   1. Host the key at /{key}.txt returning the key as plaintext
+//   2. POST URLs to api.indexnow.org/IndexNow with { host, key, keyLocation, urlList }
+//   3. 200 = accepted; 4xx = problem with request; 5xx = rate-limit or outage
+const INDEXNOW_KEY = 'c50321f04adc5a3a3566504b015a97fb33e2805391f92827';
+
+app.get(`/${INDEXNOW_KEY}.txt`, (req, res) => {
+  res.type('text/plain');
+  res.send(INDEXNOW_KEY);
+});
+
+// Helper: submit a batch of URLs to IndexNow. Returns the HTTP status code.
+async function submitToIndexNow(urls, host = 'forgeintelligence.ai') {
+  if (!Array.isArray(urls) || urls.length === 0) return { status: 0, error: 'no urls' };
+  const payload = {
+    host,
+    key: INDEXNOW_KEY,
+    keyLocation: `https://${host}/${INDEXNOW_KEY}.txt`,
+    urlList: urls.slice(0, 10000)  // IndexNow caps at 10k per request
+  };
+  try {
+    const r = await fetch('https://api.indexnow.org/IndexNow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(15000)
+    });
+    const body = await r.text().catch(() => '');
+    return { status: r.status, body: body.slice(0, 500), submitted: payload.urlList.length };
+  } catch (e) {
+    return { status: 0, error: e.message };
+  }
+}
+
+// POST /api/admin/indexnow/backfill — submit every Forge Intelligence article to IndexNow.
+// Gated by ADMIN_PASSWORD. Use this after SEO hygiene fixes to force re-crawl.
+app.post('/api/admin/indexnow/backfill', express.json({ limit: '50kb' }), async (req, res) => {
+  if (req.body?.adminPassword !== process.env.ADMIN_PASSWORD) {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+  try {
+    // Forge Intelligence's own brand — customer brand articles are noindexed on forgeintelligence.ai
+    // so we never submit them here. Their real domains should be pinging IndexNow on their own.
+    const FORGE_OWN_BRAND_ID = 'cde5feeb-b3d7-4990-adee-a54977ab9c52';
+    const brandRes = await pool.query(
+      `SELECT brand_name FROM brand_profiles WHERE id = $1`,
+      [FORGE_OWN_BRAND_ID]
+    );
+    if (!brandRes.rows.length) return res.status(404).json({ error: 'Forge Intelligence brand not found' });
+
+    const safeId = FORGE_OWN_BRAND_ID.replace(/-/g, '_');
+    const brandSlug = (brandRes.rows[0].brand_name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+    const articlesRes = await pool.query(
+      `SELECT id, title FROM generated_content_${safeId}
+       WHERE compliance_status IN ('approved', 'ready')
+       ORDER BY created_at DESC LIMIT 500`
+    );
+
+    const articleUrls = articlesRes.rows.map(a => {
+      const slug = (a.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+      return `https://forgeintelligence.ai/articles/${brandSlug}/${slug}`;
+    }).filter(Boolean);
+
+    // Also include marketing pages so their updated descriptions get picked up
+    const marketingUrls = [
+      'https://forgeintelligence.ai/',
+      'https://forgeintelligence.ai/product',
+      'https://forgeintelligence.ai/articles'
+    ];
+
+    const urls = [...marketingUrls, ...articleUrls];
+    const result = await submitToIndexNow(urls);
+
+    res.json({
+      success: result.status >= 200 && result.status < 300,
+      submitted: urls.length,
+      articleCount: articleUrls.length,
+      marketingPageCount: marketingUrls.length,
+      indexNowResponse: result
+    });
+  } catch(e) {
+    console.error('[IndexNow backfill]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/admin/indexnow/submit — submit arbitrary URLs (for targeted re-crawls)
+app.post('/api/admin/indexnow/submit', express.json({ limit: '100kb' }), async (req, res) => {
+  if (req.body?.adminPassword !== process.env.ADMIN_PASSWORD) {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+  const urls = Array.isArray(req.body?.urls) ? req.body.urls : [];
+  if (!urls.length) return res.status(400).json({ error: 'urls array required' });
+  const result = await submitToIndexNow(urls);
+  res.json({ success: result.status >= 200 && result.status < 300, indexNowResponse: result });
+});
+
+
 app.get('/robots.txt', async (req, res) => {
   const host = req.headers.host || '';
   const isDev = host.includes('dev.');
