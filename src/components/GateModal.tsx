@@ -21,7 +21,6 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
   const [ppLoading, setPpLoading] = useState(true);
   const [ppError, setPpError] = useState('');
   const [paid, setPaid] = useState(false);
-  const [showPromo, setShowPromo] = useState(false);
   const [promoCode, setPromoCode] = useState('');
   const [promoStatus, setPromoStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [promoMsg, setPromoMsg] = useState('');
@@ -146,18 +145,15 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
           <span className="gate-price-note">one-time · full suite · brain saved permanently</span>
         </div>
 
-        {/* Promo code — collapsed behind toggle */}
-        <div style={{ marginBottom: 4 }}>
-          {!showPromo && promoStatus !== 'success' && (
-            <button onClick={() => setShowPromo(true)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.35)', fontSize: '0.75rem', cursor: 'pointer', padding: '4px 0', fontFamily: 'inherit', textDecoration: 'underline' }}>
-              Have a promo code?
-            </button>
-          )}
-          {(showPromo || promoStatus === 'success') && (<div>
+        {/* Promo code — persistent, always visible so users know it's available */}
+        <div style={{ marginBottom: 8 }}>
+          <label style={{ display: 'block', fontSize: '0.75rem', color: 'rgba(255,255,255,0.6)', marginBottom: 6, fontWeight: 500, letterSpacing: '0.02em' }}>
+            Promo code (optional)
+          </label>
           <div style={{ display: 'flex', gap: 8 }}>
             <input
               style={{ flex: 1, padding: '9px 14px', background: 'var(--color-bg-elevated, #F4F7FF)', border: '1px solid var(--color-border, #E2E8F0)', borderRadius: 8, color: 'var(--color-text-primary, #1E293B)', fontSize: '0.875rem', fontFamily: 'inherit', outline: 'none' }}
-              placeholder="Promo code"
+              placeholder="Enter code"
               value={promoCode}
               onChange={e => { setPromoCode(e.target.value); setPromoStatus('idle'); setPromoMsg(''); }}
               onKeyDown={e => e.key === 'Enter' && applyPromo()}
@@ -176,7 +172,6 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
               {promoStatus === 'success' ? '✓ ' : '✕ '}{promoMsg}
             </div>
           )}
-        </div>)}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '12px 0', color: 'rgba(255,255,255,0.25)', fontSize: '0.75rem' }}>
           <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.1)' }} />
