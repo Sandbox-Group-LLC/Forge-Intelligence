@@ -41,11 +41,17 @@ export function useActiveBrand() {
       try {
         if (isSignedIn) {
           // Authenticated — server is the source of truth
+          // Priority order for brand ID:
+          //   1. ?brand=<uuid> in URL — explicit request (e.g., preview CTA) always wins
+          //   2. forge_pending_brand_id — set by switchBrand() for in-app brand switching
+          //   3. forge_active_brand_id — last-used brand cached from prior session
+          const urlParams = new URLSearchParams(window.location.search);
+          const urlBrandId = urlParams.get('brand') || '';
           const pendingBrandId = localStorage.getItem('forge_pending_brand_id') || '';
           if (pendingBrandId) localStorage.removeItem('forge_pending_brand_id');
 
           const savedBrandId = localStorage.getItem('forge_active_brand_id') || '';
-          const brandIdToUse = pendingBrandId || savedBrandId || '';
+          const brandIdToUse = urlBrandId || pendingBrandId || savedBrandId || '';
 
           const token = await getToken({ template: 'jwt-template-600' });
           if (token) (window as any).__forgeToken = token;
@@ -80,6 +86,40 @@ export function useActiveBrand() {
           // Brand is stored in localStorage after scan, with expiry
           setIsSuperAdmin(false);
           setAllBrands([]);
+
+          // URL-first for unauthenticated users too — preview CTA sends prospects here
+          // with ?brand=<uuid>. Without this, they land empty and see 'no active brand.'
+          const urlParams = new URLSearchParams(window.location.search);
+          const urlBrandId = urlParams.get('brand') || '';
+          if (urlBrandId) {
+            try {
+              const check = await fetch(`/api/context-hub/brand/${urlBrandId}`);
+              if (check.ok) {
+                const dbBrand = await check.json();
+                const dbData = dbBrand.data || dbBrand;
+                const dbExpiry = dbData.expires_at || dbData.expiresAt;
+                const dbPaid = dbData.is_paid || dbData.isPaid;
+                const actuallyExpired = !dbPaid && dbExpiry && new Date(dbExpiry) < new Date();
+                if (!actuallyExpired) {
+                  const active = {
+                    id: dbData.id || urlBrandId,
+                    brandName: dbData.brand_name || dbData.brandName,
+                    brandUrl: dbData.brand_url || dbData.brandUrl,
+                    isPaid: dbPaid || false,
+                    expiresAt: dbExpiry || null,
+                  };
+                  try {
+                    localStorage.setItem('forge_active_brand', JSON.stringify(active));
+                    localStorage.setItem('forge_active_brand_id', active.id);
+                  } catch {}
+                  setBrand(active);
+                  setLoading(false);
+                  return;
+                }
+              }
+            } catch { /* fall through to localStorage */ }
+          }
+
           const stored = localStorage.getItem('forge_active_brand');
           if (stored) {
             try {
