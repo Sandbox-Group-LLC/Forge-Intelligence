@@ -1262,6 +1262,541 @@ app.post('/api/articles/:brandSlug/:articleSlug/ensure-image', async (req, res) 
 
 
 // ── Article page — server-side OG meta injection (must be before express.static) ──
+// ── Brand Preview Page ────────────────────────────────────────────────────────
+// Magazine-style bespoke-brief page for prospect outreach. URL:
+//   https://forgeintelligence.ai/preview/<brand-uuid>
+// Gated by UUID knowledge (128 bits of entropy — same pattern Dropbox/Notion use).
+// Renders businessProfile + competitors + strategic recommendations from profile_data
+// as a designed report, not a dashboard. Noindex'd so it doesn't get crawled or leak.
+app.get('/preview/:brandId', async (req, res) => {
+  const { brandId } = req.params;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(brandId)) {
+    return res.status(404).send('Not found');
+  }
+  try {
+    const r = await pool.query(
+      `SELECT id, brand_name, brand_url, logo_url, profile_data FROM brand_profiles WHERE id = $1`,
+      [brandId]
+    );
+    if (!r.rows.length) return res.status(404).send('Not found');
+    const brand = r.rows[0];
+    const pd = brand.profile_data || {};
+    const bp = pd.businessProfile || {};
+    const competitors = Array.isArray(pd.discoveredCompetitors) ? pd.discoveredCompetitors : [];
+    const moats = Array.isArray(pd.strategicMoats) ? pd.strategicMoats : [];
+    const gaps = Array.isArray(pd.competitiveGaps) ? pd.competitiveGaps : [];
+    const recs = Array.isArray(pd.strategicRecommendations) ? pd.strategicRecommendations : [];
+    const marketCategory = pd.marketCategory || '';
+
+    const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const brandName = esc(brand.brand_name);
+    const brandDomain = (brand.brand_url || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const logoUrl = brand.logo_url || '';
+    const previewUrl = `https://forgeintelligence.ai/preview/${brandId}`;
+    const generatedDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+    // Strip any bare-domain cruft in competitor URLs and dedupe by hostname
+    const cleanCompetitors = [...new Set(competitors.map(c => {
+      try {
+        return new URL(c.startsWith('http') ? c : 'https://' + c).hostname.replace(/^www\./, '');
+      } catch { return null; }
+    }).filter(Boolean))].slice(0, 8);
+
+    // Prioritize: high-priority gaps first, cap at 5 for visual rhythm
+    const sortedGaps = [...gaps].sort((a, b) => {
+      const order = { high: 0, medium: 1, low: 2 };
+      return (order[a.priority] ?? 3) - (order[b.priority] ?? 3);
+    }).slice(0, 5);
+
+    // Top recs by impact/effort ratio — high-impact + low/medium effort surface first
+    const sortedRecs = [...recs].sort((a, b) => {
+      const impactScore = { high: 3, medium: 2, low: 1 };
+      const effortPenalty = { low: 0, medium: 1, high: 2 };
+      const sa = (impactScore[a.impact] || 0) - (effortPenalty[a.effort] || 0);
+      const sb = (impactScore[b.impact] || 0) - (effortPenalty[b.effort] || 0);
+      return sb - sa;
+    }).slice(0, 6);
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow, noarchive" />
+  <title>${brandName} — Brand Intelligence Brief by Forge</title>
+  <meta name="description" content="A bespoke brand intelligence brief prepared by Forge Intelligence for ${brandName}." />
+  <link rel="canonical" href="${previewUrl}" />
+  <style>
+    :root {
+      --ink: #0A0E1A;
+      --ink-soft: #2B3346;
+      --ink-muted: #6B7489;
+      --paper: #FAFAF7;
+      --paper-soft: #F3F2EC;
+      --accent: #3563FF;
+      --accent-soft: #E8EEFF;
+      --gold: #B8944D;
+      --rule: #D8D6CC;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Charter', 'Iowan Old Style', 'Palatino Linotype', Palatino, 'URW Palladio L', Georgia, serif;
+      background: var(--paper);
+      color: var(--ink);
+      line-height: 1.6;
+      font-size: 17px;
+      -webkit-font-smoothing: antialiased;
+    }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 60px 32px 100px; }
+
+    /* Masthead */
+    .masthead {
+      border-bottom: 3px double var(--ink);
+      padding-bottom: 24px;
+      margin-bottom: 48px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 24px;
+    }
+    .masthead .pub {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--ink-muted);
+    }
+    .masthead .pub strong { color: var(--ink); }
+    .masthead .date {
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-muted);
+    }
+
+    /* Hero */
+    .hero { margin-bottom: 56px; }
+    .hero .issue {
+      font-family: 'Inter', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 20px;
+    }
+    .hero h1 {
+      font-size: 54px;
+      line-height: 1.05;
+      letter-spacing: -0.02em;
+      font-weight: 400;
+      margin-bottom: 24px;
+      color: var(--ink);
+    }
+    .hero .dek {
+      font-size: 21px;
+      line-height: 1.45;
+      color: var(--ink-soft);
+      font-style: italic;
+      max-width: 620px;
+    }
+    .hero .logo-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-top: 32px;
+      padding-top: 24px;
+      border-top: 1px solid var(--rule);
+    }
+    .hero .logo-row img {
+      height: 40px;
+      width: auto;
+      max-width: 160px;
+      object-fit: contain;
+    }
+    .hero .logo-row .domain {
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      color: var(--ink-muted);
+    }
+
+    /* Section styling */
+    section { margin-bottom: 72px; }
+    .section-label {
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 12px;
+    }
+    h2 {
+      font-size: 34px;
+      line-height: 1.15;
+      letter-spacing: -0.015em;
+      font-weight: 400;
+      margin-bottom: 20px;
+      color: var(--ink);
+    }
+    h3 {
+      font-size: 20px;
+      line-height: 1.3;
+      font-weight: 500;
+      margin-bottom: 10px;
+      color: var(--ink);
+      letter-spacing: -0.005em;
+    }
+    p { margin-bottom: 18px; color: var(--ink-soft); }
+    p.lead { font-size: 19px; line-height: 1.55; color: var(--ink); }
+
+    /* Drop cap on first paragraph of business profile */
+    .dropcap::first-letter {
+      font-size: 72px;
+      line-height: 0.85;
+      float: left;
+      margin-right: 10px;
+      margin-top: 6px;
+      margin-bottom: -6px;
+      font-weight: 500;
+      color: var(--gold);
+    }
+
+    /* Market category callout */
+    .market-callout {
+      border-left: 3px solid var(--gold);
+      padding: 16px 20px;
+      background: var(--paper-soft);
+      margin: 32px 0;
+      font-size: 16px;
+    }
+    .market-callout .label {
+      font-family: 'Inter', sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--ink-muted);
+      margin-bottom: 4px;
+    }
+    .market-callout .value {
+      font-family: 'Inter', sans-serif;
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--ink);
+    }
+
+    /* Facts grid */
+    .facts-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 24px;
+      margin: 32px 0;
+      padding: 28px 0;
+      border-top: 1px solid var(--rule);
+      border-bottom: 1px solid var(--rule);
+    }
+    .fact .label {
+      font-family: 'Inter', sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--ink-muted);
+      margin-bottom: 6px;
+    }
+    .fact .value {
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--ink);
+    }
+
+    /* Competitor chips */
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .chip {
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      padding: 6px 12px;
+      border: 1px solid var(--rule);
+      border-radius: 4px;
+      color: var(--ink-soft);
+      background: white;
+    }
+
+    /* Moats — numbered */
+    .moat, .gap, .rec {
+      position: relative;
+      padding: 24px 0;
+      border-top: 1px solid var(--rule);
+    }
+    .moat:last-child, .gap:last-child, .rec:last-child { border-bottom: 1px solid var(--rule); }
+    .moat .num, .gap .num, .rec .num {
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      color: var(--gold);
+      margin-bottom: 8px;
+      display: block;
+    }
+    .moat .capability { font-weight: 500; color: var(--ink); margin-bottom: 6px; font-size: 17px; line-height: 1.4; }
+    .moat .protects-label, .gap .owner-label, .rec .meta-label {
+      font-family: 'Inter', sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--ink-muted);
+      margin-top: 14px;
+      margin-bottom: 4px;
+    }
+    .moat .protects, .gap .owner, .rec .meta {
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      color: var(--ink-soft);
+    }
+
+    /* Gaps — priority badges */
+    .gap .priority {
+      display: inline-block;
+      font-family: 'Inter', sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      padding: 3px 10px;
+      border-radius: 3px;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+    .priority-high { background: #FEE2E2; color: #991B1B; }
+    .priority-medium { background: #FEF3C7; color: #92400E; }
+    .priority-low { background: #DBEAFE; color: #1E40AF; }
+    .gap .topic { font-weight: 500; color: var(--ink); font-size: 17px; line-height: 1.4; display: inline; }
+    .gap .whitespace { margin-top: 14px; color: var(--ink-soft); font-style: italic; }
+
+    /* Recs — effort/impact matrix */
+    .rec .rec-meta {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 10px;
+      font-family: 'Inter', sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+    .rec .tag { padding: 3px 10px; border-radius: 3px; }
+    .tag-category { background: var(--accent-soft); color: var(--accent); }
+    .tag-impact-high { background: #D1FAE5; color: #065F46; }
+    .tag-impact-medium { background: #FEF3C7; color: #92400E; }
+    .tag-effort-low { color: var(--ink-muted); }
+    .tag-effort-medium { color: var(--ink-muted); }
+    .tag-effort-high { color: var(--ink-muted); }
+    .rec .title { font-weight: 500; color: var(--ink); font-size: 19px; line-height: 1.35; margin-bottom: 10px; }
+    .rec .description { color: var(--ink-soft); font-size: 16px; }
+
+    /* CTA */
+    .cta-block {
+      margin-top: 80px;
+      padding: 40px;
+      background: var(--ink);
+      color: var(--paper);
+      border-radius: 6px;
+      text-align: center;
+    }
+    .cta-block .cta-label {
+      font-family: 'Inter', sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 14px;
+    }
+    .cta-block h3 {
+      color: white;
+      font-size: 26px;
+      font-weight: 400;
+      line-height: 1.25;
+      margin-bottom: 14px;
+      letter-spacing: -0.01em;
+    }
+    .cta-block p {
+      color: #B4BAC7;
+      max-width: 480px;
+      margin: 0 auto 24px;
+      font-size: 16px;
+    }
+    .cta-block a {
+      display: inline-block;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      padding: 14px 28px;
+      background: var(--accent);
+      color: white;
+      text-decoration: none;
+      border-radius: 4px;
+      transition: background 0.15s;
+    }
+    .cta-block a:hover { background: #2449D4; }
+
+    /* Colophon */
+    .colophon {
+      margin-top: 48px;
+      padding-top: 24px;
+      border-top: 1px solid var(--rule);
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      color: var(--ink-muted);
+      text-align: center;
+    }
+    .colophon a { color: var(--ink-soft); text-decoration: none; border-bottom: 1px solid var(--rule); }
+
+    @media (max-width: 640px) {
+      .wrap { padding: 32px 20px 80px; }
+      .hero h1 { font-size: 38px; }
+      .hero .dek { font-size: 18px; }
+      h2 { font-size: 26px; }
+      .facts-grid { grid-template-columns: 1fr; }
+      .masthead { flex-direction: column; align-items: flex-start; gap: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+
+    <header class="masthead">
+      <div class="pub">A <strong>FORGE INTELLIGENCE</strong> BRAND BRIEF</div>
+      <div class="date">${generatedDate}</div>
+    </header>
+
+    <section class="hero">
+      <div class="issue">Prepared for ${brandName}</div>
+      <h1>${bp.whatTheyDo ? esc(bp.whatTheyDo.split(/[—.]/, 1)[0].trim()) : brandName}</h1>
+      ${bp.targetBuyer ? `<p class="dek">${esc(bp.targetBuyer)}</p>` : ''}
+      <div class="logo-row">
+        ${logoUrl ? `<img src="${esc(logoUrl)}" alt="${brandName} logo" onerror="this.style.display='none'" />` : ''}
+        <span class="domain">${esc(brandDomain)}</span>
+      </div>
+    </section>
+
+    ${bp.whatTheyDo ? `
+    <section>
+      <div class="section-label">The Business</div>
+      <h2>What we see when we read your site</h2>
+      <p class="lead dropcap">${esc(bp.whatTheyDo)}</p>
+      ${marketCategory ? `
+      <div class="market-callout">
+        <div class="label">Market Category</div>
+        <div class="value">${esc(marketCategory)}</div>
+      </div>` : ''}
+      <div class="facts-grid">
+        ${bp.targetBuyer ? `<div class="fact"><div class="label">Target Buyer</div><div class="value">${esc(bp.targetBuyer)}</div></div>` : ''}
+        ${bp.geography ? `<div class="fact"><div class="label">Geography</div><div class="value">${esc(bp.geography)}</div></div>` : ''}
+        ${bp.companyScale ? `<div class="fact"><div class="label">Company Scale</div><div class="value">${esc(bp.companyScale)}</div></div>` : ''}
+        ${bp.revenueModel ? `<div class="fact"><div class="label">Revenue Model</div><div class="value">${esc(bp.revenueModel)}</div></div>` : ''}
+      </div>
+    </section>` : ''}
+
+    ${cleanCompetitors.length ? `
+    <section>
+      <div class="section-label">The Competitive Set</div>
+      <h2>Who you're actually up against</h2>
+      <p>Forge identified these domains as the competitive field your content has to win attention from. Some are named publicly. Others surfaced through semantic comparison of language and positioning.</p>
+      <div class="chip-row">
+        ${cleanCompetitors.map(c => `<span class="chip">${esc(c)}</span>`).join('')}
+      </div>
+    </section>` : ''}
+
+    ${moats.length ? `
+    <section>
+      <div class="section-label">Strategic Moats</div>
+      <h2>What you have that most don't</h2>
+      <p>These are the structural advantages Forge identified in your positioning — capabilities or stances that protect specific business outcomes.</p>
+      ${moats.slice(0, 4).map((m, i) => `
+        <div class="moat">
+          <span class="num">Moat ${String(i + 1).padStart(2, '0')}</span>
+          <div class="capability">${esc(m.capability || '')}</div>
+          ${m.rationale ? `<p style="margin-top: 10px; color: var(--ink-soft); font-size: 16px;">${esc(m.rationale)}</p>` : ''}
+          ${m.protects ? `<div class="protects-label">Protects</div><div class="protects">${esc(m.protects)}</div>` : ''}
+        </div>
+      `).join('')}
+    </section>` : ''}
+
+    ${sortedGaps.length ? `
+    <section>
+      <div class="section-label">Competitive Gaps</div>
+      <h2>Where the conversation is moving without you</h2>
+      <p>These are content territories and positioning angles where competitors are building authority and you are not yet present. Each represents a defensible opportunity — the question is priority and pace.</p>
+      ${sortedGaps.map((g, i) => `
+        <div class="gap">
+          <span class="num">Gap ${String(i + 1).padStart(2, '0')}</span>
+          <div>
+            <span class="topic">${esc(g.topic || '')}</span>
+            <span class="priority priority-${esc(g.priority || 'medium')}">${esc(g.priority || 'medium')}</span>
+          </div>
+          ${g.ownedBy ? `<div class="owner-label">Currently owned by</div><div class="owner">${esc(g.ownedBy)}</div>` : ''}
+          ${g.whitespaceOpportunity ? `<p class="whitespace">${esc(g.whitespaceOpportunity)}</p>` : ''}
+        </div>
+      `).join('')}
+    </section>` : ''}
+
+    ${sortedRecs.length ? `
+    <section>
+      <div class="section-label">Strategic Recommendations</div>
+      <h2>What Forge would do first, if we were running this</h2>
+      <p>Ranked by impact-to-effort ratio. High-impact moves with lower effort surface first. Each recommendation is anchored to a specific gap, moat, or positioning observation above.</p>
+      ${sortedRecs.map((r, i) => `
+        <div class="rec">
+          <span class="num">Recommendation ${String(i + 1).padStart(2, '0')}</span>
+          <div class="rec-meta">
+            ${r.category ? `<span class="tag tag-category">${esc(r.category)}</span>` : ''}
+            ${r.impact ? `<span class="tag tag-impact-${esc(r.impact)}">Impact: ${esc(r.impact)}</span>` : ''}
+            ${r.effort ? `<span class="tag-effort-${esc(r.effort)}">Effort: ${esc(r.effort)}</span>` : ''}
+          </div>
+          <div class="title">${esc(r.title || '')}</div>
+          ${r.description ? `<p class="description">${esc(r.description)}</p>` : ''}
+        </div>
+      `).join('')}
+    </section>` : ''}
+
+    <div class="cta-block">
+      <div class="cta-label">What this becomes</div>
+      <h3>This brief is the starting point. Forge's system turns it into compounding content that cites.</h3>
+      <p>Everything above came from reading ${esc(brandDomain)}. The next step — generating the content that actually captures this authority — is what Forge Intelligence does end-to-end.</p>
+      <a href="https://forgeintelligence.ai/?utm_source=preview&utm_medium=brief&utm_campaign=${esc(brandId.slice(0, 8))}">See how Forge works →</a>
+    </div>
+
+    <div class="colophon">
+      Generated by <a href="https://forgeintelligence.ai">Forge Intelligence</a> · ${generatedDate}
+    </div>
+
+  </div>
+</body>
+</html>`;
+
+    res.type('text/html; charset=utf-8');
+    res.send(html);
+  } catch(e) {
+    console.error('[preview]', e.message);
+    res.status(500).send('An error occurred rendering the preview.');
+  }
+});
+
+
 app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
   const { brandSlug, articleSlug } = req.params;
   try {
