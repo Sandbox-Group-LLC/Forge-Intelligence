@@ -104,29 +104,22 @@ function ContextAgentPage() {
     }
   }, [currentView, activeBrand?.brandUrl]);
 
-  // URL-based brand load — ?brand=UUID in the URL ALWAYS takes precedence over localStorage.
-  // Use cases this serves:
-  //   1. Prospect arrives from /preview/<uuid> CTA — needs their brand to load even if localStorage
-  //      has a stale different brand cached
-  //   2. Mobile Safari localStorage wipe recovery — same flow, just empty localStorage
-  //   3. User shares their own /app/context-hub?brand=<uuid> link with a teammate
-  // Previous version short-circuited if ANY localStorage value existed, which broke case 1 entirely.
+  // URL-based brand load — ?brand=UUID in the URL ALWAYS takes precedence.
+  // Loads brandProfile state (which BrandProfile component reads) AND sets currentView to
+  // 'brand-profile' so the prospect lands on the right view after following the preview CTA.
+  //
+  // Note: activeBrand (from useActiveBrand) is handled separately by that hook, which was
+  // also updated to read ?brand= from URL. Both must work for the page to render correctly.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const brandId = params.get('brand');
     if (!brandId) return;
 
-    // Skip refetch only if localStorage already has THIS specific brand cached (perf optimization).
-    // Any other case — empty localStorage, different brand cached, malformed cache — falls through to fetch.
-    try {
-      const stored = localStorage.getItem('forge_active_brand');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed?.id === brandId) return;
-      }
-    } catch(e) { /* localStorage unavailable or malformed — fall through to fetch */ }
+    // Always switch view to brand-profile when arriving with ?brand= — even before fetch completes,
+    // so the UI doesn't briefly flash New Analysis before reconciling.
+    setCurrentView('brand-profile');
 
-    // Fetch brand from DB by ID
+    // Fetch brand data and populate brandProfile state (separate from useActiveBrand's state)
     fetch(`/api/context-hub/brand/${brandId}`)
       .then(r => r.json())
       .then(d => {
@@ -134,7 +127,7 @@ function ContextAgentPage() {
           setBrandProfile(d.data);
           const activeBrand = { id: d.data.id, brandUrl: d.data.brandUrl, brandName: d.data.brandName, expiresAt: d.data.expiresAt || null, isPaid: d.data.isPaid || false };
           try { localStorage.setItem('forge_active_brand', JSON.stringify(activeBrand)); } catch(e) {}
-          setCurrentView('brand-profile');
+          try { localStorage.setItem('forge_active_brand_id', d.data.id); } catch(e) {}
         }
       })
       .catch(() => {});
