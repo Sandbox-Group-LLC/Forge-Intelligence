@@ -1775,9 +1775,9 @@ app.get('/preview/:brandId', async (req, res) => {
 
     <div class="cta-block">
       <div class="cta-label">What this becomes</div>
-      <h3>This brief is the starting point. Forge's system turns it into compounding content that cites.</h3>
-      <p>Everything above came from reading ${esc(brandDomain)}. The next step — generating the content that actually captures this authority — is what Forge Intelligence does end-to-end.</p>
-      <a href="https://forgeintelligence.ai/?utm_source=preview&utm_medium=brief&utm_campaign=${esc(brandId.slice(0, 8))}">See how Forge works →</a>
+      <h3>This brief is the starting point. Open your full profile to see the deeper layer.</h3>
+      <p>What you see above is the surface. Inside Forge, your full brand profile includes the GEO Strategist, content generation in your voice, and a brain that compounds with every article. Open it to explore.</p>
+      <a href="https://forgeintelligence.ai/app/context-hub?brand=${esc(brandId)}&utm_source=preview&utm_medium=brief&utm_campaign=${esc(brandId.slice(0, 8))}">Open your full brand profile →</a>
     </div>
 
     <div class="colophon">
