@@ -104,14 +104,28 @@ function ContextAgentPage() {
     }
   }, [currentView, activeBrand?.brandUrl]);
 
-  // URL-based brand recovery — handles mobile Safari localStorage wipes
-  // If ?brand=UUID is in the URL and we have no active brand, fetch it from the DB
+  // URL-based brand load — ?brand=UUID in the URL ALWAYS takes precedence over localStorage.
+  // Use cases this serves:
+  //   1. Prospect arrives from /preview/<uuid> CTA — needs their brand to load even if localStorage
+  //      has a stale different brand cached
+  //   2. Mobile Safari localStorage wipe recovery — same flow, just empty localStorage
+  //   3. User shares their own /app/context-hub?brand=<uuid> link with a teammate
+  // Previous version short-circuited if ANY localStorage value existed, which broke case 1 entirely.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const brandId = params.get('brand');
     if (!brandId) return;
-    // Already have a brand loaded — no need to recover
-    try { const stored = localStorage.getItem('forge_active_brand'); if (stored) return; } catch(e) {}
+
+    // Skip refetch only if localStorage already has THIS specific brand cached (perf optimization).
+    // Any other case — empty localStorage, different brand cached, malformed cache — falls through to fetch.
+    try {
+      const stored = localStorage.getItem('forge_active_brand');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.id === brandId) return;
+      }
+    } catch(e) { /* localStorage unavailable or malformed — fall through to fetch */ }
+
     // Fetch brand from DB by ID
     fetch(`/api/context-hub/brand/${brandId}`)
       .then(r => r.json())
