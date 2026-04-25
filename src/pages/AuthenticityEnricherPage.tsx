@@ -388,7 +388,7 @@ function AuthenticityEnricherContent() {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {topicBriefs.map(tb => (
-              <div key={tb.id} style={{
+              <div className="ae-topic-brief-row" key={tb.id} style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 background: 'var(--color-bg-card, #1a1c23)', border: '1px solid var(--color-border, #2a2d35)',
                 borderRadius: 8, padding: '10px 14px', gap: 12
@@ -539,7 +539,7 @@ function AuthenticityEnricherContent() {
             <div style={{ background: '#F5B94208', border: '1px solid #F5B94230', borderRadius: '12px', padding: '20px 24px', marginBottom: '24px' }}>
               <div className="ae-form-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <div className="ae-form-title-row" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                     <AlertTriangle size={16} color="#F5B942" />
                     <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-text-primary, #1e293b)' }}>Correct or strengthen this brief.</span>
                   </div>
@@ -557,7 +557,7 @@ function AuthenticityEnricherContent() {
                   const Icon = GAP_ICONS[gap.gapType] || FileText;
                   return (
                     <div key={i} style={{ background: 'var(--color-bg-elevated, #f4f7ff)', borderRadius: '8px', padding: '14px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                      <div className="ae-gap-card-header" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                         <Icon size={14} color="#3563FF" />
                         <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-primary, #1e293b)' }}>{GAP_TYPE_LABELS[gap.gapType] || gap.gapType}</span>
                         <div style={{ position: 'relative', marginLeft: 'auto' }}>
