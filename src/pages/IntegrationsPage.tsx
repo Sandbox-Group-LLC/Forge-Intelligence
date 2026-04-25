@@ -707,7 +707,7 @@ export default function IntegrationsPage() {
                             {!fbPagesLoading && fbPages.length > 0 && (() => {
                               const currentPageId = (saved?.credentials as any)?.pageId || null;
                               return (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                <div className="int-fb-pages-list" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                                   {fbPages.map(p => {
                                     const isSelected = p.id === currentPageId;
                                     return (
