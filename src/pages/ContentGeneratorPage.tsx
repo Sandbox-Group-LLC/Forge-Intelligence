@@ -418,7 +418,7 @@ function ContentGeneratorContent() {
                           {isLatest && !b.quickWin && <span className="cg-batch-qw" style={{ background: '#DBEAFE', color: '#1E40AF' }}>Latest</span>}
                           <span className="cg-batch-confidence">Confidence {b.confidenceScore}</span>
                         </div>
-                        <div className="cg-batch-topic">{b.enrichedH1 || b.enrichedTitle || b.topic || b.articleTitle || b.brandName}</div>
+                        <div className="cg-batch-topic">{b.enrichedTitle || b.enrichedH1 || b.topic || b.articleTitle || b.brandName}</div>
                         <div className="cg-batch-date">{new Date(b.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
                       </button>
                     );
@@ -671,7 +671,7 @@ function ContentGeneratorContent() {
                     title={st === 'generated' ? 'Continue to Compliance Gate →' : undefined}
                     style={st === 'generated' ? { cursor: 'pointer' } : undefined}
                   >
-                    {b.enrichedH1 || b.enrichedTitle || b.articleTitle || b.topic || b.brandName}
+                    {b.enrichedTitle || b.articleTitle || b.enrichedH1 || b.topic || b.brandName}
                     <span className="cg-batch-progress-chip-status">{st}{st === 'generated' ? ' →' : ''}</span>
                   </span>
                 );
