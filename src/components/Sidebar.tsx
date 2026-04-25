@@ -244,7 +244,7 @@ export function Sidebar() {
   const [brainGroupOpen, setBrainGroupOpen] = useState(() => window.location.pathname.startsWith('/app/context-hub'));
   const [publishingGroupOpen, setPublishingGroupOpen] = useState(() => ['/app/publishing-queue','/app/calendar','/app/content-library','/app/content-import','/app/topic-queue'].some(r => window.location.pathname.startsWith(r)));
   const [settingsGroupOpen, setSettingsGroupOpen] = useState(() => ['/app/brand-settings','/app/integrations','/app/mc'].some(r => window.location.pathname.startsWith(r)));
-  const [mobileExpanded, setMobileExpanded] = useState(false);
+  // Drawer open/closed derives from sidebarCollapsed (the single source of truth).
 
   // Auto-collapse on mobile at mount
   useEffect(() => {
@@ -269,18 +269,11 @@ export function Sidebar() {
   const isMobile = () => window.innerWidth <= 768;
 
   const handleToggle = () => {
-    if (isMobile()) {
-      const next = !mobileExpanded;
-      setMobileExpanded(next);
-      setSidebarCollapsed(!next);
-    } else {
-      setSidebarCollapsed(!sidebarCollapsed);
-    }
+    setSidebarCollapsed(!sidebarCollapsed);
   };
 
   const closeMobileDrawer = () => {
     if (isMobile()) {
-      setMobileExpanded(false);
       setSidebarCollapsed(true);
     }
   };
@@ -350,7 +343,7 @@ export function Sidebar() {
         />
       )}
       {/* Mobile backdrop */}
-      {mobileExpanded && (
+      {!sidebarCollapsed && (
         <div className="sidebar-backdrop" onClick={closeMobileDrawer} aria-hidden="true" />
       )}
       <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}> 
