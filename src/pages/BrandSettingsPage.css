@@ -712,3 +712,63 @@
     font-size: 12px !important;
   }
 }
+
+
+/* ── Author CSV import button (Phase 1 authorship — enterprise bulk add) ── */
+.fg-authors-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fg-csv-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  background: var(--color-bg-card);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+.fg-csv-btn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+.fg-csv-msg {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+.fg-csv-msg.success {
+  background: rgba(16, 185, 129, 0.08);
+  color: #047857;
+  border: 1px solid rgba(16, 185, 129, 0.20);
+}
+.fg-csv-msg.error {
+  background: rgba(239, 68, 68, 0.08);
+  color: #b91c1c;
+  border: 1px solid rgba(239, 68, 68, 0.20);
+}
+.fg-csv-msg.info {
+  background: rgba(99, 102, 241, 0.08);
+  color: #4338ca;
+  border: 1px solid rgba(99, 102, 241, 0.20);
+}
+@media (max-width: 768px) {
+  .fg-authors-actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  .fg-csv-btn,
+  .fg-add-btn {
+    flex: 1;
+    justify-content: center;
+  }
+}
