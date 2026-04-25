@@ -1171,6 +1171,169 @@
     width: 100%;
     justify-content: center;
   }
+
+  /* ── Top filter bar ──
+     space-between with flex-wrap looks awkward when wrapped — switch to
+     flex-start so wrapped pieces sit naturally without forced gaps. */
+  .pq-filter-bar {
+    justify-content: flex-start;
+    gap: 10px;
+  }
+
+  /* ── Top page tabs ──
+     Horizontal scroll strip instead of wrap. iOS Safari pattern. */
+  .pq-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .pq-tabs::-webkit-scrollbar { display: none; }
+  .pq-tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 6px 11px;
+    font-size: 12px;
+  }
+
+  /* ── Item card header row ──
+     space-between layout means title and action chips fight for space.
+     Stack column so title gets full width and action row sits under it. */
+  .pq-item-top {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  /* Title row inline edit button stays inline with title */
+  .pq-item-title-editable {
+    flex-wrap: wrap;
+  }
+
+  /* ── Results header (per-published-channel results) ── */
+  .pq-results-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  /* ── Result row (single channel result line) ── */
+  .pq-result-row {
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  /* ── PREVIEW MODAL LAYOUT ──
+     grid 1fr 340px forces a 340px sidebar on a 380px iPhone — leaves no room
+     for content. Stack the two as full-width sections, sidebar moves below. */
+  .pq-preview-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr auto;
+    overflow-y: auto;
+  }
+
+  .pq-preview-no-image {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    text-align: left;
+  }
+
+  .pq-preview-side-title {
+    padding: 12px 14px;
+    border-top: 1px solid var(--color-border);
+  }
+
+  /* Copy channel label (Twitter/LinkedIn/etc): keep horizontal, just tighten */
+  .pq-copy-channel-label {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* ── UTM param rows (key/value) ──
+     140px label + 1fr input becomes column-stack on mobile. */
+  .pq-utm-param {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  /* UTM channel row (channel | URL | copy button): unstack 3-column grid */
+  .pq-utm-channel-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  /* ── Scheduling modal ──
+     Date and time fields go full-width, one per row. */
+  .pq-sched-inputs {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  /* Preview row in schedule modal: 3-column collapses to title + meta grouped */
+  .pq-sched-preview-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    padding: 10px 12px;
+  }
+
+  /* ── Export modal ── */
+  .pq-export-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 0 12px;
+  }
+  .pq-export-tabs::-webkit-scrollbar { display: none; }
+
+  .pq-export-footer {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 12px 14px;
+    gap: 10px;
+  }
+  .pq-export-footer > * {
+    width: 100%;
+  }
+
+  /* ── Delete confirmation channel rows ── */
+  .pq-delete-channel-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* ── Review toast (top-of-page notification) ── */
+  .pq-review-toast {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  /* ── Archive toggle stays on its own line, smaller padding ── */
+  .pq-archive-toggle {
+    padding: 6px 10px;
+  }
+
+  /* ── Channel row (used in scheduling) ── */
+  .pq-channel-row {
+    gap: 8px;
+  }
+
+  /* ── Schedule group (Schedule + Publish Now buttons) ── */
+  .pq-schedule-group {
+    flex-direction: column;
+    width: 100%;
+  }
+  .pq-schedule-group > * {
+    width: 100%;
+  }
+
+  /* ── Reviewer option in dropdown ── */
+  .pq-reviewer-option {
+    padding: 10px 12px;
+    gap: 8px;
+  }
 }
 
 
