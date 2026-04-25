@@ -184,3 +184,74 @@
   white-space: nowrap;
   margin-left: 8px;
 }
+
+
+/* ── Brand pill structure (refined) ──
+   Two-part pill: rounded background wrapping the brand name, then a smaller
+   version tag pill to the right. Gives the pair visual breathing room and
+   makes the version indicator feel deliberate rather than tacked-on. */
+.topbar-brand-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 12px;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.18);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 0 12px;
+}
+.topbar-brand-pill-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.topbar-brand-pill-version {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  background: rgba(99, 102, 241, 0.18);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #a5b4fc;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+/* Version tag (when super-admin brand switcher is showing) — small standalone pill */
+.topbar-version-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  margin: 0 8px;
+  background: rgba(99, 102, 241, 0.12);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #a5b4fc;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+/* On mobile the topbar gets cramped — hide the version tag next to switcher */
+@media (max-width: 768px) {
+  .topbar-version-tag { display: none !important; }
+  .topbar-brand-pill {
+    max-width: 140px;
+    margin: 0 6px;
+    padding: 3px 4px 3px 10px;
+    font-size: 12px;
+  }
+  .topbar-brand-pill-version {
+    padding: 2px 6px;
+    font-size: 10px;
+  }
+}
