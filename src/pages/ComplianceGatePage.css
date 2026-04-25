@@ -700,3 +700,92 @@
   color: var(--color-text-primary, #1E293B);
   border-color: var(--color-border-input, #CBD5E1);
 }
+
+/* ── Mobile (<=768px) ──────────────────────────────────────────────────────
+   ComplianceGatePage mobile rules — NO existing breakpoints before this.
+   Comprehensive treatment for the operator's daily compliance review page. */
+@media (max-width: 768px) {
+  .comp-page {
+    gap: 20px;
+  }
+
+  /* Mode selector cards: 3 cards in a row → stacked column on mobile */
+  .comp-mode-bar {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .comp-mode-card {
+    padding: 12px 14px;
+  }
+
+  /* Report bar: 5 score blocks horizontal → wrap aggressively, smaller numbers */
+  .comp-report-bar {
+    padding: 14px;
+    gap: 12px;
+  }
+  .comp-score-block {
+    min-width: 56px;
+    flex: 1 1 auto;
+  }
+  .comp-score-num {
+    font-size: 22px;
+  }
+
+  /* Article list items reduce padding */
+  .comp-article-list {
+    gap: 8px;
+  }
+
+  /* Section header: heading + score + flags row → wrap all */
+  .comp-section-header {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px;
+  }
+
+  /* Section footer (the per-section confidence + flag badges): wrap */
+  .comp-section-footer {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 12px;
+  }
+
+  /* Rewrite toolbar: input + buttons go column on mobile */
+  .comp-rewrite-toolbar-row {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .comp-rewrite-input {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Newly-classed inline wrappers — override their inline display:flex with !important */
+  .comp-placeholder-row {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+  }
+  .comp-placeholder-row .comp-accept-suggestion-btn {
+    align-self: stretch;
+    width: 100%;
+  }
+
+  .comp-flag-actions-row {
+    width: 100%;
+    gap: 6px !important;
+  }
+  .comp-flag-actions-row > button {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .comp-source-actions {
+    flex-direction: column !important;
+    gap: 8px !important;
+    margin-top: 8px !important;
+  }
+  .comp-source-actions > button {
+    width: 100%;
+  }
+}
