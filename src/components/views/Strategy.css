@@ -436,6 +436,8 @@
 @media (max-width: 768px) {
   .strategy-header {
     flex-direction: column;
+    gap: 16px;
+    align-items: stretch;
   }
 
   .priority-matrix,
@@ -453,5 +455,33 @@
     width: 28px;
     height: 28px;
     font-size: 12px;
+  }
+
+  /* Section tabs (if Strategy has them) — horizontal scroll */
+  .strategy-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .strategy-tabs::-webkit-scrollbar { display: none; }
+
+  /* Strategy export button row */
+  .strategy-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+  .strategy-actions button {
+    width: 100%;
+  }
+
+  /* Recommendation cards — full-width content, no awkward 2-col on narrow */
+  .rec-card {
+    padding: 16px;
+  }
+  .rec-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
   }
 }
