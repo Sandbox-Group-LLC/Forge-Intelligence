@@ -1196,6 +1196,18 @@
     font-size: 12px;
   }
 
+  /* ── Item title wrapping ──
+     Desktop rule has white-space:nowrap + text-overflow:ellipsis to keep
+     long titles on a single line. On mobile that clips the title — let it
+     wrap to as many lines as needed. */
+  .pq-item-title {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    line-height: 1.35;
+    word-break: break-word;
+  }
+
   /* ── Item card header row ──
      space-between layout means title and action chips fight for space.
      Stack column so title gets full width and action row sits under it. */
