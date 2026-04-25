@@ -745,6 +745,29 @@
    Lives in the cherry-bar next to Clear / Build Briefs. Styled to read as
    peer to the other buttons but visually quieter (operator opt-in, not
    primary action). */
+.geo-cherry-author-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.geo-cherry-author-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted, #94a3b8);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .geo-cherry-author-wrap {
+    width: 100%;
+  }
+  .geo-cherry-author-wrap .geo-cherry-author-select {
+    flex: 1;
+  }
+}
+
 .geo-cherry-author-select {
   appearance: none;
   -webkit-appearance: none;
