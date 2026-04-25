@@ -8,6 +8,71 @@
 
 ---
 
+## Session — April 24-25, 2026 — Mobile Responsive Overhaul (4 sessions, ~120+ commits)
+
+### The mandate
+**Brian's ask:** "Take your time and expose the mess and do a slow and steady clean up and optimize." App was desktop-first; mobile UX was rough or unusable on most pages. Goal: every page in the app passes mobile audit and feels intentional on iPhone-class viewports.
+
+### Foundation work (sessions 1-2)
+- **Hamburger sidebar with off-canvas drawer.** TopBar gets a 40×40 hamburger button on mobile (was incorrectly `display: none` on both desktop and mobile in earlier code). Sidebar becomes `position: fixed; transform: translateX(-100%)` collapsed, slides to 280px wide open. Backdrop with 0.55 opacity + click-to-close. Body scroll locks while drawer is open. Auto-closes on view change after navigation tap. Sidebar starts collapsed on mobile (`window.innerWidth <= 768`).
+- **Breakpoint system.** Standardized on 768px across the app via CSS variables (`--bp-mobile: 768px`). Removed 64px left padding on mobile so sidebar slides over content rather than reserving space.
+- **Sidebar in-drawer chevron close button.** Visible (36×36) when drawer is open, hidden when collapsed off-canvas.
+
+### Per-page polish (sessions 2-3)
+Comprehensive mobile @media blocks added or expanded for **22 surfaces**: 5 Brain views (NewAnalysis, BrandProfile, ActiveRun, Strategy, BrainHistory) + 17 standalone pages (every prospect-path, operator daily-use, and admin page).
+
+The recurring pattern: **inline-styled flex/grid wrappers without classes are CSS ghosts.** A wrapper like `<div style={{display: 'flex', justifyContent: 'space-between'}}>` with no className means CSS rules can't target it. CSS rules look written but go unused. Fix requires TSX edits to add classes + CSS using `!important` to override inline styles. Brian's call halfway through: "I guarantee all of them have the same issues." Confirmed via systematic audit.
+
+**Audit-driven discipline:** before touching each page, dump every `<div style={{display: flex/grid}}>` and check for `className=`. Count broken wrappers (no class), classed wrappers (OK), existing breakpoints, ghost CSS classes (defined but never used in TSX). Fix only what the audit identified, ship to all 4 branches, move to next page.
+
+**Final state — 22/22 pages clean, 0 broken wrappers remaining.**
+
+### Targeted fixes (session 4 — this turn, ~60min real-time)
+After full structural cleanup, Brian tested on iPhone and reported specific issues. Each got a targeted fix with full diagnosis written into the commit:
+
+1. **PublishingQueue article titles clipping** — `.pq-item-title` had `white-space: nowrap; text-overflow: ellipsis` for desktop. Mobile override: wrap normally, no clipping.
+
+2. **PublishingQueue preview modal — three layered bugs:** modal couldn't scroll, hero image hidden, "Post Copy" overlapping content. Root cause: three nested `overflow: auto` contexts (modal, preview-layout grid, preview-article) competing on touch. **Fix: ONE scroll context — the modal itself. Removed inner overflow on layout/article/side, made everything flow as one tall column.** Also added section-header borders so "Post Copy / X / LinkedIn" titles read as real section headers.
+
+3. **PublishingQueue Smart Export tabs invisible.** The export modal nests header / tabs / code-wrap / footer in flex column. The tabs row had no `flex-shrink: 0`, so the giant code block expanded and squeezed the tabs to zero height. **Lesson: flex-column layouts with mixed fixed/flexible children need explicit `flex-shrink: 0` on the fixed ones — otherwise everyone shrinks proportionally.**
+
+4. **Modal-under-topbar (4 surfaces).** `.pq-modal-overlay`, `.cl-modal-overlay`, `.cal-modal-backdrop`, `.gate-backdrop` all used `position: fixed; inset: 0` covering the entire viewport including the 56px topbar. Tall modals slid under the topbar. **Pattern fix:** mobile `top: 56px; align-items: flex-start; max-height: calc(100vh - 72px)` on every overlay. Also bumped GateModal from 540px → 768px breakpoint for consistency.
+
+5. **Reviewer dropdown rendering as thin vertical strip.** Base CSS was `position: absolute; right: 0; width: 240px` anchored to its trigger button (~36px on mobile). My earlier mobile override at L1150 only declared `left/right/width/max-width` with `!important`, but the base rule at L2051 still won on `position` and `top` (CSS source order). **Lesson: when overriding a base rule that's defined LATER in the file, override every layout-defining property even if you think it'll inherit cleanly.** Fix: pin the dropdown as a viewport-anchored bottom sheet on mobile (`position: fixed; bottom: 12px; left/right: 12px`) — completely escapes the trigger's coordinate system.
+
+6. **Sidebar two-tap close (state desync).** Two parallel state sources for the same concept: local `mobileExpanded` useState and global `sidebarCollapsed`. Backdrop rendered based on local state; CSS class used global state. TopBar hamburger only flipped global, leaving local stale. First chevron tap re-synced (backdrop appeared), second tap actually closed. **Fix: removed `mobileExpanded` entirely. `sidebarCollapsed` is now the single source of truth.** Lesson: two parallel state variables tracking the same concept = drift = bugs.
+
+7. **Performance Dashboard channel tabs "dinky."** 10 tabs (Patterns/Predictions/LinkedIn/X/Ghost/GSC/GEO/WordPress/Webflow/Campaigns) defaulted to `flex-wrap: wrap` producing a 3-per-row grid that read like a list of links. **Fix: horizontal scroll strip on mobile (iOS Safari pattern).** `flex: 0 0 auto; white-space: nowrap; overflow-x: auto`, negative margin bleed to viewport edges, bigger tap targets, 3px active underline.
+
+8. **Stray "v6" in topbar.** `.topbar-version-tag` rendered between page title and brand switcher when on Brand Profile. On mobile the title truncates with ellipsis, leaving "v6" floating between unrelated elements. Hide on mobile via `display: none !important` — version is already shown in page body metadata.
+
+9. **Compliance Gate emoji status badges → colored dots.** Brand-wide visual system: status pills now render `● Approved` instead of `✅ Approved` etc. Pill becomes `inline-flex` with a 6px circle that uses `currentColor` to inherit the per-status text color (success green / warning amber / accent blue / error red). Same visual language as channel-tab connection dots on Performance Dashboard.
+
+10. **Content Generator batch progress chip — orphan `·`.** Each chip rendered `[title] [gap] · PUBLISHED` — the hardcoded middle-dot was redundant given the flex gap, and orphaned awkwardly when chips wrapped. Replaced with 5px colored dot via `::before` pseudo-element using `currentColor` — same visual language as the new Compliance Gate dots.
+
+11. **Integrations page comprehensive pass.** Existing mobile block had only 6 selectors. Page has 16+ layout-defining rules. Full expansion: brand bar stacks column with full-width selector, card-header switches from `space-between` to `flex-start` (stops awkward gap when wrapping), card-left/card-right go full-width to stack, title row wraps, status row full-width, tap-friendly button sizing, OAuth/Pipedream metadata wraps, form labels wrap, Cancel/Save buttons full-width column.
+
+### Key principles reinforced this session
+- **Verify class names exist in JSX before trusting CSS rules.** Inline-styled wrappers without classes are CSS ghosts.
+- **Inline styles override CSS class rules; mobile overrides need `!important`.**
+- **CSS source order matters.** When override targets a base rule defined LATER in the file, override every layout-defining property (`position`, `top`, `left`, `right`, `bottom`, `width`, `height`, `max-width`, `max-height`) even if you think the value will inherit cleanly.
+- **Audit before optimize.** Slow and steady reveals the real mess.
+- **Single source of truth for state.** Two parallel state variables tracking the same concept = drift = bugs.
+- **Three nested scroll contexts on mobile = no scroll works properly.** Collapse to one.
+- **Modal overlays with `inset: 0` need `top: 56px` + `align-items: flex-start` on mobile** to avoid topbar overlap.
+- **Flex-column children with mixed fixed/flexible heights need `flex-shrink: 0` on the fixed ones.**
+- **Colored dots beat emojis for status indicators** — use `currentColor`, no rendering inconsistencies, consistent visual system across the app.
+
+### Total session output
+- **120+ commits across all 4 branches** (main, production, Intel, strategy) — all consistent
+- **22/22 pages clean** by the structural audit
+- **8+ rounds of targeted polish** based on real iPhone testing
+- **Mobile experience went from "rough or unusable" to legitimately shippable.** Not perfect — there's always more polish — but the foundation is solid and the visual system is consistent enough that adding to it stays clean.
+
+---
+
+---
+
 ## Session — April 21-22, 2026
 
 ### Brand Intelligence — reverted over-engineered factualGround integration
