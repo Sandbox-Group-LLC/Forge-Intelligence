@@ -1236,14 +1236,43 @@
   }
 
   /* ── PREVIEW MODAL LAYOUT ──
-     grid 1fr 340px forces a 340px sidebar on a 380px iPhone — leaves no room
-     for content. Stack the two as full-width sections, sidebar moves below. */
-  .pq-preview-layout {
-    grid-template-columns: 1fr;
-    grid-template-rows: 1fr auto;
-    overflow-y: auto;
+     Three nested scroll contexts on desktop (modal, layout grid, article)
+     produce broken scrolling on mobile. Solution: ONE scroll context — the
+     modal itself — and let everything inside flow naturally as one tall column.
+     
+     The grid 1fr 340px forces a 340px sidebar on a 380px iPhone; we collapse to
+     single column. Article and sidebar both lose their inner overflow, become
+     flow content under the shared modal scroll. */
+  .pq-modal {
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
   }
 
+  .pq-preview-layout {
+    display: block !important;
+    grid-template-columns: 1fr;
+    overflow: visible !important;
+  }
+
+  .pq-preview-article {
+    overflow: visible !important;
+    border-right: none !important;
+    padding: 18px 16px !important;
+  }
+
+  .pq-preview-side {
+    overflow: visible !important;
+    padding: 16px !important;
+    border-top: 1px solid var(--color-border);
+    background: var(--color-bg-elevated);
+  }
+
+  /* Hero image: ensure it actually shows above content with proper spacing */
+  .pq-preview-hero {
+    margin-bottom: 16px;
+  }
+
+  /* Empty-image fallback box */
   .pq-preview-no-image {
     flex-direction: column;
     align-items: stretch;
@@ -1251,12 +1280,21 @@
     text-align: left;
   }
 
+  /* Sidebar section title (Post Copy / X / LinkedIn / etc) — needs to look
+     like a real section header on mobile since it's no longer in a sidebar */
   .pq-preview-side-title {
-    padding: 12px 14px;
-    border-top: 1px solid var(--color-border);
+    padding: 0 0 10px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--color-border-subtle);
+    font-size: 14px;
+  }
+  .pq-preview-side-title:not(:first-child) {
+    padding-top: 16px;
+    margin-top: 16px;
+    border-top: 1px solid var(--color-border-subtle);
   }
 
-  /* Copy channel label (Twitter/LinkedIn/etc): keep horizontal, just tighten */
+  /* Copy channel label: keep horizontal, tighten */
   .pq-copy-channel-label {
     flex-wrap: wrap;
     gap: 8px;
