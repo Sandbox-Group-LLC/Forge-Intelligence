@@ -241,6 +241,8 @@ export default function BrandSettingsPage() {
     } finally { setFgSaving(false); }
   };
 
+  const [csvImportMsg, setCsvImportMsg] = useState<{ kind: 'success' | 'error' | 'info'; text: string } | null>(null);
+
   const addAuthor = () => {
     setFactualGround(prev => ({
       ...prev,
@@ -249,6 +251,115 @@ export default function BrandSettingsPage() {
         bio: '', credentials: '', expertise: ''
       }]
     }));
+  };
+
+  // Bulk CSV import for enterprise rosters. Parses one row per author, dedupes
+  // against existing authors by case-insensitive name match (so re-importing
+  // an updated CSV updates fields rather than creating duplicates), and merges
+  // into the current author list. Uses native CSV parsing — no library —
+  // because the format is constrained and we don't ship Papa here.
+  const handleAuthorCsvImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // reset input so the same file can be re-imported
+    if (!file) return;
+    setCsvImportMsg({ kind: 'info', text: 'Parsing CSV…' });
+    try {
+      const text = await file.text();
+      // Parse CSV: handle quoted fields, escaped quotes, commas inside quotes.
+      const parseCsv = (raw: string): string[][] => {
+        const rows: string[][] = [];
+        let row: string[] = [];
+        let field = '';
+        let inQuotes = false;
+        for (let i = 0; i < raw.length; i++) {
+          const ch = raw[i];
+          if (inQuotes) {
+            if (ch === '"') {
+              if (raw[i + 1] === '"') { field += '"'; i++; } // escaped quote
+              else inQuotes = false;
+            } else { field += ch; }
+          } else {
+            if (ch === '"') inQuotes = true;
+            else if (ch === ',') { row.push(field); field = ''; }
+            else if (ch === '\n' || ch === '\r') {
+              if (field !== '' || row.length > 0) { row.push(field); rows.push(row); row = []; field = ''; }
+              if (ch === '\r' && raw[i + 1] === '\n') i++;
+            } else { field += ch; }
+          }
+        }
+        if (field !== '' || row.length > 0) { row.push(field); rows.push(row); }
+        return rows.filter(r => r.some(c => c && c.trim()));
+      };
+      const rows = parseCsv(text);
+      if (rows.length < 2) {
+        setCsvImportMsg({ kind: 'error', text: 'CSV needs at least a header row + 1 data row.' });
+        return;
+      }
+      // Header parse — case-insensitive, accepts variants
+      const headers = rows[0].map(h => h.trim().toLowerCase());
+      const colIdx: Record<string, number> = {};
+      const headerMap: Record<string, string[]> = {
+        name: ['name', 'full name', 'fullname'],
+        title: ['title', 'job title', 'role'],
+        linkedinUrl: ['linkedinurl', 'linkedin url', 'linkedin', 'linkedin_url'],
+        bio: ['bio', 'biography', 'about'],
+        credentials: ['credentials', 'creds', 'background'],
+        expertise: ['expertise', 'areas of expertise', 'expertise areas', 'topics']
+      };
+      for (const [key, aliases] of Object.entries(headerMap)) {
+        const idx = headers.findIndex(h => aliases.includes(h));
+        if (idx >= 0) colIdx[key] = idx;
+      }
+      if (colIdx.name === undefined) {
+        setCsvImportMsg({ kind: 'error', text: 'CSV must have a "name" column. Found: ' + headers.join(', ') });
+        return;
+      }
+      // Build new author records
+      const incoming = rows.slice(1).map(r => ({
+        name: (r[colIdx.name] || '').trim(),
+        title: (colIdx.title !== undefined ? r[colIdx.title] : '' || '').trim(),
+        linkedinUrl: (colIdx.linkedinUrl !== undefined ? r[colIdx.linkedinUrl] : '' || '').trim(),
+        bio: (colIdx.bio !== undefined ? r[colIdx.bio] : '' || '').trim(),
+        credentials: (colIdx.credentials !== undefined ? r[colIdx.credentials] : '' || '').trim(),
+        expertise: (colIdx.expertise !== undefined ? r[colIdx.expertise] : '' || '').trim(),
+      })).filter(a => a.name); // skip rows with no name
+      if (!incoming.length) {
+        setCsvImportMsg({ kind: 'error', text: 'No valid rows found (every row needs a name).' });
+        return;
+      }
+      // Merge: existing authors with matching name (case-insensitive) get updated;
+      // new names get appended.
+      setFactualGround(prev => {
+        const next = [...prev.authors];
+        let added = 0;
+        let updated = 0;
+        for (const inc of incoming) {
+          const lcName = inc.name.toLowerCase();
+          const existingIdx = next.findIndex(a => (a.name || '').toLowerCase() === lcName);
+          if (existingIdx >= 0) {
+            // Merge — only overwrite if the incoming value is non-empty
+            next[existingIdx] = {
+              ...next[existingIdx],
+              ...Object.fromEntries(Object.entries(inc).filter(([_, v]) => v))
+            };
+            updated++;
+          } else {
+            next.push({
+              id: `author-${Date.now()}-${added}`,
+              ...inc,
+            });
+            added++;
+          }
+        }
+        const parts: string[] = [];
+        if (added) parts.push(`${added} added`);
+        if (updated) parts.push(`${updated} updated`);
+        setCsvImportMsg({ kind: 'success', text: `Imported ${incoming.length} rows: ${parts.join(', ')}. Click Save to persist.` });
+        return { ...prev, authors: next };
+      });
+    } catch (err: any) {
+      setCsvImportMsg({ kind: 'error', text: 'Import failed: ' + (err?.message || 'unknown error') });
+    }
   };
 
   const updateAuthor = (id: string, field: keyof FactualGroundAuthor, value: string) => {
@@ -481,9 +592,21 @@ export default function BrandSettingsPage() {
                   <div className="bs-field">
                     <div className="fg-authors-header">
                       <label className="bs-label">Named Authors</label>
-                      <button className="fg-add-btn" onClick={addAuthor}>+ Add Author</button>
+                      <div className="fg-authors-actions">
+                        <label className="fg-csv-btn" title="Bulk import authors from a CSV file">
+                          ↑ Import CSV
+                          <input
+                            type="file"
+                            accept=".csv,text/csv"
+                            onChange={handleAuthorCsvImport}
+                            style={{ display: 'none' }}
+                          />
+                        </label>
+                        <button className="fg-add-btn" onClick={addAuthor}>+ Add Author</button>
+                      </div>
                     </div>
-                    <p className="bs-field-hint">Real people with real credentials. Fills the <code>name: null</code> gap in schema markup and gives the writer legitimate authority to reference.</p>
+                    <p className="bs-field-hint">Real people with real credentials. Fills the <code>name: null</code> gap in schema markup and gives the writer legitimate authority to reference. <strong>CSV format:</strong> headers <code>name, title, linkedinUrl, bio, credentials, expertise</code> (only <code>name</code> required).</p>
+                    {csvImportMsg && <p className={`fg-csv-msg ${csvImportMsg.kind}`}>{csvImportMsg.text}</p>}
 
                     {factualGround.authors.map(author => (
                       <div key={author.id} className="fg-author-card">
