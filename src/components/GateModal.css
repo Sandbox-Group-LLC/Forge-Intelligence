@@ -32,13 +32,16 @@
   margin: auto;
 }
 
-@media (max-width: 540px) {
+@media (max-width: 768px) {
   .gate-modal {
     padding: 28px 24px;
     border-radius: 12px;
+    max-height: calc(100vh - 72px);
   }
+  /* Push backdrop below the 56px mobile topbar so the gate doesn't slide under it */
   .gate-backdrop {
-    padding: 16px;
+    top: 56px;
+    padding: 16px 12px;
     align-items: flex-start;
   }
 }
