@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AppShell } from '../layouts/AppShell';
 import { useApp } from '../context/AppContext';
 import './ContentGeneratorPage.css';
@@ -149,17 +149,17 @@ function ContentGeneratorContent() {
   // If no param, they see the full batch and pick what to work on next.
   // The only way to see a previously-generated article is via Content Library, where it belongs.
 
-  useEffect(() => {
-    if (!selectedBrainId) { setBriefs([]); setSelectedBriefId(''); return; }
-    if (!authToken) return;
-    loadIdeas(selectedBrainId);
-    // Use new endpoint with topic + cherry-pick session context
-    fetch(`/api/content-generator/enriched-briefs/${selectedBrainId}`, { headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {} })
+  // Brief fetcher — refactored to support refetching on tab focus and explicit triggers.
+  // Original bug: useEffect only fired on mount + selectedBrainId/authToken change. If user
+  // enriched a brief in another tab/page and came back, briefs state was stale and the new
+  // brief never appeared. Now the fetcher reruns on visibilitychange + window focus events.
+  const fetchBriefs = React.useCallback(() => {
+    if (!selectedBrainId || !authToken) return;
+    fetch(`/api/content-generator/enriched-briefs/${selectedBrainId}`, { headers: { 'Authorization': `Bearer ${authToken}` } })
       .then(r => r.json())
       .then(d => {
         if (d.success) {
           setBriefs(d.briefs || []);
-          // Clean URL once we've captured the pre-selection
           if (typeof window !== 'undefined') {
             const urlObj = new URL(window.location.href);
             if (urlObj.searchParams.has('enrichedBriefId')) {
@@ -168,10 +168,31 @@ function ContentGeneratorContent() {
             }
           }
         }
-      });
-
-
+      })
+      .catch(() => { /* non-fatal */ });
   }, [selectedBrainId, authToken]);
+
+  useEffect(() => {
+    if (!selectedBrainId) { setBriefs([]); setSelectedBriefId(''); return; }
+    if (!authToken) return;
+    loadIdeas(selectedBrainId);
+    fetchBriefs();
+  }, [selectedBrainId, authToken]);
+
+  // Refetch when tab regains visibility (user switched away to enrich, then came back)
+  // and on window focus. Both cover the workflow where the user navigates between
+  // pages or tabs without unmounting Content Generator.
+  useEffect(() => {
+    if (!selectedBrainId || !authToken) return;
+    const onVis = () => { if (document.visibilityState === 'visible') fetchBriefs(); };
+    const onFocus = () => fetchBriefs();
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [selectedBrainId, authToken, fetchBriefs]);
 
   const checkTopic = async () => {
     if (!selectedBrainId || !topicPrompt.trim()) { setPreflight({ status: 'idle' }); return; }
