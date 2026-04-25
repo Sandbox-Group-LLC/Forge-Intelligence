@@ -5162,6 +5162,30 @@ Respond with this exact JSON structure:
       console.log('[ENRICH] Author schema FG override failed (non-fatal):', e.message);
     }
 
+    // ── Author propagation (Phase 1 authorship handoff) ─────────────────
+    // The brief carries an optional assignedAuthor snapshot from the GEO Strategist.
+    // We propagate it into enrichedData so the Content Generator (next stage) can
+    // condition on this specific SME without doing brand-level lookup. If no
+    // assignedAuthor was set at brief time, this is null and downstream falls
+    // back to factualGround.authors[0] as before (backward compat).
+    const assignedAuthor = (geoBrief && geoBrief.assignedAuthor) ? geoBrief.assignedAuthor : null;
+    if (assignedAuthor && assignedAuthor.name) {
+      finalAuthorSchema = {
+        '@type': 'Person',
+        name: assignedAuthor.name,
+        jobTitle: assignedAuthor.title || finalAuthorSchema?.jobTitle || null,
+        description: assignedAuthor.bio || finalAuthorSchema?.description || null,
+        knowsAbout: assignedAuthor.expertise
+          ? assignedAuthor.expertise.split(',').map(s => s.trim()).filter(Boolean)
+          : (finalAuthorSchema?.knowsAbout || []),
+        sameAs: assignedAuthor.linkedinUrl ? [assignedAuthor.linkedinUrl] : (finalAuthorSchema?.sameAs || []),
+        ...(assignedAuthor.credentials ? {
+          hasCredential: assignedAuthor.credentials.split(/[,.]/).map(s => s.trim()).filter(Boolean)
+        } : {})
+      };
+      console.log(`[ENRICH] authorSchema overridden by assignedAuthor: ${assignedAuthor.name}`);
+    }
+
     const enrichedData = {
       eeatScores: scorerData.scores,
       overallEEATScore: scorerData.overallEEATScore,
@@ -5174,9 +5198,12 @@ Respond with this exact JSON structure:
       voiceConsistencyScore: injectionData.voiceConsistencyScore,
       ...assembledBrief,
       // ── Factual Ground author schema comes AFTER assembledBrief spread ──
-      // This guarantees our deterministic schema wins over whatever Tool 4 hallucinated
+      // This guarantees our deterministic schema wins over whatever Tool 4 hallucinated.
+      // Phase 1: If brief had an assignedAuthor, that author overrode finalAuthorSchema above.
       authorSchema: finalAuthorSchema,
       authorSchemaMarkup: finalAuthorSchema,
+      // Carry the full assigned author snapshot through to the generator stage
+      assignedAuthor,
       sonarSignals,
       manualInputsProvided: manualInputs,
       // If source is a topic brief, don't write its ID into geo_brief_id column (different table)
@@ -5799,7 +5826,11 @@ ${factualGround.methodology ? `METHODOLOGY / APPROACH (describe in these terms):
 ${factualGround.foundingStory ? `FOUNDING STORY (reference only these details):\n${factualGround.foundingStory}\n` : ''}
 ${factualGround.teamComposition ? `TEAM (only reference these people/roles):\n${factualGround.teamComposition}\n` : ''}
 ${factualGround.quotablePositions ? `QUOTABLE POSITIONS (use these phrases verbatim when making bold claims):\n${factualGround.quotablePositions}\n` : ''}
-${factualGround.authors && factualGround.authors.length ? `NAMED AUTHORS (use ONLY these people for author attribution, credentials, and bylines):\n${factualGround.authors.map(a => `  • ${a.name || '[unnamed]'} — ${a.title || ''}\n    LinkedIn: ${a.linkedinUrl || 'N/A'}\n    Bio: ${a.bio || 'N/A'}\n    Credentials: ${a.credentials || 'N/A'}\n    Expertise: ${a.expertise || 'N/A'}`).join('\n\n')}\n` : ''}
+${(() => {
+  const assigned = enrichedBrief?.assignedAuthor;
+  const authorsToUse = (assigned && assigned.name) ? [assigned] : (factualGround.authors || []);
+  return authorsToUse.length ? `NAMED AUTHOR${authorsToUse.length > 1 ? 'S' : ''} (use ${authorsToUse.length > 1 ? 'ONLY these people' : 'this person'} for author attribution, credentials, and bylines):\n${authorsToUse.map(a => `  • ${a.name || '[unnamed]'} — ${a.title || ''}\n    LinkedIn: ${a.linkedinUrl || 'N/A'}\n    Bio: ${a.bio || 'N/A'}\n    Credentials: ${a.credentials || 'N/A'}\n    Expertise: ${a.expertise || 'N/A'}`).join('\n\n')}\n` : '';
+})()}
 ═══════════════════════════════════════════════════════════════════════════
 `
       : '';
@@ -6004,7 +6035,11 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
 async function enrichAngleForCampaign({ angle, profileData, factualGround, brainPatterns, brainMistakes, brandName }) {
   const fgBlock = factualGround && Object.values(factualGround).some(v => v && (typeof v === 'string' ? v.trim() : (Array.isArray(v) && v.length)))
     ? `FACTUAL GROUND (verbatim, do not contradict):
-${factualGround.whatWeDo ? `- What this company does: ${factualGround.whatWeDo}\n` : ''}${factualGround.whatWeDontDo ? `- What this company does NOT do: ${factualGround.whatWeDontDo}\n` : ''}${factualGround.companyFacts ? `- Company facts: ${factualGround.companyFacts}\n` : ''}${factualGround.foundingStory ? `- Founding: ${factualGround.foundingStory}\n` : ''}${factualGround.methodology ? `- Methodology: ${factualGround.methodology}\n` : ''}${factualGround.authors?.length ? `- Named authors/SMEs: ${factualGround.authors.map(a => `${a.name} (${a.title || 'unspecified'})`).join('; ')}\n` : ''}`
+${factualGround.whatWeDo ? `- What this company does: ${factualGround.whatWeDo}\n` : ''}${factualGround.whatWeDontDo ? `- What this company does NOT do: ${factualGround.whatWeDontDo}\n` : ''}${factualGround.companyFacts ? `- Company facts: ${factualGround.companyFacts}\n` : ''}${factualGround.foundingStory ? `- Founding: ${factualGround.foundingStory}\n` : ''}${factualGround.methodology ? `- Methodology: ${factualGround.methodology}\n` : ''}${(() => {
+  const assigned = enrichedBrief?.assignedAuthor;
+  const list = (assigned && assigned.name) ? [assigned] : (factualGround.authors || []);
+  return list.length ? `- ${list.length > 1 ? 'Named authors/SMEs' : 'Assigned author'}: ${list.map(a => `${a.name} (${a.title || 'unspecified'})`).join('; ')}\n` : '';
+})()}`
     : '';
   const patternsBlock = brainPatterns?.length
     ? `BRAIN PATTERNS (successful approaches — emulate these):\n${brainPatterns.slice(0,5).map(p => `- [${p.pattern_type}] ${p.description}`).join('\n')}`
@@ -6063,10 +6098,13 @@ Return ONLY the JSON object.`;
   const parsed = safeParseLLM(match ? match[0] : raw, 'object', 'campaign-angle-enrichment');
 
   // Attach author schema from factualGround if the LLM didn't emit one
-  if ((!parsed.authorSchema || !parsed.authorSchema.name) && factualGround?.authors?.length) {
+  if ((!parsed.authorSchema || !parsed.authorSchema.name) && (enrichedBrief?.assignedAuthor || factualGround?.authors?.length)) {
+    const fallbackAuthor = enrichedBrief?.assignedAuthor && enrichedBrief.assignedAuthor.name
+      ? enrichedBrief.assignedAuthor
+      : factualGround.authors[0];
     parsed.authorSchema = {
-      name: factualGround.authors[0].name || null,
-      jobTitle: factualGround.authors[0].title || null
+      name: fallbackAuthor.name || null,
+      jobTitle: fallbackAuthor.title || null
     };
   }
 
@@ -6506,7 +6544,11 @@ ${factualGround.methodology ? `METHODOLOGY / APPROACH (describe in these terms):
 ${factualGround.foundingStory ? `FOUNDING STORY (reference only these details):\n${factualGround.foundingStory}\n` : ''}
 ${factualGround.teamComposition ? `TEAM (only reference these people/roles):\n${factualGround.teamComposition}\n` : ''}
 ${factualGround.quotablePositions ? `QUOTABLE POSITIONS (use these phrases verbatim when making bold claims):\n${factualGround.quotablePositions}\n` : ''}
-${factualGround.authors && factualGround.authors.length ? `NAMED AUTHORS (use ONLY these people for author attribution, credentials, and bylines):\n${factualGround.authors.map(a => `  • ${a.name || '[unnamed]'} — ${a.title || ''}\n    LinkedIn: ${a.linkedinUrl || 'N/A'}\n    Bio: ${a.bio || 'N/A'}\n    Credentials: ${a.credentials || 'N/A'}\n    Expertise: ${a.expertise || 'N/A'}`).join('\n\n')}\n` : ''}
+${(() => {
+  const assigned = enrichedBrief?.assignedAuthor;
+  const authorsToUse = (assigned && assigned.name) ? [assigned] : (factualGround.authors || []);
+  return authorsToUse.length ? `NAMED AUTHOR${authorsToUse.length > 1 ? 'S' : ''} (use ${authorsToUse.length > 1 ? 'ONLY these people' : 'this person'} for author attribution, credentials, and bylines):\n${authorsToUse.map(a => `  • ${a.name || '[unnamed]'} — ${a.title || ''}\n    LinkedIn: ${a.linkedinUrl || 'N/A'}\n    Bio: ${a.bio || 'N/A'}\n    Credentials: ${a.credentials || 'N/A'}\n    Expertise: ${a.expertise || 'N/A'}`).join('\n\n')}\n` : '';
+})()}
 ═══════════════════════════════════════════════════════════════════════════
 `
       : '';
