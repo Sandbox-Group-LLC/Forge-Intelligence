@@ -1707,7 +1707,7 @@ return (
               </div>
 
               {/* Editing hint — route back to Compliance Gate for deeper edits */}
-              <div style={{
+              <div className="pq-modal-edit-hint" style={{
                 padding: '10px 20px',
                 background: 'rgba(59, 130, 246, 0.06)',
                 borderBottom: '1px solid rgba(59, 130, 246, 0.15)',
