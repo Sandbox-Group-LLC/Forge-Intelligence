@@ -535,6 +535,22 @@
     gap: 12px;
   }
 
+  /* Version card — stack metadata vertically rather than cramming inline */
+  .version-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .version-meta .meta-divider {
+    display: none;
+  }
+
+  /* Diff panel — full-width on mobile */
+  .diff-panel {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
   @keyframes slideUp {
     from {
       opacity: 0;
