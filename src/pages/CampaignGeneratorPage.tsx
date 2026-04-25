@@ -417,11 +417,12 @@ function CampaignGeneratorContent() {
             {/* Campaign storyline picker — Context Hub arcs are the default entry point. */}
             {!customPromptMode && (
               <>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <div className="camp-section-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                   <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary, #1e293b)' }}>
                     Pick a campaign storyline
                   </span>
                   <button
+                    className="camp-section-toggle"
                     type="button"
                     onClick={() => { setCustomPromptMode(true); setSelectedArcId(''); }}
                     style={{ background: 'none', border: 'none', color: 'var(--color-accent, #3563FF)', cursor: 'pointer', fontSize: 12, padding: 0, textDecoration: 'underline' }}
@@ -490,12 +491,13 @@ function CampaignGeneratorContent() {
             )}
             {customPromptMode && (
               <>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <div className="camp-section-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                   <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary, #1e293b)' }}>
                     Describe your campaign
                   </span>
                   {campaignArcs.length > 0 && (
                     <button
+                      className="camp-section-toggle"
                       type="button"
                       onClick={() => { setCustomPromptMode(false); setTopicPrompt(''); setPreflight({ status: 'idle' }); }}
                       style={{ background: 'none', border: 'none', color: 'var(--color-accent, #3563FF)', cursor: 'pointer', fontSize: 12, padding: 0, textDecoration: 'underline' }}
@@ -547,7 +549,7 @@ function CampaignGeneratorContent() {
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: 12 }}>Recent Campaigns</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {pastCampaigns.slice(0, 5).map((camp: {id:string;name:string;topic_cluster:string;status:string;completed_count:number;created_at:string}) => (
-              <button key={camp.id} onClick={() => loadCampaign(camp.id)}
+              <button className="camp-past-card" key={camp.id} onClick={() => loadCampaign(camp.id)}
                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--color-bg-card)', border: 'none', borderRadius: 10, boxShadow: 'var(--shadow-card)', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 2 }}>{camp.name || camp.topic_cluster}</div>
@@ -690,8 +692,9 @@ function CampaignGeneratorContent() {
           )}
         {/* Compliance CTA — shown when all 8 articles complete */}
         {completedCount < 8 && activeCampaignId && step === 'complete' && (
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 24, paddingTop: 24, borderTop: '1px solid var(--color-border)' }}>
+          <div className="camp-footer-actions" style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 24, paddingTop: 24, borderTop: '1px solid var(--color-border)' }}>
             <button
+              className="camp-footer-btn camp-footer-btn-primary"
               onClick={() => resumeGeneration(activeCampaignId)}
               style={{ padding: '10px 24px', background: 'var(--color-accent)', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}
             >
@@ -701,8 +704,9 @@ function CampaignGeneratorContent() {
         )}
 
         {completedCount === 8 && (
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 24, paddingTop: 24, borderTop: '1px solid var(--color-border)' }}>
+          <div className="camp-footer-actions" style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 24, paddingTop: 24, borderTop: '1px solid var(--color-border)' }}>
             <button
+              className="camp-footer-btn"
               onClick={() => {
                 localStorage.removeItem('forge_campaign_state');
                 setPlan(null); setArticleStatuses([]); setStep('setup');
@@ -712,6 +716,7 @@ function CampaignGeneratorContent() {
               New Campaign
             </button>
             <button
+              className="camp-footer-btn camp-footer-btn-success"
               onClick={() => window.location.href = '/app/compliance-gate'}
               style={{ padding: '10px 24px', background: '#10b981', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}
             >
