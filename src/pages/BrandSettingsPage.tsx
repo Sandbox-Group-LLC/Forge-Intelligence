@@ -316,12 +316,12 @@ export default function BrandSettingsPage() {
       }
       // Build new author records
       const incoming = rows.slice(1).map(r => ({
-        name: (r[colIdx.name] || '').trim(),
-        title: (colIdx.title !== undefined ? r[colIdx.title] : '' || '').trim(),
-        linkedinUrl: (colIdx.linkedinUrl !== undefined ? r[colIdx.linkedinUrl] : '' || '').trim(),
-        bio: (colIdx.bio !== undefined ? r[colIdx.bio] : '' || '').trim(),
-        credentials: (colIdx.credentials !== undefined ? r[colIdx.credentials] : '' || '').trim(),
-        expertise: (colIdx.expertise !== undefined ? r[colIdx.expertise] : '' || '').trim(),
+        name: ((r[colIdx.name] || '') as string).trim(),
+        title: ((colIdx.title !== undefined ? r[colIdx.title] : '') || '').trim(),
+        linkedinUrl: ((colIdx.linkedinUrl !== undefined ? r[colIdx.linkedinUrl] : '') || '').trim(),
+        bio: ((colIdx.bio !== undefined ? r[colIdx.bio] : '') || '').trim(),
+        credentials: ((colIdx.credentials !== undefined ? r[colIdx.credentials] : '') || '').trim(),
+        expertise: ((colIdx.expertise !== undefined ? r[colIdx.expertise] : '') || '').trim(),
       })).filter(a => a.name); // skip rows with no name
       if (!incoming.length) {
         setCsvImportMsg({ kind: 'error', text: 'No valid rows found (every row needs a name).' });
