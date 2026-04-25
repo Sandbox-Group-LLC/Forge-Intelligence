@@ -370,3 +370,102 @@
 }
 .faq-q { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
 .faq-a { font-size: 13px; color: var(--color-text-secondary); line-height: 1.5; }
+
+/* ── Mobile (<=768px) ──────────────────────────────────────────────────────
+   Authenticity Enricher mobile: header stacks, action rows go column with
+   full-width buttons. Class-targeted rules that defeat inline styles via
+   !important. */
+@media (max-width: 768px) {
+  /* Page title sizes down */
+  .geo-title { font-size: 1.5rem; line-height: 1.2; }
+  .geo-description { font-size: 0.875rem; }
+
+  /* Geo header stacks */
+  .geo-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 16px;
+  }
+
+  /* Header action row — score badge + re-run + continue → stack column */
+  .ae-header-actions {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100%;
+    gap: 8px !important;
+  }
+  .ae-header-actions .geo-score-badge {
+    align-self: flex-start;
+    padding: 8px 14px;
+  }
+  .ae-action-btn {
+    width: 100% !important;
+    height: auto !important;
+    padding: 12px 14px !important;
+    font-size: 13px !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Manual correction form */
+  .ae-form-header {
+    gap: 8px;
+  }
+
+  /* High-severity gap grid → single column */
+  .ae-gap-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Form action row — Re-run + Skip stack column */
+  .ae-form-actions {
+    flex-direction: column !important;
+    width: 100%;
+    gap: 8px !important;
+  }
+  .ae-form-action-btn {
+    width: 100% !important;
+    padding: 12px 14px !important;
+    font-size: 13px !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Input bar (uses .geo-input-bar from GeoStrategistPage.css) — column on mobile */
+  .geo-input-bar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+  .geo-select-wrap, .geo-select {
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  .geo-run-btn {
+    width: 100% !important;
+    justify-content: center !important;
+    padding: 12px 16px !important;
+  }
+
+  /* Tabs (.geo-tabs) — horizontal scroll strip if present */
+  .geo-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
+  }
+  .geo-tabs::-webkit-scrollbar { display: none; }
+  .geo-tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  /* Stage list (.geo-stages) — reduce padding */
+  .geo-stage {
+    padding: 12px 0;
+  }
+
+  /* Topic banner */
+  .enrich-topic-banner {
+    font-size: 13px;
+    padding: 10px 12px;
+  }
+}
