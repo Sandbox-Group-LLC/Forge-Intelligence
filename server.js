@@ -1541,12 +1541,15 @@ app.get('/preview/:brandId', async (req, res) => {
     .moat:last-child, .gap:last-child, .rec:last-child { border-bottom: 1px solid var(--rule); }
     .moat .num, .gap .num, .rec .num {
       font-family: 'Inter', sans-serif;
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 700;
-      letter-spacing: 0.15em;
+      letter-spacing: 0.18em;
       color: var(--gold);
-      margin-bottom: 8px;
-      display: block;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+      display: inline-block;
+      padding-bottom: 4px;
+      border-bottom: 1px solid var(--gold);
     }
     .moat .capability { font-weight: 500; color: var(--ink); margin-bottom: 6px; font-size: 17px; line-height: 1.4; }
     .moat .protects-label, .gap .owner-label, .rec .meta-label {
@@ -1584,24 +1587,53 @@ app.get('/preview/:brandId', async (req, res) => {
     .gap .topic { font-weight: 500; color: var(--ink); font-size: 17px; line-height: 1.4; display: inline; }
     .gap .whitespace { margin-top: 14px; color: var(--ink-soft); font-style: italic; }
 
-    /* Recs — effort/impact matrix */
+    /* Recs — unified badge system.
+       All three badges (category, impact, effort) share a consistent shape and
+       typography. Color treatment is the only signal of severity:
+       - Category: accent (always, identifies the type of move)
+       - Impact: traffic-light tinted by level (high=green, medium=amber, low=grey)
+       - Effort: same traffic-light, inverted (low effort=green, high=amber)
+       The dot prefix gives each badge a colored anchor that reads instantly. */
     .rec .rec-meta {
       display: flex;
-      gap: 16px;
-      margin-bottom: 10px;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+    .rec .tag,
+    .rec [class*="tag-"] {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 10px;
+      border-radius: 6px;
       font-family: 'Inter', sans-serif;
       font-size: 10px;
       font-weight: 600;
-      letter-spacing: 0.15em;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
+      line-height: 1.2;
     }
-    .rec .tag { padding: 3px 10px; border-radius: 3px; }
+    .rec .tag::before,
+    .rec [class*="tag-"]::before {
+      content: '';
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: currentColor;
+      flex-shrink: 0;
+      opacity: 0.85;
+    }
+    /* Category — accent-tinted, neutral signal of the move type */
     .tag-category { background: var(--accent-soft); color: var(--accent); }
-    .tag-impact-high { background: #D1FAE5; color: #065F46; }
+    /* Impact — green (high) → amber (medium) → grey (low) */
+    .tag-impact-high   { background: #D1FAE5; color: #047857; }
     .tag-impact-medium { background: #FEF3C7; color: #92400E; }
-    .tag-effort-low { color: var(--ink-muted); }
-    .tag-effort-medium { color: var(--ink-muted); }
-    .tag-effort-high { color: var(--ink-muted); }
+    .tag-impact-low    { background: #F3F4F6; color: #4B5563; }
+    /* Effort — INVERTED: low effort (good!) reads green, high effort reads amber */
+    .tag-effort-low    { background: #D1FAE5; color: #047857; }
+    .tag-effort-medium { background: #F3F4F6; color: #4B5563; }
+    .tag-effort-high   { background: #FEF3C7; color: #92400E; }
     .rec .title { font-weight: 500; color: var(--ink); font-size: 19px; line-height: 1.35; margin-bottom: 10px; }
     .rec .description { color: var(--ink-soft); font-size: 16px; }
 
@@ -1764,8 +1796,8 @@ app.get('/preview/:brandId', async (req, res) => {
           <span class="num">Recommendation ${String(i + 1).padStart(2, '0')}</span>
           <div class="rec-meta">
             ${r.category ? `<span class="tag tag-category">${esc(r.category)}</span>` : ''}
-            ${r.impact ? `<span class="tag tag-impact-${esc(r.impact)}">Impact: ${esc(r.impact)}</span>` : ''}
-            ${r.effort ? `<span class="tag-effort-${esc(r.effort)}">Effort: ${esc(r.effort)}</span>` : ''}
+            ${r.impact ? `<span class="tag tag-impact-${esc(r.impact)}">Impact ${esc(r.impact)}</span>` : ''}
+            ${r.effort ? `<span class="tag tag-effort-${esc(r.effort)}">Effort ${esc(r.effort)}</span>` : ''}
           </div>
           <div class="title">${esc(r.title || '')}</div>
           ${r.description ? `<p class="description">${esc(r.description)}</p>` : ''}
