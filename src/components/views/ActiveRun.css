@@ -395,6 +395,7 @@
   .run-header {
     flex-direction: column;
     gap: 16px;
+    align-items: stretch;
   }
 
   .elapsed-time {
@@ -403,5 +404,27 @@
 
   .signals-grid {
     grid-template-columns: 1fr;
+  }
+
+  /* Stage timing row — vertical stack so timing values don't compress */
+  .stage-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  /* Stage detail metadata — wrap and shrink on mobile */
+  .stage-detail {
+    font-size: 12px;
+    flex-wrap: wrap;
+  }
+
+  /* Cancel/finish button row */
+  .run-actions {
+    flex-direction: column-reverse;
+    width: 100%;
+  }
+  .run-actions button {
+    width: 100%;
   }
 }
