@@ -1652,6 +1652,37 @@
   margin-bottom: 8px;
 }
 
+/* ── Controls row (sort + archive toggle) ──
+   Replaces the old archive-only wrapper. Lives at the top of the queue list. */
+.pq-controls-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.pq-sort-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  background: var(--color-bg-card);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+.pq-sort-toggle:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
 .pq-archive-toggle {
   display: flex;
   align-items: center;
