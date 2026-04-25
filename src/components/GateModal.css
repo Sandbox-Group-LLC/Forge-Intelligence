@@ -36,7 +36,7 @@
   .gate-modal {
     padding: 28px 24px;
     border-radius: 12px;
-    max-height: calc(100vh - 72px);
+    max-height: calc(100dvh - 72px);
   }
   /* Push backdrop below the 56px mobile topbar so the gate doesn't slide under it */
   .gate-backdrop {
