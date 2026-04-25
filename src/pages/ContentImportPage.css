@@ -271,3 +271,23 @@
   color: var(--color-text-muted);
   text-align: center;
 }
+
+/* ── Mobile (<=768px) ──────────────────────────────────────────────────────
+   Content Import mobile rules. Page had ZERO breakpoints. */
+@media (max-width: 768px) {
+  /* Verdict banner: gap 28px horizontal → stack column */
+  .ci-verdict-banner {
+    flex-direction: column;
+    gap: 16px;
+    padding: 16px 18px;
+  }
+
+  /* Result actions: wrap → stack column with full-width */
+  .ci-result-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .ci-result-actions > * {
+    width: 100%;
+  }
+}
