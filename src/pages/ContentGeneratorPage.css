@@ -809,3 +809,156 @@
   color: #059669;
   border: 1px solid rgba(16, 185, 129, 0.2);
 }
+
+
+/* ── Mobile (<=768px) ──────────────────────────────────────────────────────
+   Content Generator mobile: meta-bar wraps, tabs become horizontal scroll
+   strip, batch grid collapses to 1-column, sections reduce padding, idea
+   drawer goes full-width sheet. */
+@media (max-width: 768px) {
+  /* Meta bar wraps and tabs go to a new line — already has flex-wrap, just adjust spacing */
+  .cg-meta-bar {
+    gap: 12px;
+    padding: 10px 0;
+  }
+  .cg-meta-item {
+    font-size: 12px;
+  }
+
+  /* Tabs: horizontal scroll strip rather than wrap, since they have an active state
+     and side-by-side reads as tabs while wrapped reads as a list */
+  .cg-tabs {
+    margin-left: 0;
+    width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+  .cg-tabs::-webkit-scrollbar { display: none; }
+  .cg-tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 6px 12px;
+    font-size: 11px;
+  }
+
+  /* Batch grid: single column, since 240px min would leave only 1-2 columns at most
+     mobile widths anyway and a single full-width column reads cleaner */
+  .cg-batch-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .cg-batch-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .cg-batch-card-top {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* Batch progress chips wrap aggressively */
+  .cg-batch-progress-chips {
+    gap: 6px;
+  }
+  .cg-batch-progress-chip-status {
+    font-size: 10px;
+  }
+
+  /* Section card — reduce padding on mobile, keep left-border accent */
+  .cg-section {
+    padding: 16px 16px 16px 18px;
+    border-radius: 8px;
+  }
+
+  .cg-section-header {
+    gap: 6px;
+  }
+
+  .cg-section-heading {
+    font-size: 1rem;
+    line-height: 1.35;
+  }
+
+  .cg-section-body {
+    font-size: 0.9375rem;
+  }
+
+  /* Article view */
+  .cg-article {
+    padding: 16px;
+  }
+  .cg-article-title {
+    font-size: 1.5rem;
+    line-height: 1.2;
+  }
+  .cg-article-hero {
+    border-radius: 8px;
+  }
+
+  /* Confidence badge sizes down */
+  .cg-confidence-badge {
+    font-size: 10px;
+    padding: 2px 6px;
+  }
+
+  /* Injection tags wrap */
+  .cg-injections {
+    gap: 6px;
+  }
+  .cg-injection-tag {
+    font-size: 10px;
+    padding: 2px 6px;
+  }
+
+  /* Idea drawer becomes a full-width bottom sheet on mobile */
+  .cg-idea-drawer {
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    top: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 16px 16px 0 0;
+    max-height: 85vh;
+  }
+  .cg-idea-drawer-header {
+    padding: 14px 16px;
+  }
+  .cg-idea-drawer-title {
+    font-size: 1.0625rem;
+  }
+  .cg-idea-drawer-sub {
+    font-size: 0.75rem;
+  }
+
+  .cg-panel {
+    padding: 14px;
+  }
+  .cg-panel-row {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* Stream loading state — keep visible but compact */
+  .cg-stream-header {
+    padding: 10px 14px;
+    font-size: 12px;
+  }
+  .cg-stream-body {
+    padding: 14px;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  /* SME hooks reduce padding */
+  .cg-sme-hook {
+    font-size: 11px;
+    padding: 6px 10px;
+  }
+}
