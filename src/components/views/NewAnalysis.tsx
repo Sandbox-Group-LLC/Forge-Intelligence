@@ -97,7 +97,7 @@ export function NewAnalysis() {
             </svg>
             <span>Your Brain is ready. Start with your <strong>Strategy Brief</strong> — competitive gaps, personas, and strategic recommendations for your brand.</span>
           </div>
-          <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+          <div className="staleness-banner-actions" style={{ display: 'flex', gap: '8px' }}>
             <button onClick={() => setCurrentView('strategy')} className="staleness-refresh-btn" style={{ borderColor: 'var(--color-accent)', color: 'var(--color-accent)', cursor: 'pointer', background: 'none', border: '1px solid var(--color-accent)' }}>
               View Strategy Brief →
             </button>
