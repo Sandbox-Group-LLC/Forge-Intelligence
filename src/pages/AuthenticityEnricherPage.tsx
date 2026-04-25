@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { AppShell } from '../layouts/AppShell';
 import { useApp } from '../context/AppContext';
+import './GeoStrategistPage.css';
 import './AuthenticityEnricherPage.css';
 import GateModal from '../components/GateModal';
 import '../components/GateModal.css';
@@ -352,7 +353,7 @@ function AuthenticityEnricherContent() {
           </p>
         </div>
         {result && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="ae-header-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div className="geo-score-badge" style={{
               background: result.confidenceScore >= 75 ? 'var(--color-accent-muted)' : result.confidenceScore >= 50 ? '#F5F3FF' : '#FFF7ED',
               border: `1px solid ${result.confidenceScore >= 75 ? 'var(--color-accent-70)' : result.confidenceScore >= 50 ? '#C4B5FD' : '#FDBA74'}`
@@ -360,10 +361,10 @@ function AuthenticityEnricherContent() {
               <div className="score-value" style={{ color: result.confidenceScore >= 75 ? 'var(--color-accent)' : result.confidenceScore >= 50 ? '#7C3AED' : '#EA580C' }}>{result.confidenceScore}</div>
               <div className="score-label">E-E-A-T Score</div>
             </div>
-            <button onClick={() => { setResult(null); }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
+            <button className="ae-action-btn" onClick={() => { setResult(null); }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
               Re-run Enrichment
             </button>
-            <button onClick={() => { window.location.href = result?.id ? `/app/content-generator?enrichedBriefId=${encodeURIComponent(result.id)}` : '/app/content-generator'; }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, borderRadius: 8, background: '#4F46E5', color: '#fff', border: '1px solid #4F46E5', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
+            <button className="ae-action-btn ae-action-btn-primary" onClick={() => { window.location.href = result?.id ? `/app/content-generator?enrichedBriefId=${encodeURIComponent(result.id)}` : '/app/content-generator'; }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, borderRadius: 8, background: '#4F46E5', color: '#fff', border: '1px solid #4F46E5', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
               Continue to Content Generator →
             </button>
           </div>
@@ -536,7 +537,7 @@ function AuthenticityEnricherContent() {
               enricher found no explicit gaps. Gap fields render conditionally below. */}
           {showManualForm && result && (
             <div style={{ background: '#F5B94208', border: '1px solid #F5B94230', borderRadius: '12px', padding: '20px 24px', marginBottom: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+              <div className="ae-form-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                     <AlertTriangle size={16} color="#F5B942" />
@@ -551,7 +552,7 @@ function AuthenticityEnricherContent() {
                 </button>
               </div>
               {result.gaps && result.gaps.filter(g => g.severity === 'high').length > 0 && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
+              <div className="ae-gap-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
                 {result.gaps.filter(g => g.severity === 'high').map((gap, i) => {
                   const Icon = GAP_ICONS[gap.gapType] || FileText;
                   return (
@@ -607,8 +608,9 @@ function AuthenticityEnricherContent() {
                   }}
                 />
               </div>
-              <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+              <div className="ae-form-actions" style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
                 <button
+                  className="ae-form-action-btn ae-form-action-btn-primary"
                   onClick={() => runAnalysis(true)}
                   disabled={isRunning || Object.keys(manualInputs).every(k => !manualInputs[k])}
                   style={{ background: '#3563FF', border: 'none', borderRadius: '8px', padding: '8px 20px', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
@@ -616,6 +618,7 @@ function AuthenticityEnricherContent() {
                   Re-run with my inputs
                 </button>
                 <button
+                  className="ae-form-action-btn"
                   onClick={() => setShowManualForm(false)}
                   style={{ background: 'transparent', border: '1px solid var(--color-border)', borderRadius: '8px', padding: '8px 16px', color: 'var(--color-text-secondary, #475569)', fontSize: '13px', cursor: 'pointer' }}
                 >
