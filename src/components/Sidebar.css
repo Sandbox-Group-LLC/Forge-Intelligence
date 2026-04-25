@@ -286,8 +286,16 @@
     box-shadow: 4px 0 32px rgba(0, 0, 0, 0.5);
   }
 
-  /* Hide the in-sidebar collapse toggle on mobile — TopBar hamburger is the trigger */
+  /* In-drawer close button — visible only when drawer is open on mobile.
+     Hidden when collapsed (off-canvas) since user can't see the sidebar anyway.
+     Sized larger for thumb-tap accuracy. */
   .sidebar-toggle {
+    display: flex;
+    width: 36px;
+    height: 36px;
+  }
+
+  .sidebar.collapsed .sidebar-toggle {
     display: none;
   }
 }
