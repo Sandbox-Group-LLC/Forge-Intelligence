@@ -53,3 +53,38 @@
 .si-empty-state { text-align: center; padding: 60px 20px; }
 .si-empty-title { font-size: 1.1rem; font-weight: 600; color: var(--color-text-primary); margin-bottom: 8px; }
 .si-empty-body { font-size: 0.85rem; color: var(--color-text-muted); max-width: 480px; margin: 0 auto 20px; line-height: 1.5; }
+
+/* ── Mobile (<=768px) ──────────────────────────────────────────────────────
+   Strategy Intel mobile rules. Page had ZERO breakpoints. */
+@media (max-width: 768px) {
+  /* Header (title left, actions right) → stack column */
+  .si-header {
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  /* Header actions row → full-width column buttons */
+  .si-header-actions {
+    flex-direction: column;
+    width: 100%;
+    gap: 8px;
+  }
+  .si-header-actions > * {
+    width: 100%;
+  }
+
+  /* Competitor header (logo + name + signals) wraps */
+  .si-comp-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px 14px;
+  }
+
+  /* Item header (signal + date + source) wraps */
+  .si-item-header {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+}
