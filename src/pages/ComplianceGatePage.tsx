@@ -394,8 +394,13 @@ function ComplianceGateContent() {
   };
 
   const statusBadge = (status: ComplianceStatus) => {
-    const map = { pending: '⏳ Pending', reviewed: '🔍 Reviewed', approved: '✅ Approved', rejected: '❌ Rejected' };
-    return map[status] || status;
+    const labels: Record<ComplianceStatus, string> = { pending: 'Pending', reviewed: 'Reviewed', approved: 'Approved', rejected: 'Rejected' };
+    return (
+      <>
+        <span className="comp-status-dot" aria-hidden="true" />
+        {labels[status] || status}
+      </>
+    );
   };
 
   // Targeted rewrite — text selection handler for edit textareas
