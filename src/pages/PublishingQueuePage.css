@@ -1327,16 +1327,45 @@
     padding: 10px 12px;
   }
 
-  /* ── Export modal ── */
+  /* ── Smart Export modal ──
+     The export modal nests: header / tabs / code-wrap (flex:1 scroll) / footer.
+     With .pq-modal forced overflow-y:auto for the preview fix, the tabs row
+     was getting squeezed to zero height as the code block expanded. Tabs need
+     explicit flex-shrink: 0 to stay visible. Also ensure tabs scroll
+     horizontally if they don't fit (HTML / Markdown / JSON / UTM Link). */
+  .pq-export-modal {
+    max-height: calc(100vh - 16px);
+  }
+
   .pq-export-tabs {
+    flex-shrink: 0;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     padding: 0 12px;
+    position: sticky;
+    top: 0;
+    z-index: 2;
   }
   .pq-export-tabs::-webkit-scrollbar { display: none; }
 
+  .pq-export-tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+
+  /* Code wrap stays as the scrollable region within the modal,
+     but with reasonable max-height so it doesn't push the footer off-screen */
+  .pq-export-code-wrap {
+    max-height: 50vh;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .pq-export-footer {
+    flex-shrink: 0;
     flex-direction: column;
     align-items: stretch;
     padding: 12px 14px;
