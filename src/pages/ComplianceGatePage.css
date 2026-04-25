@@ -121,13 +121,28 @@
 
 /* Status pills */
 .comp-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 11px;
   font-weight: 600;
-  padding: 2px 8px;
+  padding: 3px 10px;
   border-radius: 20px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  white-space: nowrap;
 }
+
+/* Status dot — 6px filled circle, color set by parent pill via currentColor.
+   Same visual language as the channel-tab connection dots. */
+.comp-status-pill .comp-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
 .comp-status-pill.pending  { background: var(--color-warning-muted); color: var(--color-warning); }
 .comp-status-pill.reviewed { background: var(--color-accent-muted);  color: var(--color-accent); }
 .comp-status-pill.approved { background: var(--color-success-muted); color: var(--color-success); }
