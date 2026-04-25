@@ -557,6 +557,36 @@
   .perf-header { flex-direction: column; }
   .perf-table thead th.bar-col,
   .perf-table tbody td.bar-col { display: none; }
+
+  /* ── Channel tabs ──
+     Default flex-wrap stacks tabs into 3-per-row grid that looks more like
+     a list of links than tabs. Switch to horizontal scroll strip with bigger
+     tap targets — one row that scrolls sideways, active tab clearly marked. */
+  .perf-channels {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 0;
+    margin: 0 -16px;        /* Bleed to viewport edges so first/last tab is visible */
+    padding: 0 16px;
+  }
+  .perf-channels::-webkit-scrollbar { display: none; }
+
+  .perf-channel-tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 12px 14px;     /* Bigger tap targets */
+    font-size: 0.875rem;
+    border-bottom-width: 2px;
+  }
+
+  /* Active tab — make the underline bolder and the text more prominent so
+     the "this is the selected channel" signal carries despite the smaller width */
+  .perf-channel-tab.active {
+    border-bottom-width: 3px;
+    color: var(--color-text-primary);
+  }
 }
 
 @media (max-width: 480px) {
