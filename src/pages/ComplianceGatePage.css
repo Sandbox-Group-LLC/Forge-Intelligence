@@ -804,3 +804,85 @@
     width: 100%;
   }
 }
+
+/* FAQ editor — appears below sections in Compliance Gate, before submit bar.
+   Visually distinct from sections (different border accent) so reviewers know
+   this is a different content surface. Same edit feel as section edit textareas. */
+.comp-faqs-block {
+  margin-top: 32px;
+  padding: 24px;
+  background: var(--color-bg-card, #fff);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-left: 3px solid var(--color-accent, #4F46E5);
+  border-radius: 12px;
+}
+.comp-faqs-header {
+  margin-bottom: 16px;
+}
+.comp-faqs-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-text-primary, #1a1a1a);
+  margin: 0 0 4px;
+}
+.comp-faqs-sub {
+  font-size: 13px;
+  color: var(--color-text-muted, #94a3b8);
+  margin: 0;
+}
+.comp-faqs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.comp-faq-edit-card {
+  padding: 16px;
+  background: var(--color-bg-base, #f8fafc);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 8px;
+}
+.comp-faq-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+.comp-faq-label + .comp-faq-q-input,
+.comp-faq-label + .comp-faq-a-input {
+  margin-bottom: 12px;
+}
+.comp-faq-q-input,
+.comp-faq-a-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 6px;
+  background: #fff;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--color-text-primary, #1a1a1a);
+  box-sizing: border-box;
+  resize: vertical;
+}
+.comp-faq-a-input {
+  min-height: 80px;
+  line-height: 1.5;
+}
+.comp-faq-q-input:focus,
+.comp-faq-a-input:focus {
+  outline: none;
+  border-color: var(--color-accent, #4F46E5);
+  box-shadow: 0 0 0 3px var(--color-accent-muted, rgba(79, 70, 229, 0.12));
+}
+
+@media (max-width: 768px) {
+  .comp-faqs-block {
+    padding: 16px;
+    margin-top: 20px;
+  }
+  .comp-faq-edit-card {
+    padding: 12px;
+  }
+}
