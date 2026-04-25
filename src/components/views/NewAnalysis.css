@@ -306,6 +306,35 @@
     width: 100%;
     justify-content: center;
   }
+
+  /* URL input row — stack vertically so Run button doesn't push input off-screen */
+  .url-input-row {
+    flex-direction: column;
+    gap: 8px;
+    align-items: stretch;
+  }
+  .btn-run {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Auto-discover hint — let the green badge sit on its own line below the text
+     so it never collides with the floating zap FAB (which sits bottom-right) */
+  .auto-discover-hint {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .hint-free-badge {
+    align-self: flex-start;
+    /* Reserve bottom margin so badge clears the FAB if it ends up near the bottom */
+    margin-bottom: 64px;
+  }
+
+  /* Stages list — tighter on mobile */
+  .stage-card {
+    padding: 14px 16px;
+  }
 }
 
 /* ── URL-first layout ── */
