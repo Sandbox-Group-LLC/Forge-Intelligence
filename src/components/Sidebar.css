@@ -263,6 +263,10 @@
   flex: 1;
 }
 
+/* ── Mobile (<=768px): sidebar becomes off-canvas drawer ──────────────────
+   Collapsed state = fully off-screen (translateX(-100%)).
+   Expanded state = slides in at full 240px width, over main content.
+   Hamburger button in TopBar toggles. Backdrop captures taps to close. */
 @media (max-width: 768px) {
   .sidebar {
     position: fixed;
@@ -270,22 +274,25 @@
     top: 0;
     z-index: 200;
     height: 100%;
-    /* collapsed = icon rail visible */
-    width: 64px;
-    min-width: 64px;
-    transform: translateX(0);
-    transition: width var(--transition-normal), min-width var(--transition-normal), box-shadow var(--transition-normal);
+    width: 280px;
+    min-width: 280px;
+    transform: translateX(-100%);
+    transition: transform var(--transition-normal), box-shadow var(--transition-normal);
+    box-shadow: none;
   }
 
-  /* Expanded drawer — slides wider over content */
   .sidebar:not(.collapsed) {
-    width: 240px;
-    min-width: 240px;
+    transform: translateX(0);
     box-shadow: 4px 0 32px rgba(0, 0, 0, 0.5);
+  }
+
+  /* Hide the in-sidebar collapse toggle on mobile — TopBar hamburger is the trigger */
+  .sidebar-toggle {
+    display: none;
   }
 }
 
-/* Mobile backdrop */
+/* Mobile backdrop — only renders when sidebar is open (controlled by Sidebar.tsx) */
 .sidebar-backdrop {
   display: none;
 }
@@ -295,9 +302,10 @@
     display: block;
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.45);
+    background: rgba(0, 0, 0, 0.55);
     z-index: 199;
     animation: fadeInBackdrop 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
   }
 }
 
