@@ -631,6 +631,13 @@
   .gaps-grid {
     grid-template-columns: 1fr;
   }
+
+  /* Hide decorative icons on mobile so button labels don't get crowded.
+     Icons earn their place at desktop widths; at 380px they're noise. */
+  .btn-icon-decorative,
+  .btn-icon {
+    display: none !important;
+  }
 }
 
 /* ── GEO Strategy CTA ── */
