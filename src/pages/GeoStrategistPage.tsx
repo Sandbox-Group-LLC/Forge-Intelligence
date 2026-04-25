@@ -310,15 +310,15 @@ function GeoStrategistContent() {
           </p>
         </div>
         {result && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="geo-header-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div className="geo-score-badge">
               <div className="score-value">{result.opportunityScore}</div>
               <div className="score-label">Opportunity Score</div>
             </div>
-            <button onClick={() => { setResult(null); setIsRerun(true); }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+            <button className="geo-header-btn" onClick={() => { setResult(null); setIsRerun(true); }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
               Re-run Analysis
             </button>
-            <button onClick={() => { window.location.href = '/app/authenticity-enricher'; }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, borderRadius: 8, background: '#4F46E5', color: '#fff', border: '1px solid #4F46E5', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+            <button className="geo-header-btn geo-header-btn-primary" onClick={() => { window.location.href = '/app/authenticity-enricher'; }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, borderRadius: 8, background: '#4F46E5', color: '#fff', border: '1px solid #4F46E5', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
               Continue to Authenticity Enricher →
             </button>
           </div>
