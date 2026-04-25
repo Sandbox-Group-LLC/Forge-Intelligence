@@ -160,6 +160,9 @@ function ComplianceGateContent() {
   const [manualEditSections, setManualEditSections] = useState<Record<number, boolean>>({});
   const [dismissedFlags, setDismissedFlags] = useState<Record<number, boolean>>({});
   const [decisions, setDecisions] = useState<Record<number, 'approved' | 'rejected'>>({});
+  // FAQ edits — parallel structure to editedSections. Each FAQ entry can have its question
+  // and/or answer overridden. Empty fields default to the LLM-generated original on submit.
+  const [editedFaqs, setEditedFaqs] = useState<Record<number, { question?: string; answer?: string }>>({});
   const [loading, setLoading] = useState(false);
   const [critiqueLoading, setCritiqueLoading] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
@@ -351,6 +354,11 @@ function ComplianceGateContent() {
         sectionIndex: parseInt(idx),
         content
       }));
+      const faqEdits = Object.entries(editedFaqs).map(([idx, qa]) => ({
+        index: parseInt(idx),
+        ...(qa.question !== undefined ? { question: qa.question } : {}),
+        ...(qa.answer !== undefined ? { answer: qa.answer } : {})
+      }));
       const r = await authFetch('/api/compliance/approve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -359,6 +367,7 @@ function ComplianceGateContent() {
           contentId: article.id,
           reviewMode: mode,
           editedSections: edits,
+          editedFaqs: faqEdits,
           decisions
         })
       });
@@ -383,14 +392,16 @@ function ComplianceGateContent() {
     try {
       const saved = localStorage.getItem(`forge_compliance_edits_${article.id}`);
       if (saved) {
-        const { edits, decisions: savedDecisions } = JSON.parse(saved);
+        const { edits, decisions: savedDecisions, faqEdits: savedFaqs } = JSON.parse(saved);
         setEditedSections(edits || {});
         setDecisions(savedDecisions || {});
+        setEditedFaqs(savedFaqs || {});
       } else {
         setEditedSections({});
         setDecisions({});
+        setEditedFaqs({});
       }
-    } catch { setEditedSections({}); setDecisions({}); }
+    } catch { setEditedSections({}); setDecisions({}); setEditedFaqs({}); }
   };
 
   const statusBadge = (status: ComplianceStatus) => {
@@ -818,6 +829,51 @@ function ComplianceGateContent() {
                 );
               })}
             </div>
+
+            {/* FAQ editor — separate from sections because faqs live on article.faqs[],
+                not article.sections[]. The Brand Profile/Strategy stages set FAQ structure
+                (questions + answer direction); the Content Generator fills in actual answers.
+                Operator edits here so wrong-year text, mis-phrasings, or off-brand copy in
+                Q/A blocks can be fixed before publishing. */}
+            {Array.isArray(selectedArticle.article_json?.faqs) && selectedArticle.article_json.faqs.length > 0 && (
+              <div className="comp-faqs-block">
+                <div className="comp-faqs-header">
+                  <h3 className="comp-faqs-title">FAQs ({selectedArticle.article_json.faqs.length})</h3>
+                  <p className="comp-faqs-sub">Edit Q&amp;A copy below — same submit button approves the whole article including FAQ edits.</p>
+                </div>
+                <div className="comp-faqs-list">
+                  {selectedArticle.article_json.faqs.map((faq: any, idx: number) => {
+                    const qVal = editedFaqs[idx]?.question ?? faq.question ?? '';
+                    const aVal = editedFaqs[idx]?.answer ?? faq.answer ?? '';
+                    return (
+                      <div key={idx} className="comp-faq-edit-card">
+                        <div className="comp-faq-label">Question {idx + 1}</div>
+                        <input
+                          className="comp-faq-q-input"
+                          value={qVal}
+                          onChange={e => setEditedFaqs(p => ({
+                            ...p,
+                            [idx]: { ...p[idx], question: e.target.value }
+                          }))}
+                          placeholder="FAQ question"
+                        />
+                        <div className="comp-faq-label">Answer</div>
+                        <textarea
+                          className="comp-faq-a-input"
+                          value={aVal}
+                          onChange={e => setEditedFaqs(p => ({
+                            ...p,
+                            [idx]: { ...p[idx], answer: e.target.value }
+                          }))}
+                          placeholder="FAQ answer"
+                          rows={4}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Submit bar */}
             <div className="comp-submit-bar">
