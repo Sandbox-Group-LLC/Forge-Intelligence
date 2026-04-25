@@ -211,3 +211,41 @@
 .tq-save-btn:hover:not(:disabled) { background: rgba(53,99,255,0.08); }
 .tq-save-btn:disabled { opacity: 0.4; cursor: default; }
 .tq-cancel-btn:hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
+
+/* ── Mobile (<=768px) ──────────────────────────────────────────────────────
+   Topic Queue mobile rules. Page had ZERO breakpoints. */
+@media (max-width: 768px) {
+  /* Add inputs row → column with full-width */
+  .tq-add-inputs {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .tq-add-inputs > * {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Filter tabs → horizontal scroll strip */
+  .tq-filters {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 4px;
+  }
+  .tq-filters::-webkit-scrollbar { display: none; }
+  .tq-filter-tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  /* Topic row: title left + actions right → stack column */
+  .tq-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+}
