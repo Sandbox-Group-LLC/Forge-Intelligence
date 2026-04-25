@@ -90,6 +90,10 @@ function GeoStrategistContent() {
   const [selectedOppIds, setSelectedOppIds] = useState<Set<string>>(new Set());
   const [buildingBriefs, setBuildingBriefs] = useState(false);
   const [briefBuildError, setBriefBuildError] = useState('');
+  // Phase 1 authorship: optional SME author for this batch of briefs.
+  // Empty string = no author assigned (downstream falls back to brand default).
+  const [authorRoster, setAuthorRoster] = useState<Array<{ id: string; name: string; title?: string; expertise?: string }>>([]);
+  const [selectedAuthorId, setSelectedAuthorId] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'topical' | 'geo' | 'entity' | 'brief'>('topical');
   const [error, setError] = useState('');
   const [isRerun, setIsRerun] = useState(false);
@@ -138,6 +142,25 @@ function GeoStrategistContent() {
     loadTopicBriefs(brandProfileId);
   }, [brandProfileId, authToken, result]);
 
+  // Load author roster for the Build Briefs author selector
+  useEffect(() => {
+    if (!brandProfileId || !authToken) {
+      setAuthorRoster([]);
+      return;
+    }
+    (async () => {
+      try {
+        const r = await fetch(`/api/factual-ground/authors/${brandProfileId}`, {
+          headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        const d = await r.json();
+        if (d.success && Array.isArray(d.authors)) {
+          setAuthorRoster(d.authors);
+        }
+      } catch (e) { /* silent — author selector just won't appear */ }
+    })();
+  }, [brandProfileId, authToken]);
+
   // Brain food: discovered opps expire server-side after 24 hours (handled in GET endpoint).
   // No unmount cleanup needed — users can leave and come back within 24h.
 
@@ -167,7 +190,12 @@ function GeoStrategistContent() {
       const r = await fetch('/api/geo/opportunities/build-briefs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ brandProfileId, opportunityIds: ids })
+        body: JSON.stringify({
+          brandProfileId,
+          opportunityIds: ids,
+          // Phase 1 authorship handoff — optional SME assignment for this batch
+          ...(selectedAuthorId ? { assignedAuthorId: selectedAuthorId } : {})
+        })
       });
       if (!r.ok) {
         throw new Error(`Request failed (${r.status}${r.statusText ? ' ' + r.statusText : ''}) — try fewer topics per batch, or retry in a moment.`);
@@ -443,6 +471,23 @@ function GeoStrategistContent() {
                     {selectedOppIds.size} selected
                   </div>
                   <div className="geo-cherry-actions">
+                    {/* Phase 1 authorship: optional SME assignment for this batch.
+                        Hidden when the brand has no authors configured. */}
+                    {authorRoster.length > 0 && (
+                      <select
+                        className="geo-cherry-author-select"
+                        value={selectedAuthorId}
+                        onChange={e => setSelectedAuthorId(e.target.value)}
+                        title="Optional: assign an SME author to this batch of briefs"
+                      >
+                        <option value="">No author assigned</option>
+                        {authorRoster.map(a => (
+                          <option key={a.id} value={a.id}>
+                            {a.name}{a.title ? ` — ${a.title}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     <button
                       className="geo-cherry-btn-secondary"
                       onClick={() => setSelectedOppIds(new Set())}
