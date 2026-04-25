@@ -504,6 +504,22 @@
     font-size: 11px;
   }
 
+  /* ── Modal overlay positioning ──
+     Same fix as Publishing Queue: overlay was inset:0 covering the entire
+     viewport including the topbar. Push overlay top:56px so the modal
+     anchors below the topbar instead of sliding under it. */
+  .cl-modal-overlay {
+    top: 56px;
+    padding: 8px;
+    align-items: flex-start;
+  }
+
+  .cl-modal {
+    margin: 0;
+    max-height: calc(100vh - 72px);
+    border-radius: 12px;
+  }
+
   /* Modal stats: 2-col → 1-col */
   .cl-modal-stats {
     grid-template-columns: 1fr !important;
