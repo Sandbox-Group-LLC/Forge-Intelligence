@@ -4196,6 +4196,25 @@ function stripScaffoldingArtifacts(article) {
   return article;
 }
 
+// ── Date-grounding for LLM prompts ─────────────────────────────────────
+// Every prompt that generates user-facing content MUST prepend this block.
+// Without it the model defaults to its training-data prior (heavily 2024-2025)
+// and will write 'in 2025' / '2024 trends' even when it's actually 2026.
+// Returns a multi-line string to splice into prompts: "TODAY IS Saturday, April 25, 2026..."
+function dateContext() {
+  const now = new Date();
+  const formatted = now.toLocaleDateString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    timeZone: 'America/Los_Angeles'
+  });
+  const isoDate = now.toISOString().slice(0, 10);
+  const year = now.getFullYear();
+  return `TODAY IS ${formatted} (ISO: ${isoDate}). The current year is ${year}. ` +
+    `When you reference dates, time periods, or 'recent' events, anchor them to this date — ` +
+    `do not assume an earlier year. If you write phrases like 'in ${year - 1}' or 'this year', ` +
+    `they must be accurate against ${year}, not your training cutoff.`;
+}
+
 function extractJSON(text, type = 'object') {
   const open = type === 'array' ? '[' : '{';
   const close = type === 'array' ? ']' : '}';
@@ -12832,7 +12851,9 @@ app.post('/api/geo/opportunities/build-briefs', requireAuth, express.json(), asy
         const briefRes = await anthropic.messages.create({
           model: 'claude-sonnet-4-6',
           max_tokens: 6144,
-          messages: [{ role: 'user', content: `You are the Topic Brief Builder (Stage 2.1) for Forge Intelligence.
+          messages: [{ role: 'user', content: `${dateContext()}
+
+You are the Topic Brief Builder (Stage 2.1) for Forge Intelligence.
 
 BRAND: ${profile.brand_name}
 VOICE: ${JSON.stringify(voiceProfile).slice(0, 400)}
