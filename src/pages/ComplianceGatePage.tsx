@@ -617,7 +617,7 @@ function ComplianceGateContent() {
 
                     {hasPlaceholder && !flag && (
                       <div className="comp-flag flag-yellow" style={{ marginBottom: 8 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div className="comp-placeholder-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                           <span style={{ fontSize: 12, fontWeight: 600, color: '#D97706' }}>⚠ Contains unresolved placeholder text</span>
                           <button
                             className="comp-accept-suggestion-btn"
@@ -652,7 +652,7 @@ function ComplianceGateContent() {
                         {flag.suggestion && (
                           <div className="comp-flag-suggestion-wrap">
                             <div className="comp-flag-suggestion">{flag.suggestion}</div>
-                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                            <div className="comp-flag-actions-row" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                               {/* Find Sources for factual claims */}
                               {(flag.type === 'factual_claim' || flag.type === 'legal_risk') && !sourcesMap[idx] && (
                                 <button
@@ -713,7 +713,7 @@ function ComplianceGateContent() {
                                     </a>
                                   </div>
                                 ))}
-                                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                                <div className="comp-source-actions" style={{ display: 'flex', gap: 8, marginTop: 4 }}>
                                   <button
                                     className="comp-accept-suggestion-btn"
                                     onClick={() => acceptSuggestion(idx, editedSections[idx] ?? (section.body || section.content || ''), flag.reason || '', flag.suggestion || '')}
