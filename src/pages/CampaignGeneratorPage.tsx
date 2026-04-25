@@ -547,7 +547,7 @@ function CampaignGeneratorContent() {
       {step === 'setup' && pastCampaigns.length > 0 && (
         <div style={{ marginTop: 32 }}>
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: 12 }}>Recent Campaigns</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="camp-past-list" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {pastCampaigns.slice(0, 5).map((camp: {id:string;name:string;topic_cluster:string;status:string;completed_count:number;created_at:string}) => (
               <button className="camp-past-card" key={camp.id} onClick={() => loadCampaign(camp.id)}
                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--color-bg-card)', border: 'none', borderRadius: 10, boxShadow: 'var(--shadow-card)', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
@@ -555,7 +555,7 @@ function CampaignGeneratorContent() {
                   <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 2 }}>{camp.name || camp.topic_cluster}</div>
                   <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{camp.completed_count} of 8 articles · {new Date(camp.created_at).toLocaleDateString()}</div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div className="camp-past-card-right" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   {camp.status === 'generating' && (
                     <button
                       onClick={(e) => { e.stopPropagation(); restartCampaign(camp.id); }}
