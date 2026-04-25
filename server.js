@@ -7392,7 +7392,7 @@ app.get('/api/publishing/queue/:brandProfileId', requireAuth, async (req, res) =
        LEFT JOIN campaigns c ON c.id = pq.campaign_id
        LEFT JOIN brand_profiles bp ON bp.id = pq.brand_profile_id
        WHERE pq.brand_profile_id = $1
-       ORDER BY pq.campaign_id NULLS LAST, pq.created_at ASC`,
+       ORDER BY pq.campaign_id NULLS LAST, pq.created_at DESC`,
       [brandProfileId]
     );
 
