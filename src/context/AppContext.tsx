@@ -84,7 +84,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [processingStages, setProcessingStages] = useState<ProcessingStage[]>(initialProcessingStages);
   const [isProcessing, setIsProcessing] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Initialize collapsed=true on mobile so off-canvas drawer starts hidden.
+  // On desktop, default to expanded.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth <= 768;
+  });
 
   // God mode — ?god=ForgeCanvas persists in localStorage; ?ungod clears it
   const godMode = (() => {
