@@ -478,3 +478,51 @@
   color: var(--color-text-secondary);
   border: 1px solid var(--color-border);
 }
+
+/* ── Mobile (<=768px) ──────────────────────────────────────────────────────
+   Content Library mobile rules. Page had ZERO breakpoints before.
+   Toolbar wraps, card grid → single column, modals reduce padding. */
+@media (max-width: 768px) {
+  .cl-toolbar {
+    gap: 10px;
+  }
+  .cl-search {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Card grid → single column on mobile (was minmax(280px, 1fr)) */
+  .cl-grid,
+  .cl-loading {
+    grid-template-columns: 1fr !important;
+    gap: 12px;
+  }
+
+  /* Card meta wraps */
+  .cl-card-meta {
+    gap: 6px;
+    font-size: 11px;
+  }
+
+  /* Modal stats: 2-col → 1-col */
+  .cl-modal-stats {
+    grid-template-columns: 1fr !important;
+    gap: 8px;
+    padding: 12px;
+  }
+
+  /* Modal actions stack full-width */
+  .cl-modal-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .cl-modal-actions > * {
+    width: 100%;
+  }
+
+  /* Pagination buttons */
+  .cl-page-btn {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+}
