@@ -108,17 +108,15 @@ export function TopBar({ pageTitle }: { pageTitle?: string }) {
         {/* Show the brand pill only when the super-admin brand switcher is NOT rendered — avoids duplicate labels colliding on mobile */}
         {activeBrand && !(allBrands && allBrands.length > 0) && (
           <span className="topbar-brand-pill" title={activeBrand.brandUrl}>
-            {activeBrand.brandName || activeBrand.brandUrl.replace(/^https?:\/\//, '').replace(/^www\./, '')}
+            <span className="topbar-brand-pill-name">{activeBrand.brandName || activeBrand.brandUrl.replace(/^https?:\/\//, '').replace(/^www\./, '')}</span>
             {brandProfile && currentView === 'brand-profile' && (
-              <span style={{ opacity: 0.5, marginLeft: 4, fontWeight: 400 }}>· v{brandProfile.version}</span>
+              <span className="topbar-brand-pill-version">v{brandProfile.version}</span>
             )}
           </span>
         )}
-        {/* When the brand switcher is rendered, the version indicator still has value on Brand Profile — show it on the title itself */}
+        {/* When the brand switcher is rendered, the version indicator still has value on Brand Profile — show it on the title itself. Hidden on mobile via CSS to avoid topbar cramping. */}
         {allBrands && allBrands.length > 0 && brandProfile && currentView === 'brand-profile' && (
-          <span className="topbar-version-tag" style={{ marginLeft: 8, fontSize: '0.75rem', color: 'rgba(100,116,139,0.7)', fontWeight: 400 }}>
-            v{brandProfile.version}
-          </span>
+          <span className="topbar-version-tag">v{brandProfile.version}</span>
         )}
       </div>
 
