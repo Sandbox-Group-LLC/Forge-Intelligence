@@ -810,3 +810,34 @@
     width: 100%;
   }
 }
+
+/* ── Mobile overrides for inline-styled action buttons ──
+   The action row in BrandProfile.tsx uses inline styles which override CSS class rules.
+   These overrides use !important to defeat the inline display/padding/height/gap.
+   Wrapper goes column, every button stretches full-width, decorative icons hide. */
+@media (max-width: 768px) {
+  .profile-actions-wrap {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100%;
+    gap: 8px !important;
+  }
+
+  .profile-action-btn {
+    width: 100% !important;
+    height: auto !important;
+    padding: 12px 14px !important;
+    font-size: 13px !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Hide decorative icons inside these buttons since text labels are already clear */
+  .profile-action-btn .btn-icon-decorative {
+    display: none !important;
+  }
+
+  /* Remove leftover gap when icon is hidden — overrides inline gap: 6px */
+  .profile-action-btn:has(.btn-icon-decorative) {
+    gap: 0 !important;
+  }
+}
