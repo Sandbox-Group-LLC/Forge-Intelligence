@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AppShell } from '../layouts/AppShell';
+import { NoBrandEmpty } from '../components/NoBrandEmpty';
 import GateModal from '../components/GateModal';
 import { useApp } from '../context/AppContext';
 import './PublishingQueuePage.css';
@@ -173,6 +174,22 @@ export default function PublishingQueuePage() {
   const ah: Record<string, string> = authToken ? { Authorization: `Bearer ${authToken}` } : {};
   
   if (brandLoading) return null;
+  if (!activeBrand) {
+    return (
+      <AppShell pageTitle="Publishing Queue">
+        <NoBrandEmpty
+          pageName="Publishing Queue"
+          pageDescription="Your campaign articles ship from here — schedule, edit, and publish to multiple channels with one click."
+          features={[
+            'Manage drafts, scheduled posts, and published articles',
+            'Push to LinkedIn, X, Facebook, Ghost, and your own site',
+            'Track which articles converted with UTM-tagged share links',
+            'Send articles to reviewers before publishing',
+          ]}
+        />
+      </AppShell>
+    );
+  }
   if (!isPaid) {
     return (
       <AppShell>
