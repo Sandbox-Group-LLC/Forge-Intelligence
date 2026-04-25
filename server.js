@@ -12684,9 +12684,20 @@ app.get('/api/geo/opportunities/:brandProfileId', requireAuth, async (req, res) 
 });
 
 // POST /api/geo/opportunities/build-briefs — Stage 2.1 Brief Builder
-// Body: { opportunityIds: string[], brandProfileId: string }
+// Body: { opportunityIds: string[], brandProfileId: string, assignedAuthorId?: string }
+//
+// AUTHORSHIP HANDOFF (Phase 1):
+// At this exact transition (GEO Strategist → Auth Enrichment), the operator
+// optionally assigns an SME author to the batch of briefs being built. The
+// author snapshot is embedded in brief_data.assignedAuthor so all downstream
+// stages (Auth Enrichment, Content Generation, Compliance Gate, Publishing)
+// can read the SME from one place. We snapshot at brief time rather than just
+// referencing the author ID — this protects against author records being
+// edited later from changing the historical context briefs were built under.
+// If assignedAuthorId is omitted, briefs ship without an author and downstream
+// defaults to brand-level factualGround.authors[0] as before (backward compat).
 app.post('/api/geo/opportunities/build-briefs', requireAuth, express.json(), async (req, res) => {
-  const { opportunityIds, brandProfileId } = req.body;
+  const { opportunityIds, brandProfileId, assignedAuthorId } = req.body;
   if (!Array.isArray(opportunityIds) || !opportunityIds.length) {
     return res.status(400).json({ success: false, error: 'opportunityIds required' });
   }
@@ -12720,6 +12731,23 @@ app.post('/api/geo/opportunities/build-briefs', requireAuth, express.json(), asy
       fg.methodology && `Methodology: ${fg.methodology.slice(0, 400)}`
     ].filter(Boolean).join('\n\n');
 
+    // ── Author assignment (optional) ─────────────────────────────────────
+    // Resolve assignedAuthorId → full author snapshot from factualGround.authors.
+    // If the ID isn't found we silently skip — never block brief building over
+    // an author lookup miss; downstream agents fall back to brand defaults.
+    const allAuthors = Array.isArray(fg.authors) ? fg.authors : [];
+    const assignedAuthor = (assignedAuthorId && typeof assignedAuthorId === 'string')
+      ? (allAuthors.find(a => a && a.id === assignedAuthorId) || null)
+      : null;
+    const authorContext = assignedAuthor
+      ? `ASSIGNED SME AUTHOR (build the brief from this person's vantage; their expertise should shape the angle):\n` +
+        `  Name: ${assignedAuthor.name || ''}\n` +
+        `  Title: ${assignedAuthor.title || ''}\n` +
+        `  Expertise: ${assignedAuthor.expertise || ''}\n` +
+        `  Credentials: ${assignedAuthor.credentials || ''}\n` +
+        (assignedAuthor.bio ? `  Background: ${String(assignedAuthor.bio).slice(0, 600)}\n` : '')
+      : '';
+
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
     // Build briefs CONCURRENTLY — was serial, which made a 9-brief batch take ~90s of
@@ -12750,7 +12778,7 @@ BRAND: ${profile.brand_name}
 VOICE: ${JSON.stringify(voiceProfile).slice(0, 400)}
 PERSONAS: ${JSON.stringify(personas).slice(0, 400)}
 
-${factualContext ? 'FACTUAL GROUND (use verbatim):\n' + factualContext + '\n\n' : ''}${brainContext}
+${factualContext ? 'FACTUAL GROUND (use verbatim):\n' + factualContext + '\n\n' : ''}${authorContext ? authorContext + '\n\n' : ''}${brainContext}
 
 TOPIC THE USER SELECTED: "${opp.topic}"
 PLATFORM SCORES: ${JSON.stringify(opp.platform_scores)}
@@ -12788,11 +12816,16 @@ Generate 5-7 H2s that build a coherent argument. Align entities with schema requ
           };
         }
 
-        // Persist the brief
+        // Persist the brief — embed the assigned author snapshot in brief_data
+        // so downstream stages can read SME context from one place. Snapshot
+        // captures the author's state at brief time, not a live reference.
+        const briefDataWithAuthor = assignedAuthor
+          ? { ...briefData, assignedAuthor: { ...assignedAuthor } }
+          : briefData;
         const briefInsert = await pool.query(
           `INSERT INTO geo_topic_briefs (opportunity_id, brand_profile_id, brief_data, brain_version, status)
            VALUES ($1, $2, $3, $4, 'briefed') RETURNING id, created_at`,
-          [oppId, brandProfileId, JSON.stringify(briefData), profile.version || 1]
+          [oppId, brandProfileId, JSON.stringify(briefDataWithAuthor), profile.version || 1]
         );
 
         // Flip opportunity to "briefed"
@@ -12805,7 +12838,7 @@ Generate 5-7 H2s that build a coherent argument. Align entities with schema requ
           briefId: briefInsert.rows[0].id,
           opportunityId: oppId,
           topic: opp.topic,
-          briefData,
+          briefData: briefDataWithAuthor,
           createdAt: briefInsert.rows[0].created_at
         };
       } catch(briefErr) {
