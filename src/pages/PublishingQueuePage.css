@@ -994,10 +994,185 @@
   margin-top: 8px;
 }
 
+/* ── Mobile (<=768px) ──────────────────────────────────────────────────────
+   Publishing Queue mobile rules. Comprehensive treatment for the operator
+   daily-use page — items stack their actions, modals reduce padding, schedule
+   inputs go full-width, campaign group headers stack. */
 @media (max-width: 768px) {
-  .pq-campaign-group-header { flex-direction: column; align-items: flex-start; gap: 8px; }
-  .pq-campaign-meta-row { flex-wrap: wrap; }
+  /* ── Item card (the main row in the queue) ────────────────────────── */
+  .pq-item {
+    padding: 14px 14px;
+  }
+
+  /* Top row of an item: title + actions row goes column on mobile */
+  .pq-item-actions-top {
+    flex-wrap: wrap;
+    width: 100%;
+    gap: 6px;
+  }
+
+  /* Bottom action row: per-channel buttons stack with full-width tap targets */
+  .pq-item-actions {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 10px;
+  }
+
+  /* Item meta line — wrap aggressively */
+  .pq-item-meta {
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 11px;
+  }
+
+  /* Item sub-text (description / preview) */
+  .pq-item-sub {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  /* ── Campaign group headers ───────────────────────────────────────── */
+  .pq-campaign-group-header {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+  .pq-campaign-group-left,
+  .pq-campaign-group-right {
+    width: 100%;
+  }
+  .pq-campaign-group-stats {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .pq-campaign-meta-row {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* ── Modal (preview / detail / scheduling) ────────────────────────── */
+  .pq-modal {
+    margin: 8px;
+    max-height: calc(100vh - 16px);
+    border-radius: 12px;
+  }
+  .pq-modal-header {
+    padding: 14px 14px 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* Modal edit hint banner — was inline-styled flex with no class.
+     Stack title above the deep-edits link button. */
+  .pq-modal-edit-hint {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+    padding: 10px 14px !important;
+  }
+
+  /* Preview content actions — stack full-width column */
+  .pq-preview-actions {
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+  .pq-preview-actions > * {
+    width: 100%;
+  }
+
+  /* Preview body padding tightens */
+  .pq-preview-body {
+    padding: 14px;
+    font-size: 14px;
+  }
+
+  /* ── Scheduling modal ─────────────────────────────────────────────── */
+  .pq-sched-body {
+    padding: 14px;
+  }
+  .pq-sched-footer {
+    flex-direction: column !important;
+    padding: 14px;
+    gap: 8px;
+  }
+  .pq-sched-footer > * {
+    width: 100%;
+  }
+
+  /* Date/time row stacks */
+  .pq-datetime-wrap {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* ── Channel checkbox grid ────────────────────────────────────────── */
+  .pq-channel-row {
+    gap: 8px;
+  }
+  .pq-channel-checkboxes {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  /* ── Per-result row after publish ─────────────────────────────────── */
+  .pq-result-row {
+    gap: 6px;
+    font-size: 11px;
+  }
+  .pq-results-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  /* ── Filters / brand selector / archive toggle ───────────────────── */
+  .pq-archive-toggle-wrap {
+    justify-content: flex-start;
+  }
+  .pq-brand-tag {
+    font-size: 11px;
+    padding: 3px 8px;
+  }
+
+  /* ── Reviewer dropdown ────────────────────────────────────────────── */
+  .pq-reviewer-dropdown {
+    left: 8px !important;
+    right: 8px !important;
+    width: auto !important;
+    max-width: none !important;
+  }
+
+  /* ── UTM block & export modal ─────────────────────────────────────── */
+  .pq-utm-channel {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .pq-export-code-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ── Delete confirmation dialog ───────────────────────────────────── */
+  .pq-delete-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .pq-delete-actions > * {
+    width: 100%;
+  }
+
+  /* ── Copy block (per-channel post text) ───────────────────────────── */
+  .pq-copy-block {
+    padding: 10px;
+  }
+  .pq-copy-btn {
+    width: 100%;
+    justify-content: center;
+  }
 }
+
 
 /* ── Schedule datetime + timezone ─────────────────────────────────────────── */
 .pq-datetime-wrap {
