@@ -12725,6 +12725,24 @@ app.get('/api/geo/opportunities/:brandProfileId', requireAuth, async (req, res) 
   }
 });
 
+// GET /api/factual-ground/authors/:brandProfileId — return the author roster
+// Used by GEO Strategist's Build Briefs UI to populate the author selector.
+// Returns the structured authors array straight from settings.factualGround.authors.
+app.get('/api/factual-ground/authors/:brandProfileId', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.params;
+  if (!brandProfileId) return res.status(400).json({ success: false, error: 'brandProfileId required' });
+  try {
+    const r = await pool.query(`SELECT settings FROM brand_profiles WHERE id = $1`, [brandProfileId]);
+    if (!r.rows.length) return res.status(404).json({ success: false, error: 'Brand not found' });
+    const fg = (r.rows[0].settings || {}).factualGround || {};
+    const authors = Array.isArray(fg.authors) ? fg.authors : [];
+    return res.json({ success: true, authors });
+  } catch (e) {
+    console.error('[FG_AUTHORS] list error:', e);
+    return res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // POST /api/geo/opportunities/build-briefs — Stage 2.1 Brief Builder
 // Body: { opportunityIds: string[], brandProfileId: string, assignedAuthorId?: string }
 //
