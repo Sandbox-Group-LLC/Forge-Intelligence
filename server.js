@@ -4980,7 +4980,9 @@ Return empty arrays if not found. Be factual and accurate. When in doubt, return
       max_tokens: 4000,
       system: 'You are a JSON API. You must respond with valid JSON only — no markdown, no explanation, no code fences.',
       messages: [
-        { role: 'user', content: `E-E-A-T scoring task for ${brandName} (${brandUrl}).
+        { role: 'user', content: `${dateContext()}
+
+E-E-A-T scoring task for ${brandName} (${brandUrl}).
 
 SCRAPED SIGNALS: ${JSON.stringify(sonarSignals).slice(0, 800)}
 STAGE 1 SIGNALS: ${JSON.stringify(thirdPartySignals).slice(0, 400)}${manualCtx}
