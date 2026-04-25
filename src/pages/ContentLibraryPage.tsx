@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AppShell } from '../layouts/AppShell';
+import { NoBrandEmpty } from '../components/NoBrandEmpty';
 import GateModal from '../components/GateModal';
 import { useApp } from '../context/AppContext';
 import './ContentLibraryPage.css';
@@ -50,6 +51,22 @@ export default function ContentLibraryPage() {
   const activeBrandId = activeBrand?.id ?? '';
   
   if (brandLoading) return null;
+  if (!activeBrand) {
+    return (
+      <AppShell pageTitle="Content Library">
+        <NoBrandEmpty
+          pageName="Content Library"
+          pageDescription="Every article generated for your brand lives here — searchable, taggable, and ready to repurpose."
+          features={[
+            'Browse every article by campaign, topic, or status',
+            'See compliance scores, citation rates, and engagement signals',
+            'Filter by date, channel, or whether the piece is published',
+            'Export articles as HTML, Markdown, or JSON',
+          ]}
+        />
+      </AppShell>
+    );
+  }
   if (!isPaid) {
     return (
       <AppShell>
