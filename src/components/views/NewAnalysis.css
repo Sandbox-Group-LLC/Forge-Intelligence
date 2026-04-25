@@ -542,7 +542,22 @@
 .staleness-refresh-btn:hover {
   background: rgba(245, 158, 11, 0.25);
 }
-@media (max-width: 640px) {
-  .staleness-banner { flex-direction: column; align-items: flex-start; }
-  .staleness-refresh-btn { width: 100%; justify-content: center; }
+@media (max-width: 768px) {
+  .staleness-banner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  /* Action row stacks vertically and fills width — was overflowing the parent container
+     because of inline flexShrink:0 on the wrapper div. */
+  .staleness-banner-actions {
+    width: 100%;
+    flex-direction: column;
+    gap: 8px !important;
+  }
+  .staleness-refresh-btn {
+    width: 100%;
+    justify-content: center;
+    box-sizing: border-box;
+  }
 }
