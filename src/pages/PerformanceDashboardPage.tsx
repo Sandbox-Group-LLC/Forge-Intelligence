@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AppShell } from '../layouts/AppShell';
+import { NoBrandEmpty } from '../components/NoBrandEmpty';
 import GateModal from '../components/GateModal';
 import { useApp } from '../context/AppContext';
 import './PerformanceDashboardPage.css';
@@ -440,6 +441,20 @@ export default function PerformanceDashboardPage() {
 
   // Early returns AFTER all hooks — React Rules of Hooks compliant
   if (brandLoading) return null;
+  if (!activeBrand) return (
+    <AppShell pageTitle="Performance Dashboard">
+      <NoBrandEmpty
+        pageName="Performance Dashboard"
+        pageDescription="Watch how your content performs across AI assistants, search, and social once it ships."
+        features={[
+          'GEO citation tracking — which articles get cited by ChatGPT, Claude, and Perplexity',
+          'Traffic and engagement metrics from your published channels',
+          'Top-performing topics, formats, and headline patterns',
+          'Identify your highest-converting article and double down',
+        ]}
+      />
+    </AppShell>
+  );
   if (!isPaid) return (
     <AppShell>
       <GateModal
