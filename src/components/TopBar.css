@@ -156,6 +156,14 @@
   .cache-indicator {
     display: none;
   }
+
+  /* The inline version tag (e.g. 'v6') that renders between the page title and
+     the super-admin brand switcher leaves a stray fragment on mobile because
+     the title truncates with ellipsis. Hide it on mobile — version is already
+     shown clearly in the page body metadata ('Version: 6'). */
+  .topbar-version-tag {
+    display: none !important;
+  }
 }
 
 /* ── Brand context pill — persistent across all app pages ── */
