@@ -208,6 +208,11 @@ export default function PublishingQueuePage() {
   const [reviewDropdown, setReviewDropdown] = useState<string | null>(null); // itemId // "itemId:channel"
   const [deleteModal, setDeleteModal] = useState<{ item: QueueItem; publishedChannels: string[] } | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  // Sort direction for the queue list. 'desc' (newest first) is the operator default —
+  // most-recently-created articles surface at the top so the daily-use scan-for-fresh-content
+  // workflow doesn't require scrolling through historical articles. Within a campaign,
+  // articles always stay in publication sequence (week_number, article_index) regardless.
+  const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
   const [campaignScheduler, setCampaignScheduler] = useState<{
     campId: string;
@@ -921,9 +926,27 @@ ${bodyHtml}
       standaloneItems.push(item);
     }
   }
+  // Within each campaign, articles ALWAYS sort by publication sequence regardless of sortDir.
+  // Campaign sequence is intentional — article 1 comes before article 8.
   for (const g of Object.values(campaignGroups)) {
     g.items.sort((a, b) => (a.week_number || 0) - (b.week_number || 0) || (a.campaign_article_index || 0) - (b.campaign_article_index || 0));
   }
+
+  // Sort standalone items by created_at, direction controlled by user.
+  const sortMul = sortDir === 'desc' ? -1 : 1;
+  standaloneItems.sort((a, b) => {
+    const aT = new Date(a.created_at || 0).getTime();
+    const bT = new Date(b.created_at || 0).getTime();
+    return (aT - bT) * sortMul;
+  });
+
+  // Sort campaign GROUPS by their newest article's created_at (matches sortDir).
+  // 'desc' = most recently active campaign appears first.
+  const sortedCampaignEntries = Object.entries(campaignGroups).sort(([, a], [, b]) => {
+    const aT = Math.max(...a.items.map(i => new Date(i.created_at || 0).getTime()));
+    const bT = Math.max(...b.items.map(i => new Date(i.created_at || 0).getTime()));
+    return (aT - bT) * sortMul;
+  });
 
 
 
@@ -978,13 +1001,20 @@ ${bodyHtml}
             <a href={reviewUrl} target="_blank" rel="noopener noreferrer" className="pq-review-link">{reviewUrl}</a>
           </div>
         )}
-      {archivedItems.length > 0 && (
-        <div className="pq-archive-toggle-wrap">
+      <div className="pq-controls-row">
+        <button
+          className="pq-sort-toggle"
+          onClick={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}
+          title={sortDir === 'desc' ? 'Newest first' : 'Oldest first'}
+        >
+          {sortDir === 'desc' ? '↓ Newest first' : '↑ Oldest first'}
+        </button>
+        {archivedItems.length > 0 && (
           <button className="pq-archive-toggle" onClick={() => setShowArchived(p => !p)}>
             <Archive /> {showArchived ? 'Hide Archived' : `Show Archived (${archivedItems.length})`}
           </button>
-        </div>
-      )}
+        )}
+      </div>
         {successMsg && <div className="int-success">{successMsg}</div>}
 
         {/* Queue — campaign groups + standalone */}
@@ -1000,7 +1030,7 @@ ${bodyHtml}
           <div className="pq-list">
 
             {/* Campaign groups */}
-            {Object.entries(campaignGroups).map(([campId, group]) => {
+            {sortedCampaignEntries.map(([campId, group]) => {
               const publishedCount = group.items.filter(i => i.publish_results && Object.keys(i.publish_results).length > 0).length;
               return (
                 <div key={campId} className="pq-campaign-group">
