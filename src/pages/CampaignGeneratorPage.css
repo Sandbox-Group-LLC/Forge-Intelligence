@@ -200,3 +200,42 @@
   object-fit: cover;
   display: block;
 }
+
+/* ── Mobile (<=768px) ──────────────────────────────────────────────────────
+   Campaign Generator mobile rules. Class-targeted overrides for inline-styled
+   wrappers; !important defeats the inline display/padding declarations. */
+@media (max-width: 768px) {
+  /* Section header (storyline picker / custom prompt) — title above toggle link */
+  .camp-section-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 6px;
+  }
+  .camp-section-toggle {
+    align-self: flex-end;
+  }
+
+  /* Footer action rows — column with full-width buttons */
+  .camp-footer-actions {
+    flex-direction: column !important;
+    width: 100%;
+    gap: 8px !important;
+    padding-top: 16px !important;
+    margin-top: 16px !important;
+  }
+  .camp-footer-btn {
+    width: 100% !important;
+    box-sizing: border-box;
+    padding: 12px 16px !important;
+    font-size: 13px !important;
+  }
+
+  /* Past campaign cards — keep horizontal layout but stack title/status if cramped */
+  .camp-past-card {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .camp-past-card > div:last-child {
+    margin-left: auto;
+  }
+}
