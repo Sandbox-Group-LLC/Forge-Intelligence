@@ -412,4 +412,17 @@
   .cal-item-title { display: none; }
   .cal-item { justify-content: center; padding: 4px; }
   .cal-toolbar { flex-direction: column; align-items: stretch; }
+
+  /* Modal backdrop pushes below the topbar (56px on mobile) so the calendar
+     event modal anchors below the topbar instead of sliding under it. */
+  .cal-modal-backdrop {
+    top: 56px;
+    padding: 8px;
+    align-items: flex-start;
+  }
+  .cal-modal {
+    margin: 0;
+    max-height: calc(100vh - 72px);
+    border-radius: 12px;
+  }
 }
