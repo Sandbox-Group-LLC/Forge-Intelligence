@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import { useApp } from '../context/AppContext';
 import { AppShell } from '../layouts/AppShell';
+import { NoBrandEmpty } from '../components/NoBrandEmpty';
 import './BrandSettingsPage.css';
 
 interface BrandSettings {
@@ -423,6 +424,23 @@ export default function BrandSettingsPage() {
   const activatedDate = form.created_at
     ? new Date(form.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     : null;
+
+  if (!activeBrand) {
+    return (
+      <AppShell pageTitle="Brand Settings">
+        <NoBrandEmpty
+          pageName="Brand Settings"
+          pageDescription="Fine-tune your brand voice, configure publishing destinations, and set reviewer permissions."
+          features={[
+            'Set your brand tone, style, and forbidden phrases',
+            'Connect publishing destinations (LinkedIn, X, your CMS)',
+            'Add team members as reviewers with comment-only access',
+            'Configure UTM tagging and tracking parameters',
+          ]}
+        />
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell pageTitle="Brand Settings">
