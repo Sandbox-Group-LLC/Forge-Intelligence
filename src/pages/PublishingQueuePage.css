@@ -1051,10 +1051,21 @@
     gap: 6px;
   }
 
+  /* ── Modal overlay positioning ──
+     The overlay was inset: 0 covering the entire viewport including the topbar
+     area. On a tall modal, the modal slides under the topbar. Push the overlay
+     top down by the topbar height (56px on mobile) so all modals on this page
+     anchor below the topbar. */
+  .pq-modal-overlay {
+    top: 56px;
+    padding: 8px;
+    align-items: flex-start;
+  }
+
   /* ── Modal (preview / detail / scheduling) ────────────────────────── */
   .pq-modal {
-    margin: 8px;
-    max-height: calc(100vh - 16px);
+    margin: 0;
+    max-height: calc(100vh - 72px); /* viewport minus topbar minus 8px padding minus 8px breathing room */
     border-radius: 12px;
   }
   .pq-modal-header {
