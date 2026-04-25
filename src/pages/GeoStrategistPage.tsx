@@ -156,6 +156,13 @@ function GeoStrategistContent() {
         const d = await r.json();
         if (d.success && Array.isArray(d.authors)) {
           setAuthorRoster(d.authors);
+          // Auto-default: when the brand has exactly one author configured, select them
+          // automatically. The picker still renders so the user can see who's assigned,
+          // but they don't have to click anything for the default case. Multi-author brands
+          // require explicit selection — never silently pick author #0 when there's a choice.
+          if (d.authors.length === 1 && d.authors[0]?.id) {
+            setSelectedAuthorId(d.authors[0].id);
+          }
         }
       } catch (e) { /* silent — author selector just won't appear */ }
     })();
@@ -472,21 +479,26 @@ function GeoStrategistContent() {
                   </div>
                   <div className="geo-cherry-actions">
                     {/* Phase 1 authorship: optional SME assignment for this batch.
-                        Hidden when the brand has no authors configured. */}
+                        Hidden when the brand has no authors configured. Auto-defaults to
+                        the lone author when exactly one is configured (so single-author
+                        brands don't have to interact with the picker at all). */}
                     {authorRoster.length > 0 && (
-                      <select
-                        className="geo-cherry-author-select"
-                        value={selectedAuthorId}
-                        onChange={e => setSelectedAuthorId(e.target.value)}
-                        title="Optional: assign an SME author to this batch of briefs"
-                      >
-                        <option value="">No author assigned</option>
-                        {authorRoster.map(a => (
-                          <option key={a.id} value={a.id}>
-                            {a.name}{a.title ? ` — ${a.title}` : ''}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="geo-cherry-author-wrap">
+                        <label className="geo-cherry-author-label">Author:</label>
+                        <select
+                          className="geo-cherry-author-select"
+                          value={selectedAuthorId}
+                          onChange={e => setSelectedAuthorId(e.target.value)}
+                          title="Assign an SME author to this batch of briefs. Their expertise shapes the brief angle and stamps the article's authorSchema."
+                        >
+                          <option value="">— no author —</option>
+                          {authorRoster.map(a => (
+                            <option key={a.id} value={a.id}>
+                              {a.name}{a.title ? ` — ${a.title}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     )}
                     <button
                       className="geo-cherry-btn-secondary"
