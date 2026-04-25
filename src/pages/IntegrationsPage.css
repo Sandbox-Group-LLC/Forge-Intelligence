@@ -523,3 +523,45 @@
   cursor: not-allowed !important;
   opacity: 0.4;
 }
+
+/* ── Mobile (<=768px) ──────────────────────────────────────────────────────
+   Integrations mobile rules. Page had ZERO breakpoints. */
+@media (max-width: 768px) {
+  /* Card header (logo + name + status badge) wraps */
+  .int-card-header {
+    padding: 12px 14px;
+    gap: 10px;
+  }
+
+  /* Status row wraps tags aggressively */
+  .int-status-row {
+    gap: 6px;
+    font-size: 11px;
+  }
+
+  /* Field grid → single column on mobile */
+  .int-fields {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* UTM row: 160px label + 1fr input → stack column */
+  .int-utm-row {
+    grid-template-columns: 1fr !important;
+    gap: 4px;
+  }
+
+  /* UTM grid (channel cards) → single column */
+  .int-utm-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Form footer: Cancel + Save → full-width column */
+  .int-form-footer {
+    flex-direction: column !important;
+    gap: 8px;
+    padding-top: 8px;
+  }
+  .int-form-footer > * {
+    width: 100%;
+  }
+}
