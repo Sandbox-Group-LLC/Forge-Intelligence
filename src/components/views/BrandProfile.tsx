@@ -116,8 +116,13 @@ export function BrandProfile() {
     );
   }
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
+  const formatDate = (dateString: string | null | undefined) => {
+    // Defensive — if for any reason the timestamp is missing or unparseable,
+    // fall back to a friendly em-dash instead of showing 'Invalid Date'.
+    if (!dateString) return '—';
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
@@ -191,7 +196,7 @@ export function BrandProfile() {
             <span className="meta-divider">·</span>
             <span className="meta-item">
               <span className="meta-label">Updated:</span>
-              <span className="meta-value">{formatDate(brandProfile.updatedAt)}</span>
+              <span className="meta-value">{formatDate(brandProfile.updatedAt || brandProfile.createdAt)}</span>
             </span>
           </div>
         </div>
