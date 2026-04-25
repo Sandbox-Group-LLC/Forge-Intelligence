@@ -651,7 +651,7 @@ function ContentGeneratorContent() {
                     style={st === 'generated' ? { cursor: 'pointer' } : undefined}
                   >
                     {b.enrichedH1 || b.enrichedTitle || b.articleTitle || b.topic || b.brandName}
-                    <span className="cg-batch-progress-chip-status">· {st}{st === 'generated' ? ' →' : ''}</span>
+                    <span className="cg-batch-progress-chip-status">{st}{st === 'generated' ? ' →' : ''}</span>
                   </span>
                 );
               })}
