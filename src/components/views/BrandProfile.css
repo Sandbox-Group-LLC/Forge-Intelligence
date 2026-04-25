@@ -548,22 +548,62 @@
 @media (max-width: 768px) {
   .profile-header {
     flex-direction: column;
+    gap: 16px;
+    align-items: stretch;
   }
 
-  .profile-actions {
+  /* Profile meta — stack vertically so trailing bullet doesn't orphan */
+  .profile-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .profile-meta .meta-divider {
+    display: none;
+  }
+
+  /* Action row — horizontal scroll instead of wrap.
+     Lets all 4 buttons stay accessible without cramping;
+     primary button ('Run GEO Strategy') stays full-width on its own row below. */
+  .profile-actions,
+  .profile-header > div[style*="display: flex"]:last-child {
     width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap !important;
+    padding-bottom: 4px;
+  }
+  .profile-actions::-webkit-scrollbar,
+  .profile-header > div[style*="display: flex"]:last-child::-webkit-scrollbar {
+    display: none;
   }
 
   .btn-action {
-    flex: 1;
+    flex: 0 0 auto;
+    white-space: nowrap;
   }
 
+  /* Tab strip — horizontal scroll, no wrap, snap.
+     Mirrors iOS Safari tab pattern: all 5 tabs in one scrollable row.
+     Active tab keeps its accent style; user can swipe between them. */
   .profile-tabs {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    scroll-snap-type: x mandatory;
+  }
+  .profile-tabs::-webkit-scrollbar {
+    display: none;
   }
 
   .tab-button {
-    flex: 1 1 45%;
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+    white-space: nowrap;
+    padding: 10px 14px;
+    font-size: 13px;
   }
 
   .table-header,
