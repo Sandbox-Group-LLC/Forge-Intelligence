@@ -527,21 +527,113 @@
 /* ── Mobile (<=768px) ──────────────────────────────────────────────────────
    Integrations mobile rules. Page had ZERO breakpoints. */
 @media (max-width: 768px) {
-  /* Card header (logo + name + status badge) wraps */
+  /* Page padding tightens */
+  .int-page {
+    gap: 20px;
+    padding-bottom: 48px;
+  }
+
+  /* ── Brain selector bar (mobile) ──
+     Default has max-width:380px on the brand selector + "N channels connected"
+     count next to it. On a 380px viewport that's tight — stack column. */
+  .int-brain-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .int-brain-bar .geo-select {
+    max-width: none;
+    width: 100%;
+  }
+  .int-connected-count {
+    font-size: 11px;
+  }
+
+  /* ── Channel card header ──
+     space-between with flex-wrap: when it wraps, the right side (status pill +
+     actions) ends up flushed right on its own line, leaving an awkward gap.
+     Switch to flex-start so left/right halves stack cleanly under each other. */
   .int-card-header {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
     padding: 12px 14px;
     gap: 10px;
+  }
+
+  /* Card left (logo + title + URL/desc) takes full width */
+  .int-card-left {
+    width: 100%;
+  }
+
+  /* Card title row: name + badges should wrap if too long */
+  .int-card-title {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* Card right (Connect button OR Disconnect+chevron) goes full-width row */
+  .int-card-right {
+    width: 100%;
+    justify-content: flex-start;
   }
 
   /* Status row wraps tags aggressively */
   .int-status-row {
     gap: 6px;
     font-size: 11px;
+    width: 100%;
+  }
+
+  /* Tap-friendly disconnect/edit buttons */
+  .int-disconnect-btn {
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+  .int-edit-btn {
+    width: 36px;
+    height: 36px;
+  }
+
+  /* Connect button takes full width on mobile so it's easy to tap */
+  .int-connect-btn {
+    width: 100%;
+    padding: 10px 16px;
+    justify-content: center;
+  }
+
+  /* OAuth status block tightens */
+  .int-oauth-status {
+    padding: 8px 12px;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* Pipedream badge wraps */
+  .int-pipedream-badge {
+    font-size: 12px;
+    flex-wrap: wrap;
+  }
+
+  /* ── Expanded form ── */
+  .int-card-form {
+    padding: 14px;
+    gap: 16px;
   }
 
   /* Field grid → single column on mobile */
   .int-fields {
     grid-template-columns: 1fr !important;
+  }
+
+  /* Form label rows wrap (label + hint can be long) */
+  .int-form-label {
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 11px;
+  }
+  .int-utm-hint {
+    font-size: 11px;
   }
 
   /* UTM row: 160px label + 1fr input → stack column */
@@ -555,7 +647,7 @@
     grid-template-columns: 1fr !important;
   }
 
-  /* Form footer: Cancel + Save → full-width column */
+  /* Form footer: Cancel + Save → full-width column with bigger tap targets */
   .int-form-footer {
     flex-direction: column !important;
     gap: 8px;
@@ -563,5 +655,10 @@
   }
   .int-form-footer > * {
     width: 100%;
+  }
+  .int-cancel-btn,
+  .int-save-btn {
+    padding: 12px 18px;
+    font-size: 14px;
   }
 }
