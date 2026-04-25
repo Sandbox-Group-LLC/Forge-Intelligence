@@ -451,6 +451,12 @@
   .btn-run {
     padding: 14px 20px;
   }
+
+  /* Hide decorative icons on mobile so button labels don't get crowded */
+  .btn-icon,
+  .btn-icon-decorative {
+    display: none !important;
+  }
 }
 
 /* ── Advanced toggle ── */
