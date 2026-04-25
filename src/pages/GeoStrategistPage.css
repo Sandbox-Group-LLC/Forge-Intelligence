@@ -718,3 +718,24 @@
     font-size: 1.125rem;
   }
 }
+
+/* ── Mobile overrides for inline-styled header action row ──
+   The header action wrapper has inline display:flex with no class.
+   Need !important to override inline styles when stacking on mobile. */
+@media (max-width: 768px) {
+  .geo-header-actions {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100%;
+    gap: 8px !important;
+  }
+  .geo-header-actions .geo-score-badge {
+    align-self: flex-start;
+  }
+  .geo-header-btn {
+    width: 100% !important;
+    height: auto !important;
+    padding: 12px 14px !important;
+    white-space: normal !important;
+  }
+}
