@@ -587,3 +587,134 @@
   color: var(--accent, #3563ff);
   opacity: 1;
 }
+
+
+/* ── Mobile (<=768px) ──────────────────────────────────────────────────────
+   GEO Strategist mobile: header stacks vertically, score badge moves under
+   title, input bar columns, brief cards stack and let actions wrap, hide
+   decorative icons. */
+@media (max-width: 768px) {
+  .geo-content,
+  .geo-shell {
+    gap: 20px;
+  }
+
+  .geo-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+
+  .geo-title {
+    font-size: 1.5rem;
+    line-height: 1.2;
+  }
+
+  .geo-description {
+    font-size: 0.875rem;
+  }
+
+  .geo-score-badge {
+    align-self: flex-start;
+    padding: 8px 14px;
+  }
+
+  /* Input bar: select + run button stack vertically, both full-width */
+  .geo-input-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .geo-select-wrap {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+  .geo-select {
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .geo-run-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 12px 16px;
+  }
+
+  /* Running state — reduce padding to claim more vertical space */
+  .geo-running {
+    padding: 20px !important;
+  }
+  .geo-running-brand {
+    font-size: 11px;
+  }
+
+  /* Brief card header: stack title and actions vertically */
+  .brief-card-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  /* Brief card actions wrap and grow to fill width */
+  .brief-card-actions {
+    flex-shrink: 1;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .brief-card-btn-backlog,
+  .brief-card-btn-enrich,
+  .brief-card-btn-resurface {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 8px 12px;
+    text-align: center;
+    justify-content: center;
+  }
+
+  /* Cherry bar: stack count above buttons, both buttons full-width */
+  .geo-cherry-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px;
+  }
+  .geo-cherry-actions {
+    width: 100%;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .geo-cherry-btn-primary,
+  .geo-cherry-btn-secondary {
+    width: 100%;
+    justify-content: center;
+    padding: 10px 16px;
+  }
+
+  /* Briefed chips wrap aggressively */
+  .geo-briefed-chips {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* Brief blocks reduce inner padding */
+  .brief-block {
+    padding: 14px;
+  }
+
+  .brief-anchors {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* FAQ block — stack question/answer cleanly */
+  .brief-faq-item {
+    padding: 12px;
+  }
+
+  /* Empty state — center content tighter on mobile */
+  .geo-brief-empty {
+    padding: 32px 16px;
+  }
+  .geo-brief-empty-title {
+    font-size: 1.125rem;
+  }
+}
