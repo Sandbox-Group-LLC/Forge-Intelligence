@@ -36,6 +36,42 @@ const icons = {
 
 type TabType = 'facts' | 'voice' | 'personas' | 'signals' | 'gaps';
 
+// Recognized vendor names get pill-styled inline within the ownership footer
+// caption. The list covers the major cloud/SaaS players that show up in
+// competitiveGaps.ownedBy strings. Match is case-insensitive, longest-first
+// so 'Microsoft Azure' matches before 'Microsoft' or 'Azure' alone.
+const KNOWN_VENDORS = [
+  'Microsoft Azure', 'Google Cloud', 'Amazon Web Services',
+  'Salesforce', 'HubSpot', 'Marketo', 'Adobe',
+  'AWS', 'Azure', 'GCP', 'IBM', 'Oracle', 'SAP',
+  'ServiceNow', 'Workday', 'Snowflake', 'Databricks',
+  'Anthropic', 'OpenAI', 'Cohere', 'Mistral',
+  'Stripe', 'Shopify', 'Square', 'PayPal',
+  'Notion', 'Linear', 'Asana', 'Monday', 'ClickUp',
+].sort((a, b) => b.length - a.length); // longest-first for greedy match
+
+function renderOwnedBy(text: string): React.ReactNode {
+  // Split the text on vendor names (case-insensitive), wrap matches in pills,
+  // leave non-matches as plain text. Preserves parenthetical context like
+  // 'Azure (Azure for Healthcare)' as 'azure-pill (Azure for Healthcare)'.
+  const pattern = new RegExp(`\\b(${KNOWN_VENDORS.map(v => v.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')).join('|')})\\b`, 'gi');
+  const parts: React.ReactNode[] = [];
+  let lastIdx = 0;
+  let match;
+  let key = 0;
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIdx) {
+      parts.push(<span key={key++}>{text.slice(lastIdx, match.index)}</span>);
+    }
+    parts.push(<span key={key++} className="vendor-pill">{match[0]}</span>);
+    lastIdx = match.index + match[0].length;
+  }
+  if (lastIdx < text.length) {
+    parts.push(<span key={key++}>{text.slice(lastIdx)}</span>);
+  }
+  return parts.length > 0 ? parts : text;
+}
+
 export function BrandProfile() {
   const { brandProfile, setBrandProfile, setCurrentView } = useApp();
   const { getToken } = useAuth();
@@ -490,13 +526,18 @@ export function BrandProfile() {
                     </span>
                   </div>
                   <h3 className="gap-topic">{gap.topic}</h3>
-                  <div className="gap-ownership">
-                    <span className="ownership-label">Currently owned by:</span>
-                    <span className={`ownership-value ${gap.ownedBy ? '' : 'unclaimed'}`}>
-                      {gap.ownedBy || 'Unclaimed'}
-                    </span>
-                  </div>
                   <p className="gap-opportunity">{gap.whitespaceOpportunity}</p>
+                  {gap.ownedBy ? (
+                    <div className="gap-ownership-footer">
+                      <span className="gap-ownership-caption">Currently held by</span>
+                      <span className="gap-ownership-text">{renderOwnedBy(gap.ownedBy)}</span>
+                    </div>
+                  ) : (
+                    <div className="gap-ownership-footer unclaimed">
+                      <span className="gap-ownership-caption">Status</span>
+                      <span className="gap-ownership-text">Unclaimed whitespace</span>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
