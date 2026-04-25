@@ -8,6 +8,94 @@
 
 ---
 
+## Session — April 25, 2026 — Sarah Kennedy Ellis inbound + Phase 1 Authorship + Mobile polish round 2
+
+### THE BIG NEWS: Sarah Kennedy Ellis (Google Cloud VP Marketing) inbound on LinkedIn
+- Former customer from Marketo days reached out asking for promo code via LinkedIn DM
+- Her arc: Marketo CMO ($4.75B Adobe exit) → Adobe DX CMO → Google Cloud VP Marketing
+- This is a category-shaper (martech) in addition to enterprise gatekeeper. One referral from Sarah carries enormous weight across enterprise CMOs at AWS, Azure, Salesforce, HubSpot.
+- **Decision: send the code, but ALSO ask for a 30-min conversation framed as 'I'd value your read because you've seen this category from every angle.'** Treat her as the category expert she is — ask for opinion, not purchase.
+- **3 reply variants drafted** — recommended Variant 2 ('Lead with curiosity') because it asks 'are you scoping for GCP marketing org, exploring for yourself, or somewhere in between?' which gathers intel + elevates conversation.
+- Pre-call prep: run Forge analysis on cloud.google.com first (done — see runaway timer fix below); look at Google Cloud's AI search citation strategy vs AWS/Azure (likely the wedge); have one-page Charter Partner doc ready ($2.5-5k/mo, founder access, quarterly calls).
+
+### Targeted iPhone-tested polish (12 rounds)
+After session 8's 22/22 pages clean, Brian tested on iPhone again and reported a fresh batch of issues:
+
+1. **PublicArticlePage Key Takeaway + FAQ unreadable** — page uses dark theme (#0d0d0f bg, near-white headings, rgba(255,255,255,0.72) body) but takeaway/FAQ blocks were styled assuming a LIGHT background. `.pa-tldr-body: #0F172A` (near-black) and `.pa-faq-question: #0F172A` rendered nearly invisible. Flipped all colors to match existing dark-mode tokens. Brian: "on our articles with the new key takeaways and faq the fonts are barely visible".
+
+2. **iOS Safari URL bar revealed page-bg gap below preview modal.** When user scrolled to bottom of preview modal, transparent strip appeared above modal showing dimmed page background. Cause: `100vh` is static — baked at page load with URL bar visible. When Safari hides URL bar at scroll-bottom, viewport grows ~50px but `100vh` stays fixed, modal `max-height` caps below new viewport, gap opens. **Fix: `100vh` → `100dvh` (dynamic viewport height)** across PublishingQueue, ContentLibrary, Calendar, GateModal modals. dvh is supported on Safari 15.4+/Chrome 108+/Firefox 101+. Brian: "the top bar tucks away then goes transparent in the margin above the preview".
+
+3. **Publishing Queue scroll fatigue → newest-first default + sort selector.** Old `ORDER BY created_at ASC` made operators scroll past historical articles every day. Three-tier fix: campaign articles ALWAYS sort by week_number/article_index (preserve sequence), standalone items sort by chosen direction, campaign GROUPS sort by their newest article's created_at. New `.pq-controls-row` with sort toggle (`↓ Newest first` / `↑ Oldest first`). Backend SQL flipped to DESC. Brian: "scroll fatigue is real".
+
+4. **Runaway timer state leak (CRITICAL pre-Sarah fix).** Active analysis showed 196:37 elapsed at 0% progress, but DB confirmed scan completed in 55s. Bug: `sessionStorage.getItem('forge_run_start')` used a single GLOBAL key. Cleanup only ran when `allComplete = true` (every stage complete/error). If SSE dropped, prior scan errored without marking stages complete, or user navigated away — sessionStorage value persisted. Next scan inherited OLD start time. **Fix: scope key to brand URL (`forge_run_start:${brandKey}`), ALWAYS reset on mount (removed the `if (!sessionStorage.getItem(key))` guard), cleanup sweeps ALL `forge_run_start:*` keys when any analysis completes.** This was a credibility-grade defect for an evaluation user — Sarah opening the product showing 3+ hours of bogus elapsed time on a fast scan would be devastating. Brian: "it's the timer from a previous brand scan that just never reset to zero".
+
+5. **Brand Profile tab strip — left padding so active pill doesn't butt against edge.** `.profile-tabs` had `padding: 4px` which on full-bleed mobile container read as 'no padding at all'. Fix: `padding: 4px 8px` + `scroll-padding-left: 8px`.
+
+6. **Competitive Whitespace card redesign.** Old layout (priority badge → topic → 'Currently owned by:' label/value row → analysis paragraph) read like a settings form. New: priority → topic → analysis paragraph (lead with insight) → small footer caption with vendor pills. Added `renderOwnedBy()` helper with KNOWN_VENDORS list (Microsoft Azure, Google Cloud, AWS, Salesforce, HubSpot, Marketo, Adobe, Anthropic, OpenAI, Stripe, Shopify, etc) — sorted longest-first for greedy match, regex-replaces vendor names with `.vendor-pill` (accent-muted bg, 11px). Brian: "is this the prettiest way to show currently owned by?".
+
+7. **Strategy Brief Preview unified badge system.** Old: 3 different treatments fighting (.tag-category accent pill, .tag-impact-* colored fill, .tag-effort-* NO bg/padding — orphan label). Unified: all share shape/padding/font, color is only severity signal. Each badge gets 5px currentColor dot prefix via ::before. Category=accent, Impact=traffic-light (high green/medium amber/low grey), Effort=INVERTED traffic-light (low effort green=GOOD, high amber=BAD). Also tightened 'Recommendation 02' header — added gold underline rule. Brian: "preview could use a little love with those badges".
+
+8. **TopBar brand pill cramped + invalid date.** Two bugs: (a) 'Google Cloud · v1' jammed between page title and Sign In button with no breathing room; (b) 'Updated: Invalid Date' rendering when updatedAt was undefined for one render cycle. Fixes: (a) two-part pill structure — outer indigo-tinted pill with brand name, inner darker pill chip with version. CSS supports both desktop (240px max) and mobile (140px max). (b) hardened `formatDate` — null/undefined returns `—`, isNaN check returns `—`, falls back to `createdAt` if `updatedAt` missing. **Initial color mistake: shipped white text on light topbar (mistook topbar background for dark like the article preview).** Caught immediately by Brian, re-shipped with `#4338ca` indigo text + solid `#6366f1` version chip with white text.
+
+9. **GateModal content escaped background panel.** `max-height: calc(100dvh - 72px)` capped panel height but no `overflow-y` declared — children continued rendering past max-height, bleeding onto dimmed page. Plus close button used `position: absolute` so it scrolled away with content. **Fixes: added `overflow-y: auto` + `-webkit-overflow-scrolling: touch` for iOS momentum + hidden scrollbar; close button changed to `position: sticky; top: 0` with `background: var(--color-bg-card)` + `z-index: 2` so it stays accessible at top of scrollable modal.** Brian: "the background is not wrapping all the content".
+
+### Phase 1 Authorship — full pipeline shipped (THE BIG ARCHITECTURAL WORK)
+**Brian's prompt:** "We need to add an author (by choice only) at the end of GEO Strategist when a content brief gets shipped to Auth Enrichment. This way it comes into enrichment with a SME already injected."
+
+**Architecture decision:** authorship lives at the brief-creation boundary, not earlier in topic discovery and not later at content generation. GEO Strategist stays author-agnostic (it's about WHAT to write). The moment a topic becomes a brief is the moment WHO writes it gets locked in.
+
+**Why this is the right boundary:** topics are reusable across authors and time. Specific articles need specific authors with specific voice/expertise/credentials. The brief is the bridge — by the time it ships to Auth Enrichment, the SME should be locked so all downstream stages have one place to read from.
+
+**Schema decision: NO migration needed.** Author snapshot rides inside existing `geo_topic_briefs.brief_data` and `enriched_briefs.enriched_data` JSONB columns. The roster lives in `brand_profiles.settings.factualGround.authors[]` (already there from session 8 work).
+
+**Snapshot vs reference:** chose to snapshot the full author object at brief time, not just the ID. Editing the author roster later doesn't rewrite the historical SME context briefs were built under. Important for audit/compliance at enterprise scale.
+
+#### Backend pipeline (server.js, all 4 branches × 4 commits = 16 commits)
+
+1. **`/api/geo/opportunities/build-briefs`** — accepts optional `assignedAuthorId`. Resolves from `settings.factualGround.authors`, snapshots into `brief_data.assignedAuthor`. The Claude brief-builder prompt receives an 'ASSIGNED SME AUTHOR' section so the brief itself reflects that author's expertise/credentials/vantage. Backward compat: omit/empty/invalid id → no assignment, downstream falls back to `factualGround.authors[0]`.
+
+2. **Authenticity Enricher** (`/api/authenticity-enricher/analyze`) — reads `geoBrief.assignedAuthor`, writes it into `enriched_data.assignedAuthor`, AND **overrides** `finalAuthorSchema` with the assigned author's full Person schema (knowsAbout from expertise CSV, sameAs LinkedIn, hasCredential from credentials, description from bio). Explicit human assignment beats Tool 4 inference.
+
+3. **Content Generator** (`/api/content-generator/generate`) — both single-article AND campaign prompt sites updated. When `enrichedBrief.assignedAuthor` is present, the NAMED AUTHORS prompt block uses ONLY that author instead of listing the full roster. **Eliminates the 'Claude picked the wrong author' failure mode at scale.** Singular vs plural framing ('Named author' / 'Named authors'). The compact factualGround context block follows the same logic. The authorSchema fallback (when Claude omitted a name) prefers brief's assignedAuthor over `authors[0]`.
+
+4. **`GET /api/factual-ground/authors/:brandProfileId`** — lightweight roster endpoint for the UI. Returns the structured authors array straight from settings.factualGround.authors. Auth-gated.
+
+#### Frontend (GeoStrategistPage + BrandSettingsPage)
+
+5. **GEO Strategist author selector** — dropdown lives in the Build Briefs cherry-bar, between Clear and Build Briefs buttons. Auto-loads roster when brand changes; hidden if brand has no authors. Default 'No author assigned' preserves backward compat. Sends `assignedAuthorId` only when set. Mobile-responsive (full-width below 768px).
+
+6. **CSV import for bulk author setup** — enterprise unlock for teams of 12+ SMEs. New 'Import CSV' button next to '+ Add Author' in BrandSettings → Factual Ground. Native CSV parser (no Papa dep) handles quoted fields, escaped quotes, commas inside quotes. Headers case-insensitive with multiple aliases (`name`/`full name`, `linkedin url`/`linkedinUrl`/`linkedin`, etc). Only `name` required. **Merge logic:** case-insensitive name match → update existing record (only overwrites with non-empty values), no match → append new record. Re-importing an updated CSV refreshes existing authors instead of creating duplicates — operators can iterate externally and re-import safely. Inline status message (success/error/info) with row counts.
+
+#### What this enables for Sarah's call
+When Sarah asks 'can my team of 12 SMEs each have their own author profile and have articles route to them?' the answer is now legitimately **'yes, the pipeline supports it today.'** Walk-through:
+1. Sarah uploads CSV of 12 Google Cloud authors → all snap into Factual Ground
+2. GEO Strategist surfaces topics around Google Cloud's whitespace (vertical industry cloud, AI agents, TCO leadership)
+3. Each topic gets assigned to the right SME at brief time (Sanjay → AI/agents, Lauren → DevRel, etc)
+4. Auth Enrichment + Content Generator condition on the assigned SME — no Claude picking the wrong author at scale
+5. Article schema reflects the SME's full Person markup with `knowsAbout`, `sameAs` LinkedIn, `hasCredential`
+
+#### Phase 2 (deferred for future)
+- Author-scoped voice profiles (each author entry gets `voiceFingerprint` field — sample writing for Claude to mimic specific tone)
+- Author homepage routes (`/authors/sarah-kennedy-ellis`) listing their articles for Schema.org `sameAs` enrichment — big SEO/GEO win
+- Topic-cluster auto-routing (authors declare expertise areas; GEO topics auto-route to matching SME)
+- Compliance Gate approval routing — articles get sent to assigned author for sign-off
+- Author-specific publishing channel mapping (Sanjay's articles auto-cross-post to his LinkedIn)
+
+### AI Models question Brian asked
+"Dear god she's going to ask which Google model we're using lol. Is AI Overviews really that inferior to perplexity?" — answered both:
+
+**Q1 'which Google model':** We're not. Forge runs on Anthropic Claude (Sonnet 4.6 for most agents, Opus 4.6 for heavy lifts: Compliance Gate critique, Brand Intel synthesis). Defensible technical choice — Claude leads SWE-bench (82.1% Opus 4.6 vs 63.8% Gemini 3.1 Pro), better instruction-following depth (matters for Compliance Gate which is critique not generation), better prose naturalness. **The unlock:** when Sarah asks, frame Forge supporting Gemini-on-Vertex-AI as a future state in roadmap — turns gotcha into partnership opening for GCP customers wanting to standardize on Google's stack.
+
+**Q2 'AI Overviews vs Perplexity':** Yes, AI Overviews is meaningfully behind on dimensions that matter for Forge's value prop, but not because the model is worse. Gemini 3.1 Pro actually leads pure reasoning (94.3% GPQA Diamond). It's a deployment difference: Perplexity is source-first by architecture (every claim links to verifiable source — citation transparency IS the product). AI Overviews is summary-first with citations attached (often opaque about which source contributed which info — designed to ANSWER not ROUTE). **The brand-relevant insight:** Columbia Journalism Review hallucination rates: Perplexity 37%, ChatGPT 67%, Gemini 76%, Grok 94%. None are great. Sarah's job at GCP partly depends on AI Overviews being trustworthy at production grade — if it's perceived as 'fast but loose' that bleeds upward into GCP enterprise pitch. **Forge is the trust layer:** brands win when they're cited accurately by both, function of how well-grounded their content is in factualGround. The wedge for Sarah's demo: run cloud.google.com analysis live, look at AI search citations, almost certainly AWS shows up more than GCP and GCP citations are partially inaccurate. That's the moment.
+
+### Total session 9 output
+- **40+ commits across all 4 branches** (main, production, Intel, strategy) — all consistent
+- **Phase 1 Authorship shipped end-to-end** — backend handoff + propagation + UI selector + CSV import
+- **9 targeted iPhone polish rounds** based on real user testing
+- **Sarah Kennedy Ellis inbound handled** — message variants drafted, pre-call prep mapped, AI model competitive answer prepared
+
+---
+
 ## Session — April 24-25, 2026 — Mobile Responsive Overhaul (4 sessions, ~120+ commits)
 
 ### The mandate
