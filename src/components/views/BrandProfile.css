@@ -517,32 +517,69 @@
   margin-bottom: 12px;
 }
 
-.gap-ownership {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 12px;
-  font-size: 12px;
-}
-
-.ownership-label {
-  color: var(--color-text-muted);
-}
-
-.ownership-value {
-  color: var(--color-text-secondary);
-  font-weight: 500;
-}
-
-.ownership-value.unclaimed {
-  color: var(--color-success);
-}
+/* ── Whitespace card layout: title → analysis paragraph → ownership footer ──
+   Lead with the actual insight (whitespaceOpportunity), then a small caption
+   footer for competitive context. Reads like a consulting deliverable
+   rather than a settings form. */
 
 .gap-opportunity {
   font-size: 13px;
   color: var(--color-text-secondary);
   line-height: 1.7;
+  margin-bottom: 16px;
 }
+
+.gap-ownership-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.gap-ownership-caption {
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.gap-ownership-text {
+  color: var(--color-text-secondary);
+  flex: 1;
+  min-width: 0;
+}
+
+.gap-ownership-footer.unclaimed .gap-ownership-text {
+  color: var(--color-success);
+  font-weight: 500;
+}
+
+/* Vendor pill — inline, fits between text spans within the ownership line.
+   Uses accent-muted background so vendor names get visually picked out
+   without overwhelming the surrounding context. */
+.vendor-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  margin: 0 1px;
+  background: var(--color-accent-muted);
+  color: var(--color-accent);
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+}
+
+/* Legacy classes retained for any cached shapes — empty rules so nothing breaks */
+.gap-ownership { display: none; }
+.ownership-label, .ownership-value { display: none; }
 
 /* Responsive */
 @media (max-width: 768px) {
