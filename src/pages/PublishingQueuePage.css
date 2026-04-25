@@ -1065,7 +1065,7 @@
   /* ── Modal (preview / detail / scheduling) ────────────────────────── */
   .pq-modal {
     margin: 0;
-    max-height: calc(100vh - 72px); /* viewport minus topbar minus 8px padding minus 8px breathing room */
+    max-height: calc(100dvh - 72px); /* viewport minus topbar minus padding — dvh adapts to iOS Safari URL bar chrome changes */
     border-radius: 12px;
   }
   .pq-modal-header {
