@@ -485,3 +485,43 @@
     gap: 8px;
   }
 }
+
+/* ── Mobile overrides for inline-styled Strategy action row ──
+   Strategy.tsx uses the same inline-styled button pattern as BrandProfile.
+   !important required to override inline styles. */
+@media (max-width: 768px) {
+  .strategy-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+
+  .strategy-actions-wrap {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100%;
+    gap: 8px !important;
+  }
+
+  .strategy-action-btn {
+    width: 100% !important;
+    height: auto !important;
+    padding: 12px 14px !important;
+    font-size: 13px !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Hide the disabled "X Recommendations" pill on mobile — it's redundant info that
+     wastes a full row. The view title already indicates we're showing strategy data. */
+  .strategy-action-count {
+    display: none !important;
+  }
+
+  .strategy-action-btn .btn-icon-decorative {
+    display: none !important;
+  }
+
+  .strategy-action-btn:has(.btn-icon-decorative) {
+    gap: 0 !important;
+  }
+}
