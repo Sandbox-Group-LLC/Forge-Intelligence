@@ -962,3 +962,39 @@
     padding: 6px 10px;
   }
 }
+
+/* ── Mobile overrides for inline-styled header + article footer ──
+   Both rows had no className so CSS rules couldn't target them. Override inline
+   display/padding/height with !important. Also hide decorative icons in buttons. */
+@media (max-width: 768px) {
+  .cg-header-actions {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100%;
+    gap: 8px !important;
+  }
+  .cg-header-btn {
+    width: 100% !important;
+    height: auto !important;
+    padding: 12px 14px !important;
+  }
+
+  .cg-article-actions {
+    flex-direction: column !important;
+    width: 100%;
+    gap: 8px !important;
+    justify-content: stretch !important;
+  }
+  .cg-article-btn {
+    width: 100% !important;
+    height: auto !important;
+    padding: 12px 14px !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Hide decorative icons inside header + article action buttons */
+  .cg-header-btn .btn-icon-decorative,
+  .cg-article-btn .btn-icon-decorative {
+    display: none !important;
+  }
+}
