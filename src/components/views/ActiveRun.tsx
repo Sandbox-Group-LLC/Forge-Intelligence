@@ -67,20 +67,38 @@ export function ActiveRun() {
   const progress = (completedCount / processingStages.length) * 100;
 
   useEffect(() => {
-    // Use sessionStorage to persist start time across remounts
-    const key = 'forge_run_start';
-    if (!sessionStorage.getItem(key)) sessionStorage.setItem(key, String(Date.now()));
+    // Persist start time across remounts BUT scoped to the current brandUrl. The
+    // previous implementation used a single global key 'forge_run_start' which
+    // leaked across scans: if a prior scan never marked allComplete (SSE drop,
+    // user navigated away, etc), the sessionStorage value persisted, and the
+    // NEXT scan inherited the old start time — producing a runaway timer
+    // showing hours of "elapsed" on a 30-second-old scan.
+    //
+    // Scoping the key to the brand URL means each scan has its own timer slot.
+    // If the same brand is rescanned, we reset on mount (any prior scan of that
+    // brand is over by definition once a new scan starts).
+    const brandKey = (analysisInput.brandUrl || 'unknown').replace(/^https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+    const key = `forge_run_start:${brandKey}`;
+    // Always start fresh for a new scan — don't inherit any prior timestamp
+    sessionStorage.setItem(key, String(Date.now()));
     const startTime = Number(sessionStorage.getItem(key));
     const timer = setInterval(() => {
       setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [analysisInput.brandUrl]);
 
   // Clear stored start time when processing completes
   const allComplete = processingStages.every(s => s.status === 'complete' || s.status === 'error');
   useEffect(() => {
-    if (allComplete) sessionStorage.removeItem('forge_run_start');
+    if (allComplete) {
+      // Clear all forge_run_start:* keys, not just the current brand's, so any
+      // previously-leaked keys from prior scans get swept out too.
+      for (let i = sessionStorage.length - 1; i >= 0; i--) {
+        const k = sessionStorage.key(i);
+        if (k && k.startsWith('forge_run_start')) sessionStorage.removeItem(k);
+      }
+    }
   }, [allComplete]);
 
   useEffect(() => {
