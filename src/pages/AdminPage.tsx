@@ -183,7 +183,7 @@ export default function AdminPage() {
                   <span className="mc-panel-title">LIVE LOG TAIL</span>
                   <span className="mc-panel-meta" style={{ marginLeft: 8 }}>{logEntries.length} entries</span>
                 </div>
-                <div style={{ display: 'flex', gap: 6 }}>
+                <div className="admin-log-filter-row" style={{ display: 'flex', gap: 6 }}>
                   {(['all', 'error', 'warn'] as const).map(f => (
                     <button key={f} onClick={() => setLogFilter(f)} style={{
                       padding: '4px 10px', fontSize: 11, fontWeight: logFilter === f ? 600 : 400,
