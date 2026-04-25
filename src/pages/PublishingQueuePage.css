@@ -1146,12 +1146,42 @@
     padding: 3px 8px;
   }
 
-  /* ── Reviewer dropdown ────────────────────────────────────────────── */
+  /* ── Reviewer dropdown ──
+     Base rule positions the dropdown absolute, anchored to its trigger button
+     with width:240px right:0. On mobile the trigger button is only ~36px wide,
+     so the dropdown was rendering as a thin vertical strip extending sideways.
+     Plus base rule lives AFTER the mobile block in the file so unprefixed
+     declarations like 'position' weren't overridden.
+     
+     Solution: pin the dropdown as a viewport-anchored bottom sheet on mobile.
+     Position fixed with explicit coordinates breaks out of the trigger's
+     coordinate system entirely. */
   .pq-reviewer-dropdown {
-    left: 8px !important;
-    right: 8px !important;
+    position: fixed !important;
+    left: 12px !important;
+    right: 12px !important;
+    bottom: 12px !important;
+    top: auto !important;
     width: auto !important;
     max-width: none !important;
+    max-height: 70vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: 14px;
+  }
+
+  /* Make options bigger and tappable since they're now in a sheet */
+  .pq-reviewer-option {
+    padding: 14px;
+    gap: 12px;
+  }
+  .pq-reviewer-dropdown-title {
+    padding: 14px 16px 8px;
+    font-size: 0.75rem;
+  }
+  .pq-reviewer-empty {
+    padding: 12px 16px 16px;
+    font-size: 0.875rem;
   }
 
   /* ── UTM block & export modal ─────────────────────────────────────── */
