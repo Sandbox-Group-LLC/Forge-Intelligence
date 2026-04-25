@@ -115,14 +115,45 @@
 
 @media (max-width: 768px) {
   .topbar {
-    padding: 0 16px;
+    padding: 0 12px;
+    height: 56px;
+    min-height: 56px;
   }
 
+  /* Hamburger trigger — show on mobile (was incorrectly hidden) */
   .mobile-menu-btn {
-    display: none;
+    display: flex;
+    width: 40px;
+    height: 40px;
+    margin-right: 4px;
   }
 
   .topbar-subtitle {
+    display: none;
+  }
+
+  .topbar-title {
+    font-size: 16px;
+    /* Allow truncation rather than wrap */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .topbar-left {
+    flex: 1;
+    min-width: 0;
+    gap: 8px;
+  }
+
+  .topbar-brand-pill {
+    max-width: 120px;
+    font-size: 0.7rem;
+  }
+
+  .cache-indicator {
     display: none;
   }
 }
