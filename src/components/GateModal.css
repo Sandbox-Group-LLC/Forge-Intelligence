@@ -37,7 +37,16 @@
     padding: 28px 24px;
     border-radius: 12px;
     max-height: calc(100dvh - 72px);
+    /* Without overflow-y, capped content escapes the modal background — the white
+       panel ends at max-height while children continue rendering beyond, bleeding
+       onto the dimmed page underneath. Auto-scroll keeps everything inside the bg. */
+    overflow-y: auto;
+    /* Smooth iOS momentum scrolling */
+    -webkit-overflow-scrolling: touch;
+    /* Hide scrollbar — visual cleanliness; users still know it scrolls */
+    scrollbar-width: none;
   }
+  .gate-modal::-webkit-scrollbar { display: none; }
   /* Push backdrop below the 56px mobile topbar so the gate doesn't slide under it */
   .gate-backdrop {
     top: 56px;
@@ -52,16 +61,22 @@
 }
 
 .gate-close {
-  position: absolute;
-  top: 16px; right: 16px;
-  background: none;
+  /* sticky so when the modal becomes scrollable on small screens, the close
+     button stays accessible at the top rather than scrolling away with content.
+     Falls back gracefully on browsers without sticky support. */
+  position: sticky;
+  top: 0;
+  float: right;
+  margin: -16px -16px 0 0; /* pull back into corner against modal padding */
+  background: var(--color-bg-card);
   border: none;
   color: var(--color-text-muted);
   font-size: 0.875rem;
   cursor: pointer;
-  padding: 4px 8px;
+  padding: 8px 10px;
   border-radius: var(--radius-md);
   transition: all var(--transition-fast);
+  z-index: 2;
 }
 .gate-close:hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
 
