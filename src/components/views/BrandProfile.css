@@ -593,6 +593,12 @@
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     scroll-snap-type: x mandatory;
+    /* Inner padding gives the active pill (e.g. Brand Facts) breathing room
+       on the left edge — without this the active tab butts up against the
+       container's left border. Right padding mirrors so the last tab also
+       has breathing room when scrolled to the end. */
+    padding: 4px 8px;
+    scroll-padding-left: 8px;
   }
   .profile-tabs::-webkit-scrollbar {
     display: none;
