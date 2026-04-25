@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useLayoutEffect } from 'react';
 import { AppShell } from '../layouts/AppShell';
+import { NoBrandEmpty } from '../components/NoBrandEmpty';
 import { useApp } from '../context/AppContext';
 import './CalendarPage.css';
 
@@ -155,6 +156,23 @@ function CalendarPage() {
   };
 
   const pageTitle = activeBrand?.brandName ? `${activeBrand.brandName} Calendar` : 'Calendar';
+
+  if (!activeBrand) {
+    return (
+      <AppShell pageTitle="Editorial Calendar">
+        <NoBrandEmpty
+          pageName="Editorial Calendar"
+          pageDescription="See every article you have planned, scheduled, and published — across every campaign — in one calendar view."
+          features={[
+            'Drag-and-drop scheduling across days and weeks',
+            'Color-coded by campaign and channel',
+            'Spot publishing gaps and overlaps before they happen',
+            'Coordinate publishing time with your team review cadence',
+          ]}
+        />
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell pageTitle={pageTitle}>
