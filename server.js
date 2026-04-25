@@ -3695,6 +3695,21 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
 
     profileData.scraperSuccess = scraperSuccess;
 
+    // ── Stamp server-side time on every signal ────────────────────────────
+    // The schema asks the LLM for a 'lastChecked' ISO8601 date per signal, but
+    // the LLM has no current-date awareness and routinely hallucinates dates
+    // 6-18 months in the past (matching its training-data prior). Override
+    // every signal's lastChecked with the actual scan time. Server clock is
+    // the only source of truth here — never trust LLM-supplied timestamps for
+    // anything user-facing or audit-relevant.
+    if (Array.isArray(profileData.thirdPartySignals)) {
+      const nowIso = new Date().toISOString();
+      profileData.thirdPartySignals = profileData.thirdPartySignals.map(sig => ({
+        ...sig,
+        lastChecked: nowIso
+      }));
+    }
+
     if (saveToBrain) {
       const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       const resolvedBrandName = (profileData.brandName && !uuidPattern.test(profileData.brandName))
