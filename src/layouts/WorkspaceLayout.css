@@ -1,3 +1,11 @@
+/* ── Forge responsive breakpoints ──────────────────────────────────────── */
+:root {
+  --bp-mobile: 768px;
+  --bp-tablet: 1024px;
+  --sidebar-width: 240px;
+  --sidebar-collapsed-width: 64px;
+}
+
 .app-layout {
   display: flex;
   height: 100vh;
@@ -22,6 +30,7 @@
   overflow-x: hidden;
   background: var(--color-bg-base);
   position: relative;
+  -webkit-overflow-scrolling: touch;
 }
 
 .view-container {
@@ -42,13 +51,6 @@
   padding: 24px 24px 64px;
 }
 
-@media (max-width: 768px) {
-  .view-container:has(.cal-page),
-  .view-container.view-container-wide {
-    padding: 16px 12px 80px;
-  }
-}
-
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -60,13 +62,21 @@
   }
 }
 
+/* ── Mobile (<= 768px) ──────────────────────────────────────────────────
+   Sidebar becomes off-canvas drawer. Main content takes full viewport.
+   Hamburger button in TopBar opens the drawer over the content with backdrop. */
 @media (max-width: 768px) {
-  /* Offset content by the width of the collapsed icon rail */
   .app-main {
-    padding-left: 64px;
+    /* No left padding — sidebar slides in OVER content, doesn't reserve space */
+    padding-left: 0;
   }
 
   .view-container {
     padding: 20px 16px 80px;
+  }
+
+  .view-container:has(.cal-page),
+  .view-container.view-container-wide {
+    padding: 16px 12px 80px;
   }
 }
