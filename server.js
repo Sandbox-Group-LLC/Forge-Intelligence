@@ -7283,7 +7283,7 @@ app.post('/api/compliance/dismiss-flag', requireAuth, async (req, res) => {
 // POST approve — save human edits, write mistakes to brain, mark approved
 app.post('/api/compliance/approve', requireAuth, async (req, res) => {
   const startTime = Date.now();
-  const { brandProfileId, contentId, reviewMode, editedSections, decisions } = req.body;
+  const { brandProfileId, contentId, reviewMode, editedSections, decisions, editedFaqs } = req.body;
   if (!brandProfileId || !contentId) return res.status(400).json({ error: 'brandProfileId and contentId required' });
   try {
     const safeId = brandProfileId.replace(/-/g, '_');
@@ -7320,6 +7320,32 @@ app.post('/api/compliance/approve', requireAuth, async (req, res) => {
               articleJson.sections[edit.sectionIndex].content = edit.content;
             }
           }
+        }
+      });
+    }
+
+    // Apply human edits to FAQs (separate field from sections, separate edit surface).
+    // Same brain_mistakes write pattern so the model learns from FAQ corrections too.
+    // editedFaqs format: [{ index, question, answer }] — both fields independently editable.
+    if (editedFaqs && Array.isArray(editedFaqs) && Array.isArray(articleJson.faqs)) {
+      editedFaqs.forEach(edit => {
+        const faq = articleJson.faqs[edit.index];
+        if (!faq) return;
+        const origQ = faq.question || '';
+        const origA = faq.answer || '';
+        const newQ = edit.question != null ? edit.question : origQ;
+        const newA = edit.answer != null ? edit.answer : origA;
+        if (origQ !== newQ || origA !== newA) {
+          pool.query(
+            `INSERT INTO brain_mistakes (brand_profile_id, mistake_type, description, human_feedback, severity)
+             VALUES ($1, 'human_edit_faq', $2, $3, 'medium')`,
+            [
+              brandProfileId,
+              `FAQ ${edit.index + 1}: human reviewer edited Q/A`,
+              `Avoid Q: "${origQ.substring(0, 150)}" / A: "${origA.substring(0, 200)}" — prefer Q: "${newQ.substring(0, 150)}" / A: "${newA.substring(0, 200)}"`
+            ]
+          ).catch(e => console.error('[COMPLIANCE] FAQ mistake write error:', e.message));
+          articleJson.faqs[edit.index] = { ...faq, question: newQ, answer: newA };
         }
       });
     }
