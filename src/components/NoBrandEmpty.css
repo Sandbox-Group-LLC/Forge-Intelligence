@@ -1,0 +1,163 @@
+/* NoBrandEmpty — shared empty state for users who haven't created a brand yet.
+   Renders inside the existing AppShell so the sidebar and topbar stay visible —
+   the user can still navigate, they just see a friendly explanation of what each
+   page does and a clear CTA back to New Analysis. */
+
+.no-brand-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 32px 16px;
+}
+
+.no-brand-empty-card {
+  max-width: 520px;
+  width: 100%;
+  text-align: center;
+  background: var(--color-bg-card, #fff);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 16px;
+  padding: 48px 32px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.no-brand-empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-accent, #4F46E5) 8%, transparent);
+  color: var(--color-accent, #4F46E5);
+  margin-bottom: 24px;
+}
+
+.no-brand-empty-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-text-primary, #1a1a1a);
+  margin: 0 0 12px;
+  letter-spacing: -0.01em;
+}
+
+.no-brand-empty-desc {
+  font-size: 15px;
+  color: var(--color-text-secondary, #64748b);
+  line-height: 1.6;
+  margin: 0 auto 28px;
+  max-width: 420px;
+}
+
+.no-brand-empty-features {
+  list-style: none;
+  padding: 0;
+  margin: 0 auto 32px;
+  max-width: 380px;
+  text-align: left;
+}
+
+.no-brand-empty-features li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+  font-size: 14px;
+  color: var(--color-text-secondary, #64748b);
+  line-height: 1.5;
+}
+
+.no-brand-empty-bullet {
+  color: var(--color-accent, #4F46E5);
+  font-weight: 600;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.no-brand-empty-cta-block {
+  border-top: 1px solid var(--color-border, #e2e8f0);
+  padding-top: 24px;
+  margin-top: 8px;
+}
+
+.no-brand-empty-cta-prompt {
+  font-size: 13px;
+  color: var(--color-text-muted, #94a3b8);
+  margin: 0 0 14px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+
+.no-brand-empty-cta-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 28px;
+  background: var(--color-accent, #4F46E5);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+  font-family: inherit;
+}
+
+.no-brand-empty-cta-btn:hover {
+  background: color-mix(in srgb, var(--color-accent, #4F46E5) 88%, black);
+  transform: translateY(-1px);
+}
+
+.no-brand-empty-cta-btn:active {
+  transform: translateY(0);
+}
+
+@media (max-width: 768px) {
+  .no-brand-empty {
+    min-height: 50vh;
+    padding: 16px 12px;
+  }
+
+  .no-brand-empty-card {
+    padding: 32px 20px;
+    border-radius: 12px;
+  }
+
+  .no-brand-empty-icon {
+    width: 72px;
+    height: 72px;
+    margin-bottom: 18px;
+  }
+
+  .no-brand-empty-icon svg {
+    width: 44px;
+    height: 44px;
+  }
+
+  .no-brand-empty-title {
+    font-size: 20px;
+  }
+
+  .no-brand-empty-desc {
+    font-size: 14px;
+    margin-bottom: 22px;
+  }
+
+  .no-brand-empty-features {
+    margin-bottom: 24px;
+  }
+
+  .no-brand-empty-features li {
+    font-size: 13px;
+  }
+
+  .no-brand-empty-cta-btn {
+    width: 100%;
+    padding: 14px 20px;
+    font-size: 14px;
+  }
+}
