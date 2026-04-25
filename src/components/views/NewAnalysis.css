@@ -416,6 +416,43 @@
   align-self: center;
 }
 
+/* On mobile, badge moves to a dedicated row above the pipeline copy
+   so it doesn't get clipped by the right edge or overlap the FAB. */
+@media (max-width: 768px) {
+  .auto-discover-hint {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .hint-free-badge {
+    align-self: flex-start;
+    order: -1;
+    font-size: 10px;
+    padding: 3px 9px;
+  }
+
+  .hint-pipeline {
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  /* Add bottom padding inside the form so the bottom-right FAB never overlaps the run button */
+  .url-input-row {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .url-input,
+  .btn-run {
+    width: 100%;
+  }
+
+  .btn-run {
+    padding: 14px 20px;
+  }
+}
+
 /* ── Advanced toggle ── */
 .advanced-section {
   border-top: 1px solid var(--color-border-subtle);
