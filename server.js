@@ -9729,75 +9729,10 @@ ${canonicalNote}`,
           results[channel] = { status: 'published', url: medData.data?.url, postId: medData.data?.id, utmParams };
 
         } else if (channel === 'ghost') {
-          // ── Ghost publish via Pipedream workflow (preferred) or direct Ghost API (legacy fallback) ──
-          // Pipedream path takes precedence: brand_settings stores a workflow trigger URL,
-          // server posts the article payload, Pipedream's workflow handles JWT building and
-          // calls Ghost on our behalf. Server stays out of Ghost auth concerns entirely.
-          const { pipedreamUrl, adminUrl, adminApiKey } = chConfig.credentials || {};
-
-          // ─── Pipedream path ───
-          if (pipedreamUrl) {
-            const ghostBase = '';  // unused on this path; kept for downstream symmetry
-            const articleUrl = forgeArticleUrl;
-            const utmUrl = utmParams && Object.keys(utmParams).length > 0
-              ? articleUrl + '?' + buildUtmString(utmParams)
-              : articleUrl;
-
-            // Build HTML from article sections — Pipedream forwards as-is to Ghost
-            const articleJson = article.article_json || {};
-            const sections = articleJson.sections || [];
-            const htmlBody = sections.map(s =>
-              `<h2>${s.heading || ''}</h2>\n${(s.body || '').split('\n').filter(Boolean).map(p => `<p>${p}</p>`).join('\n')}`
-            ).join('\n\n');
-            const canonicalNote = `<p><em>Originally published at <a href="${utmUrl}">${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}</a></em></p>`;
-            const htmlContent = `${htmlBody}\n\n${canonicalNote}`;
-            const ghostFeatureImageUrl = article.hero_image_url || null;
-
-            // Flat payload — Pipedream workflow shapes it for Ghost's nested API.
-            // Adding a 'forgeMeta' block lets the workflow log/route by brand without
-            // having to parse the article body.
-            const pipedreamPayload = {
-              title: article.title,
-              html: htmlContent,
-              status: 'published',
-              canonicalUrl: utmUrl,
-              metaTitle: article.title,
-              metaDescription: (articleJson.metaDescription || '').slice(0, 300),
-              featureImageUrl: ghostFeatureImageUrl,
-              forgeMeta: {
-                brandProfileId: item.brand_profile_id,
-                contentId: item.content_id,
-                queueItemId: queueItemId,
-                publishedAt: new Date().toISOString(),
-              },
-            };
-
-            const pdRes = await fetch(pipedreamUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(pipedreamPayload),
-            });
-
-            // Pipedream workflows return 200 with whatever JSON the workflow chose.
-            // Convention: { success: true, url, postId } on success; non-2xx or { error } on failure.
-            const pdData = await pdRes.json().catch(() => ({}));
-            if (!pdRes.ok || pdData.error || pdData.success === false) {
-              throw new Error(pdData.error || pdData.message || `Pipedream workflow returned ${pdRes.status}`);
-            }
-
-            results[channel] = {
-              status: 'published',
-              url: pdData.url || pdData.publishedUrl || null,
-              postId: pdData.postId || pdData.id || null,
-              utmParams,
-              via: 'pipedream',
-            };
-
-          } else {
-          // ─── Direct Ghost Admin API path (legacy fallback) ───
-          // Used only when pipedreamUrl is not configured. Kept for backward
-          // compatibility with brands that haven't migrated to the Pipedream workflow.
-          if (!adminUrl || !adminApiKey) throw new Error('Ghost requires either pipedreamUrl OR (adminUrl + adminApiKey)');
+          // ── Ghost Admin API publish ──
+          // Ghost uses JWT auth derived from the Admin API key (format: id:secret)
+          const { adminUrl, adminApiKey } = chConfig.credentials || {};
+          if (!adminUrl || !adminApiKey) throw new Error('Ghost Admin URL and Admin API Key are required');
 
           const [keyId, keySecret] = adminApiKey.split(':');
           if (!keyId || !keySecret) throw new Error('Admin API Key must be in format id:secret — copy it directly from Ghost Admin');
@@ -9858,8 +9793,7 @@ ${canonicalNote}`,
           }
 
           const ghostPost = ghostData.posts?.[0];
-          results[channel] = { status: 'published', url: ghostPost?.url, postId: ghostPost?.id, utmParams, via: 'direct' };
-          }  // ─── end legacy direct-Ghost path ───
+          results[channel] = { status: 'published', url: ghostPost?.url, postId: ghostPost?.id, utmParams };
 
         } else {
           results[channel] = { status: 'error', error: `Unknown channel: ${channel}` };
