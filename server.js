@@ -9589,6 +9589,7 @@ Output only the post text.` }]
                 headers: {
                   'Content-Type': 'application/json',
                   'x-pd-external-user-id': item.brand_profile_id,
+                  'x-pd-environment': process.env.PIPEDREAM_PROJECT_ENVIRONMENT || 'production',
                 },
                 body: JSON.stringify({
                   pageId: creds.pageId || null,
