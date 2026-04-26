@@ -9552,12 +9552,15 @@ Output only the post text.` }]
           const creds = chConfig.credentials || {};
           const pipedreamAccountId = creds.pipedream_account_id;
 
-          // ─── Priority 0: Pipedream workflow URL (custom OAuth scopes via Pipedream's String/AI builder) ───
-          // When pipedreamWorkflowUrl is set on the brand's facebook credentials, route the publish
-          // through that workflow trigger. The workflow handles OAuth, page selection, and the actual
-          // Graph API call — Forge just sends the payload.
-          const pipedreamWorkflowUrl = creds.pipedreamWorkflowUrl;
-          if (pipedreamWorkflowUrl) {
+          // ─── Priority 0: Pipedream workflow URL (global env var, multi-tenant) ───
+          // Pipedream's connector AI builder gave us a workflow URL that uses the right
+          // Facebook Pages connector with proper scopes. The workflow URL is global Forge
+          // infrastructure (env var, not per-brand) — every customer's publish hits the same
+          // URL. Pipedream looks up which customer's stored Facebook OAuth tokens to use via
+          // the x-pd-external-user-id header (which is the brand_profile_id, set during the
+          // existing Connect flow when the customer authorized Pipedream's pre-approved app).
+          const pipedreamWorkflowUrl = process.env.FACEBOOK_PIPEDREAM_WORKFLOW_URL;
+          if (pipedreamWorkflowUrl && pipedreamAccountId) {
             const articleUrlWf = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
             const utmUrlWf = articleUrlWf + '?' + new URLSearchParams({ ...utmCtx, utm_source: 'facebook', utm_medium: 'social' }).toString();
             const fbPostCopyOverrideWf = (req.body.postCopy || {})[channel];
@@ -9578,11 +9581,20 @@ Output only the post text.` }]
               }
             }
             try {
+              // Pipedream Connect lookup: x-pd-external-user-id tells Pipedream which customer's
+              // stored OAuth credentials to use when the workflow's Facebook step fires.
+              // pageId comes from creds.pageId (set when customer picked a Page after OAuth).
               const wfRes = await fetch(pipedreamWorkflowUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-pd-external-user-id': item.brand_profile_id,
+                },
                 body: JSON.stringify({
-                  title: item.title, message: fbMessageWf, link: utmUrlWf,
+                  pageId: creds.pageId || null,
+                  title: item.title,
+                  message: fbMessageWf,
+                  link: utmUrlWf,
                   forgeMeta: { brandProfileId: item.brand_profile_id, contentId: item.content_id, queueItemId: queueItemId, publishedAt: new Date().toISOString() }
                 }),
               });
