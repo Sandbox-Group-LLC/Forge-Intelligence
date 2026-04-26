@@ -321,6 +321,11 @@ export default function IntegrationsPage() {
   const [fbPagesLoading, setFbPagesLoading] = useState(false);
   const [fbPagesError, setFbPagesError] = useState('');
   const [fbSavingPage, setFbSavingPage] = useState(false);
+  // Manual Page ID input — primary path while Pipedream's page picker doesn't return
+  // pages reliably. Customer pastes the ID from their Facebook Page → Save persists it via
+  // the same /api/facebook/pipedream/select-page endpoint the picker uses.
+  const [fbManualPageId, setFbManualPageId] = useState('');
+  const [fbManualPageIdSaving, setFbManualPageIdSaving] = useState(false);
 
   // Load channels whenever active brand resolves
   useEffect(() => {
@@ -336,6 +341,13 @@ export default function IntegrationsPage() {
     if (connected) loadFbPages();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expanded, selectedBrand, savedChannels]);
+
+  // Hydrate manual Page ID input from saved credentials when the FB card opens.
+  useEffect(() => {
+    if (expanded !== 'facebook') return;
+    const fbChannel = (savedChannels as any)['facebook'];
+    setFbManualPageId(fbChannel?.credentials?.pageId || '');
+  }, [expanded, savedChannels]);
 
   const loadChannels = (brandId: string) => {
     fetch(`/api/publishing/channels/${brandId}`)
@@ -499,6 +511,30 @@ export default function IntegrationsPage() {
       setFbPages([]);
     } finally {
       setFbPagesLoading(false);
+    }
+  };
+
+  // Save a manually entered Page ID. Reuses the same backend endpoint as the picker —
+  // pageName is null because the customer didn't pick a Page object, just typed an ID.
+  // The publish flow only needs pageId; pageName is decorative metadata.
+  const saveManualFbPageId = async () => {
+    const trimmed = fbManualPageId.trim();
+    if (!selectedBrand || !trimmed) return;
+    setFbManualPageIdSaving(true);
+    try {
+      const r = await fetch('/api/facebook/pipedream/select-page', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brandProfileId: selectedBrand, pageId: trimmed, pageName: null })
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Failed to save Page ID');
+      setSuccess('Page ID saved ✓');
+      setTimeout(() => setSuccess(''), 3000);
+      loadChannels(selectedBrand);
+    } catch (e: any) {
+      setError(e.message || 'Failed to save Page ID');
+    } finally {
+      setFbManualPageIdSaving(false);
     }
   };
 
@@ -668,6 +704,37 @@ export default function IntegrationsPage() {
                           <div style={{ marginTop: 16, padding: 16, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8 }}>
                             <div style={{ fontSize: 13, fontWeight: 600, color: '#1E293B', marginBottom: 8 }}>Publishing destination</div>
                             <div style={{ fontSize: 12, color: '#64748B', marginBottom: 12 }}>Choose which Facebook Page Forge should publish to.</div>
+
+                            {/* Manual Page ID input — primary path. Pipedream's page picker below
+                                doesn't currently return Pages reliably, so we let customers paste
+                                the ID directly. Find the Page ID under your Facebook Page → About →
+                                Page transparency. */}
+                            <div style={{ marginBottom: 14, padding: 12, background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: 6 }}>
+                              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#1E293B', marginBottom: 4 }}>Facebook Page ID</label>
+                              <div style={{ fontSize: 11, color: '#64748B', marginBottom: 8, lineHeight: 1.4 }}>
+                                Find this on your Facebook Page under About → Page transparency. Pure numbers, e.g. <code style={{ background: '#F1F5F9', padding: '1px 4px', borderRadius: 3 }}>123456789012345</code>.
+                              </div>
+                              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                <input
+                                  type="text"
+                                  value={fbManualPageId}
+                                  onChange={e => setFbManualPageId(e.target.value)}
+                                  placeholder="123456789012345"
+                                  className="int-field-input"
+                                  style={{ flex: 1 }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={saveManualFbPageId}
+                                  disabled={fbManualPageIdSaving || !fbManualPageId.trim()}
+                                  className="int-save-btn"
+                                  style={{ minWidth: 80 }}
+                                >
+                                  {fbManualPageIdSaving ? '...' : 'Save'}
+                                </button>
+                              </div>
+                            </div>
+
 
                             {fbPagesLoading && (
                               <div style={{ fontSize: 13, color: '#64748B', padding: '8px 0' }}>Loading your Pages…</div>
