@@ -687,20 +687,18 @@ export default function IntegrationsPage() {
                             )}
 
                             {!fbPagesLoading && !fbPagesError && fbPages.length === 0 && (
-                              <div style={{ fontSize: 13, color: '#475569', padding: '12px 14px', background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 6, lineHeight: 1.5 }}>
-                                <div style={{ fontWeight: 600, color: '#9A3412', marginBottom: 6 }}>Facebook publishing is blocked by Meta's OAuth policy</div>
+                              <div style={{ fontSize: 13, color: '#475569', padding: '12px 14px', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 6, lineHeight: 1.5 }}>
+                                <div style={{ fontWeight: 600, color: '#1E293B', marginBottom: 4 }}>No Pages found</div>
                                 <div style={{ marginBottom: 8 }}>
-                                  The shared OAuth app we use with Pipedream only grants <code style={{ fontSize: 12, background: '#FFEDD5', padding: '1px 4px', borderRadius: 3 }}>pages_show_list</code>, which isn't enough to list Pages owned through Business Suite or to publish. Meta restricts the scopes needed for Page publishing (<code style={{ fontSize: 12, background: '#FFEDD5', padding: '1px 4px', borderRadius: 3 }}>pages_manage_posts</code>, <code style={{ fontSize: 12, background: '#FFEDD5', padding: '1px 4px', borderRadius: 3 }}>business_management</code>) to a Meta Developer App you register and verify yourself.
+                                  We couldn't find any Facebook Pages on the connected account. If you just connected, give it a moment and click Retry. If you manage Pages through Business Suite, make sure the connected Facebook account has admin access to at least one Page.
                                 </div>
-                                <div style={{ marginBottom: 8, fontWeight: 500, color: '#1E293B' }}>To enable Facebook publishing:</div>
-                                <ol style={{ margin: '0 0 8px 18px', padding: 0 }}>
-                                  <li style={{ marginBottom: 4 }}>Create a Meta Developer App at <a href="https://developers.facebook.com/apps/create/" target="_blank" rel="noreferrer" style={{ color: '#9A3412', textDecoration: 'underline' }}>developers.facebook.com</a> (requires Business Verification — Business Manager path is often faster than direct Dev App verification for new accounts)</li>
-                                  <li style={{ marginBottom: 4 }}>Register that App as a <a href="https://pipedream.com/docs/connect/api-reference/#oauth-apps" target="_blank" rel="noreferrer" style={{ color: '#9A3412', textDecoration: 'underline' }}>Pipedream Custom OAuth App</a></li>
-                                  <li>Set <code style={{ fontSize: 12, background: '#FFEDD5', padding: '1px 4px', borderRadius: 3 }}>PIPEDREAM_OAUTH_APP_ID_FACEBOOK</code> on the Render service and reconnect</li>
-                                </ol>
-                                <div style={{ fontSize: 12, color: '#78716C', marginTop: 8 }}>
-                                  Until then, Facebook publishing will stay in this empty state — the other channels (LinkedIn, X, WordPress, etc.) are fully functional. Reach out if you'd like help unblocking the Meta verification step.
-                                </div>
+                                <button
+                                  type="button"
+                                  onClick={loadFbPages}
+                                  style={{ background: 'none', border: '1px solid #CBD5E1', color: '#1E293B', padding: '6px 12px', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}
+                                >
+                                  Retry
+                                </button>
                               </div>
                             )}
 
