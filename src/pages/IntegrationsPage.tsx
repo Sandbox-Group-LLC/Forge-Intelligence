@@ -321,13 +321,6 @@ export default function IntegrationsPage() {
   const [fbPagesLoading, setFbPagesLoading] = useState(false);
   const [fbPagesError, setFbPagesError] = useState('');
   const [fbSavingPage, setFbSavingPage] = useState(false);
-  // Facebook Pipedream workflow URL — operator-pasted URL that overrides the
-  // default Pipedream Connect publish path. When set, server.js POSTs the
-  // article payload directly to this URL instead of using pipedreamProxy().
-  // Lets operators bring custom OAuth scopes via Pipedream's String AI builder.
-  const [fbWfUrl, setFbWfUrl] = useState('');
-  const [fbWfUrlSaving, setFbWfUrlSaving] = useState(false);
-  const [fbWfUrlSaved, setFbWfUrlSaved] = useState(false);
 
   // Load channels whenever active brand resolves
   useEffect(() => {
@@ -343,15 +336,6 @@ export default function IntegrationsPage() {
     if (connected) loadFbPages();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expanded, selectedBrand, savedChannels]);
-
-  // Hydrate the Pipedream workflow URL input from saved credentials when FB is opened.
-  useEffect(() => {
-    if (expanded !== 'facebook') return;
-    const fbChannel = (savedChannels as any)['facebook'];
-    const savedUrl = fbChannel?.credentials?.pipedreamWorkflowUrl || '';
-    setFbWfUrl(savedUrl);
-    setFbWfUrlSaved(false);
-  }, [expanded, savedChannels]);
 
   const loadChannels = (brandId: string) => {
     fetch(`/api/publishing/channels/${brandId}`)
@@ -498,36 +482,6 @@ export default function IntegrationsPage() {
       setError('Connection failed');
     } finally {
       setSaving(null);
-    }
-  };
-
-  // Save the Pipedream workflow URL to publishing_channels.credentials.
-  // Merge-only: doesn't touch other credential keys (pipedream_account_id, pageId, pageName).
-  const savePipedreamWfUrl = async () => {
-    if (!selectedBrand) return;
-    setFbWfUrlSaving(true);
-    setFbWfUrlSaved(false);
-    try {
-      const fbChannel = (savedChannels as any)['facebook'];
-      const existingCreds = fbChannel?.credentials || {};
-      const merged = { ...existingCreds, pipedreamWorkflowUrl: fbWfUrl.trim() };
-      const r = await fetch('/api/publishing/channels', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brandProfileId: selectedBrand, channel: 'facebook', credentials: merged, utmTemplate: utmTemplates.facebook })
-      });
-      const d = await r.json();
-      if (d.success) {
-        setFbWfUrlSaved(true);
-        loadChannels(selectedBrand);
-        setTimeout(() => setFbWfUrlSaved(false), 3500);
-      } else {
-        setError(d.error || 'Failed to save workflow URL');
-      }
-    } catch (e: any) {
-      setError(e.message || 'Failed to save workflow URL');
-    } finally {
-      setFbWfUrlSaving(false);
     }
   };
 
@@ -705,39 +659,6 @@ export default function IntegrationsPage() {
                           <span className="int-pipedream-sub">OAuth managed by Pipedream · Token auto-refreshes · Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}</span>
                           <button className="int-reauth-btn" onClick={() => handleSave(ch.id)}>Reconnect</button>
                         </div>
-
-                        {/* Facebook-specific: Pipedream Workflow URL input.
-                            When set, server.js Priority 0 path POSTs the article payload directly
-                            to this URL instead of using pipedreamProxy(). Lets operators bring
-                            custom OAuth scopes via Pipedream's String AI builder — the workflow
-                            handles auth, page selection, and the Graph API call. */}
-                        {ch.id === 'facebook' && (
-                          <div style={{ marginTop: 16, padding: 16, background: '#FEFCE8', border: '1px solid #FDE68A', borderRadius: 8 }}>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: '#1E293B', marginBottom: 4 }}>Pipedream Workflow URL <span style={{ fontSize: 11, fontWeight: 500, color: '#A16207', marginLeft: 6 }}>(optional override)</span></div>
-                            <div style={{ fontSize: 12, color: '#64748B', marginBottom: 10 }}>
-                              Paste a Pipedream HTTP trigger URL to route Facebook publishing through your own workflow (custom OAuth scopes via Pipedream String). When set, this overrides the default Pipedream Connect path below.
-                            </div>
-                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                              <input
-                                type="text"
-                                value={fbWfUrl}
-                                onChange={e => { setFbWfUrl(e.target.value); setFbWfUrlSaved(false); }}
-                                placeholder="https://eo*.m.pipedream.net"
-                                className="int-field-input"
-                                style={{ flex: 1 }}
-                              />
-                              <button
-                                type="button"
-                                onClick={savePipedreamWfUrl}
-                                disabled={fbWfUrlSaving}
-                                className="int-save-btn"
-                                style={{ minWidth: 80 }}
-                              >
-                                {fbWfUrlSaving ? '...' : fbWfUrlSaved ? '✓ Saved' : 'Save'}
-                              </button>
-                            </div>
-                          </div>
-                        )}
 
                         {/* Facebook-specific: Page picker. Pipedream OAuth grants access at the user level,
                             so a user who admins multiple Pages must choose which one Forge publishes to.
