@@ -209,25 +209,19 @@ const CHANNELS: ChannelDef[] = [
   {
     id: 'facebook',
     label: 'Facebook',
-    pipedreamApp: 'facebook_pages',
-    pipedreamOauthAppId: 'FACEBOOK_OAUTH_APP_ID', // placeholder — filled from /api/pipedream/config
-    description: 'Publish articles to your company Facebook Page via Graph API. Requires a Page Access Token.',
+    description: 'Publish articles to your Facebook Page via a Pipedream workflow. The workflow handles OAuth and page selection — you just paste the trigger URL.',
     color: '#1877F2',
     logo: 'f',
     liveStatus: 'live',
     credentialFields: [
-      { key: 'pageId', label: 'Page ID', placeholder: '123456789012345' },
-      { key: 'pageAccessToken', label: 'Page Access Token', placeholder: 'EAABsbCS...', type: 'password' },
+      { key: 'pipedreamWorkflowUrl', label: 'Pipedream Workflow URL', placeholder: 'https://eo*.m.pipedream.net' },
     ],
     setupGuide: {
-      title: 'How to get your Facebook Page Access Token',
+      title: 'Connect Facebook via Pipedream',
       steps: [
-        { text: 'Step 1 -- Create a Meta Developer app. Do this on desktop -- the portal is broken on mobile. Go to Meta for Developers and create a new app. Choose type "Business". Name it anything (e.g. "Forge").', url: 'https://developers.facebook.com/apps/create/' },
-        { text: 'Step 2 -- Add Pages permissions. In your app dashboard, go to App Settings → Advanced. Under "Optional Permissions" add: pages_manage_posts, pages_read_engagement, pages_show_list, pages_manage_metadata. Some may require App Review for non-admin users -- for your own Pages you can proceed without review.' },
-        { text: 'Step 3 -- Get a User Access Token. Go to Graph API Explorer. Select your app from the top-right dropdown. Add the permissions above, then click "Generate Access Token" and authorize with the Facebook account that admins your Page.', url: 'https://developers.facebook.com/tools/explorer/' },
-        { text: 'Step 4 -- Exchange for a Page Access Token. This is the critical step most people miss. In Graph API Explorer, call GET /me/accounts using your user token. The response lists every Page you manage, each with its own Page ID and a Page access token. Copy the token for your Page -- this is what Forge needs, not the user token.' },
-        { text: 'Step 5 -- Make the Page token long-lived. The token from /me/accounts is short-lived. Paste it into the Access Token Debugger and click "Extend Access Token". Copy the result -- it lasts 60 days.', url: 'https://developers.facebook.com/tools/debug/accesstoken/' },
-        { text: 'Step 6 -- Get your Page ID. Your Page ID is in the /me/accounts response from Step 4, or find it on your Facebook Page under About → Page transparency. Paste both the Page ID and the long-lived Page token into Forge above.' },
+        { text: 'In Pipedream, build (or use an existing) workflow that handles Facebook auth, page selection, and posting to /{pageId}/feed. Pipedream\'s custom connector AI builder can scaffold this for you.', url: 'https://pipedream.com/' },
+        { text: 'Copy the workflow\'s HTTP trigger URL (looks like https://eo*.m.pipedream.net) and paste it above.' },
+        { text: 'The workflow receives Forge\'s payload with title, message, link, and forgeMeta. It posts to the connected Facebook Page and responds with success or error.' },
       ],
     },
   },
