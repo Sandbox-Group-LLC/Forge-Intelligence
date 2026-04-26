@@ -45,6 +45,8 @@ interface Article {
     sections: ArticleSection[];
     overallConfidence: number;
     brainMatchScore: number;
+    metaDescription?: string;
+    faqs?: Array<{ question: string; answer: string }>;
   };
   compliance_status: ComplianceStatus;
   compliance_report: ComplianceReport | null;
