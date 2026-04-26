@@ -9547,18 +9547,8 @@ Output only the post text.` }]
           }
 
         } else if (channel === 'facebook') {
-          // ── Facebook publish: three-tier fallback ──
-          //   1. pipedreamWorkflowUrl — NEW preferred path. Forge POSTs flat payload
-          //      to a Pipedream workflow trigger. Workflow uses a String custom OAuth
-          //      app with the exact scopes the brand needs (pages_manage_metadata,
-          //      pages_read_engagement, etc.) that the generic facebook_pages app
-          //      doesn't grant.
-          //   2. pipedreamAccountId — existing Pipedream Connect proxy. Calls
-          //      Graph API directly via pipedreamProxy() with stored OAuth account.
-          //      Limited to scopes Pipedream's standard facebook_pages app grants.
-          //   3. pageAccessToken — legacy direct-Graph path with brand-supplied token.
+          // ── Facebook publish via Pipedream Connect Proxy ──
           const creds = chConfig.credentials || {};
-          const pipedreamWorkflowUrl = creds.pipedreamWorkflowUrl;
           const pipedreamAccountId = creds.pipedream_account_id;
           
           const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
@@ -9579,7 +9569,7 @@ Output only the post text.` }]
                 max_tokens: 600,
                 messages: [{
                   role: 'user',
-                  content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant tags. Include the URL ${utmUrl} naturally.\n\nArticle title: ${item.title}\n\nArticle excerpt: ${(article.article_json?.sections?.[0]?.body || '').slice(0, 500)}`
+                  content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant tags. Include the URL on its own line at the end.\n\nArticle title: ${item.title}\nArticle URL: ${utmUrl}`
                 }]
               });
               fbMessage = haiku.content[0]?.text || fbMessage;
@@ -9588,55 +9578,7 @@ Output only the post text.` }]
             }
           }
 
-          // ─── Priority 1: Pipedream workflow trigger (custom OAuth scopes via String) ───
-          if (pipedreamWorkflowUrl) {
-            try {
-              const pageId = creds.pageId;
-              if (!pageId) {
-                throw new Error('No Facebook Page ID configured. Go to Integrations → Facebook → enter your Page ID.');
-              }
-              console.log('[FB-WORKFLOW] Publishing to page', pageId, 'via workflow', pipedreamWorkflowUrl.slice(0, 50));
-
-              // Flat payload — Pipedream workflow shapes it for Graph API.
-              // forgeMeta lets the workflow log/route by brand without parsing message body.
-              const fbPayload = {
-                pageId: pageId,
-                message: fbMessage,
-                link: utmUrl,
-                forgeMeta: {
-                  brandProfileId: item.brand_profile_id,
-                  contentId: item.content_id,
-                  queueItemId: queueItemId,
-                  publishedAt: new Date().toISOString(),
-                },
-              };
-
-              const wfRes = await fetch(pipedreamWorkflowUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(fbPayload),
-              });
-
-              const wfData = await wfRes.json().catch(() => ({}));
-              if (!wfRes.ok || wfData.error || wfData.success === false) {
-                throw new Error(wfData.error || wfData.message || `Pipedream workflow returned ${wfRes.status}`);
-              }
-
-              const fbPostId = wfData.postId || wfData.id || null;
-              const fbPostUrl = wfData.url || (fbPostId ? `https://facebook.com/${fbPostId}` : null);
-              results[channel] = {
-                status: 'published',
-                postId: fbPostId,
-                url: fbPostUrl,
-                utmParams,
-                via: 'pipedream-workflow',
-              };
-            } catch(e) {
-              console.error('[FB-WORKFLOW]', e.message);
-              throw new Error(e.message);
-            }
-
-          } else if (pipedreamAccountId) {
+          if (pipedreamAccountId) {
             // Pipedream Connect path — post directly to stored page ID via proxy.
             // Pipedream holds the page access token from the OAuth consent flow.
             // We do NOT call /me/accounts — that requires permissions Pipedream's built-in app doesn't have.
@@ -9659,7 +9601,7 @@ Output only the post text.` }]
               console.log('[FB-PIPEDREAM] Post response:', JSON.stringify(fbRes).slice(0, 300));
               if (fbRes.error) throw new Error(fbRes.error.message || 'Facebook publish failed');
               const fbPostId = fbRes.id || fbRes.post_id;
-              results[channel] = { status: 'published', postId: fbPostId, url: `https://facebook.com/${fbPostId}`, utmParams, via: 'pipedream-account' };
+              results[channel] = { status: 'published', postId: fbPostId, url: `https://facebook.com/${fbPostId}`, utmParams };
               
               // Page ID is set via Integrations page picker (/api/facebook/pipedream/select-page), no runtime discovery needed.
             } catch(e) {
@@ -9669,7 +9611,7 @@ Output only the post text.` }]
           } else {
             // Legacy native path — direct pageId + pageAccessToken
             const { pageId, pageAccessToken } = creds;
-            if (!pageId || !pageAccessToken) throw new Error('Facebook not connected. Connect via Pipedream workflow or paste a Page Access Token in Integrations.');
+            if (!pageId || !pageAccessToken) throw new Error('Facebook not connected. Connect via Pipedream in Integrations.');
             
             const fbRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}/feed`, {
               method: 'POST',
@@ -9679,7 +9621,7 @@ Output only the post text.` }]
             const fbData = await fbRes.json();
             if (!fbRes.ok || fbData.error) throw new Error(fbData.error?.message || 'Facebook publish failed');
             const fbPostUrl = `https://www.facebook.com/${fbData.id?.replace('_', '/posts/')}`;
-            results[channel] = { status: 'published', url: fbPostUrl, postId: fbData.id, utmParams, via: 'direct-graph' };
+            results[channel] = { status: 'published', url: fbPostUrl, postId: fbData.id, utmParams };
           }
 
         } else if (channel === 'reddit') {
