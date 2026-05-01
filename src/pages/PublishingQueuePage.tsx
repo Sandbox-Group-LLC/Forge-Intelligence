@@ -734,18 +734,22 @@ export default function PublishingQueuePage() {
     }).join('\n\n');
 
     // ── Pull author + brand metadata from brand settings (mirrors server.js article SSR) ──
+    // Cast brandSettings entries to any — the local type only declares siteTemplate +
+    // article_base_url, but the API actually returns factualGround, brand_url, voice_profile
+    // and others. Server.js consumes the wider shape; we just need to read it here too.
+    const bs: any = brandSettings[item.brand_profile_id];
     const fg = exportModal?.brandSettingsData?.settings?.factualGround
-      || brandSettings[item.brand_profile_id]?.settings?.factualGround;
+      || bs?.settings?.factualGround;
     const primaryAuthor = (fg?.authors || []).find((a: any) => a?.name && a.name.trim()) || null;
     const authorName = (primaryAuthor?.name || brandName).replace(/"/g, '&quot;');
     const realBrandUrl = exportModal?.brandSettingsData?.brand_url
-      || brandSettings[item.brand_profile_id]?.brand_url
+      || bs?.brand_url
       || (item.brand_url || '').replace(/^https?:\/\//, '').replace(/\/+$/, '');
     const brandHomeUrl = realBrandUrl
       ? (realBrandUrl.startsWith('http') ? realBrandUrl : `https://${realBrandUrl}`)
       : canonical;
     const logoUrl = exportModal?.brandSettingsData?.settings?.voice_profile?.logo_url
-      || brandSettings[item.brand_profile_id]?.settings?.voice_profile?.logo_url
+      || bs?.settings?.voice_profile?.logo_url
       || '';
 
     // ── Article schema (Person/Organization author with credentials) ──
