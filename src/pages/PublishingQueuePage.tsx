@@ -733,19 +733,123 @@ export default function PublishingQueuePage() {
       return [heading, paras].filter(Boolean).join('\n');
     }).join('\n\n');
 
+    // ── Pull author + brand metadata from brand settings (mirrors server.js article SSR) ──
+    const fg = exportModal?.brandSettingsData?.settings?.factualGround
+      || brandSettings[item.brand_profile_id]?.settings?.factualGround;
+    const primaryAuthor = (fg?.authors || []).find((a: any) => a?.name && a.name.trim()) || null;
+    const authorName = (primaryAuthor?.name || brandName).replace(/"/g, '&quot;');
+    const realBrandUrl = exportModal?.brandSettingsData?.brand_url
+      || brandSettings[item.brand_profile_id]?.brand_url
+      || (item.brand_url || '').replace(/^https?:\/\//, '').replace(/\/+$/, '');
+    const brandHomeUrl = realBrandUrl
+      ? (realBrandUrl.startsWith('http') ? realBrandUrl : `https://${realBrandUrl}`)
+      : canonical;
+    const logoUrl = exportModal?.brandSettingsData?.settings?.voice_profile?.logo_url
+      || brandSettings[item.brand_profile_id]?.settings?.voice_profile?.logo_url
+      || '';
+
+    // ── Article schema (Person/Organization author with credentials) ──
+    const authorBlock: any = primaryAuthor ? {
+      "@type": "Person",
+      "name": primaryAuthor.name.trim(),
+      "jobTitle": primaryAuthor.title || '',
+      "url": brandHomeUrl,
+      "sameAs": (primaryAuthor.linkedinUrl && primaryAuthor.linkedinUrl.trim()) ? [primaryAuthor.linkedinUrl.trim()] : [],
+      "knowsAbout": (primaryAuthor.expertise || '').split(',').map((s: string) => s.trim()).filter(Boolean),
+      "description": primaryAuthor.bio || '',
+      ...(primaryAuthor.credentials ? { "hasCredential": primaryAuthor.credentials.split(/[,.]/).map((s: string) => s.trim()).filter(Boolean) } : {})
+    } : { "@type": "Organization", "name": brandName, "url": brandHomeUrl };
+
+    const aj = article?.article_json || {};
+    const publishedISO = (article?.created_at || article?.updated_at || new Date().toISOString());
+    const modifiedISO = (article?.updated_at || article?.created_at || new Date().toISOString());
+    const articleKeywords = Array.isArray(aj.keywords) ? aj.keywords : [];
+    const articleAbout = Array.isArray(aj.about) ? aj.about.map((t: string) => ({ "@type": "Thing", "name": t })) : [];
+
+    const articleSchema = {
+      "@context": "https://schema.org",
+      "@type": "Article",
+      "headline": item.title,
+      "description": meta,
+      ...(hero ? { "image": hero } : {}),
+      "author": authorBlock,
+      "publisher": {
+        "@type": "Organization",
+        "name": brandName,
+        "url": brandHomeUrl,
+        ...(logoUrl ? { "logo": { "@type": "ImageObject", "url": logoUrl } } : {})
+      },
+      "datePublished": publishedISO,
+      "dateModified": modifiedISO,
+      "mainEntityOfPage": { "@type": "WebPage", "@id": canonical },
+      "wordCount": wordCount,
+      "timeRequired": `PT${readMin}M`,
+      "inLanguage": "en-US",
+      ...(articleKeywords.length ? { "keywords": articleKeywords } : {}),
+      ...(articleAbout.length ? { "about": articleAbout } : {}),
+    };
+
+    // ── FAQPage schema (highest GEO impact) ──
+    const faqs = Array.isArray(aj.faqs) ? aj.faqs.filter((f: any) => f?.question && f?.answer) : [];
+    const faqSchema = faqs.length ? {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": faqs.map((f: any) => ({
+        "@type": "Question",
+        "name": String(f.question).trim(),
+        "acceptedAnswer": { "@type": "Answer", "text": String(f.answer).trim() }
+      }))
+    } : null;
+
+    // ── Author footer for bot consumption (LLMs read DOM, not just schema) ──
+    const authorFooterHtml = primaryAuthor ? `
+  <footer style="margin-top:2em;padding-top:1em;border-top:1px solid #e5e5e5">
+    <h3>About the author</h3>
+    <p><strong>${primaryAuthor.name.replace(/</g, '&lt;')}</strong>${primaryAuthor.title ? ', ' + primaryAuthor.title.replace(/</g, '&lt;') : ''}</p>
+    ${primaryAuthor.bio ? `<p>${primaryAuthor.bio.replace(/</g, '&lt;')}</p>` : ''}
+  </footer>` : '';
+
+    // ── FAQ DOM rendering (Q&A visible, not just in schema) ──
+    const faqDomHtml = faqs.length ? `
+  <section class="article-faqs">
+    <h2>Frequently asked questions</h2>
+    ${faqs.map((f: any) => `
+    <div class="article-faq-item">
+      <h3>${String(f.question).trim().replace(/</g, '&lt;')}</h3>
+      <p>${String(f.answer).trim().replace(/</g, '&lt;').replace(/\n\n+/g, '</p><p>').replace(/\n/g, '<br>')}</p>
+    </div>`).join('')}
+  </section>` : '';
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${title}</title>
+  <title>${title} | ${brandName}</title>
   <meta name="description" content="${meta}" />
+  <link rel="canonical" href="${canonical}" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+  <meta name="author" content="${authorName}" />
   <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="${brandName}" />
   <meta property="og:title" content="${title}" />
   <meta property="og:description" content="${meta}" />
   <meta property="og:url" content="${canonical}" />
-  ${hero ? `<meta property="og:image" content="${hero}" />` : ''}
-  <link rel="canonical" href="${canonical}" />
+  <meta property="og:locale" content="en_US" />
+  ${hero ? `<meta property="og:image" content="${hero}" />
+  <meta property="og:image:secure_url" content="${hero}" />
+  <meta property="og:image:width" content="1280" />
+  <meta property="og:image:height" content="720" />
+  <meta property="og:image:type" content="image/jpeg" />` : ''}
+  <meta property="article:author" content="${authorName}" />
+  <meta property="article:published_time" content="${publishedISO}" />
+  <meta property="article:modified_time" content="${modifiedISO}" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${title}" />
+  <meta name="twitter:description" content="${meta}" />
+  ${hero ? `<meta name="twitter:image" content="${hero}" />` : ''}
+  <script type="application/ld+json">${JSON.stringify(articleSchema, null, 2)}</script>${faqSchema ? `
+  <script type="application/ld+json">${JSON.stringify(faqSchema, null, 2)}</script>` : ''}
 </head>
 <body>
 
@@ -764,6 +868,8 @@ export default function PublishingQueuePage() {
     <div class="${C.body}">
       <a href="${C.backHref}" class="${C.backClass}">${C.backText}</a>
 ${bodyHtml}
+${faqDomHtml}
+${authorFooterHtml}
     </div>
   </section>
 
