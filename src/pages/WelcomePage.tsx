@@ -2,6 +2,19 @@ import { useEffect } from 'react';
 
 export default function WelcomePage() {
   useEffect(() => {
+    // Google Ads gtag (AW-18080629050)
+    const s = document.createElement('script');
+    s.async = true;
+    s.src = 'https://www.googletagmanager.com/gtag/js?id=AW-18080629050';
+    document.head.appendChild(s);
+    (window as any).dataLayer = (window as any).dataLayer || [];
+    function gtag(...args: any[]) { (window as any).dataLayer.push(args); }
+    (window as any).gtag = gtag;
+    gtag('js', new Date());
+    gtag('config', 'AW-18080629050');
+  }, []);
+
+  useEffect(() => {
     // Fire Reddit purchase conversion via GTM dataLayer
     (window as any).dataLayer = (window as any).dataLayer || [];
     (window as any).dataLayer.push({ ecommerce: null });
