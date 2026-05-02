@@ -14001,6 +14001,20 @@ app.post('/api/digest/send/:brandProfileId', requireAuth, async (req, res) => {
   }
 });
 
+// Admin-password version for manual fires from CLI/scripts — same logic, no Clerk JWT required.
+app.post('/api/admin/digest/send/:brandProfileId', async (req, res) => {
+  const { adminPassword } = req.body || {};
+  if (adminPassword !== process.env.ADMIN_PASSWORD) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const result = await sendDigestForBrand(req.params.brandProfileId);
+    res.json({ success: true, result });
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 
 
 
