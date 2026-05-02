@@ -8318,6 +8318,122 @@ app.get('/auth/hubspot/callback', async (req, res) => {
 });
 
 // HubSpot token refresh helper
+// ── Trial onboarding email ────────────────────────────────────────────────
+// Fires once per user when their trial starts (i.e., when /api/auth/me tethers
+// their first brand). Idempotency: checks welcome_email_sent_at on ANY of the
+// user's brands — if any has it stamped, skip. Otherwise send + stamp on the
+// triggering brand.
+async function sendTrialWelcomeEmail(clerkUserId, brandName) {
+  if (!clerkUserId || !RESEND_API_KEY) return;
+  try {
+    // Idempotency: have we already sent welcome to any brand owned by this user?
+    const sentCheck = await pool.query(
+      `SELECT id FROM brand_profiles
+       WHERE clerk_user_id = $1 AND welcome_email_sent_at IS NOT NULL
+       LIMIT 1`,
+      [clerkUserId]
+    );
+    if (sentCheck.rows.length > 0) return; // already welcomed
+
+    // Fetch email + first name from Clerk
+    const clerkRes = await fetch(`https://api.clerk.com/v1/users/${clerkUserId}`, {
+      headers: { 'Authorization': `Bearer ${process.env.CLERK_SECRET_KEY}` }
+    });
+    if (!clerkRes.ok) return;
+    const clerkUser = await clerkRes.json();
+    const email = clerkUser.email_addresses?.[0]?.email_address;
+    if (!email) return;
+    const firstName = clerkUser.first_name || '';
+    const greeting = firstName ? `Hi ${firstName},` : 'Hi there,';
+    const displayBrand = brandName || 'your brand';
+    const appUrl = process.env.APP_URL || 'https://forgeintelligence.ai';
+
+    // Build email — keep it human, useful, not pushy. Lead with what to DO,
+    // not what they get. Single primary CTA. Plain HTML, no images, looks
+    // good in Gmail/Outlook/Apple Mail without external assets.
+    const subject = `Welcome to your Forge Intelligence trial — here's how to make it count`;
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#F8FAFC;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F8FAFC;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">
+        <tr><td style="padding:32px 32px 24px;">
+          <div style="font-size:13px;color:#64748B;letter-spacing:0.04em;text-transform:uppercase;margin-bottom:8px;">Forge Intelligence</div>
+          <h1 style="margin:0;font-size:24px;line-height:1.3;color:#1E293B;font-weight:700;">Your 7-day trial just started.</h1>
+        </td></tr>
+        <tr><td style="padding:0 32px 24px;color:#334155;font-size:15px;line-height:1.6;">
+          <p style="margin:0 0 16px;">${greeting}</p>
+          <p style="margin:0 0 16px;">Welcome — you've got 7 days of full access to every stage in Forge for ${displayBrand}. The whole pipeline is unlocked: GEO Strategist, Authenticity Enricher, Content Generator, Compliance Gate, Publishing Queue, Performance Dashboard, and the Brain itself.</p>
+          <p style="margin:0 0 16px;">Most people who get the most out of their trial do these three things in their first session:</p>
+        </td></tr>
+        <tr><td style="padding:0 32px 24px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#F8FAFC;border-radius:8px;border:1px solid #E2E8F0;">
+            <tr><td style="padding:18px 20px;border-bottom:1px solid #E2E8F0;">
+              <div style="font-weight:600;color:#1E293B;font-size:14px;margin-bottom:4px;">1. Run GEO Strategist on your brand</div>
+              <div style="color:#64748B;font-size:13px;line-height:1.5;">It pulls citation gaps and topical authority opportunities from real LLM behavior — not keyword volume.</div>
+            </td></tr>
+            <tr><td style="padding:18px 20px;border-bottom:1px solid #E2E8F0;">
+              <div style="font-weight:600;color:#1E293B;font-size:14px;margin-bottom:4px;">2. Cherry-pick one opportunity and ship a brief</div>
+              <div style="color:#64748B;font-size:13px;line-height:1.5;">Forge's Authenticity Enricher injects your real expertise. The output is something you'd actually publish.</div>
+            </td></tr>
+            <tr><td style="padding:18px 20px;">
+              <div style="font-weight:600;color:#1E293B;font-size:14px;margin-bottom:4px;">3. Generate the full article and review it in Compliance Gate</div>
+              <div style="color:#64748B;font-size:13px;line-height:1.5;">Edit anything inline. Every correction trains the brand's brain so the next article is sharper.</div>
+            </td></tr>
+          </table>
+        </td></tr>
+        <tr><td style="padding:8px 32px 28px;" align="center">
+          <a href="${appUrl}/app" style="display:inline-block;padding:14px 28px;background:#3563FF;color:#FFFFFF;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;letter-spacing:0.01em;">Open Forge →</a>
+        </td></tr>
+        <tr><td style="padding:0 32px 28px;color:#475569;font-size:14px;line-height:1.6;">
+          <p style="margin:0 0 12px;">A few things to know:</p>
+          <ul style="margin:0 0 16px;padding-left:20px;color:#475569;">
+            <li style="margin-bottom:6px;">Your brain saves everything. Whatever you generate during the trial stays after the trial — even if you don't upgrade.</li>
+            <li style="margin-bottom:6px;">No credit card on file. The trial doesn't auto-convert.</li>
+            <li style="margin-bottom:6px;">When 7 days are up, full-suite access locks but Brain Memory stays open. Upgrade is one-time $99 if you want to keep the rest unlocked.</li>
+          </ul>
+          <p style="margin:0;">Reply to this email if anything's unclear or you hit a wall. I read every reply.</p>
+          <p style="margin:16px 0 0;color:#64748B;">— Brian, founder</p>
+        </td></tr>
+        <tr><td style="padding:20px 32px;background:#F8FAFC;border-top:1px solid #E2E8F0;color:#94A3B8;font-size:12px;line-height:1.5;">
+          You're receiving this because you started a 7-day Forge Intelligence trial.
+          <br>Forge Intelligence · Portland, OR
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+
+    const emailRes = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Brian at Forge Intelligence <brian@forgeintelligence.ai>',
+        to: [email],
+        subject,
+        html,
+        reply_to: 'brian@forgeintelligence.ai',
+      })
+    });
+    if (!emailRes.ok) {
+      const errText = await emailRes.text().catch(() => '');
+      console.warn(`[TRIAL-WELCOME] Resend failed (${emailRes.status}): ${errText.slice(0, 200)}`);
+      return;
+    }
+
+    // Stamp on ALL of this user's brands to lock idempotency cleanly
+    await pool.query(
+      `UPDATE brand_profiles SET welcome_email_sent_at = NOW()
+       WHERE clerk_user_id = $1 AND welcome_email_sent_at IS NULL`,
+      [clerkUserId]
+    );
+    console.log(`[TRIAL-WELCOME] Sent to ${email} (user ${clerkUserId})`);
+  } catch (e) {
+    console.warn('[TRIAL-WELCOME] error:', e.message);
+  }
+}
+
 // ── HubSpot: Sync Clerk user to HubSpot CRM (for Forge's own tracking) ───────
 async function syncUserToHubSpot(clerkUserId) {
   try {
@@ -11576,6 +11692,7 @@ pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS expires_at TIMES
 pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS is_paid BOOLEAN DEFAULT false`).catch(() => {});
     await pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS clerk_user_id TEXT`).catch(() => {});
   await pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS trial_started_at TIMESTAMPTZ`).catch(() => {});
+  await pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS welcome_email_sent_at TIMESTAMPTZ`).catch(() => {});
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_bp_clerk ON brand_profiles(clerk_user_id)`).catch(() => {});
 pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS onboard_session_id TEXT`).catch(() => {});
   await pool.query(`CREATE TABLE IF NOT EXISTS payment_events (
@@ -11759,11 +11876,15 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
         [req.userId]
       );
       if (!existing.rows.length) {
-        await pool.query(
-          `UPDATE brand_profiles SET clerk_user_id = $1, trial_started_at = COALESCE(trial_started_at, NOW()), updated_at = NOW() WHERE id = $2 AND (clerk_user_id IS NULL)`,
+        const tether1Res = await pool.query(
+          `UPDATE brand_profiles SET clerk_user_id = $1, trial_started_at = COALESCE(trial_started_at, NOW()), updated_at = NOW() WHERE id = $2 AND (clerk_user_id IS NULL) RETURNING brand_name`,
           [req.userId, brandId]
         );
-        console.log(`[AUTH] Tethered brand ${brandId} to user ${req.userId} (trial timer started)`);
+        if (tether1Res.rows.length > 0) {
+          console.log(`[AUTH] Tethered brand ${brandId} to user ${req.userId} (trial timer started)`);
+          // Fire-and-forget: trial welcome email (idempotency-guarded inside)
+          sendTrialWelcomeEmail(req.userId, tether1Res.rows[0].brand_name).catch(() => {});
+        }
       }
     }
 
@@ -11830,6 +11951,8 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
         );
         result = candidate;
         console.log(`[AUTH] Tethered brand ${candidate.rows[0].id} to user ${req.userId} (trial timer started, explicit brand_id)`);
+        // Fire-and-forget: trial welcome email (idempotency-guarded inside)
+        sendTrialWelcomeEmail(req.userId, candidate.rows[0].brand_name).catch(() => {});
       }
     }
     // Fire-and-forget: sync user to HubSpot CRM
