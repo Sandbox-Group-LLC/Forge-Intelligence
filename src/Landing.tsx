@@ -141,6 +141,8 @@ export default function Landing() {
           <h1 style={styles.headline}>The intelligence layer behind modern marketing.</h1>
           <p style={styles.subline}>
             Enter your URL. We'll read your brand to filth — voice profile, audience signals, competitive gaps — in under 10 minutes. Free.
+            <br /><br />
+            Then unlock the full Forge pipeline free for 7 days. No credit card. Brain stays saved when the trial ends.
           </p>
 
           {claimed ? (
