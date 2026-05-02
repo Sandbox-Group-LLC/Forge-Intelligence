@@ -8,6 +8,119 @@
 
 ---
 
+## Session — May 2, 2026 — 7-day trial launch + Pipedream FB integration + Smart Export schema parity
+
+### THE BIG NEWS: 7-day full-access trial shipped end-to-end
+Lead-capture-first trial flow replaces the previous binary "24h scan or pay $99" model:
+
+**State 1 — Anonymous scan (unchanged).** User runs scan, gets 24h Brain Memory access, all sub-menus under Brain accessible, all other stages locked.
+
+**State 2 — Trial active (NEW).** User clicks any non-Brain stage → `GateModal` opens with "Start your free 7-day trial" headline + blue CTA. Click bounces to Clerk signup with `forge_pending_brand_id` in localStorage. On return, `/api/auth/me` tethers the brand and stamps `trial_started_at = NOW()`. Lead captured BEFORE the timer starts — enables Brian to nurture during trial.
+
+**State 3 — Trial expired.** Day 8: `isPaid` flips false, all stages re-lock except Brain Memory. `GateModal` shows "Your 7-day trial ended" + standard PayPal $99 flow. Brand stays saved.
+
+**Architecture decisions:**
+- **Per-user trial scope** (not per-brand) — prevents power users from gaming via brand-recreation. `MIN(trial_started_at)` across all clerk_user_id's brands defines start.
+- **New-signups-only eligibility** via `TRIAL_LAUNCH_MARKER` env var (default `2026-05-02T00:00:00Z`) — existing free-tier brains stay in their current 24h-expires_at limbo. No surprise re-engagement of dormant users.
+- **Single source of truth helper:** `getUserTrialState(clerkUserId)` in server.js — returns `{active, eligible, daysRemaining, trialStartedAt, trialEndsAt}`. Used by `/api/auth/me` to derive both `isPaid` and the top-level `trial` block.
+- **Existing `isPaid` checks across 17+ FE files: zero changes.** They keep checking `useApp().isPaid` — the value is correct because backend now derives from `(is_paid OR trial.active)`.
+
+**TopBar trial pill** (`.topbar-trial-pill`): yellow gradient pill showing days remaining. Renders only when `trial.active`. Mobile-stacked styling.
+
+**GateModal redesign:**
+- Anonymous user: prominent "Start your free 7-day trial" CTA, PayPal flow buried below as "or skip the trial — unlock permanently"
+- Trial-expired user: "Your 7-day trial ended" headline + existing PayPal flow with "Your brain stays exactly as you left it" reassurance
+- Removed the early `if (isSignedIn) return null` guard — signed-in users now legitimately hit the modal in trial-expired state
+
+**Welcome email automation:**
+- New helper `sendTrialWelcomeEmail(clerkUserId, brandName)` triggered at 2 of 3 tether sites (regular-user paths; skipped on super-admin tether)
+- Fire-and-forget pattern matches existing `syncUserToHubSpot` — doesn't block `/api/auth/me`
+- Pulls email + first_name from Clerk API
+- Sends via Resend from `Brian at Forge Intelligence <brian@forgeintelligence.ai>` with `reply_to: brian@forgeintelligence.ai`
+- Idempotency-guarded by `brand_profiles.welcome_email_sent_at` column — stamps on ALL of user's brands so re-tethering doesn't re-send
+- Email content: human, single CTA back to app, walks through 3 things to do in first session (run GEO Strategist, ship a brief, generate + review)
+
+### Resend silent-failure bug fix (months of digest emails were failing)
+While manually firing Brian's welcome email for a fresh signup, hit `403 / error code 1010` from Resend's Cloudflare. Root cause: missing `User-Agent` header. Patched all 6 Resend call sites in server.js with `'User-Agent': 'Forge-Intelligence-Server/1.0'`.
+
+**Implications:** the digest cron, review-request emails, and other Resend flows had been silently 403'ing. Brian confirmed: "I have not been getting the digest so that makes sense." Once UA fix deployed, fired Brian's Forge digest manually via new admin-password endpoint `POST /api/admin/digest/send/:brandProfileId` (also added in this session for future manual triggers). Watch Resend dashboard over next 24-48h for spike in successful sends.
+
+### Pipedream Facebook integration — final architecture (after multiple wrong iterations)
+Multi-turn architectural exploration to enable Facebook publishing for customer brands. Final state:
+
+**The truth Pipedream's docs spell out clearly:** end-user workflows running in production environment require a **custom OAuth client registered with Meta**, not Pipedream's stock `facebook_pages` connector. The error "Running workflows with official OAuth apps is not allowed" is permanent on the Connect production tier with the official client.
+
+**What Forge already has correctly built:**
+- `pipedreamProxy()` helper for backwards-compatible direct Graph calls
+- Connect button + iframe-based OAuth handshake against the brand's `external_user_id = brand_profile_id`
+- New Priority 0 publish path: when `FACEBOOK_PIPEDREAM_WORKFLOW_URL` env var is set, POSTs payload to that workflow URL with both `x-pd-external-user-id` and `x-pd-environment` headers
+- Workflow-side component code (Brian pasted into Pipedream's connector AI builder): handles list-pages mode + publish mode, uses `this.facebook_pages.listPages()` and `_makeRequest('/{pageId}/feed', POST)`
+- Manual Page ID input in Integrations card (page picker still doesn't reliably return Pages even with the workflow connector — customers paste ID directly from FB Page → About → Page transparency)
+
+**What's blocked (Brian's pending non-code work):**
+- Meta Business Verification + Meta Developer App registration
+- Pipedream Custom OAuth Client linked to that Meta app
+- Setting `PIPEDREAM_OAUTH_APP_ID_FACEBOOK` env var so Forge customers connect against custom-scope app rather than the official one
+
+**Pipedream Connect plan ($150/month) is now active** — unlocks production end-user workflows. But the actual OAuth-app gate is still Meta's app review process.
+
+### Smart Export schema parity (Frank's complaint)
+Frank flagged: downloadable HTML from the Smart Export modal was missing 5 things server.js injects on the canonical article URL:
+1. Author identity (Person schema with credentials, jobTitle, knowsAbout, hasCredential)
+2. FAQPage JSON-LD (highest GEO impact — LLMs preferentially cite FAQ-structured content)
+3. Full Twitter Card + extended OG tags + robots directives
+4. SEO-tuned title with brand suffix
+5. Article-level metadata (wordCount, timeRequired, dateModified, inLanguage)
+
+**Fixed:** rebuilt `buildHTML()` in PublishingQueuePage.tsx to mirror server.js article SSR (L1914-2046 in server.js). All 5 schema injection points now travel with the export. Falls back gracefully when factualGround/FAQs/logo missing. Customer pasting into Webflow/WordPress/Ghost gets full schema not bare 6 meta tags.
+
+### Smart Export pro tip (UX polish)
+Inline pro tip strip in modal between header and tabs. Tab-aware copy:
+- HTML: warns against stripping `<script>` tags in CMS sanitizers (loses GEO signals)
+- JSON: headless CMS / SSG ingestion guidance
+- Markdown: Notion/Obsidian/Ghost compatibility, redirect to HTML for schema-heavy targets
+- Link/UTM: paste destinations + UTM template provenance
+
+Indigo-gradient strip with "PRO TIP" badge. Mobile-stacked.
+
+### Content Generator: Mandatories & Constraints panel
+Brian flagged: manual-topic article generation had no constraint inputs — LLM was "winging it." Added collapsible "Advanced direction" panel that only appears when topic is typed. 6 fields:
+1. Mandatories (legal, CTAs, must-include phrases) — mirrors EmailCampaignPage's same-named field
+2. Constraints (what NOT to do, things to avoid)
+3. Target audience override
+4. CTA target URL/path
+5. Desired reader action
+6. Length dropdown (Default / Concise ~600w / Standard ~1500w / Long-form ~2500w / Deep dive ~4000w)
+
+Server-side prompt block injected next to existing `USER TOPIC DIRECTION` block. Treated as harder than brand patterns.
+
+### Brand selector dropdown gated on isSuperAdmin
+Regular trial users were seeing the brand selector dropdown for their single brand — noise. Now gated: super admins see the multi-brand dropdown + version badge on brand-profile pages; regular users see only the simple brand pill. Three render gates updated in TopBar.tsx.
+
+### Google Ads conversion tag (AW-18080629050)
+- Added to `index.html` site-wide alongside existing GA4 tag
+- Also added directly inside WelcomePage.tsx via useEffect (post-purchase conversion page that fires the Reddit/GTM purchase event)
+- Conversion tracking now fires for both landing-page visits and successful $99 purchases
+
+### Landing page copy update
+Added 7-day trial line below existing scan promise:
+> Then unlock the full Forge pipeline free for 7 days. No credit card. Brain stays saved when the trial ends.
+
+"No credit card" defuses auto-bill skepticism. "Brain stays saved" addresses the "what happens to my work" objection upfront.
+
+### server.js restoration after block-replacement runaway anchor
+Mid-session, accidentally deleted 1,684 lines of server.js while doing a block-replacement edit on the FB publish flow. The end marker matched too far down the file. Restored from commit `c7c5629a` (morning's last good state) and re-applied the Priority 0 path cleanly via surgical str_replace with idempotency check.
+
+**Lesson reinforced (was already in user memory edits):** Block-replacement patches with start/end markers are dangerous on large files like server.js. Always: fetch live file, verify anchor uniqueness with `count(old) == 1`, idempotency check on actual NEW content (not a substring), prefer surgical replace over block replace.
+
+### Sitemap status verified
+Dynamic sitemap at `/sitemap.xml` regenerates every request (1h cache). Selects articles where `compliance_status IN ('approved', 'ready')`. 12 of 13 Forge articles indexed; 1 article ("The Attribution Black Hole") has `compliance_status = pending` and is correctly excluded until approved.
+
+### LinkedIn launch post drafts
+Three angles drafted for the trial launch announcement (founder voice, challenge framing, scarcity hook). Brian to pick + post.
+
+---
+
 ## Session — April 25, 2026 — Sarah Kennedy Ellis inbound + Phase 1 Authorship + Mobile polish round 2
 
 ### THE BIG NEWS: Sarah Kennedy Ellis (Google Cloud VP Marketing) inbound on LinkedIn
