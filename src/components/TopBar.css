@@ -166,6 +166,28 @@
   }
 }
 
+/* Trial countdown pill — appears during 7-day full-access trial */
+.topbar-trial-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%);
+  border: 1px solid #FCD34D;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #92400E;
+  white-space: nowrap;
+  cursor: help;
+}
+.topbar-trial-pill-icon { font-size: 13px; line-height: 1; }
+.topbar-trial-pill-text { letter-spacing: 0.01em; }
+@media (max-width: 640px) {
+  .topbar-trial-pill-text { display: none; }
+  .topbar-trial-pill { padding: 4px 8px; }
+}
+
 /* ── Brand context pill — persistent across all app pages ── */
 .topbar-brand-pill {
   display: inline-flex;
