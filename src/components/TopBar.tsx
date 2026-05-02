@@ -71,7 +71,7 @@ const pathTitles: Record<string, string> = {
 };
 
 export function TopBar({ pageTitle }: { pageTitle?: string }) {
-  const { currentView, brandProfile, activeBrand, sidebarCollapsed, setSidebarCollapsed, allBrands, switchBrand, trial } = useApp();
+  const { currentView, brandProfile, activeBrand, sidebarCollapsed, setSidebarCollapsed, allBrands, switchBrand, trial, isSuperAdmin } = useApp();
   const { user } = useUser();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -118,7 +118,7 @@ export function TopBar({ pageTitle }: { pageTitle?: string }) {
             </span>
           </span>
         )}
-        {activeBrand && !(allBrands && allBrands.length > 0) && (
+        {activeBrand && (!isSuperAdmin || !(allBrands && allBrands.length > 0)) && (
           <span className="topbar-brand-pill" title={activeBrand.brandUrl}>
             <span className="topbar-brand-pill-name">{activeBrand.brandName || activeBrand.brandUrl.replace(/^https?:\/\//, '').replace(/^www\./, '')}</span>
             {brandProfile && currentView === 'brand-profile' && (
@@ -127,14 +127,14 @@ export function TopBar({ pageTitle }: { pageTitle?: string }) {
           </span>
         )}
         {/* When the brand switcher is rendered, the version indicator still has value on Brand Profile — show it on the title itself. Hidden on mobile via CSS to avoid topbar cramping. */}
-        {allBrands && allBrands.length > 0 && brandProfile && currentView === 'brand-profile' && (
+        {isSuperAdmin && allBrands && allBrands.length > 0 && brandProfile && currentView === 'brand-profile' && (
           <span className="topbar-version-tag">v{brandProfile.version}</span>
         )}
       </div>
 
       <div className="topbar-right">
         {/* Super Admin Brand Switcher */}
-        {allBrands && allBrands.length > 0 && (
+        {isSuperAdmin && allBrands && allBrands.length > 0 && (
           <div style={{ position: 'relative' }} ref={brandMenuRef}>
             <button
               onClick={() => setBrandMenuOpen(o => !o)}
