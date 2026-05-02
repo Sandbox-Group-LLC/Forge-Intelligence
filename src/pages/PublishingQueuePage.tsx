@@ -2224,6 +2224,27 @@ return (
               <button className="pq-modal-close" onClick={() => setExportModal(null)}><X /></button>
             </div>
 
+            {/* Tab-aware pro tip. The right advice differs by format — generic
+                'here's how to use the export' copy doesn't help anyone, but a one-line
+                hint scoped to what they're actually about to copy does. */}
+            <div className="pq-export-protip">
+              <span className="pq-export-protip-label">PRO TIP</span>
+              <span className="pq-export-protip-text">
+                {exportTab === 'html' && (
+                  <>Paste the full HTML into your CMS's source/code view (Webflow Embed, WordPress &lt;/&gt; HTML block, Ghost HTML card, Framer Code component). All schema, OG tags, and FAQs travel with it — don't strip the &lt;script&gt; tags or you lose the GEO signals.</>
+                )}
+                {exportTab === 'json' && (
+                  <>This is the article's structured data. Pipe it into a headless CMS via API (Sanity, Contentful, Strapi), feed it to a static site generator, or POST it to your own publishing endpoint. Field names match standard CMS conventions.</>
+                )}
+                {exportTab === 'markdown' && (
+                  <>Drop straight into Notion, Obsidian, Ghost, or any Markdown-native CMS. Headers, lists, and links translate cleanly. For SEO/schema-heavy targets like WordPress or Webflow, use the HTML tab instead — markdown loses the structured data.</>
+                )}
+                {exportTab === 'link' && (
+                  <>One-click ready URLs with UTM tracking pre-baked. Paste directly into LinkedIn, X, your newsletter, or anywhere you'd share a link. Each channel's UTMs come from your saved templates in Integrations.</>
+                )}
+              </span>
+            </div>
+
             <div className="pq-export-tabs">
               {tabs.map(t => (
                 <button
