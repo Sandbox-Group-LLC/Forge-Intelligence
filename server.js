@@ -11530,17 +11530,27 @@ const TRIAL_DAYS = 7;
 async function getUserTrialState(clerkUserId) {
   if (!clerkUserId) return { active: false, eligible: false, daysRemaining: 0, trialStartedAt: null, trialEndsAt: null };
   try {
+    // Trial start = MIN(trial_started_at) across user's brands. trial_started_at is
+    // stamped at tether time (when Clerk signup completes and the user claims a brand),
+    // so the timer fires from signup, NOT from anonymous scan time. Lead capture
+    // happens via Clerk before any timer starts.
     const r = await pool.query(
-      `SELECT MIN(created_at) AS first_brand_created
+      `SELECT MIN(trial_started_at) AS first_trial_start
        FROM brand_profiles
        WHERE clerk_user_id = $1 AND is_active = true`,
       [clerkUserId]
     );
-    const firstCreated = r.rows[0]?.first_brand_created;
-    if (!firstCreated) return { active: false, eligible: false, daysRemaining: 0, trialStartedAt: null, trialEndsAt: null };
+    const firstTrialStart = r.rows[0]?.first_trial_start;
+    if (!firstTrialStart) {
+      // No trial_started_at on any brand — user signed up before this feature shipped,
+      // OR something went wrong with tether stamping. Either way, not in trial.
+      return { active: false, eligible: false, daysRemaining: 0, trialStartedAt: null, trialEndsAt: null };
+    }
     const launchDate = new Date(TRIAL_LAUNCH_MARKER);
-    const startDate = new Date(firstCreated);
+    const startDate = new Date(firstTrialStart);
     if (startDate < launchDate) {
+      // Trial stamped before launch marker (shouldn't happen for new signups but
+      // defensive). Treat as not eligible.
       return { active: false, eligible: false, daysRemaining: 0, trialStartedAt: null, trialEndsAt: null };
     }
     const endDate = new Date(startDate.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
@@ -11565,6 +11575,7 @@ async function getUserTrialState(clerkUserId) {
 pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ`).catch(() => {});
 pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS is_paid BOOLEAN DEFAULT false`).catch(() => {});
     await pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS clerk_user_id TEXT`).catch(() => {});
+  await pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS trial_started_at TIMESTAMPTZ`).catch(() => {});
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_bp_clerk ON brand_profiles(clerk_user_id)`).catch(() => {});
 pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS onboard_session_id TEXT`).catch(() => {});
   await pool.query(`CREATE TABLE IF NOT EXISTS payment_events (
@@ -11749,10 +11760,10 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
       );
       if (!existing.rows.length) {
         await pool.query(
-          `UPDATE brand_profiles SET clerk_user_id = $1, updated_at = NOW() WHERE id = $2 AND (clerk_user_id IS NULL)`,
+          `UPDATE brand_profiles SET clerk_user_id = $1, trial_started_at = COALESCE(trial_started_at, NOW()), updated_at = NOW() WHERE id = $2 AND (clerk_user_id IS NULL)`,
           [req.userId, brandId]
         );
-        console.log(`[AUTH] Tethered brand ${brandId} to user ${req.userId}`);
+        console.log(`[AUTH] Tethered brand ${brandId} to user ${req.userId} (trial timer started)`);
       }
     }
 
@@ -11761,7 +11772,7 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
       // Auto-tether orphan brain ONLY if brand_id explicitly passed (from onboard/gate flow)
       if (brandId) {
         const tethered = await pool.query(
-          `UPDATE brand_profiles SET clerk_user_id = $1, updated_at = NOW()
+          `UPDATE brand_profiles SET clerk_user_id = $1, trial_started_at = COALESCE(trial_started_at, NOW()), updated_at = NOW()
            WHERE id = $2 AND clerk_user_id IS NULL RETURNING id, brand_name`,
           [req.userId, brandId]
         );
@@ -11814,11 +11825,11 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
       );
       if (candidate.rows.length) {
         await pool.query(
-          `UPDATE brand_profiles SET clerk_user_id = $1, updated_at = NOW() WHERE id = $2`,
+          `UPDATE brand_profiles SET clerk_user_id = $1, trial_started_at = COALESCE(trial_started_at, NOW()), updated_at = NOW() WHERE id = $2`,
           [req.userId, candidate.rows[0].id]
         );
         result = candidate;
-        console.log(`[AUTH] Tethered brand ${candidate.rows[0].id} to user ${req.userId} (explicit brand_id)`);
+        console.log(`[AUTH] Tethered brand ${candidate.rows[0].id} to user ${req.userId} (trial timer started, explicit brand_id)`);
       }
     }
     // Fire-and-forget: sync user to HubSpot CRM
