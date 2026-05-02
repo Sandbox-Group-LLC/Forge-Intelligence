@@ -30,6 +30,8 @@ interface AppContextType {
   allBrands: BrandMini[];
   isSuperAdmin: boolean;
   switchBrand: (brandId: string) => void;
+  // 7-day full-access trial state. Null when not eligible.
+  trial: { active: boolean; eligible: boolean; daysRemaining: number; endsAt: string | null } | null;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -99,7 +101,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return localStorage.getItem('forge_god_mode') === 'true';
   })();
 
-  const { brand: activeBrand, loading: brandLoading, refetch: refetchBrand, allBrands, isSuperAdmin, switchBrand } = useActiveBrand();
+  const { brand: activeBrand, loading: brandLoading, refetch: refetchBrand, allBrands, isSuperAdmin, switchBrand, trial } = useActiveBrand();
   const { isSignedIn, getToken } = useAuth();
 
   // DB is now the truth — /api/auth/me marks brand as paid on every auth.
@@ -249,6 +251,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       startAnalysis, loadSampleData,
       isPaid, brandLoading, activeBrand, refetchBrand, authToken,
       allBrands, isSuperAdmin, switchBrand,
+      trial,
     }}>
       {children}
     </AppContext.Provider>
