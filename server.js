@@ -5670,7 +5670,7 @@ app.post('/api/waitlist', async function (req, res) {
   try {
     await fetch('https://api.resend.com/emails', {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json' },
+      headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json', 'User-Agent': 'Forge-Intelligence-Server/1.0' },
       body: JSON.stringify({
         from: 'Forge Intelligence <hello@forgeintelligence.ai>',
         to: ['hello@forgeintelligence.ai'],
@@ -5680,7 +5680,7 @@ app.post('/api/waitlist', async function (req, res) {
     });
     await fetch('https://api.resend.com/emails', {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json' },
+      headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json', 'User-Agent': 'Forge-Intelligence-Server/1.0' },
       body: JSON.stringify({
         from: 'Forge Intelligence <hello@forgeintelligence.ai>',
         to: [email],
@@ -8407,7 +8407,7 @@ async function sendTrialWelcomeEmail(clerkUserId, brandName) {
 
     const emailRes = await fetch('https://api.resend.com/emails', {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json' },
+      headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json', 'User-Agent': 'Forge-Intelligence-Server/1.0' },
       body: JSON.stringify({
         from: 'Brian at Forge Intelligence <brian@forgeintelligence.ai>',
         to: [email],
@@ -11083,7 +11083,7 @@ app.post('/api/publishing/queue/:id/request-review', requireAuth, async (req, re
       if (r) {
         const emailRes = await fetch('https://api.resend.com/emails', {
           method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json' },
+          headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json', 'User-Agent': 'Forge-Intelligence-Server/1.0' },
           body: JSON.stringify({
             from: 'Forge Intelligence <hello@forgeintelligence.ai>',
             to: r.email,
@@ -13977,7 +13977,7 @@ const sendDigestForBrand = async (brandProfileId) => {
 
   const emailRes = await fetch('https://api.resend.com/emails', {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json', 'User-Agent': 'Forge-Intelligence-Server/1.0' },
     body: JSON.stringify({
       from: 'Forge Intelligence <hello@forgeintelligence.ai>',
       to: email,
@@ -14156,7 +14156,7 @@ app.post('/api/outreach/send', async (req, res) => {
 </div>`;
         const emailRes = await fetch('https://api.resend.com/emails', {
           method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json' },
+          headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json', 'User-Agent': 'Forge-Intelligence-Server/1.0' },
           body: JSON.stringify({
             from: 'Brian at Forge Intelligence <brian@forgeintelligence.ai>',
             to: [contact.email],
