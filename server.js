@@ -11505,6 +11505,62 @@ async function softAuth(req, res, next) {
 
 // ── Onboarding / GTM Flow ─────────────────────────────────────────────────────
 
+// 7-day full-access trial: scoped per-user, applies to new signups only.
+// Mechanic: trial starts at the EARLIEST created_at across all of a user's
+// brand_profiles, BUT only for users whose first brand was created after the
+// ship marker below. Existing free-tier users (clerk_user_id set, all brands
+// created before the marker) stay in their current 24h-expires_at limbo.
+const TRIAL_LAUNCH_MARKER = process.env.TRIAL_LAUNCH_MARKER || '2026-05-02T00:00:00Z';
+const TRIAL_DAYS = 7;
+
+/**
+ * Derive trial state for a clerk_user_id.
+ * Returns { active: bool, daysRemaining: number, trialStartedAt: ISO|null,
+ *           trialEndsAt: ISO|null, eligible: bool }
+ *
+ * Rules:
+ *   - Super admins: always {active:true, eligible:true} (other code already
+ *     short-circuits on isSuperAdmin so this is mostly defensive)
+ *   - User has at least one brand created at or after TRIAL_LAUNCH_MARKER
+ *     -> eligible. Trial start = MIN(created_at) of their brands. End =
+ *     start + 7 days. Active iff end > now.
+ *   - User's brands all predate the marker -> not eligible (existing free
+ *     tier). Returns {active:false, eligible:false}.
+ */
+async function getUserTrialState(clerkUserId) {
+  if (!clerkUserId) return { active: false, eligible: false, daysRemaining: 0, trialStartedAt: null, trialEndsAt: null };
+  try {
+    const r = await pool.query(
+      `SELECT MIN(created_at) AS first_brand_created
+       FROM brand_profiles
+       WHERE clerk_user_id = $1 AND is_active = true`,
+      [clerkUserId]
+    );
+    const firstCreated = r.rows[0]?.first_brand_created;
+    if (!firstCreated) return { active: false, eligible: false, daysRemaining: 0, trialStartedAt: null, trialEndsAt: null };
+    const launchDate = new Date(TRIAL_LAUNCH_MARKER);
+    const startDate = new Date(firstCreated);
+    if (startDate < launchDate) {
+      return { active: false, eligible: false, daysRemaining: 0, trialStartedAt: null, trialEndsAt: null };
+    }
+    const endDate = new Date(startDate.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
+    const now = new Date();
+    const active = endDate > now;
+    const msRemaining = endDate.getTime() - now.getTime();
+    const daysRemaining = active ? Math.max(0, Math.ceil(msRemaining / (24 * 60 * 60 * 1000))) : 0;
+    return {
+      active,
+      eligible: true,
+      daysRemaining,
+      trialStartedAt: startDate.toISOString(),
+      trialEndsAt: endDate.toISOString(),
+    };
+  } catch (e) {
+    console.warn('[TRIAL] getUserTrialState error:', e.message);
+    return { active: false, eligible: false, daysRemaining: 0, trialStartedAt: null, trialEndsAt: null };
+  }
+}
+
 // Add expires_at to brand_profiles for free trial brains
 pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ`).catch(() => {});
 pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS is_paid BOOLEAN DEFAULT false`).catch(() => {});
@@ -11747,6 +11803,8 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
       `SELECT id, brand_url, brand_name, is_paid, updated_at FROM brand_profiles WHERE clerk_user_id = $1 AND is_active = true ORDER BY updated_at DESC`,
       [req.userId]
     );
+    // Per-user trial state — applies to all brands this user owns
+    const trialState = await getUserTrialState(req.userId);
     let result = { rows: allUserBrands.rows.slice(0, 1) };
     // No tethered brand — only tether if brand_id explicitly provided (from GateModal/onboard flow)
     if (!result.rows.length && brandId) {
@@ -11775,9 +11833,18 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
         id: b.id,
         brandName: b.brand_name || b.brand_url,
         brandUrl: b.brand_url,
-        isPaid: b.is_paid || false,
+        // isPaid reflects EFFECTIVE access: true if paid OR trial active.
+        // FE pages keep checking isPaid via useApp() and get the right answer
+        // for both 'permanently paid' and 'trial-active' states.
+        isPaid: (b.is_paid || trialState.active) || false,
       })),
-      isPaid: isSuperAdmin || result.rows[0]?.is_paid || false,
+      isPaid: isSuperAdmin || result.rows[0]?.is_paid || trialState.active || false,
+      trial: {
+        active: trialState.active,
+        eligible: trialState.eligible,
+        daysRemaining: trialState.daysRemaining,
+        endsAt: trialState.trialEndsAt,
+      },
     });
   } catch(e) {
     res.status(500).json({ success: false, error: e.message });
