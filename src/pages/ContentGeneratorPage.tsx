@@ -118,6 +118,17 @@ function ContentGeneratorContent() {
   const [activeTab, setActiveTab] = useState<'article' | 'meta' | 'schema'>('article');
   const streamRef = useRef<EventSource | null>(null);
   const [topicPrompt, setTopicPrompt] = useState('');
+  // Manual-topic constraint fields (mirrors EmailCampaignPage's Mandatories & Constraints,
+  // expanded for article-shaped output). Only sent to the server when topic is typed AND
+  // user has opened the advanced panel — both gates intentional so the brief-driven path
+  // stays clean.
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [mandatories, setMandatories] = useState('');
+  const [constraints, setConstraints] = useState('');
+  const [audience, setAudience] = useState('');
+  const [ctaTarget, setCtaTarget] = useState('');
+  const [desiredAction, setDesiredAction] = useState('');
+  const [wordCountTarget, setWordCountTarget] = useState('');
   const [ideaDrawerOpen, setIdeaDrawerOpen] = useState(false);
   const [ideas, setIdeas] = useState<{id:string;topic:string;note:string|null;status:string;created_at:string}[]>([]);
   const [newIdea, setNewIdea] = useState('');
@@ -252,9 +263,21 @@ function ContentGeneratorContent() {
     setImageLoading(true);
     setError('');
 
-    const es = new EventSource(
-      `/api/content-generator/generate?brandProfileId=${selectedBrainId}${selectedBriefId ? `&enrichedBriefId=${selectedBriefId}` : ''}${topicPrompt.trim() ? `&topicPrompt=${encodeURIComponent(topicPrompt.trim())}` : ''}&token=${authToken}`
-    );
+    // Build the SSE URL via URLSearchParams — cleaner than chained ternaries now that
+    // we have 6 optional constraint params on top of brandProfileId/enrichedBriefId/topicPrompt.
+    const qs = new URLSearchParams({ brandProfileId: selectedBrainId });
+    if (selectedBriefId) qs.set('enrichedBriefId', selectedBriefId);
+    if (topicPrompt.trim()) qs.set('topicPrompt', topicPrompt.trim());
+    if (topicPrompt.trim() && advancedOpen) {
+      if (mandatories.trim()) qs.set('mandatories', mandatories.trim());
+      if (constraints.trim()) qs.set('constraints', constraints.trim());
+      if (audience.trim()) qs.set('audience', audience.trim());
+      if (ctaTarget.trim()) qs.set('ctaTarget', ctaTarget.trim());
+      if (desiredAction.trim()) qs.set('desiredAction', desiredAction.trim());
+      if (wordCountTarget.trim()) qs.set('wordCountTarget', wordCountTarget.trim());
+    }
+    if (authToken) qs.set('token', authToken);
+    const es = new EventSource(`/api/content-generator/generate?${qs.toString()}`);
     streamRef.current = es;
 
     es.addEventListener('busy', (e) => {
@@ -466,6 +489,98 @@ function ContentGeneratorContent() {
             <FileText size={14} /> Generate Article
           </button>
           </div>
+
+          {/* Advanced direction — only when user has typed a topic. Lets them
+              specify mandatories/constraints/audience/CTA/etc. that the LLM
+              respects as harder than brand patterns. Mirrors the email campaign
+              generator's 'Mandatories & Constraints' section. */}
+          {topicPrompt.trim() && (
+            <div className="cg-advanced" style={{ marginTop: 12, border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, background: 'var(--color-bg-card, #fff)' }}>
+              <button
+                type="button"
+                onClick={() => setAdvancedOpen(o => !o)}
+                style={{ width: '100%', textAlign: 'left', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary, #1a1a1a)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                <span>Advanced direction — mandatories, audience, CTA{' '}<span style={{ fontWeight: 400, color: 'var(--color-text-muted, #94a3b8)', fontSize: 12 }}>(optional)</span></span>
+                <span style={{ fontSize: 14, color: 'var(--color-text-muted, #94a3b8)' }}>{advancedOpen ? '−' : '+'}</span>
+              </button>
+
+              {advancedOpen && (
+                <div style={{ padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary, #1a1a1a)', marginBottom: 4 }}>Mandatories</label>
+                    <div style={{ fontSize: 11, color: 'var(--color-text-muted, #94a3b8)', marginBottom: 6 }}>Legal disclaimers, required CTAs, must-include phrases, time-bound claims.</div>
+                    <textarea
+                      value={mandatories}
+                      onChange={e => setMandatories(e.target.value)}
+                      placeholder="e.g. Must include 30-day money-back guarantee. CTA must link to /pricing. Mention SOC 2 certification."
+                      rows={2}
+                      style={{ width: '100%', padding: 10, border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 6, fontFamily: 'inherit', fontSize: 13, boxSizing: 'border-box', resize: 'vertical' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary, #1a1a1a)', marginBottom: 4 }}>Constraints</label>
+                    <div style={{ fontSize: 11, color: 'var(--color-text-muted, #94a3b8)', marginBottom: 6 }}>What the article must NOT do. Things to avoid mentioning.</div>
+                    <textarea
+                      value={constraints}
+                      onChange={e => setConstraints(e.target.value)}
+                      placeholder="e.g. No claims about competitor pricing. Don't mention specific revenue figures. Avoid medical advice framing."
+                      rows={2}
+                      style={{ width: '100%', padding: 10, border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 6, fontFamily: 'inherit', fontSize: 13, boxSizing: 'border-box', resize: 'vertical' }}
+                    />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary, #1a1a1a)', marginBottom: 4 }}>Target audience</label>
+                      <input
+                        type="text"
+                        value={audience}
+                        onChange={e => setAudience(e.target.value)}
+                        placeholder="e.g. RevOps leaders at Series B SaaS"
+                        style={{ width: '100%', padding: 10, border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 6, fontFamily: 'inherit', fontSize: 13, boxSizing: 'border-box' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary, #1a1a1a)', marginBottom: 4 }}>CTA target URL/path</label>
+                      <input
+                        type="text"
+                        value={ctaTarget}
+                        onChange={e => setCtaTarget(e.target.value)}
+                        placeholder="e.g. /pricing or /book-demo"
+                        style={{ width: '100%', padding: 10, border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 6, fontFamily: 'inherit', fontSize: 13, boxSizing: 'border-box' }}
+                      />
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary, #1a1a1a)', marginBottom: 4 }}>Desired reader action</label>
+                      <input
+                        type="text"
+                        value={desiredAction}
+                        onChange={e => setDesiredAction(e.target.value)}
+                        placeholder="e.g. Book a demo, Download the playbook, Subscribe"
+                        style={{ width: '100%', padding: 10, border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 6, fontFamily: 'inherit', fontSize: 13, boxSizing: 'border-box' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary, #1a1a1a)', marginBottom: 4 }}>Length</label>
+                      <select
+                        value={wordCountTarget}
+                        onChange={e => setWordCountTarget(e.target.value)}
+                        style={{ width: '100%', padding: 10, border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 6, fontFamily: 'inherit', fontSize: 13, boxSizing: 'border-box', background: 'var(--color-bg-card, #fff)' }}
+                      >
+                        <option value="">Default (Forge picks)</option>
+                        <option value="600">Concise (~600 words)</option>
+                        <option value="1500">Standard (~1500 words)</option>
+                        <option value="2500">Long-form (~2500 words)</option>
+                        <option value="4000">Deep dive (~4000 words)</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
