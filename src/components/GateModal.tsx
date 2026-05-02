@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useApp } from '../context/AppContext';
 import { useAuth } from '@clerk/clerk-react';
 
 interface GateModalProps {
@@ -14,6 +15,9 @@ const PAYPAL_CLIENT_ID = 'AV1QAbjyqG1YTRCWKXzWjZr1Ls7uNLRnk5SzoC-ajEb3rZaq5h58SC
 const CLERK_SIGNUP_URL = 'https://accounts.forgeintelligence.ai/sign-up';
 
 export default function GateModal({ featureName, onClose, brandProfileId, onUnlocked }: GateModalProps) {
+  const { trial } = useApp();
+  // Trial-expired headline: user got the 7-day trial and it ended (eligible AND !active).
+  const trialExpired = trial?.eligible && !trial.active;
   const { isSignedIn, isLoaded } = useAuth();
 
   // Never render during Clerk loading or for signed-in users — they've paid.
@@ -122,9 +126,11 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
           </svg>
         </div>
 
-        <h2 className="gate-title">{featureName} is locked</h2>
+        <h2 className="gate-title">{trialExpired ? 'Your 7-day trial ended' : `${featureName} is locked`}</h2>
         <p className="gate-desc">
-          Unlock the full Forge Intelligence suite — GEO Strategy, Content Generation, Publishing, Performance, and more — for a one-time $99.
+          {trialExpired
+            ? 'Your full-access trial wrapped — keep going with the full Forge Intelligence suite for a one-time $99. Your brain stays exactly as you left it.'
+            : 'Unlock the full Forge Intelligence suite — GEO Strategy, Content Generation, Publishing, Performance, and more — for a one-time $99.'}
         </p>
 
         <ul className="gate-features">
