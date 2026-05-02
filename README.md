@@ -37,7 +37,7 @@
 
 ---
 
-## Platform Status (April 20, 2026)
+## Platform Status (May 2, 2026)
 
 ### All 8 Stages Live
 
@@ -65,8 +65,8 @@
 
 ### Auth Architecture
 - **Clerk** — Google, GitHub, email/password
-- `isPaid` derived from `activeBrand?.isPaid` — computed, not state
-- `GateModal` returns null if `!isLoaded || isSignedIn` — never flashes for authed users
+- `isPaid` derived from `(is_paid OR trial.active)` server-side in `/api/auth/me` — then passed through to FE via `activeBrand.isPaid`
+- 17+ FE pages check `useApp().isPaid` to decide whether to render content or `GateModal`
 - All gated pages: `if (brandLoading) return null` before gate check
 - **Super Admins** (hardcoded in `server.js` `SUPER_ADMIN_IDS`):
   - `user_3BtC7nusm7CShN7EdUYaaLZcDwp` (brian@sandbox-xm.com) — primary login, owns Sandbox-XM + 10 other flagship brands
@@ -74,14 +74,25 @@
 - **Other Brian-owned logins (NOT super admin):**
   - `user_3BvMphl4EThg9WSOdhH5BNVXIHL` — legacy login, permanently tethered to `Sandbox-GTM` (61d1f187-c00a-443c-ada2-a073afa005cd) as the "second user" test account
 - FI account intentionally excluded from super-admin list for dogfooding.
-- Auto-marks `is_paid = true` on every Clerk auth in `/api/auth/me`
+
+### 7-Day Full-Access Trial (LIVE May 2, 2026)
+- **Trial trigger:** Clerk signup completion (the moment Forge tethers an anonymous brand to a `clerk_user_id`)
+- **Trial scope:** Per-user, not per-brand. `MIN(trial_started_at)` across all the user's brands defines the start.
+- **Trial duration:** 7 days from start. After expiration, `isPaid` flips false and gated pages re-render `GateModal` with "Your 7-day trial ended" copy + PayPal $99 flow.
+- **Lead capture:** anonymous user clicks any non-Brain stage → `GateModal` shows "Start your free 7-day trial" CTA → redirects to Clerk signup with `forge_pending_brand_id` in localStorage → returns post-signup, brand auto-tethers, trial starts.
+- **Eligibility gate:** `TRIAL_LAUNCH_MARKER` env var (default `2026-05-02T00:00:00Z`). Users whose first brand was created before this date are not eligible — they stay in the existing free-tier behavior. New signups from this date forward get the trial.
+- **Permanent unlock:** PayPal $99 flips `is_paid = true` — wins regardless of trial state.
+- **Single source of truth:** `getUserTrialState(clerkUserId)` helper in `server.js` returns `{ active, eligible, daysRemaining, trialStartedAt, trialEndsAt }`. Used by `/api/auth/me` to derive `isPaid` and to build the `trial` block returned to FE.
+- **TopBar countdown pill:** yellow gradient pill (`.topbar-trial-pill`) renders during active trial showing days remaining. Hides when trial expires or user converts.
+- **Onboarding email:** `sendTrialWelcomeEmail()` fires fire-and-forget at tether time (regular-user paths only — super admin tether skipped). Pulls email + first_name from Clerk API, sends via Resend with Brian's from-address. Idempotency-guarded by `brand_profiles.welcome_email_sent_at` column.
+- **Brand columns added:** `trial_started_at TIMESTAMPTZ`, `welcome_email_sent_at TIMESTAMPTZ`.
 
 ### Brand Scoping (Critical)
 - **Every page** reads `activeBrand` from `useApp()` — the single source of truth for `brandProfileId`
 - No page fetches `/api/context-hub/brains` without an auth token
 - **Brain version tracking:** `geo_briefs` and `enriched_briefs` store `brain_version`. Cache auto-busts when stale. Yellow banner warns users.
 - **Stale brief cleanup:** GEO + Authenticity DELETE old briefs before INSERT on re-run — corrections override, no accumulation
-- Brand picker dropdown visible only to super admin — regular users see their single brand only
+- Brand picker dropdown gated on `isSuperAdmin` (regular users see only the simple brand pill, not a dropdown)
 - All API endpoints that touch brand data require `requireAuth`
 - Admin stats scoped to `WHERE clerk_user_id = $1` — no cross-user data
 
