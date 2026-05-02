@@ -5753,7 +5753,7 @@ async function ensureGeneratedContentTable(brandProfileId) {
 }
 
 app.get('/api/content-generator/generate', requireAuth, async (req, res) => {
-  const { brandProfileId, enrichedBriefId, force, topicPrompt } = req.query;
+  const { brandProfileId, enrichedBriefId, force, topicPrompt, mandatories, constraints, audience, ctaTarget, desiredAction, wordCountTarget } = req.query;
   if (!brandProfileId) return res.status(400).json({ success: false, error: 'brandProfileId required' });
 
   // SSE headers
@@ -5873,7 +5873,7 @@ ${(() => {
       : '';
 
         const userPrompt = `Generate a long-form article using the following Brand Intelligence context.
-${topicPrompt ? `\nUSER TOPIC DIRECTION (write the article around this specific topic/angle — this overrides the enriched brief's default topic selection):\n"${topicPrompt}"\n` : ''}${factualGroundBlock}${territoriesBlock}
+${topicPrompt ? `\nUSER TOPIC DIRECTION (write the article around this specific topic/angle — this overrides the enriched brief's default topic selection):\n"${topicPrompt}"\n` : ''}${(mandatories || constraints || audience || ctaTarget || desiredAction || wordCountTarget) ? `\nUSER MANDATORIES & CONSTRAINTS (the user-supplied non-negotiables for this article — every section must respect these. Treat as harder than brand patterns):\n${mandatories ? `- MANDATORIES (must include): ${mandatories}\n` : ''}${constraints ? `- CONSTRAINTS (must NOT do): ${constraints}\n` : ''}${audience ? `- TARGET AUDIENCE: ${audience}\n` : ''}${ctaTarget ? `- CTA TARGET URL/PATH: ${ctaTarget} — every CTA in the article should reference this destination.\n` : ''}${desiredAction ? `- DESIRED READER ACTION: ${desiredAction} — shape the article and conclusion to drive toward this specific next step.\n` : ''}${wordCountTarget ? `- TARGET LENGTH: approximately ${wordCountTarget} words. Do not pad — depth over filler.\n` : ''}` : ''}${factualGroundBlock}${territoriesBlock}
 BRAND PROFILE:
 ${trimTo(profileData, 6000)}
 
