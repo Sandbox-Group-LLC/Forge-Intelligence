@@ -193,8 +193,15 @@ VALUES ($1, $2, $3, $4, true, 'fresh', $5, $6, '{clerk_user_id}', true);
 4. **JWT template name** — must be `jwt-template-600` exactly. The frontend hardcodes this name.
 5. **Never use Render PUT /env-vars API** — it replaces ALL vars. Always use the dashboard or linked env group.
 6. **Syncing branches** — use file-level commits from production, not `git merge`. Client branches have customizations that will conflict.
+7. **TRIAL_LAUNCH_MARKER** — if the client deployment should NOT offer the 7-day trial (e.g., enterprise paid contract), set this env var to a far-future date (e.g., `2099-01-01T00:00:00Z`) so no users qualify. If it's an isolated SaaS deployment that should offer the trial, leave at default `2026-05-02T00:00:00Z` or set to deployment go-live date.
+8. **Resend User-Agent header** — Resend's Cloudflare layer rejects requests without a `User-Agent` header (returns 403 / error 1010). All 6 Resend call sites in server.js now include `'User-Agent': 'Forge-Intelligence-Server/1.0'`. If you fork the email helpers, keep the UA header.
+9. **Facebook Pipedream integration env vars** — if the client wants Facebook publishing, three env vars work together:
+   - `PIPEDREAM_PROJECT_ID` — the Pipedream project where the customer's OAuth tokens are stored
+   - `PIPEDREAM_PROJECT_ENVIRONMENT` — `production` (paid Pipedream Connect tier) or `development`
+   - `FACEBOOK_PIPEDREAM_WORKFLOW_URL` — the Pipedream HTTP trigger URL for the Facebook publish workflow (Priority 0 path in server.js). Without this set, server falls back to legacy `pipedreamProxy()` direct Graph calls.
+   - `PIPEDREAM_OAUTH_APP_ID_FACEBOOK` — custom OAuth client ID required for production end-user runs (Pipedream rejects official OAuth apps in production multi-tenant). Requires Meta Developer App + App Review. Until set, FB publishing stays in the empty/fallback state.
 
 ---
 
-*Last updated: April 18, 2026*
-*First deployment: Intel Corporation*
+*Last updated: May 2, 2026*
+*First deployment: Intel Corporation (April 18, 2026)*
