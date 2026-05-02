@@ -71,7 +71,7 @@ const pathTitles: Record<string, string> = {
 };
 
 export function TopBar({ pageTitle }: { pageTitle?: string }) {
-  const { currentView, brandProfile, activeBrand, sidebarCollapsed, setSidebarCollapsed, allBrands, switchBrand } = useApp();
+  const { currentView, brandProfile, activeBrand, sidebarCollapsed, setSidebarCollapsed, allBrands, switchBrand, trial } = useApp();
   const { user } = useUser();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -106,6 +106,18 @@ export function TopBar({ pageTitle }: { pageTitle?: string }) {
         </button>
         <h1 className="topbar-title">{pageTitle || Object.entries(pathTitles).find(([k]) => window.location.pathname.startsWith(k))?.[1] || viewTitles[currentView] || 'Forge Intelligence'}</h1>
         {/* Show the brand pill only when the super-admin brand switcher is NOT rendered — avoids duplicate labels colliding on mobile */}
+        {/* 7-day full-access trial countdown pill — only shows during active trial. */}
+        {trial?.active && trial.daysRemaining > 0 && (
+          <span
+            className="topbar-trial-pill"
+            title={`Your full-access trial ends ${trial.endsAt ? new Date(trial.endsAt).toLocaleDateString() : 'soon'}.`}
+          >
+            <span className="topbar-trial-pill-icon">⏱</span>
+            <span className="topbar-trial-pill-text">
+              {trial.daysRemaining === 1 ? '1 day left' : `${trial.daysRemaining} days left`}
+            </span>
+          </span>
+        )}
         {activeBrand && !(allBrands && allBrands.length > 0) && (
           <span className="topbar-brand-pill" title={activeBrand.brandUrl}>
             <span className="topbar-brand-pill-name">{activeBrand.brandName || activeBrand.brandUrl.replace(/^https?:\/\//, '').replace(/^www\./, '')}</span>
