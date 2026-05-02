@@ -1480,6 +1480,42 @@
   flex-direction: column;
 }
 
+/* Pro tip strip in Smart Export modal — sits between header and tabs */
+.pq-export-protip {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%);
+  border-bottom: 1px solid #C7D2FE;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+.pq-export-protip-label {
+  flex-shrink: 0;
+  display: inline-block;
+  padding: 2px 7px;
+  background: #4F46E5;
+  color: #FFFFFF;
+  border-radius: 4px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  margin-top: 1px;
+}
+.pq-export-protip-text {
+  color: #1E1B4B;
+  flex: 1;
+}
+@media (max-width: 640px) {
+  .pq-export-protip {
+    padding: 10px 14px;
+    font-size: 0.75rem;
+    flex-direction: column;
+    gap: 6px;
+  }
+}
+
 .pq-export-tabs {
   display: flex;
   gap: 2px;
