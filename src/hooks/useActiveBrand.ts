@@ -21,6 +21,10 @@ export function useActiveBrand() {
   const [brand, setBrand] = useState<ActiveBrand | null>(null);
   const [allBrands, setAllBrands] = useState<BrandMini[]>([]);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  // 7-day full-access trial state surfaced by /api/auth/me. Null when user is
+  // unauth, super admin, or not eligible (existing free-tier signups predating
+  // TRIAL_LAUNCH_MARKER on the server).
+  const [trial, setTrial] = useState<{ active: boolean; eligible: boolean; daysRemaining: number; endsAt: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0);
   const { isSignedIn, isLoaded, getToken } = useAuth();
@@ -65,6 +69,7 @@ export function useActiveBrand() {
 
           setIsSuperAdmin(d.isSuperAdmin || false);
           setAllBrands(d.allBrands || []);
+          setTrial(d.trial || null);
 
           if (d.success && d.brand) {
             setBrand({
@@ -86,6 +91,7 @@ export function useActiveBrand() {
           // Brand is stored in localStorage after scan, with expiry
           setIsSuperAdmin(false);
           setAllBrands([]);
+          setTrial(null);
 
           // URL-first for unauthenticated users too — preview CTA sends prospects here
           // with ?brand=<uuid>. Without this, they land empty and see 'no active brand.'
@@ -189,5 +195,5 @@ export function useActiveBrand() {
     load();
   }, [isLoaded, isSignedIn, tick]);
 
-  return { brand, loading, refetch, allBrands, isSuperAdmin, switchBrand };
+  return { brand, loading, refetch, allBrands, isSuperAdmin, switchBrand, trial };
 }
