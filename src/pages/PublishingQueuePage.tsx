@@ -148,7 +148,8 @@ interface QueueItem {
   status: 'staged' | 'scheduled' | 'publishing' | 'published' | 'partial' | 'failed' | 'archived';
   scheduled_at: string | null;
   published_at: string | null;
-  publish_results: Record<string, { status: string; url?: string; error?: string; message?: string; skipped?: boolean }>;
+  publish_results: Record<string, any>;  // channel keys (linkedin, x, etc.) plus optional __social metadata
+  hero_image_url?: string | null;        // social posts populate this with their square 1:1 image
   created_at: string;
   brand_name?: string;
   brand_url?: string;
@@ -164,6 +165,20 @@ interface QueueItem {
   review_status?: string | null;
   review_comment?: string | null;
   review_actioned_at?: string | null;
+}
+
+// Social-post metadata stored under publish_results.__social.
+// Returns null for regular article queue items.
+interface SocialMeta {
+  kind: 'social_post';
+  platform: 'x' | 'instagram';
+  hashtags?: string[];
+  cta?: string | null;
+  post_id?: string;
+}
+function getSocialMeta(item: QueueItem): SocialMeta | null {
+  const m = item.publish_results?.__social;
+  return m && m.kind === 'social_post' ? m as SocialMeta : null;
 }
 
 interface ConnectedChannel { channel: string; }
