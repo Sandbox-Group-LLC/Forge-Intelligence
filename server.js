@@ -11763,7 +11763,7 @@ app.get('/api/admin/mission-control', requireAuth, async (req, res) => {
                (SELECT COUNT(*) FROM information_schema.columns c WHERE c.table_name = t.table_name) as col_count
         FROM information_schema.tables t
         WHERE t.table_schema = 'public'
-          AND t.table_name LIKE 'generated_content_%'
+          AND (t.table_name LIKE 'generated_content_%' OR t.table_name = 'generated_social_posts')
         ORDER BY pg_relation_size(quote_ident(t.table_name)) DESC
       `);
       tableSizeAlerts = sizeRes.rows
