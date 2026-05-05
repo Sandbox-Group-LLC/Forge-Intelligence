@@ -9999,13 +9999,35 @@ Output only the post text.` }]
           const articleUrl = forgeArticleUrl;
           const fullTweetUrl = `${articleUrl}${utmString ? '?' + utmString : ''}`;
 
-          // Priority 1: user-edited/generated post copy from the UI (postCopy[channel]).
-          // Priority 2: fallback to a trimmed title + URL that fits X's 280-char limit.
-          // Previously this endpoint was slicing the first 250 chars of the article body and
-          // posting that — ignoring the generated + user-edited post copy entirely.
+          // Detect social-post queue items via the __social metadata namespace.
+          // For social posts, the post body IS the tweet — no URL append, no title fallback.
+          // The social generator already enforces ≤280 chars and follows the X-default-no-hashtags
+          // rule from the system prompt, so most posts ship clean. Hashtags only appear if the
+          // brand voice profile shows a pattern (per plan answer 5).
+          const socialMeta = item.publish_results?.__social;
+          const isSocialPost = socialMeta && socialMeta.kind === 'social_post';
+
+          // Priority 1: social-post body (when this is a social_post queue item).
+          // Priority 2: user-edited/generated post copy from the UI (postCopy[channel]).
+          // Priority 3: fallback to a trimmed title + URL that fits X's 280-char limit.
           const postCopyOverride = (req.body.postCopy || {})[channel];
           let tweetText;
-          if (postCopyOverride && postCopyOverride.trim()) {
+          if (isSocialPost) {
+            // Use the social post body directly. Hashtags from socialMeta.hashtags are appended
+            // only if any are present — matches the brand-voice-aware policy (X default = none).
+            const baseBody = (article.article_json?.body || article.title || '').trim();
+            const hashtagsArr = Array.isArray(socialMeta.hashtags) ? socialMeta.hashtags : [];
+            const hashtagStr = hashtagsArr
+              .map(h => h.startsWith('#') ? h : `#${h}`)
+              .join(' ')
+              .trim();
+            tweetText = hashtagStr ? `${baseBody}\n\n${hashtagStr}` : baseBody;
+            // Hard enforce 280 — generator should produce ≤280 but defense in depth
+            if (tweetText.length > 280) {
+              console.warn(`[X] Social post was ${tweetText.length} chars, truncating to 280`);
+              tweetText = tweetText.slice(0, 277) + '...';
+            }
+          } else if (postCopyOverride && postCopyOverride.trim()) {
             tweetText = postCopyOverride.trim();
             // Hard enforce 280 limit — X API rejects over-length tweets
             if (tweetText.length > 280) {
