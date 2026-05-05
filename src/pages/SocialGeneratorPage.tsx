@@ -609,12 +609,13 @@ function PostCard({ post, authToken, xConnected, onUpdate }: { post: SocialPost;
       if (d.success && d.post) {
         onUpdate(d.post);
       } else {
-        // Surface code-aware messaging. The 'reconnect to fix' codes all deep-link
-        // to Integrations; X_MEDIA_UPLOAD_FAILED is a transient retry, not a reconnect.
-        if (d.code === 'X_NOT_CONNECTED' || d.code === 'X_AUTH_EXPIRED' || d.code === 'X_MEDIA_SCOPE_MISSING') {
+        // Surface code-aware messaging.
+        if (d.code === 'X_NOT_CONNECTED' || d.code === 'X_AUTH_EXPIRED') {
           setPublishError(`${d.error} Open Integrations to fix.`);
         } else if (d.code === 'X_MEDIA_UPLOAD_FAILED') {
           setPublishError(`${d.error} Try publishing again in a moment.`);
+        } else if (d.code === 'X_MEDIA_UPLOAD_NOT_CONFIGURED') {
+          setPublishError(`${d.error}`);
         } else {
           setPublishError(d.error || 'Failed to publish to X.');
         }
