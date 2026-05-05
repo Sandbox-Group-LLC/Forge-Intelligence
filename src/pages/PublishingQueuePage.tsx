@@ -167,20 +167,6 @@ interface QueueItem {
   review_actioned_at?: string | null;
 }
 
-// Social-post metadata stored under publish_results.__social.
-// Returns null for regular article queue items.
-interface SocialMeta {
-  kind: 'social_post';
-  platform: 'x' | 'instagram';
-  hashtags?: string[];
-  cta?: string | null;
-  post_id?: string;
-}
-function getSocialMeta(item: QueueItem): SocialMeta | null {
-  const m = item.publish_results?.__social;
-  return m && m.kind === 'social_post' ? m as SocialMeta : null;
-}
-
 interface ConnectedChannel { channel: string; }
 
 export default function PublishingQueuePage() {
@@ -1563,26 +1549,8 @@ ${authorFooterHtml}
                   const isPublishing = publishing === item.id;
                   const isScheduling = scheduling === item.id;
                   const results = item.publish_results || {};
-                  const social = getSocialMeta(item);
 return (
-                <div key={item.id} className={`pq-item status-${item.status}${social ? ' pq-item-social' : ''}`}>
-                  {social && (
-                    <div className="pq-social-badge">
-                      <span className="pq-social-badge-label">Social Post</span>
-                      <span className="pq-social-badge-platform">{social.platform === 'x' ? 'X' : 'Instagram'}</span>
-                      {item.hero_image_url && (
-                        <a className="pq-social-badge-thumb" href={item.hero_image_url} target="_blank" rel="noreferrer" title="Open image in new tab">
-                          <img src={item.hero_image_url} alt="Social post image" />
-                        </a>
-                      )}
-                      {social.hashtags && social.hashtags.length > 0 && (
-                        <span className="pq-social-badge-tags">{social.hashtags.slice(0, 4).map(h => h.startsWith('#') ? h : `#${h}`).join(' ')}</span>
-                      )}
-                      {social.cta && (
-                        <span className="pq-social-badge-cta">CTA: {social.cta}</span>
-                      )}
-                    </div>
-                  )}
+                <div key={item.id} className={`pq-item status-${item.status}`}>
                   {item.week_number != null && (
                     <div className="pq-campaign-meta-row">
                       <span className="pq-campaign-meta-week">Wk {item.week_number}{item.scheduled_at ? ` · ${new Date(item.scheduled_at).toLocaleDateString('en-US', { weekday: 'long' })}` : item.publish_day ? ` · ${item.publish_day}` : ''}</span>
