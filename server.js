@@ -7829,11 +7829,10 @@ app.get('/api/x/auth', requireAuth, (req, res) => {
   // 'Something went wrong' rejection. If reconnect succeeds without it — confirmed
   // culprit. Add back once Developer Portal config is verified or API tier upgraded.
   const scopes = ['tweet.write', 'tweet.read', 'users.read', 'offline.access'].join('%20');
-  // Use https://x.com/i/oauth2/authorize — X devs have noted the newer host
-  // accepts media.write scope more reliably than the legacy twitter.com host. The scope
-  // is requested at OAuth time, not pre-registered in the Developer Portal (which is why
-  // 'media.write' doesn't appear as a toggle in the Portal scope picker).
-  const authUrl = `https://x.com/i/oauth2/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&state=${state}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
+  // BISECT 2026-05-05: reverted to twitter.com host. The x.com swap was meant to fix
+  // media.write rejection but didn't — and reconnect was failing even after dropping
+  // media.write. Going back to the host that was working pre-bisect to isolate.
+  const authUrl = `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&state=${state}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
 
   res.json({ authUrl });
 });
