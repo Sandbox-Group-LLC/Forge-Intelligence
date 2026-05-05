@@ -1465,7 +1465,7 @@ ${authorFooterHtml}
                           <RefreshCw /> {syncing === item.id ? 'Syncing...' : 'Sync Status'}
                         </button>
                       </div>
-                      {Object.entries(results).map(([ch, res]) => {
+                      {Object.entries(results).filter(([ch]) => !ch.startsWith('__')).map(([ch, res]) => {
                         const log = (publishLog[item.id] || []).find(l => l.channel === ch);
                         // Prefer publish log live_status (most accurate) over publish result status
                         // If log says deleted, show deleted regardless of publish_results JSONB
