@@ -1610,24 +1610,18 @@ return (
                     })()}
                     <div className="pq-item-actions-top">
 
-                      {!social && (
-                        <button className="pq-icon-btn" title="Smart Export" onClick={() => openExportModal(item)}>
-                          <Download />
-                        </button>
-                      )}
-                      {!social && (
-                        <button className="pq-icon-btn" title="Preview & Edit Post" onClick={() => openContentPreview(item)}>
-                          <Eye />
-                        </button>
-                      )}
+                      <button className="pq-icon-btn" title="Smart Export" onClick={() => openExportModal(item)}>
+                        <Download />
+                      </button>
+                      <button className="pq-icon-btn" title="Preview & Edit Post" onClick={() => openContentPreview(item)}>
+                        <Eye />
+                      </button>
 
                       <div style={{ position: 'relative' }}>
-                        {!social && (
                         <button className="pq-icon-btn" title="Send for Review"
                           onClick={() => setReviewDropdown(reviewDropdown === item.id ? null : item.id)}>
                           <Share />
                         </button>
-                        )}
                         {reviewDropdown === item.id && (
                           <div className="pq-reviewer-dropdown">
                             <div className="pq-reviewer-dropdown-title">Send for Review</div>
