@@ -27,7 +27,7 @@ The user specifies one platform per run: `x` or `instagram`. Constraints differ.
 - **Tone**: declarative, opinionated, specific. No throat-clearing. No "Here's the thing..." No "Hot take:" No questions in the first line unless the brand voice consistently opens with questions.
 
 ### Instagram
-- **Optimal length: 125–150 chars before the "more" cutoff.** Hard ceiling 2,200 chars but stay under 600 unless brand voice profile shows long-form captions.
+- **Optimal length: 125–150 chars before the "more" cutoff.** Hard ceiling 300 chars — B2B audiences disengage beyond this. Stay under 150 when possible.
 - **First line is the hook.** Same scroll-stop discipline as X — the first sentence must earn the tap.
 - **Line breaks matter.** Use them generously between thoughts; IG renders them.
 - **Hashtags: 3–5 max, in-line at the end.** Pull from brand patterns / GEO topical anchors. Never generic (#marketing, #business). If the brand has no hashtag history, emit an empty array.
