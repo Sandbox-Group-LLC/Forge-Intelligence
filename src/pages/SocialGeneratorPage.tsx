@@ -298,7 +298,7 @@ function SocialGeneratorContent() {
               >
                 <span className="sg-platform-icon">◌</span>
                 <span>Instagram</span>
-                <span className="sg-platform-meta">2200 chars · 3-5 hashtags</span>
+                <span className="sg-platform-meta">300 chars · 3-5 hashtags</span>
               </button>
             </div>
           </div>
