@@ -103,4 +103,4 @@ export interface HistoryEntry {
   factualGroundUpdatedAt?: string | null;
 }
 
-export type ViewType = 'new-analysis' | 'active-run' | 'brand-profile' | 'strategy' | 'brain-history' | 'geo-strategist' | 'strategy-intel' | 'authenticity-enricher' | 'content-generator' | 'campaign-generator' | 'email-campaign' | 'compliance-gate' | 'integrations' | 'publishing-queue' | 'content-library' | 'content-import' | 'admin' | 'topic-queue' | 'performance' | 'brand-settings';
+export type ViewType = 'new-analysis' | 'active-run' | 'brand-profile' | 'strategy' | 'brain-history' | 'geo-strategist' | 'strategy-intel' | 'authenticity-enricher' | 'content-generator' | 'campaign-generator' | 'social-generator' | 'email-campaign' | 'compliance-gate' | 'integrations' | 'publishing-queue' | 'content-library' | 'content-import' | 'admin' | 'topic-queue' | 'performance' | 'brand-settings';
