@@ -6495,46 +6495,10 @@ app.post('/api/social-generator/edit/:postId', requireAuth, async (req, res) => 
   }
 });
 
-// POST /api/social-generator/queue/:postId — stage to publishing_queue
-app.post('/api/social-generator/queue/:postId', requireAuth, async (req, res) => {
-  const { postId } = req.params;
-  try {
-    const r = await pool.query('SELECT * FROM generated_social_posts WHERE id = $1', [postId]);
-    if (!r.rows.length) return res.status(404).json({ error: 'Post not found' });
-    const post = r.rows[0];
-    if (!(await verifyBrandAccess(post.brand_profile_id, req.userId))) return res.status(403).json({ error: 'Access denied' });
-
-    // Title for queue listing
-    const queueTitle = `[${post.platform.toUpperCase()}] ${(post.hook || post.body || '').slice(0, 80)}`;
-
-    // Stage in publishing_queue. Social-post metadata lives under publish_results.__social
-    // (namespaced key — channel keys are flat: linkedin, x, etc., so __social cannot collide).
-    // image_url uses the existing hero_image_url column so the queue UI's thumbnail logic works.
-    await pool.query(
-      `INSERT INTO publishing_queue (brand_profile_id, content_id, title, status, channels, hero_image_url, publish_results, created_at, updated_at)
-       VALUES ($1, $2, $3, 'staged', $4, $5, $6, NOW(), NOW())
-       ON CONFLICT (content_id) DO UPDATE SET status = 'staged', title = EXCLUDED.title, hero_image_url = EXCLUDED.hero_image_url, publish_results = EXCLUDED.publish_results, updated_at = NOW()`,
-      [
-        post.brand_profile_id,
-        post.id,
-        queueTitle,
-        JSON.stringify([post.platform]),
-        post.image_url || null,
-        JSON.stringify({ __social: { kind: 'social_post', platform: post.platform, hashtags: post.hashtags || [], cta: post.cta, post_id: post.id } })
-      ]
-    );
-
-    await pool.query(
-      `UPDATE generated_social_posts SET status = 'queued', updated_at = NOW() WHERE id = $1`,
-      [postId]
-    );
-
-    res.json({ success: true, postId, status: 'queued' });
-  } catch(e) {
-    console.error('[SOCIAL-QUEUE]', e.message);
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
+// Note: a previous /api/social-generator/queue/:postId endpoint that pushed social
+// posts into the article publishing_queue was removed in the social-in-queue unwind
+// (May 2, 2026). Social posts will get a dedicated publish path in a future
+// iteration — the article-shaped queue forced wrong UX onto social content.
 
 // ── Campaign Generator ────────────────────────────────────────────────────────
 
@@ -9784,30 +9748,11 @@ app.post('/api/publishing/publish', async (req, res) => {
     const safeId = item.brand_profile_id.replace(/-/g, '_');
     const contentTable = `generated_content_${safeId}`;
 
-    // Detect social-post queue items — they live in generated_social_posts, not the
-    // per-brand article table. Synthesize an article-shaped object so the channel
-    // handlers below can read .title/.article_json/.hero_image_url uniformly.
-    let article;
-    const queueSocialMeta = item.publish_results?.__social;
-    const isSocialQueueItem = queueSocialMeta && queueSocialMeta.kind === 'social_post';
-    if (isSocialQueueItem) {
-      const sRes = await pool.query('SELECT * FROM generated_social_posts WHERE id = $1', [item.content_id]);
-      if (!sRes.rows.length) return res.status(404).json({ error: 'Social post not found' });
-      const sp = sRes.rows[0];
-      // article_json.body is what the X handler reads for social posts. Title is just
-      // for queue display — the actual tweet uses body. hero_image_url maps to image_url
-      // so existing channel logic that consumes article.hero_image_url keeps working.
-      article = {
-        id: sp.id,
-        title: item.title || (sp.hook || sp.body || '').slice(0, 80),
-        article_json: { body: sp.body, hashtags: sp.hashtags || [], cta: sp.cta },
-        hero_image_url: sp.image_url || null,
-      };
-    } else {
-      const contentRes = await pool.query(`SELECT * FROM ${contentTable} WHERE id = $1`, [item.content_id]);
-      if (!contentRes.rows.length) return res.status(404).json({ error: 'Article not found' });
-      article = contentRes.rows[0];
-    }
+    // Article-only queue: load from the per-brand generated_content_* table.
+    // (Social-post queue items removed in the May 2 unwind.)
+    const contentRes = await pool.query(`SELECT * FROM ${contentTable} WHERE id = $1`, [item.content_id]);
+    if (!contentRes.rows.length) return res.status(404).json({ error: 'Article not found' });
+    const article = contentRes.rows[0];
 
     // Load brand profile
     const brandRes = await pool.query('SELECT * FROM brand_profiles WHERE id = $1', [item.brand_profile_id]);
@@ -9835,10 +9780,7 @@ app.post('/api/publishing/publish', async (req, res) => {
 
     // ── Ensure hero image exists before publishing ────────────────────────────
     // Campaign generator doesn't pre-generate images — create one now if missing.
-    // Social posts skip this entirely — their square 1:1 image was generated at
-    // social-gen time and lives on generated_social_posts.image_url. The hero-image
-    // pipeline writes into generated_content_*, which has no row for social posts.
-    if (!article.hero_image_url && !isSocialQueueItem) {
+    if (!article.hero_image_url) {
       try {
         const aj = article.article_json || {};
         const sections = aj.sections || [];
@@ -10073,35 +10015,11 @@ Output only the post text.` }]
           const articleUrl = forgeArticleUrl;
           const fullTweetUrl = `${articleUrl}${utmString ? '?' + utmString : ''}`;
 
-          // Detect social-post queue items via the __social metadata namespace.
-          // For social posts, the post body IS the tweet — no URL append, no title fallback.
-          // The social generator already enforces ≤280 chars and follows the X-default-no-hashtags
-          // rule from the system prompt, so most posts ship clean. Hashtags only appear if the
-          // brand voice profile shows a pattern (per plan answer 5).
-          const socialMeta = item.publish_results?.__social;
-          const isSocialPost = socialMeta && socialMeta.kind === 'social_post';
-
-          // Priority 1: social-post body (when this is a social_post queue item).
-          // Priority 2: user-edited/generated post copy from the UI (postCopy[channel]).
-          // Priority 3: fallback to a trimmed title + URL that fits X's 280-char limit.
+          // Priority 1: user-edited/generated post copy from the UI (postCopy[channel]).
+          // Priority 2: fallback to a trimmed title + URL that fits X's 280-char limit.
           const postCopyOverride = (req.body.postCopy || {})[channel];
           let tweetText;
-          if (isSocialPost) {
-            // Use the social post body directly. Hashtags from socialMeta.hashtags are appended
-            // only if any are present — matches the brand-voice-aware policy (X default = none).
-            const baseBody = (article.article_json?.body || article.title || '').trim();
-            const hashtagsArr = Array.isArray(socialMeta.hashtags) ? socialMeta.hashtags : [];
-            const hashtagStr = hashtagsArr
-              .map(h => h.startsWith('#') ? h : `#${h}`)
-              .join(' ')
-              .trim();
-            tweetText = hashtagStr ? `${baseBody}\n\n${hashtagStr}` : baseBody;
-            // Hard enforce 280 — generator should produce ≤280 but defense in depth
-            if (tweetText.length > 280) {
-              console.warn(`[X] Social post was ${tweetText.length} chars, truncating to 280`);
-              tweetText = tweetText.slice(0, 277) + '...';
-            }
-          } else if (postCopyOverride && postCopyOverride.trim()) {
+          if (postCopyOverride && postCopyOverride.trim()) {
             tweetText = postCopyOverride.trim();
             // Hard enforce 280 limit — X API rejects over-length tweets
             if (tweetText.length > 280) {
