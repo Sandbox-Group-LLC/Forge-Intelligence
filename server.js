@@ -6453,23 +6453,35 @@ app.get('/api/social-generator/recent/:brandProfileId', requireAuth, async (req,
   }
 });
 
-// POST /api/social-generator/edit/:postId — inline edit, captures delta as brain_mistake
+// POST /api/social-generator/edit/:postId — inline edit, captures delta as brain_mistake.
+// Accepts both 'user_edited_body' (current FE field name) and 'body' (legacy/scripts) for the
+// new text. Stores edits in user_edited_body without overwriting the original generator output
+// in post.body, so brain delta-mistake calculations stay anchored to the true original.
+// Returns the full updated post via RETURNING * so FE.onUpdate(d.post) re-renders cleanly.
 app.post('/api/social-generator/edit/:postId', requireAuth, async (req, res) => {
   const { postId } = req.params;
-  const { body, hashtags, cta } = req.body;
+  const { body, user_edited_body, hashtags, cta } = req.body;
+  // FE sends user_edited_body; older clients/scripts may send body — accept either.
+  const newBodyInput = typeof user_edited_body === 'string' ? user_edited_body
+                     : typeof body === 'string' ? body : null;
   try {
     // Look up post + verify access
     const r = await pool.query('SELECT * FROM generated_social_posts WHERE id = $1', [postId]);
-    if (!r.rows.length) return res.status(404).json({ error: 'Post not found' });
+    if (!r.rows.length) return res.status(404).json({ success: false, error: 'Post not found' });
     const post = r.rows[0];
-    if (!(await verifyBrandAccess(post.brand_profile_id, req.userId))) return res.status(403).json({ error: 'Access denied' });
+    if (!(await verifyBrandAccess(post.brand_profile_id, req.userId))) return res.status(403).json({ success: false, error: 'Access denied' });
 
-    const newBody = typeof body === 'string' ? body : post.body;
+    const newBody = newBodyInput !== null ? newBodyInput : (post.user_edited_body || post.body);
     const newHashtags = Array.isArray(hashtags) ? hashtags : (post.hashtags || []);
     const newCta = typeof cta === 'string' ? cta : post.cta;
     const newCharCount = newBody.length;
 
-    // Brain feedback: if body changed, log the delta as a mistake (same pattern as Compliance Gate)
+    // Hard char limit on X. Reject early so users get a useful error at edit time.
+    if (post.platform === 'x' && newCharCount > 280) {
+      return res.status(400).json({ success: false, error: `X posts must be 280 characters or fewer. This edit is ${newCharCount}.`, charCount: newCharCount });
+    }
+
+    // Brain feedback: if body changed vs the original generator output, log as a mistake.
     if (newBody !== post.body && post.body) {
       pool.query(
         `INSERT INTO brain_mistakes (brand_profile_id, mistake_type, description, human_feedback, severity)
@@ -6482,16 +6494,18 @@ app.post('/api/social-generator/edit/:postId', requireAuth, async (req, res) => 
       ).catch(e => console.error('[SOCIAL-EDIT] mistake write:', e.message));
     }
 
-    await pool.query(
+    // Persist edit. user_edited_body always carries the latest text; original post.body untouched.
+    const upd = await pool.query(
       `UPDATE generated_social_posts
-       SET body = $1, hashtags = $2, cta = $3, char_count = $4,
-           user_edited_body = CASE WHEN $1 != $5 THEN $1 ELSE user_edited_body END,
-           status = 'edited', updated_at = NOW()
-       WHERE id = $6`,
-      [newBody, JSON.stringify(newHashtags), newCta, newCharCount, post.body, postId]
+       SET user_edited_body = $1, hashtags = $2, cta = $3, char_count = $4,
+           status = CASE WHEN status = 'published' THEN 'published' ELSE 'edited' END,
+           updated_at = NOW()
+       WHERE id = $5
+       RETURNING *`,
+      [newBody, JSON.stringify(newHashtags), newCta, newCharCount, postId]
     );
 
-    res.json({ success: true, body: newBody, hashtags: newHashtags, cta: newCta, charCount: newCharCount });
+    res.json({ success: true, post: upd.rows[0], body: newBody, hashtags: newHashtags, cta: newCta, charCount: newCharCount });
   } catch(e) {
     console.error('[SOCIAL-EDIT]', e.message);
     res.status(500).json({ success: false, error: e.message });
