@@ -46,6 +46,70 @@
   margin: 0;
 }
 
+/* ── Arc picker ─────────────────────────────────────────────────────────── */
+.sg-label-optional {
+  font-weight: 400;
+  color: var(--color-text-muted, #94A3B8);
+  font-size: 11px;
+  margin-left: 4px;
+}
+
+.sg-arc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sg-arc-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border, #E2E8F0);
+  border-radius: 10px;
+  background: var(--color-bg-subtle, #F8FAFC);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+
+.sg-arc-chip:hover {
+  border-color: var(--color-accent, #3563FF);
+  background: rgba(53, 99, 255, 0.04);
+}
+
+.sg-arc-chip.active {
+  border-color: var(--color-accent, #3563FF);
+  background: rgba(53, 99, 255, 0.07);
+  box-shadow: 0 0 0 2px rgba(53, 99, 255, 0.15);
+}
+
+.sg-arc-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-emphasis, #0F172A);
+  line-height: 1.3;
+}
+
+.sg-arc-chip.active .sg-arc-title {
+  color: var(--color-accent, #3563FF);
+}
+
+.sg-arc-thesis {
+  font-size: 12px;
+  color: var(--color-text-secondary, #475569);
+  line-height: 1.45;
+}
+
+.sg-arc-active-hint {
+  font-size: 11px;
+  color: var(--color-accent, #3563FF);
+  padding: 6px 10px;
+  background: rgba(53, 99, 255, 0.06);
+  border-radius: 6px;
+  border-left: 2px solid var(--color-accent, #3563FF);
+}
+
 /* ── Input card ─────────────────────────────────────────────────────────── */
 .sg-input-card {
   background: var(--color-bg-card, #FFFFFF);
