@@ -756,6 +756,35 @@
   color: var(--color-text-muted, #94A3B8);
 }
 
+.sg-recent-arc {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  margin: 2px 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.sg-recent-arc-label {
+  flex-shrink: 0;
+  display: inline-block;
+  padding: 1px 6px;
+  background: rgba(53, 99, 255, 0.1);
+  color: var(--color-accent, #3563FF);
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.sg-recent-arc-title {
+  color: var(--color-text-secondary, #475569);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sg-recent-topic {
   font-size: 13px;
   color: var(--color-text-primary, #0F172A);
