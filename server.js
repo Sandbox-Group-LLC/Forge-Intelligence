@@ -6556,10 +6556,47 @@ app.post('/api/social-generator/publish-x/:postId', requireAuth, async (req, res
     if (creds.oauth2AccessToken) {
       // OAuth 2.0 path — preferred. Try posting; if 401, refresh and retry.
       let token = creds.oauth2AccessToken;
+
+      // Image upload (best-effort): try to attach the post's image as media. If the brand
+      // connected X before media.write was added to the scope list, oauth2Scope won't include
+      // it and the upload will return 403 — we catch that, return X_MEDIA_SCOPE_MISSING so
+      // the FE can prompt reconnect, and DON'T fall through to a text-only tweet (would be a
+      // silent quality regression — user expects images, image was generated, image must ship).
+      let mediaIds = [];
+      if (post.image_url) {
+        const hasMediaScope = (creds.oauth2Scope || '').includes('media.write');
+        if (!hasMediaScope) {
+          return res.status(400).json({
+            success: false,
+            error: 'Reconnect X to enable image uploads. Your X connection was authorized before image support was added — reconnect from Integrations to grant media.write and try again.',
+            code: 'X_MEDIA_SCOPE_MISSING'
+          });
+        }
+        try {
+          const mediaId = await uploadXMedia({ imageUrl: post.image_url, oauth2Token: token });
+          mediaIds = [mediaId];
+        } catch(e) {
+          console.error('[X-SOCIAL] Media upload failed:', e.message);
+          if (e.message && e.message.startsWith('X_MEDIA_SCOPE_MISSING')) {
+            return res.status(400).json({
+              success: false,
+              error: 'Reconnect X to enable image uploads. The current connection lacks the media.write permission.',
+              code: 'X_MEDIA_SCOPE_MISSING'
+            });
+          }
+          // Other media failures (CDN hiccup, X transient) — surface as a real error, don't
+          // silently text-only since the user has an image they expect to ship.
+          return res.status(500).json({ success: false, error: `Image upload to X failed: ${e.message}`, code: 'X_MEDIA_UPLOAD_FAILED' });
+        }
+      }
+
+      const tweetBody = mediaIds.length
+        ? { text: tweetText, media: { media_ids: mediaIds } }
+        : { text: tweetText };
       let xRes = await fetch(tweetEndpoint, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: tweetText })
+        body: JSON.stringify(tweetBody)
       });
       if (xRes.status === 401 && creds.oauth2RefreshToken) {
         try {
@@ -6569,10 +6606,23 @@ app.post('/api/social-generator/publish-x/:postId', requireAuth, async (req, res
             `UPDATE publishing_channels SET credentials = credentials || $1 WHERE brand_profile_id = $2 AND channel = 'x'`,
             [JSON.stringify({ oauth2AccessToken: refreshed.access_token, oauth2RefreshToken: refreshed.refresh_token || creds.oauth2RefreshToken }), post.brand_profile_id]
           );
+          // Re-upload media with the refreshed token (the old media_ids may have expired)
+          if (post.image_url) {
+            try {
+              const mediaIdRetry = await uploadXMedia({ imageUrl: post.image_url, oauth2Token: token });
+              mediaIds = [mediaIdRetry];
+            } catch(e) {
+              console.error('[X-SOCIAL] Media re-upload after refresh failed:', e.message);
+              return res.status(500).json({ success: false, error: `Image upload to X failed: ${e.message}`, code: 'X_MEDIA_UPLOAD_FAILED' });
+            }
+          }
+          const tweetBodyRetry = mediaIds.length
+            ? { text: tweetText, media: { media_ids: mediaIds } }
+            : { text: tweetText };
           xRes = await fetch(tweetEndpoint, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: tweetText })
+            body: JSON.stringify(tweetBodyRetry)
           });
         } catch(e) {
           console.error('[X-SOCIAL] Token refresh failed:', e.message);
@@ -6598,11 +6648,30 @@ app.post('/api/social-generator/publish-x/:postId', requireAuth, async (req, res
       if (!xApiKey || !xApiSecret || !xAccessToken || !xAccessSecret) {
         return res.status(400).json({ success: false, error: 'X is not connected for this brand. Connect it in Integrations first.', code: 'X_NOT_CONNECTED' });
       }
+      // OAuth 1.0a media upload (legacy creds): X v2 /media/upload accepts OAuth 1.0a User Context,
+      // so we sign a separate auth header for the upload endpoint, then sign the tweet endpoint
+      // separately. Both signatures are computed against the exact endpoint URL of each call.
+      let mediaIds = [];
+      if (post.image_url) {
+        try {
+          const mediaUploadEndpoint = 'https://api.x.com/2/media/upload';
+          const mediaAuthHeader = buildXOAuthHeader('POST', mediaUploadEndpoint, xApiKey, xApiSecret, xAccessToken, xAccessSecret);
+          const mediaId = await uploadXMedia({ imageUrl: post.image_url, oauth1Header: mediaAuthHeader });
+          mediaIds = [mediaId];
+        } catch(e) {
+          console.error('[X-SOCIAL] OAuth1 media upload failed:', e.message);
+          return res.status(500).json({ success: false, error: `Image upload to X failed: ${e.message}`, code: 'X_MEDIA_UPLOAD_FAILED' });
+        }
+      }
+
       const authHeader = buildXOAuthHeader('POST', tweetEndpoint, xApiKey, xApiSecret, xAccessToken, xAccessSecret);
+      const tweetBody1 = mediaIds.length
+        ? { text: tweetText, media: { media_ids: mediaIds } }
+        : { text: tweetText };
       const xRes = await fetch(tweetEndpoint, {
         method: 'POST',
         headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: tweetText })
+        body: JSON.stringify(tweetBody1)
       });
       const xData = await xRes.json();
       if (!xRes.ok) throw new Error(xData.detail || xData.title || JSON.stringify(xData));
@@ -7756,7 +7825,7 @@ app.get('/api/x/auth', requireAuth, (req, res) => {
   setTimeout(() => xOAuthStates.delete(state), 600000);
 
   const redirectUri = process.env.X_REDIRECT_URI || `https://${req.headers.host}/auth/x/callback`;
-  const scopes = ['tweet.write', 'tweet.read', 'users.read', 'offline.access'].join('%20');
+  const scopes = ['tweet.write', 'tweet.read', 'users.read', 'offline.access', 'media.write'].join('%20');
   const authUrl = `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&state=${state}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
 
   res.json({ authUrl });
@@ -7827,6 +7896,59 @@ app.get('/auth/x/callback', async (req, res) => {
     res.redirect(`/app/integrations?x_error=${encodeURIComponent(err.message)}`);
   }
 });
+
+// Helper: upload an image to X v2 media endpoint, return media_id_string.
+// Used by the social-generator publish flow to attach the AI-generated square image
+// to a tweet. X v2 (POST /2/media/upload) requires:
+// - OAuth 2.0 user-context with media.write scope (preferred for our flow), OR
+// - OAuth 1.0a user-context (legacy fallback)
+// X rejects OAuth 2.0 application-only and bare bearer tokens for this endpoint.
+//
+// The endpoint is multipart/form-data with fields: media (binary), media_category, media_type.
+// For tweet images we use 'tweet_image' — X then makes the media_id immediately attachable
+// to a tweet via the {media: {media_ids: [id]}} field on POST /2/tweets.
+async function uploadXMedia({ imageUrl, oauth2Token, oauth1Header }) {
+  // 1. Fetch the image bytes from the source URL (Forge's image generation pipeline)
+  const imgRes = await fetch(imageUrl);
+  if (!imgRes.ok) throw new Error(`Image fetch failed: ${imgRes.status}`);
+  const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+  const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+
+  // 2. Build multipart body manually — Node 18 fetch supports FormData but the X endpoint
+  //    is finicky about field ordering and prefers explicit media_category up front.
+  const boundary = '----ForgeMediaBoundary' + Math.random().toString(36).slice(2);
+  const CRLF = '\r\n';
+  const parts = [
+    `--${boundary}${CRLF}Content-Disposition: form-data; name="media_category"${CRLF}${CRLF}tweet_image${CRLF}`,
+    `--${boundary}${CRLF}Content-Disposition: form-data; name="media_type"${CRLF}${CRLF}${contentType}${CRLF}`,
+    `--${boundary}${CRLF}Content-Disposition: form-data; name="media"; filename="image"${CRLF}Content-Type: ${contentType}${CRLF}${CRLF}`
+  ];
+  const head = Buffer.from(parts.join(''), 'utf8');
+  const tail = Buffer.from(`${CRLF}--${boundary}--${CRLF}`, 'utf8');
+  const body = Buffer.concat([head, imgBuffer, tail]);
+
+  const headers = {
+    'Content-Type': `multipart/form-data; boundary=${boundary}`,
+    'Content-Length': String(body.length),
+  };
+  if (oauth2Token) headers['Authorization'] = `Bearer ${oauth2Token}`;
+  else if (oauth1Header) headers['Authorization'] = oauth1Header;
+  else throw new Error('No auth header for media upload');
+
+  const upRes = await fetch('https://api.x.com/2/media/upload', { method: 'POST', headers, body });
+  const upData = await upRes.json().catch(() => ({}));
+  if (!upRes.ok) {
+    // Surface auth-scope errors clearly so the publish endpoint can return a helpful code
+    const err = upData.detail || upData.title || JSON.stringify(upData) || `HTTP ${upRes.status}`;
+    if (upRes.status === 403 && /OAuth/i.test(err)) {
+      throw new Error(`X_MEDIA_SCOPE_MISSING: ${err}`);
+    }
+    throw new Error(`X media upload failed: ${err}`);
+  }
+  const mediaId = upData.data?.id || upData.media_id_string || upData.id;
+  if (!mediaId) throw new Error(`X media upload returned no media id: ${JSON.stringify(upData)}`);
+  return mediaId;
+}
 
 // Helper: refresh X OAuth 2.0 token
 async function refreshXOAuth2Token(refreshToken) {
