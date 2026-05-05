@@ -154,7 +154,7 @@ function SocialGeneratorContent() {
   const postsReceivedRef = useRef(false);
 
   // Recent batches (collapsible footer drawer)
-  const [recentBatches, setRecentBatches] = useState<{ batch_id: string; created_at: string; platform: Platform; source_topic: string | null; posts: SocialPost[] }[]>([]);
+  const [recentBatches, setRecentBatches] = useState<{ batch_id: string; created_at: string; platform: Platform; source_topic: string | null; arc_id: string | null; arc_title: string | null; posts: SocialPost[] }[]>([]);
   const [recentOpen, setRecentOpen] = useState(false);
 
   // Brain selector — only show if super-admin has multiple brands
@@ -514,6 +514,12 @@ function SocialGeneratorContent() {
                       return isNaN(d.getTime()) ? '—' : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
                     })()}</span>
                   </div>
+                  {batch.arc_title && (
+                    <div className="sg-recent-arc" title={`Brand arc: ${batch.arc_title}`}>
+                      <span className="sg-recent-arc-label">Arc</span>
+                      <span className="sg-recent-arc-title">{batch.arc_title}</span>
+                    </div>
+                  )}
                   <div className="sg-recent-topic">{batch.source_topic || '—'}</div>
                   <button
                     className="sg-recent-load"
