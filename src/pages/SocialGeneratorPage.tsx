@@ -504,7 +504,15 @@ function SocialGeneratorContent() {
                 <div key={batch.batch_id} className="sg-recent-item">
                   <div className="sg-recent-meta">
                     <span className="sg-recent-platform">{batch.platform === 'x' ? 'X' : 'Instagram'}</span>
-                    <span className="sg-recent-date">{batch.created_at ? new Date(batch.created_at.replace(' ', 'T').replace(/(\.(\d+))?$/, 'Z')).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'}</span>
+                    <span className="sg-recent-date">{(() => {
+                      if (!batch.created_at) return '—';
+                      // Postgres TIMESTAMPTZ via pg driver -> JS Date -> JSON ISO string.
+                      // Some code paths send 'YYYY-MM-DD HH:MM:SS' (no T, no Z); normalize that.
+                      const raw = String(batch.created_at);
+                      const normalized = /T/.test(raw) ? raw : raw.replace(' ', 'T') + (/(Z|[+-]\d{2}:?\d{2})$/.test(raw) ? '' : 'Z');
+                      const d = new Date(normalized);
+                      return isNaN(d.getTime()) ? '—' : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+                    })()}</span>
                   </div>
                   <div className="sg-recent-topic">{batch.source_topic || '—'}</div>
                   <button
