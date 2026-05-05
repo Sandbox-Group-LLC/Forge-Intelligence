@@ -9734,9 +9734,31 @@ app.post('/api/publishing/publish', async (req, res) => {
 
     const safeId = item.brand_profile_id.replace(/-/g, '_');
     const contentTable = `generated_content_${safeId}`;
-    const contentRes = await pool.query(`SELECT * FROM ${contentTable} WHERE id = $1`, [item.content_id]);
-    if (!contentRes.rows.length) return res.status(404).json({ error: 'Article not found' });
-    const article = contentRes.rows[0];
+
+    // Detect social-post queue items — they live in generated_social_posts, not the
+    // per-brand article table. Synthesize an article-shaped object so the channel
+    // handlers below can read .title/.article_json/.hero_image_url uniformly.
+    let article;
+    const queueSocialMeta = item.publish_results?.__social;
+    const isSocialQueueItem = queueSocialMeta && queueSocialMeta.kind === 'social_post';
+    if (isSocialQueueItem) {
+      const sRes = await pool.query('SELECT * FROM generated_social_posts WHERE id = $1', [item.content_id]);
+      if (!sRes.rows.length) return res.status(404).json({ error: 'Social post not found' });
+      const sp = sRes.rows[0];
+      // article_json.body is what the X handler reads for social posts. Title is just
+      // for queue display — the actual tweet uses body. hero_image_url maps to image_url
+      // so existing channel logic that consumes article.hero_image_url keeps working.
+      article = {
+        id: sp.id,
+        title: item.title || (sp.hook || sp.body || '').slice(0, 80),
+        article_json: { body: sp.body, hashtags: sp.hashtags || [], cta: sp.cta },
+        hero_image_url: sp.image_url || null,
+      };
+    } else {
+      const contentRes = await pool.query(`SELECT * FROM ${contentTable} WHERE id = $1`, [item.content_id]);
+      if (!contentRes.rows.length) return res.status(404).json({ error: 'Article not found' });
+      article = contentRes.rows[0];
+    }
 
     // Load brand profile
     const brandRes = await pool.query('SELECT * FROM brand_profiles WHERE id = $1', [item.brand_profile_id]);
