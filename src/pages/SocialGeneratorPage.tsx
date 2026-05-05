@@ -1,0 +1,608 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { AppShell } from '../layouts/AppShell';
+import { useApp } from '../context/AppContext';
+import './SocialGeneratorPage.css';
+
+// ─── Lucide-style icons (1.5 stroke, currentColor — UI design directive #7) ───
+const Share2 = ({ size = 16 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+  </svg>
+);
+const Zap = ({ size = 16 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+  </svg>
+);
+const Copy = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+  </svg>
+);
+const Edit = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4Z"/>
+  </svg>
+);
+const Send = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+  </svg>
+);
+
+// ─── Types ──────────────────────────────────────────────────────────────────
+interface Brain { id: string; brandName: string; brandUrl: string; }
+
+type Platform = 'x' | 'instagram';
+type Angle = 'provocation' | 'proof' | 'how-to' | 'counter-take';
+type ConfidenceTier = 'green' | 'yellow' | 'red';
+
+interface SocialPost {
+  id: string;
+  batch_id: string;
+  platform: Platform;
+  angle: Angle;
+  hook: string;
+  body: string;
+  hashtags: string[];
+  cta: string | null;
+  char_count: number;
+  confidence: number;
+  confidence_tier: ConfidenceTier;
+  confidence_reason: string;
+  brain_match_score: number;
+  image_prompt_hint?: string;
+  image_url: string | null;
+  status: 'draft' | 'edited' | 'queued' | 'published';
+  user_edited_body: string | null;
+  source_topic: string | null;
+  created_at: string;
+}
+
+// Platform character constraints
+const PLATFORM_LIMITS: Record<Platform, { max: number; sweet: number; sweetLabel: string }> = {
+  x:         { max: 280,  sweet: 240,  sweetLabel: 'Best under 240' },
+  instagram: { max: 2200, sweet: 150,  sweetLabel: 'Best under 150 (before "more")' },
+};
+
+const ANGLE_LABELS: Record<Angle, string> = {
+  'provocation':  'Provocation',
+  'proof':        'Proof',
+  'how-to':       'How-to',
+  'counter-take': 'Counter-take',
+};
+
+const ANGLE_COLORS: Record<Angle, string> = {
+  'provocation':  '#F5B942',  // Proof Amber
+  'proof':        '#14B8A6',  // Signal Teal
+  'how-to':       '#3563FF',  // Intelligence Blue
+  'counter-take': '#A855F7',  // Purple
+};
+
+// ─── Char-count tier helper ─────────────────────────────────────────────────
+function charTier(count: number, platform: Platform): { color: string; label: string } {
+  const { max, sweet } = PLATFORM_LIMITS[platform];
+  if (count > max) return { color: '#EF4444', label: 'Over limit' };
+  if (count > sweet) return { color: '#F5B942', label: 'Long' };
+  return { color: '#14B8A6', label: 'On target' };
+}
+
+// ─── Stream progress reader ─────────────────────────────────────────────────
+function StreamProgress({ text }: { text: string }) {
+  // Look for "hook" keys as a proxy for posts arriving
+  const hooks = Array.from(text.matchAll(/"hook":\s*"([^"]{4,120})"/g))
+    .map(m => m[1])
+    .filter((h, i, arr) => arr.indexOf(h) === i);
+
+  if (!hooks.length) {
+    return (
+      <div className="sg-stream-empty">
+        <span className="sg-cursor">▋</span>
+        <span>Reading the Brain — patterns, mistakes, voice profile…</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="sg-stream-list">
+      <div className="sg-stream-count">Drafting {hooks.length} of 4 posts…</div>
+      {hooks.map((h, i) => (
+        <div key={i} className="sg-stream-item">
+          <span className="sg-stream-check">✓</span>
+          <span className="sg-stream-hook">{h}</span>
+        </div>
+      ))}
+      {hooks.length < 4 && (
+        <div className="sg-stream-item">
+          <span className="sg-cursor">▋</span>
+          <span className="sg-stream-pending">Drafting next post…</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main component ─────────────────────────────────────────────────────────
+function SocialGeneratorContent() {
+  const { historyEntries, activeBrand, authToken } = useApp();
+  const [selectedBrainId, setSelectedBrainId] = useState('');
+  const [platform, setPlatform] = useState<Platform>(() => {
+    if (typeof window === 'undefined') return 'x';
+    const saved = localStorage.getItem('forge_social_platform');
+    return saved === 'instagram' ? 'instagram' : 'x';
+  });
+  const [topicPrompt, setTopicPrompt] = useState('');
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [mandatories, setMandatories] = useState('');
+  const [constraints, setConstraints] = useState('');
+  const [audience, setAudience] = useState('');
+  const [ctaTarget, setCtaTarget] = useState('');
+
+  const [isRunning, setIsRunning] = useState(false);
+  const [streamText, setStreamText] = useState('');
+  const [posts, setPosts] = useState<SocialPost[]>([]);
+  const [error, setError] = useState('');
+  const streamRef = useRef<EventSource | null>(null);
+
+  // Recent batches (collapsible footer drawer)
+  const [recentBatches, setRecentBatches] = useState<{ batch_id: string; created_at: string; platform: Platform; source_topic: string | null; posts: SocialPost[] }[]>([]);
+  const [recentOpen, setRecentOpen] = useState(false);
+
+  // Brain selector — only show if super-admin has multiple brands
+  let brains: Brain[] = historyEntries.map(e => ({ id: e.id, brandName: e.brandName, brandUrl: e.brandUrl }));
+  if (brains.length === 0 && activeBrand) {
+    brains.push({ id: activeBrand.id, brandName: activeBrand.brandName || activeBrand.brandUrl, brandUrl: activeBrand.brandUrl });
+  }
+
+  // Seed selected brain from active brand context
+  useEffect(() => {
+    const id = activeBrand?.id || localStorage.getItem('forge_active_brand_id') || '';
+    if (id) setSelectedBrainId(id);
+  }, []);
+
+  useEffect(() => {
+    if (activeBrand?.id && !selectedBrainId) setSelectedBrainId(activeBrand.id);
+  }, [activeBrand?.id]);
+
+  // Persist platform choice
+  useEffect(() => {
+    localStorage.setItem('forge_social_platform', platform);
+  }, [platform]);
+
+  // Load recent batches when brand changes
+  useEffect(() => {
+    if (!selectedBrainId || !authToken) return;
+    fetch(`/api/social-generator/recent/${selectedBrainId}`, { headers: { 'Authorization': `Bearer ${authToken}` } })
+      .then(r => r.json())
+      .then(d => { if (d.success) setRecentBatches(d.batches || []); })
+      .catch(() => { /* non-fatal */ });
+  }, [selectedBrainId, authToken, posts.length /* refresh after generate */]);
+
+  const runGeneration = () => {
+    if (!selectedBrainId || !topicPrompt.trim()) return;
+    setIsRunning(true);
+    setStreamText('');
+    setPosts([]);
+    setError('');
+
+    const qs = new URLSearchParams({ brandProfileId: selectedBrainId, platform, topicPrompt: topicPrompt.trim() });
+    if (advancedOpen) {
+      if (mandatories.trim()) qs.set('mandatories', mandatories.trim());
+      if (constraints.trim()) qs.set('constraints', constraints.trim());
+      if (audience.trim()) qs.set('audience', audience.trim());
+      if (ctaTarget.trim()) qs.set('ctaTarget', ctaTarget.trim());
+    }
+    if (authToken) qs.set('token', authToken);
+
+    const es = new EventSource(`/api/social-generator/generate?${qs.toString()}`);
+    streamRef.current = es;
+
+    es.addEventListener('busy', (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        const elapsed = d.elapsed ? ` (${d.elapsed}s in)` : '';
+        setError(`A social-post run is already in progress for this brand${elapsed}. Try again in a minute.`);
+      } catch {}
+      setIsRunning(false);
+      es.close();
+    });
+
+    es.addEventListener('chunk', (e) => {
+      setStreamText(prev => prev + e.data);
+    });
+
+    es.addEventListener('done', (e) => {
+      try {
+        const parsed = JSON.parse(e.data);
+        if (parsed.posts && Array.isArray(parsed.posts)) {
+          setPosts(parsed.posts);
+          setStreamText('');
+        }
+      } catch {
+        setError('Failed to parse the generated batch. Raw output preserved below.');
+      }
+      // Wait for image_done events before closing — server keeps SSE open until images return
+    });
+
+    es.addEventListener('image_done', (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        // d = { post_id, image_url }
+        setPosts(prev => prev.map(p => p.id === d.post_id ? { ...p, image_url: d.image_url } : p));
+      } catch {}
+    });
+
+    es.addEventListener('image_error', (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        // Mark image as failed — UI shows fallback
+        setPosts(prev => prev.map(p => p.id === d.post_id ? { ...p, image_url: null } : p));
+      } catch {}
+    });
+
+    es.addEventListener('complete', () => {
+      setIsRunning(false);
+      es.close();
+    });
+
+    es.addEventListener('error', (e: any) => {
+      es.close();
+      setIsRunning(false);
+      if (e.data) setError(e.data);
+      else if (!posts.length) setError('Connection lost. The batch may still be generating — refresh in 30 seconds.');
+    });
+  };
+
+  const reset = () => {
+    setPosts([]);
+    setStreamText('');
+    setError('');
+  };
+
+  return (
+    <div className="sg-container">
+      <div className="sg-header">
+        <div>
+          <div className="sg-eyebrow">Stage 4 — Short-form</div>
+          <h1 className="sg-title">Social Generator</h1>
+          <p className="sg-description">
+            Brain-matched short-form for X and Instagram. Four posts at four angles — provocation, proof, how-to, counter-take — each with a square image tuned for social composition.
+          </p>
+        </div>
+      </div>
+
+      {!isRunning && posts.length === 0 && (
+        <div className="sg-input-card">
+          {brains.length > 1 && (
+            <div className="sg-row">
+              <label className="sg-label">Brain</label>
+              <select className="sg-select" value={selectedBrainId} onChange={e => setSelectedBrainId(e.target.value)}>
+                <option value="">Select a Brain…</option>
+                {brains.map(b => <option key={b.id} value={b.id}>{b.brandName} — {b.brandUrl}</option>)}
+              </select>
+            </div>
+          )}
+
+          {/* Platform toggle */}
+          <div className="sg-row">
+            <label className="sg-label">Platform</label>
+            <div className="sg-platform-toggle">
+              <button
+                type="button"
+                className={`sg-platform-btn ${platform === 'x' ? 'active' : ''}`}
+                onClick={() => setPlatform('x')}
+              >
+                <span className="sg-platform-icon">𝕏</span>
+                <span>X (Twitter)</span>
+                <span className="sg-platform-meta">280 chars · no hashtags by default</span>
+              </button>
+              <button
+                type="button"
+                className={`sg-platform-btn ${platform === 'instagram' ? 'active' : ''}`}
+                onClick={() => setPlatform('instagram')}
+              >
+                <span className="sg-platform-icon">◌</span>
+                <span>Instagram</span>
+                <span className="sg-platform-meta">2200 chars · 3-5 hashtags</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Topic / angle prompt */}
+          <div className="sg-row">
+            <label className="sg-label">What's the angle?</label>
+            <textarea
+              className="sg-textarea"
+              placeholder="e.g. The mistake most B2B teams make when they say they're 'voice-led' — and the diagnostic that exposes it."
+              value={topicPrompt}
+              onChange={e => setTopicPrompt(e.target.value)}
+              rows={3}
+            />
+            <div className="sg-hint">
+              One sentence that captures the take. The Brain expands it into 4 angles: provocation, proof, how-to, counter-take.
+            </div>
+          </div>
+
+          {/* Advanced panel */}
+          <div className="sg-advanced">
+            <button
+              type="button"
+              className="sg-advanced-toggle"
+              onClick={() => setAdvancedOpen(o => !o)}
+            >
+              <span>Advanced direction — mandatories, audience, CTA <span className="sg-advanced-optional">(optional)</span></span>
+              <span className="sg-advanced-chevron">{advancedOpen ? '−' : '+'}</span>
+            </button>
+            {advancedOpen && (
+              <div className="sg-advanced-body">
+                <div className="sg-field">
+                  <label className="sg-field-label">Mandatories</label>
+                  <div className="sg-field-help">Required disclaimers, must-include phrases, time-bound claims.</div>
+                  <textarea
+                    className="sg-input-text"
+                    rows={2}
+                    value={mandatories}
+                    onChange={e => setMandatories(e.target.value)}
+                    placeholder="e.g. Must mention the 7-day trial. CTA links to /trial."
+                  />
+                </div>
+                <div className="sg-field">
+                  <label className="sg-field-label">Constraints</label>
+                  <div className="sg-field-help">What posts must NOT do.</div>
+                  <textarea
+                    className="sg-input-text"
+                    rows={2}
+                    value={constraints}
+                    onChange={e => setConstraints(e.target.value)}
+                    placeholder="e.g. No competitor names. No generic 'AI is changing everything' framing."
+                  />
+                </div>
+                <div className="sg-grid-2">
+                  <div className="sg-field">
+                    <label className="sg-field-label">Target audience</label>
+                    <input
+                      type="text"
+                      className="sg-input-text"
+                      value={audience}
+                      onChange={e => setAudience(e.target.value)}
+                      placeholder="e.g. RevOps leaders at Series B SaaS"
+                    />
+                  </div>
+                  <div className="sg-field">
+                    <label className="sg-field-label">CTA target URL/path</label>
+                    <input
+                      type="text"
+                      className="sg-input-text"
+                      value={ctaTarget}
+                      onChange={e => setCtaTarget(e.target.value)}
+                      placeholder="e.g. /trial or /book-demo"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="sg-actions">
+            <button
+              className="sg-generate-btn"
+              onClick={runGeneration}
+              disabled={!selectedBrainId || !topicPrompt.trim()}
+            >
+              <Zap size={14} /> Generate 4 posts
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isRunning && (
+        <div className="sg-running">
+          <div className="sg-running-header">
+            <Zap size={14} />
+            <span>Generating — Brain is writing for {platform === 'x' ? 'X' : 'Instagram'}…</span>
+          </div>
+          <div className="sg-running-body">
+            <StreamProgress text={streamText} />
+          </div>
+        </div>
+      )}
+
+      {error && <div className="sg-error">{error}</div>}
+
+      {posts.length > 0 && !isRunning && (
+        <>
+          <div className="sg-results-header">
+            <div>
+              <span className="sg-results-label">Generated {posts.length} posts for {platform === 'x' ? 'X' : 'Instagram'}</span>
+              <span className="sg-results-sub">Edit inline · send to publishing queue when ready</span>
+            </div>
+            <button className="sg-secondary-btn" onClick={reset}>Generate another batch</button>
+          </div>
+
+          <div className="sg-grid">
+            {posts.map(post => (
+              <PostCard key={post.id} post={post} authToken={authToken} onUpdate={(updated) => {
+                setPosts(prev => prev.map(p => p.id === updated.id ? updated : p));
+              }} />
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Recent batches drawer */}
+      {recentBatches.length > 0 && (
+        <div className="sg-recent">
+          <button className="sg-recent-toggle" onClick={() => setRecentOpen(o => !o)}>
+            <span>Recent batches</span>
+            <span className="sg-recent-count">{recentBatches.length}</span>
+            <span className="sg-recent-chevron">{recentOpen ? '−' : '+'}</span>
+          </button>
+          {recentOpen && (
+            <div className="sg-recent-list">
+              {recentBatches.map(batch => (
+                <div key={batch.batch_id} className="sg-recent-item">
+                  <div className="sg-recent-meta">
+                    <span className="sg-recent-platform">{batch.platform === 'x' ? 'X' : 'Instagram'}</span>
+                    <span className="sg-recent-date">{new Date(batch.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                  </div>
+                  <div className="sg-recent-topic">{batch.source_topic || '—'}</div>
+                  <button
+                    className="sg-recent-load"
+                    onClick={() => { setPosts(batch.posts); setStreamText(''); setError(''); }}
+                  >
+                    Open batch →
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Post card with inline edit + queue ─────────────────────────────────────
+function PostCard({ post, authToken, onUpdate }: { post: SocialPost; authToken: string | null; onUpdate: (p: SocialPost) => void }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedBody, setEditedBody] = useState(post.user_edited_body || post.body);
+  const [saving, setSaving] = useState(false);
+  const [queuing, setQueuing] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const displayBody = post.user_edited_body || post.body;
+  const charCount = (post.user_edited_body || post.body).length + (post.platform === 'instagram' && post.hashtags.length ? ('\n\n' + post.hashtags.map(h => h.startsWith('#') ? h : '#' + h).join(' ')).length : 0);
+  const tier = charTier(charCount, post.platform);
+  const angleColor = ANGLE_COLORS[post.angle] || '#3563FF';
+
+  const tierColorByConf = (t: ConfidenceTier) => t === 'green' ? '#14B8A6' : t === 'yellow' ? '#F5B942' : '#EF4444';
+
+  const handleCopy = () => {
+    let text = displayBody;
+    if (post.hashtags.length && post.platform === 'instagram') {
+      text += '\n\n' + post.hashtags.map(h => h.startsWith('#') ? h : '#' + h).join(' ');
+    }
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/social-generator/edit/${post.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {}) },
+        body: JSON.stringify({ user_edited_body: editedBody }),
+      });
+      const d = await res.json();
+      if (d.success && d.post) {
+        onUpdate(d.post);
+        setIsEditing(false);
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleQueue = async () => {
+    setQueuing(true);
+    try {
+      const res = await fetch(`/api/social-generator/queue/${post.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {}) },
+      });
+      const d = await res.json();
+      if (d.success && d.post) {
+        onUpdate(d.post);
+      }
+    } finally {
+      setQueuing(false);
+    }
+  };
+
+  const isQueued = post.status === 'queued' || post.status === 'published';
+
+  return (
+    <div className="sg-post-card">
+      <div className="sg-post-image-wrap">
+        {post.image_url ? (
+          <img src={post.image_url} alt={post.hook} className="sg-post-image" />
+        ) : (
+          <div className="sg-post-image-placeholder">
+            <span className="sg-spinner" />
+            <span>Generating image…</span>
+          </div>
+        )}
+        <span className="sg-angle-badge" style={{ background: angleColor + '22', color: angleColor, borderColor: angleColor + '44' }}>
+          {ANGLE_LABELS[post.angle] || post.angle}
+        </span>
+      </div>
+
+      <div className="sg-post-body">
+        {post.hook && <div className="sg-post-hook">{post.hook}</div>}
+
+        {isEditing ? (
+          <textarea
+            className="sg-post-edit-area"
+            value={editedBody}
+            onChange={e => setEditedBody(e.target.value)}
+            rows={post.platform === 'x' ? 4 : 6}
+          />
+        ) : (
+          <div className="sg-post-text">{displayBody}</div>
+        )}
+
+        {post.hashtags.length > 0 && (
+          <div className="sg-hashtags">
+            {post.hashtags.map((h, i) => (
+              <span key={i} className="sg-hashtag">{h.startsWith('#') ? h : '#' + h}</span>
+            ))}
+          </div>
+        )}
+
+        <div className="sg-post-meta">
+          <span className="sg-char" style={{ color: tier.color }}>
+            {charCount} chars · {tier.label}
+          </span>
+          <span className="sg-confidence" style={{ background: tierColorByConf(post.confidence_tier) + '22', color: tierColorByConf(post.confidence_tier) }}>
+            {post.confidence}% — {post.confidence_reason}
+          </span>
+        </div>
+
+        <div className="sg-post-actions">
+          {!isEditing ? (
+            <>
+              <button className="sg-action-btn" onClick={handleCopy}>
+                <Copy size={12} /> {copied ? 'Copied' : 'Copy'}
+              </button>
+              <button className="sg-action-btn" onClick={() => { setEditedBody(post.user_edited_body || post.body); setIsEditing(true); }} disabled={isQueued}>
+                <Edit size={12} /> Edit
+              </button>
+              <button
+                className={`sg-action-btn sg-action-btn-primary ${isQueued ? 'queued' : ''}`}
+                onClick={handleQueue}
+                disabled={queuing || isQueued}
+              >
+                <Send size={12} /> {isQueued ? (post.status === 'published' ? 'Published' : 'Queued') : queuing ? 'Queuing…' : 'Send to queue'}
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="sg-action-btn" onClick={() => setIsEditing(false)} disabled={saving}>Cancel</button>
+              <button className="sg-action-btn sg-action-btn-primary" onClick={handleSave} disabled={saving || !editedBody.trim()}>
+                {saving ? 'Saving…' : 'Save edit'}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function SocialGeneratorPage() {
+  return <AppShell><SocialGeneratorContent /></AppShell>;
+}
