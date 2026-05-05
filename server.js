@@ -7825,7 +7825,10 @@ app.get('/api/x/auth', requireAuth, (req, res) => {
   setTimeout(() => xOAuthStates.delete(state), 600000);
 
   const redirectUri = process.env.X_REDIRECT_URI || `https://${req.headers.host}/auth/x/callback`;
-  const scopes = ['tweet.write', 'tweet.read', 'users.read', 'offline.access', 'media.write'].join('%20');
+  // BISECT 2026-05-05: media.write temporarily removed to test if it's causing X's
+  // 'Something went wrong' rejection. If reconnect succeeds without it — confirmed
+  // culprit. Add back once Developer Portal config is verified or API tier upgraded.
+  const scopes = ['tweet.write', 'tweet.read', 'users.read', 'offline.access'].join('%20');
   // Use https://x.com/i/oauth2/authorize — X devs have noted the newer host
   // accepts media.write scope more reliably than the legacy twitter.com host. The scope
   // is requested at OAuth time, not pre-registered in the Developer Portal (which is why
