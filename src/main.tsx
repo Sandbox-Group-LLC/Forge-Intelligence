@@ -11,6 +11,7 @@ import GeoStrategistPage from './pages/GeoStrategistPage';
 import AuthenticityEnricherPage from './pages/AuthenticityEnricherPage';
 import ContentGeneratorPage from './pages/ContentGeneratorPage';
 import CampaignGeneratorPage from './pages/CampaignGeneratorPage';
+import SocialGeneratorPage from './pages/SocialGeneratorPage';
 import ComplianceGatePage from './pages/ComplianceGatePage';
 import IntegrationsPage from './pages/IntegrationsPage';
 import PublishingQueuePage from './pages/PublishingQueuePage';
@@ -91,6 +92,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/app/authenticity-enricher" element={<AppProvider><AuthenticityEnricherPage /></AppProvider>} />
         <Route path="/app/content-generator" element={<AppProvider><ContentGeneratorPage /></AppProvider>} />
         <Route path="/app/campaign-generator" element={<AppProvider><CampaignGeneratorPage /></AppProvider>} />
+        <Route path="/app/social-generator" element={<AppProvider><SocialGeneratorPage /></AppProvider>} />
         <Route path="/app/email-campaign" element={<AppProvider><EmailCampaignPage /></AppProvider>} />
         <Route path="/app/compliance-gate" element={<AppProvider><ComplianceGatePage /></AppProvider>} />
         <Route path="/app/integrations" element={<AppProvider><IntegrationsPage /></AppProvider>} />
@@ -117,6 +119,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/authenticity-enricher" element={<Navigate to="/app/authenticity-enricher" replace />} />
         <Route path="/content-generator" element={<Navigate to="/app/content-generator" replace />} />
         <Route path="/campaign-generator" element={<Navigate to="/app/campaign-generator" replace />} />
+        <Route path="/social-generator" element={<Navigate to="/app/social-generator" replace />} />
         <Route path="/compliance-gate" element={<Navigate to="/app/compliance-gate" replace />} />
         <Route path="/integrations" element={<Navigate to="/app/integrations" replace />} />
         <Route path="/publishing-queue" element={<Navigate to="/app/publishing-queue" replace />} />
