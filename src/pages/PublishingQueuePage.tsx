@@ -526,9 +526,10 @@ export default function PublishingQueuePage() {
       .filter(l => ['published','unknown','error','x:error'].includes(l.live_status))
       .filter(l => { if (seen.has(l.channel)) return false; seen.add(l.channel); return true; })
       .map(l => l.channel);
-    // Also pick up channels from item.publish_results that may not be in log yet
+    // Also pick up channels from item.publish_results that may not be in log yet.
+    // Skip namespaced metadata keys (e.g. __social) — those aren't channels.
     const fromResults = Object.entries(item.publish_results || {})
-      .filter(([ch, r]: [string, any]) => r && !seen.has(ch))
+      .filter(([ch, r]: [string, any]) => r && !ch.startsWith('__') && !seen.has(ch))
       .map(([ch]) => { seen.add(ch); return ch; });
     const publishedChannels = [...fromLog, ...fromResults];
     setDeleteModal({ item, publishedChannels });
