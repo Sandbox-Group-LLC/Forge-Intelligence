@@ -148,6 +148,15 @@ const icons = {
     </svg>
   ),
   target: (<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>),
+  share2: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="18" cy="5" r="3"/>
+      <circle cx="6" cy="12" r="3"/>
+      <circle cx="18" cy="19" r="3"/>
+      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+      <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+    </svg>
+  ),
   settings: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="3"/>
@@ -183,6 +192,7 @@ const NAV_ROUTES: Partial<Record<ViewType, string>> = {
   'authenticity-enricher':'/app/authenticity-enricher',
   'content-generator':    '/app/content-generator',
   'campaign-generator':   '/app/campaign-generator',
+  'social-generator':     '/app/social-generator',
   'compliance-gate':      '/app/compliance-gate',
   'integrations':         '/app/integrations',
   'publishing-queue':     '/app/publishing-queue',
@@ -219,6 +229,7 @@ const topNavItems: TopNavItem[] = [
   { id: 'authenticity-enricher', label: 'Authenticity Enricher', icon: 'shieldCheck',href: '/app/authenticity-enricher' },
   { id: 'content-generator',     label: 'Content Generator',     icon: 'fileText',   href: '/app/content-generator' },
   { id: 'campaign-generator',    label: 'Campaign Generator',    icon: 'layers',     href: '/app/campaign-generator' },
+  { id: 'social-generator',      label: 'Social Generator',      icon: 'share2',     href: '/app/social-generator' },
   { id: 'email-campaign',        label: 'Email Campaign',         icon: 'mail',       href: '/app/email-campaign' },
   { id: 'compliance-gate',       label: 'Compliance Gate',       icon: 'shieldCheck',href: '/app/compliance-gate' },
 
@@ -230,7 +241,7 @@ export function Sidebar() {
   const [gateFeature, setGateFeature] = useState<string | null>(null);
   const LOCKED_ROUTES = [
     '/app/geo-strategist', '/app/authenticity-enricher', '/app/content-generator',
-    '/app/campaign-generator', '/app/compliance-gate', '/app/publishing-queue', '/app/calendar',
+    '/app/campaign-generator', '/app/social-generator', '/app/compliance-gate', '/app/publishing-queue', '/app/calendar',
     '/app/content-library', '/app/content-import', '/app/topic-queue',
     '/app/performance', '/app/integrations', '/app/mc', '/app/email-campaign',
   ];
