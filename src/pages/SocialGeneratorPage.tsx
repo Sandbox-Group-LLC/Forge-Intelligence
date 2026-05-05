@@ -133,6 +133,7 @@ function SocialGeneratorContent() {
   const [topicPrompt, setTopicPrompt] = useState('');
   const [selectedArcId, setSelectedArcId] = useState<string | null>(null);
   const [arcs, setArcs] = useState<CampaignArc[]>([]);
+  const [arcsLoading, setArcsLoading] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [mandatories, setMandatories] = useState('');
   const [constraints, setConstraints] = useState('');
@@ -175,11 +176,13 @@ function SocialGeneratorContent() {
 
   // Load arcs when brand changes
   useEffect(() => {
-    if (!selectedBrainId || !authToken) { setArcs([]); return; }
+    if (!selectedBrainId || !authToken) { setArcs([]); setArcsLoading(false); return; }
+    setArcsLoading(true);
     fetch(`/api/social-generator/arcs/${selectedBrainId}`, { headers: { 'Authorization': `Bearer ${authToken}` } })
       .then(r => r.json())
       .then(d => { if (d.success) setArcs(d.arcs || []); else setArcs([]); })
-      .catch(() => setArcs([]));
+      .catch(() => setArcs([]))
+      .finally(() => setArcsLoading(false));
   }, [selectedBrainId, authToken]);
 
   // Load recent batches when brand changes
