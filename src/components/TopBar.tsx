@@ -56,6 +56,7 @@ const pathTitles: Record<string, string> = {
   '/app/geo-strategist':         'GEO Strategist',
   '/app/authenticity-enricher':  'Authenticity Enricher',
   '/app/content-generator':      'Content Generator',
+  '/app/social-generator':       'Social Generator',
   '/app/campaign-generator':     'Campaign Generator',
   '/app/compliance-gate':        'Compliance Gate',
   '/app/integrations':           'Integrations',
