@@ -6094,6 +6094,9 @@ async function ensureSocialPostsTable() {
   // can show it. Idempotent ALTERs — safe on existing tables.
   await pool.query(`ALTER TABLE generated_social_posts ADD COLUMN IF NOT EXISTS arc_id TEXT`).catch(() => {});
   await pool.query(`ALTER TABLE generated_social_posts ADD COLUMN IF NOT EXISTS arc_title TEXT`).catch(() => {});
+  // Direct-publish (May 5, 2026) — X first, IG to follow with its own flow.
+  await pool.query(`ALTER TABLE generated_social_posts ADD COLUMN IF NOT EXISTS published_url TEXT`).catch(() => {});
+  await pool.query(`ALTER TABLE generated_social_posts ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ`).catch(() => {});
 }
 ensureSocialPostsTable().catch(e => console.error('[SOCIAL-GEN] Table init error:', e.message));
 
@@ -6495,10 +6498,120 @@ app.post('/api/social-generator/edit/:postId', requireAuth, async (req, res) => 
   }
 });
 
-// Note: a previous /api/social-generator/queue/:postId endpoint that pushed social
-// posts into the article publishing_queue was removed in the social-in-queue unwind
-// (May 2, 2026). Social posts will get a dedicated publish path in a future
-// iteration — the article-shaped queue forced wrong UX onto social content.
+// POST /api/social-generator/publish-x/:postId — direct-publish a single social
+// post to X (Twitter) using the brand's stored OAuth credentials in publishing_channels.
+//
+// Why this exists separate from the article publish flow at /api/publishing/publish/:itemId:
+// - Social posts have no URL append, no UTM injection, no title fallback — the body IS the tweet.
+// - No queue staging, no campaign machinery, no per-channel selection (X-only here).
+// - One post = one network call, ship-or-fail. Status flip + URL store on success.
+//
+// Auth path mirrors the article flow's X handler (L10049 region in this file):
+// OAuth 2.0 token from publishing_channels.credentials, refresh on 401, OAuth 1.0a fallback.
+app.post('/api/social-generator/publish-x/:postId', requireAuth, async (req, res) => {
+  const { postId } = req.params;
+  try {
+    // Load the post + verify brand access
+    const r = await pool.query('SELECT * FROM generated_social_posts WHERE id = $1', [postId]);
+    if (!r.rows.length) return res.status(404).json({ success: false, error: 'Post not found' });
+    const post = r.rows[0];
+    if (post.platform !== 'x') return res.status(400).json({ success: false, error: 'This endpoint publishes X posts only.' });
+    if (!(await verifyBrandAccess(post.brand_profile_id, req.userId))) return res.status(403).json({ success: false, error: 'Access denied' });
+    if (post.status === 'published' && post.published_url) {
+      return res.json({ success: true, alreadyPublished: true, url: post.published_url, post });
+    }
+
+    // Use the latest user-edited body if present, else the original body
+    const tweetText = (post.user_edited_body || post.body || '').trim();
+    if (!tweetText) return res.status(400).json({ success: false, error: 'Post has no body to publish.' });
+    if (tweetText.length > 280) return res.status(400).json({ success: false, error: `Post is ${tweetText.length} chars; X requires ≤280. Edit the post and try again.` });
+
+    // Pull X creds for this brand
+    const channelRes = await pool.query(
+      `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'x'`,
+      [post.brand_profile_id]
+    );
+    if (!channelRes.rows.length) {
+      return res.status(400).json({ success: false, error: 'X is not connected for this brand. Connect it in Integrations first.', code: 'X_NOT_CONNECTED' });
+    }
+    const creds = channelRes.rows[0].credentials || {};
+
+    const tweetEndpoint = 'https://api.twitter.com/2/tweets';
+    let tweetId, twitterHandle = creds.username || 'i';
+
+    if (creds.oauth2AccessToken) {
+      // OAuth 2.0 path — preferred. Try posting; if 401, refresh and retry.
+      let token = creds.oauth2AccessToken;
+      let xRes = await fetch(tweetEndpoint, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: tweetText })
+      });
+      if (xRes.status === 401 && creds.oauth2RefreshToken) {
+        try {
+          const refreshed = await refreshXOAuth2Token(creds.oauth2RefreshToken);
+          token = refreshed.access_token;
+          await pool.query(
+            `UPDATE publishing_channels SET credentials = credentials || $1 WHERE brand_profile_id = $2 AND channel = 'x'`,
+            [JSON.stringify({ oauth2AccessToken: refreshed.access_token, oauth2RefreshToken: refreshed.refresh_token || creds.oauth2RefreshToken }), post.brand_profile_id]
+          );
+          xRes = await fetch(tweetEndpoint, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: tweetText })
+          });
+        } catch(e) {
+          console.error('[X-SOCIAL] Token refresh failed:', e.message);
+          if (e.message && (e.message.includes('invalid') || e.message.includes('revoked') || e.message.includes('expired'))) {
+            await pool.query(
+              `UPDATE publishing_channels SET credentials = credentials - 'oauth2AccessToken' - 'oauth2RefreshToken' WHERE brand_profile_id = $1 AND channel = 'x'`,
+              [post.brand_profile_id]
+            ).catch(() => {});
+            return res.status(401).json({ success: false, error: 'X authentication expired. Please reconnect X in Integrations.', code: 'X_AUTH_EXPIRED' });
+          }
+          throw e;
+        }
+      }
+      const xData = await xRes.json();
+      if (!xRes.ok) throw new Error(xData.detail || xData.title || JSON.stringify(xData));
+      tweetId = xData.data?.id;
+    } else {
+      // OAuth 1.0a fallback — legacy manual tokens
+      const xApiKey       = creds.apiKey       || process.env.X_OAUTH1CONSUMER_KEY;
+      const xApiSecret    = creds.apiSecret    || process.env.X_OAUTH1CONSUMER_SECRET;
+      const xAccessToken  = creds.accessToken  || process.env.X_OAUTH1ACCESS_TOKEN;
+      const xAccessSecret = creds.accessSecret || process.env.X_OAUTH1ACCESS_SECRET;
+      if (!xApiKey || !xApiSecret || !xAccessToken || !xAccessSecret) {
+        return res.status(400).json({ success: false, error: 'X is not connected for this brand. Connect it in Integrations first.', code: 'X_NOT_CONNECTED' });
+      }
+      const authHeader = buildXOAuthHeader('POST', tweetEndpoint, xApiKey, xApiSecret, xAccessToken, xAccessSecret);
+      const xRes = await fetch(tweetEndpoint, {
+        method: 'POST',
+        headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: tweetText })
+      });
+      const xData = await xRes.json();
+      if (!xRes.ok) throw new Error(xData.detail || xData.title || JSON.stringify(xData));
+      tweetId = xData.data?.id;
+      try {
+        const meRes = await fetch('https://api.twitter.com/2/users/me', { headers: { 'Authorization': authHeader } });
+        if (meRes.ok) twitterHandle = (await meRes.json()).data?.username || 'i';
+      } catch(e) {}
+    }
+
+    const publishedUrl = `https://x.com/${twitterHandle}/status/${tweetId}`;
+
+    // Persist
+    const upd = await pool.query(
+      `UPDATE generated_social_posts SET status = 'published', published_url = $1, published_at = NOW(), updated_at = NOW() WHERE id = $2 RETURNING *`,
+      [publishedUrl, postId]
+    );
+    res.json({ success: true, url: publishedUrl, tweetId, post: upd.rows[0] });
+  } catch(e) {
+    console.error('[X-SOCIAL]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
 
 // ── Campaign Generator ────────────────────────────────────────────────────────
 
