@@ -6458,17 +6458,20 @@ app.post('/api/social-generator/queue/:postId', requireAuth, async (req, res) =>
     // Title for queue listing
     const queueTitle = `[${post.platform.toUpperCase()}] ${(post.hook || post.body || '').slice(0, 80)}`;
 
-    // Stage in publishing_queue with kind marker so channel publishers know to handle as social
+    // Stage in publishing_queue. Social-post metadata lives under publish_results.__social
+    // (namespaced key — channel keys are flat: linkedin, x, etc., so __social cannot collide).
+    // image_url uses the existing hero_image_url column so the queue UI's thumbnail logic works.
     await pool.query(
-      `INSERT INTO publishing_queue (brand_profile_id, content_id, title, status, channels, publish_results, created_at, updated_at)
-       VALUES ($1, $2, $3, 'staged', $4, $5, NOW(), NOW())
-       ON CONFLICT (content_id) DO UPDATE SET status = 'staged', title = EXCLUDED.title, updated_at = NOW()`,
+      `INSERT INTO publishing_queue (brand_profile_id, content_id, title, status, channels, hero_image_url, publish_results, created_at, updated_at)
+       VALUES ($1, $2, $3, 'staged', $4, $5, $6, NOW(), NOW())
+       ON CONFLICT (content_id) DO UPDATE SET status = 'staged', title = EXCLUDED.title, hero_image_url = EXCLUDED.hero_image_url, publish_results = EXCLUDED.publish_results, updated_at = NOW()`,
       [
         post.brand_profile_id,
         post.id,
         queueTitle,
         JSON.stringify([post.platform]),
-        JSON.stringify({ kind: 'social_post', platform: post.platform, hashtags: post.hashtags || [], cta: post.cta, image_url: post.image_url })
+        post.image_url || null,
+        JSON.stringify({ __social: { kind: 'social_post', platform: post.platform, hashtags: post.hashtags || [], cta: post.cta, post_id: post.id } })
       ]
     );
 
