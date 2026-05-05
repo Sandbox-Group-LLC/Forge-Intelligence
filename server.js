@@ -6170,7 +6170,7 @@ async function generateSocialImage(prompt) {
 }
 
 app.get('/api/social-generator/generate', requireAuth, async (req, res) => {
-  const { brandProfileId, platform, topicPrompt, briefId, mandatories, constraints, audience, ctaTarget, desiredAction } = req.query;
+  const { brandProfileId, platform, topicPrompt, briefId, mandatories, constraints, audience, ctaTarget, desiredAction, arcId } = req.query;
   if (!brandProfileId) return res.status(400).json({ success: false, error: 'brandProfileId required' });
   if (!platform || (platform !== 'x' && platform !== 'instagram')) {
     return res.status(400).json({ success: false, error: 'platform must be x or instagram' });
@@ -6263,7 +6263,22 @@ app.get('/api/social-generator/generate', requireAuth, async (req, res) => {
       return s.length > maxChars ? s.substring(0, maxChars) + '\n...[truncated]' : s;
     };
 
-    const userPrompt = `${dateContext()}\n\nGenerate exactly 4 ${platform.toUpperCase()} posts using the following brand intelligence.\n\nPLATFORM: ${platform}\nBRAND: ${brandName}\n${topicPrompt ? `\nTOPIC / ANGLE THE USER WANTS COVERED:\n"${topicPrompt}"\n` : ''}${(mandatories || constraints || audience || ctaTarget || desiredAction) ? `\nUSER MANDATORIES & CONSTRAINTS:\n${mandatories ? `- MUST INCLUDE: ${mandatories}\n` : ''}${constraints ? `- MUST NOT: ${constraints}\n` : ''}${audience ? `- AUDIENCE: ${audience}\n` : ''}${ctaTarget ? `- CTA TARGET: ${ctaTarget}\n` : ''}${desiredAction ? `- DESIRED ACTION: ${desiredAction}\n` : ''}` : ''}${fgBlock}\n\nBRAND VOICE PROFILE:\n${trimTo(voiceProfile, 1500)}\n\nPERSONAS:\n${trimTo(personas.slice(0, 2), 1000)}\n${topicalTerritories.length ? `\nSTRATEGIC TERRITORIES (stay inside these):\n${topicalTerritories.map(t => `- [${t.priority}] ${t.topic}`).join('\n')}\n` : ''}\nBRAIN PATTERNS — what works for this brand:\n${patternsRes.rows.length ? trimTo(patternsRes.rows, 1500) : 'No patterns yet.'}\n\nBRAIN MISTAKES — what to avoid:\n${mistakesRes.rows.length ? trimTo(mistakesRes.rows, 1000) : 'No mistakes logged yet.'}\n${enrichedBrief ? `\nENRICHED BRIEF CONTEXT:\n${trimTo({ title: enrichedBrief.enrichedTitle, hooks: enrichedBrief.contentHooks, powerPhrases: enrichedBrief.powerPhrases }, 1500)}\n` : ''}\nReturn ONLY valid JSON matching the {posts: [...]} schema in the system prompt. No markdown, no commentary.`;
+    // Optional arc context — inject thesis + acts if user selected an arc
+    let arcBlock = '';
+    if (arcId) {
+      try {
+        const allArcs = (profileData.campaignArcs || []);
+        const arc = allArcs.find(a => a.id === arcId);
+        if (arc) {
+          const actsText = Array.isArray(arc.acts)
+            ? arc.acts.map(a => `  Act ${a.actNumber}: ${a.actTitle} — ${a.actPremise}`).join('\n')
+            : '';
+          arcBlock = `\nBRAND NARRATIVE ARC (the brand arc this post series should advance):\nArc: "${arc.title}"\nThesis: ${arc.thesis}${actsText ? `\nActs:\n${actsText}` : ''}\nTarget persona: ${arc.targetPersona || 'primary'}\nThe posts must feel like they belong inside this arc — advancing the thesis, not contradicting it.\n`;
+        }
+      } catch(e) { console.log('[SOCIAL-GEN] arc inject skipped:', e.message); }
+    }
+
+    const userPrompt = `${dateContext()}\n\nGenerate exactly 4 ${platform.toUpperCase()} posts using the following brand intelligence.\n\nPLATFORM: ${platform}\nBRAND: ${brandName}\n${topicPrompt ? `\nTOPIC / ANGLE THE USER WANTS COVERED:\n"${topicPrompt}"\n` : ''}${arcBlock}${(mandatories || constraints || audience || ctaTarget || desiredAction) ? `\nUSER MANDATORIES & CONSTRAINTS:\n${mandatories ? `- MUST INCLUDE: ${mandatories}\n` : ''}${constraints ? `- MUST NOT: ${constraints}\n` : ''}${audience ? `- AUDIENCE: ${audience}\n` : ''}${ctaTarget ? `- CTA TARGET: ${ctaTarget}\n` : ''}${desiredAction ? `- DESIRED ACTION: ${desiredAction}\n` : ''}` : ''}${fgBlock}\n\nBRAND VOICE PROFILE:\n${trimTo(voiceProfile, 1500)}\n\nPERSONAS:\n${trimTo(personas.slice(0, 2), 1000)}\n${topicalTerritories.length ? `\nSTRATEGIC TERRITORIES (stay inside these):\n${topicalTerritories.map(t => `- [${t.priority}] ${t.topic}`).join('\n')}\n` : ''}\nBRAIN PATTERNS — what works for this brand:\n${patternsRes.rows.length ? trimTo(patternsRes.rows, 1500) : 'No patterns yet.'}\n\nBRAIN MISTAKES — what to avoid:\n${mistakesRes.rows.length ? trimTo(mistakesRes.rows, 1000) : 'No mistakes logged yet.'}\n${enrichedBrief ? `\nENRICHED BRIEF CONTEXT:\n${trimTo({ title: enrichedBrief.enrichedTitle, hooks: enrichedBrief.contentHooks, powerPhrases: enrichedBrief.powerPhrases }, 1500)}\n` : ''}\nReturn ONLY valid JSON matching the {posts: [...]} schema in the system prompt. No markdown, no commentary.`;
 
     send('chunk', 'Brain loaded. Drafting 4 posts...');
     await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms) VALUES ($1, $2, $3, $4, $5)', ['stage4_5_social_generator_start', brandProfileId, 'started', 0, 0]).catch(() => {});
@@ -6368,6 +6383,21 @@ app.get('/api/social-generator/generate', requireAuth, async (req, res) => {
     clearInterval(keepalive);
     activeStreams.delete(streamKey);
     res.end();
+  }
+});
+
+// GET /api/social-generator/arcs/:brandProfileId — return campaign arcs from brand profile
+app.get('/api/social-generator/arcs/:brandProfileId', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.params;
+  if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+  try {
+    const r = await pool.query('SELECT profile_data FROM brand_profiles WHERE id = $1', [brandProfileId]);
+    if (!r.rows.length) return res.status(404).json({ error: 'Brand not found' });
+    const arcs = (r.rows[0].profile_data || {}).campaignArcs || [];
+    res.json({ success: true, arcs });
+  } catch(e) {
+    console.error('[SOCIAL-ARCS]', e.message);
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 
