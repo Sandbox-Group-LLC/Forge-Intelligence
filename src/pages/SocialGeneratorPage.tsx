@@ -504,7 +504,7 @@ function SocialGeneratorContent() {
                 <div key={batch.batch_id} className="sg-recent-item">
                   <div className="sg-recent-meta">
                     <span className="sg-recent-platform">{batch.platform === 'x' ? 'X' : 'Instagram'}</span>
-                    <span className="sg-recent-date">{new Date(batch.created_at.replace(' ', 'T').replace(/(\.\d+)?$/, 'Z')).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                    <span className="sg-recent-date">{batch.created_at ? new Date(batch.created_at.replace(' ', 'T').replace(/(\.(\d+))?$/, 'Z')).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'}</span>
                   </div>
                   <div className="sg-recent-topic">{batch.source_topic || '—'}</div>
                   <button
