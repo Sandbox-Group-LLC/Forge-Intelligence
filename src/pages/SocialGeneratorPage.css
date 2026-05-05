@@ -859,6 +859,48 @@
   background: rgba(53, 99, 255, 0.08);
 }
 
+/* Direct-publish state on each post card */
+.sg-action-btn-published {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  background: rgba(20, 184, 166, 0.1);
+  border: 1px solid rgba(20, 184, 166, 0.3);
+  color: #0F766E;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  font-family: inherit;
+}
+.sg-action-btn-published:hover {
+  background: rgba(20, 184, 166, 0.15);
+  border-color: rgba(20, 184, 166, 0.5);
+}
+
+.sg-publish-error {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #B91C1C;
+  border-radius: 6px;
+  font-size: 11px;
+  text-decoration: none;
+  cursor: pointer;
+  font-style: italic;
+  transition: background 0.15s ease;
+  max-width: 100%;
+}
+.sg-publish-error:hover {
+  background: rgba(239, 68, 68, 0.14);
+}
+
+
 /* ── Mobile ─────────────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
   .sg-platform-toggle { grid-template-columns: 1fr; }
