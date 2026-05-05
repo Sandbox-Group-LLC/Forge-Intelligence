@@ -110,6 +110,56 @@
   border-left: 2px solid var(--color-accent, #3563FF);
 }
 
+/* Loading state — quiet placeholder while arcs fetch */
+.sg-arc-loading {
+  font-size: 13px;
+  color: var(--color-text-secondary, #64748B);
+  padding: 14px 16px;
+  background: var(--color-bg-elevated, #F8FAFC);
+  border: 1px dashed var(--color-border, #E2E8F0);
+  border-radius: 8px;
+  font-style: italic;
+}
+
+/* Empty state — brand has no arcs, brain is stale, push them to rescan */
+.sg-arc-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 20px;
+  background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%);
+  border: 1px solid #FCD34D;
+  border-radius: 10px;
+}
+.sg-arc-empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #78350F;
+}
+.sg-arc-empty-body {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #92400E;
+}
+.sg-arc-empty-cta {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  padding: 8px 14px;
+  background: #F59E0B;
+  color: #FFFFFF;
+  text-decoration: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 4px;
+  transition: background 0.15s ease;
+}
+.sg-arc-empty-cta:hover {
+  background: #D97706;
+}
+
+
 /* ── Input card ─────────────────────────────────────────────────────────── */
 .sg-input-card {
   background: var(--color-bg-card, #FFFFFF);
