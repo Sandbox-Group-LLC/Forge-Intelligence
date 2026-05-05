@@ -475,7 +475,7 @@ function SocialGeneratorContent() {
           <div className="sg-results-header">
             <div>
               <span className="sg-results-label">Generated {posts.length} posts for {platform === 'x' ? 'X' : 'Instagram'}</span>
-              <span className="sg-results-sub">Edit inline · send to publishing queue when ready</span>
+              <span className="sg-results-sub">Edit inline · copy and paste into your platform</span>
             </div>
             <button className="sg-secondary-btn" onClick={reset}>Generate another batch</button>
           </div>
@@ -542,7 +542,6 @@ function PostCard({ post, authToken, onUpdate }: { post: SocialPost; authToken: 
   const [isEditing, setIsEditing] = useState(false);
   const [editedBody, setEditedBody] = useState(post.user_edited_body || post.body);
   const [saving, setSaving] = useState(false);
-  const [queuing, setQueuing] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const displayBody = post.user_edited_body || post.body;
@@ -580,24 +579,6 @@ function PostCard({ post, authToken, onUpdate }: { post: SocialPost; authToken: 
       setSaving(false);
     }
   };
-
-  const handleQueue = async () => {
-    setQueuing(true);
-    try {
-      const res = await fetch(`/api/social-generator/queue/${post.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {}) },
-      });
-      const d = await res.json();
-      if (d.success && d.post) {
-        onUpdate(d.post);
-      }
-    } finally {
-      setQueuing(false);
-    }
-  };
-
-  const isQueued = post.status === 'queued' || post.status === 'published';
 
   return (
     <div className="sg-post-card">
@@ -652,15 +633,8 @@ function PostCard({ post, authToken, onUpdate }: { post: SocialPost; authToken: 
               <button className="sg-action-btn" onClick={handleCopy}>
                 <Copy size={12} /> {copied ? 'Copied' : 'Copy'}
               </button>
-              <button className="sg-action-btn" onClick={() => { setEditedBody(post.user_edited_body || post.body); setIsEditing(true); }} disabled={isQueued}>
+              <button className="sg-action-btn" onClick={() => { setEditedBody(post.user_edited_body || post.body); setIsEditing(true); }}>
                 <Edit size={12} /> Edit
-              </button>
-              <button
-                className={`sg-action-btn sg-action-btn-primary ${isQueued ? 'queued' : ''}`}
-                onClick={handleQueue}
-                disabled={queuing || isQueued}
-              >
-                <Send size={12} /> {isQueued ? (post.status === 'published' ? 'Published' : 'Queued') : queuing ? 'Queuing…' : 'Send to queue'}
               </button>
             </>
           ) : (
