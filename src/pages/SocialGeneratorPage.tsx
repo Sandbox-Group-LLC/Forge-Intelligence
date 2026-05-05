@@ -57,7 +57,7 @@ interface SocialPost {
 // Platform character constraints
 const PLATFORM_LIMITS: Record<Platform, { max: number; sweet: number; sweetLabel: string }> = {
   x:         { max: 280,  sweet: 240,  sweetLabel: 'Best under 240' },
-  instagram: { max: 2200, sweet: 150,  sweetLabel: 'Best under 150 (before "more")' },
+  instagram: { max: 300,  sweet: 150,  sweetLabel: 'Best under 150 (before "more")' },
 };
 
 const ANGLE_LABELS: Record<Angle, string> = {
