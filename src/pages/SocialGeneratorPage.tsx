@@ -28,6 +28,15 @@ const Send = ({ size = 14 }: { size?: number }) => (
 // ─── Types ──────────────────────────────────────────────────────────────────
 interface Brain { id: string; brandName: string; brandUrl: string; }
 
+interface CampaignArc {
+  id: string;
+  title: string;
+  thesis: string;
+  acts: { actNumber: number; actTitle: string; actPremise: string }[];
+  targetPersona?: string;
+  recommendedLength?: number;
+}
+
 type Platform = 'x' | 'instagram';
 type Angle = 'provocation' | 'proof' | 'how-to' | 'counter-take';
 type ConfidenceTier = 'green' | 'yellow' | 'red';
@@ -127,6 +136,8 @@ function SocialGeneratorContent() {
     return saved === 'instagram' ? 'instagram' : 'x';
   });
   const [topicPrompt, setTopicPrompt] = useState('');
+  const [selectedArcId, setSelectedArcId] = useState<string | null>(null);
+  const [arcs, setArcs] = useState<CampaignArc[]>([]);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [mandatories, setMandatories] = useState('');
   const [constraints, setConstraints] = useState('');
@@ -164,6 +175,15 @@ function SocialGeneratorContent() {
     localStorage.setItem('forge_social_platform', platform);
   }, [platform]);
 
+  // Load arcs when brand changes
+  useEffect(() => {
+    if (!selectedBrainId || !authToken) { setArcs([]); return; }
+    fetch(`/api/social-generator/arcs/${selectedBrainId}`, { headers: { 'Authorization': `Bearer ${authToken}` } })
+      .then(r => r.json())
+      .then(d => { if (d.success) setArcs(d.arcs || []); else setArcs([]); })
+      .catch(() => setArcs([]));
+  }, [selectedBrainId, authToken]);
+
   // Load recent batches when brand changes
   useEffect(() => {
     if (!selectedBrainId || !authToken) return;
@@ -181,6 +201,7 @@ function SocialGeneratorContent() {
     setError('');
 
     const qs = new URLSearchParams({ brandProfileId: selectedBrainId, platform, topicPrompt: topicPrompt.trim() });
+    if (selectedArcId) qs.set('arcId', selectedArcId);
     if (advancedOpen) {
       if (mandatories.trim()) qs.set('mandatories', mandatories.trim());
       if (constraints.trim()) qs.set('constraints', constraints.trim());
@@ -252,6 +273,18 @@ function SocialGeneratorContent() {
     setPosts([]);
     setStreamText('');
     setError('');
+    setSelectedArcId(null);
+  };
+
+  const selectArc = (arc: CampaignArc) => {
+    if (selectedArcId === arc.id) {
+      // Deselect
+      setSelectedArcId(null);
+      setTopicPrompt('');
+    } else {
+      setSelectedArcId(arc.id);
+      setTopicPrompt(arc.thesis);
+    }
   };
 
   return (
@@ -302,6 +335,31 @@ function SocialGeneratorContent() {
               </button>
             </div>
           </div>
+
+          {/* Arc picker — only shown when brand has arcs */}
+          {arcs.length > 0 && (
+            <div className="sg-row">
+              <label className="sg-label">Start from a brand arc <span className="sg-label-optional">(optional)</span></label>
+              <div className="sg-arc-list">
+                {arcs.map(arc => (
+                  <button
+                    key={arc.id}
+                    type="button"
+                    className={`sg-arc-chip ${selectedArcId === arc.id ? 'active' : ''}`}
+                    onClick={() => selectArc(arc)}
+                  >
+                    <span className="sg-arc-title">{arc.title}</span>
+                    <span className="sg-arc-thesis">{arc.thesis.slice(0, 90)}{arc.thesis.length > 90 ? '…' : ''}</span>
+                  </button>
+                ))}
+              </div>
+              {selectedArcId && (
+                <div className="sg-arc-active-hint">
+                  Arc selected — the posts will advance this thesis. Edit the angle below to narrow further.
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Topic / angle prompt */}
           <div className="sg-row">
