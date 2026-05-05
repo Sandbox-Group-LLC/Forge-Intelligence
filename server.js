@@ -7826,7 +7826,11 @@ app.get('/api/x/auth', requireAuth, (req, res) => {
 
   const redirectUri = process.env.X_REDIRECT_URI || `https://${req.headers.host}/auth/x/callback`;
   const scopes = ['tweet.write', 'tweet.read', 'users.read', 'offline.access', 'media.write'].join('%20');
-  const authUrl = `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&state=${state}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
+  // Use https://x.com/i/oauth2/authorize — X devs have noted the newer host
+  // accepts media.write scope more reliably than the legacy twitter.com host. The scope
+  // is requested at OAuth time, not pre-registered in the Developer Portal (which is why
+  // 'media.write' doesn't appear as a toggle in the Portal scope picker).
+  const authUrl = `https://x.com/i/oauth2/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&state=${state}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
 
   res.json({ authUrl });
 });
@@ -7892,7 +7896,7 @@ app.get('/auth/x/callback', async (req, res) => {
 
     res.redirect(`/app/integrations?x_connected=true`);
   } catch(err) {
-    console.error('[X-OAUTH]', err.message);
+    console.error('[X-OAUTH]', err.message, '| query:', JSON.stringify(req.query));
     res.redirect(`/app/integrations?x_error=${encodeURIComponent(err.message)}`);
   }
 });
