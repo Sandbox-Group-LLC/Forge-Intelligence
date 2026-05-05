@@ -1346,11 +1346,11 @@ ${authorFooterHtml}
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
                         </button>
                       ) : (
-                        <button className="pq-icon-btn" title="Archive" onClick={() => archiveItem(item)}>
+                        <button className="pq-icon-btn" title="Archive" aria-label="Archive this item" onClick={() => archiveItem(item)}>
                           <Archive />
                         </button>
                       )}
-                      <button className="pq-icon-btn danger" title="Remove from queue" onClick={() => openDeleteModal(item)}>
+                      <button className="pq-icon-btn danger" title="Remove from queue" aria-label="Remove this item from the queue" onClick={() => openDeleteModal(item)}>
                         <Trash />
                       </button>
                     </div>
@@ -1436,10 +1436,13 @@ ${authorFooterHtml}
                         <Send /> {isPublishing ? 'Publishing...' : 'Publish Now'}
                       </button>
                       <div className="pq-schedule-group">
+                        <label className="pq-schedule-label" htmlFor={`pq-sched-${item.id}`}>Schedule for</label>
                         <div className="pq-datetime-wrap">
                           <input
+                            id={`pq-sched-${item.id}`}
                             type="datetime-local"
                             className="pq-datetime-input"
+                            aria-label="Pick date and time to schedule this post"
                             value={scheduleDate[item.id] || ''}
                             onChange={e => setScheduleDate(prev => ({ ...prev, [item.id]: e.target.value }))}
                           />
@@ -1564,29 +1567,19 @@ ${authorFooterHtml}
 return (
                 <div key={item.id} className={`pq-item status-${item.status}${social ? ' pq-item-social' : ''}`}>
                   {social && (
-                    <div className="pq-social-badge-row" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, padding: '4px 8px', background: 'rgba(53, 99, 255, 0.06)', borderRadius: 6, fontSize: 11, color: '#475569' }}>
-                      <span style={{ fontWeight: 600, color: '#3563FF', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Social Post</span>
-                      <span style={{ color: '#94A3B8' }}>·</span>
-                      <span style={{ fontWeight: 600 }}>{social.platform === 'x' ? 'X' : 'Instagram'}</span>
+                    <div className="pq-social-badge">
+                      <span className="pq-social-badge-label">Social Post</span>
+                      <span className="pq-social-badge-platform">{social.platform === 'x' ? 'X' : 'Instagram'}</span>
                       {item.hero_image_url && (
-                        <>
-                          <span style={{ color: '#94A3B8' }}>·</span>
-                          <a href={item.hero_image_url} target="_blank" rel="noreferrer" title="Open image in new tab" style={{ display: 'inline-flex' }}>
-                            <img src={item.hero_image_url} alt="" style={{ width: 28, height: 28, borderRadius: 4, objectFit: 'cover', display: 'block' }} />
-                          </a>
-                        </>
+                        <a className="pq-social-badge-thumb" href={item.hero_image_url} target="_blank" rel="noreferrer" title="Open image in new tab">
+                          <img src={item.hero_image_url} alt="Social post image" />
+                        </a>
                       )}
                       {social.hashtags && social.hashtags.length > 0 && (
-                        <>
-                          <span style={{ color: '#94A3B8' }}>·</span>
-                          <span style={{ color: '#64748B', fontSize: 10 }}>{social.hashtags.slice(0, 4).map(h => h.startsWith('#') ? h : `#${h}`).join(' ')}</span>
-                        </>
+                        <span className="pq-social-badge-tags">{social.hashtags.slice(0, 4).map(h => h.startsWith('#') ? h : `#${h}`).join(' ')}</span>
                       )}
                       {social.cta && (
-                        <>
-                          <span style={{ color: '#94A3B8' }}>·</span>
-                          <span style={{ fontStyle: 'italic', color: '#475569' }}>CTA: {social.cta}</span>
-                        </>
+                        <span className="pq-social-badge-cta">CTA: {social.cta}</span>
                       )}
                     </div>
                   )}
@@ -1696,11 +1689,11 @@ return (
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
                         </button>
                       ) : (
-                        <button className="pq-icon-btn" title="Archive" onClick={() => archiveItem(item)}>
+                        <button className="pq-icon-btn" title="Archive" aria-label="Archive this item" onClick={() => archiveItem(item)}>
                           <Archive />
                         </button>
                       )}
-                      <button className="pq-icon-btn danger" title="Remove from queue" onClick={() => openDeleteModal(item)}>
+                      <button className="pq-icon-btn danger" title="Remove from queue" aria-label="Remove this item from the queue" onClick={() => openDeleteModal(item)}>
                         <Trash />
                       </button>
                     </div>
@@ -1786,10 +1779,13 @@ return (
                         <Send /> {isPublishing ? 'Publishing...' : 'Publish Now'}
                       </button>
                       <div className="pq-schedule-group">
+                        <label className="pq-schedule-label" htmlFor={`pq-sched-${item.id}`}>Schedule for</label>
                         <div className="pq-datetime-wrap">
                           <input
+                            id={`pq-sched-${item.id}`}
                             type="datetime-local"
                             className="pq-datetime-input"
+                            aria-label="Pick date and time to schedule this post"
                             value={scheduleDate[item.id] || ''}
                             onChange={e => setScheduleDate(prev => ({ ...prev, [item.id]: e.target.value }))}
                           />
