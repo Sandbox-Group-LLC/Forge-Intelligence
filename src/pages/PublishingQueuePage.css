@@ -2373,3 +2373,99 @@ a.pq-chip:hover {
   padding: 4px 0 0;
   opacity: 0.8;
 }
+
+/* ── Social Post badge (top of queue card for social-source items) ───────── */
+.pq-social-badge {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  background: rgba(53, 99, 255, 0.06);
+  border-radius: 6px;
+  font-size: 11px;
+  color: #475569;
+  min-width: 0;
+}
+.pq-social-badge-label {
+  font-weight: 600;
+  color: #3563FF;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  flex-shrink: 0;
+}
+.pq-social-badge-platform {
+  font-weight: 600;
+  color: #1E293B;
+  flex-shrink: 0;
+}
+.pq-social-badge-thumb {
+  display: inline-flex;
+  flex-shrink: 0;
+  text-decoration: none;
+}
+.pq-social-badge-thumb img {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  object-fit: cover;
+  display: block;
+}
+.pq-social-badge-tags {
+  color: #64748B;
+  font-size: 10px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pq-social-badge-cta {
+  font-style: italic;
+  color: #475569;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Mobile: stack each segment on its own line, no separators (we use spacing/color) */
+@media (max-width: 640px) {
+  .pq-social-badge {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 8px 10px;
+  }
+  .pq-social-badge-tags,
+  .pq-social-badge-cta {
+    white-space: normal;
+    width: 100%;
+  }
+}
+
+/* ── Schedule input: visible label above the bare datetime-local input ───── */
+.pq-schedule-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary, #64748B);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+/* Override the inline schedule-group flex so the label sits above the input row */
+.pq-schedule-group {
+  flex-direction: column;
+  align-items: stretch;
+}
+.pq-schedule-group > .pq-datetime-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pq-schedule-group > .pq-schedule-btn {
+  align-self: flex-start;
+  margin-top: 8px;
+}
