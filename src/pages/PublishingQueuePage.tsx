@@ -1560,8 +1560,36 @@ ${authorFooterHtml}
                   const isPublishing = publishing === item.id;
                   const isScheduling = scheduling === item.id;
                   const results = item.publish_results || {};
+                  const social = getSocialMeta(item);
 return (
-                <div key={item.id} className={`pq-item status-${item.status}`}>
+                <div key={item.id} className={`pq-item status-${item.status}${social ? ' pq-item-social' : ''}`}>
+                  {social && (
+                    <div className="pq-social-badge-row" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, padding: '4px 8px', background: 'rgba(53, 99, 255, 0.06)', borderRadius: 6, fontSize: 11, color: '#475569' }}>
+                      <span style={{ fontWeight: 600, color: '#3563FF', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Social Post</span>
+                      <span style={{ color: '#94A3B8' }}>·</span>
+                      <span style={{ fontWeight: 600 }}>{social.platform === 'x' ? 'X' : 'Instagram'}</span>
+                      {item.hero_image_url && (
+                        <>
+                          <span style={{ color: '#94A3B8' }}>·</span>
+                          <a href={item.hero_image_url} target="_blank" rel="noreferrer" title="Open image in new tab" style={{ display: 'inline-flex' }}>
+                            <img src={item.hero_image_url} alt="" style={{ width: 28, height: 28, borderRadius: 4, objectFit: 'cover', display: 'block' }} />
+                          </a>
+                        </>
+                      )}
+                      {social.hashtags && social.hashtags.length > 0 && (
+                        <>
+                          <span style={{ color: '#94A3B8' }}>·</span>
+                          <span style={{ color: '#64748B', fontSize: 10 }}>{social.hashtags.slice(0, 4).map(h => h.startsWith('#') ? h : `#${h}`).join(' ')}</span>
+                        </>
+                      )}
+                      {social.cta && (
+                        <>
+                          <span style={{ color: '#94A3B8' }}>·</span>
+                          <span style={{ fontStyle: 'italic', color: '#475569' }}>CTA: {social.cta}</span>
+                        </>
+                      )}
+                    </div>
+                  )}
                   {item.week_number != null && (
                     <div className="pq-campaign-meta-row">
                       <span className="pq-campaign-meta-week">Wk {item.week_number}{item.scheduled_at ? ` · ${new Date(item.scheduled_at).toLocaleDateString('en-US', { weekday: 'long' })}` : item.publish_day ? ` · ${item.publish_day}` : ''}</span>
