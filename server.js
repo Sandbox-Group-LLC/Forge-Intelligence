@@ -6052,6 +6052,438 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
 });
 
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Stage 4.5 — Social Generator (X + Instagram, 4 posts per batch)
+// ─────────────────────────────────────────────────────────────────────────────
+// Mirrors Content Generator's brain-loading + SSE pattern but produces 4 short-form
+// posts targeted at one platform (x or instagram). 1:1 imagery, brand voice enforced,
+// inline edit + queue path (no Compliance Gate). See plan ce10e39398346f2c.
+
+async function ensureSocialPostsTable() {
+  // Idempotent — schema also defined in init-schema.sql but this guarantees the table
+  // exists on dev branches that haven't run init-schema.sql since shipping social gen.
+  await pool.query(`CREATE TABLE IF NOT EXISTS generated_social_posts (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    brand_profile_id TEXT NOT NULL,
+    batch_id TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    angle TEXT,
+    hook TEXT,
+    body TEXT NOT NULL,
+    hashtags JSONB DEFAULT '[]'::jsonb,
+    cta TEXT,
+    char_count INTEGER,
+    confidence INTEGER,
+    confidence_tier TEXT,
+    confidence_reason TEXT,
+    brain_match_score INTEGER,
+    image_url TEXT,
+    image_prompt TEXT,
+    status TEXT DEFAULT 'draft',
+    user_edited_body TEXT,
+    source_brief_id TEXT,
+    source_topic TEXT,
+    brain_version INTEGER,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  )`).catch(() => {});
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_gsp_brand_created ON generated_social_posts(brand_profile_id, created_at DESC)`).catch(() => {});
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_gsp_batch ON generated_social_posts(batch_id)`).catch(() => {});
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_gsp_platform ON generated_social_posts(brand_profile_id, platform)`).catch(() => {});
+}
+ensureSocialPostsTable().catch(e => console.error('[SOCIAL-GEN] Table init error:', e.message));
+
+// activeStreams: dedupe SSE keys so a user clicking Generate twice doesn't double-fire.
+// Same Map used by Email Campaign generator.
+const activeStreams = (typeof globalThis.__activeStreams === 'object' && globalThis.__activeStreams)
+  ? globalThis.__activeStreams
+  : (globalThis.__activeStreams = new Map());
+
+// Build a Flux Schnell image prompt tuned for SOCIAL composition (1:1, single subject,
+// brand color palette, type-friendly negative space). Different shape than buildImagePrompt()
+// which is editorial 16:9. Takes the writer's per-post imagePromptHint as the seed concept
+// so each post gets imagery matched to its angle, not generic brand stock.
+async function buildSocialImagePrompt(post, voiceProfile = {}, brandName = '') {
+  const visualStyle = voiceProfile.visualStyle || voiceProfile.visual_style || voiceProfile.brand_aesthetic || '';
+  const accentColor = voiceProfile.accentColor || voiceProfile.accent_color || voiceProfile.brand_color || '';
+  const tone = voiceProfile.summary || voiceProfile.writingStyle || '';
+
+  const hint = post?.imagePromptHint || post?.hook || post?.body?.slice(0, 200) || '';
+  const angle = post?.angle || 'general';
+
+  const brandContext = [
+    brandName && `Brand: ${brandName}`,
+    visualStyle && `Visual style: ${visualStyle}`,
+    accentColor && `Brand accent: ${accentColor}`,
+    tone && `Tone: ${tone}`,
+  ].filter(Boolean).join('\n');
+
+  const instruction = `Write a one-sentence Flux Schnell image prompt for a SQUARE (1:1) social media post. The image must work scrolling on phones — single focal subject, strong silhouette, type-friendly negative space, NOT a busy editorial scene.
+
+Post concept: ${hint}
+Post angle: ${angle}
+${brandContext ? brandContext + '\n' : ''}
+Rules:
+- One sentence describing a clear, graphic, scroll-stopping visual.
+- Single dominant subject. Strong composition. Centered or rule-of-thirds.
+- 1:1 square aspect ratio in mind. Avoid wide cinematic compositions.
+- Reflect the brand's accent color in the lighting or palette if specified.
+- Concrete sensory details — no "professional", "polished", "corporate", "stock photo".
+- No illustrations, 3D renders, cartoons. No text, no logos, no UI elements.
+- NEVER interpret the brand name literally.
+- Output only the prompt. No quotes, no preamble.`;
+
+  try {
+    const res = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 200,
+      messages: [{ role: 'user', content: instruction }]
+    });
+    return res.content[0]?.type === 'text'
+      ? res.content[0].text.trim()
+      : `A clean square composition with a single focal subject illuminated by natural light, related to ${hint}, scroll-stopping social composition`;
+  } catch (e) {
+    console.error('[SOCIAL-IMG-PROMPT]', e.message);
+    return `A clean square composition with a single focal subject illuminated by natural light, related to ${hint}, scroll-stopping social composition`;
+  }
+}
+
+// fal.ai Ideogram v2 wrapper for square social images. Mirrors generateHeroImage but with 1:1.
+async function generateSocialImage(prompt) {
+  const falRes = await fetch('https://fal.run/fal-ai/ideogram/v2', {
+    method: 'POST',
+    headers: { 'Authorization': `Key ${process.env.FAL_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      prompt,
+      aspect_ratio: '1:1',
+      style: 'realistic',
+      expand_prompt: true,
+      negative_prompt: HERO_IMAGE_NEGATIVE_PROMPT,
+      num_images: 1
+    })
+  });
+  if (!falRes.ok) throw new Error(`fal.ai social ${falRes.status}: ${await falRes.text()}`);
+  const falData = await falRes.json();
+  const imageUrl = falData?.images?.[0]?.url;
+  if (!imageUrl) throw new Error('No image URL returned from fal.ai');
+  return imageUrl;
+}
+
+app.get('/api/social-generator/generate', requireAuth, async (req, res) => {
+  const { brandProfileId, platform, topicPrompt, briefId, mandatories, constraints, audience, ctaTarget, desiredAction } = req.query;
+  if (!brandProfileId) return res.status(400).json({ success: false, error: 'brandProfileId required' });
+  if (!platform || (platform !== 'x' && platform !== 'instagram')) {
+    return res.status(400).json({ success: false, error: 'platform must be x or instagram' });
+  }
+  if (!(await verifyBrandAccess(brandProfileId, req.userId))) {
+    return res.status(403).json({ success: false, error: 'Access denied' });
+  }
+
+  // Duplicate stream guard — keyed by brand+platform so user can run X and IG concurrently
+  const streamKey = `${brandProfileId}:social-${platform}`;
+  if (activeStreams.has(streamKey)) {
+    const existing = activeStreams.get(streamKey);
+    const elapsed = Math.floor((Date.now() - existing.startedAt) / 1000);
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.flushHeaders();
+    res.write(`event: busy\ndata: ${JSON.stringify({ message: `Social generation already running for ${platform}`, elapsed })}\n\n`);
+    return res.end();
+  }
+  activeStreams.set(streamKey, { startedAt: Date.now(), userId: req.userId });
+
+  // SSE headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const send = (event, data) => res.write(`event: ${event}\ndata: ${typeof data === 'string' ? data : JSON.stringify(data)}\n\n`);
+  const keepalive = setInterval(() => res.write(': ping\n\n'), 15000);
+  req.on('close', () => { clearInterval(keepalive); activeStreams.delete(streamKey); });
+
+  try {
+    await ensureSocialPostsTable();
+
+    // ── Brain-First: load all context (mirrors content-generator) ──
+    const [profileRes, patternsRes, mistakesRes] = await Promise.all([
+      pool.query('SELECT * FROM brand_profiles WHERE id = $1', [brandProfileId]),
+      pool.query('SELECT pattern_type, description, confidence_score, tags FROM brain_patterns WHERE brand_profile_id = $1 ORDER BY confidence_score DESC LIMIT 8', [brandProfileId]).catch(() => ({ rows: [] })),
+      pool.query('SELECT mistake_type, description, severity FROM brain_mistakes WHERE brand_profile_id = $1 ORDER BY severity DESC, created_at DESC LIMIT 8', [brandProfileId]).catch(() => ({ rows: [] }))
+    ]);
+
+    if (!profileRes.rows.length) {
+      send('error', 'Brand profile not found.');
+      clearInterval(keepalive); activeStreams.delete(streamKey);
+      return res.end();
+    }
+    const profile = profileRes.rows[0];
+    const profileData = profile.profile_data || {};
+    const voiceProfile = profileData.voiceProfile || profileData.voice_profile || {};
+    const personas = profileData.personas || [];
+    const brandName = profile.brand_name || '';
+
+    // Optional enriched brief (secondary path — most social posts come from typed angle)
+    let enrichedBrief = null;
+    if (briefId) {
+      try {
+        const ebRes = await pool.query('SELECT enriched_data, brand_name FROM enriched_briefs WHERE id = $1 AND brand_profile_id = $2', [briefId, brandProfileId]);
+        if (ebRes.rows.length) enrichedBrief = ebRes.rows[0].enriched_data;
+      } catch(e) { console.log('[SOCIAL-GEN] brief load skipped:', e.message); }
+    }
+
+    // Strategic territories — same source as content generator
+    let topicalTerritories = [];
+    try {
+      const gbRes = await pool.query(
+        `SELECT brief_data FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [brandProfileId]
+      );
+      const topicalMapRaw = gbRes.rows[0]?.brief_data?.topicalAuthorityMap || gbRes.rows[0]?.brief_data?.topicalMap?.gapsByCluster || [];
+      topicalTerritories = topicalMapRaw
+        .map(t => ({ topic: t.topic || t.cluster || t.name, priority: t.priority || (t.citationProbability >= 70 ? 'high' : 'medium') }))
+        .filter(t => t.topic).slice(0, 6);
+    } catch(e) { /* silent */ }
+
+    // Factual ground — same source as content generator
+    const factualGround = profile.settings?.factualGround || null;
+    const fgBlock = factualGround && Object.values(factualGround).some(v => v && (typeof v === 'string' ? v.trim() : (Array.isArray(v) && v.length)))
+      ? `\nFACTUAL GROUND (use verbatim, never contradict):\n${factualGround.whatWeDo ? `- What we do: ${factualGround.whatWeDo}\n` : ''}${factualGround.whatWeDontDo ? `- What we DON'T do: ${factualGround.whatWeDontDo}\n` : ''}${factualGround.quotablePositions ? `- Quotable positions: ${factualGround.quotablePositions}\n` : ''}${factualGround.companyFacts ? `- Company facts: ${String(factualGround.companyFacts).slice(0, 400)}\n` : ''}`
+      : '';
+
+    // Load system prompt
+    const systemPromptPath = path.join(__dirname, 'src/agents/stage4_social_generator/system_prompt.md');
+    const systemPrompt = fs.existsSync(systemPromptPath)
+      ? fs.readFileSync(systemPromptPath, 'utf8')
+      : 'You are a short-form social writer. Produce 4 platform-native posts.';
+
+    const trimTo = (obj, maxChars = 2000) => {
+      const s = typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2);
+      return s.length > maxChars ? s.substring(0, maxChars) + '\n...[truncated]' : s;
+    };
+
+    const userPrompt = `${dateContext()}\n\nGenerate exactly 4 ${platform.toUpperCase()} posts using the following brand intelligence.\n\nPLATFORM: ${platform}\nBRAND: ${brandName}\n${topicPrompt ? `\nTOPIC / ANGLE THE USER WANTS COVERED:\n"${topicPrompt}"\n` : ''}${(mandatories || constraints || audience || ctaTarget || desiredAction) ? `\nUSER MANDATORIES & CONSTRAINTS:\n${mandatories ? `- MUST INCLUDE: ${mandatories}\n` : ''}${constraints ? `- MUST NOT: ${constraints}\n` : ''}${audience ? `- AUDIENCE: ${audience}\n` : ''}${ctaTarget ? `- CTA TARGET: ${ctaTarget}\n` : ''}${desiredAction ? `- DESIRED ACTION: ${desiredAction}\n` : ''}` : ''}${fgBlock}\n\nBRAND VOICE PROFILE:\n${trimTo(voiceProfile, 1500)}\n\nPERSONAS:\n${trimTo(personas.slice(0, 2), 1000)}\n${topicalTerritories.length ? `\nSTRATEGIC TERRITORIES (stay inside these):\n${topicalTerritories.map(t => `- [${t.priority}] ${t.topic}`).join('\n')}\n` : ''}\nBRAIN PATTERNS — what works for this brand:\n${patternsRes.rows.length ? trimTo(patternsRes.rows, 1500) : 'No patterns yet.'}\n\nBRAIN MISTAKES — what to avoid:\n${mistakesRes.rows.length ? trimTo(mistakesRes.rows, 1000) : 'No mistakes logged yet.'}\n${enrichedBrief ? `\nENRICHED BRIEF CONTEXT:\n${trimTo({ title: enrichedBrief.enrichedTitle, hooks: enrichedBrief.contentHooks, powerPhrases: enrichedBrief.powerPhrases }, 1500)}\n` : ''}\nReturn ONLY valid JSON matching the {posts: [...]} schema in the system prompt. No markdown, no commentary.`;
+
+    send('chunk', 'Brain loaded. Drafting 4 posts...');
+    await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms) VALUES ($1, $2, $3, $4, $5)', ['stage4_5_social_generator_start', brandProfileId, 'started', 0, 0]).catch(() => {});
+
+    // Stream from Claude
+    let fullText = '';
+    const stream = await anthropic.messages.stream({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }]
+    });
+
+    for await (const chunk of stream) {
+      if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text_delta') {
+        fullText += chunk.delta.text;
+        send('chunk', chunk.delta.text.replace(/\n/g, '⏎'));
+      }
+    }
+
+    let parsed;
+    try {
+      parsed = safeParseLLM(fullText, 'object', 'social-generator');
+    } catch(e) {
+      console.error('[SOCIAL-GEN] Parse failed:', e.message);
+      send('error', 'Generation hit a formatting issue — click Generate again.');
+      clearInterval(keepalive); activeStreams.delete(streamKey);
+      return res.end();
+    }
+
+    const posts = Array.isArray(parsed?.posts) ? parsed.posts.slice(0, 4) : [];
+    if (!posts.length) {
+      send('error', 'No posts returned. Click Generate to retry.');
+      clearInterval(keepalive); activeStreams.delete(streamKey);
+      return res.end();
+    }
+
+    // Persist all 4 with shared batch_id
+    const batchId = randomUUID();
+    const persisted = [];
+    for (const post of posts) {
+      const charCount = (post.body || '').length;
+      const insertRes = await pool.query(
+        `INSERT INTO generated_social_posts
+          (brand_profile_id, batch_id, platform, angle, hook, body, hashtags, cta, char_count,
+           confidence, confidence_tier, confidence_reason, brain_match_score,
+           source_brief_id, source_topic, brain_version, status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'draft')
+         RETURNING id`,
+        [
+          brandProfileId, batchId, platform,
+          post.angle || null, post.hook || null, post.body || '',
+          JSON.stringify(post.hashtags || []), post.cta || null, charCount,
+          post.confidence || null, post.confidenceTier || null, post.confidenceReason || null,
+          post.brainMatchScore || null,
+          briefId || null, topicPrompt || null, profile.version || 1
+        ]
+      );
+      persisted.push({
+        id: insertRes.rows[0].id,
+        ...post,
+        charCount,
+        batchId,
+        platform
+      });
+    }
+
+    send('done', JSON.stringify({ batchId, platform, posts: persisted }));
+
+    // Fire 4 image generations in parallel — non-blocking, emit image_done per post
+    (async () => {
+      try {
+        await Promise.all(persisted.map(async (p) => {
+          try {
+            const imgPrompt = await buildSocialImagePrompt(p, voiceProfile, brandName);
+            const imageUrl = await generateSocialImage(imgPrompt);
+            await pool.query(
+              `UPDATE generated_social_posts SET image_url = $1, image_prompt = $2, updated_at = NOW() WHERE id = $3`,
+              [imageUrl, imgPrompt, p.id]
+            ).catch(() => {});
+            send('image_done', JSON.stringify({ postId: p.id, imageUrl, prompt: imgPrompt }));
+          } catch(imgErr) {
+            console.error(`[SOCIAL-IMG] post ${p.id}:`, imgErr.message);
+            send('image_error', JSON.stringify({ postId: p.id, error: imgErr.message }));
+          }
+        }));
+      } finally {
+        clearInterval(keepalive);
+        activeStreams.delete(streamKey);
+        res.end();
+      }
+    })();
+
+    await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms) VALUES ($1, $2, $3, $4, $5)',
+      ['stage4_5_social_generator', brandProfileId, 'success',
+       (stream.usage?.input_tokens || 0) + (stream.usage?.output_tokens || 0), 0]
+    ).catch(() => {});
+
+  } catch (err) {
+    console.error('[SOCIAL-GEN] Error:', err?.message || err);
+    send('error', err.message || 'Generation failed');
+    clearInterval(keepalive);
+    activeStreams.delete(streamKey);
+    res.end();
+  }
+});
+
+// GET /api/social-generator/recent/:brandProfileId — list recent batches
+app.get('/api/social-generator/recent/:brandProfileId', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.params;
+  if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+  try {
+    await ensureSocialPostsTable();
+    const r = await pool.query(
+      `SELECT id, batch_id, platform, angle, hook, body, hashtags, cta, char_count,
+              confidence, confidence_tier, confidence_reason, brain_match_score,
+              image_url, image_prompt, status, user_edited_body, source_topic,
+              created_at, updated_at
+       FROM generated_social_posts
+       WHERE brand_profile_id = $1
+       ORDER BY created_at DESC LIMIT 80`,
+      [brandProfileId]
+    );
+    // Group by batch_id
+    const batches = {};
+    for (const row of r.rows) {
+      const bid = row.batch_id;
+      if (!batches[bid]) batches[bid] = { batchId: bid, platform: row.platform, createdAt: row.created_at, posts: [] };
+      batches[bid].posts.push(row);
+    }
+    res.json({ success: true, batches: Object.values(batches) });
+  } catch(e) {
+    console.error('[SOCIAL-LIST]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/social-generator/edit/:postId — inline edit, captures delta as brain_mistake
+app.post('/api/social-generator/edit/:postId', requireAuth, async (req, res) => {
+  const { postId } = req.params;
+  const { body, hashtags, cta } = req.body;
+  try {
+    // Look up post + verify access
+    const r = await pool.query('SELECT * FROM generated_social_posts WHERE id = $1', [postId]);
+    if (!r.rows.length) return res.status(404).json({ error: 'Post not found' });
+    const post = r.rows[0];
+    if (!(await verifyBrandAccess(post.brand_profile_id, req.userId))) return res.status(403).json({ error: 'Access denied' });
+
+    const newBody = typeof body === 'string' ? body : post.body;
+    const newHashtags = Array.isArray(hashtags) ? hashtags : (post.hashtags || []);
+    const newCta = typeof cta === 'string' ? cta : post.cta;
+    const newCharCount = newBody.length;
+
+    // Brain feedback: if body changed, log the delta as a mistake (same pattern as Compliance Gate)
+    if (newBody !== post.body && post.body) {
+      pool.query(
+        `INSERT INTO brain_mistakes (brand_profile_id, mistake_type, description, human_feedback, severity)
+         VALUES ($1, 'social_human_edit', $2, $3, 'medium')`,
+        [
+          post.brand_profile_id,
+          `${post.platform} ${post.angle || 'post'}: human reviewer edited body`,
+          `Avoid: "${(post.body || '').substring(0, 200)}" — prefer: "${newBody.substring(0, 200)}"`
+        ]
+      ).catch(e => console.error('[SOCIAL-EDIT] mistake write:', e.message));
+    }
+
+    await pool.query(
+      `UPDATE generated_social_posts
+       SET body = $1, hashtags = $2, cta = $3, char_count = $4,
+           user_edited_body = CASE WHEN $1 != $5 THEN $1 ELSE user_edited_body END,
+           status = 'edited', updated_at = NOW()
+       WHERE id = $6`,
+      [newBody, JSON.stringify(newHashtags), newCta, newCharCount, post.body, postId]
+    );
+
+    res.json({ success: true, body: newBody, hashtags: newHashtags, cta: newCta, charCount: newCharCount });
+  } catch(e) {
+    console.error('[SOCIAL-EDIT]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/social-generator/queue/:postId — stage to publishing_queue
+app.post('/api/social-generator/queue/:postId', requireAuth, async (req, res) => {
+  const { postId } = req.params;
+  try {
+    const r = await pool.query('SELECT * FROM generated_social_posts WHERE id = $1', [postId]);
+    if (!r.rows.length) return res.status(404).json({ error: 'Post not found' });
+    const post = r.rows[0];
+    if (!(await verifyBrandAccess(post.brand_profile_id, req.userId))) return res.status(403).json({ error: 'Access denied' });
+
+    // Title for queue listing
+    const queueTitle = `[${post.platform.toUpperCase()}] ${(post.hook || post.body || '').slice(0, 80)}`;
+
+    // Stage in publishing_queue with kind marker so channel publishers know to handle as social
+    await pool.query(
+      `INSERT INTO publishing_queue (brand_profile_id, content_id, title, status, channels, publish_results, created_at, updated_at)
+       VALUES ($1, $2, $3, 'staged', $4, $5, NOW(), NOW())
+       ON CONFLICT (content_id) DO UPDATE SET status = 'staged', title = EXCLUDED.title, updated_at = NOW()`,
+      [
+        post.brand_profile_id,
+        post.id,
+        queueTitle,
+        JSON.stringify([post.platform]),
+        JSON.stringify({ kind: 'social_post', platform: post.platform, hashtags: post.hashtags || [], cta: post.cta, image_url: post.image_url })
+      ]
+    );
+
+    await pool.query(
+      `UPDATE generated_social_posts SET status = 'queued', updated_at = NOW() WHERE id = $1`,
+      [postId]
+    );
+
+    res.json({ success: true, postId, status: 'queued' });
+  } catch(e) {
+    console.error('[SOCIAL-QUEUE]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // ── Campaign Generator ────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────────────────
