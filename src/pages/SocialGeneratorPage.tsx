@@ -504,7 +504,7 @@ function SocialGeneratorContent() {
         </div>
       )}
 
-      {isRunning && (
+      {isRunning && posts.length === 0 && (
         <div className="sg-running">
           <div className="sg-running-header">
             <Zap size={14} />
@@ -518,7 +518,7 @@ function SocialGeneratorContent() {
 
       {error && <div className="sg-error">{error}</div>}
 
-      {posts.length > 0 && !isRunning && (
+      {posts.length > 0 && (
         <>
           <div className="sg-results-header">
             <div>
