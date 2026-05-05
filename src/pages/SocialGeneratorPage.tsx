@@ -504,7 +504,7 @@ function SocialGeneratorContent() {
         <>
           <div className="sg-results-header">
             <div>
-              <span className="sg-results-label">Generated {posts.length} posts for {platform === 'x' ? 'X' : 'Instagram'}</span>
+              <span className="sg-results-label">Generated {posts.length} posts for {(posts[0]?.platform ?? platform) === 'x' ? 'X' : 'Instagram'}</span>
               <span className="sg-results-sub">Edit inline · copy and paste into your platform</span>
             </div>
             <button className="sg-secondary-btn" onClick={reset}>Generate another batch</button>
