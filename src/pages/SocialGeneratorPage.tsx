@@ -192,7 +192,12 @@ function SocialGeneratorContent() {
   }, [selectedBrainId, authToken, posts.length /* refresh after generate */]);
 
   const runGeneration = () => {
-    if (!selectedBrainId || !topicPrompt.trim()) return;
+    // Arc-first model: an arc must be selected. Custom-topic-only path was
+    // removed — if a brand has no arcs, the UI shows a rescan CTA instead of
+    // a generation flow. topicPrompt is auto-prefilled from the arc thesis at
+    // selection time and may be optionally refined via the 'Narrow this angle'
+    // input. Either way, an arc id is required for generation.
+    if (!selectedBrainId || !selectedArcId || !topicPrompt.trim()) return;
     setIsRunning(true);
     setStreamText('');
     setPosts([]);
@@ -339,10 +344,30 @@ function SocialGeneratorContent() {
             </div>
           </div>
 
-          {/* Arc picker — only shown when brand has arcs */}
-          {arcs.length > 0 && (
+          {/* Arc picker — the primary entry point. When no arcs exist, brain is
+              stale; we show a rescan CTA instead of letting users limp along
+              with a custom-topic fallback. */}
+          {arcsLoading ? (
             <div className="sg-row">
-              <label className="sg-label">Start from a brand arc <span className="sg-label-optional">(optional)</span></label>
+              <label className="sg-label">Pick a campaign arc</label>
+              <div className="sg-arc-loading">Loading arcs from this brand's brain…</div>
+            </div>
+          ) : arcs.length === 0 ? (
+            <div className="sg-row">
+              <label className="sg-label">Pick a campaign arc</label>
+              <div className="sg-arc-empty">
+                <div className="sg-arc-empty-title">No campaign arcs in this brand's brain.</div>
+                <div className="sg-arc-empty-body">
+                  Campaign arcs come from Context Hub. If your brand was scanned a while ago or never had arcs generated, the brain is stale — a fresh rescan will produce arcs you can build short-form against.
+                </div>
+                <a className="sg-arc-empty-cta" href="/app/context-hub">
+                  Rescan brand in Context Hub →
+                </a>
+              </div>
+            </div>
+          ) : (
+            <div className="sg-row">
+              <label className="sg-label">Pick a campaign arc</label>
               <div className="sg-arc-list">
                 {arcs.map(arc => (
                   <button
@@ -358,26 +383,33 @@ function SocialGeneratorContent() {
               </div>
               {selectedArcId && (
                 <div className="sg-arc-active-hint">
-                  Arc selected — the posts will advance this thesis. Edit the angle below to narrow further.
+                  Arc selected — the posts will advance this thesis.
                 </div>
               )}
             </div>
           )}
 
-          {/* Topic / angle prompt */}
-          <div className="sg-row">
-            <label className="sg-label">What's the angle?</label>
-            <textarea
-              className="sg-textarea"
-              placeholder="e.g. The mistake most B2B teams make when they say they're 'voice-led' — and the diagnostic that exposes it."
-              value={topicPrompt}
-              onChange={e => setTopicPrompt(e.target.value)}
-              rows={3}
-            />
-            <div className="sg-hint">
-              One sentence that captures the take. The Brain expands it into 4 angles: provocation, proof, how-to, counter-take.
+          {/* Narrow this angle — optional refinement, ONLY shown after an arc is
+              selected. Pre-filled with the arc thesis so the user can edit in
+              place rather than re-typing. Acts as a refinement, not a separate
+              entry point. */}
+          {selectedArcId && (
+            <div className="sg-row">
+              <label className="sg-label">
+                Narrow this angle <span className="sg-label-optional">(optional)</span>
+              </label>
+              <textarea
+                className="sg-textarea"
+                placeholder="Edit to focus the arc on a specific cut. The Brain expands into 4 angles: provocation, proof, how-to, counter-take."
+                value={topicPrompt}
+                onChange={e => setTopicPrompt(e.target.value)}
+                rows={3}
+              />
+              <div className="sg-hint">
+                The arc's thesis is pre-filled. Tighten it to a specific take if you want this batch to focus on one slice rather than the whole arc.
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Advanced panel */}
           <div className="sg-advanced">
@@ -443,7 +475,7 @@ function SocialGeneratorContent() {
             <button
               className="sg-generate-btn"
               onClick={runGeneration}
-              disabled={!selectedBrainId || !topicPrompt.trim()}
+              disabled={!selectedBrainId || !selectedArcId || !topicPrompt.trim()}
             >
               <Zap size={14} /> Generate 4 posts
             </button>
