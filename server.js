@@ -6422,7 +6422,7 @@ app.get('/api/social-generator/recent/:brandProfileId', requireAuth, async (req,
       `SELECT id, batch_id, platform, angle, hook, body, hashtags, cta, char_count,
               confidence, confidence_tier, confidence_reason, brain_match_score,
               image_url, image_prompt, status, user_edited_body, source_topic,
-              arc_id, arc_title,
+              arc_id, arc_title, published_url, published_at,
               created_at, updated_at
        FROM generated_social_posts
        WHERE brand_profile_id = $1
