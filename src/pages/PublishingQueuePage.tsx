@@ -401,9 +401,11 @@ export default function PublishingQueuePage() {
         return next;
       });
 
-      // Load publish logs for items that have been published to at least one channel
+      // Load publish logs for items that have been published to at least one channel.
+      // Skip __ namespaced metadata keys (social posts have __social even when un-published).
       for (const item of allItems) {
-        if (item.publish_results && Object.keys(item.publish_results).length > 0) {
+        const channelKeys = Object.keys(item.publish_results || {}).filter(k => !k.startsWith('__'));
+        if (channelKeys.length > 0) {
           fetch(`/api/publishing/log/${item.id}`, { headers: ah })
             .then(r => r.json())
             .then(ld => {
@@ -1174,7 +1176,10 @@ ${authorFooterHtml}
 
             {/* Campaign groups */}
             {sortedCampaignEntries.map(([campId, group]) => {
-              const publishedCount = group.items.filter(i => i.publish_results && Object.keys(i.publish_results).length > 0).length;
+              const publishedCount = group.items.filter(i => {
+                const keys = Object.keys(i.publish_results || {}).filter(k => !k.startsWith('__'));
+                return keys.length > 0;
+              }).length;
               return (
                 <div key={campId} className="pq-campaign-group">
                   <div className="pq-campaign-group-header">
