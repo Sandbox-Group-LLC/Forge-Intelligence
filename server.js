@@ -6090,6 +6090,10 @@ async function ensureSocialPostsTable() {
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_gsp_brand_created ON generated_social_posts(brand_profile_id, created_at DESC)`).catch(() => {});
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_gsp_batch ON generated_social_posts(batch_id)`).catch(() => {});
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_gsp_platform ON generated_social_posts(brand_profile_id, platform)`).catch(() => {});
+  // Capture which campaignArc was used for the batch so the Recent Batches drawer
+  // can show it. Idempotent ALTERs — safe on existing tables.
+  await pool.query(`ALTER TABLE generated_social_posts ADD COLUMN IF NOT EXISTS arc_id TEXT`).catch(() => {});
+  await pool.query(`ALTER TABLE generated_social_posts ADD COLUMN IF NOT EXISTS arc_title TEXT`).catch(() => {});
 }
 ensureSocialPostsTable().catch(e => console.error('[SOCIAL-GEN] Table init error:', e.message));
 
@@ -6263,13 +6267,16 @@ app.get('/api/social-generator/generate', requireAuth, async (req, res) => {
       return s.length > maxChars ? s.substring(0, maxChars) + '\n...[truncated]' : s;
     };
 
-    // Optional arc context — inject thesis + acts if user selected an arc
+    // Optional arc context — inject thesis + acts if user selected an arc.
+    // Also captures arc title so it can be persisted on each post for the Recent Batches drawer.
     let arcBlock = '';
+    let selectedArcTitle = null;
     if (arcId) {
       try {
         const allArcs = (profileData.campaignArcs || []);
         const arc = allArcs.find(a => a.id === arcId);
         if (arc) {
+          selectedArcTitle = arc.title || null;
           const actsText = Array.isArray(arc.acts)
             ? arc.acts.map(a => `  Act ${a.actNumber}: ${a.actTitle} — ${a.actPremise}`).join('\n')
             : '';
@@ -6325,8 +6332,8 @@ app.get('/api/social-generator/generate', requireAuth, async (req, res) => {
         `INSERT INTO generated_social_posts
           (brand_profile_id, batch_id, platform, angle, hook, body, hashtags, cta, char_count,
            confidence, confidence_tier, confidence_reason, brain_match_score,
-           source_brief_id, source_topic, brain_version, status)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'draft')
+           source_brief_id, source_topic, brain_version, arc_id, arc_title, status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'draft')
          RETURNING id`,
         [
           brandProfileId, batchId, platform,
@@ -6334,7 +6341,8 @@ app.get('/api/social-generator/generate', requireAuth, async (req, res) => {
           JSON.stringify(post.hashtags || []), post.cta || null, charCount,
           post.confidence || null, post.confidenceTier || null, post.confidenceReason || null,
           post.brainMatchScore || null,
-          briefId || null, topicPrompt || null, profile.version || 1
+          briefId || null, topicPrompt || null, profile.version || 1,
+          (arcId || null), (typeof selectedArcTitle === 'string' ? selectedArcTitle : null)
         ]
       );
       persisted.push({
@@ -6411,6 +6419,7 @@ app.get('/api/social-generator/recent/:brandProfileId', requireAuth, async (req,
       `SELECT id, batch_id, platform, angle, hook, body, hashtags, cta, char_count,
               confidence, confidence_tier, confidence_reason, brain_match_score,
               image_url, image_prompt, status, user_edited_body, source_topic,
+              arc_id, arc_title,
               created_at, updated_at
        FROM generated_social_posts
        WHERE brand_profile_id = $1
@@ -6421,7 +6430,17 @@ app.get('/api/social-generator/recent/:brandProfileId', requireAuth, async (req,
     const batches = {};
     for (const row of r.rows) {
       const bid = row.batch_id;
-      if (!batches[bid]) batches[bid] = { batchId: bid, platform: row.platform, createdAt: row.created_at, posts: [] };
+      if (!batches[bid]) batches[bid] = {
+        // FE expects snake_case here — mirror Postgres column names exactly so
+        // the type definition in SocialGeneratorPage.tsx works without remapping.
+        batch_id: bid,
+        platform: row.platform,
+        created_at: row.created_at,
+        source_topic: row.source_topic || null,
+        arc_id: row.arc_id || null,
+        arc_title: row.arc_title || null,
+        posts: []
+      };
       batches[bid].posts.push(row);
     }
     res.json({ success: true, batches: Object.values(batches) });
