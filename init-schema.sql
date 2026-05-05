@@ -389,6 +389,36 @@ CREATE TABLE IF NOT EXISTS topic_ideas (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ── Social Generator ──
+CREATE TABLE IF NOT EXISTS generated_social_posts (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  brand_profile_id TEXT NOT NULL,
+  batch_id TEXT NOT NULL,
+  platform TEXT NOT NULL,                    -- 'x' | 'instagram'
+  angle TEXT,                                -- 'provocation' | 'proof' | 'how-to' | 'counter-take'
+  hook TEXT,
+  body TEXT NOT NULL,
+  hashtags JSONB NOT NULL DEFAULT '[]',
+  cta TEXT,
+  char_count INTEGER DEFAULT 0,
+  confidence INTEGER DEFAULT 0,
+  confidence_tier TEXT,
+  confidence_reason TEXT,
+  brain_match_score INTEGER DEFAULT 0,
+  image_url TEXT,
+  image_prompt TEXT,
+  status TEXT NOT NULL DEFAULT 'draft',      -- 'draft' | 'edited' | 'queued' | 'published'
+  user_edited_body TEXT,
+  source_brief_id TEXT,
+  source_topic TEXT,
+  brain_version INTEGER,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_gsp_brand_created ON generated_social_posts (brand_profile_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_gsp_batch ON generated_social_posts (batch_id);
+CREATE INDEX IF NOT EXISTS idx_gsp_status ON generated_social_posts (brand_profile_id, status);
+
 CREATE TABLE IF NOT EXISTS payment_events (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   brand_profile_id TEXT NOT NULL,
