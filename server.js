@@ -9785,8 +9785,11 @@ app.post('/api/publishing/publish', async (req, res) => {
     const results = {};
 
     // ── Ensure hero image exists before publishing ────────────────────────────
-    // Campaign generator doesn't pre-generate images — create one now if missing
-    if (!article.hero_image_url) {
+    // Campaign generator doesn't pre-generate images — create one now if missing.
+    // Social posts skip this entirely — their square 1:1 image was generated at
+    // social-gen time and lives on generated_social_posts.image_url. The hero-image
+    // pipeline writes into generated_content_*, which has no row for social posts.
+    if (!article.hero_image_url && !isSocialQueueItem) {
       try {
         const aj = article.article_json || {};
         const sections = aj.sections || [];
