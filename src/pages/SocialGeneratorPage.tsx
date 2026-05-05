@@ -55,6 +55,8 @@ interface SocialPost {
   status: 'draft' | 'edited' | 'queued' | 'published';
   user_edited_body: string | null;
   source_topic: string | null;
+  published_url: string | null;
+  published_at: string | null;
   created_at: string;
 }
 
@@ -153,6 +155,10 @@ function SocialGeneratorContent() {
   const [recentBatches, setRecentBatches] = useState<{ batch_id: string; created_at: string; platform: Platform; source_topic: string | null; arc_id: string | null; arc_title: string | null; posts: SocialPost[] }[]>([]);
   const [recentOpen, setRecentOpen] = useState(false);
 
+  // Connected publishing channels for this brand — used to enable/disable the
+  // 'Publish to X' button on each post card. null = not yet fetched; [] = fetched, none.
+  const [connectedChannels, setConnectedChannels] = useState<string[] | null>(null);
+
   // Brain selector — only show if super-admin has multiple brands
   let brains: Brain[] = historyEntries.map(e => ({ id: e.id, brandName: e.brandName, brandUrl: e.brandUrl }));
   if (brains.length === 0 && activeBrand) {
@@ -183,6 +189,18 @@ function SocialGeneratorContent() {
       .then(d => { if (d.success) setArcs(d.arcs || []); else setArcs([]); })
       .catch(() => setArcs([]))
       .finally(() => setArcsLoading(false));
+  }, [selectedBrainId, authToken]);
+
+  // Load connected publishing channels when brand changes
+  useEffect(() => {
+    if (!selectedBrainId || !authToken) { setConnectedChannels(null); return; }
+    fetch(`/api/publishing/channels/${selectedBrainId}`, { headers: { 'Authorization': `Bearer ${authToken}` } })
+      .then(r => r.json())
+      .then(d => {
+        const channels = (d?.channels || []).map((c: { channel: string }) => c.channel);
+        setConnectedChannels(channels);
+      })
+      .catch(() => setConnectedChannels([]));
   }, [selectedBrainId, authToken]);
 
   // Load recent batches when brand changes
@@ -512,7 +530,7 @@ function SocialGeneratorContent() {
 
           <div className="sg-grid">
             {posts.map(post => (
-              <PostCard key={post.id} post={post} authToken={authToken} onUpdate={(updated) => {
+              <PostCard key={post.id} post={post} authToken={authToken} xConnected={connectedChannels?.includes('x') ?? false} onUpdate={(updated) => {
                 setPosts(prev => prev.map(p => p.id === updated.id ? updated : p));
               }} />
             ))}
@@ -568,11 +586,42 @@ function SocialGeneratorContent() {
 }
 
 // ─── Post card with inline edit + queue ─────────────────────────────────────
-function PostCard({ post, authToken, onUpdate }: { post: SocialPost; authToken: string | null; onUpdate: (p: SocialPost) => void }) {
+function PostCard({ post, authToken, xConnected, onUpdate }: { post: SocialPost; authToken: string | null; xConnected: boolean; onUpdate: (p: SocialPost) => void }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedBody, setEditedBody] = useState(post.user_edited_body || post.body);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
+
+  const isPublished = post.status === 'published' && !!post.published_url;
+
+  const handlePublishX = async () => {
+    if (!confirm('Publish this post to X now?')) return;
+    setPublishing(true);
+    setPublishError(null);
+    try {
+      const res = await fetch(`/api/social-generator/publish-x/${post.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {}) },
+      });
+      const d = await res.json();
+      if (d.success && d.post) {
+        onUpdate(d.post);
+      } else {
+        // Surface code-aware messaging — 'X_NOT_CONNECTED' deep-links to Integrations
+        if (d.code === 'X_NOT_CONNECTED' || d.code === 'X_AUTH_EXPIRED') {
+          setPublishError(`${d.error} Open Integrations to fix.`);
+        } else {
+          setPublishError(d.error || 'Failed to publish to X.');
+        }
+      }
+    } catch(e: unknown) {
+      setPublishError(e instanceof Error ? e.message : 'Network error.');
+    } finally {
+      setPublishing(false);
+    }
+  };
 
   const displayBody = post.user_edited_body || post.body;
   const charCount = (post.user_edited_body || post.body).length + (post.platform === 'instagram' && post.hashtags.length ? ('\n\n' + post.hashtags.map(h => h.startsWith('#') ? h : '#' + h).join(' ')).length : 0);
@@ -663,9 +712,28 @@ function PostCard({ post, authToken, onUpdate }: { post: SocialPost; authToken: 
               <button className="sg-action-btn" onClick={handleCopy}>
                 <Copy size={12} /> {copied ? 'Copied' : 'Copy'}
               </button>
-              <button className="sg-action-btn" onClick={() => { setEditedBody(post.user_edited_body || post.body); setIsEditing(true); }}>
+              <button className="sg-action-btn" onClick={() => { setEditedBody(post.user_edited_body || post.body); setIsEditing(true); }} disabled={isPublished}>
                 <Edit size={12} /> Edit
               </button>
+              {post.platform === 'x' && (
+                isPublished ? (
+                  <a className="sg-action-btn sg-action-btn-published" href={post.published_url || '#'} target="_blank" rel="noreferrer">
+                    Published — View on X →
+                  </a>
+                ) : (
+                  <button
+                    className="sg-action-btn sg-action-btn-primary"
+                    onClick={handlePublishX}
+                    disabled={publishing || !xConnected}
+                    title={!xConnected ? 'X is not connected for this brand. Open Integrations to connect.' : 'Publish this post to X now'}
+                  >
+                    {publishing ? 'Publishing…' : (xConnected ? 'Publish to X' : 'X not connected')}
+                  </button>
+                )
+              )}
+              {publishError && (
+                <a className="sg-publish-error" href="/app/integrations" target="_self" title={publishError}>{publishError.length > 60 ? publishError.slice(0, 57) + '…' : publishError}</a>
+              )}
             </>
           ) : (
             <>
