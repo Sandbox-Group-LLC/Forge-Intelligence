@@ -149,6 +149,9 @@ function SocialGeneratorContent() {
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [error, setError] = useState('');
   const streamRef = useRef<EventSource | null>(null);
+  // Track whether posts were received — used in the SSE error handler to avoid
+  // false-alarming when the server cleanly closes the connection after 'complete'.
+  const postsReceivedRef = useRef(false);
 
   // Recent batches (collapsible footer drawer)
   const [recentBatches, setRecentBatches] = useState<{ batch_id: string; created_at: string; platform: Platform; source_topic: string | null; posts: SocialPost[] }[]>([]);
@@ -210,6 +213,7 @@ function SocialGeneratorContent() {
     }
     if (authToken) qs.set('token', authToken);
 
+    postsReceivedRef.current = false;
     const es = new EventSource(`/api/social-generator/generate?${qs.toString()}`);
     streamRef.current = es;
 
@@ -231,6 +235,7 @@ function SocialGeneratorContent() {
       try {
         const parsed = JSON.parse(e.data);
         if (parsed.posts && Array.isArray(parsed.posts)) {
+          postsReceivedRef.current = true;
           setPosts(parsed.posts);
           setStreamText('');
         }
@@ -264,8 +269,11 @@ function SocialGeneratorContent() {
     es.addEventListener('error', (e: any) => {
       es.close();
       setIsRunning(false);
+      // postsReceivedRef guards against the spurious error event the browser fires
+      // when the server cleanly closes the SSE connection after sending 'complete'.
+      if (postsReceivedRef.current) return;
       if (e.data) setError(e.data);
-      else if (!posts.length) setError('Connection lost. The batch may still be generating — refresh in 30 seconds.');
+      else setError('Connection lost. The batch may still be generating — refresh in 30 seconds.');
     });
   };
 
@@ -496,7 +504,7 @@ function SocialGeneratorContent() {
                 <div key={batch.batch_id} className="sg-recent-item">
                   <div className="sg-recent-meta">
                     <span className="sg-recent-platform">{batch.platform === 'x' ? 'X' : 'Instagram'}</span>
-                    <span className="sg-recent-date">{new Date(batch.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                    <span className="sg-recent-date">{new Date(batch.created_at.replace(' ', 'T').replace(/(\.\d+)?$/, 'Z')).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
                   </div>
                   <div className="sg-recent-topic">{batch.source_topic || '—'}</div>
                   <button
