@@ -624,8 +624,12 @@ function PostCard({ post, authToken, xConnected, onUpdate }: { post: SocialPost;
   };
 
   const displayBody = post.user_edited_body || post.body;
-  const charCount = (post.user_edited_body || post.body).length + (post.platform === 'instagram' && post.hashtags.length ? ('\n\n' + post.hashtags.map(h => h.startsWith('#') ? h : '#' + h).join(' ')).length : 0);
+  // While editing, count the live textarea value so the user sees it climb/drop in real time.
+  // While not editing, count the saved text. Instagram includes hashtags inline; X does not.
+  const effectiveBody = isEditing ? editedBody : displayBody;
+  const charCount = effectiveBody.length + (post.platform === 'instagram' && post.hashtags.length ? ('\n\n' + post.hashtags.map(h => h.startsWith('#') ? h : '#' + h).join(' ')).length : 0);
   const tier = charTier(charCount, post.platform);
+  const overXLimit = post.platform === 'x' && isEditing && editedBody.length > 280;
   const angleColor = ANGLE_COLORS[post.angle] || '#3563FF';
 
   const tierColorByConf = (t: ConfidenceTier) => t === 'green' ? '#14B8A6' : t === 'yellow' ? '#F5B942' : '#EF4444';
@@ -641,8 +645,10 @@ function PostCard({ post, authToken, xConnected, onUpdate }: { post: SocialPost;
     });
   };
 
+  const [saveError, setSaveError] = useState<string | null>(null);
   const handleSave = async () => {
     setSaving(true);
+    setSaveError(null);
     try {
       const res = await fetch(`/api/social-generator/edit/${post.id}`, {
         method: 'POST',
@@ -653,7 +659,13 @@ function PostCard({ post, authToken, xConnected, onUpdate }: { post: SocialPost;
       if (d.success && d.post) {
         onUpdate(d.post);
         setIsEditing(false);
+      } else if (d.error) {
+        setSaveError(d.error);
+      } else {
+        setSaveError('Save failed. Please try again.');
       }
+    } catch(e: unknown) {
+      setSaveError(e instanceof Error ? e.message : 'Network error.');
     } finally {
       setSaving(false);
     }
@@ -737,10 +749,16 @@ function PostCard({ post, authToken, xConnected, onUpdate }: { post: SocialPost;
             </>
           ) : (
             <>
-              <button className="sg-action-btn" onClick={() => setIsEditing(false)} disabled={saving}>Cancel</button>
-              <button className="sg-action-btn sg-action-btn-primary" onClick={handleSave} disabled={saving || !editedBody.trim()}>
-                {saving ? 'Saving…' : 'Save edit'}
+              <button className="sg-action-btn" onClick={() => { setIsEditing(false); setSaveError(null); }} disabled={saving}>Cancel</button>
+              <button
+                className="sg-action-btn sg-action-btn-primary"
+                onClick={handleSave}
+                disabled={saving || !editedBody.trim() || overXLimit}
+                title={overXLimit ? `${editedBody.length} characters — trim to 280 or fewer to save.` : undefined}
+              >
+                {saving ? 'Saving…' : overXLimit ? `${editedBody.length}/280 — too long` : 'Save edit'}
               </button>
+              {saveError && <span className="sg-publish-error" title={saveError}>{saveError.length > 60 ? saveError.slice(0, 57) + '…' : saveError}</span>}
             </>
           )}
         </div>
