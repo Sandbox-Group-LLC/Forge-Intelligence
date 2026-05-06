@@ -1,3 +1,25 @@
+# 2026-05-05 — Frank: from bug surface to SME
+
+Discovered tonight while debugging a wrecked Sandbox-XM compliance gate render: Frank — the ForgeOS external-editor persona that publishes Forge drafts on destination sites and reports edits back via /api/content/import — has accidentally become a marketing asset.
+
+The compliance gate was grading "Frank added three JSON-LD blocks" as if it were article prose. Tracked the bug to an ambiguous prompt in the import endpoint that asked the LLM to do two jobs simultaneously: extract Frank's changes AND preserve Frank's published body. The model picked door #1 and stuffed section bodies with changelog text. Fixed in commit 6f81bdcb — prompt now splits the two outputs explicitly with a CRITICAL block.
+
+Marketing angle (tomorrow's article seed):
+
+**Working title (TBD):** "We Named Our Publishing Pipeline Frank. Then Frank Started Editing Our Drafts."
+
+**Cold open:** screenshot of compliance gate flagging Frank's manifest as if it were article content.
+
+**Thesis:** pipelines that have names develop accountability. "Frank flagged this" is more useful editorial signal than "the model rejected this." Naming the agent makes its decisions reviewable. Same logic that made early-stage Linux dev cultures functional — attribution for non-human work is still attribution.
+
+**Closing turn:** Frank publishes Forge's article about Frank publishing Forge's articles. Forge ingests Frank's edits to its article about Frank. Brain learns Frank's editorial patterns. Loop closes. The intelligence compounds because the editor has a name.
+
+**Citation pattern (decided tonight):** Frank gets named in author blocks as "Frank — ForgeOS publishing pipeline" with a footnote making the persona transparent. No deception, but the persona stays consistent across articles — same name, same role, traceable editorial voice.
+
+**Brain note for the article:** lean into the recursion. Don't apologize for it. The article should work on first read for someone who has no idea what ForgeOS is, AND on second read for someone who realizes the article itself was edited by the persona it's about.
+
+---
+
 # 2026-05-05 — X Social Publish Image Attach (the hybrid auth saga)
 
 **Outcome:** Tweets with images now publish from per-brand OAuth 2.0 user accounts via a shared system OAuth 1.0a media bridge. Tested with @ForgeI65068 — image attached, posted, live.
