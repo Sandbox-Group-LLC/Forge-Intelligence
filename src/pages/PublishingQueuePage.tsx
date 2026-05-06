@@ -663,7 +663,24 @@ export default function PublishingQueuePage() {
 
   const buildMarkdown = (article: any, item: QueueItem) => {
     const sections = article?.article_json?.sections || [];
-    const lines: string[] = [`# ${item.title || 'Untitled'}`, ''];
+    // YAML frontmatter — standard for Markdown-native CMSes (Hugo, Jekyll, Astro,
+    // Ghost, Notion via importers). Includes content_id so the destination side
+    // (Frank, or any user pushing back to Forge) has a stable reference.
+    const fm: string[] = [
+      '---',
+      `forge_content_id: ${item.content_id}`,
+      `forge_brand_id: ${item.brand_profile_id}`,
+      `title: ${JSON.stringify(item.title || 'Untitled')}`,
+    ];
+    if (article?.article_json?.metaDescription) {
+      fm.push(`description: ${JSON.stringify(article.article_json.metaDescription)}`);
+    }
+    if (article?.hero_image_url) {
+      fm.push(`hero_image: ${article.hero_image_url}`);
+    }
+    fm.push(`exported_at: ${new Date().toISOString()}`);
+    fm.push('---', '');
+    const lines: string[] = [...fm, `# ${item.title || 'Untitled'}`, ''];
     if (article?.article_json?.metaDescription) {
       lines.push(`> ${article.article_json.metaDescription}`, '');
     }
@@ -828,7 +845,8 @@ export default function PublishingQueuePage() {
     </div>`).join('')}
   </section>` : '';
 
-    return `<!DOCTYPE html>
+    return `<!-- Forge Intelligence content_id: ${item.content_id} | brand_id: ${item.brand_profile_id} | exported: ${new Date().toISOString()} -->
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -838,6 +856,8 @@ export default function PublishingQueuePage() {
   <link rel="canonical" href="${canonical}" />
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
   <meta name="author" content="${authorName}" />
+  <meta name="forge-content-id" content="${item.content_id}" />
+  <meta name="forge-brand-id" content="${item.brand_profile_id}" />
   <meta property="og:type" content="article" />
   <meta property="og:site_name" content="${brandName}" />
   <meta property="og:title" content="${title}" />
@@ -892,6 +912,8 @@ ${authorFooterHtml}
   const buildJSON = (article: any, item: QueueItem) => {
     const sections = article?.article_json?.sections || [];
     return JSON.stringify({
+      contentId: item.content_id,
+      brandId: item.brand_profile_id,
       title: item.title,
       metaDescription: article?.article_json?.metaDescription || '',
       heroImageUrl: article?.hero_image_url || '',
@@ -2306,6 +2328,18 @@ return (
               </div>
             )}
 
+            <div className="pq-export-meta-row">
+              <button
+                type="button"
+                className="pq-export-meta-btn"
+                onClick={() => handleCopy(item.content_id, 'cid')}
+                title="Copy content ID"
+              >
+                <span className="pq-export-meta-label">Content ID:</span>
+                <span className="pq-export-meta-val">{item.content_id}</span>
+                <span className="pq-export-meta-copy">{copied === 'cid' ? '✓' : 'Copy'}</span>
+              </button>
+            </div>
             <div className="pq-export-footer">
               <span className="pq-export-base-url">
                 Base: {exportUrl}
