@@ -596,6 +596,47 @@ function PostCard({ post, authToken, xConnected, onUpdate }: { post: SocialPost;
 
   const isPublished = post.status === 'published' && !!post.published_url;
 
+  // Share the post image via Web Share API (with file blob, NOT URL).
+  // Why: mobile browsers' long-press → 'Share to Instagram' shares the image URL string,
+  // not the image file — Instagram interprets that as a link share, not a photo post.
+  // Web Share API with files attached gets the OS to treat it as a real image share, so
+  // Instagram's share-target opens its photo composer with the image pre-loaded.
+  // Fallback: if the browser doesn't support file sharing, download the image so the user
+  // can manually post it from their camera roll.
+  const handleShareImage = async (imageUrl: string, filenameSeed: string) => {
+    try {
+      const imgRes = await fetch(imageUrl);
+      if (!imgRes.ok) throw new Error(`Image fetch failed (${imgRes.status})`);
+      const blob = await imgRes.blob();
+      const ext = (blob.type.split('/')[1] || 'jpg').toLowerCase();
+      const safeName = (filenameSeed || 'forge-image').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40) || 'forge-image';
+      const file = new File([blob], `${safeName}.${ext}`, { type: blob.type });
+
+      // Web Share API with files — supported on iOS Safari 15+, Chrome Android, Chrome iOS.
+      // canShare() returns false (or is undefined) on browsers that can't share files.
+      const navAny = navigator as Navigator & { canShare?: (data: ShareData) => boolean };
+      if (navAny.canShare && navAny.canShare({ files: [file] })) {
+        await navigator.share({ files: [file] });
+        return;
+      }
+
+      // Fallback: trigger a download so the user can post it themselves.
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `${safeName}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+    } catch (e: unknown) {
+      // AbortError fires when the user dismisses the share sheet — not an error to surface.
+      if (e instanceof Error && e.name === 'AbortError') return;
+      console.error('[share-image] failed:', e);
+      alert(`Couldn't share the image: ${e instanceof Error ? e.message : 'unknown error'}`);
+    }
+  };
+
   const handlePublishX = async () => {
     if (!confirm('Publish this post to X now?')) return;
     setPublishing(true);
@@ -689,6 +730,21 @@ function PostCard({ post, authToken, xConnected, onUpdate }: { post: SocialPost;
         <span className="sg-angle-badge" style={{ background: angleColor + '22', color: angleColor, borderColor: angleColor + '44' }}>
           {ANGLE_LABELS[post.angle] || post.angle}
         </span>
+        {post.image_url && (
+          <button
+            type="button"
+            className="sg-image-share-btn"
+            onClick={() => handleShareImage(post.image_url!, post.hook || 'forge-image')}
+            title="Share image (use this to post to Instagram — long-press → Share shares the URL, this shares the image file)"
+            aria-label="Share image"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+              <polyline points="16 6 12 2 8 6" />
+              <line x1="12" y1="2" x2="12" y2="15" />
+            </svg>
+          </button>
+        )}
       </div>
 
       <div className="sg-post-body">
