@@ -10459,27 +10459,38 @@ Output only the post text.` }]
 
           // Priority 1: user-edited/generated post copy from the UI (postCopy[channel]).
           // Priority 2: fallback to a trimmed title + URL that fits X's 280-char limit.
+          //
+          // X length math note: X auto-wraps every URL into t.co, which counts as exactly
+          // 23 characters in X's tweet length count regardless of the real URL length.
+          // So we compute X-equivalent length by replacing every URL with 23 placeholder
+          // chars before measuring — otherwise long UTM-laden URLs (200+ chars) make our
+          // math think the title has zero room and we ship "GE" + URL or just a bare URL.
+          const URL_RE = /https?:\/\/[^\s]+/g;
+          const xLen = (s) => s.replace(URL_RE, 'x'.repeat(23)).length;
+          const X_URL_COST = 23;
+
           const postCopyOverride = (req.body.postCopy || {})[channel];
           let tweetText;
           if (postCopyOverride && postCopyOverride.trim()) {
             tweetText = postCopyOverride.trim();
-            // Hard enforce 280 limit — X API rejects over-length tweets
-            if (tweetText.length > 280) {
-              console.warn(`[X] Post copy was ${tweetText.length} chars, truncating to 280`);
-              // If the URL is at the end, preserve it and truncate the body
-              const urlIdx = tweetText.lastIndexOf(fullTweetUrl);
-              if (urlIdx > 0) {
-                const bodyPart = tweetText.slice(0, urlIdx).trim();
-                const urlPart = tweetText.slice(urlIdx);
-                const maxBody = 280 - urlPart.length - 2; // 2 for \n\n separator
+            // Hard enforce 280 limit using X-aware character counting
+            if (xLen(tweetText) > 280) {
+              console.warn(`[X] Post copy was ${xLen(tweetText)} X-chars, truncating to 280`);
+              // Find the LAST URL in the text — typically at end after "\n\nRead more: "
+              const urls = [...tweetText.matchAll(URL_RE)];
+              const lastUrlMatch = urls[urls.length - 1];
+              if (lastUrlMatch && lastUrlMatch.index > 0) {
+                const urlPart = lastUrlMatch[0];
+                const bodyPart = tweetText.slice(0, lastUrlMatch.index).trim();
+                const maxBody = 280 - X_URL_COST - 2; // 2 for \n\n separator
                 tweetText = bodyPart.slice(0, Math.max(0, maxBody)).trim() + '\n\n' + urlPart;
               } else {
                 tweetText = tweetText.slice(0, 277) + '...';
               }
             }
           } else {
-            // Fallback — title-first, fits under 280
-            const titleMax = 280 - fullTweetUrl.length - 4; // 4 for \n\n and any ellipsis
+            // Fallback — title-first, fits under 280. Use X_URL_COST not the raw URL length.
+            const titleMax = 280 - X_URL_COST - 2; // 2 for \n\n separator
             const titleTrimmed = (article.title || '').slice(0, Math.max(0, titleMax));
             tweetText = `${titleTrimmed}\n\n${fullTweetUrl}`;
           }
