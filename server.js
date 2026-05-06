@@ -10157,9 +10157,27 @@ app.post('/api/publishing/publish', async (req, res) => {
       const chConfig = channelMap[channel];
       if (!chConfig) { results[channel] = { status: 'error', error: 'Channel not connected' }; continue; }
 
-      // Skip channels already successfully published — prevents double-posting
+      // Skip channels already successfully published — prevents double-posting.
+      // Pull the prior published URL from the publish_log so the response object has
+      // it (FE needs url to render the View post link). Without this, the response
+      // object has no url for the skipped channel and the FE falls back to no-link.
       if (alreadyPublished.has(channel)) {
-        results[channel] = { status: 'published', skipped: true, message: 'Already published to this channel' };
+        let priorUrl = null;
+        try {
+          const pr = await pool.query(
+            `SELECT published_url FROM publish_log
+             WHERE queue_item_id = $1 AND channel = $2 AND status = 'published'
+             ORDER BY attempted_at DESC LIMIT 1`,
+            [queueItemId, channel]
+          );
+          priorUrl = pr.rows[0]?.published_url || null;
+        } catch {}
+        results[channel] = {
+          status: 'published',
+          skipped: true,
+          message: 'Already published to this channel',
+          ...(priorUrl ? { url: priorUrl } : {}),
+        };
         continue;
       }
 
@@ -10790,14 +10808,20 @@ ${canonicalNote}`,
     const anyError = targets.some(ch => results[ch]?.status === 'error');
     const newStatus = allPublished ? 'published' : anyError ? 'partial' : 'staged';
 
-    // Strip transient fields before persisting — only store status + url for published/skipped channels
+    // Strip transient fields before persisting. CRITICAL: skipped channels are
+    // EXCLUDED from persistResults entirely — their state is already in the JSONB
+    // from the original publish call. Including them would let the shallow-merge
+    // operator (||) overwrite their existing url-bearing entry with a status-only
+    // shape (the bug that wrecked X and LinkedIn URLs in real data on May 5–6).
     const persistResults = Object.fromEntries(
-      Object.entries(results).map(([ch, r]) => [
-        ch,
-        (r.status === 'published' || r.skipped)
-          ? { status: r.status, ...(r.url ? { url: r.url } : {}), ...(r.itemId ? { itemId: r.itemId } : {}) }
-          : r  // keep error detail for genuinely failed channels
-      ])
+      Object.entries(results)
+        .filter(([_ch, r]) => !r.skipped)
+        .map(([ch, r]) => [
+          ch,
+          r.status === 'published'
+            ? { status: r.status, ...(r.url ? { url: r.url } : {}), ...(r.itemId ? { itemId: r.itemId } : {}) }
+            : r  // keep error detail for genuinely failed channels
+        ])
     );
     // Merge new results into existing publish_results — preserves prior channel results
     await pool.query(
