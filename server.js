@@ -7921,13 +7921,23 @@ async function uploadXMedia({ imageUrl, oauth2Token, oauth1Header }) {
   else throw new Error('No auth header for media upload');
 
   const upRes = await fetch('https://api.x.com/2/media/upload', { method: 'POST', headers, body });
-  const upData = await upRes.json().catch(() => ({}));
+  const rawText = await upRes.text();
+  let upData;
+  try { upData = JSON.parse(rawText); } catch { upData = {}; }
   if (!upRes.ok) {
-    // Surface auth-scope errors clearly so the publish endpoint can return a helpful code
-    const err = upData.detail || upData.title || JSON.stringify(upData) || `HTTP ${upRes.status}`;
-    if (upRes.status === 403 && /OAuth/i.test(err)) {
-      throw new Error(`X_MEDIA_SCOPE_MISSING: ${err}`);
+    // DIAG: X often returns plaintext 'Unauthorized' (no JSON) when the signature is malformed.
+    // Log the raw response body + signature inputs so we can debug.
+    console.error('[X-MEDIA-DIAG] HTTP', upRes.status, '| raw body:', rawText.slice(0, 500));
+    console.error('[X-MEDIA-DIAG] auth method:', oauth1Header ? 'oauth1' : 'oauth2');
+    if (oauth1Header) {
+      console.error('[X-MEDIA-DIAG] env vars set?',
+        'CK=' + (process.env.X_OAUTH1CONSUMER_KEY ? 'yes(' + process.env.X_OAUTH1CONSUMER_KEY.length + ')' : 'NO'),
+        'CS=' + (process.env.X_OAUTH1CONSUMER_SECRET ? 'yes(' + process.env.X_OAUTH1CONSUMER_SECRET.length + ')' : 'NO'),
+        'AT=' + (process.env.X_OAUTH1ACCESS_TOKEN ? 'yes(' + process.env.X_OAUTH1ACCESS_TOKEN.length + ')' : 'NO'),
+        'AS=' + (process.env.X_OAUTH1ACCESS_SECRET ? 'yes(' + process.env.X_OAUTH1ACCESS_SECRET.length + ')' : 'NO'));
+      console.error('[X-MEDIA-DIAG] auth header (first 200 chars):', oauth1Header.slice(0, 200));
     }
+    const err = upData.detail || upData.title || rawText.slice(0, 200) || `HTTP ${upRes.status}`;
     throw new Error(`X media upload failed: ${err}`);
   }
   const mediaId = upData.data?.id || upData.media_id_string || upData.id;
