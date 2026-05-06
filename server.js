@@ -2531,6 +2531,83 @@ app.post('/api/publishing/queue/:id/unarchive', requireAuth, async (req, res) =>
   }
 });
 
+// POST /api/campaign/:id/archive — bulk archive an entire campaign
+// Refuses unless every queue item in the campaign is status='published'.
+app.post('/api/campaign/:id/archive', requireAuth, async (req, res) => {
+  try {
+    const campaignId = req.params.id;
+
+    // Fetch campaign + its queue items
+    const campRes = await pool.query('SELECT id, brand_profile_id, name, status FROM campaigns WHERE id = $1', [campaignId]);
+    if (!campRes.rows.length) return res.status(404).json({ success: false, error: 'Campaign not found' });
+    const camp = campRes.rows[0];
+
+    if (!(await verifyBrandAccess(camp.brand_profile_id, req.userId))) return res.status(403).json({ error: 'Access denied' });
+
+    const itemsRes = await pool.query(
+      `SELECT id, status FROM publishing_queue WHERE campaign_id = $1`,
+      [campaignId]
+    );
+    const items = itemsRes.rows;
+    if (items.length === 0) return res.status(400).json({ success: false, error: 'Campaign has no queue items' });
+
+    const notPublished = items.filter(i => i.status !== 'published');
+    if (notPublished.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: `Cannot archive: ${notPublished.length} of ${items.length} articles are not yet published`,
+        unpublishedCount: notPublished.length,
+        totalCount: items.length
+      });
+    }
+
+    // All clear — bulk archive items + mark campaign archived
+    await pool.query(
+      `UPDATE publishing_queue SET status = 'archived', updated_at = NOW() WHERE campaign_id = $1`,
+      [campaignId]
+    );
+    await pool.query(
+      `UPDATE campaigns SET status = 'archived', updated_at = NOW() WHERE id = $1`,
+      [campaignId]
+    );
+
+    res.json({ success: true, archivedCount: items.length, campaignName: camp.name });
+  } catch(e) {
+    console.error('[CAMPAIGN-ARCHIVE]', e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/campaign/:id/unarchive — restore an archived campaign
+// Items go back to status='published' (since archive only allowed when all were published).
+app.post('/api/campaign/:id/unarchive', requireAuth, async (req, res) => {
+  try {
+    const campaignId = req.params.id;
+
+    const campRes = await pool.query('SELECT id, brand_profile_id, name FROM campaigns WHERE id = $1', [campaignId]);
+    if (!campRes.rows.length) return res.status(404).json({ success: false, error: 'Campaign not found' });
+    const camp = campRes.rows[0];
+
+    if (!(await verifyBrandAccess(camp.brand_profile_id, req.userId))) return res.status(403).json({ error: 'Access denied' });
+
+    const upd = await pool.query(
+      `UPDATE publishing_queue SET status = 'published', updated_at = NOW()
+       WHERE campaign_id = $1 AND status = 'archived'
+       RETURNING id`,
+      [campaignId]
+    );
+    await pool.query(
+      `UPDATE campaigns SET status = 'complete', updated_at = NOW() WHERE id = $1`,
+      [campaignId]
+    );
+
+    res.json({ success: true, restoredCount: upd.rowCount, campaignName: camp.name });
+  } catch(e) {
+    console.error('[CAMPAIGN-UNARCHIVE]', e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // GET /api/analytics/patterns/:brandProfileId
 app.get('/api/analytics/patterns/:brandProfileId', requireAuth, async (req, res) => {
   const { brandProfileId } = req.params;
