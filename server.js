@@ -14363,9 +14363,26 @@ app.post('/api/geo/track/:brandProfileId', async (req, res) => {
               const isCited = citations.some(u => u.includes(brandDomain)) || pText.toLowerCase().includes(brandDomain.toLowerCase());
               let citedSection = null;
               if (isCited) {
+                const respWords = pText.toLowerCase().split(' ');
+                // 1) Section bodies — existing fuzzy match (3+ words >6 chars overlapping)
                 for (const s of sections) {
                   const body = (s.body || s.content || '').toLowerCase();
-                  if (pText.toLowerCase().split(' ').filter(w => w.length > 6 && body.includes(w)).length > 3) { citedSection = s.heading; break; }
+                  if (respWords.filter(w => w.length > 6 && body.includes(w)).length > 3) { citedSection = s.heading; break; }
+                }
+                // 2) FAQs — articles get cited for FAQ content too; same threshold
+                if (!citedSection) {
+                  for (const f of faqs) {
+                    const body = `${f?.question || ''} ${f?.answer || ''}`.toLowerCase();
+                    if (respWords.filter(w => w.length > 6 && body.includes(w)).length > 3) {
+                      const q = (f?.question || '').trim();
+                      citedSection = q.length > 60 ? `FAQ: ${q.slice(0, 60)}…` : `FAQ: ${q}`;
+                      break;
+                    }
+                  }
+                }
+                // 3) Fallback — cited but no content match. Distinguish URL citation from text mention.
+                if (!citedSection) {
+                  citedSection = citations.some(u => u.includes(brandDomain)) ? 'Article URL cited' : 'Brand mention';
                 }
               }
               await pool.query(
@@ -14404,9 +14421,26 @@ app.post('/api/geo/track/:brandProfileId', async (req, res) => {
               const isCited = urlCitations.some(u => u.includes(brandDomain)) || outputText.toLowerCase().includes(brandDomain.toLowerCase());
               let citedSection = null;
               if (isCited) {
+                const respWords = outputText.toLowerCase().split(' ');
+                // 1) Section bodies — existing fuzzy match (3+ words >6 chars overlapping)
                 for (const s of sections) {
                   const body = (s.body || s.content || '').toLowerCase();
-                  if (outputText.toLowerCase().split(' ').filter(w => w.length > 6 && body.includes(w)).length > 3) { citedSection = s.heading; break; }
+                  if (respWords.filter(w => w.length > 6 && body.includes(w)).length > 3) { citedSection = s.heading; break; }
+                }
+                // 2) FAQs — articles get cited for FAQ content too; same threshold
+                if (!citedSection) {
+                  for (const f of faqs) {
+                    const body = `${f?.question || ''} ${f?.answer || ''}`.toLowerCase();
+                    if (respWords.filter(w => w.length > 6 && body.includes(w)).length > 3) {
+                      const q = (f?.question || '').trim();
+                      citedSection = q.length > 60 ? `FAQ: ${q.slice(0, 60)}…` : `FAQ: ${q}`;
+                      break;
+                    }
+                  }
+                }
+                // 3) Fallback — cited but no content match. Distinguish URL citation from text mention.
+                if (!citedSection) {
+                  citedSection = urlCitations.some(u => u.includes(brandDomain)) ? 'Article URL cited' : 'Brand mention';
                 }
               }
               await pool.query(
