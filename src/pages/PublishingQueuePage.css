@@ -2453,3 +2453,21 @@ a.pq-chip:hover {
   flex-shrink: 0;
 }
 
+/* Campaign-level archive / unarchive buttons (variants of pq-schedule-campaign-btn) */
+.pq-archive-campaign-btn {
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.3);
+  color: var(--color-text-secondary);
+}
+.pq-archive-campaign-btn:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.22);
+  color: var(--color-text-primary);
+}
+.pq-unarchive-campaign-btn {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.35);
+  color: #10b981;
+}
+.pq-unarchive-campaign-btn:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.22);
+}
