@@ -908,3 +908,37 @@
   .sg-grid { grid-template-columns: 1fr; }
   .sg-recent-item { grid-template-columns: 1fr; }
 }
+
+/* Image share button — overlay on the upper-right of the post image. Tap target
+   sized for mobile (44px hit area via padding) but visually compact. Triggers
+   Web Share API with the image as a File blob, so mobile share sheets treat it
+   as a photo share, not a link share. Fixes the iOS long-press → Share to
+   Instagram bug where the URL gets shared instead of the image file. */
+.sg-image-share-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition: background 120ms ease, border-color 120ms ease, transform 80ms ease;
+  z-index: 2;
+}
+.sg-image-share-btn:hover {
+  background: rgba(0, 0, 0, 0.75);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+.sg-image-share-btn:active {
+  transform: scale(0.94);
+}
+
