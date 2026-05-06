@@ -1,3 +1,37 @@
+# 2026-05-05 — X Social Publish Image Attach (the hybrid auth saga)
+
+**Outcome:** Tweets with images now publish from per-brand OAuth 2.0 user accounts via a shared system OAuth 1.0a media bridge. Tested with @ForgeI65068 — image attached, posted, live.
+
+## What broke and how
+
+The publish-x endpoint kept failing with X returning 401 "Unauthorized" (no body) or 400 "One or more parameters to your request was invalid." Five distinct root causes stacked on top of each other:
+
+1. **`media.write` OAuth 2.0 scope doesn't exist on X.** Earlier code had a scope check that always failed. X has tweet.write/read, users.read, dm.*, like.*, follows.*, etc. — no media scope. /2/media/upload demands OAuth 1.0a User Context only.
+
+2. **API Key regen invalidates all Access Tokens silently.** When you click "Regenerate" on the API Key in console.x.com, every previously-generated Access Token becomes useless. No warning. The fix: regenerate Access Tokens *after* regenerating API Keys, never before.
+
+3. **Render PUT `/env-vars/{KEY}` doesn't always trigger a redeploy.** The endpoint updates the stored value but the running Node process keeps using whatever env it booted with. Symptom: "live" status on a deploy that's actually stale. Fix: force a manual deploy via POST `/services/{id}/deploys` after env var changes if the running process needs to pick them up. (Or change the env var via dashboard, which DOES trigger redeploy.)
+
+4. **v2 `/2/media/upload` demands `additional_owners` as a JSON array.** Multipart form-data can only send strings. v2 returns "string found, array expected" no matter how you encode it. v1.1 `/1.1/media/upload.json` accepts comma-separated strings and the resulting media_id_string is fully compatible with v2 `/2/tweets`. So the canonical pattern is: upload via v1.1, post via v2.
+
+5. **X enforces user-level ownership of media on tweet attach.** If the user uploading the media (system OAuth 1.0a = @makemysandbox) is different from the user posting the tweet (brand OAuth 2.0 = @ForgeI65068), X rejects the attach with the unhelpful "One or more parameters" error. Fix: pass `additional_owners=<brand_user_id>` on upload — explicitly grants the brand user permission to attach. Brand user ID is looked up via `/2/users/by/username/{username}` on first publish and cached into credentials.userId.
+
+## Architecture (final)
+
+- **Tweet POST** — per-brand OAuth 2.0 user-context token from `publishing_channels.credentials.oauth2AccessToken`. Refresh-on-401, fallback to per-brand OAuth 1.0a if present.
+- **Media upload** — system OAuth 1.0a env vars (`X_OAUTH1CONSUMER_KEY/SECRET`, `X_OAUTH1ACCESS_TOKEN/SECRET`) signing v1.1 `/1.1/media/upload.json`. Pass `additional_owners=<brand_user_id>` so the brand user can attach.
+- **First publish per brand** — synchronous lookup of brand user ID via `/2/users/by/username/{username}`, then cached in `credentials.userId` so subsequent publishes skip the lookup.
+
+## Reusable lessons
+
+- **Test signing logic locally before assuming server-side env is wrong.** Running the same Node code with the same creds against the same X endpoint locally instantly answered "is the issue my code or my runtime."
+- **Render env var PUT is not a deploy trigger.** Always verify with a deploy timeline, not by trusting "live" status.
+- **X errors are deliberately vague.** "Unauthorized" with no body, "One or more parameters" with no specifics. Add raw body capture to every X-bound fetch in error paths.
+- **Multipart and JSON schemas are fundamentally incompatible.** When an X endpoint demands a JSON array param but the same endpoint requires multipart for binary upload, that endpoint is unusable for that param. Pivot to v1.1.
+- **Cross-user media attach requires `additional_owners`.** Always pass it when system creds upload on behalf of a different brand user.
+
+---
+
 # Forge Intelligence — Whiteboard
 
 > **Active working doc.** README.md is the architecture SSOT.
