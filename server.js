@@ -8702,6 +8702,36 @@ app.get('/api/publishing/channels/:brandProfileId', requireAuth, async (req, res
 app.post('/api/publishing/channels', requireAuth, async (req, res) => {
   const { brandProfileId, channel, credentials, utmTemplate } = req.body;
   if (!brandProfileId || !channel) return res.status(400).json({ error: 'brandProfileId and channel required' });
+
+  // Per-channel credential format validation. The actual publish endpoints all check
+  // format at runtime, but failing at save-time is much friendlier — the user gets
+  // an immediate "that's not the right value" instead of a delayed publish failure
+  // hours or days later. Specifically guards against the failure mode where someone
+  // pastes a password (or anything else) into a field expecting a structured token.
+  if (channel === 'ghost' && credentials) {
+    const { adminUrl, adminApiKey } = credentials;
+    if (adminApiKey) {
+      // Ghost Admin API Keys are id:secret format — 24 hex chars, colon, 64 hex chars.
+      // We don't validate the exact lengths (Ghost may change that) but we DO check
+      // the id:hex shape to catch the password-in-key-field mistake.
+      const m = String(adminApiKey).trim().match(/^([0-9a-f]{16,32}):([0-9a-f]{32,128})$/i);
+      if (!m) {
+        return res.status(400).json({
+          success: false,
+          error: 'Ghost Admin API Key must be in format id:secret (hex strings separated by a colon). Copy it directly from Ghost Admin → Settings → Integrations → your custom integration. Do NOT paste your Ghost account password.',
+          code: 'GHOST_ADMIN_KEY_INVALID_FORMAT'
+        });
+      }
+    }
+    if (adminUrl && !/^https?:\/\//i.test(String(adminUrl).trim())) {
+      return res.status(400).json({
+        success: false,
+        error: 'Ghost Admin URL must start with http:// or https://',
+        code: 'GHOST_ADMIN_URL_INVALID'
+      });
+    }
+  }
+
   try {
     const result = await pool.query(
       `INSERT INTO publishing_channels (brand_profile_id, channel, credentials, utm_template, updated_at)
