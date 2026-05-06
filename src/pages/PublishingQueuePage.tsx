@@ -367,6 +367,37 @@ export default function PublishingQueuePage() {
     } catch(e) { console.error('Unarchive failed', e); }
   };
 
+  const archiveCampaign = async (campId: string, campaignName: string) => {
+    if (!confirm(`Archive entire campaign "${campaignName}"? All articles will move to the archived view. You can restore later.`)) return;
+    try {
+      const r = await fetch(`/api/campaign/${campId}/archive`, { method: 'POST', headers: ah });
+      const data = await r.json();
+      if (!data.success) {
+        setError(data.error || 'Failed to archive campaign');
+        setTimeout(() => setError(''), 5000);
+        return;
+      }
+      setSuccessMsg(`Campaign archived — ${data.archivedCount} article${data.archivedCount === 1 ? '' : 's'}`);
+      setTimeout(() => setSuccessMsg(''), 4000);
+      loadQueue();
+    } catch(e) { console.error('Archive campaign failed', e); }
+  };
+
+  const unarchiveCampaign = async (campId: string, campaignName: string) => {
+    try {
+      const r = await fetch(`/api/campaign/${campId}/unarchive`, { method: 'POST', headers: ah });
+      const data = await r.json();
+      if (!data.success) {
+        setError(data.error || 'Failed to unarchive campaign');
+        setTimeout(() => setError(''), 5000);
+        return;
+      }
+      setSuccessMsg(`Campaign "${campaignName}" restored — ${data.restoredCount} article${data.restoredCount === 1 ? '' : 's'}`);
+      setTimeout(() => setSuccessMsg(''), 4000);
+      loadQueue();
+    } catch(e) { console.error('Unarchive campaign failed', e); }
+  };
+
   const loadQueue = useCallback(async () => {
     if (!activeBrandId) return;
     setLoading(true);
@@ -1200,6 +1231,26 @@ ${authorFooterHtml}
                     </div>
                     <div className="pq-campaign-group-right">
                       <span className="pq-campaign-group-stats">{publishedCount}/{group.items.length} published</span>
+                      {publishedCount === group.items.length && group.items.every(i => i.status !== 'archived') && (
+                        <button
+                          className="pq-schedule-campaign-btn pq-archive-campaign-btn"
+                          onClick={() => archiveCampaign(campId, group.name)}
+                          title="Archive entire campaign — all articles move to archived view"
+                        >
+                          <Archive />
+                          Archive Campaign
+                        </button>
+                      )}
+                      {group.items.every(i => i.status === 'archived') && (
+                        <button
+                          className="pq-schedule-campaign-btn pq-unarchive-campaign-btn"
+                          onClick={() => unarchiveCampaign(campId, group.name)}
+                          title="Unarchive — restore campaign to published view"
+                        >
+                          <Archive />
+                          Unarchive Campaign
+                        </button>
+                      )}
                       <button
                         className="pq-schedule-campaign-btn"
                         onClick={() => setCampaignScheduler({
