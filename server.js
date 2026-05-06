@@ -2545,25 +2545,33 @@ app.post('/api/campaign/:id/archive', requireAuth, async (req, res) => {
     if (!(await verifyBrandAccess(camp.brand_profile_id, req.userId))) return res.status(403).json({ error: 'Access denied' });
 
     const itemsRes = await pool.query(
-      `SELECT id, status FROM publishing_queue WHERE campaign_id = $1`,
+      `SELECT id, status, publish_results FROM publishing_queue WHERE campaign_id = $1`,
       [campaignId]
     );
     const items = itemsRes.rows;
     if (items.length === 0) return res.status(400).json({ success: false, error: 'Campaign has no queue items' });
 
-    const notPublished = items.filter(i => i.status !== 'published');
-    if (notPublished.length > 0) {
+    // "Published enough to archive" = has at least one non-meta key in publish_results.
+    // The status field alone is unreliable: 'partial' means some channels failed but the
+    // article still went out somewhere, and Brian wants those archive-able. Items already
+    // 'archived' are skipped (they're effectively done from the campaign's perspective).
+    const hasResults = (pr) => pr && typeof pr === 'object' &&
+      Object.keys(pr).filter(k => !k.startsWith('__')).length > 0;
+    const blockers = items.filter(i => i.status !== 'archived' && !hasResults(i.publish_results));
+    if (blockers.length > 0) {
       return res.status(400).json({
         success: false,
-        error: `Cannot archive: ${notPublished.length} of ${items.length} articles are not yet published`,
-        unpublishedCount: notPublished.length,
+        error: `Cannot archive: ${blockers.length} of ${items.length} articles have no publish results yet`,
+        unpublishedCount: blockers.length,
         totalCount: items.length
       });
     }
 
-    // All clear — bulk archive items + mark campaign archived
-    await pool.query(
-      `UPDATE publishing_queue SET status = 'archived', updated_at = NOW() WHERE campaign_id = $1`,
+    // All clear — archive non-archived items + mark campaign archived
+    const updRes = await pool.query(
+      `UPDATE publishing_queue SET status = 'archived', updated_at = NOW()
+       WHERE campaign_id = $1 AND status != 'archived'
+       RETURNING id`,
       [campaignId]
     );
     await pool.query(
@@ -2571,7 +2579,7 @@ app.post('/api/campaign/:id/archive', requireAuth, async (req, res) => {
       [campaignId]
     );
 
-    res.json({ success: true, archivedCount: items.length, campaignName: camp.name });
+    res.json({ success: true, archivedCount: updRes.rowCount, campaignName: camp.name });
   } catch(e) {
     console.error('[CAMPAIGN-ARCHIVE]', e);
     res.status(500).json({ success: false, error: e.message });
