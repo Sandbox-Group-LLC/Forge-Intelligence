@@ -609,10 +609,12 @@ export default function PerformanceDashboardPage() {
                         <React.Fragment key={post.content_id}>
                         <tr>
                           <td className="perf-title-cell">
-                            {post.hero_image_url && (
-                              <img src={post.hero_image_url} alt="" className="perf-thumb" loading="lazy" width="40" height="28" />
-                            )}
-                            <span className="perf-post-title">{post.title || 'Untitled'}</span>
+                            <div className="perf-title-cell-inner">
+                              {post.hero_image_url && (
+                                <img src={post.hero_image_url} alt="" className="perf-thumb" loading="lazy" width="40" height="28" />
+                              )}
+                              <span className="perf-post-title">{post.title || 'Untitled'}</span>
+                            </div>
                           </td>
                           {activeChannel === 'ghost' ? (<>
                             <td className="num">{fmt(post.clicks)}</td>
@@ -762,7 +764,7 @@ export default function PerformanceDashboardPage() {
                           <tbody>
                             {geoCitations.map((c, i) => (
                               <tr key={i} className={c.citations > 0 ? 'perf-geo-cited-row' : ''}>
-                                <td className="perf-title-cell"><span className="perf-post-title">{c.title}</span></td>
+                                <td className="perf-title-cell"><div className="perf-title-cell-inner"><span className="perf-post-title">{c.title}</span></div></td>
                                 <td>{(c.engines || []).map((e: string) => <span key={e} className={`perf-geo-engine perf-geo-engine-${e}`}>{e}</span>)}</td>
                                 <td className="num">{c.totalChecks}</td>
                                 <td className="num">
@@ -852,10 +854,12 @@ export default function PerformanceDashboardPage() {
                             {wfSeo.articles.map((a: any) => (
                               <tr key={a.content_id}>
                                 <td className="perf-title-cell">
-                                  {a.hero_image_url && <img src={a.hero_image_url} alt="" className="perf-thumb" loading="lazy" width="40" height="28" />}
-                                  <span className="perf-post-title">
-                                    {a.url ? <a href={a.url} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>{a.title}</a> : a.title}
-                                  </span>
+                                  <div className="perf-title-cell-inner">
+                                    {a.hero_image_url && <img src={a.hero_image_url} alt="" className="perf-thumb" loading="lazy" width="40" height="28" />}
+                                    <span className="perf-post-title">
+                                      {a.url ? <a href={a.url} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>{a.title}</a> : a.title}
+                                    </span>
+                                  </div>
                                 </td>
                                 <td className="num">{a.hasGscData ? fmt(a.impressions) : '—'}</td>
                                 <td className="num">{a.hasGscData ? fmt(a.clicks) : '—'}</td>
@@ -942,7 +946,8 @@ export default function PerformanceDashboardPage() {
                             <tbody>
                               {(data?.posts || []).map((post, i) => (
                                 <tr key={i}>
-                                  <td className="perf-title-cell"><span className="perf-post-title" title={(post as any).raw_data?.pageUrl || post.title || ''}>
+                                  <td className="perf-title-cell">
+                                  <div className="perf-title-cell-inner"><span className="perf-post-title" title={(post as any).raw_data?.pageUrl || post.title || ''}>
                                     {post.title
                                       ? post.title
                                       : (() => {
@@ -950,7 +955,9 @@ export default function PerformanceDashboardPage() {
                                           const url = rd.pageUrl || (post as any).post_id || '';
                                           try { const p = new URL(url).pathname; return p === '/' ? 'Homepage' : p; } catch { return url || 'Unknown'; }
                                         })()}
-                                  </span></td>
+                                  </span>
+                                  </div>
+                                </td>
                                   <td className="num">{fmt(post.clicks)}</td>
                                   <td className="num">{fmt(post.impressions)}</td>
                                   <td className="num">{post.ctr ? `${post.ctr}%` : '—'}</td>
