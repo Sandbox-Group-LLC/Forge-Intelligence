@@ -1215,10 +1215,14 @@ ${authorFooterHtml}
 
             {/* Campaign groups */}
             {sortedCampaignEntries.map(([campId, group]) => {
-              const publishedCount = group.items.filter(i => {
-                const keys = Object.keys(i.publish_results || {}).filter(k => !k.startsWith('__'));
-                return keys.length > 0;
-              }).length;
+              const hasResults = (i: any) => Object.keys(i.publish_results || {}).filter(k => !k.startsWith('__')).length > 0;
+              const publishedCount = group.items.filter(hasResults).length;
+              const nonArchived = group.items.filter(i => i.status !== 'archived');
+              const allArchived = group.items.length > 0 && nonArchived.length === 0;
+              // Show Archive Campaign when there's at least one item to archive AND no
+              // unpublished blockers among non-archived items. Already-archived items are
+              // ignored — a partially-archived campaign can still be fully archived.
+              const canArchiveAll = nonArchived.length > 0 && nonArchived.every(hasResults);
               return (
                 <div key={campId} className="pq-campaign-group">
                   <div className="pq-campaign-group-header">
@@ -1231,7 +1235,7 @@ ${authorFooterHtml}
                     </div>
                     <div className="pq-campaign-group-right">
                       <span className="pq-campaign-group-stats">{publishedCount}/{group.items.length} published</span>
-                      {publishedCount === group.items.length && group.items.every(i => i.status !== 'archived') && (
+                      {canArchiveAll && (
                         <button
                           className="pq-schedule-campaign-btn pq-archive-campaign-btn"
                           onClick={() => archiveCampaign(campId, group.name)}
@@ -1241,7 +1245,7 @@ ${authorFooterHtml}
                           Archive Campaign
                         </button>
                       )}
-                      {group.items.every(i => i.status === 'archived') && (
+                      {allArchived && (
                         <button
                           className="pq-schedule-campaign-btn pq-unarchive-campaign-btn"
                           onClick={() => unarchiveCampaign(campId, group.name)}
