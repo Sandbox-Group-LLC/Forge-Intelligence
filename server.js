@@ -6553,37 +6553,55 @@ app.post('/api/social-generator/publish-x/:postId', requireAuth, async (req, res
     const tweetEndpoint = 'https://api.twitter.com/2/tweets';
     let tweetId, twitterHandle = creds.username || 'i';
 
-    // ── Hybrid auth: OAuth 1.0a (system creds) for media upload, OAuth 2.0 (per-brand) for tweet POST ──
-    // Why hybrid: X removed/never-shipped 'media.write' as an OAuth 2.0 scope (verified via X
-    // Developer Console scope picker May 5, 2026). The /2/media/upload endpoint accepts only
-    // OAuth 1.0a User Context. Since all Forge brands share the same X Developer App (one
-    // app_id), media uploaded via the app's OAuth 1.0a context CAN be attached to tweets posted
-    // via the app's OAuth 2.0 context — X verifies app ownership of media on the tweet POST.
+    // ── Media upload: prefer brand's OAuth 2.0 user-context token (same user uploads + posts) ──
+    // X enforces user-level ownership of media on tweet POST — the user that uploads must be
+    // the same user that attaches. So we upload using the brand's own token. Requires
+    // media.write scope on the OAuth 2.0 token (added 2026-05-05 to the OAuth scope list).
     //
-    // System env vars X_OAUTH1CONSUMER_KEY/SECRET + X_OAUTH1ACCESS_TOKEN/SECRET hold the
-    // developer-app-owner's tokens (currently @makemysandbox). Per-brand OAuth 1.0a is a future
-    // upgrade if cross-account attachment turns out to be rejected by X.
+    // Fallback: if the brand reconnected before media.write was added (no media.write in
+    // scope), try the system OAuth 1.0a creds. Only succeeds if brand's OAuth 2.0 user is
+    // the same person as the system OAuth 1.0a user (@makemysandbox). Otherwise X rejects
+    // the attach with 'One or more parameters to your request was invalid'.
     let mediaIds = [];
     if (post.image_url) {
-      const k1 = process.env.X_OAUTH1CONSUMER_KEY;
-      const s1 = process.env.X_OAUTH1CONSUMER_SECRET;
-      const t1 = process.env.X_OAUTH1ACCESS_TOKEN;
-      const ts1 = process.env.X_OAUTH1ACCESS_SECRET;
-      if (!k1 || !s1 || !t1 || !ts1) {
-        return res.status(500).json({
-          success: false,
-          error: 'X media upload is not configured on the server. Contact the administrator.',
-          code: 'X_MEDIA_UPLOAD_NOT_CONFIGURED'
-        });
-      }
-      try {
-        const mediaUploadEndpoint = 'https://api.x.com/2/media/upload';
-        const mediaAuthHeader = buildXOAuthHeader('POST', mediaUploadEndpoint, k1, s1, t1, ts1);
-        const mediaId = await uploadXMedia({ imageUrl: post.image_url, oauth1Header: mediaAuthHeader });
-        mediaIds = [mediaId];
-      } catch(e) {
-        console.error('[X-SOCIAL] Media upload failed:', e.message);
-        return res.status(500).json({ success: false, error: `Image upload to X failed: ${e.message}`, code: 'X_MEDIA_UPLOAD_FAILED' });
+      const oauth2Token = creds.oauth2AccessToken;
+      const oauth2HasMediaWrite = (creds.oauth2Scope || '').includes('media.write');
+
+      if (oauth2Token && oauth2HasMediaWrite) {
+        // Preferred path: brand's own OAuth 2.0 token with media.write scope
+        try {
+          const mediaId = await uploadXMedia({ imageUrl: post.image_url, oauth2Token });
+          mediaIds = [mediaId];
+        } catch(e) {
+          console.error('[X-SOCIAL] OAuth2 media upload failed:', e.message);
+          return res.status(500).json({ success: false, error: `Image upload to X failed: ${e.message}`, code: 'X_MEDIA_UPLOAD_FAILED' });
+        }
+      } else {
+        // Fallback: system OAuth 1.0a creds. Only succeeds if brand's user == system user.
+        const k1 = process.env.X_OAUTH1CONSUMER_KEY;
+        const s1 = process.env.X_OAUTH1CONSUMER_SECRET;
+        const t1 = process.env.X_OAUTH1ACCESS_TOKEN;
+        const ts1 = process.env.X_OAUTH1ACCESS_SECRET;
+        if (!k1 || !s1 || !t1 || !ts1) {
+          return res.status(400).json({
+            success: false,
+            error: 'Reconnect X to enable image uploads. Open Integrations and reconnect your X account to grant the new media permission.',
+            code: 'X_MEDIA_RECONNECT_REQUIRED'
+          });
+        }
+        try {
+          const mediaUploadEndpoint = 'https://api.x.com/2/media/upload';
+          const mediaAuthHeader = buildXOAuthHeader('POST', mediaUploadEndpoint, k1, s1, t1, ts1);
+          const mediaId = await uploadXMedia({ imageUrl: post.image_url, oauth1Header: mediaAuthHeader });
+          mediaIds = [mediaId];
+        } catch(e) {
+          console.error('[X-SOCIAL] OAuth1 fallback media upload failed:', e.message);
+          return res.status(400).json({
+            success: false,
+            error: 'Reconnect X to enable image uploads. Your X connection was authorized before image support was added — open Integrations to reconnect.',
+            code: 'X_MEDIA_RECONNECT_REQUIRED'
+          });
+        }
       }
     }
 
@@ -7804,13 +7822,14 @@ app.get('/api/x/auth', requireAuth, (req, res) => {
   setTimeout(() => xOAuthStates.delete(state), 600000);
 
   const redirectUri = process.env.X_REDIRECT_URI || `https://${req.headers.host}/auth/x/callback`;
-  // BISECT 2026-05-05: media.write temporarily removed to test if it's causing X's
-  // 'Something went wrong' rejection. If reconnect succeeds without it — confirmed
-  // culprit. Add back once Developer Portal config is verified or API tier upgraded.
-  const scopes = ['tweet.write', 'tweet.read', 'users.read', 'offline.access'].join('%20');
-  // BISECT 2026-05-05: reverted to twitter.com host. The x.com swap was meant to fix
-  // media.write rejection but didn't — and reconnect was failing even after dropping
-  // media.write. Going back to the host that was working pre-bisect to isolate.
+  // 2026-05-05: re-added 'media.write' after web research confirmed it IS a valid X
+  // OAuth 2.0 scope (multiple X dev community posts confirm /2/media/upload works with
+  // OAuth 2.0 + media.write). The dev console scope picker doesn't list it but X's
+  // authorize endpoint accepts it. Earlier bisect dropped this concurrent with a host
+  // swap — the host swap was the actual regression; the scope removal was a false positive.
+  // With media.write, brands upload media + post tweets via their own OAuth 2.0 token,
+  // eliminating the cross-account problem with system OAuth 1.0a creds.
+  const scopes = ['tweet.write', 'tweet.read', 'users.read', 'offline.access', 'media.write'].join('%20');
   const authUrl = `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&state=${state}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
 
   res.json({ authUrl });
