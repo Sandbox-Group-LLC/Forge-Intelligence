@@ -942,3 +942,98 @@
   transform: scale(0.94);
 }
 
+/* Cluster wrapping the share button + (?) hint button. Anchored top-right of
+   image so the tooltip popover can position relative to it. */
+.sg-share-cluster {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+  z-index: 2;
+}
+/* Re-anchor the original share button to flow inside the cluster instead of
+   absolute-positioning itself — cluster owns positioning now. */
+.sg-share-cluster .sg-image-share-btn {
+  position: static;
+  top: auto;
+  right: auto;
+}
+/* (?) help button — same visual style as share button but smaller. */
+.sg-share-tip-btn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.sg-share-tip-btn:hover {
+  background: rgba(0, 0, 0, 0.75);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+/* Tooltip popover — floats below the cluster on the right edge of the image.
+   Compact, dismissable, doesn't fight the image visually. */
+.sg-share-tip-pop {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  width: 240px;
+  padding: 12px 14px 10px;
+  border: 1px solid var(--border-color, #2a2a2a);
+  border-radius: 10px;
+  background: #181818;
+  color: #e4e4e4;
+  font-size: 13px;
+  line-height: 1.45;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  z-index: 3;
+}
+.sg-share-tip-title {
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #f5f5f5;
+  margin-bottom: 6px;
+}
+.sg-share-tip-steps {
+  margin: 0;
+  padding-left: 18px;
+  color: #c8c8c8;
+}
+.sg-share-tip-steps li {
+  margin: 2px 0;
+}
+.sg-share-tip-close {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #888;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.sg-share-tip-close:hover { color: #ddd; }
+
+@media (max-width: 640px) {
+  /* On narrow screens, anchor tooltip to right edge of image and constrain
+     width so it doesn't overflow the card. */
+  .sg-share-tip-pop {
+    width: min(240px, calc(100vw - 48px));
+  }
+}
+
