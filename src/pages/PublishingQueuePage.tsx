@@ -1393,12 +1393,17 @@ ${authorFooterHtml}
                                 return result?.status === 'published' ? 'published' : '';
                               })();
 
-                              // Published + has URL → non-interactive link to the live post
-                              if (isPublished && result?.url) {
+                              // Published + has URL → non-interactive link to the live post.
+                              // Prefer logEntry.published_url (persisted in DB across sessions)
+                              // over result.url (in-memory only). On page load, past-session
+                              // publishes have only logEntry — falling back to result.url alone
+                              // makes the chip render as a toggle button, which is the bug.
+                              const liveUrl = logEntry?.published_url || result?.url;
+                              if (isPublished && liveUrl) {
                                 return (
                                   <a
                                     key={ch}
-                                    href={result.url}
+                                    href={liveUrl}
                                     target="_blank"
                                     rel="noreferrer"
                                     className={`pq-chip published`}
@@ -1712,12 +1717,17 @@ return (
                                 return result?.status === 'published' ? 'published' : '';
                               })();
 
-                              // Published + has URL → non-interactive link to the live post
-                              if (isPublished && result?.url) {
+                              // Published + has URL → non-interactive link to the live post.
+                              // Prefer logEntry.published_url (persisted in DB across sessions)
+                              // over result.url (in-memory only). On page load, past-session
+                              // publishes have only logEntry — falling back to result.url alone
+                              // makes the chip render as a toggle button, which is the bug.
+                              const liveUrl = logEntry?.published_url || result?.url;
+                              if (isPublished && liveUrl) {
                                 return (
                                   <a
                                     key={ch}
-                                    href={result.url}
+                                    href={liveUrl}
                                     target="_blank"
                                     rel="noreferrer"
                                     className={`pq-chip published`}
