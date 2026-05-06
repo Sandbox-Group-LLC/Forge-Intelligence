@@ -593,6 +593,7 @@ function PostCard({ post, authToken, xConnected, onUpdate }: { post: SocialPost;
   const [copied, setCopied] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
+  const [shareTipOpen, setShareTipOpen] = useState(false);
 
   const isPublished = post.status === 'published' && !!post.published_url;
 
@@ -731,19 +732,41 @@ function PostCard({ post, authToken, xConnected, onUpdate }: { post: SocialPost;
           {ANGLE_LABELS[post.angle] || post.angle}
         </span>
         {post.image_url && (
-          <button
-            type="button"
-            className="sg-image-share-btn"
-            onClick={() => handleShareImage(post.image_url!, post.hook || 'forge-image')}
-            title="Share image (use this to post to Instagram — long-press → Share shares the URL, this shares the image file)"
-            aria-label="Share image"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
-              <polyline points="16 6 12 2 8 6" />
-              <line x1="12" y1="2" x2="12" y2="15" />
-            </svg>
-          </button>
+          <div className="sg-share-cluster">
+            <button
+              type="button"
+              className="sg-share-tip-btn"
+              onClick={() => setShareTipOpen(v => !v)}
+              aria-label={shareTipOpen ? 'Hide Instagram instructions' : 'Show Instagram instructions'}
+              title="How to post to Instagram"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></svg>
+            </button>
+            <button
+              type="button"
+              className="sg-image-share-btn"
+              onClick={() => handleShareImage(post.image_url!, post.hook || 'forge-image')}
+              title="Share image"
+              aria-label="Share image"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+                <polyline points="16 6 12 2 8 6" />
+                <line x1="12" y1="2" x2="12" y2="15" />
+              </svg>
+            </button>
+            {shareTipOpen && (
+              <div className="sg-share-tip-pop" role="tooltip" onClick={(e) => e.stopPropagation()}>
+                <div className="sg-share-tip-title">Post to Instagram</div>
+                <ol className="sg-share-tip-steps">
+                  <li>Copy the post text below</li>
+                  <li>Tap the share icon → select Instagram</li>
+                  <li>Paste the text as your caption</li>
+                </ol>
+                <button type="button" className="sg-share-tip-close" onClick={() => setShareTipOpen(false)} aria-label="Close">×</button>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
