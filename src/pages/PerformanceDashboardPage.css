@@ -376,10 +376,12 @@
 }
 
 .perf-title-cell {
+  max-width: 300px;
+}
+.perf-title-cell-inner {
   display: flex;
   align-items: center;
   gap: 12px;
-  max-width: 300px;
 }
 
 .perf-thumb {
