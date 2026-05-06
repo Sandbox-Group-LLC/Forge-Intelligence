@@ -13346,6 +13346,11 @@ Your job:
 4. Be specific. 'Frank tightened the intro' is useless. 'Frank removed hedging language (maybe, perhaps, somewhat) that softened the core claim' is useful.
 5. Skip changes that are one-off (specific to this article only). Only surface patterns Forge could apply going forward.
 
+CRITICAL — TWO SEPARATE OUTPUTS:
+- The "sections" array reproduces the PUBLISHED ARTICLE PROSE VERBATIM. Each section is one H2/H3 from Frank's published version. The "body" field contains the EXACT prose Frank published under that heading, copied word-for-word from the published version above. Do NOT summarize. Do NOT describe what Frank changed. Do NOT write meta-commentary about Frank's pipeline operations or page infrastructure. The "body" field is the actual article content as a reader would encounter it on the page.
+- The "brainPatterns" and "brainMistakes" arrays are where you describe Frank's changes and edits. ALL change-analysis goes in those fields, NEVER in section bodies.
+- If a heading in Frank's published version is purely structural (e.g. a TL;DR block, FAQ, or CTA box), the body field still contains the literal text that appears under that heading on the page — not a description of why it was added.
+
 Return ONLY valid JSON:
 {
   "title": "article title",
@@ -13353,8 +13358,8 @@ Return ONLY valid JSON:
   "editImpactScore": 0-100,
   "sections": [
     {
-      "heading": "section heading",
-      "body": "section body text from FRANK'S EDIT (published version)",
+      "heading": "section heading from Frank's published version",
+      "body": "VERBATIM PROSE under that heading from Frank's published version — the literal article text as published, not a description of changes. If you find yourself writing 'Frank added' or 'Forge's draft did X', you are doing this WRONG — that goes in brainPatterns/brainMistakes instead.",
       "confidence": 0-100,
       "flags": []
     }
