@@ -6590,9 +6590,42 @@ app.post('/api/social-generator/publish-x/:postId', requireAuth, async (req, res
           });
         }
         try {
-          const mediaUploadEndpoint = 'https://api.x.com/2/media/upload';
+          // v1.1 media upload endpoint (despite v2 working elsewhere, v2 /2/media/upload doesn't
+          // accept multipart-friendly additional_owners). The OAuth 1.0a signature is computed
+          // against the v1.1 URL.
+          const mediaUploadEndpoint = 'https://upload.twitter.com/1.1/media/upload.json';
           const mediaAuthHeader = buildXOAuthHeader('POST', mediaUploadEndpoint, k1, s1, t1, ts1);
-          const mediaId = await uploadXMedia({ imageUrl: post.image_url, oauth1Header: mediaAuthHeader });
+
+          // Look up the brand's X user ID so we can grant them attach permission via
+          // additional_owners. Without this, X rejects the cross-user tweet POST. Cache the
+          // result back into credentials so future publishes skip this lookup.
+          let brandUserId = creds.userId || null;
+          if (!brandUserId && creds.username) {
+            try {
+              const lookupUrl = `https://api.x.com/2/users/by/username/${encodeURIComponent(creds.username)}`;
+              const lookupAuth = buildXOAuthHeader('GET', lookupUrl, k1, s1, t1, ts1);
+              const lr = await fetch(lookupUrl, { headers: { Authorization: lookupAuth } });
+              if (lr.ok) {
+                const ld = await lr.json();
+                brandUserId = ld?.data?.id || null;
+                if (brandUserId) {
+                  // Cache for next time
+                  await pool.query(
+                    `UPDATE publishing_channels SET credentials = credentials || $1 WHERE brand_profile_id = $2 AND channel = 'x'`,
+                    [JSON.stringify({ userId: brandUserId }), post.brand_profile_id]
+                  );
+                }
+              }
+            } catch (lookupErr) {
+              console.error('[X-SOCIAL] User ID lookup failed (non-fatal):', lookupErr.message);
+            }
+          }
+
+          const mediaId = await uploadXMedia({
+            imageUrl: post.image_url,
+            oauth1Header: mediaAuthHeader,
+            additionalOwners: brandUserId || undefined,
+          });
           mediaIds = [mediaId];
         } catch(e) {
           console.error('[X-SOCIAL] OAuth1 fallback media upload failed:', e.message);
@@ -7911,25 +7944,38 @@ app.get('/auth/x/callback', async (req, res) => {
 // The endpoint is multipart/form-data with fields: media (binary), media_category, media_type.
 // For tweet images we use 'tweet_image' — X then makes the media_id immediately attachable
 // to a tweet via the {media: {media_ids: [id]}} field on POST /2/tweets.
-async function uploadXMedia({ imageUrl, oauth2Token, oauth1Header }) {
+async function uploadXMedia({ imageUrl, oauth2Token, oauth1Header, additionalOwners }) {
+  // Upload an image to X and return the media_id_string.
+  //
+  // Why v1.1: X's v2 /2/media/upload demands `additional_owners` as a JSON array, which can't
+  // be expressed in multipart form-data (the only way to send binary). v1.1 accepts a
+  // comma-separated string in multipart, and v1.1 media_ids are fully accepted by the v2
+  // /2/tweets POST endpoint (same underlying media system).
+  //
+  // additional_owners (optional) — comma-separated X user IDs that are explicitly granted
+  // permission to attach this media to their own tweets. Required when the brand's OAuth 2.0
+  // user (the one posting the tweet) is different from the user whose creds upload the media
+  // (the system @makemysandbox via env-var OAuth 1.0a). Without this, X rejects the tweet
+  // POST with "One or more parameters to your request was invalid."
+
   // 1. Fetch the image bytes from the source URL (Forge's image generation pipeline)
   const imgRes = await fetch(imageUrl);
   if (!imgRes.ok) throw new Error(`Image fetch failed: ${imgRes.status}`);
-  const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
   const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
 
-  // 2. Build multipart body manually — Node 18 fetch supports FormData but the X endpoint
-  //    is finicky about field ordering and prefers explicit media_category up front.
+  // 2. Build multipart body. v1.1 expects `media` (binary) or `media_data` (base64). We use
+  //    `media_data` to keep the multipart structure simple and avoid binary-in-form quirks.
+  //    additional_owners goes in a separate field if provided.
   const boundary = '----ForgeMediaBoundary' + Math.random().toString(36).slice(2);
   const CRLF = '\r\n';
-  const parts = [
-    `--${boundary}${CRLF}Content-Disposition: form-data; name="media_category"${CRLF}${CRLF}tweet_image${CRLF}`,
-    `--${boundary}${CRLF}Content-Disposition: form-data; name="media_type"${CRLF}${CRLF}${contentType}${CRLF}`,
-    `--${boundary}${CRLF}Content-Disposition: form-data; name="media"; filename="image"${CRLF}Content-Type: ${contentType}${CRLF}${CRLF}`
-  ];
-  const head = Buffer.from(parts.join(''), 'utf8');
-  const tail = Buffer.from(`${CRLF}--${boundary}--${CRLF}`, 'utf8');
-  const body = Buffer.concat([head, imgBuffer, tail]);
+  const partsList = [];
+  if (additionalOwners) {
+    partsList.push(`--${boundary}${CRLF}Content-Disposition: form-data; name="additional_owners"${CRLF}${CRLF}${additionalOwners}${CRLF}`);
+  }
+  partsList.push(`--${boundary}${CRLF}Content-Disposition: form-data; name="media_data"${CRLF}${CRLF}${imgBuffer.toString('base64')}${CRLF}`);
+  const head = Buffer.from(partsList.join(''), 'utf8');
+  const tail = Buffer.from(`--${boundary}--${CRLF}`, 'utf8');
+  const body = Buffer.concat([head, tail]);
 
   const headers = {
     'Content-Type': `multipart/form-data; boundary=${boundary}`,
@@ -7939,13 +7985,13 @@ async function uploadXMedia({ imageUrl, oauth2Token, oauth1Header }) {
   else if (oauth1Header) headers['Authorization'] = oauth1Header;
   else throw new Error('No auth header for media upload');
 
-  const upRes = await fetch('https://api.x.com/2/media/upload', { method: 'POST', headers, body });
+  // v1.1 endpoint — same media system as v2 /tweets, but param shape is multipart-friendly
+  const uploadUrl = 'https://upload.twitter.com/1.1/media/upload.json';
+  const upRes = await fetch(uploadUrl, { method: 'POST', headers, body });
   const rawText = await upRes.text();
-  let upData;
-  try { upData = JSON.parse(rawText); } catch { upData = {}; }
+  let upData = {};
+  try { upData = JSON.parse(rawText); } catch {}
   if (!upRes.ok) {
-    // DIAG: X often returns plaintext 'Unauthorized' (no JSON) when the signature is malformed.
-    // Log the raw response body + signature inputs so we can debug.
     console.error('[X-MEDIA-DIAG] HTTP', upRes.status, '| raw body:', rawText.slice(0, 500));
     console.error('[X-MEDIA-DIAG] auth method:', oauth1Header ? 'oauth1' : 'oauth2');
     if (oauth1Header) {
@@ -7953,17 +7999,17 @@ async function uploadXMedia({ imageUrl, oauth2Token, oauth1Header }) {
         'CK=' + (process.env.X_OAUTH1CONSUMER_KEY ? 'yes(' + process.env.X_OAUTH1CONSUMER_KEY.length + ')' : 'NO'),
         'CS=' + (process.env.X_OAUTH1CONSUMER_SECRET ? 'yes(' + process.env.X_OAUTH1CONSUMER_SECRET.length + ')' : 'NO'),
         'AT=' + (process.env.X_OAUTH1ACCESS_TOKEN ? 'yes(' + process.env.X_OAUTH1ACCESS_TOKEN.length + ')' : 'NO'),
-        'AS=' + (process.env.X_OAUTH1ACCESS_SECRET ? 'yes(' + process.env.X_OAUTH1ACCESS_SECRET.length + ')' : 'NO'));
+        'AS=' + (process.env.X_OAUTH1ACCESS_SECRET ? 'yes(' + process.env.X_OAUTH1ACCESS_SECRET.length + ')' : 'NO')
+      );
       console.error('[X-MEDIA-DIAG] auth header (first 200 chars):', oauth1Header.slice(0, 200));
     }
-    const err = upData.detail || upData.title || rawText.slice(0, 200) || `HTTP ${upRes.status}`;
+    const err = (upData.errors && upData.errors[0] && upData.errors[0].message) || upData.detail || upData.title || rawText.slice(0, 200) || `HTTP ${upRes.status}`;
     throw new Error(`X media upload failed: ${err}`);
   }
-  const mediaId = upData.data?.id || upData.media_id_string || upData.id;
+  const mediaId = upData.media_id_string || upData.data?.id || upData.media_id || upData.id;
   if (!mediaId) throw new Error(`X media upload returned no media id: ${JSON.stringify(upData)}`);
   return mediaId;
 }
-
 // Helper: refresh X OAuth 2.0 token
 async function refreshXOAuth2Token(refreshToken) {
   const clientId = process.env.X_OAUTH2CLIENT_ID;
