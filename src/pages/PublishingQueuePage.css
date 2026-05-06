@@ -1920,7 +1920,8 @@
 .pq-campaign-group-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .pq-schedule-campaign-btn {
