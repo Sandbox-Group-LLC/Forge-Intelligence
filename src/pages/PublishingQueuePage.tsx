@@ -1500,11 +1500,20 @@ ${authorFooterHtml}
                           <span className={`pq-result-status live-${liveStatus}`}>
                             {isDeleted ? '🗑 Deleted' : isUnknown ? '⚠ Unknown' : '✓ Live'}
                           </span>
-                          {res.url && !isDeleted && !isUnknown && (
-                            <a href={res.url} target="_blank" rel="noreferrer" className="pq-result-url">
-                              View post <ExternalLink />
-                            </a>
-                          )}
+                          {(() => {
+                            // Same fall-through as the channel chip: publish_results.url is only
+                            // populated by some channels (Ghost yes, X/LinkedIn no) so on reload
+                            // only Ghost would render "View post". The persisted URL for the rest
+                            // lives in publish_log.published_url — prefer that, fall back to the
+                            // in-memory result if for some reason the log row hasn't materialized.
+                            const viewUrl = log?.published_url || res.url;
+                            if (!viewUrl || isDeleted || isUnknown) return null;
+                            return (
+                              <a href={viewUrl} target="_blank" rel="noreferrer" className="pq-result-url">
+                                View post <ExternalLink />
+                              </a>
+                            );
+                          })()}
                           {!isDeleted && !isUnknown && (() => {
                             const bSlug = (item.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
                             const aSlug = (item.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
@@ -1824,11 +1833,20 @@ return (
                           <span className={`pq-result-status live-${liveStatus}`}>
                             {isDeleted ? '🗑 Deleted' : isUnknown ? '⚠ Unknown' : '✓ Live'}
                           </span>
-                          {res.url && !isDeleted && !isUnknown && (
-                            <a href={res.url} target="_blank" rel="noreferrer" className="pq-result-url">
-                              View post <ExternalLink />
-                            </a>
-                          )}
+                          {(() => {
+                            // Same fall-through as the channel chip: publish_results.url is only
+                            // populated by some channels (Ghost yes, X/LinkedIn no) so on reload
+                            // only Ghost would render "View post". The persisted URL for the rest
+                            // lives in publish_log.published_url — prefer that, fall back to the
+                            // in-memory result if for some reason the log row hasn't materialized.
+                            const viewUrl = log?.published_url || res.url;
+                            if (!viewUrl || isDeleted || isUnknown) return null;
+                            return (
+                              <a href={viewUrl} target="_blank" rel="noreferrer" className="pq-result-url">
+                                View post <ExternalLink />
+                              </a>
+                            );
+                          })()}
                           {!isDeleted && !isUnknown && (() => {
                             const bSlug = (item.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
                             const aSlug = (item.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
