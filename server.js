@@ -3874,7 +3874,7 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
 
       // Check if brand already exists — UPDATE in place to preserve UUID and all content references
       const existing = await pool.query(
-        `SELECT id, version FROM brand_profiles WHERE brand_url = $1 AND is_active = true ORDER BY version DESC LIMIT 1`,
+        `SELECT id, version, profile_data FROM brand_profiles WHERE brand_url = $1 AND is_active = true ORDER BY version DESC LIMIT 1`,
         [brandUrl]
       );
 
@@ -3882,13 +3882,43 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
       if (existing.rows.length > 0) {
         // UPDATE existing — preserves UUID, content tables, queue, analytics, brain data
         const ex = existing.rows[0];
+
+        // ── Preserve customer-managed fields across rescan ───────────────────────
+        // The rescan synthesizes a fresh profileData from scratch, but customers may
+        // have manually corrected fields (wrong persona, missed competitor, brand
+        // domain quirk) or the founder may have stamped strategic_injections. Without
+        // preservation every rescan wipes those edits — a trust killer that makes
+        // customers afraid to rerun their own brain.
+        //
+        // Two-tier preservation:
+        //   1) `strategic_injections`: append-only log, copied verbatim
+        //   2) `manual_overrides`: JSONB whose top-level keys overwrite the
+        //      synthesized fields. Example:
+        //        {"discoveredCompetitors": [...corrected list...]}
+        //      lets a customer permanently override what Context Hub re-derives.
+        const oldProfile = ex.profile_data || {};
+        const preservedKeys = [];
+        if (oldProfile.strategic_injections) {
+          profileData.strategic_injections = oldProfile.strategic_injections;
+          preservedKeys.push('strategic_injections');
+        }
+        if (oldProfile.manual_overrides && typeof oldProfile.manual_overrides === 'object') {
+          profileData.manual_overrides = oldProfile.manual_overrides;
+          for (const [k, v] of Object.entries(oldProfile.manual_overrides)) {
+            if (k === 'manual_overrides' || k === 'strategic_injections') continue;
+            profileData[k] = v;
+          }
+          preservedKeys.push(`manual_overrides(${Object.keys(oldProfile.manual_overrides).length})`);
+        }
+
         const updated = await pool.query(
           `UPDATE brand_profiles SET profile_data = $1, brand_name = $2, version = $3, cache_status = 'fresh', updated_at = NOW()
            WHERE id = $4 RETURNING *`,
           [JSON.stringify(profileData), resolvedBrandName, ex.version + 1, ex.id]
         );
         r = updated.rows[0];
-        console.log(`[Context Hub] Updated existing brand ${r.id} to v${r.version}`);
+        const preservedNote = preservedKeys.length ? ` [preserved: ${preservedKeys.join(', ')}]` : '';
+        console.log(`[Context Hub] Updated existing brand ${r.id} to v${r.version}${preservedNote}`);
       } else {
         // INSERT new — first-time analysis for this URL
         const versionResult = await pool.query(
