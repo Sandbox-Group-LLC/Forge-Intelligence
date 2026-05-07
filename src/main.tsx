@@ -6,6 +6,7 @@ import WelcomePage from './pages/WelcomePage';
 import { AppProvider } from './context/AppContext';
 import Landing from './Landing';
 import Product from './Product';
+import Faq from './Faq';
 import ContextAgentPage from './pages/ContextAgentPage';
 import GeoStrategistPage from './pages/GeoStrategistPage';
 import AuthenticityEnricherPage from './pages/AuthenticityEnricherPage';
@@ -81,6 +82,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/acceptable-use" element={<AcceptableUsePage />} />
         <Route path="/product" element={<Product />} />
+          <Route path="/faq" element={<Faq />} />
         <Route path="/welcome" element={<WelcomePage />} />
 
         {/* App — all product routes live under /app/ */}
