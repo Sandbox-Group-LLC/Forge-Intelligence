@@ -14108,7 +14108,16 @@ app.get('/api/geo/opportunities/:brandProfileId', requireAuth, async (req, res) 
             };
           })(), avgScore: parseFloat(r.avg_score),
           quickWin: r.quick_win,
-          topicalAuthority: r.topical_authority_context ? JSON.parse(r.topical_authority_context) : null,
+          topicalAuthority: (() => {
+          // Defensive: topical_authority_context may be JSON object, JSON string, or plain text
+          // (older inserts and admin/relay inserts have stored plain strings here). Wrap in
+          // try/catch so a single bad row never breaks the entire endpoint response.
+          const v = r.topical_authority_context;
+          if (!v) return null;
+          if (typeof v === 'object') return v;
+          try { return JSON.parse(v); }
+          catch { return { note: String(v) }; }
+        })(),
           status: r.status, discoveredAt: r.discovered_at, statusChangedAt: r.status_changed_at,
           source: r.source || null,
           deliverable: r.deliverable || null,
@@ -14168,7 +14177,16 @@ app.get('/api/geo/opportunities/:brandProfileId', requireAuth, async (req, res) 
           };
         })(), avgScore: parseFloat(r.avg_score),
         quickWin: r.quick_win,
-        topicalAuthority: r.topical_authority_context ? JSON.parse(r.topical_authority_context) : null,
+        topicalAuthority: (() => {
+          // Defensive: topical_authority_context may be JSON object, JSON string, or plain text
+          // (older inserts and admin/relay inserts have stored plain strings here). Wrap in
+          // try/catch so a single bad row never breaks the entire endpoint response.
+          const v = r.topical_authority_context;
+          if (!v) return null;
+          if (typeof v === 'object') return v;
+          try { return JSON.parse(v); }
+          catch { return { note: String(v) }; }
+        })(),
         status: r.status, discoveredAt: r.discovered_at, statusChangedAt: r.status_changed_at,
         // Founder-injected metadata: lets the UI badge pillar topics, FAQs, and priority levels
         source: r.source || null,
