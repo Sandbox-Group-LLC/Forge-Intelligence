@@ -846,7 +846,7 @@ function ComplianceGateContent() {
                         editing — in that case HighlightedBody renders. When there's no flag and
                         the user has clicked Edit (manualEditSections[idx]), just the textarea. */}
                     {isEditing && !!flag && (
-                      <HighlightedBody body={section.body || section.content || ''} flag={flag} />
+                      <HighlightedBody body={editedSections[idx] ?? section.body ?? section.content ?? ''} flag={flag} />
                     )}
 
                     {isEditing ? (
@@ -900,7 +900,7 @@ function ComplianceGateContent() {
                         )}
                       </div>
                     ) : (
-                      <HighlightedBody body={section.body || section.content || ''} flag={null} />
+                      <HighlightedBody body={editedSections[idx] ?? section.body ?? section.content ?? ''} flag={null} />
                     )}
                     {/* Section footer — confidence + decision status */}
                     <div className="comp-section-footer">
