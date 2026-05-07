@@ -268,12 +268,14 @@ function SocialGeneratorContent() {
           // images that successfully generated server-side never make it to the UI. After 60s,
           // hit /recent and merge any image_urls that have been persisted to the DB.
           const batchId = parsed.batchId;
-          if (batchId && brandProfileId) {
+          if (batchId && selectedBrainId && authToken) {
             setTimeout(async () => {
               try {
                 const stillPending = (postsRef.current || []).some((p: any) => !p.image_url && p.batch_id === batchId);
                 if (!stillPending) return;
-                const r2 = await authFetch(`/api/social-generator/recent/${brandProfileId}`);
+                const r2 = await fetch(`/api/social-generator/recent/${selectedBrainId}`, {
+                  headers: { 'Authorization': `Bearer ${authToken}` }
+                });
                 const d2 = await r2.json();
                 if (d2.success && Array.isArray(d2.batches)) {
                   const batch = d2.batches.find((b: any) => b.batch_id === batchId);
