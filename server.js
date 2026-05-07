@@ -7663,7 +7663,7 @@ app.get('/api/compliance/latest/:brandProfileId', requireAuth, async (req, res) 
 
 // POST compliance critique — Claude reads article + brain mistakes, returns report
 app.post('/api/compliance/rewrite-section', requireAuth, async (req, res) => {
-  const { sectionBody, suggestion, brandProfileId } = req.body;
+  const { sectionBody, suggestion, brandProfileId, source } = req.body;
   if (!sectionBody || !suggestion) return res.status(400).json({ error: 'sectionBody and suggestion required' });
   try {
     const profileRes = brandProfileId
@@ -7672,10 +7672,25 @@ app.post('/api/compliance/rewrite-section', requireAuth, async (req, res) => {
     const voiceHint = profileRes.rows[0]?.profile_data?.voice_profile?.tone
       ? `Brand tone: ${profileRes.rows[0].profile_data.voice_profile.tone}.`
       : '';
+
+    // Citation integration block — only added when a source is provided. Previously
+    // this endpoint silently dropped the `source` param the UI was sending, so even
+    // after the user clicked Find Sources and picked one, the rewrite ran without
+    // ever seeing the URL. Users had to manually paste the citation, and the stitch
+    // was awkward 9/10 times — the 90% rework rate. This block makes the citation
+    // a first-class input with explicit integration rules.
+    let citationBlock = '';
+    if (source && source.url) {
+      const titleClean = (source.title || '').replace(/\s+/g, ' ').trim();
+      const yearStr = source.year ? ` (${source.year})` : '';
+      const domainStr = source.domain ? ` — ${source.domain}` : '';
+      citationBlock = `\n\nCITATION TO INTEGRATE:\nTitle: "${titleClean}"${yearStr}\nURL: ${source.url}${domainStr}\n\nINTEGRATION RULES:\n- Add the citation as a markdown link inline at the most natural anchor point (after the claim it supports)\n- Format options: text inline as ([Title](URL)), or for direct attribution: "According to [Title](URL), ..."\n- Match the surrounding sentence rhythm — do not stitch the URL in awkwardly or as a parenthetical after the section is otherwise complete\n- Preserve all other prose unchanged. The citation is the ONLY structural change.`;
+    }
+
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 1024,
-      messages: [{ role: 'user', content: `You are an editorial AI. Rewrite the following article section to incorporate the editorial suggestion. Preserve the author's voice and intent. Return only the rewritten section body — no commentary, no preamble, no labels.\n\n${voiceHint}\n\nORIGINAL SECTION:\n${sectionBody}\n\nEDITORIAL SUGGESTION:\n${suggestion}\n\nREWRITTEN SECTION:` }]
+      messages: [{ role: 'user', content: `You are an editorial AI. Rewrite the following article section to incorporate the editorial suggestion${source ? ' AND integrate the provided citation cleanly' : ''}. Preserve the author's voice and intent. Return only the rewritten section body — no commentary, no preamble, no labels.\n\n${voiceHint}\n\nORIGINAL SECTION:\n${sectionBody}\n\nEDITORIAL SUGGESTION:\n${suggestion}${citationBlock}\n\nREWRITTEN SECTION:` }]
     });
     const rewritten = response.content[0]?.text?.trim();
     if (!rewritten) return res.status(500).json({ success: false, error: 'AI returned empty response' });
@@ -7781,132 +7796,169 @@ const LOW_QUALITY_CITATION_DOMAINS = new Set([
   // pages/articles are fine, but /pulse/ and /posts/ URLs come back as random user posts)
 ]);
 
-app.post('/api/compliance/find-sources', requireAuth, async (req, res) => {
-  const { claim, sectionBody, brandProfileId } = req.body;
-  if (!claim && !sectionBody) return res.status(400).json({ error: 'claim or sectionBody required' });
-  try {
-    // Pull brand context for self-domain exclusion and claim disambiguation.
-    // Without this, Perplexity can (and does) return forgeintelligence.ai as a source for
-    // a Forge Intelligence article's own claim — instant trust collapse for the user.
-    let brandDomain = '';
-    let brandName = '';
-    let factualGround = null;
-    if (brandProfileId) {
-      try {
-        const r = await pool.query(
-          'SELECT brand_name, brand_url, settings FROM brand_profiles WHERE id = $1',
-          [brandProfileId]
-        );
-        if (r.rows[0]) {
-          brandName = r.rows[0].brand_name || '';
-          // Extract bare domain (drop scheme + www + trailing path)
-          const rawUrl = r.rows[0].brand_url || '';
-          brandDomain = rawUrl.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].toLowerCase();
-          factualGround = r.rows[0].settings?.factualGround || null;
-        }
-      } catch(e) { /* non-fatal — proceed without brand context */ }
-    }
+async function findCitationSources({ claim, sectionBody, brandProfileId, maxResults = 3 }) {
+  // Pull brand context for self-domain exclusion.
+  let brandDomain = '';
+  if (brandProfileId) {
+    try {
+      const r = await pool.query('SELECT brand_url FROM brand_profiles WHERE id = $1', [brandProfileId]);
+      if (r.rows[0]) {
+        const rawUrl = r.rows[0].brand_url || '';
+        brandDomain = rawUrl.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].toLowerCase();
+      }
+    } catch(e) { /* non-fatal */ }
+  }
 
-    // Truncate claim and section separately rather than concatenating. Claim is the authoritative
-    // thing to verify; sectionBody is context for understanding the claim, not part of the search.
-    const claimText = (claim || '').trim().slice(0, 500);
-    const sectionContext = (sectionBody || '').trim().slice(0, 800);
+  const claimText = (claim || '').trim().slice(0, 500);
+  const sectionContext = (sectionBody || '').trim().slice(0, 800);
 
-    // Per-claim system prompt. Guides sonar-pro's reasoning, not a generic "be helpful" preamble.
-    const systemPrompt = `You are a citation researcher finding sources for a B2B thought-leadership article. Return sources that ACTUALLY SUPPORT the specific claim — not just topically-related articles. Prioritize in this order:
+  const systemPrompt = `You are a citation researcher finding sources for a B2B thought-leadership article. Return sources that ACTUALLY SUPPORT the specific claim — not just topically-related articles. Prioritize in this order:
 1. Primary sources (peer-reviewed research, government data, original surveys, SEC filings, company earnings reports)
 2. Industry research firms (Gartner, Forrester, IDC, McKinsey, Deloitte, HubSpot/Salesforce/similar with original data)
 3. Established trade publications (HBR, MIT Sloan, Wall Street Journal, Bloomberg, industry-leader publications)
 4. Authoritative trade publications with named authors and clear methodology
 
-Avoid: forums (Quora, Reddit, Stack Exchange), personal blogs, AI-generated content farms, press release aggregators, Wikipedia (except for well-sourced definitional claims), and LinkedIn user posts. Avoid sources older than 3 years for statistical claims unless they remain industry-standard references.
+Avoid: forums (Quora, Reddit, Stack Exchange), personal blogs, AI-generated content farms, press release aggregators, Wikipedia (except for well-sourced definitional claims), and LinkedIn user posts. Avoid sources older than 3 years for trend claims; older sources are acceptable for definitional or historical claims.
 
-If the claim is definitional (e.g. "X is defined as..."), return authoritative definitional sources. If statistical (e.g. "73% of..."), return the primary survey/study. If a trend (e.g. "X is growing"), return recent industry reports with specific data points.`;
+If the claim is definitional (e.g. "X is defined as..."), return authoritative definitional sources. If statistical (e.g. "73% of..."), return the primary survey/study. If a trend (e.g. "X is growing"), return recent industry reports. If a company-specific claim, return that company's own statement or filing.`;
 
-    // Build claim-type hints so sonar-pro knows which strategy to apply.
-    const claimTypeHints = [];
-    if (/\b\d+\s*%|\b\d+x|\b\d+-fold/.test(claimText)) claimTypeHints.push('STATISTICAL — return the primary survey or study containing this exact data point.');
-    if (/\bis defined as|means that|refers to\b/i.test(claimText)) claimTypeHints.push('DEFINITIONAL — return an authoritative industry or academic definition source.');
-    if (/\bincreasing|growing|declining|trending|shift toward\b/i.test(claimText)) claimTypeHints.push('TREND — return recent (past 24 months) industry reports with data.');
-    if (/\breport(ed)?|announced|stated\b/i.test(claimText) && /[A-Z][a-zA-Z]+\s+(Inc|LLC|Corp|Ltd)/.test(claimText)) claimTypeHints.push('COMPANY-SPECIFIC — return that company\'s own press release, earnings, or official blog.');
+  const claimTypeHints = [];
+  if (/\b\d+\s*%|\b\d+x|\b\d+-fold/.test(claimText)) claimTypeHints.push('STATISTICAL — return the primary survey or study containing this exact data point.');
+  if (/\bis defined as|means that|refers to\b/i.test(claimText)) claimTypeHints.push('DEFINITIONAL — return an authoritative industry or academic definition source.');
+  if (/\bincreasing|growing|declining|trending|shift toward\b/i.test(claimText)) claimTypeHints.push('TREND — return recent (past 24 months) industry reports with data.');
+  if (/\breport(ed)?|announced|stated\b/i.test(claimText) && /[A-Z][a-zA-Z]+\s+(Inc|LLC|Corp|Ltd)/.test(claimText)) claimTypeHints.push("COMPANY-SPECIFIC — return that company's own press release, earnings, or official blog.");
 
-    // User message — explicit structure.
-    const userMessage = `CLAIM TO SUPPORT:\n"${claimText}"\n\nCONTEXT (surrounding article text, for understanding — do NOT cite this):\n${sectionContext}\n${claimTypeHints.length ? '\nCLAIM TYPE: ' + claimTypeHints.join(' ') : ''}${brandDomain ? `\n\nDO NOT return sources from these domains (self-citation or untrusted): ${brandDomain}${factualGround?.competitors ? ', ' + (Array.isArray(factualGround.competitors) ? factualGround.competitors.join(', ') : factualGround.competitors) : ''}` : ''}${brandName && factualGround?.foundingStory ? `\n\nNOTE: "${brandName}" refers specifically to the company with this founding story — "${String(factualGround.foundingStory).slice(0,200)}". Do not return sources about other similarly-named companies.` : ''}\n\nReturn 3-5 credible sources that actually contain data or analysis supporting this specific claim.`;
+  const userMessage = `CLAIM TO SUPPORT:\n"${claimText}"\n\nCONTEXT (surrounding article text, for understanding — do NOT cite this):\n${sectionContext}\n${claimTypeHints.length ? '\nCLAIM TYPE: ' + claimTypeHints.join(' ') : ''}`;
 
-    let sonarData = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const sonarRes = await fetch('https://api.perplexity.ai/chat/completions', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'sonar-pro',  // reasoning-tier Sonar — significantly better citation quality vs. base 'sonar'
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userMessage }
-          ],
-          search_recency_filter: 'year',  // bias toward recent sources; claim-type hints can override for definitional
-        })
-      });
-      if (sonarRes.status === 429) {
-        await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
-        continue;
-      }
-      if (!sonarRes.ok) {
-        const err = await sonarRes.text();
-        console.error('[FIND-SOURCES] Perplexity', sonarRes.status, err.slice(0, 200));
-        return res.status(500).json({ success: false, error: `Source search failed (${sonarRes.status}) — try again` });
-      }
-      sonarData = await sonarRes.json();
-      break;
+  let sonarData = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const sonarRes = await fetch('https://api.perplexity.ai/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'sonar-pro',
+        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }],
+        search_recency_filter: 'year',
+      })
+    });
+    if (sonarRes.status === 429) { await new Promise(r => setTimeout(r, 1500 * (attempt + 1))); continue; }
+    if (!sonarRes.ok) {
+      const err = await sonarRes.text();
+      console.error('[FIND-SOURCES] Perplexity', sonarRes.status, err.slice(0, 200));
+      throw new Error(`Source search failed (${sonarRes.status})`);
     }
+    sonarData = await sonarRes.json();
+    break;
+  }
+  if (!sonarData) throw new Error('Source search timed out');
 
-    if (!sonarData) return res.status(500).json({ success: false, error: 'Source search timed out — try again' });
+  const searchResults = sonarData.search_results || [];
+  const getDomain = (url) => { try { return new URL(url).hostname.replace(/^www\./, '').toLowerCase(); } catch { return ''; } };
+  const seenDomains = new Set();
+  const filtered = [];
+  for (const r of searchResults) {
+    const url = r.url || '';
+    if (!url) continue;
+    const domain = getDomain(url);
+    if (brandDomain && domain === brandDomain) continue;
+    if (seenDomains.has(domain)) continue;
+    if (LOW_QUALITY_CITATION_DOMAINS.has(domain)) continue;
+    if (domain === 'linkedin.com' && /\/(pulse|posts)\//i.test(url)) continue;
+    seenDomains.add(domain);
+    filtered.push({
+      title: r.title || '',
+      url,
+      snippet: r.snippet || '',
+      year: r.date ? String(r.date).slice(0, 4) : (r.last_updated ? String(r.last_updated).slice(0, 4) : ''),
+      domain,
+    });
+    if (filtered.length >= maxResults) break;
+  }
+  console.log(`[FIND-SOURCES] claim="${claimText.slice(0,80)}..." returned=${filtered.length} (from ${searchResults.length} raw)`);
+  return filtered;
+}
 
-    const searchResults = sonarData.search_results || [];
-
-    // Filter + dedupe + rank.
-    const getDomain = (url) => {
-      try { return new URL(url).hostname.replace(/^www\./, '').toLowerCase(); } catch { return ''; }
-    };
-    const seenDomains = new Set();
-    const filtered = [];
-    for (const r of searchResults) {
-      const url = r.url || '';
-      if (!url) continue;
-      const domain = getDomain(url);
-      // Self-citation guard
-      if (brandDomain && domain === brandDomain) continue;
-      // Dedupe by domain — don't return 3 articles from the same site
-      if (seenDomains.has(domain)) continue;
-      // Drop known low-quality domains
-      if (LOW_QUALITY_CITATION_DOMAINS.has(domain)) continue;
-      // Drop LinkedIn user posts specifically (company pages/articles are fine; /pulse/ and /posts/ are user posts)
-      if (domain === 'linkedin.com' && /\/(pulse|posts)\//i.test(url)) continue;
-      seenDomains.add(domain);
-      filtered.push({
-        title: r.title || '',
-        url,
-        snippet: r.snippet || '',
-        year: r.date ? String(r.date).slice(0, 4) : (r.last_updated ? String(r.last_updated).slice(0, 4) : ''),
-        domain,
-      });
-      if (filtered.length >= 5) break;
-    }
-
-    if (!filtered.length) {
-      console.log('[FIND-SOURCES] No qualifying sources after filtering. Raw count:', searchResults.length);
+app.post('/api/compliance/find-sources', requireAuth, async (req, res) => {
+  const { claim, sectionBody, brandProfileId } = req.body;
+  if (!claim && !sectionBody) return res.status(400).json({ error: 'claim or sectionBody required' });
+  try {
+    const sources = await findCitationSources({ claim, sectionBody, brandProfileId, maxResults: 3 });
+    if (!sources.length) {
       return res.json({ success: false, error: 'No credible sources found for this claim. Try rewriting without a citation, or rephrase to be less specific.' });
     }
-
-    console.log(`[FIND-SOURCES] claim="${claimText.slice(0,80)}..." returned=${filtered.length} (from ${searchResults.length} raw)`);
-    res.json({ success: true, sources: filtered.slice(0, 3) });
+    res.json({ success: true, sources });
   } catch (e) {
     console.error('[FIND-SOURCES] caught:', e.message);
     res.status(500).json({ success: false, error: e.message });
   }
 });
 
-// POST /api/compliance/rewrite-section — AI rewrites one section using a compliance suggestion
+// ── One-shot verify-and-rewrite ────────────────────────────────────────────────
+// The asymmetric-friction fix: instead of forcing the user through find-sources →
+// pick → click apply → manually verify the citation got integrated cleanly (the 4-step
+// flow that produced a 90% rework rate), this endpoint does all of it in one call.
+// Sonar finds the top source, the rewriter integrates the citation inline using the
+// same prompt rules as the manual flow, and the response is a one-click-applicable
+// section body. The user reviews and approves — they don't assemble.
+//
+// Falls back to soften-without-citation behavior if Sonar returns no qualifying source,
+// so the UX is graceful when the claim genuinely can't be verified.
+app.post('/api/compliance/verify-and-rewrite', requireAuth, async (req, res) => {
+  const { sectionBody, claim, suggestion, brandProfileId, sectionHeading } = req.body;
+  if (!sectionBody || !claim || !suggestion) {
+    return res.status(400).json({ error: 'sectionBody, claim, and suggestion required' });
+  }
+  try {
+    // Step 1: Sonar lookup. maxResults=1 — we want the single best source, not a menu.
+    let topSource = null;
+    try {
+      const sources = await findCitationSources({ claim, sectionBody, brandProfileId, maxResults: 1 });
+      topSource = sources[0] || null;
+    } catch(searchErr) {
+      // Sonar failure should not block the rewrite — fall through to soften path.
+      console.warn('[VERIFY-AND-REWRITE] Sonar lookup failed, falling back to soften:', searchErr.message);
+    }
+
+    // Step 2: Pull voice context.
+    const profileRes = brandProfileId
+      ? await pool.query('SELECT profile_data FROM brand_profiles WHERE id = $1', [brandProfileId])
+      : { rows: [] };
+    const voiceHint = profileRes.rows[0]?.profile_data?.voice_profile?.tone
+      ? `Brand tone: ${profileRes.rows[0].profile_data.voice_profile.tone}.`
+      : '';
+
+    // Step 3: Build prompt — citation block when source found, soften block when not.
+    let citationBlock = '';
+    let mode = 'softened';
+    if (topSource && topSource.url) {
+      mode = 'cited';
+      const titleClean = (topSource.title || '').replace(/\s+/g, ' ').trim();
+      const yearStr = topSource.year ? ` (${topSource.year})` : '';
+      const domainStr = topSource.domain ? ` — ${topSource.domain}` : '';
+      citationBlock = `\n\nVERIFIED SOURCE TO INTEGRATE:\nTitle: "${titleClean}"${yearStr}\nURL: ${topSource.url}${domainStr}\n\nINTEGRATION RULES:\n- Add the citation as a markdown link inline at the most natural anchor point (after the claim it supports)\n- Format options: "([Title](URL))" inline, or "According to [Title](URL), ..." for direct attribution\n- Match surrounding sentence rhythm — do not stitch the URL in awkwardly\n- Preserve all other prose unchanged. The citation is the ONLY structural change.`;
+    } else {
+      citationBlock = `\n\nNO VERIFIED SOURCE FOUND — SOFTEN THE CLAIM:\n- Rewrite to remove specific named-third-party assertions that can't be verified\n- Use hedged language like "organizations including [name] have explored this area publicly" or "this is a well-documented topic across industry research"\n- Do NOT invent or infer URLs, dates, or publication titles\n- Preserve all other prose unchanged.`;
+    }
+
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: `You are an editorial AI. Rewrite the following article section to incorporate the editorial suggestion. ${mode === 'cited' ? 'A verified source has been provided — integrate it cleanly.' : 'No verified source was found — soften the claim instead of fabricating one.'} Preserve the author's voice and intent. Return only the rewritten section body — no commentary, no preamble, no labels.\n\n${voiceHint}\n\nSECTION HEADING: ${sectionHeading || 'Untitled'}\n\nORIGINAL SECTION:\n${sectionBody}\n\nFLAGGED CLAIM:\n"${claim}"\n\nEDITORIAL SUGGESTION:\n${suggestion}${citationBlock}\n\nREWRITTEN SECTION:` }]
+    });
+    const rewritten = response.content[0]?.text?.trim();
+    if (!rewritten) return res.status(500).json({ success: false, error: 'AI returned empty response' });
+
+    res.json({
+      success: true,
+      rewritten,
+      mode,                  // 'cited' or 'softened'
+      source: topSource,     // null when softened, full source object when cited
+    });
+  } catch (e) {
+    console.error('[VERIFY-AND-REWRITE]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
 
 app.post('/api/compliance/critique', requireAuth, async (req, res) => {
   const { brandProfileId, contentId } = req.body;
