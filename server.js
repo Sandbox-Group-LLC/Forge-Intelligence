@@ -1853,6 +1853,18 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
 
     if (!matchedBrand) return res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 
+    // ── Canonicalize URL via 301 redirect ────────────────────────────────────
+    // Same article was accessible at /articles/forge-intelligence/... AND
+    // /articles/forgeintelligence-ai/... — Google saw two copies and flagged
+    // "Duplicate without user-selected canonical". Force the canonical brand_url-based
+    // slug for any request that came in via a different valid slug. The publish flow,
+    // sitemap, and IndexNow all use the brand_url-based form, so this is the SSOT.
+    const canonicalBrandSlug = (matchedBrand.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
+    if (canonicalBrandSlug && brandSlug !== canonicalBrandSlug) {
+      const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+      return res.redirect(301, `/articles/${canonicalBrandSlug}/${articleSlug}${qs}`);
+    }
+
     const safeId = matchedBrand.id.replace(/-/g, '_');
     const articlesRes = await pool.query(`SELECT * FROM generated_content_${safeId} ORDER BY created_at DESC`);
     let article = null;
@@ -13060,11 +13072,14 @@ app.get('/sitemap.xml', async (req, res) => {
   // Pull the Forge Intelligence brand's own published articles so Google indexes them.
   // Only this brand's articles (not customer brands) — customer articles live on their own domains.
   try {
-    const brandRes = await pool.query(`SELECT id, brand_name FROM brand_profiles WHERE brand_name = 'Forge Intelligence' LIMIT 1`);
+    const brandRes = await pool.query(`SELECT id, brand_name, brand_url FROM brand_profiles WHERE brand_name = 'Forge Intelligence' LIMIT 1`);
     if (brandRes.rows.length) {
       const brand = brandRes.rows[0];
       const safeId = brand.id.replace(/-/g, '_');
-      const brandSlug = (brand.brand_name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      // Canonical slug must match the publish flow's brand_url-based slug (server.js L10184).
+      // Mismatch causes Google Search Console to flag "Duplicate without user-selected canonical"
+      // because the published/shared URLs and the sitemap point at different paths.
+      const brandSlug = (brand.brand_url || brand.brand_name || 'brand').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
       const articlesRes = await pool.query(
         `SELECT title, created_at, updated_at FROM generated_content_${safeId} WHERE compliance_status IN ('approved', 'ready') ORDER BY created_at DESC LIMIT 500`
       ).catch(() => ({ rows: [] }));
@@ -13150,13 +13165,14 @@ app.post('/api/admin/indexnow/backfill', express.json({ limit: '50kb' }), async 
     // so we never submit them here. Their real domains should be pinging IndexNow on their own.
     const FORGE_OWN_BRAND_ID = 'cde5feeb-b3d7-4990-adee-a54977ab9c52';
     const brandRes = await pool.query(
-      `SELECT brand_name FROM brand_profiles WHERE id = $1`,
+      `SELECT brand_name, brand_url FROM brand_profiles WHERE id = $1`,
       [FORGE_OWN_BRAND_ID]
     );
     if (!brandRes.rows.length) return res.status(404).json({ error: 'Forge Intelligence brand not found' });
 
     const safeId = FORGE_OWN_BRAND_ID.replace(/-/g, '_');
-    const brandSlug = (brandRes.rows[0].brand_name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    // Canonical slug — must match publish flow + sitemap (brand_url-based)
+    const brandSlug = (brandRes.rows[0].brand_url || brandRes.rows[0].brand_name || 'brand').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
 
     const articlesRes = await pool.query(
       `SELECT id, title FROM generated_content_${safeId}
