@@ -327,6 +327,41 @@ function ComplianceGateContent() {
     finally { setFindingSourcesIdx(null); }
   };
 
+  // One-shot verify-and-rewrite. Calls the server endpoint that does Sonar lookup +
+  // citation integration in one pass, returning a one-click-applicable rewrite. This
+  // is the friction-asymmetry fix: the previous flow required Find Sources → pick →
+  // Apply → manually verify the stitch, with a 90% rework rate. This collapses to one
+  // human action (review the result), and falls back to soften behavior if Sonar found
+  // no usable source.
+  const verifyAndCite = async (idx: number, sectionBody: string, claim: string, suggestion: string, sectionHeading?: string) => {
+    setRewritingIdx(idx);
+    setError('');
+    try {
+      const r = await authFetch('/api/compliance/verify-and-rewrite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sectionBody, claim, suggestion, brandProfileId, sectionHeading }),
+      });
+      const d = await r.json();
+      if (d.success && d.rewritten) {
+        setEditedSections(p => ({ ...p, [idx]: d.rewritten }));
+        setRewrittenSections(p => new Set([...p, idx]));
+        // Clear any pending source-picker state — we just bypassed it.
+        setSourcesMap(p => { const n = {...p}; delete n[idx]; return n; });
+        // Surface mode so the user knows whether a citation was integrated or claim was softened
+        if (d.mode === 'softened') {
+          setError('No verified source found — claim has been softened instead of cited.');
+        }
+      } else {
+        setError('Verify & Cite failed: ' + (d.error || 'server error'));
+      }
+    } catch (e: any) {
+      setError('Verify & Cite failed: ' + (e?.message || 'unknown error'));
+    } finally {
+      setRewritingIdx(null);
+    }
+  };
+
   const acceptSuggestion = async (idx: number, sectionBody: string, _reason: string, suggestion: string) => {
     setRewritingIdx(idx);
     try {
@@ -671,15 +706,30 @@ function ComplianceGateContent() {
                           <div className="comp-flag-suggestion-wrap">
                             <div className="comp-flag-suggestion">{flag.suggestion}</div>
                             <div className="comp-flag-actions-row" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                              {/* Find Sources for factual claims */}
-                              {(flag.type === 'factual_claim' || flag.type === 'legal_risk') && !sourcesMap[idx] && (
+                              {/* Primary action for factual_claim/legal_risk: one-shot Verify & Cite.
+                                  Sonar lookup + citation integration in one click. Falls back to soften if no source found.
+                                  Hidden once a manual source list is open (sourcesMap) — user is in manual flow. */}
+                              {(flag.type === 'factual_claim' || flag.type === 'legal_risk') && !sourcesMap[idx] && !rewrittenSections.has(idx) && (
+                                <button
+                                  className="comp-accept-suggestion-btn"
+                                  style={{ background: 'var(--color-accent)', color: '#fff', borderColor: 'var(--color-accent)', fontWeight: 600 }}
+                                  onClick={() => verifyAndCite(idx, section.body || section.content || '', flag.reason || '', flag.suggestion || '', section.heading)}
+                                  disabled={rewritingIdx === idx}
+                                  title="Find a verified source and integrate it into the rewrite in one step. Falls back to softening the claim if no source is found."
+                                >
+                                  {rewritingIdx === idx ? 'Verifying & citing...' : 'Verify & Cite'}
+                                </button>
+                              )}
+                              {/* Secondary: manual Find Sources flow for users who want to choose between candidates */}
+                              {(flag.type === 'factual_claim' || flag.type === 'legal_risk') && !sourcesMap[idx] && !rewrittenSections.has(idx) && (
                                 <button
                                   className="comp-accept-suggestion-btn"
                                   style={{ background: 'rgba(139,92,246,0.12)', color: '#7C3AED', borderColor: 'rgba(139,92,246,0.3)' }}
                                   onClick={() => findSources(idx, section.body || section.content || '', flag.reason || '')}
-                                  disabled={findingSourcesIdx === idx}
+                                  disabled={findingSourcesIdx === idx || rewritingIdx === idx}
+                                  title="Show 3 candidate sources to choose from before rewriting."
                                 >
-                                  {findingSourcesIdx === idx ? 'Searching...' : 'Find Sources'}
+                                  {findingSourcesIdx === idx ? 'Searching...' : 'Choose Source'}
                                 </button>
                               )}
                               <button
@@ -691,8 +741,11 @@ function ComplianceGateContent() {
                                   color: rewrittenSections.has(idx) ? '#fff' : undefined,
                                   borderColor: rewrittenSections.has(idx) ? 'var(--color-accent)' : undefined,
                                 }}
+                                title={(flag.type === 'factual_claim' || flag.type === 'legal_risk')
+                                  ? 'Apply the suggestion as written, without finding a source. Use this when softening the claim is the right call.'
+                                  : 'Apply the suggestion as written.'}
                               >
-                                {rewritingIdx === idx ? 'Rewriting...' : rewrittenSections.has(idx) ? 'Rewrite Applied' : 'Accept Suggestion'}
+                                {rewritingIdx === idx ? 'Rewriting...' : rewrittenSections.has(idx) ? 'Rewrite Applied' : ((flag.type === 'factual_claim' || flag.type === 'legal_risk') ? 'Soften Without Citation' : 'Accept Suggestion')}
                               </button>
                               {!dismissedFlags[idx] && (
                                 <button
