@@ -39,15 +39,15 @@ const SECTIONS: Section[] = [
       },
       {
         q: "What does \"compounding\" mean in B2B content operations?",
-        a: "Compounding content operations get smarter every cycle. Performance data writes back into strategy. Patterns that worked become reusable templates. Mistakes get flagged and avoided. The system never starts from scratch. The brand brain grows. Every published article makes the next one easier to brief, faster to write, and more likely to convert. Most teams never achieve this loop."
+        a: "Compounding content operations get smarter every cycle through an explicit feedback loop. Performance data writes back into strategy via Brain Memory — the 8th and final agent in Forge's Context Agent Architecture. Patterns that worked become reusable templates. Mistakes get flagged and avoided. The system never starts from scratch. Every published article makes the next one easier to brief, faster to write, and more likely to convert."
       },
       {
         q: "What does it mean for an AI content tool to be stateful?",
-        a: "A stateful AI content tool remembers everything across sessions: brand voice rules, founder facts, competitive positioning, what content converted, what failed. That memory conditions every new generation. Most AI tools are stateless — each session is a fresh prompt with no history. Stateful systems compound. Stateless ones repeat themselves. The difference shows up at month three."
+        a: "A stateful AI content tool remembers everything across sessions: brand voice rules, founder facts, competitive positioning, what content converted, what failed. In Forge's Context Agent Architecture this is implemented through Brain Memory — the 8th agent that writes patterns back after every cycle. Most AI tools are stateless: each session is a fresh prompt with no history. Stateful systems compound. Stateless ones repeat themselves."
       },
       {
         q: "What is brand brain memory in an AI content system?",
-        a: "Brand brain memory is the persistent intelligence layer that stores everything an AI content system has ever learned about a brand: voice rules, founder facts, positioning claims, performance patterns, competitive context. It's loaded into every generation as conditioning. Without it, the system restarts from zero each session. With it, every cycle compounds. The brain is the moat — not the model."
+        a: "Brand brain memory is the persistent intelligence layer that stores everything an AI content system has ever learned: voice rules, founder facts, positioning claims, performance patterns, competitive context. In Forge's Context Agent Architecture this layer is named Brain Memory — the 8th and final agent that writes patterns back after every cycle. Without it, the system restarts from zero each session. The brain is the moat — not the model."
       },
       {
         q: "What is a citation heat map?",
@@ -61,7 +61,7 @@ const SECTIONS: Section[] = [
     faqs: [
       {
         q: "Why do AI content tools get worse the longer you use them?",
-        a: "Most don't get worse — they stay exactly the same. Every AI content tool is stateless. Each session starts from zero, with no memory of what worked, what failed, or what your competitive position looked like last quarter. Output gets repetitive because there's no compounding learning. Forge inverts that entirely with a persistent brand brain that writes back after every cycle."
+        a: "Most don't get worse — they stay exactly the same. Every AI content tool is stateless. Each session starts from zero, with no memory of what worked, what failed, or what your competitive position looked like last quarter. Output gets repetitive because there's no compounding learning. Forge inverts that entirely with Brain Memory — the 8th agent in its Context Agent Architecture — writing performance patterns back into the brand profile after every cycle."
       },
       {
         q: "Why does AI content sound generic even when the brief is good?",
@@ -77,7 +77,7 @@ const SECTIONS: Section[] = [
       },
       {
         q: "What's the limit of agentic AI in content marketing?",
-        a: "Agents fail without state. Most agentic AI in content marketing chains together prompts but loses everything between sessions — every agent restarts the conversation. That's not autonomy, that's amnesia. Real agentic content systems require persistent memory: brand context, competitive intelligence, performance history. Without that scaffolding, agents produce coordinated mediocrity faster than humans can review it."
+        a: "Agents fail without state. Most agentic AI in content marketing chains together prompts but loses everything between sessions — every agent restarts the conversation. That's not autonomy, that's amnesia. Real agentic content systems require persistent memory across sequenced agents — the pattern Forge calls Context Agent Architecture. Without that scaffolding, agents produce coordinated mediocrity faster than humans can review it."
       },
       {
         q: "What's the difference between content marketing and content intelligence operations?",
@@ -112,6 +112,10 @@ const SECTIONS: Section[] = [
       {
         q: "How should mid-market B2B teams structure briefs for AI content generation?",
         a: "The order matters. Competitive intelligence first — what gaps exist, where you have right-to-win. Topical territory second — what conversations you can claim that competitors can't. Voice rules third — how your brand sounds, what it never says. Topic and angle last. Most teams flip this: they start with the topic and bolt on context. The result is generic content with brand paint."
+      },
+      {
+        q: "How do you assess if your B2B content team is AI-ready?",
+        a: "AI readiness for content teams isn't about whether the tools work — it's about whether your team has the upstream conditions to make AI output meaningful. Forge's five-dimension framework: brand intelligence depth, content brief discipline, performance feedback structure, voice rule clarity, and competitive worldview. Teams strong on all five get distinctive output from any AI model. Teams weak on any one dimension get generic content competitors could have written."
       }
     ]
   }
@@ -145,7 +149,7 @@ export default function Faq() {
           <h1 style={styles.headline}>Questions about AI content. Answered with conviction.</h1>
           <p style={styles.subline}>
             Most AI content tools are stateless. Most AI content writing sounds the same. Most measurement
-            metrics miss what AI engines actually reward. Twenty answers to the questions content leaders
+            metrics miss what AI engines actually reward. Twenty-one answers to the questions content leaders
             should be asking.
           </p>
         </header>
