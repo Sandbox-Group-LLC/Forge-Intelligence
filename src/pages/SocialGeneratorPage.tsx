@@ -145,8 +145,13 @@ function SocialGeneratorContent() {
   const [isRunning, setIsRunning] = useState(false);
   const [streamText, setStreamText] = useState('');
   const [posts, setPosts] = useState<SocialPost[]>([]);
+  // Mirror posts to a ref so the 60s fallback timer's closure reads current state.
+  useEffect(() => { postsRef.current = posts; }, [posts]);
   const [error, setError] = useState('');
   const streamRef = useRef<EventSource | null>(null);
+  // Tracks current posts for the 60s fallback timer's closure — useState reads
+  // would otherwise capture stale state from the moment the timer was scheduled.
+  const postsRef = useRef<SocialPost[]>([]);
   // Track whether posts were received — used in the SSE error handler to avoid
   // false-alarming when the server cleanly closes the connection after 'complete'.
   const postsReceivedRef = useRef(false);
@@ -259,6 +264,29 @@ function SocialGeneratorContent() {
           postsReceivedRef.current = true;
           setPosts(parsed.posts);
           setStreamText('');
+          // Safety net: if SSE drops between 'done' and 'image_done' (proxy buffering, tab idle, etc.)
+          // images that successfully generated server-side never make it to the UI. After 60s,
+          // hit /recent and merge any image_urls that have been persisted to the DB.
+          const batchId = parsed.batchId;
+          if (batchId && brandProfileId) {
+            setTimeout(async () => {
+              try {
+                const stillPending = (postsRef.current || []).some((p: any) => !p.image_url && p.batch_id === batchId);
+                if (!stillPending) return;
+                const r2 = await authFetch(`/api/social-generator/recent/${brandProfileId}`);
+                const d2 = await r2.json();
+                if (d2.success && Array.isArray(d2.batches)) {
+                  const batch = d2.batches.find((b: any) => b.batch_id === batchId);
+                  if (batch && Array.isArray(batch.posts)) {
+                    setPosts(prev => prev.map(p => {
+                      const fresh = batch.posts.find((bp: any) => bp.id === p.id);
+                      return fresh && fresh.image_url ? { ...p, image_url: fresh.image_url } : p;
+                    }));
+                  }
+                }
+              } catch { /* silent — best-effort fallback */ }
+            }, 60000);
+          }
         }
       } catch {
         setError('Failed to parse the generated batch. Raw output preserved below.');
