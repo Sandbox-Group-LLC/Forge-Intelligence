@@ -95,21 +95,69 @@ const pool = new Pool({ connectionString: process.env.NEON_DATABASE_URL });
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 1200000 }); // 20min
 
 async function initDB() {
-  // Always ensure id column is TEXT (old schema used UUID)
+  // ── Idempotency check: skip the destructive id-column migration if it's already done ──
+  // The legacy migration converts brand_profiles.id and geo_briefs.brand_profile_id from
+  // UUID to TEXT. Once that's done, repeating the DROP/ALTER/RECREATE sequence on every
+  // restart is wasteful (the DROP phase silently destroys the FK, and if any orphan rows
+  // exist in geo_briefs the re-CREATE at the end fails — leaving the table FK-less for
+  // the lifetime of the process). Check state first; only run the legacy path if needed.
   try {
-    // 1. Drop FK on geo_briefs that depends on brand_profiles.id
-    await pool.query(`ALTER TABLE geo_briefs DROP CONSTRAINT IF EXISTS geo_briefs_brand_profile_id_fkey`);
-    // 2. Drop PK so we can change type
-    await pool.query(`ALTER TABLE brand_profiles DROP CONSTRAINT IF EXISTS brand_profiles_pkey`);
-    // 3. Change both columns to TEXT
-    await pool.query(`ALTER TABLE brand_profiles ALTER COLUMN id TYPE TEXT USING id::text`);
-    await pool.query(`ALTER TABLE geo_briefs ALTER COLUMN brand_profile_id TYPE TEXT USING brand_profile_id::text`);
-    // 4. Recreate PK and FK
-    await pool.query(`ALTER TABLE brand_profiles ADD PRIMARY KEY (id)`);
-    await pool.query(`ALTER TABLE geo_briefs ADD CONSTRAINT geo_briefs_brand_profile_id_fkey FOREIGN KEY (brand_profile_id) REFERENCES brand_profiles(id) ON DELETE CASCADE`);
-    console.log('NeonDB: id + geo_briefs.brand_profile_id both converted to TEXT, FK recreated');
+    const stateCheck = await pool.query(`
+      SELECT
+        (SELECT data_type FROM information_schema.columns
+          WHERE table_name = 'brand_profiles' AND column_name = 'id') AS bp_id_type,
+        (SELECT data_type FROM information_schema.columns
+          WHERE table_name = 'geo_briefs' AND column_name = 'brand_profile_id') AS gb_fk_type,
+        EXISTS(SELECT 1 FROM pg_constraint
+          WHERE conname = 'geo_briefs_brand_profile_id_fkey'
+            AND conrelid = 'geo_briefs'::regclass) AS fk_exists
+    `);
+    const s = stateCheck.rows[0] || {};
+    if (s.bp_id_type === 'text' && s.gb_fk_type === 'text' && s.fk_exists) {
+      // All-good path — the migration ran successfully on a previous boot. No-op.
+    } else {
+      // Need to run (or re-run) the legacy migration. Before recreating the FK, surface any
+      // orphan geo_briefs rows clearly — the previous catch block lumped FK violations under
+      // the message "id already TEXT or table not yet created" which is actively misleading.
+      try {
+        await pool.query(`ALTER TABLE geo_briefs DROP CONSTRAINT IF EXISTS geo_briefs_brand_profile_id_fkey`);
+        await pool.query(`ALTER TABLE brand_profiles DROP CONSTRAINT IF EXISTS brand_profiles_pkey`);
+        await pool.query(`ALTER TABLE brand_profiles ALTER COLUMN id TYPE TEXT USING id::text`);
+        await pool.query(`ALTER TABLE geo_briefs ALTER COLUMN brand_profile_id TYPE TEXT USING brand_profile_id::text`);
+        await pool.query(`ALTER TABLE brand_profiles ADD PRIMARY KEY (id)`);
+
+        // Detect orphans before adding FK (which would fail if any exist)
+        const orphans = await pool.query(`
+          SELECT gb.brand_profile_id, COUNT(*) AS row_count
+          FROM geo_briefs gb
+          LEFT JOIN brand_profiles bp ON bp.id = gb.brand_profile_id
+          WHERE bp.id IS NULL
+          GROUP BY gb.brand_profile_id
+        `);
+        if (orphans.rows.length > 0) {
+          console.warn(`NeonDB: WARNING — ${orphans.rows.length} orphan brand_profile_id(s) in geo_briefs blocking FK recreation. Cleaning before adding FK.`);
+          for (const row of orphans.rows) {
+            console.warn(`  orphan: brand_profile_id=${row.brand_profile_id} (${row.row_count} rows)`);
+          }
+          await pool.query(`
+            DELETE FROM geo_briefs
+            WHERE brand_profile_id IN (
+              SELECT gb.brand_profile_id FROM geo_briefs gb
+              LEFT JOIN brand_profiles bp ON bp.id = gb.brand_profile_id
+              WHERE bp.id IS NULL
+            )
+          `);
+        }
+
+        await pool.query(`ALTER TABLE geo_briefs ADD CONSTRAINT geo_briefs_brand_profile_id_fkey FOREIGN KEY (brand_profile_id) REFERENCES brand_profiles(id) ON DELETE CASCADE`);
+        console.log('NeonDB: id + geo_briefs.brand_profile_id migrated to TEXT, FK with ON DELETE CASCADE recreated');
+      } catch(e) {
+        console.error('NeonDB: legacy id-column migration failed:', e.message);
+      }
+    }
   } catch(e) {
-    console.log('NeonDB: id already TEXT or table not yet created:', e.message);
+    // State-check itself failed — likely tables don't exist yet (first-time install)
+    console.log('NeonDB: id-column migration deferred (tables not yet created):', e.message);
   }
 
   // Migration: drop FK + NOT NULL on all legacy columns so new inserts work
