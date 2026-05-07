@@ -13249,6 +13249,7 @@ app.post('/api/admin/indexnow/backfill', express.json({ limit: '50kb' }), async 
     const marketingUrls = [
       'https://forgeintelligence.ai/',
       'https://forgeintelligence.ai/product',
+      'https://forgeintelligence.ai/faq',
       'https://forgeintelligence.ai/articles'
     ];
 
