@@ -745,7 +745,11 @@ function ComplianceGateContent() {
                                   ? 'Apply the suggestion as written, without finding a source. Use this when softening the claim is the right call.'
                                   : 'Apply the suggestion as written.'}
                               >
-                                {rewritingIdx === idx ? 'Rewriting...' : rewrittenSections.has(idx) ? 'Rewrite Applied' : ((flag.type === 'factual_claim' || flag.type === 'legal_risk') ? 'Soften Without Citation' : 'Accept Suggestion')}
+                                {rewritingIdx === idx
+                                  ? 'Rewriting...'
+                                  : rewrittenSections.has(idx)
+                                    ? (rewriteOutcomes[idx]?.mode === 'cited' ? 'Cited & Applied' : rewriteOutcomes[idx]?.mode === 'softened' ? 'Softened & Applied' : 'Rewrite Applied')
+                                    : ((flag.type === 'factual_claim' || flag.type === 'legal_risk') ? 'Soften Without Citation' : 'Accept Suggestion')}
                               </button>
                               {!dismissedFlags[idx] && (
                                 <button
@@ -759,6 +763,24 @@ function ComplianceGateContent() {
                                 <span className="comp-dismissed-label">Dismissed — Brain updated</span>
                               )}
                             </div>
+
+                            {/* Outcome footer — shows the integrated citation, or a soften note. */}
+                            {rewriteOutcomes[idx] && rewrittenSections.has(idx) && (
+                              <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 6, background: rewriteOutcomes[idx].mode === 'cited' ? 'rgba(124,58,237,0.08)' : 'rgba(148,163,184,0.10)', fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                                {rewriteOutcomes[idx].mode === 'cited' && rewriteOutcomes[idx].source ? (
+                                  <>
+                                    <strong style={{ color: '#7C3AED' }}>Cited:</strong> {rewriteOutcomes[idx].source!.title}
+                                    {rewriteOutcomes[idx].source!.year ? ` (${rewriteOutcomes[idx].source!.year})` : ''}
+                                    {' — '}
+                                    <a href={rewriteOutcomes[idx].source!.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent)', textDecoration: 'none' }}>
+                                      {(rewriteOutcomes[idx].source!.domain || rewriteOutcomes[idx].source!.url.replace(/^https?:\/\//, '').split('/')[0])}
+                                    </a>
+                                  </>
+                                ) : (
+                                  <><strong>Softened:</strong> No qualifying source found. The named-third-party assertion was hedged. <span style={{ opacity: 0.7 }}>Click 'Choose Source' to try sourcing manually.</span></>
+                                )}
+                              </div>
+                            )}
 
                             {/* Source candidates */}
                             {sourcesMap[idx] && (
