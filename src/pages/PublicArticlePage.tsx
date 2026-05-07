@@ -3,7 +3,6 @@ import { useParams } from 'react-router-dom';
 import './PublicArticlePage.css';
 // ── Markdown helper ───────────────────────────────────────────────────────────
 const ARTIFACT_RX = /\[(?:NEEDS CITATION|CITATION|SOURCE)[^\]]*\]/gi;
-const BOLD_ITALIC_RX = /\*\*(.+?)\*\*|\*(.+?)\*/g;
 
 // Combined inline matcher: handles **bold**, *italic*, [text](url), [^N] footnote
 // markers, and <https://url> autolinks in a single sweep so they nest cleanly.
