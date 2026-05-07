@@ -5,25 +5,86 @@ import './PublicArticlePage.css';
 const ARTIFACT_RX = /\[(?:NEEDS CITATION|CITATION|SOURCE)[^\]]*\]/gi;
 const BOLD_ITALIC_RX = /\*\*(.+?)\*\*|\*(.+?)\*/g;
 
+// Combined inline matcher: handles **bold**, *italic*, [text](url), [^N] footnote
+// markers, and <https://url> autolinks in a single sweep so they nest cleanly.
+// Order matters: more-specific patterns first so [^1] doesn't get parsed as a
+// link with empty href, etc.
+const INLINE_RX = /(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(\[\^(\d+)\])|(\[([^\]]+)\]\(([^)]+)\))|(<(https?:\/\/[^>]+)>)/g;
+
+// Footnote definitions: "[^N]: title — domain. <url>" at the start of a line.
+// When the body of a 'References' section is a list of these, we render as <ol>.
+const FOOTNOTE_DEF_RX = /^\[\^(\d+)\]:\s+(.+)$/;
+
+function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
+  const parts: React.ReactNode[] = [];
+  const rx = new RegExp(INLINE_RX.source, 'g');
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = rx.exec(text)) !== null) {
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    if (m[2]) {
+      // **bold**
+      parts.push(<strong key={`${keyPrefix}-b-${m.index}`}>{m[2]}</strong>);
+    } else if (m[4]) {
+      // *italic*
+      parts.push(<em key={`${keyPrefix}-i-${m.index}`}>{m[4]}</em>);
+    } else if (m[6]) {
+      // [^N] footnote reference — superscript, links to #ref-N
+      const n = m[6];
+      parts.push(
+        <sup key={`${keyPrefix}-sup-${m.index}`} style={{ fontSize: '0.7em', lineHeight: 0 }}>
+          <a href={`#ref-${n}`} id={`cite-${n}`} style={{ textDecoration: 'none' }}>{n}</a>
+        </sup>
+      );
+    } else if (m[8] && m[9]) {
+      // [text](url) markdown link
+      parts.push(
+        <a key={`${keyPrefix}-a-${m.index}`} href={m[9]} target="_blank" rel="noopener noreferrer">{m[8]}</a>
+      );
+    } else if (m[11]) {
+      // <https://url> autolink
+      parts.push(
+        <a key={`${keyPrefix}-u-${m.index}`} href={m[11]} target="_blank" rel="noopener noreferrer">{m[11]}</a>
+      );
+    }
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
 function renderBody(raw: string): React.ReactNode {
   const cleaned = raw.replace(ARTIFACT_RX, '').trim();
   const paragraphs = cleaned.split(/\n\n+/);
+
+  // Detect a References section: every paragraph is a [^N]: definition.
+  // When that's the case, render the whole thing as an <ol> with <li id="ref-N">.
+  const allDefs = paragraphs.length > 0 && paragraphs.every(p => FOOTNOTE_DEF_RX.test(p.trim()));
+  if (allDefs) {
+    return (
+      <ol style={{ paddingLeft: '1.5rem', fontSize: '0.95em', lineHeight: 1.6 }}>
+        {paragraphs.map((para, pi) => {
+          const m = para.trim().match(FOOTNOTE_DEF_RX);
+          if (!m) return null;
+          const n = m[1];
+          const text = m[2];
+          return (
+            <li key={pi} id={`ref-${n}`} style={{ marginBottom: '0.6rem' }}>
+              {renderInline(text, `def-${n}`)}
+              {' '}
+              <a href={`#cite-${n}`} style={{ textDecoration: 'none', opacity: 0.6, marginLeft: 4 }} aria-label="back to citation">↩</a>
+            </li>
+          );
+        })}
+      </ol>
+    );
+  }
+
   return (
     <>
-      {paragraphs.map((para, pi) => {
-        const parts: React.ReactNode[] = [];
-        const rx = new RegExp(BOLD_ITALIC_RX.source, 'g');
-        let last = 0;
-        let m: RegExpExecArray | null;
-        while ((m = rx.exec(para)) !== null) {
-          if (m.index > last) parts.push(para.slice(last, m.index));
-          if (m[1]) parts.push(<strong key={m.index}>{m[1]}</strong>);
-          else if (m[2]) parts.push(<em key={m.index}>{m[2]}</em>);
-          last = m.index + m[0].length;
-        }
-        if (last < para.length) parts.push(para.slice(last));
-        return <p key={pi} style={{ marginBottom: '1rem' }}>{parts}</p>;
-      })}
+      {paragraphs.map((para, pi) => (
+        <p key={pi} style={{ marginBottom: '1rem' }}>{renderInline(para, `p${pi}`)}</p>
+      ))}
     </>
   );
 }
