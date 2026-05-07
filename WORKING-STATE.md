@@ -30,11 +30,14 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 - URL: `/articles/forgeintelligence-ai/context-agent-architecture-is-not-prompt-engineering-and-the-difference-is-why-y`
 - Edits applied post-Compliance Gate: collapsed redundant sections, added 5-question buyer's checklist, killed defensive language and the off-positioning $99 line, added inline citations to Anthropic + Weaviate
 
-**Platform fixes (4 bugs, 1 UX overhaul):**
+**Platform fixes (5 bugs, 2 UX overhauls):**
 - `085b1c4c` — `manual_overrides` + `strategic_injections` preservation across Context Hub rescans
 - `d8ae5b2b` — `initDB()` migration idempotency + orphan FK handling (was silently dropping FK on every boot)
 - `9e194bd7` + `45dce9ff` — `/api/geo/opportunities/:brandProfileId` surfaces strategic_injection rows + defensive `JSON.parse` for plain-text `topical_authority_context`
 - `5df6a0f5` + `ff555716` — Compliance Gate "Verify & Cite" one-shot UI (collapses 4-step citation flow to 1 click, kills the 90% rework rate)
+- `a8bc3b8f` + `11a469bb` — `renderBody()` upgrade in PublicArticlePage: markdown links + `[^N]` footnote refs + auto-detect References sections rendered as `<ol>`. Articles can now use academic-style superscript citations + numbered references list. Article `e4214303` reformatted to use this pattern.
+
+**PreCog v2 (`59994171` + `cb03b0d9`):** scoring rebalanced and 6 citation-predictive dimensions added (categoryDefining, externalCitations, worksheetSections, ownedTermAlignment, geoOpportunityMatch, whitespaceFreshness). Driven by empirical observation: 'Attribution Black Hole' v1=93 → 0 citations in 12 days; 'Context Agent Architecture' v1=85 → cited in 1 hour. v2 inverts direction (Attribution ~75, Context ~92). Calibration recorded as `precog_calibration` brain_pattern (id `22979dea`) and a STRATEGY.md entry on the strategy branch.
 
 ### Currently in flight (next session picks up here)
 
