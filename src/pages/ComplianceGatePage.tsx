@@ -173,6 +173,10 @@ function ComplianceGateContent() {
   const [sourcesMap, setSourcesMap] = useState<Record<number, {title:string;url:string;snippet:string;year:string}[]>>({});
   const [findingSourcesIdx, setFindingSourcesIdx] = useState<number | null>(null);
   const [selectedSource, setSelectedSource] = useState<Record<number, number>>({});
+  // Per-section outcome from verify-and-cite. Drives the outcome-aware Apply button label
+  // ('Cited & Applied' vs 'Softened & Applied' vs 'Rewrite Applied') and the citation footer
+  // that surfaces the integrated source inline below each rewritten section.
+  const [rewriteOutcomes, setRewriteOutcomes] = useState<Record<number, { mode: 'cited' | 'softened'; source: { title: string; url: string; year?: string; domain?: string } | null }>>({});
   // Outcome of verify-and-cite per section idx — lets the UI show 'Cited vs Softened'
   // status without forcing the founder to re-read the rewritten prose to figure out
   // what the agent did. Source object is null when softened, populated when cited.
@@ -381,6 +385,11 @@ function ComplianceGateContent() {
       if (d.success) {
         setEditedSections(p => ({ ...p, [idx]: d.rewritten }));
         setRewrittenSections(p => new Set([...p, idx]));
+        // Capture outcome for the manual flow too — if a source was picked, this is a
+        // 'cited' outcome equivalent to verify-and-cite. If no source was picked
+        // (just Soften Without Citation), this is a 'softened' outcome with no source.
+        const pickedSource = sourcesMap[idx]?.[selectedSource[idx] ?? 0] || null;
+        setRewriteOutcomes(p => ({ ...p, [idx]: { mode: pickedSource ? 'cited' : 'softened', source: pickedSource } }));
         setSourcesMap(p => { const n = {...p}; delete n[idx]; return n; });
       } else {
         setError('Rewrite failed: ' + (d.error || 'server error'));
