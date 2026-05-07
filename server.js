@@ -3243,10 +3243,13 @@ app.post('/api/precog/score', requireAuth, async (req, res) => {
     const ownedTerms = [];
     const contestedTerms = [];
     for (const p of positioningPatterns) {
-      const m = (p.description || '').match(/^(OWNED|CONTESTED):\s*"([^"]+)"/i);
+      // Storage format: 'OWNED — TERM: OWNED. ...' or 'CONTESTED — TERM: CONTESTED. ...'
+      // Capture term between the verdict prefix and the first colon.
+      const m = (p.description || '').match(/^(OWNED|CONTESTED)\s*[—\-]\s*([^:]+):/i);
       if (m) {
-        if (m[1].toUpperCase() === 'OWNED') ownedTerms.push(m[2].toLowerCase());
-        else contestedTerms.push(m[2].toLowerCase());
+        const term = m[2].trim().toLowerCase();
+        if (m[1].toUpperCase() === 'OWNED') ownedTerms.push(term);
+        else contestedTerms.push(term);
       }
     }
     const ownedInTitle = ownedTerms.filter(t => titleLower.includes(t));
@@ -3350,17 +3353,24 @@ app.post('/api/precog/score', requireAuth, async (req, res) => {
     // Articles aligned with strategic_injection geo_opportunities are betting on
     // verified whitespace. Articles on auto-discovered topics may overlap with
     // existing competitor coverage.
+    // Match geo_opportunity to article. Tighter than v2.0: need a high-density overlap
+    // (>=50% of opportunity's distinctive keywords) AND >=3 absolute matches. This stops
+    // generic terms like 'ai content' from matching every article to a random opportunity.
+    const STOPWORDS = new Set(['about','after','again','against','also','because','being','between','could','during','every','first','from','having','their','these','those','through','under','until','what','when','where','which','while','with','your','this','that','than','they','them','have','will','just','more','only','some','such','make','than','then','here','into','like','over','many','must','same','should']);
     let geoOppScore = 0;
     let matchedOpportunity = null;
+    let bestMatch = { count: 0, density: 0 };
     for (const opp of strategicInjectionTopics) {
       const oppTopic = (opp.topic || '').toLowerCase();
-      const oppKeywords = oppTopic.split(/\W+/).filter(w => w.length > 4);
+      const oppKeywords = oppTopic.split(/\W+/).filter(w => w.length > 4 && !STOPWORDS.has(w));
+      if (oppKeywords.length === 0) continue;
       const matches = oppKeywords.filter(k => titleLower.includes(k));
-      if (matches.length >= 2) {
+      const density = matches.length / oppKeywords.length;
+      if (matches.length >= 3 && density >= 0.5 && (matches.length > bestMatch.count || density > bestMatch.density)) {
+        bestMatch = { count: matches.length, density };
         const isPillar = (opp.deliverable || '').includes('pillar');
-        geoOppScore = isPillar ? 7 : 5;  // pillar > faq match
-        matchedOpportunity = { topic: opp.topic, deliverable: opp.deliverable, source: opp.source };
-        break;
+        geoOppScore = isPillar ? 7 : 5;
+        matchedOpportunity = { topic: opp.topic, deliverable: opp.deliverable, source: opp.source, matchCount: matches.length, density: density.toFixed(2) };
       }
     }
     breakdown.geoOpportunityMatch = {
