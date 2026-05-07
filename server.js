@@ -14077,24 +14077,80 @@ app.get('/api/geo/opportunities/:brandProfileId', requireAuth, async (req, res) 
        ORDER BY discovered_at DESC LIMIT 1`,
       [brandProfileId]
     );
-    if (!latestSession.rows.length) return res.json({ success: true, opportunities: [], sessionId: null });
+    if (!latestSession.rows.length) {
+      // No discovery sessions yet, but check for strategic injections —
+      // they're valid opportunities even without a discovery run.
+      const injOnly = await pool.query(
+        `SELECT id, topic, platform_scores, avg_score, quick_win, topical_authority_context,
+                status, discovered_at, status_changed_at,
+                intent_signals->>'source' AS source,
+                intent_signals->>'deliverable' AS deliverable,
+                intent_signals->>'priority' AS priority
+         FROM geo_opportunities
+         WHERE brand_profile_id = $1
+           AND status NOT IN ('ignored', 'archived')
+           AND intent_signals->>'source' LIKE 'strategic_injection%'
+         ORDER BY avg_score DESC, quick_win DESC`,
+        [brandProfileId]
+      );
+      return res.json({
+        success: true,
+        sessionId: null,
+        opportunities: injOnly.rows.map(r => ({
+          id: r.id, topic: r.topic,
+          platformScores: (() => {
+            const ps = r.platform_scores || {};
+            return {
+              chatgpt: ps.chatgpt || ps['ChatGPT'] || 0,
+              perplexity: ps.perplexity || ps['Perplexity'] || 0,
+              aiOverviews: ps.aiOverviews || ps['google ai overviews'] || ps['Google AI Overviews'] || ps['aio'] || 0,
+              gemini: ps.gemini || ps['Gemini'] || 0
+            };
+          })(), avgScore: parseFloat(r.avg_score),
+          quickWin: r.quick_win,
+          topicalAuthority: r.topical_authority_context ? JSON.parse(r.topical_authority_context) : null,
+          status: r.status, discoveredAt: r.discovered_at, statusChangedAt: r.status_changed_at,
+          source: r.source || null,
+          deliverable: r.deliverable || null,
+          priority: r.priority || null,
+          isInjection: true
+        }))
+      });
+    }
 
     const sessionId = latestSession.rows[0].discovery_session_id;
 
     // Auto-expire: mark 'discovered' opportunities older than 24h as 'ignored'
+    // EXCEPT founder-injected ones — those are explicit strategic priorities, not
+    // discovery noise, so they shouldn't time out at 24h.
     await pool.query(
       `UPDATE geo_opportunities SET status = 'ignored', status_changed_at = NOW()
        WHERE brand_profile_id = $1 AND status = 'discovered'
-         AND discovered_at < NOW() - INTERVAL '24 hours'`,
+         AND discovered_at < NOW() - INTERVAL '24 hours'
+         AND (intent_signals->>'source' IS NULL
+              OR intent_signals->>'source' NOT LIKE 'strategic_injection%')`,
       [brandProfileId]
     );
 
+    // Surface BOTH the latest discovery session's opportunities AND any strategic
+    // injections (regardless of which session they belong to). Strategic injections
+    // are founder-curated and represent the highest-value opportunities in the
+    // database — hiding them behind a session filter defeats their purpose.
     const opps = await pool.query(
       `SELECT id, topic, platform_scores, avg_score, quick_win, topical_authority_context,
-              status, discovered_at, status_changed_at
+              status, discovered_at, status_changed_at,
+              intent_signals->>'source' AS source,
+              intent_signals->>'deliverable' AS deliverable,
+              intent_signals->>'priority' AS priority
        FROM geo_opportunities
-       WHERE brand_profile_id = $1 AND discovery_session_id = $2
-       ORDER BY quick_win DESC, avg_score DESC`,
+       WHERE brand_profile_id = $1
+         AND status NOT IN ('ignored', 'archived')
+         AND (discovery_session_id = $2
+              OR intent_signals->>'source' LIKE 'strategic_injection%')
+       ORDER BY
+         CASE WHEN intent_signals->>'source' LIKE 'strategic_injection%' THEN 0 ELSE 1 END,
+         avg_score DESC,
+         quick_win DESC`,
       [brandProfileId, sessionId]
     );
     res.json({
@@ -14113,7 +14169,12 @@ app.get('/api/geo/opportunities/:brandProfileId', requireAuth, async (req, res) 
         })(), avgScore: parseFloat(r.avg_score),
         quickWin: r.quick_win,
         topicalAuthority: r.topical_authority_context ? JSON.parse(r.topical_authority_context) : null,
-        status: r.status, discoveredAt: r.discovered_at, statusChangedAt: r.status_changed_at
+        status: r.status, discoveredAt: r.discovered_at, statusChangedAt: r.status_changed_at,
+        // Founder-injected metadata: lets the UI badge pillar topics, FAQs, and priority levels
+        source: r.source || null,
+        deliverable: r.deliverable || null,
+        priority: r.priority || null,
+        isInjection: !!(r.source && r.source.startsWith('strategic_injection'))
       }))
     });
   } catch(e) {
