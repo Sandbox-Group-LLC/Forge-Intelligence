@@ -312,7 +312,6 @@ export default function IntegrationsPage() {
   const [disconnecting, setDisconnecting] = useState<ChannelId | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [zernioSyncReady, setZernioSyncReady] = useState(false);
   // Facebook page-picker state — loaded when user opens the FB card and is Pipedream-connected.
   const [fbPages, setFbPages] = useState<Array<{ id: string; name: string; category?: string; canPost: boolean }>>([]);
   const [fbPagesLoading, setFbPagesLoading] = useState(false);
@@ -369,15 +368,18 @@ export default function IntegrationsPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('linkedin_connected') === 'true') {
-      setSuccess('LinkedIn connected successfully!');
-      setExpanded('linkedin');
+    const connected = params.get('connected');
+    if (params.get('linkedin_connected') === 'true' || (connected && connected.startsWith('zernio:'))) {
+      const platform = connected?.split(':')?.[1] || 'linkedin';
+      setSuccess(`${platform.charAt(0).toUpperCase() + platform.slice(1)} connected via Zernio!`);
+      setExpanded(platform as ChannelId);
       window.history.replaceState({}, '', '/app/integrations');
       const brand = activeBrand?.id || (() => { try { return localStorage.getItem('forge_active_brand_id'); } catch(e) { return ''; } })() || new URLSearchParams(window.location.search).get('brand') || '';
       if (brand) setTimeout(() => loadChannels(brand), 500);
     }
-    if (params.get('linkedin_error')) {
-      setError(`LinkedIn authorization failed: ${decodeURIComponent(params.get('linkedin_error') || '')}`);
+    if (params.get('linkedin_error') || connected === 'error') {
+      const reason = params.get('reason') || params.get('linkedin_error') || 'Unknown error';
+      setError(`Authorization failed: ${decodeURIComponent(reason)}`);
       window.history.replaceState({}, '', '/app/integrations');
     }
   }, []);
@@ -385,37 +387,18 @@ export default function IntegrationsPage() {
   const handleSave = async (channelId: ChannelId) => {
     const channel = CHANNELS.find(c => c.id === channelId);
 
-    // Zernio-powered OAuth — opens new tab, user clicks "Done" to sync
+    // Zernio-powered OAuth — redirect flow with callback
     if (channelId === 'linkedin' && channel?.oauthFlow) {
       if (!selectedBrand) { setError('Select a Brain first'); return; }
-      if (zernioSyncReady) {
-        // User clicked "I've connected" — sync the account
-        setZernioSyncReady(false);
-        setSaving('linkedin');
-        setSuccess(''); setError('');
-        try {
-          const sync = await fetch(`/api/zernio/sync-account?brandProfileId=${selectedBrand}&platform=linkedin`);
-          const syncData = await sync.json();
-          if (syncData.success) {
-            setSuccess(`LinkedIn connected: ${syncData.accountName || 'Success'}`);
-            loadChannels(selectedBrand);
-            setExpanded('linkedin');
-            setTimeout(() => setSuccess(''), 4000);
-          } else {
-            setError(syncData.error || 'LinkedIn account not found in Zernio — try connecting again');
-          }
-        } catch { setError('Failed to sync LinkedIn account from Zernio'); }
-        setSaving(null);
-        return;
-      }
       try {
-        const r = await fetch(`/api/zernio/connect/linkedin?brandProfileId=${selectedBrand}`);
+        const r = await fetch('/api/zernio/connect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ brandProfileId: selectedBrand, platform: 'linkedin' })
+        });
         const d = await r.json();
-        if (!d.authUrl) throw new Error(d.error || 'No auth URL returned');
-        window.open(d.authUrl, '_blank');
-        setZernioSyncReady(true);
-        setSuccess('Authorize LinkedIn in the new tab. Come back here and click the button below when done.');
-        setExpanded('linkedin');
+        if (d.authUrl) { window.location.href = d.authUrl; return; }
+        throw new Error(d.error || 'No auth URL returned from Zernio');
       } catch(e: any) {
         setError(`Could not connect LinkedIn: ${e.message}`);
       }
@@ -702,10 +685,10 @@ export default function IntegrationsPage() {
                         ) : (
                           <button
                             className="int-connect-btn"
-                            style={{ '--ch-color': ch.color, ...(zernioSyncReady && ch.id === 'linkedin' ? { background: '#14B8A6' } : {}) } as React.CSSProperties}
+                            style={{ '--ch-color': ch.color } as React.CSSProperties}
                             onClick={() => (ch.pipedreamApp || ch.oauthFlow) ? handleSave(ch.id) : setExpanded(isOpen ? null : ch.id)}
                           >
-                            {zernioSyncReady && ch.id === 'linkedin' ? 'I\'ve Connected — Sync' : (ch.pipedreamApp ? 'Connect' : (isOpen ? 'Cancel' : 'Connect'))}
+                            {ch.pipedreamApp ? 'Connect' : (isOpen ? 'Cancel' : 'Connect')}
                           </button>
                         )
                       )
