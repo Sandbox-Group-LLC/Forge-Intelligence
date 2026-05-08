@@ -13992,8 +13992,15 @@ app.post('/api/admin/zernio/post', async (req, res) => {
 app.post('/api/admin/zernio/probe-connect', async (req, res) => {
   if (!zernioGuard(req, res)) return;
   try {
-    const { platform, profileId } = req.body;
-    const qs = profileId ? `?profileId=${encodeURIComponent(profileId)}` : '';
+    const { platform, profileId, returnUrl, ...extras } = req.body;
+    const params = new URLSearchParams();
+    if (profileId) params.set('profileId', profileId);
+    if (returnUrl) params.set('returnUrl', returnUrl);
+    // Forward any extra body keys as query params for probing
+    for (const [k, v] of Object.entries(extras)) {
+      if (k !== 'adminPassword' && typeof v === 'string') params.set(k, v);
+    }
+    const qs = params.toString() ? `?${params.toString()}` : '';
     const result = await callZernio('GET', `/connect/${platform}${qs}`);
     res.json({ success: true, stage: 'probe-connect', ...result });
   } catch (e) {
