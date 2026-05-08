@@ -11055,11 +11055,62 @@ Output only the post text.` }]
           }
 
         } else if (channel === 'facebook') {
-          // ── Facebook publish via Pipedream Connect Proxy ──
           const creds = chConfig.credentials || {};
+
+          // ── Priority 0: Zernio publish path ──
+          if (creds.zernioAccountId) {
+            const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
+            const utmUrl = articleUrl + '?' + new URLSearchParams({ ...utmCtx, utm_source: 'facebook', utm_medium: 'social' }).toString();
+            const fbPostCopyOverride = (req.body.postCopy || {})[channel];
+            let fbMessage;
+            if (fbPostCopyOverride && fbPostCopyOverride.trim()) {
+              fbMessage = fbPostCopyOverride.trim();
+            } else {
+              fbMessage = `${item.title}\n\n${utmUrl}`;
+              try {
+                const haiku = await anthropic.messages.create({
+                  model: 'claude-haiku-4-5-20251001',
+                  max_tokens: 600,
+                  messages: [{ role: 'user', content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant tags. Include the URL ${utmUrl} naturally.\n\nArticle title: ${item.title}\n\nArticle excerpt: ${(article.article_json?.sections?.[0]?.body || '').slice(0, 500)}` }]
+                });
+                fbMessage = haiku.content[0]?.text || fbMessage;
+              } catch(e) {
+                console.warn('[FB-ZERNIO] Haiku post copy failed:', e.message);
+              }
+            }
+
+            try {
+              const zr = await zernioPublish({
+                platform: 'facebook',
+                accountId: creds.zernioAccountId,
+                content: fbMessage
+              });
+              results[channel] = {
+                status: 'published',
+                url: zr.postUrl,
+                postId: zr.postId,
+                via: 'zernio',
+                utmParams
+              };
+              await pool.query(
+                `INSERT INTO publish_log (queue_item_id, brand_profile_id, content_id, channel, status, response_data, utm_params, published_url, error_message)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+                [queueItemId, item.brand_profile_id, item.content_id, channel, 'published',
+                 JSON.stringify(results[channel]), JSON.stringify(utmParams), zr.postUrl, null]
+              ).catch(e => console.error('[PUBLISH] zernio facebook publish_log insert failed:', e.message));
+              continue;
+            } catch(zerr) {
+              if (creds.zernioOnly || creds.provider === 'zernio') {
+                throw new Error(`Facebook via Zernio: ${zerr.message}`);
+              }
+              console.error('[FB-ZERNIO] Failed, falling through to legacy:', zerr.message);
+            }
+          }
+
+          // ── Legacy: Pipedream / direct Graph API paths ──
           const pipedreamAccountId = creds.pipedream_account_id;
 
-          // ─── Priority 0: Pipedream workflow URL (global env var, multi-tenant) ───
+          // ─── Priority 1: Pipedream workflow URL (global env var, multi-tenant) ───
           // Pipedream's connector AI builder gave us a workflow URL that uses the right
           // Facebook Pages connector with proper scopes. The workflow URL is global Forge
           // infrastructure (env var, not per-brand) — every customer's publish hits the same
