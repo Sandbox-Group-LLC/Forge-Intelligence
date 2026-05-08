@@ -11726,6 +11726,123 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
       }
     }
 
+    // ── Facebook analytics (via Zernio) ─────────────────────────────────────
+    if (channel === 'facebook' || channel === 'all') {
+      const fbLogRes = await pool.query(
+        `SELECT pl.content_id, pl.response_data, pl.attempted_at AS published_at,
+                pl.published_url, ct.campaign_id
+         FROM publish_log pl
+         LEFT JOIN generated_content_${safeId} ct ON ct.id::text = pl.content_id
+         WHERE pl.brand_profile_id = $1 AND pl.channel = 'facebook' AND pl.status = 'published'
+           AND (pl.live_status IS NULL OR pl.live_status != 'deleted')
+         ORDER BY pl.attempted_at DESC`,
+        [brandProfileId]
+      ).catch(() => ({ rows: [] }));
+
+      const fbCredRes = await pool.query(
+        `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'facebook' AND is_active = true LIMIT 1`,
+        [brandProfileId]
+      ).catch(() => ({ rows: [] }));
+      const fbCreds = fbCredRes.rows[0]?.credentials || {};
+      const fbIsZernio = fbCreds.provider === 'zernio' && !!process.env.ZERNIO_API_KEY;
+      const fbToken = fbCreds.pageAccessToken;
+      console.log(`[Analytics/Facebook] Found ${fbLogRes.rows.length} published posts, provider=${fbIsZernio ? 'zernio' : 'legacy'}`);
+
+      for (const row of fbLogRes.rows) {
+        try {
+          const rd = row.response_data || {};
+          const postId = rd.postId || rd.post_id || rd.id;
+          if (!postId) { errors.push({ contentId: row.content_id, error: 'no_post_id' }); continue; }
+
+          let impressions = 0, clicks = 0, reactions = 0, comments = 0, reposts = 0;
+          let rawData = {};
+          let dataSource = 'none';
+
+          if (fbIsZernio) {
+            const analyticsRes = await callZernio('GET', `/analytics?postId=${encodeURIComponent(postId)}`);
+            console.log(`[Analytics/Facebook] Zernio analytics for ${postId}: HTTP ${analyticsRes.status}`);
+
+            if (analyticsRes.status === 202) {
+              console.log(`[Analytics/Facebook] Sync pending for ${postId} — will retry next sync`);
+              continue;
+            }
+            if (analyticsRes.status === 424 || !analyticsRes.ok) {
+              errors.push({ contentId: row.content_id, error: `zernio_analytics_${analyticsRes.status}` });
+              continue;
+            }
+
+            const analytics = analyticsRes.parsed;
+            const platforms = analytics?.post?.platforms || analytics?.platforms || [];
+            const fbMetrics = platforms.find(p => p.platform === 'facebook')?.analytics
+              || analytics?.post?.analytics
+              || analytics?.analytics
+              || analytics || {};
+
+            impressions = fbMetrics.impressions || fbMetrics.views || fbMetrics.reach || fbMetrics.impression_count || 0;
+            clicks      = fbMetrics.clicks || fbMetrics.link_clicks || fbMetrics.post_clicks || 0;
+            reactions   = fbMetrics.likes || fbMetrics.reactions || fbMetrics.total_reactions || 0;
+            comments    = fbMetrics.comments || fbMetrics.comment_count || 0;
+            reposts     = fbMetrics.shares || fbMetrics.reposts || fbMetrics.share_count || 0;
+            rawData     = { zernio: analytics };
+            dataSource  = 'zernio';
+            console.log(`[Analytics/Facebook] Zernio metrics for ${postId}: ${impressions} impr, ${reactions} reactions, ${comments} comments, ${reposts} shares, ${clicks} clicks`);
+
+          } else if (fbToken && fbCreds.pageId) {
+            // Legacy direct Graph API path
+            try {
+              const fbRes = await fetch(
+                `https://graph.facebook.com/v19.0/${postId}/insights?metric=post_impressions,post_clicks,post_reactions_like_total&access_token=${fbToken}`
+              );
+              if (fbRes.ok) {
+                const fbData = await fbRes.json();
+                for (const metric of (fbData.data || [])) {
+                  const val = metric.values?.[0]?.value || 0;
+                  if (metric.name === 'post_impressions') impressions = val;
+                  if (metric.name === 'post_clicks') clicks = val;
+                  if (metric.name === 'post_reactions_like_total') reactions = val;
+                }
+                rawData = { graphApi: fbData };
+                dataSource = 'graphApi';
+              }
+            } catch(e) { /* Graph API unavailable */ }
+          } else {
+            continue;
+          }
+
+          if (dataSource === 'none') continue;
+
+          const totalEngagement = reactions + comments + reposts + clicks;
+          const ctr = impressions > 0 ? parseFloat((clicks / impressions * 100).toFixed(2)) : 0;
+          const engagementRate = impressions > 0
+            ? parseFloat((totalEngagement / impressions * 100).toFixed(2))
+            : 0;
+
+          await pool.query(
+            `INSERT INTO content_analytics
+               (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at, campaign_id)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),$14)
+             ON CONFLICT (content_id, channel) DO UPDATE SET
+               impressions      = CASE WHEN EXCLUDED.impressions > 0 THEN EXCLUDED.impressions ELSE content_analytics.impressions END,
+               clicks           = CASE WHEN EXCLUDED.impressions > 0 THEN EXCLUDED.clicks      ELSE content_analytics.clicks      END,
+               ctr              = CASE WHEN EXCLUDED.impressions > 0 THEN EXCLUDED.ctr         ELSE content_analytics.ctr         END,
+               engagement_rate  = CASE WHEN EXCLUDED.impressions > 0 THEN EXCLUDED.engagement_rate ELSE content_analytics.engagement_rate END,
+               reactions        = GREATEST(COALESCE(content_analytics.reactions, 0), EXCLUDED.reactions),
+               comments         = GREATEST(COALESCE(content_analytics.comments, 0),  EXCLUDED.comments),
+               reposts          = GREATEST(COALESCE(content_analytics.reposts, 0),   EXCLUDED.reposts),
+               raw_data         = COALESCE(content_analytics.raw_data, '{}'::jsonb) || EXCLUDED.raw_data,
+               synced_at        = NOW(),
+               campaign_id      = COALESCE(EXCLUDED.campaign_id, content_analytics.campaign_id)`,
+            [brandProfileId, row.content_id, 'facebook', postId,
+             impressions, clicks, reactions, comments, reposts, ctr, engagementRate,
+             JSON.stringify(rawData), row.published_at, row.campaign_id || null]
+          );
+          synced.push({ contentId: row.content_id, postId, reactions, comments, reposts, impressions, dataSource });
+        } catch(e) {
+          errors.push({ contentId: row.content_id, error: e.message });
+        }
+      }
+    }
+
     // Ghost sync
     if (channel === 'ghost' || channel === 'all') {
       // Prefer per-brand credentials from publishing_channels, fall back to env vars

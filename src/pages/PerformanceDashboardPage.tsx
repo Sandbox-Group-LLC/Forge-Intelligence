@@ -44,6 +44,7 @@ const CHANNELS = [
   { id: 'predictions', label: 'Predictions', live: true },
   { id: 'linkedin', label: 'LinkedIn', live: true },
   { id: 'x', label: 'X (Twitter)', live: true },
+  { id: 'facebook', label: 'Facebook', live: true },
   { id: 'ghost', label: 'Ghost', live: true },
   { id: 'gsc',   label: 'GSC',   live: true },
   { id: 'geo',   label: 'GEO',   live: true },
