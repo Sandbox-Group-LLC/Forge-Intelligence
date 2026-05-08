@@ -10841,6 +10841,22 @@ Output only the post text.` }]
                 via: 'zernio',
                 utmParams
               };
+              // Write publish_log entry HERE (the one at the end of the for-loop body
+              // is skipped by `continue` below). Without this, publish_log stays empty
+              // for Zernio publishes — breaking analytics sync, unpublish, and the
+              // 'Live'/'Deleted' chips in the queue UI that read from publish_log.
+              await pool.query(
+                `INSERT INTO publish_log (queue_item_id, brand_profile_id, content_id, channel, status, response_data, utm_params, published_url, error_message)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+                [
+                  queueItemId, item.brand_profile_id, item.content_id, channel,
+                  'published',
+                  JSON.stringify(results[channel]),
+                  JSON.stringify(utmParams),
+                  zr.postUrl,
+                  null
+                ]
+              ).catch(e => console.error('[PUBLISH] zernio publish_log insert failed:', e.message));
               continue;  // skip the legacy direct-API code below
             } catch (zerr) {
               // Zernio failed — record the error and fall through to legacy path so we have a fallback.
