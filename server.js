@@ -11230,7 +11230,7 @@ Output only the post text.` }]
           // ── Priority 0: Zernio publish path ──
           if (creds.zernioAccountId) {
             const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
-            const utmUrl = articleUrl + '?' + new URLSearchParams({ ...utmCtx, utm_source: 'facebook', utm_medium: 'social' }).toString();
+            const utmUrl = `${articleUrl}${utmString ? '?' + utmString : ''}`;
             const fbPostCopyOverride = (req.body.postCopy || {})[channel];
             let fbMessage;
             if (fbPostCopyOverride && fbPostCopyOverride.trim()) {
@@ -11290,7 +11290,7 @@ Output only the post text.` }]
           const pipedreamWorkflowUrl = process.env.FACEBOOK_PIPEDREAM_WORKFLOW_URL;
           if (pipedreamWorkflowUrl && pipedreamAccountId) {
             const articleUrlWf = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
-            const utmUrlWf = articleUrlWf + '?' + new URLSearchParams({ ...utmCtx, utm_source: 'facebook', utm_medium: 'social' }).toString();
+            const utmUrlWf = `${articleUrlWf}${utmString ? '?' + utmString : ''}`;
             const fbPostCopyOverrideWf = (req.body.postCopy || {})[channel];
             let fbMessageWf;
             if (fbPostCopyOverrideWf && fbPostCopyOverrideWf.trim()) {
@@ -11344,7 +11344,7 @@ Output only the post text.` }]
           // Legacy path: pipedreamProxy via Pipedream Connect (existing infrastructure) — falls through if no workflow URL.
                     
           const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
-          const utmUrl = articleUrl + '?' + new URLSearchParams({ ...utmCtx, utm_source: 'facebook', utm_medium: 'social' }).toString();
+          const utmUrl = `${articleUrl}${utmString ? '?' + utmString : ''}`;
 
           // Priority 1: user-edited/generated post copy from the UI.
           // Priority 2: generate via Haiku at publish time.
@@ -11422,7 +11422,7 @@ Output only the post text.` }]
           if (!subreddit || !redditToken) throw new Error('Subreddit name and Reddit access token are required');
 
           const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
-          const utmUrl = articleUrl + '?' + new URLSearchParams({ ...utmCtx, utm_source: 'reddit', utm_medium: 'social' }).toString();
+          const utmUrl = `${articleUrl}${utmString ? '?' + utmString : ''}`;
 
           // Helper: attempt token refresh if needed
           const tryRefresh = async (token) => {
@@ -11490,7 +11490,7 @@ Output only the post text.` }]
           if (!authorId) throw new Error('Could not retrieve Medium author ID');
 
           const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
-          const utmUrl = articleUrl + '?' + new URLSearchParams({ ...utmCtx, utm_source: 'medium', utm_medium: 'social' }).toString();
+          const utmUrl = `${articleUrl}${utmString ? '?' + utmString : ''}`;
 
           // Build HTML content from article sections
           const articleJson = article.article_json || {};
