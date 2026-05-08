@@ -319,15 +319,6 @@ export default function IntegrationsPage() {
     if (brandId) loadChannels(brandId);
   }, [activeBrand?.id]);
 
-  // Auto-load Facebook Pages when the FB card is expanded AND the brand has a Pipedream connection.
-
-
-  // Hydrate manual Page ID input from saved credentials when the FB card opens.
-  useEffect(() => {
-    if (expanded !== 'facebook') return;
-    const fbChannel = (savedChannels as any)['facebook'];
-    setFbManualPageId(fbChannel?.credentials?.pageId || '');
-  }, [expanded, savedChannels]);
 
   const loadChannels = (brandId: string) => {
     fetch(`/api/publishing/channels/${brandId}`)
