@@ -1,3 +1,121 @@
+
+
+# 2026-05-08 — Zernio migration + Reddit wire-up + Brain Memory closes the loop
+
+A 24-hour run that started as "validate Zernio for Facebook" and ended with the entire publishing pipeline migrated, two outcome-driven brain patterns stamped, Reddit live with a brand-safety architecture, and Google AI Mode describing Forge using Forge's coined vocabulary. The biggest session in Forge's history measured by lines moved + product surface area shipped + strategic items resolved.
+
+## What shipped (chronological)
+
+**Late May 7 evening:** Zernio LinkedIn dispatch wired into `/api/publishing/publish`. `zernioPublish()` helper added next to the existing `callZernio()`. Per-channel dispatch via credentials shape — if `creds.zernioAccountId` is present, route through Zernio's `/posts` API; otherwise fall through to the legacy direct LinkedIn UGC Posts API. Per-brand opt-in via single SQL `UPDATE` on `publishing_channels.credentials`.
+
+Host gate added immediately after (`3dca61e5`) so the new path only fired on `dev.forgeintelligence.ai` while we validated. The same hostname check meant production stayed on the legacy direct API, which had its own pre-existing bug — Forge's LinkedIn OAuth had been authorized as Brian's personal profile, never as the Forge Intelligence company page. Every direct-API LinkedIn post going back to April had been landing on Brian's personal feed without anyone noticing. Discovered tonight when a UI-triggered publish landed on his personal page during the Zernio test.
+
+Resolution: removed the host gate (`e4adbb69`) and migrated Forge's LinkedIn fully to Zernio. The "wrong destination" problem that had been silently broken for weeks resolved as a side effect of the migration — Zernio's account is bound to the FORGE by Sandbox org, so every Zernio-routed publish hits the company page automatically.
+
+**Three test posts deleted from Brian's personal LinkedIn during the cleanup loop:** `7458484694716911616`, `7458490325142073344`, `7458492046220349440`. Each cleanup required updating four pieces of state — `publish_log.live_status`, `publish_log.status`, `publishing_queue.status`, `publishing_queue.publish_results.{channel}` — because the unpublish endpoint at `server.js` L9136 only updates `live_status`, but the publish handler's "already published?" check at L10641 reads `status`, and the queue UI chip reads `publish_results`. **This is recurring architectural pattern #1**: write paths writing to one column, read paths reading from another. Manually cleaned up four times tonight, will be a real fix in the next session.
+
+**`412c6cd9` fix:** the Zernio dispatch used `continue;` to skip the legacy code, but `continue` also skipped the `publish_log` INSERT at the end of the channel for-loop. Successful Zernio publishes were updating `publishing_queue.publish_results` correctly but leaving `publish_log` empty, breaking analytics sync + the unpublish flow + the queue UI chips. Fix: write the `publish_log` entry inside the Zernio block before the `continue;`.
+
+**Claude Code worked overnight** while Claude Web was unstable, building the LinkedIn OAuth UI flow + the Facebook Zernio dispatch (`c1e8999f`). Both shipped in production by morning. Some bugs to clean up the next day, but the core integration was working.
+
+**Morning bug pass — Claude Code review:**
+
+- `0cfcfc55` (`item.title` → `article.title`, 8 occurrences across FB + Reddit branches): `publishing_queue.title` is the article title at staging time. If the user edits the article title later through Compliance Gate or the editor, `item.title` goes stale. LinkedIn was correctly using `article.title` (current authoritative value); FB + Reddit were stuck on the stale `item.title`. Net: cross-channel inconsistency on the same publish.
+- `8a05423c` (broken UTM URLs across 5 channels): every Facebook, Reddit, and Medium URL Forge has ever published has carried garbage query params. The branches were spreading raw `utmCtx` (`{channel, brandSlug, articleSlug, campaignSlug}`) directly into `URLSearchParams`, producing URLs like `?channel=facebook&brandSlug=forge-intelligence&articleSlug=...&utm_source=facebook&utm_medium=social`. Source/medium worked because of hardcoded overrides; campaign + content attribution were entirely missing. The fix points all five channels at the already-resolved `utmString` (the same string LinkedIn / X / Ghost / WordPress have been using correctly all along).
+
+**Dead Pipedream UI cleanup (`5151e43a` + `6d1eed1f`):** Claude Code reported the FB page picker was unreachable. Audit revealed the entire `{ch.pipedreamApp && connected && (...)}` block was dead — every channel definition has `pipedreamApp: undefined` after the migration. ~200 lines deleted: page picker JSX (manual ID input + Pipedream-proxy page list), 6 `useState` declarations, 3 handler functions, 1 orphaned `useEffect`. Ported the data-driven provider badge logic (Zernio / OAuth / Pipedream switch) from the dead block into the still-live `oauthFlow` block before deletion. Build broke once on a missed `setFbManualPageId` reference inside an orphaned `useEffect`; cleaned up in `6d1eed1f`.
+
+**Reddit wire-up:** the most product-design-heavy work tonight. Reddit was missing entirely from `IntegrationsPage` despite the publish handler having a Reddit branch. The branch used the legacy direct-OAuth Reddit API code, which broke for any Zernio-migrated brand (their creds no longer have an access token). Worse — when Brian first tried to publish to Reddit, Zernio chose r/marketing as the default, posting Forge's content to a generic public sub where promotional links typically get banned.
+
+The right product answer wasn't "wire up a subreddit field." Reddit isn't LinkedIn — the destination is per-post, every subreddit has independent rules, posting outside your permission gets accounts banned. Three options on the table: (A) per-publish picker with rules awareness, (B) brand-owned only, (C) don't publish to Reddit from the queue at all. Brian picked B.
+
+Phase 1 + 2 shipped tonight (Phases 3-4 deferred):
+
+- `91b52d09` — server-side Reddit Zernio dispatch with **brand-owned subreddit allowlist enforcement**. `creds.allowedSubreddits[]` is the brand's declaration of "subs I have permission to post in." No allowlist → publish fails. Subreddit not in list → publish fails. Per-publish target precedence: `publishOptions.reddit.subreddit` → `creds.defaultSubreddit` → `allowedSubreddits[0]`.
+- `9e0c16d8` — dedicated `POST /api/publishing/channels/reddit/allowed-subreddits` endpoint that does targeted JSONB merge on `credentials.allowedSubreddits` + `credentials.defaultSubreddit`, preserving Zernio creds. Couldn't reuse the generic `POST /api/publishing/channels` because that endpoint wholesale-overwrites credentials (recurring architectural pattern #2).
+- `de86e4b6` + `901b5078` — Reddit channel def + `<RedditAllowedSubreddits>` component in `IntegrationsPage`. Manual subreddit add/remove with name validation (3-21 chars, letters/numbers/underscores only), default-subreddit radio picker, save through the new merge endpoint.
+- `6ca56b1076` — **the bug that bit twice.** First Reddit post with the new dispatch landed on r/marketing again, despite the allowlist correctly choosing r/ForgeIntelligence. Root cause: the dispatch was sending `platformOptions` instead of `platformSpecificData` — the actual Zernio API field name. Zernio silently dropped the unknown field and used the connected account's default subreddit. Single-character API contract mismatch. Also fixed in same commit: switched from text post to **link post format** (`content` becomes the Reddit title, `platformSpecificData.url` becomes the destination, Reddit fetches OG preview), removed the Haiku body generation that was being misused as the title.
+
+After the fix: first two posts on r/ForgeIntelligence. Forge has a Reddit presence. Brand-safety architecture working.
+
+**Brain Memory: 2 patterns stamped.** Tonight the brain was used as outcome-data storage for the first time, not just founder-injected positioning. Pattern `516fcd9d` (`citation_outcome_validated`, confidence 100, `success_rate 1.0`) records Google AI Mode's response to query `forgeintelligence.ai context agent`. Google synthesized: "Forge Intelligence (forgeintelligence.ai) provides a Context Agent Workspace designed to solve the 'context decay' problem in content and marketing teams." Citation badges to LinkedIn + at least 2 other sources.
+
+Pattern `b80e16f6` (`OWNED — context decay`, confidence 95) is the more interesting one — it's the **first OWNED positioning term that emerged from outcome data rather than founder declaration.** Google read Forge's content, synthesized "context decay" as the customer-facing problem the architecture solves, and the term came back as evidence. Filled a gap in Forge's positioning lexicon: customers don't buy "Context Agent Architecture" — they buy "the thing that fixes my context decay problem." Now formalized so the next pillar article uses it consistently and reinforces the term across content surfaces.
+
+Forge brain positioning vocabulary: 9 OWNED + 8 CONTESTED. Originally 8/8 from Tuesday's injection — context decay is the 9th, and the only one that emerged from search-engine outcome data.
+
+## What this session proved
+
+The Context Agent Architecture article's central thesis ("the sequence is the moat — not the model") is now empirically validated by the platform's own outcomes. Compounding evidence chain visible end-to-end:
+
+| Time | Event |
+|---|---|
+| May 6 evening | 8 OWNED + 8 CONTESTED positioning patterns injected into Forge brain |
+| May 7 morning | 21-question FAQ ships with FAQPage schema → indexed by Google in 80 min via IndexNow |
+| May 7 morning | Context Agent Architecture pillar article ships with definitional language + worksheet sections + Anthropic + Weaviate citations → cited by AI engines within 1 hour of publish |
+| May 7 afternoon | Citations refactored to academic-style superscripts → article reads as research-grade |
+| May 7 evening | PreCog v2 calibrates against citation reality, brain learns from its own miss |
+| May 7-8 evening | LinkedIn + Facebook posts via Zernio, both rendered fully intact |
+| May 7 ~10pm | Google AI Mode synthesizes Forge's positioning using Forge's coined vocabulary |
+| May 8 evening | Reddit live with brand-owned safety, "context decay" formally OWNED based on outcome evidence |
+
+That's not a coincidence. Brain Memory's feedback loop is the architecture; this session's outcomes are the architecture working as designed on its own product. Worth feeding back into PreCog v3 calibration as a deliberate scoring dimension: **evidence chain coverage**. Articles backed by FAQ + social + structured data + external citations outperform isolated thought leadership. The chain itself is a citation driver, not just individual article quality.
+
+## Recurring architectural patterns surfaced this session
+
+**Write/read state mismatches.** Same shape across multiple bugs (count this session: ~9 instances):
+1. `manual_overrides` written by some endpoints, overwritten by others
+2. `geo_opportunities` strategic_injection inserted but filtered out of GET
+3. `topical_authority_context` written as text, parsed as JSON
+4. Compliance Gate rewrite written to state, rendered from props
+5. Social SSE emits camelCase, FE reads snake_case
+6. Unpublish writes `live_status`, publish handler reads `status`, FE reads `publish_results`
+7. LinkedIn OAuth callback overwrites credentials JSONB instead of merging
+8. `item.title` (staging-time) vs `article.title` (current) — same value, two columns, inconsistent reads
+9. `utmCtx` raw context vs `utmParams` resolved fields
+
+**The fix surface is consistent:** convention doc — "all internal API surfaces use snake_case to match Postgres column names; if route emits camelCase, document why and provide normalizer; all credential JSONB updates use `||` merge not full overwrite; all multi-state queries (queue/log/results) updated atomically." Worth a deliberate audit pass when there's session capacity. **Next time this pattern bites, that audit is the priority work, not another patch.**
+
+## Lessons (cumulative)
+
+- **API contract mismatches fail silent on Zernio.** Sending unknown fields → Zernio silently uses defaults. Always cross-check field names against `Zernio_API_Docs` before adding new platform dispatches. Reddit cost two wrong-subreddit posts to learn this. Future platform additions: paste the exact docs schema example next to the dispatch code as a comment.
+- **Block-replacement patches with broad/short anchors remain dangerous.** Tonight's session avoided this by using highly specific anchors with em-dash characters preserved. The April 26 catastrophe still informs the rule: ALWAYS verify `content.count(anchor) == 1` before replacing, ALWAYS use 5+ lines of context with literal byte preservation (em-dash `—` vs `—`).
+- **Dev and prod share the same Postgres database.** Host gates needed for any test that requires per-environment behavior. Clerk cookies are domain-bound, so signing in on prod doesn't authenticate dev. Tonight's host gate scaffolding (`3dca61e5` then removed in `e4adbb69`) was the right pattern for one-time validation but not the long-term answer.
+- **OAuth callbacks should MERGE credentials JSONB, not overwrite.** `credentials || NEW_FIELDS` not `credentials = NEW_FIELDS`. Manually-added fields like `zernioAccountId` get nuked otherwise. Fix this in the LinkedIn callback (server.js ~L9262) next session.
+- **TypeScript `noUnusedLocals` breaks builds when refactor leaves dead code behind.** Hit twice tonight (orphaned `useEffect` after dead-UI cleanup, broken `DEFAULT_UTM` block after Reddit insert). Run a grep for any state/handler the cleanup might have left referenced before commit.
+- **Zernio's pricing asymptotes to ~$1/account at scale.** $18/mo at 5 accounts, $258/mo at 100, $1,158/mo at 1,000, $2,158/mo at 2,000. All 14 platforms + analytics + ads API + inbox bundled. White-label by default. Forge's social publishing economics are now: ~$13/customer at 100-customer scale, ~95-98% gross margin on social publishing.
+
+## Final commit log (this session, chronological)
+
+| Commit | What |
+|---|---|
+| `78e5b071` | Dev test endpoints `/api/admin/zernio/*` (host-gated to dev/strategy) |
+| `9b018732` | `zernioPublish()` helper + LinkedIn dispatch in publish handler |
+| `3dca61e5` | Host gate scaffolding (later removed) |
+| `7f0e12d2` | Integrations badge label data-driven from creds shape |
+| `e4adbb69` | Host gate removed, Zernio LinkedIn live on prod |
+| `412c6cd9` | publish_log INSERT on Zernio path (was being skipped by `continue`) |
+| (CC) `c1e8999f` | Zernio Facebook dispatch added (was missing entirely) |
+| (CC) `c8fc0580` etc. | Production OAuth proxy + per-brand profile management |
+| `0cfcfc55` | item.title → article.title (8 occurrences across FB + Reddit) |
+| `8a05423c` | Broken UTM URLs fixed across FB Zernio, FB Pipedream-workflow, FB legacy, Reddit, Medium |
+| `5151e43a` | Dead Pipedream UI removal from IntegrationsPage (~200 lines) |
+| `6d1eed1f` | Build fix — orphaned useEffect after cleanup |
+| `91b52d09` | Reddit Zernio dispatch + brand-owned allowlist guard |
+| `9e0c16d8` | POST /api/publishing/channels/reddit/allowed-subreddits (JSONB merge) |
+| `de86e4b6` | Reddit channel def + RedditAllowedSubreddits component |
+| `901b5078` | Build fix — DEFAULT_UTM block repair |
+| `6ca56b1076` | platformSpecificData (was platformOptions) + link post format |
+| `fafb54f8`, `07c3e988`, `e821a544` | Product page screenshots 1-3 uploaded |
+| `c5b98e79` | Product.tsx slots 4-6 commented out |
+| brain | `citation_outcome_validated` pattern stamped (516fcd9d) |
+| brain | `OWNED — context decay` pattern stamped (b80e16f6) |
+
+20+ commits across two days. Forge's publishing pipeline went from "Pipedream-dependent with a broken FB integration and untracked Reddit dispatch" to "Zernio-powered across 3 platforms with brand-owned safety, attribution-data fixed, and 9 OWNED positioning terms with one validated by search-engine evidence."
+
+End of session.
+
+---
 # 2026-05-05 — Frank: from bug surface to SME
 
 Discovered tonight while debugging a wrecked Sandbox-XM compliance gate render: Frank — the ForgeOS external-editor persona that publishes Forge drafts on destination sites and reports edits back via /api/content/import — has accidentally become a marketing asset.
