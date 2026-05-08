@@ -9246,7 +9246,73 @@ app.delete('/api/publishing/channels/:id', requireAuth, async (req, res) => {
 
 // POST /api/publishing/publish — publish a queue item to selected channels
 
-// ── LinkedIn OAuth2 Flow ──────────────────────────────────────────────────────
+// ── Zernio Connect Flow (LinkedIn via Zernio) ────────────────────────────────
+
+app.get('/api/zernio/connect/linkedin', async (req, res) => {
+  const apiKey = process.env.ZERNIO_API_KEY;
+  const profileId = process.env.ZERNIO_PROFILE_ID;
+  if (!apiKey || !profileId) return res.status(500).json({ error: 'ZERNIO_API_KEY or ZERNIO_PROFILE_ID not configured' });
+
+  const brandProfileId = req.query.brandProfileId || 'system';
+  const callbackUrl = `https://forgeintelligence.ai/auth/zernio/callback?brand=${encodeURIComponent(brandProfileId)}`;
+
+  try {
+    const connectRes = await fetch(`https://zernio.com/api/v1/connect/linkedin?profileId=${encodeURIComponent(profileId)}&callbackUrl=${encodeURIComponent(callbackUrl)}`, {
+      headers: { 'Authorization': `Bearer ${apiKey}` }
+    });
+    const data = await connectRes.json();
+    console.log('[Zernio] Connect URL response:', { status: connectRes.status, hasAuthUrl: !!data.authUrl });
+    if (!data.authUrl) throw new Error(data.error || data.message || 'No authUrl returned from Zernio');
+    res.json({ authUrl: data.authUrl });
+  } catch(e) {
+    console.error('[Zernio] Connect failed:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/auth/zernio/callback', async (req, res) => {
+  const apiKey = process.env.ZERNIO_API_KEY;
+  const profileId = process.env.ZERNIO_PROFILE_ID;
+  const brandProfileId = req.query.brand || 'system';
+
+  try {
+    // List accounts from Zernio to find the newly connected LinkedIn account
+    const accountsRes = await fetch(`https://zernio.com/api/v1/accounts?profileId=${encodeURIComponent(profileId)}`, {
+      headers: { 'Authorization': `Bearer ${apiKey}` }
+    });
+    const accountsData = await accountsRes.json();
+    console.log('[Zernio] Accounts response:', { status: accountsRes.status, count: accountsData.accounts?.length });
+
+    const linkedinAccount = (accountsData.accounts || []).find(a => a.platform === 'linkedin');
+    if (!linkedinAccount) {
+      console.log('[Zernio] No LinkedIn account found after callback');
+      return res.redirect('/app/integrations?linkedin_error=no_linkedin_account_found_in_zernio');
+    }
+
+    console.log(`[Zernio] LinkedIn account connected: ${linkedinAccount._id} (${linkedinAccount.name || linkedinAccount.username || 'unnamed'})`);
+
+    // Store Zernio account info in publishing_channels
+    await pool.query(`
+      INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active, updated_at)
+      VALUES ($1, 'linkedin', $2, true, NOW())
+      ON CONFLICT (brand_profile_id, channel) DO UPDATE
+        SET credentials = $2, is_active = true, updated_at = NOW()
+    `, [brandProfileId, JSON.stringify({
+      provider: 'zernio',
+      zernioAccountId: linkedinAccount._id,
+      zernioProfileId: profileId,
+      platform: 'linkedin',
+      accountName: linkedinAccount.name || linkedinAccount.username || 'LinkedIn',
+    })]);
+
+    res.redirect('/app/integrations?linkedin_connected=true');
+  } catch(e) {
+    console.error('[Zernio] Callback error:', e.message);
+    res.redirect(`/app/integrations?linkedin_error=${encodeURIComponent(e.message)}`);
+  }
+});
+
+// ── LinkedIn OAuth2 Flow (legacy — kept for reference) ───────────────────────
 app.get('/api/linkedin/auth', (req, res) => {
   const clientId = process.env.LINKEDIN_CLIENT_ID;
   const redirectUri = encodeURIComponent(process.env.LINKEDIN_REDIRECT_URI || 'https://forgeintelligence.ai/auth/linkedin/callback');

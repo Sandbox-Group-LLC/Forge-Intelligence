@@ -167,20 +167,16 @@ const CHANNELS: ChannelDef[] = [
   {
     id: 'linkedin',
     label: 'LinkedIn',
-    description: 'Share articles to your LinkedIn profile via OAuth2. Click Connect to authorize Forge -- no manual token needed.',
-    pipedreamApp: 'linkedin',
+    description: 'Share articles to your LinkedIn profile via Zernio. Click Connect to authorize — no manual token needed.',
     color: '#0A66C2',
     logo: 'in',
     liveStatus: 'live',
     oauthFlow: true,
-    credentialFields: [
-      { key: 'accessToken', label: 'OAuth Access Token', placeholder: 'Auto-filled after OAuth', type: 'password' },
-      { key: 'authorUrn', label: 'Author URN', placeholder: 'Auto-filled after OAuth' },
-    ],
+    credentialFields: [],
     setupGuide: {
-      title: 'LinkedIn OAuth',
+      title: 'LinkedIn via Zernio',
       steps: [
-        { text: 'Click Connect above. You\'ll be redirected to LinkedIn to authorize Forge Intelligence.' },
+        { text: 'Click Connect above. You\'ll be redirected to LinkedIn to authorize via Zernio.' },
         { text: 'Sign in with the LinkedIn account you want to publish from.' },
         { text: 'Click Allow to grant posting permissions.' },
         { text: 'You\'ll be redirected back automatically. No tokens to copy.' },
@@ -390,7 +386,7 @@ export default function IntegrationsPage() {
 
     // Native OAuth channels — bypass Pipedream entirely
     const nativeOAuthRoutes: Record<string, string> = {
-      linkedin: '/api/linkedin/auth',
+      linkedin: '/api/zernio/connect/linkedin',
       hubspot:  '/api/hubspot/auth',
       webflow:  '/api/webflow/auth',
       x:        '/api/x/auth',
