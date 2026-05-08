@@ -14111,17 +14111,40 @@ app.get('/integrations/zernio/callback', async (req, res) => {
 
     // Find the newest matching account in this brand's Zernio profile.
     const accountsRes = await callZernio('GET', '/accounts');
-    if (!accountsRes.ok) return res.redirect(`/app/integrations?connected=error&reason=accounts-list-failed`);
+    if (!accountsRes.ok) {
+      console.error('[ZERNIO-CALLBACK] accounts list failed:', accountsRes.status, accountsRes.raw?.slice(0, 200));
+      return res.redirect(`/app/integrations?connected=error&reason=accounts-list-failed`);
+    }
 
-    const accounts = (accountsRes.parsed?.accounts || [])
-      .filter(a => a.platform === platform)
+    const allAccounts = accountsRes.parsed?.accounts || [];
+    const platformAccounts = allAccounts.filter(a => a.platform === platform);
+    console.log(`[ZERNIO-CALLBACK] Total accounts: ${allAccounts.length}, ${platform} accounts: ${platformAccounts.length}, zernio_profile_id from query: ${zernio_profile_id}`);
+    if (platformAccounts.length > 0) {
+      console.log(`[ZERNIO-CALLBACK] First ${platform} account profileId:`, JSON.stringify(platformAccounts[0].profileId), 'type:', typeof platformAccounts[0].profileId);
+    }
+
+    const accounts = platformAccounts
       .filter(a => {
         const pid = (a.profileId && typeof a.profileId === 'object') ? a.profileId._id : a.profileId;
-        return pid === zernio_profile_id;
+        const match = pid === zernio_profile_id;
+        if (!match && platformAccounts.length > 0) {
+          console.log(`[ZERNIO-CALLBACK] Profile ID mismatch: account pid="${pid}" vs query="${zernio_profile_id}"`);
+        }
+        return match;
       })
       .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 
-    if (!accounts.length) return res.redirect(`/app/integrations?connected=error&reason=no-account-found`);
+    if (!accounts.length) {
+      // Fallback: if profile ID matching fails but there's exactly one account for this platform, use it
+      if (platformAccounts.length > 0) {
+        console.log(`[ZERNIO-CALLBACK] Profile ID filter found 0 matches but ${platformAccounts.length} ${platform} accounts exist — using newest`);
+        const fallback = platformAccounts.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())[0];
+        accounts.push(fallback);
+      } else {
+        console.log(`[ZERNIO-CALLBACK] No ${platform} accounts found at all`);
+        return res.redirect(`/app/integrations?connected=error&reason=no-account-found`);
+      }
+    }
     const newAccount = accounts[0];
 
     // Merge zernioAccountId into existing credentials (don't clobber other keys).
