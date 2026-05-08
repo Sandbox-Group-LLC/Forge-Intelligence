@@ -10782,7 +10782,78 @@ app.post('/api/publishing/publish', async (req, res) => {
           results[channel] = { status: 'staged', message: 'HubSpot: credentials saved, live API wired in Stage 6.1', utmParams };
 
         } else if (channel === 'linkedin') {
-          // ── Real LinkedIn share via UGC Posts API ──
+          // ── Zernio-routed LinkedIn publish (preferred) ──
+          // If this brand has been migrated to Zernio (zernioAccountId set on the
+          // channel credentials), route through Zernio's API. Otherwise fall through
+          // to the legacy direct LinkedIn UGC Posts API. Per-brand opt-in.
+          if (creds.zernioAccountId) {
+            try {
+              const articleJson = article.article_json || {};
+              const sections = articleJson.sections || [];
+              const postCopyOverride = (req.body.postCopy || {})[channel];
+              const articleUrl = `${forgeArticleUrl}${utmString ? '?' + utmString : ''}`;
+
+              // Generate post copy the same way as the legacy path so behavior matches.
+              let postText = postCopyOverride;
+              if (!postText) {
+                const wordCount = sections.reduce((acc, s) => acc + ((s.body || s.content || '').split(' ').length), 0);
+                const readMinutes = Math.max(2, Math.round(wordCount / 200));
+                const sectionHeadings = sections.slice(1, 5).map(s => s.heading).filter(Boolean).join(', ');
+                try {
+                  const copyRes = await anthropic.messages.create({
+                    model: 'claude-haiku-4-5-20251001',
+                    max_tokens: 400,
+                    messages: [{ role: 'user', content: `Write a LinkedIn post designed to drive link clicks to this B2B article. Goal: make the reader feel they MUST click to get the full answer. Do NOT summarize — create a curiosity gap.
+
+Article title: "${article.title}"
+Key sections covered: ${sectionHeadings}
+Read time: ${readMinutes} min read
+
+Structure (follow exactly):
+Line 1: One punchy statement of the core tension or counterintuitive insight. Must hook in under 200 characters — this is what shows before 'see more'.
+Lines 2-4: 2-3 short lines that deepen the tension or name the specific problem. Do NOT resolve it — leave the answer in the article.
+Final line: Exactly this and nothing else: Read more: ${articleUrl}
+
+Hard rules:
+- Total post: 500-800 characters including the URL line
+- No emojis, no hashtags, no bullet points
+- No summarizing the article — create hunger for it
+- No ellipsis cutoffs — every sentence complete
+- Plain text only, no markdown
+
+Output only the post text.` }]
+                  });
+                  postText = copyRes.content[0]?.type === 'text' ? copyRes.content[0].text.trim() : '';
+                } catch(e) {
+                  postText = `${article.title}\n\n${sections.slice(0,3).map(s => s.heading).filter(Boolean).join(' · ')}\n\nRead more: ${articleUrl}`;
+                }
+              }
+
+              const zr = await zernioPublish({
+                platform: 'linkedin',
+                accountId: creds.zernioAccountId,
+                content: postText
+              });
+              results[channel] = {
+                status: 'published',
+                url: zr.postUrl,
+                postId: zr.postId,
+                via: 'zernio',
+                utmParams
+              };
+              continue;  // skip the legacy direct-API code below
+            } catch (zerr) {
+              // Zernio failed — record the error and fall through to legacy path so we have a fallback.
+              // If creds.zernioOnly is set, throw instead of falling through.
+              if (creds.zernioOnly) {
+                throw zerr;
+              }
+              console.warn(`[PUBLISH] Zernio LinkedIn publish failed, falling back to direct API: ${zerr.message}`);
+              // continue into legacy block below
+            }
+          }
+
+          // ── Legacy direct LinkedIn UGC Posts API (fallback) ──
           const liToken   = creds.accessToken || process.env.LINKEDIN_ACCESS_TOKEN;
           const authorUrn = creds.authorUrn   || process.env.LINKEDIN_AUTHOR_URN;
           if (!liToken || !authorUrn) {
@@ -13822,6 +13893,47 @@ const callZernio = async (method, path, body) => {
   const raw = await r.text();
   try { parsed = JSON.parse(raw); } catch { /* keep raw */ }
   return { status: r.status, ok: r.ok, raw, parsed };
+};
+
+// Production helper for publishing through Zernio's social media API. Used by the
+// /api/publishing/publish handler when a channel's credentials include
+// zernioAccountId. Returns a normalized { status, postId, postUrl, raw } object
+// regardless of which platform was published to.
+//
+// Throws on failure — caller wraps in try/catch and reports to results[channel].
+const zernioPublish = async ({ platform, accountId, content }) => {
+  if (!process.env.ZERNIO_API_KEY) throw new Error('ZERNIO_API_KEY not configured on this service');
+  if (!platform) throw new Error('zernioPublish: platform required');
+  if (!accountId) throw new Error('zernioPublish: accountId required');
+  if (!content) throw new Error('zernioPublish: content required');
+
+  const result = await callZernio('POST', '/posts', {
+    content,
+    publishNow: true,
+    platforms: [{ platform, accountId }]
+  });
+
+  if (!result.ok) {
+    throw new Error(`Zernio ${platform} publish failed (${result.status}): ${result.raw?.slice(0, 300) || 'no response body'}`);
+  }
+
+  const post = result.parsed?.post;
+  const platformResult = (post?.platforms || []).find(p => p.platform === platform);
+  if (!platformResult) {
+    throw new Error(`Zernio response missing platform result for ${platform}: ${result.raw?.slice(0, 300)}`);
+  }
+  if (platformResult.status !== 'published') {
+    const errorMsg = platformResult.error || platformResult.platformSpecificData?.lastError || 'Zernio did not publish (status: ' + platformResult.status + ')';
+    throw new Error(`Zernio ${platform}: ${errorMsg}`);
+  }
+
+  return {
+    status: 'published',
+    postId: platformResult.platformPostId || post._id,
+    postUrl: platformResult.platformPostUrl,
+    publishedAt: platformResult.publishedAt,
+    raw: post
+  };
 };
 
 // GET-style — list profiles. Lightest possible test: validates key + reachability.
