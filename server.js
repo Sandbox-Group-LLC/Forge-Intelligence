@@ -9234,6 +9234,76 @@ app.post('/api/publishing/channels', requireAuth, async (req, res) => {
   }
 });
 
+// Targeted update for Reddit allowedSubreddits / defaultSubreddit. We can't reuse
+// POST /api/publishing/channels because that wholesale-overwrites credentials —
+// it would wipe the Zernio account ID. This endpoint does a JSONB merge so the
+// OAuth credentials are preserved.
+//
+// Body: { brandProfileId, allowedSubreddits: string[], defaultSubreddit?: string }
+// Subreddit names are normalized to bare form (no leading 'r/') and validated
+// against Reddit's actual naming rules.
+app.post('/api/publishing/channels/reddit/allowed-subreddits', requireAuth, async (req, res) => {
+  const { brandProfileId, allowedSubreddits, defaultSubreddit } = req.body;
+  if (!brandProfileId) return res.status(400).json({ success: false, error: 'brandProfileId required' });
+  if (!Array.isArray(allowedSubreddits)) return res.status(400).json({ success: false, error: 'allowedSubreddits must be an array' });
+
+  // Reddit subreddit names: 3-21 chars, letters/numbers/underscores only, not starting with underscore.
+  const validateSubName = (raw) => {
+    const name = String(raw || '').trim().replace(/^r\//i, '').replace(/^\//, '');
+    if (!/^[A-Za-z0-9][A-Za-z0-9_]{2,20}$/.test(name)) return null;
+    return name;
+  };
+
+  const normalized = [];
+  const invalid = [];
+  for (const raw of allowedSubreddits) {
+    const v = validateSubName(raw);
+    if (v) {
+      if (!normalized.includes(v)) normalized.push(v);  // dedupe
+    } else {
+      invalid.push(raw);
+    }
+  }
+  if (invalid.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: `Invalid subreddit names: ${invalid.join(', ')}. Subreddit names must be 3-21 characters, letters/numbers/underscores only, not starting with an underscore.`,
+      code: 'REDDIT_SUBREDDIT_NAME_INVALID'
+    });
+  }
+
+  let normalizedDefault = null;
+  if (defaultSubreddit !== undefined && defaultSubreddit !== null && String(defaultSubreddit).trim()) {
+    normalizedDefault = validateSubName(defaultSubreddit);
+    if (!normalizedDefault) {
+      return res.status(400).json({ success: false, error: 'defaultSubreddit name is invalid' });
+    }
+    if (!normalized.includes(normalizedDefault)) {
+      return res.status(400).json({ success: false, error: 'defaultSubreddit must be in allowedSubreddits' });
+    }
+  }
+
+  try {
+    // JSONB merge: keep all existing credential fields (zernioAccountId, OAuth tokens, etc.),
+    // overwrite only allowedSubreddits + defaultSubreddit.
+    const result = await pool.query(
+      `UPDATE publishing_channels
+         SET credentials = COALESCE(credentials, '{}'::jsonb)
+                         || jsonb_build_object('allowedSubreddits', $3::jsonb, 'defaultSubreddit', $4::jsonb),
+             updated_at = NOW()
+       WHERE brand_profile_id = $1 AND channel = $2
+       RETURNING id, credentials->'allowedSubreddits' as allowed, credentials->>'defaultSubreddit' as default_sub`,
+      [brandProfileId, 'reddit', JSON.stringify(normalized), JSON.stringify(normalizedDefault)]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ success: false, error: 'Reddit channel not found for this brand. Connect Reddit via Integrations first.' });
+    }
+    res.json({ success: true, allowedSubreddits: result.rows[0].allowed || [], defaultSubreddit: result.rows[0].default_sub || null });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // DELETE /api/publishing/channels/:id
 app.delete('/api/publishing/channels/:id', requireAuth, async (req, res) => {
   try {
