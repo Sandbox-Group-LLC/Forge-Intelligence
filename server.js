@@ -9312,6 +9312,51 @@ app.get('/auth/zernio/callback', async (req, res) => {
   }
 });
 
+// Sync Zernio account after popup OAuth completes
+app.get('/api/zernio/sync-account', requireAuth, async (req, res) => {
+  const apiKey = process.env.ZERNIO_API_KEY;
+  const profileId = process.env.ZERNIO_PROFILE_ID;
+  if (!apiKey || !profileId) return res.status(500).json({ success: false, error: 'Zernio not configured' });
+
+  const brandProfileId = req.query.brandProfileId;
+  const platform = req.query.platform || 'linkedin';
+  if (!brandProfileId) return res.status(400).json({ success: false, error: 'brandProfileId required' });
+  if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ success: false, error: 'Access denied' });
+
+  try {
+    const accountsRes = await fetch(`https://zernio.com/api/v1/accounts?profileId=${encodeURIComponent(profileId)}`, {
+      headers: { 'Authorization': `Bearer ${apiKey}` }
+    });
+    const accountsData = await accountsRes.json();
+    console.log(`[Zernio] Sync-account: ${accountsData.accounts?.length || 0} accounts found for profile ${profileId}`);
+
+    const account = (accountsData.accounts || []).find(a => a.platform === platform);
+    if (!account) {
+      return res.json({ success: false, error: `No ${platform} account found in Zernio. Complete the authorization in the popup first.` });
+    }
+
+    console.log(`[Zernio] Found ${platform} account: ${account._id} (${account.name || account.username || 'unnamed'})`);
+
+    await pool.query(`
+      INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active, updated_at)
+      VALUES ($1, $2, $3, true, NOW())
+      ON CONFLICT (brand_profile_id, channel) DO UPDATE
+        SET credentials = $3, is_active = true, updated_at = NOW()
+    `, [brandProfileId, platform, JSON.stringify({
+      provider: 'zernio',
+      zernioAccountId: account._id,
+      zernioProfileId: profileId,
+      platform,
+      accountName: account.name || account.username || platform,
+    })]);
+
+    res.json({ success: true, accountId: account._id, accountName: account.name || account.username });
+  } catch(e) {
+    console.error('[Zernio] Sync-account error:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // ── LinkedIn OAuth2 Flow (legacy — kept for reference) ───────────────────────
 app.get('/api/linkedin/auth', (req, res) => {
   const clientId = process.env.LINKEDIN_CLIENT_ID;

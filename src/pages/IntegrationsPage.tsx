@@ -384,9 +384,39 @@ export default function IntegrationsPage() {
   const handleSave = async (channelId: ChannelId) => {
     const channel = CHANNELS.find(c => c.id === channelId);
 
-    // Native OAuth channels — bypass Pipedream entirely
+    // Zernio-powered OAuth — opens in popup, syncs account when popup closes
+    if (channelId === 'linkedin' && channel?.oauthFlow) {
+      if (!selectedBrand) { setError('Select a Brain first'); return; }
+      try {
+        const r = await fetch(`/api/zernio/connect/linkedin?brandProfileId=${selectedBrand}`);
+        const d = await r.json();
+        if (!d.authUrl) throw new Error(d.error || 'No auth URL returned');
+        const popup = window.open(d.authUrl, 'zernio_connect', 'width=600,height=700,left=200,top=100');
+        const poll = setInterval(async () => {
+          if (!popup || popup.closed) {
+            clearInterval(poll);
+            try {
+              const sync = await fetch(`/api/zernio/sync-account?brandProfileId=${selectedBrand}&platform=linkedin`);
+              const syncData = await sync.json();
+              if (syncData.success) {
+                setSuccess('LinkedIn connected via Zernio!');
+                loadChannels(selectedBrand);
+                setExpanded('linkedin');
+                setTimeout(() => setSuccess(''), 4000);
+              } else {
+                setError(syncData.error || 'LinkedIn account not found in Zernio — try connecting again');
+              }
+            } catch { setError('Failed to sync LinkedIn account from Zernio'); }
+          }
+        }, 500);
+      } catch(e: any) {
+        setError(`Could not connect LinkedIn: ${e.message}`);
+      }
+      return;
+    }
+
+    // Native OAuth channels — redirect flow
     const nativeOAuthRoutes: Record<string, string> = {
-      linkedin: '/api/zernio/connect/linkedin',
       hubspot:  '/api/hubspot/auth',
       webflow:  '/api/webflow/auth',
       x:        '/api/x/auth',
@@ -397,7 +427,6 @@ export default function IntegrationsPage() {
         const r = await fetch(`${nativeOAuthRoutes[channelId]}?brandProfileId=${selectedBrand}`);
         const d = await r.json();
         if (d.authUrl) { window.location.href = d.authUrl; return; }
-        // Some auth routes redirect directly (no JSON)
         throw new Error(d.error || `Failed to start ${channel.label} authorization`);
       } catch(e: any) {
         if (!String(e.message).includes('JSON')) {
