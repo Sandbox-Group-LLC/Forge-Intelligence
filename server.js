@@ -13987,6 +13987,19 @@ app.post('/api/admin/zernio/post', async (req, res) => {
   }
 });
 
+// Test: probe Zernio's /connect/:platform to see what an OAuth-start response looks like.
+app.post('/api/admin/zernio/probe-connect', async (req, res) => {
+  if (!zernioGuard(req, res)) return;
+  try {
+    const { platform, profileId } = req.body;
+    const qs = profileId ? `?profileId=${encodeURIComponent(profileId)}` : '';
+    const result = await callZernio('GET', `/connect/${platform}${qs}`);
+    res.json({ success: true, stage: 'probe-connect', ...result });
+  } catch (e) {
+    res.status(500).json({ success: false, stage: 'probe-connect', error: e.message });
+  }
+});
+
 // Test the connect endpoint to see what shape Zernio's OAuth init looks like.
 // Body: { profileId, platform, redirectUrl?, state? }
 app.post('/api/admin/zernio/connect-test', async (req, res) => {
