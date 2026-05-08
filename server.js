@@ -9246,7 +9246,7 @@ app.delete('/api/publishing/channels/:id', requireAuth, async (req, res) => {
 
 // POST /api/publishing/publish — publish a queue item to selected channels
 
-// ── LinkedIn OAuth2 Flow ──────────────────────────────────────────────────────
+// ── LinkedIn OAuth2 Flow (legacy — Zernio connect at bottom of file) ─────────
 app.get('/api/linkedin/auth', (req, res) => {
   const clientId = process.env.LINKEDIN_CLIENT_ID;
   const redirectUri = encodeURIComponent(process.env.LINKEDIN_REDIRECT_URI || 'https://forgeintelligence.ai/auth/linkedin/callback');
@@ -11225,11 +11225,62 @@ Output only the post text.` }]
           }
 
         } else if (channel === 'facebook') {
-          // ── Facebook publish via Pipedream Connect Proxy ──
           const creds = chConfig.credentials || {};
+
+          // ── Priority 0: Zernio publish path ──
+          if (creds.zernioAccountId) {
+            const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
+            const utmUrl = articleUrl + '?' + new URLSearchParams({ ...utmCtx, utm_source: 'facebook', utm_medium: 'social' }).toString();
+            const fbPostCopyOverride = (req.body.postCopy || {})[channel];
+            let fbMessage;
+            if (fbPostCopyOverride && fbPostCopyOverride.trim()) {
+              fbMessage = fbPostCopyOverride.trim();
+            } else {
+              fbMessage = `${item.title}\n\n${utmUrl}`;
+              try {
+                const haiku = await anthropic.messages.create({
+                  model: 'claude-haiku-4-5-20251001',
+                  max_tokens: 600,
+                  messages: [{ role: 'user', content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant tags. Include the URL ${utmUrl} naturally.\n\nArticle title: ${item.title}\n\nArticle excerpt: ${(article.article_json?.sections?.[0]?.body || '').slice(0, 500)}` }]
+                });
+                fbMessage = haiku.content[0]?.text || fbMessage;
+              } catch(e) {
+                console.warn('[FB-ZERNIO] Haiku post copy failed:', e.message);
+              }
+            }
+
+            try {
+              const zr = await zernioPublish({
+                platform: 'facebook',
+                accountId: creds.zernioAccountId,
+                content: fbMessage
+              });
+              results[channel] = {
+                status: 'published',
+                url: zr.postUrl,
+                postId: zr.postId,
+                via: 'zernio',
+                utmParams
+              };
+              await pool.query(
+                `INSERT INTO publish_log (queue_item_id, brand_profile_id, content_id, channel, status, response_data, utm_params, published_url, error_message)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+                [queueItemId, item.brand_profile_id, item.content_id, channel, 'published',
+                 JSON.stringify(results[channel]), JSON.stringify(utmParams), zr.postUrl, null]
+              ).catch(e => console.error('[PUBLISH] zernio facebook publish_log insert failed:', e.message));
+              continue;
+            } catch(zerr) {
+              if (creds.zernioOnly || creds.provider === 'zernio') {
+                throw new Error(`Facebook via Zernio: ${zerr.message}`);
+              }
+              console.error('[FB-ZERNIO] Failed, falling through to legacy:', zerr.message);
+            }
+          }
+
+          // ── Legacy: Pipedream / direct Graph API paths ──
           const pipedreamAccountId = creds.pipedream_account_id;
 
-          // ─── Priority 0: Pipedream workflow URL (global env var, multi-tenant) ───
+          // ─── Priority 1: Pipedream workflow URL (global env var, multi-tenant) ───
           // Pipedream's connector AI builder gave us a workflow URL that uses the right
           // Facebook Pages connector with proper scopes. The workflow URL is global Forge
           // infrastructure (env var, not per-brand) — every customer's publish hits the same
@@ -11649,7 +11700,6 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
     const errors = [];
 
     if (channel === 'linkedin' || channel === 'all') {
-      // Get all LinkedIn published posts from publish_log
       const logRes = await pool.query(
         `SELECT pl.content_id, pl.response_data, pl.attempted_at AS published_at,
                 ct.title, ct.campaign_id
@@ -11660,96 +11710,115 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
         [brandProfileId]
       ).catch(() => ({ rows: [] }));
 
-      // Get LinkedIn credentials from publishing_channels (primary) or channel_credentials (legacy)
       const credRes = await pool.query(
         `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'linkedin' AND is_active = true LIMIT 1`,
         [brandProfileId]
       ).catch(() => ({ rows: [] }));
       const creds = credRes.rows[0]?.credentials || {};
+      const isZernio = creds.provider === 'zernio' && !!process.env.ZERNIO_API_KEY;
       const token = creds.accessToken || process.env.LINKEDIN_ACCESS_TOKEN;
+      console.log(`[Analytics/LinkedIn] Found ${logRes.rows.length} published posts, provider=${isZernio ? 'zernio' : 'legacy'}, hasToken=${!!token}`);
 
       for (const row of logRes.rows) {
         try {
-          const postId = row.response_data?.postId || row.response_data?.post_id || row.response_data?.id;
-          if (!postId || !token) {
-            if (!token) continue; // LinkedIn not connected for this brand — skip
-            continue;
-          }
+          const rd = row.response_data || {};
+          const postId = rd.postId || rd.post_id || rd.id;
+          if (!postId) { errors.push({ contentId: row.content_id, error: 'no_post_id' }); continue; }
 
           let impressions = 0, clicks = 0, reactions = 0, comments = 0, reposts = 0;
           let rawData = {};
           let dataSource = 'none';
 
-          // Step 1: Always try socialActions first — available with w_member_social (no MDP needed)
-          // Returns likes + comments for both personal and org posts
-          try {
-            const actRes = await fetch(
-              `https://api.linkedin.com/v2/socialActions/${encodeURIComponent(postId)}?projection=(likesSummary,commentsSummary,shareSummary)`,
-              { headers: { 'Authorization': `Bearer ${token}`, 'X-Restli-Protocol-Version': '2.0.0' } }
-            );
-            if (actRes.ok) {
-              const actData = await actRes.json();
-              reactions = actData?.likesSummary?.totalLikes || 0;
-              comments  = actData?.commentsSummary?.totalFirstLevelComments || 0;
-              reposts   = actData?.shareSummary?.totalShares || 0;
-              rawData   = { ...rawData, socialActions: actData };
-              dataSource = 'socialActions';
-            } else {
-              const errBody = await actRes.text().catch(() => '');
-              console.error(`[LINKEDIN-SYNC] socialActions ${actRes.status} for ${postId}: ${errBody.slice(0, 200)}`);
-              rawData = { ...rawData, socialActionsError: { status: actRes.status, body: errBody.slice(0, 300) } };
-            }
-          } catch(e) { console.error(`[LINKEDIN-SYNC] socialActions error: ${e.message}`); }
+          if (isZernio) {
+            // ── Zernio Analytics path ──
+            const analyticsRes = await callZernio('GET', `/analytics?postId=${encodeURIComponent(postId)}`);
+            console.log(`[Analytics/LinkedIn] Zernio analytics for ${postId}: HTTP ${analyticsRes.status}`);
 
-          // Step 2: Try shareStatistics — requires LinkedIn Marketing Developer Platform approval
-          // Will return impressions + clicks once MDP is granted; silently skipped until then
-          try {
-            const encodedPostId = encodeURIComponent(postId);
-            const statsRes = await fetch(
-              `https://api.linkedin.com/v2/shareStatistics?q=shares&shares[0]=${encodedPostId}&projection=(elements*(totalShareStatistics))`,
-              { headers: { 'Authorization': `Bearer ${token}`, 'X-Restli-Protocol-Version': '2.0.0', 'LinkedIn-Version': '202401' } }
-            );
-            if (statsRes.ok) {
-              const statsData = await statsRes.json();
-              const stats = statsData?.elements?.[0]?.totalShareStatistics || {};
-              // Only use if MDP data is actually present (non-zero impressions)
-              if (stats.impressionCount > 0) {
-                impressions = stats.impressionCount || 0;
-                clicks      = stats.clickCount     || 0;
-                // Use MDP reactions if higher (more accurate than socialActions)
-                reactions   = Math.max(reactions, stats.likeCount  || 0);
-                comments    = Math.max(comments,  stats.commentCount || 0);
-                reposts     = Math.max(reposts,   stats.shareCount  || 0);
-                rawData     = { ...rawData, shareStatistics: stats };
-                dataSource  = 'shareStatistics';
+            if (analyticsRes.status === 202) {
+              console.log(`[Analytics/LinkedIn] Sync pending for ${postId} — will retry next sync`);
+              continue;
+            }
+            if (analyticsRes.status === 424) {
+              console.log(`[Analytics/LinkedIn] All platforms failed for ${postId}`);
+              errors.push({ contentId: row.content_id, error: 'zernio_analytics_424' });
+              continue;
+            }
+            if (!analyticsRes.ok) {
+              console.log(`[Analytics/LinkedIn] Zernio analytics error: ${analyticsRes.status}`, analyticsRes.raw?.slice(0, 200));
+              errors.push({ contentId: row.content_id, error: `zernio_analytics_${analyticsRes.status}` });
+              continue;
+            }
+
+            const analytics = analyticsRes.parsed;
+            // Zernio returns metrics at post level or per-platform — extract LinkedIn metrics
+            const platforms = analytics?.post?.platforms || analytics?.platforms || [];
+            const liMetrics = platforms.find(p => p.platform === 'linkedin')?.analytics
+              || analytics?.post?.analytics
+              || analytics?.analytics
+              || analytics || {};
+
+            impressions = liMetrics.impressions || liMetrics.views || liMetrics.impression_count || 0;
+            clicks      = liMetrics.clicks || liMetrics.link_clicks || liMetrics.clickCount || 0;
+            reactions   = liMetrics.likes || liMetrics.reactions || liMetrics.likeCount || 0;
+            comments    = liMetrics.comments || liMetrics.replies || liMetrics.commentCount || 0;
+            reposts     = liMetrics.shares || liMetrics.reposts || liMetrics.repostCount || liMetrics.shareCount || 0;
+            rawData     = { zernio: analytics };
+            dataSource  = 'zernio';
+            console.log(`[Analytics/LinkedIn] Zernio metrics for ${postId}: ${impressions} impr, ${reactions} likes, ${comments} comments, ${reposts} shares, ${clicks} clicks`);
+
+          } else if (token) {
+            // ── Legacy direct LinkedIn API path ──
+            try {
+              const actRes = await fetch(
+                `https://api.linkedin.com/v2/socialActions/${encodeURIComponent(postId)}?projection=(likesSummary,commentsSummary,shareSummary)`,
+                { headers: { 'Authorization': `Bearer ${token}`, 'X-Restli-Protocol-Version': '2.0.0' } }
+              );
+              if (actRes.ok) {
+                const actData = await actRes.json();
+                reactions = actData?.likesSummary?.totalLikes || 0;
+                comments  = actData?.commentsSummary?.totalFirstLevelComments || 0;
+                reposts   = actData?.shareSummary?.totalShares || 0;
+                rawData   = { ...rawData, socialActions: actData };
+                dataSource = 'socialActions';
               }
-            }
-          } catch(e) { console.error(`[LINKEDIN-SYNC] shareStatistics error: ${e.message}`); }
+            } catch(e) { /* socialActions unavailable */ }
 
-          // Engagement rate: use impressions if available, else use total engagements as proxy
+            try {
+              const encodedPostId = encodeURIComponent(postId);
+              const statsRes = await fetch(
+                `https://api.linkedin.com/v2/shareStatistics?q=shares&shares[0]=${encodedPostId}&projection=(elements*(totalShareStatistics))`,
+                { headers: { 'Authorization': `Bearer ${token}`, 'X-Restli-Protocol-Version': '2.0.0', 'LinkedIn-Version': '202401' } }
+              );
+              if (statsRes.ok) {
+                const statsData = await statsRes.json();
+                const stats = statsData?.elements?.[0]?.totalShareStatistics || {};
+                if (stats.impressionCount > 0) {
+                  impressions = stats.impressionCount || 0;
+                  clicks      = stats.clickCount     || 0;
+                  reactions   = Math.max(reactions, stats.likeCount  || 0);
+                  comments    = Math.max(comments,  stats.commentCount || 0);
+                  reposts     = Math.max(reposts,   stats.shareCount  || 0);
+                  rawData     = { ...rawData, shareStatistics: stats };
+                  dataSource  = 'shareStatistics';
+                }
+              }
+            } catch(e) { /* MDP not approved */ }
+          } else {
+            console.log(`[Analytics/LinkedIn] No credentials — skipping ${postId}`);
+            continue;
+          }
+
+          if (dataSource === 'none') {
+            console.log(`[Analytics/LinkedIn] No data returned for ${postId} — skipping`);
+            continue;
+          }
+
           const totalEngagement = reactions + comments + reposts + clicks;
           const ctr = impressions > 0 ? parseFloat((clicks / impressions * 100).toFixed(2)) : 0;
           const engagementRate = impressions > 0
             ? parseFloat((totalEngagement / impressions * 100).toFixed(2))
             : 0;
 
-          // Skip entirely when API returned no useful data — no point creating/overwriting a row with zeros.
-          // This also prevents wiping manually-entered metrics (which only survive if we DON'T touch the row).
-          if (dataSource === 'none') {
-            console.log(`[LINKEDIN-SYNC] Skipping ${postId} — no API data (MDP not granted, socialActions failed). Manual entries preserved.`);
-            continue;
-          }
-
-          // Smart upsert — protects manually-entered analytics from being wiped by API zeros.
-          // Before MDP approval: shareStatistics returns 0 for impressions/clicks. The socialActions-only
-          // path still gets reactions/comments/reposts, but impressions/clicks default to 0. If we
-          // overwrote unconditionally (old bug), those zeros would clobber Brian's manual 847 impressions.
-          //
-          // New logic:
-          //  - impressions/clicks/ctr/engagement_rate: only overwrite when we have REAL shareStatistics
-          //    data (EXCLUDED.impressions > 0 — only possible with MDP). Otherwise preserve existing.
-          //  - reactions/comments/reposts: use GREATEST so API blips can never lower numbers.
-          //  - raw_data: merge via || so a {"source":"manual"} marker in existing row survives.
           await pool.query(
             `INSERT INTO content_analytics
                (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at, campaign_id)
@@ -11872,6 +11941,123 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
              JSON.stringify(rawData), row.published_at, row.campaign_id || null]
           );
           synced.push({ contentId: row.content_id, title: row.title, tweetId, impressions, reactions, comments, reposts, clicks });
+        } catch(e) {
+          errors.push({ contentId: row.content_id, error: e.message });
+        }
+      }
+    }
+
+    // ── Facebook analytics (via Zernio) ─────────────────────────────────────
+    if (channel === 'facebook' || channel === 'all') {
+      const fbLogRes = await pool.query(
+        `SELECT pl.content_id, pl.response_data, pl.attempted_at AS published_at,
+                pl.published_url, ct.campaign_id
+         FROM publish_log pl
+         LEFT JOIN generated_content_${safeId} ct ON ct.id::text = pl.content_id
+         WHERE pl.brand_profile_id = $1 AND pl.channel = 'facebook' AND pl.status = 'published'
+           AND (pl.live_status IS NULL OR pl.live_status != 'deleted')
+         ORDER BY pl.attempted_at DESC`,
+        [brandProfileId]
+      ).catch(() => ({ rows: [] }));
+
+      const fbCredRes = await pool.query(
+        `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'facebook' AND is_active = true LIMIT 1`,
+        [brandProfileId]
+      ).catch(() => ({ rows: [] }));
+      const fbCreds = fbCredRes.rows[0]?.credentials || {};
+      const fbIsZernio = fbCreds.provider === 'zernio' && !!process.env.ZERNIO_API_KEY;
+      const fbToken = fbCreds.pageAccessToken;
+      console.log(`[Analytics/Facebook] Found ${fbLogRes.rows.length} published posts, provider=${fbIsZernio ? 'zernio' : 'legacy'}`);
+
+      for (const row of fbLogRes.rows) {
+        try {
+          const rd = row.response_data || {};
+          const postId = rd.postId || rd.post_id || rd.id;
+          if (!postId) { errors.push({ contentId: row.content_id, error: 'no_post_id' }); continue; }
+
+          let impressions = 0, clicks = 0, reactions = 0, comments = 0, reposts = 0;
+          let rawData = {};
+          let dataSource = 'none';
+
+          if (fbIsZernio) {
+            const analyticsRes = await callZernio('GET', `/analytics?postId=${encodeURIComponent(postId)}`);
+            console.log(`[Analytics/Facebook] Zernio analytics for ${postId}: HTTP ${analyticsRes.status}`);
+
+            if (analyticsRes.status === 202) {
+              console.log(`[Analytics/Facebook] Sync pending for ${postId} — will retry next sync`);
+              continue;
+            }
+            if (analyticsRes.status === 424 || !analyticsRes.ok) {
+              errors.push({ contentId: row.content_id, error: `zernio_analytics_${analyticsRes.status}` });
+              continue;
+            }
+
+            const analytics = analyticsRes.parsed;
+            const platforms = analytics?.post?.platforms || analytics?.platforms || [];
+            const fbMetrics = platforms.find(p => p.platform === 'facebook')?.analytics
+              || analytics?.post?.analytics
+              || analytics?.analytics
+              || analytics || {};
+
+            impressions = fbMetrics.impressions || fbMetrics.views || fbMetrics.reach || fbMetrics.impression_count || 0;
+            clicks      = fbMetrics.clicks || fbMetrics.link_clicks || fbMetrics.post_clicks || 0;
+            reactions   = fbMetrics.likes || fbMetrics.reactions || fbMetrics.total_reactions || 0;
+            comments    = fbMetrics.comments || fbMetrics.comment_count || 0;
+            reposts     = fbMetrics.shares || fbMetrics.reposts || fbMetrics.share_count || 0;
+            rawData     = { zernio: analytics };
+            dataSource  = 'zernio';
+            console.log(`[Analytics/Facebook] Zernio metrics for ${postId}: ${impressions} impr, ${reactions} reactions, ${comments} comments, ${reposts} shares, ${clicks} clicks`);
+
+          } else if (fbToken && fbCreds.pageId) {
+            // Legacy direct Graph API path
+            try {
+              const fbRes = await fetch(
+                `https://graph.facebook.com/v19.0/${postId}/insights?metric=post_impressions,post_clicks,post_reactions_like_total&access_token=${fbToken}`
+              );
+              if (fbRes.ok) {
+                const fbData = await fbRes.json();
+                for (const metric of (fbData.data || [])) {
+                  const val = metric.values?.[0]?.value || 0;
+                  if (metric.name === 'post_impressions') impressions = val;
+                  if (metric.name === 'post_clicks') clicks = val;
+                  if (metric.name === 'post_reactions_like_total') reactions = val;
+                }
+                rawData = { graphApi: fbData };
+                dataSource = 'graphApi';
+              }
+            } catch(e) { /* Graph API unavailable */ }
+          } else {
+            continue;
+          }
+
+          if (dataSource === 'none') continue;
+
+          const totalEngagement = reactions + comments + reposts + clicks;
+          const ctr = impressions > 0 ? parseFloat((clicks / impressions * 100).toFixed(2)) : 0;
+          const engagementRate = impressions > 0
+            ? parseFloat((totalEngagement / impressions * 100).toFixed(2))
+            : 0;
+
+          await pool.query(
+            `INSERT INTO content_analytics
+               (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at, campaign_id)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),$14)
+             ON CONFLICT (content_id, channel) DO UPDATE SET
+               impressions      = CASE WHEN EXCLUDED.impressions > 0 THEN EXCLUDED.impressions ELSE content_analytics.impressions END,
+               clicks           = CASE WHEN EXCLUDED.impressions > 0 THEN EXCLUDED.clicks      ELSE content_analytics.clicks      END,
+               ctr              = CASE WHEN EXCLUDED.impressions > 0 THEN EXCLUDED.ctr         ELSE content_analytics.ctr         END,
+               engagement_rate  = CASE WHEN EXCLUDED.impressions > 0 THEN EXCLUDED.engagement_rate ELSE content_analytics.engagement_rate END,
+               reactions        = GREATEST(COALESCE(content_analytics.reactions, 0), EXCLUDED.reactions),
+               comments         = GREATEST(COALESCE(content_analytics.comments, 0),  EXCLUDED.comments),
+               reposts          = GREATEST(COALESCE(content_analytics.reposts, 0),   EXCLUDED.reposts),
+               raw_data         = COALESCE(content_analytics.raw_data, '{}'::jsonb) || EXCLUDED.raw_data,
+               synced_at        = NOW(),
+               campaign_id      = COALESCE(EXCLUDED.campaign_id, content_analytics.campaign_id)`,
+            [brandProfileId, row.content_id, 'facebook', postId,
+             impressions, clicks, reactions, comments, reposts, ctr, engagementRate,
+             JSON.stringify(rawData), row.published_at, row.campaign_id || null]
+          );
+          synced.push({ contentId: row.content_id, postId, reactions, comments, reposts, impressions, dataSource });
         } catch(e) {
           errors.push({ contentId: row.content_id, error: e.message });
         }
@@ -14288,17 +14474,40 @@ app.get('/integrations/zernio/callback', async (req, res) => {
 
     // Find the newest matching account in this brand's Zernio profile.
     const accountsRes = await callZernio('GET', '/accounts');
-    if (!accountsRes.ok) return res.redirect(`/app/integrations?connected=error&reason=accounts-list-failed`);
+    if (!accountsRes.ok) {
+      console.error('[ZERNIO-CALLBACK] accounts list failed:', accountsRes.status, accountsRes.raw?.slice(0, 200));
+      return res.redirect(`/app/integrations?connected=error&reason=accounts-list-failed`);
+    }
 
-    const accounts = (accountsRes.parsed?.accounts || [])
-      .filter(a => a.platform === platform)
+    const allAccounts = accountsRes.parsed?.accounts || [];
+    const platformAccounts = allAccounts.filter(a => a.platform === platform);
+    console.log(`[ZERNIO-CALLBACK] Total accounts: ${allAccounts.length}, ${platform} accounts: ${platformAccounts.length}, zernio_profile_id from query: ${zernio_profile_id}`);
+    if (platformAccounts.length > 0) {
+      console.log(`[ZERNIO-CALLBACK] First ${platform} account profileId:`, JSON.stringify(platformAccounts[0].profileId), 'type:', typeof platformAccounts[0].profileId);
+    }
+
+    const accounts = platformAccounts
       .filter(a => {
         const pid = (a.profileId && typeof a.profileId === 'object') ? a.profileId._id : a.profileId;
-        return pid === zernio_profile_id;
+        const match = pid === zernio_profile_id;
+        if (!match && platformAccounts.length > 0) {
+          console.log(`[ZERNIO-CALLBACK] Profile ID mismatch: account pid="${pid}" vs query="${zernio_profile_id}"`);
+        }
+        return match;
       })
       .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 
-    if (!accounts.length) return res.redirect(`/app/integrations?connected=error&reason=no-account-found`);
+    if (!accounts.length) {
+      // Fallback: if profile ID matching fails but there's exactly one account for this platform, use it
+      if (platformAccounts.length > 0) {
+        console.log(`[ZERNIO-CALLBACK] Profile ID filter found 0 matches but ${platformAccounts.length} ${platform} accounts exist — using newest`);
+        const fallback = platformAccounts.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())[0];
+        accounts.push(fallback);
+      } else {
+        console.log(`[ZERNIO-CALLBACK] No ${platform} accounts found at all`);
+        return res.redirect(`/app/integrations?connected=error&reason=no-account-found`);
+      }
+    }
     const newAccount = accounts[0];
 
     // Merge zernioAccountId into existing credentials (don't clobber other keys).
@@ -14306,20 +14515,16 @@ app.get('/integrations/zernio/callback', async (req, res) => {
       `SELECT id, credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = $2`,
       [brand, platform]
     );
+    const creds = JSON.stringify({ provider: 'zernio', zernioAccountId: newAccount._id, zernioProfileId: zernio_profile_id, platform, accountName: newAccount.name || newAccount.username || platform });
     if (existing.rows.length) {
       await pool.query(
-        `UPDATE publishing_channels
-            SET credentials = credentials || jsonb_build_object('zernioAccountId', $1),
-                is_active = true,
-                updated_at = NOW()
-          WHERE id = $2`,
-        [newAccount._id, existing.rows[0].id]
+        `UPDATE publishing_channels SET credentials = $1::jsonb, is_active = true, updated_at = NOW() WHERE id = $2`,
+        [creds, existing.rows[0].id]
       );
     } else {
       await pool.query(
-        `INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active)
-         VALUES ($1, $2, jsonb_build_object('zernioAccountId', $3), true)`,
-        [brand, platform, newAccount._id]
+        `INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active) VALUES ($1, $2, $3::jsonb, true)`,
+        [brand, platform, creds]
       );
     }
 

@@ -167,20 +167,16 @@ const CHANNELS: ChannelDef[] = [
   {
     id: 'linkedin',
     label: 'LinkedIn',
-    description: 'Share articles to your LinkedIn profile via OAuth2. Click Connect to authorize Forge -- no manual token needed.',
-    pipedreamApp: 'linkedin',
+    description: 'Share articles to your LinkedIn profile via Zernio. Click Connect to authorize — no manual token needed.',
     color: '#0A66C2',
     logo: 'in',
     liveStatus: 'live',
     oauthFlow: true,
-    credentialFields: [
-      { key: 'accessToken', label: 'OAuth Access Token', placeholder: 'Auto-filled after OAuth', type: 'password' },
-      { key: 'authorUrn', label: 'Author URN', placeholder: 'Auto-filled after OAuth' },
-    ],
+    credentialFields: [],
     setupGuide: {
-      title: 'LinkedIn OAuth',
+      title: 'LinkedIn via Zernio',
       steps: [
-        { text: 'Click Connect above. You\'ll be redirected to LinkedIn to authorize Forge Intelligence.' },
+        { text: 'Click Connect above. You\'ll be redirected to LinkedIn to authorize via Zernio.' },
         { text: 'Sign in with the LinkedIn account you want to publish from.' },
         { text: 'Click Allow to grant posting permissions.' },
         { text: 'You\'ll be redirected back automatically. No tokens to copy.' },
@@ -209,25 +205,19 @@ const CHANNELS: ChannelDef[] = [
   {
     id: 'facebook',
     label: 'Facebook',
-    pipedreamApp: 'facebook_pages',
-    pipedreamOauthAppId: 'FACEBOOK_OAUTH_APP_ID', // placeholder — filled from /api/pipedream/config
-    description: 'Publish articles to your company Facebook Page via Graph API. Requires a Page Access Token.',
+    description: 'Publish articles to your Facebook Page via Zernio. Click Connect to authorize — no manual tokens needed.',
     color: '#1877F2',
     logo: 'f',
     liveStatus: 'live',
-    credentialFields: [
-      { key: 'pageId', label: 'Page ID', placeholder: '123456789012345' },
-      { key: 'pageAccessToken', label: 'Page Access Token', placeholder: 'EAABsbCS...', type: 'password' },
-    ],
+    oauthFlow: true,
+    credentialFields: [],
     setupGuide: {
-      title: 'How to get your Facebook Page Access Token',
+      title: 'Facebook via Zernio',
       steps: [
-        { text: 'Step 1 -- Create a Meta Developer app. Do this on desktop -- the portal is broken on mobile. Go to Meta for Developers and create a new app. Choose type "Business". Name it anything (e.g. "Forge").', url: 'https://developers.facebook.com/apps/create/' },
-        { text: 'Step 2 -- Add Pages permissions. In your app dashboard, go to App Settings → Advanced. Under "Optional Permissions" add: pages_manage_posts, pages_read_engagement, pages_show_list, pages_manage_metadata. Some may require App Review for non-admin users -- for your own Pages you can proceed without review.' },
-        { text: 'Step 3 -- Get a User Access Token. Go to Graph API Explorer. Select your app from the top-right dropdown. Add the permissions above, then click "Generate Access Token" and authorize with the Facebook account that admins your Page.', url: 'https://developers.facebook.com/tools/explorer/' },
-        { text: 'Step 4 -- Exchange for a Page Access Token. This is the critical step most people miss. In Graph API Explorer, call GET /me/accounts using your user token. The response lists every Page you manage, each with its own Page ID and a Page access token. Copy the token for your Page -- this is what Forge needs, not the user token.' },
-        { text: 'Step 5 -- Make the Page token long-lived. The token from /me/accounts is short-lived. Paste it into the Access Token Debugger and click "Extend Access Token". Copy the result -- it lasts 60 days.', url: 'https://developers.facebook.com/tools/debug/accesstoken/' },
-        { text: 'Step 6 -- Get your Page ID. Your Page ID is in the /me/accounts response from Step 4, or find it on your Facebook Page under About → Page transparency. Paste both the Page ID and the long-lived Page token into Forge above.' },
+        { text: 'Click Connect above. You\'ll be redirected to Facebook to authorize via Zernio.' },
+        { text: 'Sign in with the Facebook account that manages your Page.' },
+        { text: 'Select the Page you want to publish to and click Allow.' },
+        { text: 'You\'ll be redirected back automatically. No tokens or Page IDs to copy.' },
       ],
     },
   },
@@ -372,15 +362,18 @@ export default function IntegrationsPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('linkedin_connected') === 'true') {
-      setSuccess('LinkedIn connected successfully!');
-      setExpanded('linkedin');
+    const connected = params.get('connected');
+    if (params.get('linkedin_connected') === 'true' || (connected && connected.startsWith('zernio:'))) {
+      const platform = connected?.split(':')?.[1] || 'linkedin';
+      setSuccess(`${platform.charAt(0).toUpperCase() + platform.slice(1)} connected via Zernio!`);
+      setExpanded(platform as ChannelId);
       window.history.replaceState({}, '', '/app/integrations');
       const brand = activeBrand?.id || (() => { try { return localStorage.getItem('forge_active_brand_id'); } catch(e) { return ''; } })() || new URLSearchParams(window.location.search).get('brand') || '';
       if (brand) setTimeout(() => loadChannels(brand), 500);
     }
-    if (params.get('linkedin_error')) {
-      setError(`LinkedIn authorization failed: ${decodeURIComponent(params.get('linkedin_error') || '')}`);
+    if (params.get('linkedin_error') || connected === 'error') {
+      const reason = params.get('reason') || params.get('linkedin_error') || 'Unknown error';
+      setError(`Authorization failed: ${decodeURIComponent(reason)}`);
       window.history.replaceState({}, '', '/app/integrations');
     }
   }, []);
@@ -388,9 +381,27 @@ export default function IntegrationsPage() {
   const handleSave = async (channelId: ChannelId) => {
     const channel = CHANNELS.find(c => c.id === channelId);
 
-    // Native OAuth channels — bypass Pipedream entirely
+    // Zernio-powered OAuth — redirect flow with callback
+    const zernioPlatforms: Record<string, string> = { linkedin: 'linkedin', facebook: 'facebook' };
+    if (zernioPlatforms[channelId] && channel?.oauthFlow) {
+      if (!selectedBrand) { setError('Select a Brain first'); return; }
+      try {
+        const r = await fetch('/api/zernio/connect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ brandProfileId: selectedBrand, platform: zernioPlatforms[channelId] })
+        });
+        const d = await r.json();
+        if (d.authUrl) { window.location.href = d.authUrl; return; }
+        throw new Error(d.error || 'No auth URL returned from Zernio');
+      } catch(e: any) {
+        setError(`Could not connect ${channel.label}: ${e.message}`);
+      }
+      return;
+    }
+
+    // Native OAuth channels — redirect flow
     const nativeOAuthRoutes: Record<string, string> = {
-      linkedin: '/api/linkedin/auth',
       hubspot:  '/api/hubspot/auth',
       webflow:  '/api/webflow/auth',
       x:        '/api/x/auth',
@@ -401,7 +412,6 @@ export default function IntegrationsPage() {
         const r = await fetch(`${nativeOAuthRoutes[channelId]}?brandProfileId=${selectedBrand}`);
         const d = await r.json();
         if (d.authUrl) { window.location.href = d.authUrl; return; }
-        // Some auth routes redirect directly (no JSON)
         throw new Error(d.error || `Failed to start ${channel.label} authorization`);
       } catch(e: any) {
         if (!String(e.message).includes('JSON')) {
