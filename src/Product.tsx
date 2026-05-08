@@ -187,13 +187,14 @@ export default function Product() {
           </div>
         </section>
 
-        {/* Product Shot: Content Generator */}
-        <div style={styles.screenshotSection}>
+        {/* Product Shot: Content Generator — DEFERRED, image not yet uploaded.
+            Uncomment when public/4.png exists. */}
+        {/* <div style={styles.screenshotSection}>
           <div style={styles.screenshot}>
             <img src="/4.png" alt="Content Generator — brain-aware topic alignment check before generation" style={styles.screenshotImg} />
           </div>
           <p style={styles.screenshotCaption}>Citation probability scored across ChatGPT, Perplexity, AI Overviews, and Gemini — for every topic in your authority map.</p>
-        </div>
+        </div> */}
 
         {/* The Brain */}
         <section style={styles.section}>
@@ -220,13 +221,14 @@ export default function Product() {
           </div>
         </section>
 
-        {/* Product Shot: Entity & Schema Map */}
-        <div style={styles.screenshotSection}>
+        {/* Product Shot: Entity & Schema Map — DEFERRED, image not yet uploaded.
+            Uncomment when public/5.png exists. */}
+        {/* <div style={styles.screenshotSection}>
           <div style={styles.screenshot}>
             <img src="/5.png" alt="Entity and Schema Map — competitor cited, you are not" style={styles.screenshotImg} />
           </div>
           <p style={styles.screenshotCaption}>Competitors cited. You're not. The Entity Map shows exactly where to inject structured data so AI systems find you.</p>
-        </div>
+        </div> */}
 
         {/* What's Included */}
         <section style={styles.section}>
@@ -281,13 +283,14 @@ export default function Product() {
           </div>
         </section>
 
-        {/* Product Shot: Mission Control */}
-        <div style={styles.screenshotSection}>
+        {/* Product Shot: Mission Control — DEFERRED, image not yet uploaded.
+            Uncomment when public/6.png exists. */}
+        {/* <div style={styles.screenshotSection}>
           <div style={styles.screenshot}>
             <img src="/6.png" alt="Performance Dashboard — analytics, content decay, citation tracking" style={styles.screenshotImg} />
           </div>
           <p style={styles.screenshotCaption}>Real-time analytics across every channel. Content decay detection, citation tracking, and campaign attribution — all in one view.</p>
-        </div>
+        </div> */}
 
         {/* CTA */}
         <section style={styles.ctaSection}>
