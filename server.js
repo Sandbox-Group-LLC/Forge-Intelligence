@@ -9451,6 +9451,176 @@ app.post('/api/linkedin/select-target', requireAuth, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 
+// ── Zernio OAuth Proxy ───────────────────────────────────────────────────────
+// White-label OAuth flow: customer clicks Connect on Integrations card, we proxy
+// through Zernio, customer authorizes on the platform (LinkedIn/Facebook/X/etc),
+// Zernio redirects them back to our callback, we save zernioAccountId to creds.
+//
+// Each Forge brand gets its own Zernio profile (created on first connect, stored
+// on brand_profiles.zernio_profile_id). Profile groups all of that brand's
+// connected accounts together inside Zernio.
+
+// Helper: ensure the brand has a Zernio profile, creating one if needed.
+async function ensureZernioProfile(brandProfileId) {
+  const r = await pool.query('SELECT zernio_profile_id, brand_name, brand_url FROM brand_profiles WHERE id = $1', [brandProfileId]);
+  if (!r.rows.length) throw new Error('Brand not found');
+  const brand = r.rows[0];
+  if (brand.zernio_profile_id) return brand.zernio_profile_id;
+
+  // Create a new Zernio profile named after the brand
+  const name = brand.brand_name || brand.brand_url || `Forge brand ${brandProfileId.slice(0, 8)}`;
+  const createRes = await callZernio('POST', '/profiles', {
+    name: name.slice(0, 100),
+    description: `Forge Intelligence — ${brand.brand_url || brandProfileId}`
+  });
+  if (!createRes.ok) throw new Error(`Zernio profile create failed (${createRes.status}): ${createRes.raw?.slice(0, 200)}`);
+  const newProfileId = createRes.parsed?.profile?._id;
+  if (!newProfileId) throw new Error('Zernio profile create returned no _id');
+
+  await pool.query('UPDATE brand_profiles SET zernio_profile_id = $1, updated_at = NOW() WHERE id = $2', [newProfileId, brandProfileId]);
+  return newProfileId;
+}
+
+// 1) Kickoff: customer clicks Connect, we get an authUrl from Zernio + redirect.
+app.get('/api/zernio/connect/:platform', async (req, res) => {
+  const { platform } = req.params;
+  const { brandProfileId } = req.query;
+  if (!brandProfileId) return res.status(400).send('brandProfileId required');
+  if (!process.env.ZERNIO_API_KEY) return res.status(500).send('ZERNIO_API_KEY not configured');
+
+  try {
+    // Verify brand exists; auth happens via Clerk session for the human-facing redirect
+    const brandRes = await pool.query('SELECT id FROM brand_profiles WHERE id = $1', [brandProfileId]);
+    if (!brandRes.rows.length) return res.status(404).send('Brand not found');
+
+    const profileId = await ensureZernioProfile(brandProfileId);
+
+    // Where Zernio sends the user after they finish OAuth. Same host as the kickoff
+    // request so dev/prod each return to themselves. Pass brandProfileId + platform
+    // forward as query so the callback knows what to write.
+    const baseUrl = `${req.protocol}://${req.headers.host}`;
+    const redirectUrl = `${baseUrl}/auth/zernio/callback?brandProfileId=${encodeURIComponent(brandProfileId)}&platform=${encodeURIComponent(platform)}`;
+
+    const params = new URLSearchParams({ profileId, redirectUrl });
+    const cr = await callZernio('GET', `/connect/${platform}?${params.toString()}`);
+    if (!cr.ok) {
+      console.error(`[Zernio] /connect/${platform} failed:`, cr.status, cr.raw?.slice(0, 300));
+      return res.redirect(`/app/integrations?zernio_error=${encodeURIComponent('connect_failed')}`);
+    }
+    const authUrl = cr.parsed?.authUrl;
+    if (!authUrl) return res.redirect(`/app/integrations?zernio_error=${encodeURIComponent('no_auth_url')}`);
+
+    res.redirect(authUrl);
+  } catch (e) {
+    console.error('[Zernio connect]', e);
+    res.redirect(`/app/integrations?zernio_error=${encodeURIComponent(e.message)}`);
+  }
+});
+
+// 2) Callback: Zernio redirects user here after platform OAuth completes.
+app.get('/auth/zernio/callback', async (req, res) => {
+  const { brandProfileId, platform } = req.query;
+  if (!brandProfileId || !platform) return res.redirect('/app/integrations?zernio_error=missing_params');
+
+  try {
+    // Look up the brand's Zernio profile so we can scope the accounts query
+    const r = await pool.query('SELECT zernio_profile_id FROM brand_profiles WHERE id = $1', [brandProfileId]);
+    const profileId = r.rows[0]?.zernio_profile_id;
+    if (!profileId) return res.redirect('/app/integrations?zernio_error=no_profile');
+
+    // Pull all accounts and find the newly-connected one for this profile + platform.
+    // Pick the most recently created — Zernio's /accounts doesn't accept a profileId
+    // filter we can rely on, so filter client-side.
+    const accRes = await callZernio('GET', '/accounts');
+    if (!accRes.ok) {
+      console.error('[Zernio callback] /accounts failed:', accRes.status, accRes.raw?.slice(0, 300));
+      return res.redirect(`/app/integrations?zernio_error=${encodeURIComponent('accounts_fetch_failed')}`);
+    }
+    const accounts = accRes.parsed?.accounts || [];
+    const matches = accounts
+      .filter(a => a.platform === platform)
+      .filter(a => {
+        const pid = typeof a.profileId === 'object' ? a.profileId?._id : a.profileId;
+        return pid === profileId;
+      })
+      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+    if (!matches.length) {
+      console.warn(`[Zernio callback] no ${platform} account found for profile ${profileId}`);
+      return res.redirect(`/app/integrations?zernio_error=${encodeURIComponent('account_not_found')}`);
+    }
+
+    const acc = matches[0];
+    const meta = acc.metadata || {};
+    const newCreds = {
+      zernioAccountId: acc._id,
+      zernioProfileId: profileId,
+      zernioPlatform: platform,
+      zernioDisplayName: acc.displayName || acc.username || meta.pageInfo?.name || meta.organizationInfo?.name || 'Connected account',
+      zernioConnectedAt: new Date().toISOString(),
+      // Mirror a few fields into the existing creds shape so legacy code that reads
+      // creds.name / creds.authorUrn keeps working until we fully migrate it.
+      name: acc.displayName || meta.pageInfo?.name || meta.organizationInfo?.name || acc.username || 'Connected via Zernio'
+    };
+
+    // MERGE — preserve existing creds keys so manual fields aren't wiped
+    await pool.query(`
+      INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active, updated_at)
+      VALUES ($1, $2, $3, true, NOW())
+      ON CONFLICT (brand_profile_id, channel) DO UPDATE
+        SET credentials = publishing_channels.credentials || EXCLUDED.credentials,
+            is_active = true,
+            updated_at = NOW()
+    `, [brandProfileId, platform, JSON.stringify(newCreds)]);
+
+    res.redirect(`/app/integrations?zernio_connected=${encodeURIComponent(platform)}`);
+  } catch (e) {
+    console.error('[Zernio callback]', e);
+    res.redirect(`/app/integrations?zernio_error=${encodeURIComponent(e.message)}`);
+  }
+});
+
+// 3) Disconnect: remove the Zernio-managed account.
+app.post('/api/zernio/disconnect', requireAuth, async (req, res) => {
+  const { brandProfileId, platform } = req.body;
+  if (!brandProfileId || !platform) return res.status(400).json({ error: 'brandProfileId and platform required' });
+  if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+
+  try {
+    const r = await pool.query(
+      `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = $2`,
+      [brandProfileId, platform]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'Channel not connected' });
+    const creds = r.rows[0].credentials || {};
+    const accountId = typeof creds === 'string' ? JSON.parse(creds).zernioAccountId : creds.zernioAccountId;
+    if (!accountId) return res.status(400).json({ error: 'No Zernio account on this channel' });
+
+    // Delete the account on Zernio
+    const dr = await callZernio('DELETE', `/accounts/${accountId}`);
+    if (!dr.ok && dr.status !== 404) {
+      console.error('[Zernio disconnect] DELETE failed:', dr.status, dr.raw?.slice(0, 300));
+      // Continue anyway — we still want to clean up Forge's row
+    }
+
+    // Strip Zernio-specific keys from creds (preserve everything else)
+    await pool.query(
+      `UPDATE publishing_channels
+         SET credentials = credentials - 'zernioAccountId' - 'zernioProfileId' - 'zernioPlatform' - 'zernioDisplayName' - 'zernioConnectedAt',
+             is_active = (credentials - 'zernioAccountId' - 'zernioProfileId') ? 'accessToken',
+             updated_at = NOW()
+       WHERE brand_profile_id = $1 AND channel = $2`,
+      [brandProfileId, platform]
+    );
+
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[Zernio disconnect]', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
 // ── HubSpot OAuth ────────────────────────────────────────────────────────────
 app.get('/api/hubspot/auth', (req, res) => {
   const clientId = process.env.HUBSPOT_CLIENT_ID;
