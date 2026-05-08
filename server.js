@@ -9324,18 +9324,43 @@ app.get('/api/zernio/sync-account', requireAuth, async (req, res) => {
   if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ success: false, error: 'Access denied' });
 
   try {
+    // Get all Zernio accounts for this platform
     const accountsRes = await fetch(`https://zernio.com/api/v1/accounts?profileId=${encodeURIComponent(profileId)}`, {
       headers: { 'Authorization': `Bearer ${apiKey}` }
     });
     const accountsData = await accountsRes.json();
-    console.log(`[Zernio] Sync-account: ${accountsData.accounts?.length || 0} accounts found for profile ${profileId}`);
+    const platformAccounts = (accountsData.accounts || []).filter(a => a.platform === platform);
+    console.log(`[Zernio] Sync-account: ${platformAccounts.length} ${platform} accounts found (${accountsData.accounts?.length || 0} total)`);
 
-    const account = (accountsData.accounts || []).find(a => a.platform === platform);
-    if (!account) {
+    if (!platformAccounts.length) {
       return res.json({ success: false, error: `No ${platform} account found in Zernio. Complete the authorization in the popup first.` });
     }
 
-    console.log(`[Zernio] Found ${platform} account: ${account._id} (${account.name || account.username || 'unnamed'})`);
+    // Find which Zernio account IDs are already assigned to OTHER brands
+    const existingRes = await pool.query(
+      `SELECT credentials->>'zernioAccountId' as zernio_id, brand_profile_id
+       FROM publishing_channels
+       WHERE channel = $1 AND credentials->>'provider' = 'zernio' AND brand_profile_id != $2`,
+      [platform, brandProfileId]
+    );
+    const usedIds = new Set(existingRes.rows.map(r => r.zernio_id));
+    console.log(`[Zernio] Already assigned to other brands: ${usedIds.size} account(s)`);
+
+    // Also check if this brand already has a Zernio account — if so, find a different one
+    const currentRes = await pool.query(
+      `SELECT credentials->>'zernioAccountId' as zernio_id
+       FROM publishing_channels
+       WHERE channel = $1 AND brand_profile_id = $2 AND credentials->>'provider' = 'zernio'`,
+      [platform, brandProfileId]
+    );
+    const currentId = currentRes.rows[0]?.zernio_id;
+
+    // Pick the best account: prefer one not yet assigned to any brand
+    let account = platformAccounts.find(a => !usedIds.has(a._id) && a._id !== currentId)
+      || platformAccounts.find(a => !usedIds.has(a._id))
+      || platformAccounts[platformAccounts.length - 1]; // fallback to newest
+
+    console.log(`[Zernio] Selected ${platform} account: ${account._id} (${account.name || account.username || 'unnamed'})`);
 
     await pool.query(`
       INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active, updated_at)

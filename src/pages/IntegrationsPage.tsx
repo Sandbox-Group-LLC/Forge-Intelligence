@@ -392,14 +392,17 @@ export default function IntegrationsPage() {
         const d = await r.json();
         if (!d.authUrl) throw new Error(d.error || 'No auth URL returned');
         const popup = window.open(d.authUrl, 'zernio_connect', 'width=600,height=700,left=200,top=100');
+        setSuccess('Authorize LinkedIn in the popup, then close it when done.');
         const poll = setInterval(async () => {
           if (!popup || popup.closed) {
             clearInterval(poll);
+            setSuccess('');
+            setSaving('linkedin');
             try {
               const sync = await fetch(`/api/zernio/sync-account?brandProfileId=${selectedBrand}&platform=linkedin`);
               const syncData = await sync.json();
               if (syncData.success) {
-                setSuccess('LinkedIn connected via Zernio!');
+                setSuccess(`LinkedIn connected: ${syncData.accountName || 'Success'}`);
                 loadChannels(selectedBrand);
                 setExpanded('linkedin');
                 setTimeout(() => setSuccess(''), 4000);
@@ -407,6 +410,7 @@ export default function IntegrationsPage() {
                 setError(syncData.error || 'LinkedIn account not found in Zernio — try connecting again');
               }
             } catch { setError('Failed to sync LinkedIn account from Zernio'); }
+            setSaving(null);
           }
         }, 500);
       } catch(e: any) {
