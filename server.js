@@ -11479,7 +11479,6 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
     const errors = [];
 
     if (channel === 'linkedin' || channel === 'all') {
-      // Get all LinkedIn published posts from publish_log
       const logRes = await pool.query(
         `SELECT pl.content_id, pl.response_data, pl.attempted_at AS published_at,
                 ct.title, ct.campaign_id
@@ -11490,96 +11489,115 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
         [brandProfileId]
       ).catch(() => ({ rows: [] }));
 
-      // Get LinkedIn credentials from publishing_channels (primary) or channel_credentials (legacy)
       const credRes = await pool.query(
         `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'linkedin' AND is_active = true LIMIT 1`,
         [brandProfileId]
       ).catch(() => ({ rows: [] }));
       const creds = credRes.rows[0]?.credentials || {};
+      const isZernio = creds.provider === 'zernio' && !!process.env.ZERNIO_API_KEY;
       const token = creds.accessToken || process.env.LINKEDIN_ACCESS_TOKEN;
+      console.log(`[Analytics/LinkedIn] Found ${logRes.rows.length} published posts, provider=${isZernio ? 'zernio' : 'legacy'}, hasToken=${!!token}`);
 
       for (const row of logRes.rows) {
         try {
-          const postId = row.response_data?.postId || row.response_data?.post_id || row.response_data?.id;
-          if (!postId || !token) {
-            if (!token) continue; // LinkedIn not connected for this brand — skip
-            continue;
-          }
+          const rd = row.response_data || {};
+          const postId = rd.postId || rd.post_id || rd.id;
+          if (!postId) { errors.push({ contentId: row.content_id, error: 'no_post_id' }); continue; }
 
           let impressions = 0, clicks = 0, reactions = 0, comments = 0, reposts = 0;
           let rawData = {};
           let dataSource = 'none';
 
-          // Step 1: Always try socialActions first — available with w_member_social (no MDP needed)
-          // Returns likes + comments for both personal and org posts
-          try {
-            const actRes = await fetch(
-              `https://api.linkedin.com/v2/socialActions/${encodeURIComponent(postId)}?projection=(likesSummary,commentsSummary,shareSummary)`,
-              { headers: { 'Authorization': `Bearer ${token}`, 'X-Restli-Protocol-Version': '2.0.0' } }
-            );
-            if (actRes.ok) {
-              const actData = await actRes.json();
-              reactions = actData?.likesSummary?.totalLikes || 0;
-              comments  = actData?.commentsSummary?.totalFirstLevelComments || 0;
-              reposts   = actData?.shareSummary?.totalShares || 0;
-              rawData   = { ...rawData, socialActions: actData };
-              dataSource = 'socialActions';
-            } else {
-              const errBody = await actRes.text().catch(() => '');
-              console.error(`[LINKEDIN-SYNC] socialActions ${actRes.status} for ${postId}: ${errBody.slice(0, 200)}`);
-              rawData = { ...rawData, socialActionsError: { status: actRes.status, body: errBody.slice(0, 300) } };
-            }
-          } catch(e) { console.error(`[LINKEDIN-SYNC] socialActions error: ${e.message}`); }
+          if (isZernio) {
+            // ── Zernio Analytics path ──
+            const analyticsRes = await callZernio('GET', `/analytics?postId=${encodeURIComponent(postId)}`);
+            console.log(`[Analytics/LinkedIn] Zernio analytics for ${postId}: HTTP ${analyticsRes.status}`);
 
-          // Step 2: Try shareStatistics — requires LinkedIn Marketing Developer Platform approval
-          // Will return impressions + clicks once MDP is granted; silently skipped until then
-          try {
-            const encodedPostId = encodeURIComponent(postId);
-            const statsRes = await fetch(
-              `https://api.linkedin.com/v2/shareStatistics?q=shares&shares[0]=${encodedPostId}&projection=(elements*(totalShareStatistics))`,
-              { headers: { 'Authorization': `Bearer ${token}`, 'X-Restli-Protocol-Version': '2.0.0', 'LinkedIn-Version': '202401' } }
-            );
-            if (statsRes.ok) {
-              const statsData = await statsRes.json();
-              const stats = statsData?.elements?.[0]?.totalShareStatistics || {};
-              // Only use if MDP data is actually present (non-zero impressions)
-              if (stats.impressionCount > 0) {
-                impressions = stats.impressionCount || 0;
-                clicks      = stats.clickCount     || 0;
-                // Use MDP reactions if higher (more accurate than socialActions)
-                reactions   = Math.max(reactions, stats.likeCount  || 0);
-                comments    = Math.max(comments,  stats.commentCount || 0);
-                reposts     = Math.max(reposts,   stats.shareCount  || 0);
-                rawData     = { ...rawData, shareStatistics: stats };
-                dataSource  = 'shareStatistics';
+            if (analyticsRes.status === 202) {
+              console.log(`[Analytics/LinkedIn] Sync pending for ${postId} — will retry next sync`);
+              continue;
+            }
+            if (analyticsRes.status === 424) {
+              console.log(`[Analytics/LinkedIn] All platforms failed for ${postId}`);
+              errors.push({ contentId: row.content_id, error: 'zernio_analytics_424' });
+              continue;
+            }
+            if (!analyticsRes.ok) {
+              console.log(`[Analytics/LinkedIn] Zernio analytics error: ${analyticsRes.status}`, analyticsRes.raw?.slice(0, 200));
+              errors.push({ contentId: row.content_id, error: `zernio_analytics_${analyticsRes.status}` });
+              continue;
+            }
+
+            const analytics = analyticsRes.parsed;
+            // Zernio returns metrics at post level or per-platform — extract LinkedIn metrics
+            const platforms = analytics?.post?.platforms || analytics?.platforms || [];
+            const liMetrics = platforms.find(p => p.platform === 'linkedin')?.analytics
+              || analytics?.post?.analytics
+              || analytics?.analytics
+              || analytics || {};
+
+            impressions = liMetrics.impressions || liMetrics.views || liMetrics.impression_count || 0;
+            clicks      = liMetrics.clicks || liMetrics.link_clicks || liMetrics.clickCount || 0;
+            reactions   = liMetrics.likes || liMetrics.reactions || liMetrics.likeCount || 0;
+            comments    = liMetrics.comments || liMetrics.replies || liMetrics.commentCount || 0;
+            reposts     = liMetrics.shares || liMetrics.reposts || liMetrics.repostCount || liMetrics.shareCount || 0;
+            rawData     = { zernio: analytics };
+            dataSource  = 'zernio';
+            console.log(`[Analytics/LinkedIn] Zernio metrics for ${postId}: ${impressions} impr, ${reactions} likes, ${comments} comments, ${reposts} shares, ${clicks} clicks`);
+
+          } else if (token) {
+            // ── Legacy direct LinkedIn API path ──
+            try {
+              const actRes = await fetch(
+                `https://api.linkedin.com/v2/socialActions/${encodeURIComponent(postId)}?projection=(likesSummary,commentsSummary,shareSummary)`,
+                { headers: { 'Authorization': `Bearer ${token}`, 'X-Restli-Protocol-Version': '2.0.0' } }
+              );
+              if (actRes.ok) {
+                const actData = await actRes.json();
+                reactions = actData?.likesSummary?.totalLikes || 0;
+                comments  = actData?.commentsSummary?.totalFirstLevelComments || 0;
+                reposts   = actData?.shareSummary?.totalShares || 0;
+                rawData   = { ...rawData, socialActions: actData };
+                dataSource = 'socialActions';
               }
-            }
-          } catch(e) { console.error(`[LINKEDIN-SYNC] shareStatistics error: ${e.message}`); }
+            } catch(e) { /* socialActions unavailable */ }
 
-          // Engagement rate: use impressions if available, else use total engagements as proxy
+            try {
+              const encodedPostId = encodeURIComponent(postId);
+              const statsRes = await fetch(
+                `https://api.linkedin.com/v2/shareStatistics?q=shares&shares[0]=${encodedPostId}&projection=(elements*(totalShareStatistics))`,
+                { headers: { 'Authorization': `Bearer ${token}`, 'X-Restli-Protocol-Version': '2.0.0', 'LinkedIn-Version': '202401' } }
+              );
+              if (statsRes.ok) {
+                const statsData = await statsRes.json();
+                const stats = statsData?.elements?.[0]?.totalShareStatistics || {};
+                if (stats.impressionCount > 0) {
+                  impressions = stats.impressionCount || 0;
+                  clicks      = stats.clickCount     || 0;
+                  reactions   = Math.max(reactions, stats.likeCount  || 0);
+                  comments    = Math.max(comments,  stats.commentCount || 0);
+                  reposts     = Math.max(reposts,   stats.shareCount  || 0);
+                  rawData     = { ...rawData, shareStatistics: stats };
+                  dataSource  = 'shareStatistics';
+                }
+              }
+            } catch(e) { /* MDP not approved */ }
+          } else {
+            console.log(`[Analytics/LinkedIn] No credentials — skipping ${postId}`);
+            continue;
+          }
+
+          if (dataSource === 'none') {
+            console.log(`[Analytics/LinkedIn] No data returned for ${postId} — skipping`);
+            continue;
+          }
+
           const totalEngagement = reactions + comments + reposts + clicks;
           const ctr = impressions > 0 ? parseFloat((clicks / impressions * 100).toFixed(2)) : 0;
           const engagementRate = impressions > 0
             ? parseFloat((totalEngagement / impressions * 100).toFixed(2))
             : 0;
 
-          // Skip entirely when API returned no useful data — no point creating/overwriting a row with zeros.
-          // This also prevents wiping manually-entered metrics (which only survive if we DON'T touch the row).
-          if (dataSource === 'none') {
-            console.log(`[LINKEDIN-SYNC] Skipping ${postId} — no API data (MDP not granted, socialActions failed). Manual entries preserved.`);
-            continue;
-          }
-
-          // Smart upsert — protects manually-entered analytics from being wiped by API zeros.
-          // Before MDP approval: shareStatistics returns 0 for impressions/clicks. The socialActions-only
-          // path still gets reactions/comments/reposts, but impressions/clicks default to 0. If we
-          // overwrote unconditionally (old bug), those zeros would clobber Brian's manual 847 impressions.
-          //
-          // New logic:
-          //  - impressions/clicks/ctr/engagement_rate: only overwrite when we have REAL shareStatistics
-          //    data (EXCLUDED.impressions > 0 — only possible with MDP). Otherwise preserve existing.
-          //  - reactions/comments/reposts: use GREATEST so API blips can never lower numbers.
-          //  - raw_data: merge via || so a {"source":"manual"} marker in existing row survives.
           await pool.query(
             `INSERT INTO content_analytics
                (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at, campaign_id)
