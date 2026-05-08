@@ -14152,20 +14152,16 @@ app.get('/integrations/zernio/callback', async (req, res) => {
       `SELECT id, credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = $2`,
       [brand, platform]
     );
+    const creds = JSON.stringify({ provider: 'zernio', zernioAccountId: newAccount._id, zernioProfileId: zernio_profile_id, platform, accountName: newAccount.name || newAccount.username || platform });
     if (existing.rows.length) {
       await pool.query(
-        `UPDATE publishing_channels
-            SET credentials = credentials || jsonb_build_object('zernioAccountId', $1),
-                is_active = true,
-                updated_at = NOW()
-          WHERE id = $2`,
-        [newAccount._id, existing.rows[0].id]
+        `UPDATE publishing_channels SET credentials = $1::jsonb, is_active = true, updated_at = NOW() WHERE id = $2`,
+        [creds, existing.rows[0].id]
       );
     } else {
       await pool.query(
-        `INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active)
-         VALUES ($1, $2, jsonb_build_object('zernioAccountId', $3), true)`,
-        [brand, platform, newAccount._id]
+        `INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active) VALUES ($1, $2, $3::jsonb, true)`,
+        [brand, platform, creds]
       );
     }
 
