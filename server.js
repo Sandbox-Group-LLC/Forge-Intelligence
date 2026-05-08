@@ -13780,6 +13780,85 @@ app.post('/api/admin/relay', express.json({ limit: '500kb' }), async (req, res) 
   }
 });
 
+// ── Zernio Test Endpoints (dev-only) ──────────────────────────────────────────
+// Three diagnostic endpoints that exercise the Zernio social media API with
+// per-stage signal. Reject on production host so we can't accidentally fire
+// these against forgeintelligence.ai. Same adminPassword gate as /api/admin/relay.
+// Once Zernio is validated as the Pipedream replacement, these come out and the
+// real integration ships into the publishing pipeline as a normal vendor.
+
+const zernioGuard = (req, res) => {
+  // Reject on production
+  const host = req.headers.host || '';
+  if (host.includes('forgeintelligence.ai') && !host.startsWith('dev.') && !host.startsWith('strategy.')) {
+    res.status(403).json({ success: false, error: 'Zernio test endpoints are dev/strategy only' });
+    return false;
+  }
+  // Admin password gate
+  if (req.body?.adminPassword !== process.env.ADMIN_PASSWORD) {
+    res.status(403).json({ success: false, error: 'Unauthorized' });
+    return false;
+  }
+  // Env var check
+  if (!process.env.ZERNIO_API_KEY) {
+    res.status(500).json({ success: false, error: 'ZERNIO_API_KEY not set on this service' });
+    return false;
+  }
+  return true;
+};
+
+const callZernio = async (method, path, body) => {
+  const url = `https://zernio.com/api/v1${path}`;
+  const opts = {
+    method,
+    headers: {
+      'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}`,
+      'Content-Type': 'application/json'
+    }
+  };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(url, opts);
+  let parsed = null;
+  const raw = await r.text();
+  try { parsed = JSON.parse(raw); } catch { /* keep raw */ }
+  return { status: r.status, ok: r.ok, raw, parsed };
+};
+
+// GET-style — list profiles. Lightest possible test: validates key + reachability.
+app.post('/api/admin/zernio/profiles', async (req, res) => {
+  if (!zernioGuard(req, res)) return;
+  try {
+    const result = await callZernio('GET', '/profiles');
+    res.json({ success: true, stage: 'list-profiles', ...result });
+  } catch (e) {
+    res.status(500).json({ success: false, stage: 'list-profiles', error: e.message });
+  }
+});
+
+// List connected accounts — gives us the LinkedIn account_id for the post step.
+app.post('/api/admin/zernio/accounts', async (req, res) => {
+  if (!zernioGuard(req, res)) return;
+  try {
+    const result = await callZernio('GET', '/accounts');
+    res.json({ success: true, stage: 'list-accounts', ...result });
+  } catch (e) {
+    res.status(500).json({ success: false, stage: 'list-accounts', error: e.message });
+  }
+});
+
+// Create a post. Pass through full body (minus adminPassword) so we can test
+// publishNow vs scheduledFor vs draft from a single endpoint.
+app.post('/api/admin/zernio/post', async (req, res) => {
+  if (!zernioGuard(req, res)) return;
+  try {
+    const { adminPassword, ...postBody } = req.body;
+    const result = await callZernio('POST', '/posts', postBody);
+    res.json({ success: true, stage: 'create-post', ...result });
+  } catch (e) {
+    res.status(500).json({ success: false, stage: 'create-post', error: e.message });
+  }
+});
+
 // ── Content Import (Bring Your Own Article) ──────────────────────────────────
 
 // POST /api/content/import — parse + score an externally written article.
