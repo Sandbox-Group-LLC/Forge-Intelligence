@@ -11417,63 +11417,119 @@ Output only the post text.` }]
           }
 
         } else if (channel === 'reddit') {
-          // ── Reddit API publish to company subreddit ──
-          const { subreddit, accessToken: redditToken, refreshToken, clientId: redditClientId, clientSecret } = chConfig.credentials || {};
-          if (!subreddit || !redditToken) throw new Error('Subreddit name and Reddit access token are required');
+          // ── Reddit publish via Zernio — brand-owned subreddits ONLY ──
+          // Reddit is NOT like LinkedIn/Facebook. The destination is per-post and
+          // posting to the wrong sub gets brands banned. So we enforce two rules:
+          //   1) The brand must have an allowedSubreddits[] in their channel creds,
+          //      populated via the Integrations UI. Each entry is a subreddit name
+          //      the brand has explicit permission to post in (typically subs they mod
+          //      or actively contribute to).
+          //   2) The publish call must specify which subreddit from that allowlist
+          //      to target this time (publishOptions.reddit.subreddit). If unspecified,
+          //      we default to the FIRST allowed subreddit.
+          //
+          // Anything outside the allowlist is rejected with a clear error so brands
+          // can't accidentally post to r/marketing or any random sub Zernio might
+          // have a default for.
+
+          if (!creds.zernioAccountId) {
+            throw new Error('Reddit must be connected via Zernio. Visit /app/integrations to connect.');
+          }
+
+          const allowedSubreddits = Array.isArray(creds.allowedSubreddits) ? creds.allowedSubreddits.filter(Boolean) : [];
+          if (allowedSubreddits.length === 0) {
+            throw new Error('No allowed subreddits configured. Add subreddits you have permission to post in under Integrations → Reddit → Allowed subreddits.');
+          }
+
+          // Per-publish target selection. Order of precedence:
+          //   1) req.body.publishOptions.reddit.subreddit (per-publish picker, future Phase 4)
+          //   2) creds.defaultSubreddit (brand default set in Integrations)
+          //   3) first entry in allowedSubreddits (sane fallback)
+          const requestedSub = (req.body.publishOptions?.reddit?.subreddit || creds.defaultSubreddit || allowedSubreddits[0] || '').replace(/^r\//, '');
+          if (!allowedSubreddits.map(s => s.replace(/^r\//, '')).includes(requestedSub)) {
+            throw new Error(`Subreddit '${requestedSub}' is not in your allowed list. Add it under Integrations → Reddit → Allowed subreddits before publishing.`);
+          }
 
           const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
           const utmUrl = `${articleUrl}${utmString ? '?' + utmString : ''}`;
 
-          // Helper: attempt token refresh if needed
-          const tryRefresh = async (token) => {
-            if (!refreshToken || !redditClientId || !clientSecret) return token;
+          // Build Reddit post text — user override or Haiku-generated curiosity-gap copy.
+          const postCopyOverride = (req.body.postCopy || {})[channel];
+          let redditText = postCopyOverride;
+          if (!redditText) {
+            const articleJson = article.article_json || {};
+            const sections = articleJson.sections || [];
             try {
-              const r = await fetch('https://www.reddit.com/api/v1/access_token', {
-                method: 'POST',
-                headers: {
-                  'Authorization': 'Basic ' + Buffer.from(`${redditClientId}:${clientSecret}`).toString('base64'),
-                  'Content-Type': 'application/x-www-form-urlencoded',
-                  'User-Agent': 'ForgeIntelligence/1.0'
-                },
-                body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken })
+              const copyRes = await anthropic.messages.create({
+                model: 'claude-haiku-4-5-20251001',
+                max_tokens: 400,
+                messages: [{ role: 'user', content: `Write a Reddit text-post body for r/${requestedSub} promoting this article. Format: 2-3 short paragraphs that introduce the core insight without giving away the answer. End with a single line: "Full breakdown: ${utmUrl}"\n\nTone: conversational, like a practitioner sharing what they learned, NOT corporate marketing. No hashtags, no emojis, no headlines, no marketing-speak.\n\nArticle title: ${article.title}\nKey sections: ${sections.slice(1,4).map(s => s.heading).filter(Boolean).join(', ')}\n\nOutput only the post body, plain text.` }]
               });
-              const rData = await r.json();
-              return rData.access_token || token;
-            } catch { return token; }
-          };
-
-          let activeToken = redditToken;
-          const submitReddit = async (tok) => fetch('https://oauth.reddit.com/api/submit', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${tok}`,
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'User-Agent': 'ForgeIntelligence/1.0'
-            },
-            body: new URLSearchParams({
-              sr: subreddit.replace(/^r\//, ''),
-              kind: 'link',
-              title: article.title,
-              url: utmUrl,
-              resubmit: 'true',
-              nsfw: 'false',
-              spoiler: 'false'
-            })
-          });
-
-          let rdRes = await submitReddit(activeToken);
-          // If 401, try refresh once
-          if (rdRes.status === 401 && refreshToken) {
-            activeToken = await tryRefresh(activeToken);
-            rdRes = await submitReddit(activeToken);
+              redditText = copyRes.content[0]?.type === 'text' ? copyRes.content[0].text.trim() : '';
+            } catch(e) {
+              console.warn('[REDDIT-ZERNIO] Haiku post copy failed:', e.message);
+              redditText = `${article.title}\n\n${utmUrl}`;
+            }
           }
-          const rdData = await rdRes.json();
-          const rdErrors = rdData?.json?.errors;
-          if (rdErrors && rdErrors.length > 0) throw new Error(rdErrors[0][1] || 'Reddit submit failed');
-          if (!rdRes.ok) throw new Error(`Reddit API error: ${rdRes.status}`);
 
-          const rdPostUrl = rdData?.json?.data?.url || `https://www.reddit.com/r/${subreddit.replace(/^r\//, '')}`;
-          results[channel] = { status: 'published', url: rdPostUrl, postId: rdData?.json?.data?.id, utmParams };
+          // Zernio's /posts API for Reddit takes the subreddit via platformOptions.
+          // We call zernioPublish() but with an extra platformOptions field. The helper
+          // doesn't currently support extra options — inline the call instead.
+          try {
+            const zResult = await callZernio('POST', '/posts', {
+              content: redditText,
+              publishNow: true,
+              platforms: [{
+                platform: 'reddit',
+                accountId: creds.zernioAccountId,
+                platformOptions: {
+                  subreddit: requestedSub,
+                  title: article.title,
+                  kind: 'self',  // text post by default — less spammy than link posts
+                  url: utmUrl   // included in body even for self-posts since most subs ban link-only
+                }
+              }]
+            });
+
+            if (!zResult.ok) {
+              throw new Error(`Zernio reddit publish failed (${zResult.status}): ${zResult.raw?.slice(0, 300) || 'no body'}`);
+            }
+            const post = zResult.parsed?.post;
+            const platformResult = (post?.platforms || []).find(p => p.platform === 'reddit');
+            if (!platformResult || platformResult.status !== 'published') {
+              const errMsg = platformResult?.error || platformResult?.platformSpecificData?.lastError || 'Zernio did not publish';
+              throw new Error(`Reddit (Zernio): ${errMsg}`);
+            }
+
+            results[channel] = {
+              status: 'published',
+              url: platformResult.platformPostUrl,
+              postId: platformResult.platformPostId || post._id,
+              subreddit: requestedSub,
+              via: 'zernio',
+              utmParams
+            };
+
+            // Write publish_log inside the dispatch (continue skips the loop-end writer).
+            await pool.query(
+              `INSERT INTO publish_log (queue_item_id, brand_profile_id, content_id, channel, status, response_data, utm_params, published_url, error_message)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+              [
+                queueItemId, item.brand_profile_id, item.content_id, channel,
+                'published',
+                JSON.stringify(results[channel]),
+                JSON.stringify(utmParams),
+                platformResult.platformPostUrl,
+                null
+              ]
+            ).catch(e => console.error('[PUBLISH] reddit zernio publish_log insert failed:', e.message));
+            continue;
+          } catch (rzerr) {
+            // No fallback for Reddit — if Zernio fails, the publish fails. We don't have
+            // direct OAuth tokens for migrated brands, and even if we did, the brand-owned
+            // allowlist guarantee would still be the right safety bound.
+            throw rzerr;
+          }
 
         } else if (channel === 'medium') {
           // ── Medium API publish ──
