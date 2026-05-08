@@ -13987,6 +13987,40 @@ app.post('/api/admin/zernio/post', async (req, res) => {
   }
 });
 
+// Test the connect endpoint to see what shape Zernio's OAuth init looks like.
+// Body: { profileId, platform, redirectUrl?, state? }
+app.post('/api/admin/zernio/connect-test', async (req, res) => {
+  if (!zernioGuard(req, res)) return;
+  try {
+    const { profileId, platform, redirectUrl, state } = req.body;
+    if (!profileId || !platform) return res.status(400).json({ success: false, error: 'profileId + platform required' });
+
+    const params = new URLSearchParams({ profileId });
+    if (redirectUrl) params.set('redirectUrl', redirectUrl);
+    if (state) params.set('state', state);
+
+    const path = `/connect/${platform}?${params.toString()}`;
+    const result = await callZernio('GET', path);
+    res.json({ success: true, stage: 'connect-init', path, ...result });
+  } catch (e) {
+    res.status(500).json({ success: false, stage: 'connect-init', error: e.message });
+  }
+});
+
+// Create a Zernio profile (needed to associate accounts with a Forge brand).
+// Body: { name, description? }
+app.post('/api/admin/zernio/create-profile', async (req, res) => {
+  if (!zernioGuard(req, res)) return;
+  try {
+    const { name, description } = req.body;
+    if (!name) return res.status(400).json({ success: false, error: 'name required' });
+    const result = await callZernio('POST', '/profiles', { name, description });
+    res.json({ success: true, stage: 'create-profile', ...result });
+  } catch (e) {
+    res.status(500).json({ success: false, stage: 'create-profile', error: e.message });
+  }
+});
+
 // ── Content Import (Bring Your Own Article) ──────────────────────────────────
 
 // POST /api/content/import — parse + score an externally written article.
