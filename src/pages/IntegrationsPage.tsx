@@ -287,16 +287,15 @@ const CHANNELS: ChannelDef[] = [
 ];
 
 const DEFAULT_UTM: Record<ChannelId, Record<string, string>> = {
-  wordpress: { utm_source: 'forge', utm_medium: 'organic', utm_campaign: '{campaign_slug,
-  reddit: { utm_source: 'reddit', utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
-}', utm_content: '{article_slug}' },
+  wordpress: { utm_source: 'forge', utm_medium: 'organic', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   webflow:   { utm_source: 'forge', utm_medium: 'organic', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   hubspot:   { utm_source: 'hubspot', utm_medium: 'attribution', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   linkedin:  { utm_source: 'linkedin', utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   x:         { utm_source: 'x',        utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
-  facebook:  { utm_source: 'facebook',   utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
-    medium:    { utm_source: 'medium',     utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
-  ghost:     { utm_source: 'ghost',      utm_medium: 'blog',   utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
+  facebook:  { utm_source: 'facebook', utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
+  reddit:    { utm_source: 'reddit',   utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
+  medium:    { utm_source: 'medium',   utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
+  ghost:     { utm_source: 'ghost',    utm_medium: 'blog',   utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
 };
 
 // ── Types ────────────────────────────────────────────────────────────────────
