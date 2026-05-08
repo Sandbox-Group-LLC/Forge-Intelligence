@@ -687,14 +687,31 @@ export default function IntegrationsPage() {
                     {/* Pipedream-connected channels: no credential fields, just UTM + reconnect */}
                     {ch.pipedreamApp && connected && (
                       <div className="int-form-section">
-                        <div className="int-pipedream-status">
-                          <div className="int-pipedream-badge">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                            Connected via Pipedream
-                          </div>
-                          <span className="int-pipedream-sub">OAuth managed by Pipedream · Token auto-refreshes · Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}</span>
-                          <button className="int-reauth-btn" onClick={() => handleSave(ch.id)}>Reconnect</button>
-                        </div>
+                        {(() => {
+                          // Choose the badge based on what's actually in creds, not just on the channel def.
+                          // - zernioAccountId set → the new Zernio path
+                          // - direct LinkedIn OAuth (accessToken + authorUrn) → OAuth label
+                          // - else → fall back to Pipedream label
+                          const creds = (saved?.credentials || {}) as Record<string, unknown>;
+                          const usingZernio = !!creds.zernioAccountId;
+                          const usingDirectOAuth = !usingZernio && (!!creds.accessToken || !!creds.authorUrn || !!creds.pageAccessToken);
+                          const provider = usingZernio ? 'Zernio' : usingDirectOAuth ? 'OAuth' : 'Pipedream';
+                          const subText = usingZernio
+                            ? `Routed through Zernio · White-label · Last updated ${saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}`
+                            : usingDirectOAuth
+                            ? `Direct OAuth token · Last updated ${saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}`
+                            : `OAuth managed by Pipedream · Token auto-refreshes · Last updated ${saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}`;
+                          return (
+                            <div className="int-pipedream-status">
+                              <div className="int-pipedream-badge">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                                Connected via {provider}
+                              </div>
+                              <span className="int-pipedream-sub">{subText}</span>
+                              <button className="int-reauth-btn" onClick={() => handleSave(ch.id)}>Reconnect</button>
+                            </div>
+                          );
+                        })()}
 
                         {/* Facebook-specific: Page picker. Pipedream OAuth grants access at the user level,
                             so a user who admins multiple Pages must choose which one Forge publishes to.
