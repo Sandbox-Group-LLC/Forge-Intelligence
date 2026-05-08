@@ -312,6 +312,7 @@ export default function IntegrationsPage() {
   const [disconnecting, setDisconnecting] = useState<ChannelId | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [zernioSyncReady, setZernioSyncReady] = useState(false);
   // Facebook page-picker state — loaded when user opens the FB card and is Pipedream-connected.
   const [fbPages, setFbPages] = useState<Array<{ id: string; name: string; category?: string; canPost: boolean }>>([]);
   const [fbPagesLoading, setFbPagesLoading] = useState(false);
@@ -384,35 +385,37 @@ export default function IntegrationsPage() {
   const handleSave = async (channelId: ChannelId) => {
     const channel = CHANNELS.find(c => c.id === channelId);
 
-    // Zernio-powered OAuth — opens in popup, syncs account when popup closes
+    // Zernio-powered OAuth — opens new tab, user clicks "Done" to sync
     if (channelId === 'linkedin' && channel?.oauthFlow) {
       if (!selectedBrand) { setError('Select a Brain first'); return; }
+      if (zernioSyncReady) {
+        // User clicked "I've connected" — sync the account
+        setZernioSyncReady(false);
+        setSaving('linkedin');
+        setSuccess(''); setError('');
+        try {
+          const sync = await fetch(`/api/zernio/sync-account?brandProfileId=${selectedBrand}&platform=linkedin`);
+          const syncData = await sync.json();
+          if (syncData.success) {
+            setSuccess(`LinkedIn connected: ${syncData.accountName || 'Success'}`);
+            loadChannels(selectedBrand);
+            setExpanded('linkedin');
+            setTimeout(() => setSuccess(''), 4000);
+          } else {
+            setError(syncData.error || 'LinkedIn account not found in Zernio — try connecting again');
+          }
+        } catch { setError('Failed to sync LinkedIn account from Zernio'); }
+        setSaving(null);
+        return;
+      }
       try {
         const r = await fetch(`/api/zernio/connect/linkedin?brandProfileId=${selectedBrand}`);
         const d = await r.json();
         if (!d.authUrl) throw new Error(d.error || 'No auth URL returned');
-        const popup = window.open(d.authUrl, 'zernio_connect', 'width=600,height=700,left=200,top=100');
-        setSuccess('Authorize LinkedIn in the popup, then close it when done.');
-        const poll = setInterval(async () => {
-          if (!popup || popup.closed) {
-            clearInterval(poll);
-            setSuccess('');
-            setSaving('linkedin');
-            try {
-              const sync = await fetch(`/api/zernio/sync-account?brandProfileId=${selectedBrand}&platform=linkedin`);
-              const syncData = await sync.json();
-              if (syncData.success) {
-                setSuccess(`LinkedIn connected: ${syncData.accountName || 'Success'}`);
-                loadChannels(selectedBrand);
-                setExpanded('linkedin');
-                setTimeout(() => setSuccess(''), 4000);
-              } else {
-                setError(syncData.error || 'LinkedIn account not found in Zernio — try connecting again');
-              }
-            } catch { setError('Failed to sync LinkedIn account from Zernio'); }
-            setSaving(null);
-          }
-        }, 500);
+        window.open(d.authUrl, '_blank');
+        setZernioSyncReady(true);
+        setSuccess('Authorize LinkedIn in the new tab. Come back here and click the button below when done.');
+        setExpanded('linkedin');
       } catch(e: any) {
         setError(`Could not connect LinkedIn: ${e.message}`);
       }
@@ -699,10 +702,10 @@ export default function IntegrationsPage() {
                         ) : (
                           <button
                             className="int-connect-btn"
-                            style={{ '--ch-color': ch.color } as React.CSSProperties}
+                            style={{ '--ch-color': ch.color, ...(zernioSyncReady && ch.id === 'linkedin' ? { background: '#14B8A6' } : {}) } as React.CSSProperties}
                             onClick={() => (ch.pipedreamApp || ch.oauthFlow) ? handleSave(ch.id) : setExpanded(isOpen ? null : ch.id)}
                           >
-                            {ch.pipedreamApp ? 'Connect' : (isOpen ? 'Cancel' : 'Connect')}
+                            {zernioSyncReady && ch.id === 'linkedin' ? 'I\'ve Connected — Sync' : (ch.pipedreamApp ? 'Connect' : (isOpen ? 'Cancel' : 'Connect'))}
                           </button>
                         )
                       )
