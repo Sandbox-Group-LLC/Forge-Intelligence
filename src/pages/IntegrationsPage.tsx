@@ -307,15 +307,11 @@ export default function IntegrationsPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   // Facebook page-picker state — loaded when user opens the FB card and is Pipedream-connected.
-  const [fbPages, setFbPages] = useState<Array<{ id: string; name: string; category?: string; canPost: boolean }>>([]);
-  const [fbPagesLoading, setFbPagesLoading] = useState(false);
-  const [fbPagesError, setFbPagesError] = useState('');
-  const [fbSavingPage, setFbSavingPage] = useState(false);
+
   // Manual Page ID input — primary path while Pipedream's page picker doesn't return
   // pages reliably. Customer pastes the ID from their Facebook Page → Save persists it via
   // the same /api/facebook/pipedream/select-page endpoint the picker uses.
-  const [fbManualPageId, setFbManualPageId] = useState('');
-  const [fbManualPageIdSaving, setFbManualPageIdSaving] = useState(false);
+
 
   // Load channels whenever active brand resolves
   useEffect(() => {
@@ -324,13 +320,7 @@ export default function IntegrationsPage() {
   }, [activeBrand?.id]);
 
   // Auto-load Facebook Pages when the FB card is expanded AND the brand has a Pipedream connection.
-  useEffect(() => {
-    if (expanded !== 'facebook' || !selectedBrand) return;
-    const fbChannel = (savedChannels as any)['facebook'];
-    const connected = !!(fbChannel && fbChannel.credentials?.pipedream_account_id);
-    if (connected) loadFbPages();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expanded, selectedBrand, savedChannels]);
+
 
   // Hydrate manual Page ID input from saved credentials when the FB card opens.
   useEffect(() => {
@@ -507,66 +497,11 @@ export default function IntegrationsPage() {
     }
   };
 
-  const loadFbPages = async () => {
-    if (!selectedBrand) return;
-    setFbPagesLoading(true);
-    setFbPagesError('');
-    try {
-      const r = await fetch(`/api/facebook/pipedream/list-pages?brandProfileId=${selectedBrand}`);
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Failed to load pages');
-      setFbPages(d.pages || []);
-    } catch(e: any) {
-      setFbPagesError(e.message);
-      setFbPages([]);
-    } finally {
-      setFbPagesLoading(false);
-    }
-  };
 
   // Save a manually entered Page ID. Reuses the same backend endpoint as the picker —
   // pageName is null because the customer didn't pick a Page object, just typed an ID.
   // The publish flow only needs pageId; pageName is decorative metadata.
-  const saveManualFbPageId = async () => {
-    const trimmed = fbManualPageId.trim();
-    if (!selectedBrand || !trimmed) return;
-    setFbManualPageIdSaving(true);
-    try {
-      const r = await fetch('/api/facebook/pipedream/select-page', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brandProfileId: selectedBrand, pageId: trimmed, pageName: null })
-      });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Failed to save Page ID');
-      setSuccess('Page ID saved ✓');
-      setTimeout(() => setSuccess(''), 3000);
-      loadChannels(selectedBrand);
-    } catch (e: any) {
-      setError(e.message || 'Failed to save Page ID');
-    } finally {
-      setFbManualPageIdSaving(false);
-    }
-  };
 
-  const selectFbPage = async (pageId: string, pageName: string) => {
-    if (!selectedBrand) return;
-    setFbSavingPage(true);
-    try {
-      const r = await fetch('/api/facebook/pipedream/select-page', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brandProfileId: selectedBrand, pageId, pageName })
-      });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Failed to save page selection');
-      setSuccess(`Publishing to "${pageName}" ✓`);
-      setTimeout(() => setSuccess(''), 3000);
-      loadChannels(selectedBrand);
-    } catch(e: any) {
-      setError(e.message);
-    } finally {
-      setFbSavingPage(false);
-    }
-  };
 
   const handleDisconnect = async (channelId: ChannelId) => {
     const saved = savedChannels[channelId];
@@ -694,171 +629,38 @@ export default function IntegrationsPage() {
                 {/* Expanded panel */}
                 {isOpen && (
                   <div className="int-card-form">
-                    {/* Pipedream-connected channels: no credential fields, just UTM + reconnect */}
-                    {ch.pipedreamApp && connected && (
-                      <div className="int-form-section">
-                        {(() => {
-                          // Choose the badge based on what's actually in creds, not just on the channel def.
-                          // - zernioAccountId set → the new Zernio path
-                          // - direct LinkedIn OAuth (accessToken + authorUrn) → OAuth label
-                          // - else → fall back to Pipedream label
-                          const creds = (saved?.credentials || {}) as Record<string, unknown>;
-                          const usingZernio = !!creds.zernioAccountId;
-                          const usingDirectOAuth = !usingZernio && (!!creds.accessToken || !!creds.authorUrn || !!creds.pageAccessToken);
-                          const provider = usingZernio ? 'Zernio' : usingDirectOAuth ? 'OAuth' : 'Pipedream';
-                          const subText = usingZernio
-                            ? `Routed through Zernio · White-label · Last updated ${saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}`
-                            : usingDirectOAuth
-                            ? `Direct OAuth token · Last updated ${saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}`
-                            : `OAuth managed by Pipedream · Token auto-refreshes · Last updated ${saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}`;
-                          return (
-                            <div className="int-pipedream-status">
-                              <div className="int-pipedream-badge">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                                Connected via {provider}
-                              </div>
-                              <span className="int-pipedream-sub">{subText}</span>
-                              <button className="int-reauth-btn" onClick={() => handleSave(ch.id)}>Reconnect</button>
-                            </div>
-                          );
-                        })()}
-
-                        {/* Facebook-specific: Page picker. Pipedream OAuth grants access at the user level,
-                            so a user who admins multiple Pages must choose which one Forge publishes to.
-                            The backend endpoint calls /me/accounts via the Pipedream proxy and returns the
-                            list. Selection is persisted to publishing_channels.credentials.pageId. */}
-                        {ch.id === 'facebook' && (
-                          <div style={{ marginTop: 16, padding: 16, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8 }}>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: '#1E293B', marginBottom: 8 }}>Publishing destination</div>
-                            <div style={{ fontSize: 12, color: '#64748B', marginBottom: 12 }}>Choose which Facebook Page Forge should publish to.</div>
-
-                            {/* Manual Page ID input — primary path. Pipedream's page picker below
-                                doesn't currently return Pages reliably, so we let customers paste
-                                the ID directly. Find the Page ID under your Facebook Page → About →
-                                Page transparency. */}
-                            <div style={{ marginBottom: 14, padding: 12, background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: 6 }}>
-                              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#1E293B', marginBottom: 4 }}>Facebook Page ID</label>
-                              <div style={{ fontSize: 11, color: '#64748B', marginBottom: 8, lineHeight: 1.4 }}>
-                                Find this on your Facebook Page under About → Page transparency. Pure numbers, e.g. <code style={{ background: '#F1F5F9', padding: '1px 4px', borderRadius: 3 }}>123456789012345</code>.
-                              </div>
-                              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                                <input
-                                  type="text"
-                                  value={fbManualPageId}
-                                  onChange={e => setFbManualPageId(e.target.value)}
-                                  placeholder="123456789012345"
-                                  className="int-field-input"
-                                  style={{ flex: 1 }}
-                                />
-                                <button
-                                  type="button"
-                                  onClick={saveManualFbPageId}
-                                  disabled={fbManualPageIdSaving || !fbManualPageId.trim()}
-                                  className="int-save-btn"
-                                  style={{ minWidth: 80 }}
-                                >
-                                  {fbManualPageIdSaving ? '...' : 'Save'}
-                                </button>
-                              </div>
-                            </div>
-
-
-                            {fbPagesLoading && (
-                              <div style={{ fontSize: 13, color: '#64748B', padding: '8px 0' }}>Loading your Pages…</div>
-                            )}
-
-                            {fbPagesError && !fbPagesLoading && (
-                              <div style={{ fontSize: 13, color: '#B91C1C', background: '#FEE2E2', padding: '8px 12px', borderRadius: 6, marginBottom: 8 }}>
-                                {fbPagesError}
-                                <button
-                                  type="button"
-                                  onClick={loadFbPages}
-                                  style={{ marginLeft: 8, background: 'none', border: 'none', color: '#B91C1C', textDecoration: 'underline', cursor: 'pointer', fontSize: 13, padding: 0 }}
-                                >
-                                  Retry
-                                </button>
-                              </div>
-                            )}
-
-                            {!fbPagesLoading && !fbPagesError && fbPages.length === 0 && (
-                              <div style={{ fontSize: 13, color: '#475569', padding: '12px 14px', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 6, lineHeight: 1.5 }}>
-                                <div style={{ fontWeight: 600, color: '#1E293B', marginBottom: 4 }}>No Pages found</div>
-                                <div style={{ marginBottom: 8 }}>
-                                  We couldn't find any Facebook Pages on the connected account. If you just connected, give it a moment and click Retry. If you manage Pages through Business Suite, make sure the connected Facebook account has admin access to at least one Page.
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={loadFbPages}
-                                  style={{ background: 'none', border: '1px solid #CBD5E1', color: '#1E293B', padding: '6px 12px', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}
-                                >
-                                  Retry
-                                </button>
-                              </div>
-                            )}
-
-                            {!fbPagesLoading && fbPages.length > 0 && (() => {
-                              const currentPageId = (saved?.credentials as any)?.pageId || null;
-                              return (
-                                <div className="int-fb-pages-list" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                  {fbPages.map(p => {
-                                    const isSelected = p.id === currentPageId;
-                                    return (
-                                      <button
-                                        key={p.id}
-                                        type="button"
-                                        disabled={fbSavingPage || !p.canPost}
-                                        onClick={() => selectFbPage(p.id, p.name)}
-                                        title={p.canPost ? '' : 'This Page does not grant CREATE_CONTENT permission to the connected account.'}
-                                        style={{
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          justifyContent: 'space-between',
-                                          padding: '10px 12px',
-                                          background: isSelected ? '#EFF6FF' : '#FFFFFF',
-                                          border: `1.5px solid ${isSelected ? '#3563FF' : '#E2E8F0'}`,
-                                          borderRadius: 6,
-                                          cursor: (fbSavingPage || !p.canPost) ? 'not-allowed' : 'pointer',
-                                          opacity: p.canPost ? 1 : 0.55,
-                                          textAlign: 'left',
-                                          transition: 'all 0.15s'
-                                        }}
-                                      >
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                          <span style={{ fontSize: 13, fontWeight: 600, color: '#1E293B' }}>{p.name}</span>
-                                          <span style={{ fontSize: 11, color: '#94A3B8' }}>
-                                            {p.category || 'Page'} · ID: {p.id}{!p.canPost ? ' · no post permission' : ''}
-                                          </span>
-                                        </div>
-                                        {isSelected && (
-                                          <span style={{ fontSize: 12, fontWeight: 700, color: '#3563FF' }}>✓ Active</span>
-                                        )}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              );
-                            })()}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
                     {/* OAuth reconnect for native OAuth channels */}
                     {ch.oauthFlow && connected && (
                       <div className="int-pipedream-section">
                         <div className="int-pipedream-info">
-                          <div className="int-pipedream-badge">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
-                            Connected via OAuth
-                          </div>
-                          <span className="int-pipedream-sub">Token managed by {ch.label} OAuth · Last updated {saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}</span>
+                          {(() => {
+                            // Data-driven badge: pick provider based on actual creds shape.
+                            //   zernioAccountId set                     → Zernio
+                            //   accessToken / authorUrn / pageAccessToken → direct OAuth
+                            //   else (no creds yet)                     → OAuth (default for oauthFlow)
+                            const creds = (saved?.credentials || {}) as Record<string, unknown>;
+                            const usingZernio = !!creds.zernioAccountId;
+                            const provider = usingZernio ? 'Zernio' : 'OAuth';
+                            const subText = usingZernio
+                              ? `Routed through Zernio · White-label · Last updated ${saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}`
+                              : `Token managed by ${ch.label} OAuth · Last updated ${saved?.updated_at ? new Date(saved.updated_at).toLocaleDateString() : '--'}`;
+                            return (
+                              <>
+                                <div className="int-pipedream-badge">
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
+                                  Connected via {provider}
+                                </div>
+                                <span className="int-pipedream-sub">{subText}</span>
+                              </>
+                            );
+                          })()}
                           <button className="int-reauth-btn" onClick={() => handleSave(ch.id)}>Reconnect</button>
                         </div>
                       </div>
                     )}
 
                     {/* Manual credential fields for non-Pipedream, non-OAuth channels */}
-                    {!ch.pipedreamApp && !ch.oauthFlow && (
+                    {!ch.oauthFlow && (
                       <div className="int-form-section">
                         <div className="int-form-label">
                           Credentials
@@ -908,7 +710,7 @@ export default function IntegrationsPage() {
 
                     <div className="int-form-footer">
                       <button className="int-cancel-btn" onClick={() => setExpanded(null)}>Close</button>
-                      {!ch.pipedreamApp && !ch.oauthFlow && (
+                      {!ch.oauthFlow && (
                         <button
                           className="int-save-btn"
                           onClick={() => handleSave(ch.id)}
