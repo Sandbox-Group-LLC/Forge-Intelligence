@@ -80,7 +80,7 @@ function SetupGuide({ guide }: { guide: SetupGuide }) {
 }
 
 // ── Channel definitions ───────────────────────────────────────────────────────
-type ChannelId = 'wordpress' | 'webflow' | 'hubspot' | 'linkedin' | 'x' | 'facebook' | 'medium' | 'ghost';
+type ChannelId = 'wordpress' | 'webflow' | 'hubspot' | 'linkedin' | 'x' | 'facebook' | 'reddit' | 'medium' | 'ghost';
 
 interface ChannelDef {
   id: ChannelId;
@@ -222,6 +222,26 @@ const CHANNELS: ChannelDef[] = [
     },
   },
   {
+    id: 'reddit',
+    label: 'Reddit',
+    description: 'Publish to subreddits where you have permission to post. Connect via Zernio, then add the subreddits you can post in. Forge will refuse to post outside your allowlist.',
+    color: '#FF4500',
+    logo: 'R',
+    liveStatus: 'live',
+    oauthFlow: true,
+    credentialFields: [],
+    setupGuide: {
+      title: 'Reddit via Zernio (brand-owned subreddits only)',
+      steps: [
+        { text: 'Click Connect above. You\'ll be redirected to Reddit to authorize via Zernio.' },
+        { text: 'Sign in to the Reddit account that has posting permission in your target subreddits.' },
+        { text: 'After connecting, return here and add each subreddit you have permission to post in under "Allowed subreddits" below.' },
+        { text: 'Forge will only publish to subreddits in your allowlist. Posting to subreddits where you don\'t have permission can get the account banned.' },
+        { text: 'Reddit posts default to text-format with the article URL inline. Most subreddits ban link-only posts.' },
+      ],
+    },
+  },
+  {
     id: 'medium',
     label: 'Medium',
     description: 'Medium stopped issuing new API tokens in early 2025. Existing tokens still work -- if you have a pre-2025 token you can connect it here. New tokens are no longer available.',
@@ -267,7 +287,9 @@ const CHANNELS: ChannelDef[] = [
 ];
 
 const DEFAULT_UTM: Record<ChannelId, Record<string, string>> = {
-  wordpress: { utm_source: 'forge', utm_medium: 'organic', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
+  wordpress: { utm_source: 'forge', utm_medium: 'organic', utm_campaign: '{campaign_slug,
+  reddit: { utm_source: 'reddit', utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
+}', utm_content: '{article_slug}' },
   webflow:   { utm_source: 'forge', utm_medium: 'organic', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   hubspot:   { utm_source: 'hubspot', utm_medium: 'attribution', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   linkedin:  { utm_source: 'linkedin', utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
@@ -290,16 +312,160 @@ interface SavedChannel {
   credentials?: Record<string, any>;
 }
 
+// Reddit allowed-subreddits manager. Renders inside a connected Reddit channel card.
+// Shows current allowlist + add/remove + default-subreddit picker. Calls
+// POST /api/publishing/channels/reddit/allowed-subreddits which uses JSONB merge
+// so it doesn't wipe the OAuth credentials.
+function RedditAllowedSubreddits({
+  brandProfileId,
+  savedCredentials,
+  onSaved,
+}: {
+  brandProfileId: string;
+  savedCredentials: Record<string, unknown>;
+  onSaved: () => void;
+}) {
+  const initialList = Array.isArray(savedCredentials.allowedSubreddits)
+    ? (savedCredentials.allowedSubreddits as string[])
+    : [];
+  const initialDefault = (savedCredentials.defaultSubreddit as string) || (initialList[0] || '');
+
+  const [allowedList, setAllowedList] = useState<string[]>(initialList);
+  const [defaultSub, setDefaultSub] = useState<string>(initialDefault);
+  const [draftSub, setDraftSub] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const [ok, setOk] = useState('');
+
+  // Re-hydrate when the parent reloads with fresh creds.
+  useEffect(() => {
+    const list = Array.isArray(savedCredentials.allowedSubreddits)
+      ? (savedCredentials.allowedSubreddits as string[])
+      : [];
+    const def = (savedCredentials.defaultSubreddit as string) || (list[0] || '');
+    setAllowedList(list);
+    setDefaultSub(def);
+  }, [JSON.stringify(savedCredentials.allowedSubreddits), savedCredentials.defaultSubreddit]);
+
+  const normalize = (raw: string) => raw.trim().replace(/^r\//i, '').replace(/^\//, '');
+  const valid = (raw: string) => /^[A-Za-z0-9][A-Za-z0-9_]{2,20}$/.test(raw);
+
+  const addSub = () => {
+    setErr(''); setOk('');
+    const n = normalize(draftSub);
+    if (!n) return;
+    if (!valid(n)) { setErr('Subreddit names must be 3-21 characters, letters/numbers/underscores only.'); return; }
+    if (allowedList.includes(n)) { setErr('Already in your allowlist.'); return; }
+    const next = [...allowedList, n];
+    setAllowedList(next);
+    if (!defaultSub) setDefaultSub(n);
+    setDraftSub('');
+  };
+  const removeSub = (n: string) => {
+    setErr(''); setOk('');
+    const next = allowedList.filter(s => s !== n);
+    setAllowedList(next);
+    if (defaultSub === n) setDefaultSub(next[0] || '');
+  };
+
+  const save = async () => {
+    setErr(''); setOk(''); setSaving(true);
+    try {
+      const r = await fetch('/api/publishing/channels/reddit/allowed-subreddits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          brandProfileId,
+          allowedSubreddits: allowedList,
+          defaultSubreddit: defaultSub || null,
+        }),
+      });
+      const d = await r.json();
+      if (!d.success) { setErr(d.error || 'Save failed'); return; }
+      setOk('Allowed subreddits saved.');
+      onSaved();
+      setTimeout(() => setOk(''), 2500);
+    } catch (e: any) {
+      setErr(e?.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ marginTop: 14, padding: 14, background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 8 }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: '#9A3412', marginBottom: 4 }}>Allowed subreddits</div>
+      <div style={{ fontSize: 12, color: '#7C2D12', marginBottom: 12, lineHeight: 1.5 }}>
+        Add only subreddits where you have permission to post (your own communities, subs you moderate, or subs whose rules allow your content). Forge will refuse to publish to anything outside this list.
+      </div>
+
+      {/* Current list */}
+      {allowedList.length > 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+          {allowedList.map(s => (
+            <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: '#FFFFFF', border: '1px solid #FED7AA', borderRadius: 6 }}>
+              <span style={{ fontSize: 13, color: '#1E293B', fontWeight: 500, flex: 1 }}>r/{s}</span>
+              <label style={{ fontSize: 11, color: '#64748B', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                <input type="radio" name="default-sub" checked={defaultSub === s} onChange={() => setDefaultSub(s)} />
+                Default
+              </label>
+              <button type="button" onClick={() => removeSub(s)} style={{ background: 'none', border: 'none', color: '#B91C1C', cursor: 'pointer', fontSize: 12, padding: '4px 8px' }}>Remove</button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ fontSize: 12, color: '#7C2D12', fontStyle: 'italic', marginBottom: 12 }}>No allowed subreddits yet. Add at least one before publishing.</div>
+      )}
+
+      {/* Add new */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+        <span style={{ fontSize: 13, color: '#64748B' }}>r/</span>
+        <input
+          type="text"
+          value={draftSub}
+          onChange={e => setDraftSub(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addSub(); } }}
+          placeholder="forgeintelligence"
+          className="int-field-input"
+          style={{ flex: 1 }}
+        />
+        <button
+          type="button"
+          onClick={addSub}
+          disabled={!draftSub.trim()}
+          className="int-save-btn"
+          style={{ minWidth: 80 }}
+        >
+          Add
+        </button>
+      </div>
+
+      {err && <div style={{ fontSize: 12, color: '#B91C1C', marginBottom: 8 }}>{err}</div>}
+      {ok && <div style={{ fontSize: 12, color: '#15803D', marginBottom: 8 }}>{ok}</div>}
+
+      <button
+        type="button"
+        onClick={save}
+        disabled={saving}
+        className="int-save-btn"
+        style={{ width: '100%' }}
+      >
+        {saving ? 'Saving…' : 'Save allowed subreddits'}
+      </button>
+    </div>
+  );
+}
+
 export default function IntegrationsPage() {
   const { isPaid, brandLoading, activeBrand } = useApp();
   
   const selectedBrand = activeBrand?.id || '';
   const [savedChannels, setSavedChannels] = useState<Record<ChannelId, SavedChannel | null>>({
-    wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null, facebook: null, medium: null, ghost: null
+    wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null, facebook: null, reddit: null, medium: null, ghost: null
   });
   const [expanded, setExpanded] = useState<ChannelId | null>(null);
   const [credentials, setCredentials] = useState<Record<ChannelId, Record<string, string>>>({
-    wordpress: {}, webflow: {}, hubspot: {}, linkedin: {}, x: {}, facebook: {}, medium: {}, ghost: {}
+    wordpress: {}, webflow: {}, hubspot: {}, linkedin: {}, x: {}, facebook: {}, reddit: {}, medium: {}, ghost: {}
   });
   const [utmTemplates, setUtmTemplates] = useState<Record<ChannelId, Record<string, string>>>(DEFAULT_UTM);
   const [saving, setSaving] = useState<ChannelId | null>(null);
@@ -326,7 +492,7 @@ export default function IntegrationsPage() {
       .then(d => {
         if (d.success) {
           const map: Record<ChannelId, SavedChannel | null> = {
-            wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null, facebook: null, medium: null, ghost: null
+            wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null, facebook: null, reddit: null, medium: null, ghost: null
           };
           for (const ch of d.channels) map[ch.channel as ChannelId] = ch;
           setSavedChannels(map);
@@ -363,7 +529,7 @@ export default function IntegrationsPage() {
     const channel = CHANNELS.find(c => c.id === channelId);
 
     // Zernio-powered OAuth — redirect flow with callback
-    const zernioPlatforms: Record<string, string> = { linkedin: 'linkedin', facebook: 'facebook' };
+    const zernioPlatforms: Record<string, string> = { linkedin: 'linkedin', facebook: 'facebook', reddit: 'reddit' };
     if (zernioPlatforms[channelId] && channel?.oauthFlow) {
       if (!selectedBrand) { setError('Select a Brain first'); return; }
       try {
@@ -648,6 +814,18 @@ export default function IntegrationsPage() {
                           <button className="int-reauth-btn" onClick={() => handleSave(ch.id)}>Reconnect</button>
                         </div>
                       </div>
+                    )}
+
+                    {/* Reddit-specific: allowed subreddits manager. Only renders for connected Reddit channels.
+                        The brand declares which subs they have permission to post in; Forge refuses to publish
+                        outside the list. Stored as creds.allowedSubreddits via a dedicated JSONB-merge endpoint
+                        so this list update doesn't wipe the OAuth credentials. */}
+                    {ch.id === 'reddit' && ch.oauthFlow && connected && (
+                      <RedditAllowedSubreddits
+                        brandProfileId={selectedBrand}
+                        savedCredentials={(saved?.credentials || {}) as Record<string, unknown>}
+                        onSaved={() => loadChannels(selectedBrand)}
+                      />
                     )}
 
                     {/* Manual credential fields for non-Pipedream, non-OAuth channels */}
