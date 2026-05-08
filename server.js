@@ -11523,10 +11523,18 @@ Output only the post text.` }]
           const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
           const utmUrl = `${articleUrl}${utmString ? '?' + utmString : ''}`;
 
-          // Build Reddit post text — user override or Haiku-generated curiosity-gap copy.
+          // For Reddit link posts, `content` is the post TITLE (not a body). Reddit titles
+          // are permanent and capped at 300 chars. The article URL handles the rest — Reddit
+          // fetches OG preview from it. No Haiku body generation needed for link posts.
+          //
+          // User override flow: if postCopy[reddit] is set, use its first line as the title.
+          // Otherwise default to the article title verbatim.
           const postCopyOverride = (req.body.postCopy || {})[channel];
-          let redditText = postCopyOverride;
-          if (!redditText) {
+          const redditTitle = (postCopyOverride && postCopyOverride.trim().split('\n')[0].slice(0, 300)) || (article.title || '').slice(0, 300);
+          let redditText = redditTitle;  // back-compat name in case anything below references it
+
+          // Skip Haiku generation — link post only needs the title.
+          if (false) {
             const articleJson = article.article_json || {};
             const sections = articleJson.sections || [];
             try {
@@ -11542,21 +11550,21 @@ Output only the post text.` }]
             }
           }
 
-          // Zernio's /posts API for Reddit takes the subreddit via platformOptions.
-          // We call zernioPublish() but with an extra platformOptions field. The helper
-          // doesn't currently support extra options — inline the call instead.
+          // Zernio's /posts API for Reddit takes the subreddit via platformSpecificData.
+          // We can't use zernioPublish() helper because Reddit needs platformSpecificData;
+          // inline the callZernio() request. See Zernio_API_Docs L9430+ for Reddit schema:
+          // when platformSpecificData.url is set, content becomes the post title (link post).
+          // For text posts, omit url and content's first line becomes the title.
           try {
             const zResult = await callZernio('POST', '/posts', {
-              content: redditText,
+              content: redditTitle,
               publishNow: true,
               platforms: [{
                 platform: 'reddit',
                 accountId: creds.zernioAccountId,
-                platformOptions: {
+                platformSpecificData: {
                   subreddit: requestedSub,
-                  title: article.title,
-                  kind: 'self',  // text post by default — less spammy than link posts
-                  url: utmUrl   // included in body even for self-posts since most subs ban link-only
+                  url: utmUrl  // presence of url makes this a link post; content becomes the title
                 }
               }]
             });
