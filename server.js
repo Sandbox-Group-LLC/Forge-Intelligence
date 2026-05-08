@@ -10786,7 +10786,13 @@ app.post('/api/publishing/publish', async (req, res) => {
           // If this brand has been migrated to Zernio (zernioAccountId set on the
           // channel credentials), route through Zernio's API. Otherwise fall through
           // to the legacy direct LinkedIn UGC Posts API. Per-brand opt-in.
-          if (creds.zernioAccountId) {
+          //
+          // HOST GATE: Dev and prod share the same DB. While we're validating Zernio,
+          // route through Zernio only on dev. Production keeps using the direct API
+          // until the dev test is signed off, then this gate gets removed.
+          const reqHost = req.headers.host || '';
+          const isProdHost = reqHost === 'forgeintelligence.ai' || reqHost === 'www.forgeintelligence.ai';
+          if (creds.zernioAccountId && !isProdHost) {
             try {
               const articleJson = article.article_json || {};
               const sections = articleJson.sections || [];
