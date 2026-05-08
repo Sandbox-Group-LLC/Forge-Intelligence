@@ -11236,12 +11236,12 @@ Output only the post text.` }]
             if (fbPostCopyOverride && fbPostCopyOverride.trim()) {
               fbMessage = fbPostCopyOverride.trim();
             } else {
-              fbMessage = `${item.title}\n\n${utmUrl}`;
+              fbMessage = `${article.title}\n\n${utmUrl}`;
               try {
                 const haiku = await anthropic.messages.create({
                   model: 'claude-haiku-4-5-20251001',
                   max_tokens: 600,
-                  messages: [{ role: 'user', content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant tags. Include the URL ${utmUrl} naturally.\n\nArticle title: ${item.title}\n\nArticle excerpt: ${(article.article_json?.sections?.[0]?.body || '').slice(0, 500)}` }]
+                  messages: [{ role: 'user', content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant tags. Include the URL ${utmUrl} naturally.\n\nArticle title: ${article.title}\n\nArticle excerpt: ${(article.article_json?.sections?.[0]?.body || '').slice(0, 500)}` }]
                 });
                 fbMessage = haiku.content[0]?.text || fbMessage;
               } catch(e) {
@@ -11296,12 +11296,12 @@ Output only the post text.` }]
             if (fbPostCopyOverrideWf && fbPostCopyOverrideWf.trim()) {
               fbMessageWf = fbPostCopyOverrideWf.trim();
             } else {
-              fbMessageWf = `${item.title}\n\n${utmUrlWf}`;
+              fbMessageWf = `${article.title}\n\n${utmUrlWf}`;
               try {
                 const haiku = await anthropic.messages.create({
                   model: 'claude-haiku-4-5-20251001',
                   max_tokens: 600,
-                  messages: [{ role: 'user', content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant tags. Include the URL ${utmUrlWf} naturally.\n\nArticle title: ${item.title}\n\nArticle excerpt: ${(article.article_json?.sections?.[0]?.body || '').slice(0, 500)}` }]
+                  messages: [{ role: 'user', content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant tags. Include the URL ${utmUrlWf} naturally.\n\nArticle title: ${article.title}\n\nArticle excerpt: ${(article.article_json?.sections?.[0]?.body || '').slice(0, 500)}` }]
                 });
                 fbMessageWf = haiku.content[0]?.text || fbMessageWf;
               } catch (e) {
@@ -11321,7 +11321,7 @@ Output only the post text.` }]
                 },
                 body: JSON.stringify({
                   pageId: creds.pageId || null,
-                  title: item.title,
+                  title: article.title,
                   message: fbMessageWf,
                   link: utmUrlWf,
                   forgeMeta: { brandProfileId: item.brand_profile_id, contentId: item.content_id, queueItemId: queueItemId, publishedAt: new Date().toISOString() }
@@ -11354,14 +11354,14 @@ Output only the post text.` }]
           if (fbPostCopyOverride && fbPostCopyOverride.trim()) {
             fbMessage = fbPostCopyOverride.trim();
           } else {
-            fbMessage = `${item.title}\n\n${utmUrl}`;
+            fbMessage = `${article.title}\n\n${utmUrl}`;
             try {
               const haiku = await anthropic.messages.create({
                 model: 'claude-haiku-4-5-20251001',
                 max_tokens: 600,
                 messages: [{
                   role: 'user',
-                  content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant tags. Include the URL on its own line at the end.\n\nArticle title: ${item.title}\nArticle URL: ${utmUrl}`
+                  content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant tags. Include the URL on its own line at the end.\n\nArticle title: ${article.title}\nArticle URL: ${utmUrl}`
                 }]
               });
               fbMessage = haiku.content[0]?.text || fbMessage;
@@ -11453,7 +11453,7 @@ Output only the post text.` }]
             body: new URLSearchParams({
               sr: subreddit.replace(/^r\//, ''),
               kind: 'link',
-              title: item.title,
+              title: article.title,
               url: utmUrl,
               resubmit: 'true',
               nsfw: 'false',
