@@ -147,7 +147,7 @@ const CHANNELS: ChannelDef[] = [
     id: 'hubspot',
     label: 'HubSpot',
     oauthFlow: true,
-    description: 'Contact tracking + campaign attribution. Connects published article UTMs to HubSpot contacts.',
+    description: 'Save generated emails to HubSpot as Email Templates. Pick them later in HubSpot when composing Marketing Email, Sequences, or 1:1 sends. Works on every HubSpot tier including free.',
     color: '#FF7A59',
     logo: 'HS',
     liveStatus: 'live',
@@ -160,6 +160,7 @@ const CHANNELS: ChannelDef[] = [
       steps: [
         { text: 'Click Connect above. You\'ll be redirected to HubSpot to authorize Forge Intelligence.' },
         { text: 'Log in to HubSpot if prompted and select the account you want to connect.' },
+        { text: 'Approve the `content` scope — the only permission Forge needs to save Email Templates.' },
         { text: 'HubSpot will redirect you back automatically once authorized — no token or portal ID needed.' },
       ],
     },
