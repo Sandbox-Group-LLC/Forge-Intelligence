@@ -76,7 +76,7 @@ function FlagPill({ flag }: { flag: { type: string; severity: string; detail: st
   );
 }
 
-function EmailCard({ email, idx }: { email: EmailRecord; idx: number }) {
+function EmailCard({ email, idx, onPushToHubSpot, pushing }: { email: EmailRecord; idx: number; onPushToHubSpot?: (emailId: string) => void; pushing?: boolean }) {
   const [open, setOpen] = useState(idx === 0);
   const [copiedField, setCopiedField] = useState('');
 
@@ -335,32 +335,35 @@ export default function EmailCampaignPage() {
     });
   };
 
-  const pushToHubSpot = async () => {
-    if (!activeBrandId || !campaignId) return;
+  // Push ONE email to HubSpot as an Email Template. The user picks the
+  // template later from HubSpot's compose UI when sending. Per-email
+  // (not per-sequence) because HubSpot Templates are individual artifacts
+  // and each email has different copy. Variant = the subject the user
+  // currently has selected from the export dropdown.
+  const pushEmailToHubSpot = async (emailId: string) => {
+    if (!activeBrandId || !emailId) return;
     setPushing(true);
     setPushResult('');
-    const res = await fetch('/api/email-campaign/push-to-hubspot', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...ah },
-      body: JSON.stringify({ brandProfileId: activeBrandId, campaignId }),
-    });
-    const data = await res.json();
-    setPushing(false);
-    if (data.success) {
-      const pushed = data.results?.filter((r: any) => r.status === 'pushed').length || 0;
-      const failed = data.results?.filter((r: any) => r.status === 'failed') || [];
-      if (pushed > 0 && failed.length === 0) {
-        setPushResult(`✓ Pushed ${pushed} emails to HubSpot as drafts.`);
-      } else if (pushed > 0) {
-        setPushResult(`Pushed ${pushed} emails, ${failed.length} failed.`);
-      } else if (failed.length > 0) {
-        const firstErr = failed[0]?.error || 'Unknown error';
-        setPushResult(`Push failed — ${firstErr}`);
+    try {
+      const res = await fetch('/api/hubspot/push-email-template', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...ah },
+        body: JSON.stringify({
+          brandProfileId: activeBrandId,
+          emailId,
+          subjectVariant
+        }),
+      });
+      const data = await res.json();
+      setPushing(false);
+      if (data.success) {
+        setPushResult(`✓ "${data.templateName}" saved as a HubSpot Email Template.`);
       } else {
-        setPushResult('No emails found to push.');
+        setPushResult(`Failed: ${data.error || 'unknown error'}`);
       }
-    } else {
-      setPushResult(`Failed: ${data.error}`);
+    } catch (err) {
+      setPushing(false);
+      setPushResult(`Failed: ${(err as Error).message}`);
     }
   };
 
@@ -623,9 +626,6 @@ export default function EmailCampaignPage() {
                   Export for Attio (.csv)
                 </button>
               </div>
-              <button className="ec-btn-hubspot" onClick={pushToHubSpot} disabled={pushing}>
-                <HubSpot /> {pushing ? 'Pushing...' : 'Push to HubSpot as Drafts'}
-              </button>
             </div>
 
             {pushResult && (
