@@ -4598,67 +4598,6 @@ Generate exactly ${numEmails} emails. Return ONLY valid JSON matching the output
   }
 });
 
-// POST /api/email-campaign/push-to-hubspot — push email sequence to HubSpot as draft campaign
-app.post('/api/email-campaign/push-to-hubspot', requireAuth, async (req, res) => {
-  const { brandProfileId, campaignId } = req.body;
-  if (!brandProfileId || !campaignId) return res.status(400).json({ error: 'brandProfileId and campaignId required' });
-
-  try {
-    const accessToken = await refreshHubSpotToken(brandProfileId);
-
-    const [camp, emails] = await Promise.all([
-      pool.query(`SELECT * FROM email_campaigns WHERE id = $1`, [campaignId]),
-      pool.query(`SELECT * FROM email_campaign_emails WHERE campaign_id = $1 ORDER BY email_index`, [campaignId])
-    ]);
-    if (!camp.rows.length) return res.status(404).json({ error: 'Campaign not found' });
-    const brief = camp.rows[0].brief;
-    const campaignName = `${brief.smp || 'Email Campaign'} — ${new Date().toLocaleDateString()}`;
-
-    // Create a HubSpot campaign object to group the emails
-    const hsRes = await fetch('https://api.hubapi.com/marketing/v3/campaigns', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: campaignName, startDate: new Date().toISOString() })
-    }).catch(() => null);
-
-    const hsCampaign = hsRes?.ok ? await hsRes.json() : null;
-    const hsCampaignId = hsCampaign?.id || null;
-
-    // Push each email as a draft marketing email in HubSpot
-    const results = [];
-    for (const email of emails.rows) {
-      const subjects = email.subject_lines || {};
-      const primarySubject = subjects.benefit || subjects.curiosity || 'New Email';
-      const emailRes = await fetch('https://api.hubapi.com/marketing/v3/emails', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: `[${email.email_index}] ${primarySubject}`,
-          subject: primarySubject,
-          previewText: email.preview_text || '',
-          content: { body: (email.body || '').replace(/\n/g, '<br>') },
-          state: 'DRAFT',
-          campaign: hsCampaignId ? { id: hsCampaignId } : undefined
-        })
-      }).catch(() => null);
-
-      if (emailRes?.ok) {
-        const hsEmail = await emailRes.json();
-        results.push({ index: email.email_index, hsEmailId: hsEmail.id, status: 'pushed' });
-      } else {
-        const errBody = emailRes ? await emailRes.text().catch(() => 'no body') : 'fetch failed';
-        console.error(`[EMAIL CAMPAIGN] HubSpot email push failed for #${email.email_index}: ${emailRes?.status} ${errBody}`);
-        results.push({ index: email.email_index, status: 'failed', error: `HubSpot ${emailRes?.status || 'network error'}: ${errBody.slice(0, 200)}` });
-      }
-    }
-
-    res.json({ success: true, hsCampaignId, results, campaignName });
-  } catch (err) {
-    console.error('[EMAIL CAMPAIGN] HubSpot push error:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // POST /api/email-campaign/save-brief-template — save reusable brief
 app.post('/api/email-campaign/save-brief-template', requireAuth, async (req, res) => {
   const { brandProfileId, name, brief } = req.body;
@@ -9826,30 +9765,24 @@ app.post('/api/zernio/disconnect', requireAuth, async (req, res) => {
 });
 
 
-// ── HubSpot OAuth ────────────────────────────────────────────────────────────
+// ── HubSpot OAuth (Email Templates only) ────────────────────────────
+//
+// Narrow integration: push generated emails to HubSpot as Email Templates.
+// Scope is `content` only — works on every HubSpot tier including free.
+// User picks template from HubSpot's compose UI when sending via Marketing
+// Email, Sequences, or 1:1 Gmail-via-HubSpot. Forge does not send.
+//
+// Tokens stored in publishing_channels with channel='hubspot', brand-scoped.
+
 app.get('/api/hubspot/auth', (req, res) => {
   const clientId = process.env.HUBSPOT_CLIENT_ID;
   if (!clientId) return res.status(500).json({ error: 'HUBSPOT_CLIENT_ID not configured' });
-  
   const redirectUri = encodeURIComponent(process.env.HUBSPOT_REDIRECT_URI || 'https://forgeintelligence.ai/auth/hubspot/callback');
   const brandProfileId = req.query.state?.split('|')[0] || req.query.brandProfileId || 'system';
   const nonce = randomBytes(16).toString('hex');
   const state = `${brandProfileId}|${nonce}`;
-  
-  // Full CRM + CMS scopes
-  const scopes = [
-    'cms.knowledge_base.articles.publish',
-    'cms.knowledge_base.articles.read', 
-    'cms.knowledge_base.articles.write',
-    'crm.objects.companies.read',
-    'crm.objects.companies.write',
-    'crm.objects.contacts.read',
-    'crm.objects.contacts.write',
-    'crm.objects.owners.read',
-    'content',
-    'oauth'
-  ].join('%20');
-  
+  // `content` covers Email Templates (CMS Hub Free+). Nothing else.
+  const scopes = ['content', 'oauth'].join('%20');
   const url = `https://app.hubspot.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scopes}&state=${encodeURIComponent(state)}`;
   res.json({ authUrl: url });
 });
@@ -9862,22 +9795,18 @@ app.get('/auth/hubspot/callback', async (req, res) => {
     return res.redirect(`/app/integrations?hubspot_error=${error}`);
   }
   if (!code) return res.redirect('/app/integrations?hubspot_error=no_code');
-  
+
   try {
     const clientId = process.env.HUBSPOT_CLIENT_ID;
     const clientSecret = process.env.HUBSPOT_CLIENT_SECRET;
     const redirectUri = process.env.HUBSPOT_REDIRECT_URI || 'https://forgeintelligence.ai/auth/hubspot/callback';
-    
-    // Exchange code for tokens
+
     const tokenRes = await fetch('https://api.hubapi.com/oauth/v1/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         grant_type: 'authorization_code',
-        code,
-        redirect_uri: redirectUri,
-        client_id: clientId,
-        client_secret: clientSecret
+        code, redirect_uri: redirectUri, client_id: clientId, client_secret: clientSecret
       })
     });
     const tokenData = await tokenRes.json();
@@ -9887,56 +9816,11 @@ app.get('/auth/hubspot/callback', async (req, res) => {
     }
     console.log(`[HubSpot Callback] Token exchange success — portal: ${tokenData.hub_id || 'unknown'}`);
 
-    // Get account info (portal ID, hub domain)
     const accountRes = await fetch('https://api.hubapi.com/oauth/v1/access-tokens/' + tokenData.access_token);
     const accountInfo = await accountRes.json();
 
-    // Fetch available blogs (for publishing)
-    let blogs = [];
-    try {
-      const blogsRes = await fetch('https://api.hubapi.com/cms/v3/blogs/posts?limit=1', {
-        headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
-      });
-      // If we can access blogs API, fetch the actual blog list
-      if (blogsRes.ok) {
-        const contentGroupsRes = await fetch('https://api.hubapi.com/content/api/v2/blogs', {
-          headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
-        });
-        if (contentGroupsRes.ok) {
-          const blogsData = await contentGroupsRes.json();
-          blogs = (blogsData.objects || []).map(b => ({
-            id: b.id,
-            name: b.name,
-            slug: b.slug,
-            absoluteUrl: b.absolute_url
-          }));
-        }
-      }
-    } catch (e) { console.log('[HubSpot] Could not fetch blogs:', e.message); }
-
-    // Fetch available knowledge bases
-    let knowledgeBases = [];
-    try {
-      const kbRes = await fetch('https://api.hubapi.com/cms/v3/knowledge-base-articles?limit=1', {
-        headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
-      });
-      if (kbRes.ok) {
-        // Knowledge base access confirmed - would need separate API for KB list
-        knowledgeBases = [{ id: 'default', name: 'Default Knowledge Base' }];
-      }
-    } catch (e) { console.log('[HubSpot] Could not fetch KB:', e.message); }
-
-    // Parse brandProfileId from state
     const stateDecoded = decodeURIComponent(state || '');
     const brandProfileId = stateDecoded.includes('|') ? stateDecoded.split('|')[0] : 'system';
-
-    // Build available targets
-    const availableTargets = {
-      blogs: blogs,
-      knowledgeBases: knowledgeBases
-    };
-    const selectedBlog = blogs.length > 0 ? blogs[0] : null;
-    const selectedKB = knowledgeBases.length > 0 ? knowledgeBases[0] : null;
 
     await pool.query(`
       INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active, updated_at)
@@ -9951,12 +9835,8 @@ app.get('/auth/hubspot/callback', async (req, res) => {
       connectedAt: new Date().toISOString(),
       portalId: accountInfo.hub_id,
       hubDomain: accountInfo.hub_domain,
-      appId: accountInfo.app_id,
-      userId: accountInfo.user_id,
       userEmail: accountInfo.user,
-      availableTargets: availableTargets,
-      selectedBlog: selectedBlog,
-      selectedKB: selectedKB
+      scopeFamily: 'email-templates'
     })]);
 
     res.redirect('/app/integrations?hubspot_connected=true');
@@ -9966,226 +9846,19 @@ app.get('/auth/hubspot/callback', async (req, res) => {
   }
 });
 
-// HubSpot token refresh helper
-// ── Trial onboarding email ────────────────────────────────────────────────
-// Fires once per user when their trial starts (i.e., when /api/auth/me tethers
-// their first brand). Idempotency: checks welcome_email_sent_at on ANY of the
-// user's brands — if any has it stamped, skip. Otherwise send + stamp on the
-// triggering brand.
-async function sendTrialWelcomeEmail(clerkUserId, brandName) {
-  if (!clerkUserId || !RESEND_API_KEY) return;
-  try {
-    // Idempotency: have we already sent welcome to any brand owned by this user?
-    const sentCheck = await pool.query(
-      `SELECT id FROM brand_profiles
-       WHERE clerk_user_id = $1 AND welcome_email_sent_at IS NOT NULL
-       LIMIT 1`,
-      [clerkUserId]
-    );
-    if (sentCheck.rows.length > 0) return; // already welcomed
-
-    // Fetch email + first name from Clerk
-    const clerkRes = await fetch(`https://api.clerk.com/v1/users/${clerkUserId}`, {
-      headers: { 'Authorization': `Bearer ${process.env.CLERK_SECRET_KEY}` }
-    });
-    if (!clerkRes.ok) return;
-    const clerkUser = await clerkRes.json();
-    const email = clerkUser.email_addresses?.[0]?.email_address;
-    if (!email) return;
-    const firstName = clerkUser.first_name || '';
-    const greeting = firstName ? `Hi ${firstName},` : 'Hi there,';
-    const displayBrand = brandName || 'your brand';
-    const appUrl = process.env.APP_URL || 'https://forgeintelligence.ai';
-
-    // Build email — keep it human, useful, not pushy. Lead with what to DO,
-    // not what they get. Single primary CTA. Plain HTML, no images, looks
-    // good in Gmail/Outlook/Apple Mail without external assets.
-    const subject = `Welcome to your Forge Intelligence trial — here's how to make it count`;
-    const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#F8FAFC;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F8FAFC;padding:32px 16px;">
-    <tr><td align="center">
-      <table width="560" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">
-        <tr><td style="padding:32px 32px 24px;">
-          <div style="font-size:13px;color:#64748B;letter-spacing:0.04em;text-transform:uppercase;margin-bottom:8px;">Forge Intelligence</div>
-          <h1 style="margin:0;font-size:24px;line-height:1.3;color:#1E293B;font-weight:700;">Your 7-day trial just started.</h1>
-        </td></tr>
-        <tr><td style="padding:0 32px 24px;color:#334155;font-size:15px;line-height:1.6;">
-          <p style="margin:0 0 16px;">${greeting}</p>
-          <p style="margin:0 0 16px;">Welcome — you've got 7 days of full access to every stage in Forge for ${displayBrand}. The whole pipeline is unlocked: GEO Strategist, Authenticity Enricher, Content Generator, Compliance Gate, Publishing Queue, Performance Dashboard, and the Brain itself.</p>
-          <p style="margin:0 0 16px;">Most people who get the most out of their trial do these three things in their first session:</p>
-        </td></tr>
-        <tr><td style="padding:0 32px 24px;">
-          <table width="100%" cellpadding="0" cellspacing="0" style="background:#F8FAFC;border-radius:8px;border:1px solid #E2E8F0;">
-            <tr><td style="padding:18px 20px;border-bottom:1px solid #E2E8F0;">
-              <div style="font-weight:600;color:#1E293B;font-size:14px;margin-bottom:4px;">1. Run GEO Strategist on your brand</div>
-              <div style="color:#64748B;font-size:13px;line-height:1.5;">It pulls citation gaps and topical authority opportunities from real LLM behavior — not keyword volume.</div>
-            </td></tr>
-            <tr><td style="padding:18px 20px;border-bottom:1px solid #E2E8F0;">
-              <div style="font-weight:600;color:#1E293B;font-size:14px;margin-bottom:4px;">2. Cherry-pick one opportunity and ship a brief</div>
-              <div style="color:#64748B;font-size:13px;line-height:1.5;">Forge's Authenticity Enricher injects your real expertise. The output is something you'd actually publish.</div>
-            </td></tr>
-            <tr><td style="padding:18px 20px;">
-              <div style="font-weight:600;color:#1E293B;font-size:14px;margin-bottom:4px;">3. Generate the full article and review it in Compliance Gate</div>
-              <div style="color:#64748B;font-size:13px;line-height:1.5;">Edit anything inline. Every correction trains the brand's brain so the next article is sharper.</div>
-            </td></tr>
-          </table>
-        </td></tr>
-        <tr><td style="padding:8px 32px 28px;" align="center">
-          <a href="${appUrl}/app" style="display:inline-block;padding:14px 28px;background:#3563FF;color:#FFFFFF;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;letter-spacing:0.01em;">Open Forge →</a>
-        </td></tr>
-        <tr><td style="padding:0 32px 28px;color:#475569;font-size:14px;line-height:1.6;">
-          <p style="margin:0 0 12px;">A few things to know:</p>
-          <ul style="margin:0 0 16px;padding-left:20px;color:#475569;">
-            <li style="margin-bottom:6px;">Your brain saves everything. Whatever you generate during the trial stays after the trial — even if you don't upgrade.</li>
-            <li style="margin-bottom:6px;">No credit card on file. The trial doesn't auto-convert.</li>
-            <li style="margin-bottom:6px;">When 7 days are up, full-suite access locks but Brain Memory stays open. Upgrade is one-time $99 if you want to keep the rest unlocked.</li>
-          </ul>
-          <p style="margin:0;">Reply to this email if anything's unclear or you hit a wall. I read every reply.</p>
-          <p style="margin:16px 0 0;color:#64748B;">— Brian, founder</p>
-        </td></tr>
-        <tr><td style="padding:20px 32px;background:#F8FAFC;border-top:1px solid #E2E8F0;color:#94A3B8;font-size:12px;line-height:1.5;">
-          You're receiving this because you started a 7-day Forge Intelligence trial.
-          <br>Forge Intelligence · Portland, OR
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`;
-
-    const emailRes = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json', 'User-Agent': 'Forge-Intelligence-Server/1.0' },
-      body: JSON.stringify({
-        from: 'Brian at Forge Intelligence <brian@forgeintelligence.ai>',
-        to: [email],
-        subject,
-        html,
-        reply_to: 'brian@forgeintelligence.ai',
-      })
-    });
-    if (!emailRes.ok) {
-      const errText = await emailRes.text().catch(() => '');
-      console.warn(`[TRIAL-WELCOME] Resend failed (${emailRes.status}): ${errText.slice(0, 200)}`);
-      return;
-    }
-
-    // Stamp on ALL of this user's brands to lock idempotency cleanly
-    await pool.query(
-      `UPDATE brand_profiles SET welcome_email_sent_at = NOW()
-       WHERE clerk_user_id = $1 AND welcome_email_sent_at IS NULL`,
-      [clerkUserId]
-    );
-    console.log(`[TRIAL-WELCOME] Sent to ${email} (user ${clerkUserId})`);
-  } catch (e) {
-    console.warn('[TRIAL-WELCOME] error:', e.message);
-  }
-}
-
-// ── HubSpot: Sync Clerk user to HubSpot CRM (for Forge's own tracking) ───────
-async function syncUserToHubSpot(clerkUserId) {
-  try {
-    // Get system-level HubSpot connection
-    const hubspot = await pool.query(
-      `SELECT credentials FROM publishing_channels WHERE brand_profile_id = 'system' AND channel = 'hubspot'`
-    );
-    if (!hubspot.rows.length) {
-      console.log('[HubSpot Sync] No system HubSpot connection');
-      return null;
-    }
-    
-    // Fetch user details from Clerk
-    const clerkRes = await fetch(`https://api.clerk.com/v1/users/${clerkUserId}`, {
-      headers: { 'Authorization': `Bearer ${process.env.CLERK_SECRET_KEY}` }
-    });
-    if (!clerkRes.ok) {
-      console.log('[HubSpot Sync] Could not fetch Clerk user:', clerkUserId);
-      return null;
-    }
-    const clerkUser = await clerkRes.json();
-    
-    const email = clerkUser.email_addresses?.[0]?.email_address;
-    if (!email) {
-      console.log('[HubSpot Sync] No email for user:', clerkUserId);
-      return null;
-    }
-    
-    // Get fresh HubSpot token
-    const accessToken = await refreshHubSpotToken('system');
-    
-    // Check if contact exists
-    const searchRes = await fetch('https://api.hubapi.com/crm/v3/objects/contacts/search', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        filterGroups: [{
-          filters: [{ propertyName: 'email', operator: 'EQ', value: email }]
-        }]
-      })
-    });
-    const searchData = await searchRes.json();
-    
-    // Build properties
-    const firstName = clerkUser.first_name || '';
-    const lastName = clerkUser.last_name || '';
-    const company = clerkUser.public_metadata?.company || clerkUser.unsafe_metadata?.company || '';
-    
-    const properties = {
-      email,
-      firstname: firstName,
-      lastname: lastName,
-      ...(company && { company }),
-      forge_clerk_id: clerkUserId,
-      forge_signup_date: clerkUser.created_at ? new Date(clerkUser.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-    };
-    
-    if (searchData.results?.length > 0) {
-      // Update existing contact
-      const contactId = searchData.results[0].id;
-      await fetch(`https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ properties })
-      });
-      console.log(`[HubSpot Sync] Updated contact ${contactId} for ${email}`);
-      return { action: 'updated', contactId, email };
-    } else {
-      // Create new contact
-      const createRes = await fetch('https://api.hubapi.com/crm/v3/objects/contacts', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ properties })
-      });
-      const created = await createRes.json();
-      console.log(`[HubSpot Sync] Created contact ${created.id} for ${email}`);
-      return { action: 'created', contactId: created.id, email };
-    }
-  } catch (err) {
-    console.error('[HubSpot Sync] Error:', err.message);
-    return null;
-  }
-}
-
+// HubSpot token refresh helper. Brand-scoped, narrow-scope (`content` only).
+// 5-min buffer means we refresh before expiry; if refresh itself fails, the
+// caller gets a clear error and the user re-OAuths.
 async function refreshHubSpotToken(brandProfileId) {
   const result = await pool.query(
     `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'hubspot'`,
     [brandProfileId]
   );
   if (!result.rows.length) throw new Error('HubSpot not connected');
-  
+
   const creds = result.rows[0].credentials;
-  if (Date.now() < creds.expiresAt - 300000) return creds.accessToken; // Still valid (5 min buffer)
-  
+  if (Date.now() < creds.expiresAt - 300000) return creds.accessToken;
+
   const tokenRes = await fetch('https://api.hubapi.com/oauth/v1/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -10197,270 +9870,109 @@ async function refreshHubSpotToken(brandProfileId) {
     })
   });
   const tokenData = await tokenRes.json();
-  if (!tokenData.access_token) throw new Error('Token refresh failed');
-  
+  if (!tokenData.access_token) {
+    console.error('[HubSpot] Refresh failed:', JSON.stringify(tokenData));
+    throw new Error(`HubSpot token refresh failed: ${tokenData.message || tokenData.error_description || 'unknown'}`);
+  }
+
   creds.accessToken = tokenData.access_token;
   creds.refreshToken = tokenData.refresh_token;
   creds.expiresIn = tokenData.expires_in;
   creds.expiresAt = Date.now() + (tokenData.expires_in * 1000);
-  
+
   await pool.query(
     `UPDATE publishing_channels SET credentials = $1, updated_at = NOW() WHERE brand_profile_id = $2 AND channel = 'hubspot'`,
     [JSON.stringify(creds), brandProfileId]
   );
-  
+
   return creds.accessToken;
 }
 
-// ── HubSpot: Publish article to Knowledge Base ───────────────────────────────
-app.post('/api/hubspot/publish-article', requireAuth, async (req, res) => {
-  const { brandProfileId, articleId, title, body, slug } = req.body;
-  if (!brandProfileId || !title || !body) {
-    return res.status(400).json({ error: 'brandProfileId, title, and body required' });
+// POST /api/hubspot/push-email-template
+// Pushes ONE generated email (by email_id) as a saved Email Template in
+// HubSpot. The user later picks it from HubSpot's compose UI.
+//
+// Body: { brandProfileId, emailId, subjectVariant? }
+//   subjectVariant: 'benefit' | 'curiosity' | 'pattern_interrupt' (default 'benefit')
+app.post('/api/hubspot/push-email-template', requireAuth, async (req, res) => {
+  const { brandProfileId, emailId, subjectVariant } = req.body;
+  if (!brandProfileId || !emailId) {
+    return res.status(400).json({ error: 'brandProfileId and emailId required' });
   }
-  
+
   try {
     const accessToken = await refreshHubSpotToken(brandProfileId);
-    
-    // Create knowledge base article
-    const articleRes = await fetch('https://api.hubapi.com/cms/v3/blogs/posts', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        name: title,
-        slug: slug || title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-        postBody: body,
-        state: 'DRAFT' // Start as draft, can be published separately
-      })
-    });
-    
-    const article = await articleRes.json();
-    if (article.status === 'error') throw new Error(article.message || 'Failed to create article');
-    
-    res.json({ success: true, articleId: article.id, url: article.url });
-  } catch (err) {
-    console.error('HubSpot publish error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
 
-// ── HubSpot: Create/update contact ───────────────────────────────────────────
-app.post('/api/hubspot/upsert-contact', async (req, res) => {
-  const { brandProfileId, email, properties } = req.body;
-  if (!brandProfileId || !email) {
-    return res.status(400).json({ error: 'brandProfileId and email required' });
-  }
-  
-  try {
-    const accessToken = await refreshHubSpotToken(brandProfileId);
-    
-    // Try to get existing contact
-    const searchRes = await fetch('https://api.hubapi.com/crm/v3/objects/contacts/search', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        filterGroups: [{
-          filters: [{ propertyName: 'email', operator: 'EQ', value: email }]
-        }]
-      })
-    });
-    const searchData = await searchRes.json();
-    
-    if (searchData.results?.length > 0) {
-      // Update existing contact
-      const contactId = searchData.results[0].id;
-      const updateRes = await fetch(`https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ properties: properties || {} })
-      });
-      const updated = await updateRes.json();
-      res.json({ success: true, contactId, action: 'updated', contact: updated });
-    } else {
-      // Create new contact
-      const createRes = await fetch('https://api.hubapi.com/crm/v3/objects/contacts', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ properties: { email, ...properties } })
-      });
-      const created = await createRes.json();
-      res.json({ success: true, contactId: created.id, action: 'created', contact: created });
-    }
-  } catch (err) {
-    console.error('HubSpot contact error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── HubSpot: Log content engagement (for attribution) ───────────────────────
-app.post('/api/hubspot/log-engagement', async (req, res) => {
-  const { brandProfileId, email, articleUrl, articleTitle, utmParams } = req.body;
-  if (!brandProfileId || !email || !articleUrl) {
-    return res.status(400).json({ error: 'brandProfileId, email, and articleUrl required' });
-  }
-  
-  try {
-    const accessToken = await refreshHubSpotToken(brandProfileId);
-    
-    // Find contact by email
-    const searchRes = await fetch('https://api.hubapi.com/crm/v3/objects/contacts/search', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        filterGroups: [{
-          filters: [{ propertyName: 'email', operator: 'EQ', value: email }]
-        }]
-      })
-    });
-    const searchData = await searchRes.json();
-    
-    if (!searchData.results?.length) {
-      return res.status(404).json({ error: 'Contact not found in HubSpot' });
-    }
-    
-    const contactId = searchData.results[0].id;
-    
-    // Log engagement as a note/activity
-    const noteRes = await fetch('https://api.hubapi.com/crm/v3/objects/notes', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        properties: {
-          hs_note_body: `📖 Content Engagement: Viewed "${articleTitle || articleUrl}"\n\nURL: ${articleUrl}\n${utmParams ? `UTM: ${JSON.stringify(utmParams)}` : ''}`,
-          hs_timestamp: Date.now()
-        },
-        associations: [{
-          to: { id: contactId },
-          types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 202 }] // Note to Contact
-        }]
-      })
-    });
-    const note = await noteRes.json();
-    
-    res.json({ success: true, contactId, noteId: note.id });
-  } catch (err) {
-    console.error('HubSpot engagement error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-
-// ── HubSpot: Switch publishing target (blog or KB) ──────────────────────────
-app.post('/api/hubspot/select-target', requireAuth, async (req, res) => {
-  const { brandProfileId, targetType, targetId } = req.body;
-  if (!brandProfileId || !targetType || !targetId) {
-    return res.status(400).json({ error: 'brandProfileId, targetType, and targetId required' });
-  }
-  
-  try {
-    const existing = await pool.query(
-      `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'hubspot'`,
-      [brandProfileId]
+    const emailRow = await pool.query(
+      `SELECT e.*, c.brand_profile_id, c.brief
+         FROM email_campaign_emails e
+         JOIN email_campaigns c ON c.id = e.campaign_id
+        WHERE e.id = $1 AND c.brand_profile_id = $2 LIMIT 1`,
+      [emailId, brandProfileId]
     );
-    if (!existing.rows.length) return res.status(404).json({ error: 'HubSpot not connected' });
-    
-    const creds = existing.rows[0].credentials;
-    
-    if (targetType === 'blog') {
-      const blog = (creds.availableTargets?.blogs || []).find(b => b.id === targetId);
-      if (!blog) return res.status(400).json({ error: 'Invalid blog ID' });
-      creds.selectedBlog = blog;
-    } else if (targetType === 'kb') {
-      const kb = (creds.availableTargets?.knowledgeBases || []).find(k => k.id === targetId);
-      if (!kb) return res.status(400).json({ error: 'Invalid KB ID' });
-      creds.selectedKB = kb;
-    } else {
-      return res.status(400).json({ error: 'targetType must be "blog" or "kb"' });
+    if (!emailRow.rows.length) return res.status(404).json({ error: 'Email not found or not accessible' });
+    const email = emailRow.rows[0];
+
+    const subjects = email.subject_lines || {};
+    const variant = subjectVariant || 'benefit';
+    const subject = subjects[variant] || subjects.benefit || subjects.curiosity || 'Email Template';
+
+    const paragraphs = (email.body || '').split(/\n\n+/).map(p => `<p>${p.trim().replace(/\n/g, '<br>')}</p>`).join('\n');
+    const psHtml = email.ps ? `<p style="margin-top:24px;"><em>P.S. ${email.ps}</em></p>` : '';
+    const ctaHtml = email.cta_text ? `<p style="margin-top:24px;"><a href="${email.cta_url_placeholder || '#'}">${email.cta_text}</a></p>` : '';
+    const html = `<div>${paragraphs}${ctaHtml}${psHtml}</div>`;
+
+    const brief = (typeof email.brief === 'string' ? JSON.parse(email.brief) : email.brief) || {};
+    const persona = brief.target_persona || 'Email';
+    const templateName = `[Forge] ${persona} — ${subject}`.slice(0, 100);
+
+    const hsRes = await fetch('https://api.hubapi.com/content/api/v2/email-templates', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        label: templateName,
+        source: html,
+        is_available_for_new_content: true,
+        template_type: 2  // 2 = email template
+      })
+    });
+
+    if (!hsRes.ok) {
+      const errText = await hsRes.text().catch(() => '');
+      console.error(`[HubSpot] Email template push failed: HTTP ${hsRes.status} ${errText.slice(0, 300)}`);
+      return res.status(hsRes.status).json({
+        error: `HubSpot rejected template (HTTP ${hsRes.status}): ${errText.slice(0, 200)}`
+      });
     }
-    
-    await pool.query(
-      `UPDATE publishing_channels SET credentials = $1, updated_at = NOW() WHERE brand_profile_id = $2 AND channel = 'hubspot'`,
-      [JSON.stringify(creds), brandProfileId]
-    );
-    
-    res.json({ success: true, selectedBlog: creds.selectedBlog, selectedKB: creds.selectedKB });
+    const hsTemplate = await hsRes.json();
+    console.log(`[HubSpot] Email template created: id=${hsTemplate.id} label=${hsTemplate.label}`);
+
+    res.json({
+      success: true,
+      templateId: hsTemplate.id,
+      templateName: hsTemplate.label || templateName,
+      hubDomain: hsTemplate.portal_id || null
+    });
   } catch (err) {
+    console.error('[HubSpot] push-email-template error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ── HubSpot: Refresh available targets ───────────────────────────────────────
-app.post('/api/hubspot/refresh-targets', requireAuth, async (req, res) => {
+// POST /api/hubspot/disconnect — revoke + clear stored credentials
+app.post('/api/hubspot/disconnect', requireAuth, async (req, res) => {
   const { brandProfileId } = req.body;
   if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
-  
   try {
-    const accessToken = await refreshHubSpotToken(brandProfileId);
-    
-    // Fetch blogs
-    let blogs = [];
-    try {
-      const contentGroupsRes = await fetch('https://api.hubapi.com/content/api/v2/blogs', {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
-      if (contentGroupsRes.ok) {
-        const blogsData = await contentGroupsRes.json();
-        blogs = (blogsData.objects || []).map(b => ({
-          id: b.id,
-          name: b.name,
-          slug: b.slug,
-          absoluteUrl: b.absolute_url
-        }));
-      }
-    } catch (e) { console.log('[HubSpot] Could not fetch blogs:', e.message); }
-
-    // Fetch knowledge bases
-    let knowledgeBases = [];
-    try {
-      const kbRes = await fetch('https://api.hubapi.com/cms/v3/knowledge-base-articles?limit=1', {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
-      if (kbRes.ok) {
-        knowledgeBases = [{ id: 'default', name: 'Default Knowledge Base' }];
-      }
-    } catch (e) { console.log('[HubSpot] Could not fetch KB:', e.message); }
-
-    // Update stored credentials
-    const existing = await pool.query(
-      `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'hubspot'`,
+    await pool.query(
+      `DELETE FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'hubspot'`,
       [brandProfileId]
     );
-    if (existing.rows.length) {
-      const creds = existing.rows[0].credentials;
-      creds.availableTargets = { blogs, knowledgeBases };
-      if (!creds.selectedBlog && blogs.length > 0) creds.selectedBlog = blogs[0];
-      if (!creds.selectedKB && knowledgeBases.length > 0) creds.selectedKB = knowledgeBases[0];
-      
-      await pool.query(
-        `UPDATE publishing_channels SET credentials = $1, updated_at = NOW() WHERE brand_profile_id = $2 AND channel = 'hubspot'`,
-        [JSON.stringify(creds), brandProfileId]
-      );
-    }
-
-    res.json({ success: true, blogs, knowledgeBases });
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 // ── Webflow OAuth ────────────────────────────────────────────────────────────
 app.get('/api/webflow/auth', (req, res) => {
@@ -14045,8 +13557,7 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
       }
       console.log(`[AUTH] Super admin ${req.userId} — ${allBrands.rows.length} brands available`);
       // Fire-and-forget: sync user to HubSpot CRM
-      syncUserToHubSpot(req.userId).catch(() => {});
-      return res.json({
+        return res.json({
         success: true,
         userId: req.userId,
         isSuperAdmin: true,
@@ -14087,7 +13598,6 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
       }
     }
     // Fire-and-forget: sync user to HubSpot CRM
-    syncUserToHubSpot(req.userId).catch(() => {});
     
     res.json({
       success: true,
