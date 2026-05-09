@@ -3927,7 +3927,11 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
         if (attempt.html) {
           homeHtml = attempt.html;
           workingBaseUrl = candidate;
-          console.log(`[Context Hub] Homepage scraped from ${candidate} (${attempt.html.length} bytes)`);
+          // Log raw HTML bytes, but also flag SPA shells where the visible content will be empty
+          // after stripHtml() because everything renders client-side. Without this hint, the
+          // contradiction in the logs ("X bytes scraped" + "minimal content") is confusing.
+          const isSpaShell = /<div[^>]+id=["'](root|app|__next|svelte)["']/i.test(attempt.html);
+          console.log(`[Context Hub] Homepage scraped from ${candidate} (${attempt.html.length} bytes${isSpaShell ? ' — SPA shell detected, expect minimal extracted text' : ''})`);
           break;
         } else {
           console.log(`[Context Hub] Homepage fetch failed for ${candidate} — ${attempt.error}`);
@@ -3972,7 +3976,49 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
       if (scrapedContent.length > 200) {
         console.log(`[Context Hub] Scraped ${scrapedContent.length} chars from ${aboutPaths.length + 1} pages (base: ${workingBaseUrl})`);
       } else {
-        console.log(`[Context Hub] Scraping returned minimal content — Claude will rely on Sonar context`);
+        // Local scrape failed to extract usable content — typically a JS-rendered SPA where the
+        // raw HTML is 10kb+ but stripHtml() yields a few dozen chars (title tag only). Fall back
+        // to Sonar, which runs full server-side rendering and sees what users actually see.
+        console.log(`[Context Hub] Local scrape minimal (${scrapedContent.length} chars from ${homeHtml.length} bytes HTML) — falling back to Sonar content extraction`);
+        try {
+          const sonarContentRes = await fetch('https://api.perplexity.ai/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              model: 'sonar',
+              messages: [{
+                role: 'user',
+                content: `Visit ${brandUrl} and extract the actual visible content from the homepage and any About/Product/Mission page. Return ONLY the raw text content from those pages — no commentary, no formatting, no markdown headers, no lists. Just the prose as a user would read it. If a page is JavaScript-rendered, render it and extract the resulting visible text. If you cannot access the site, return exactly the string "SITE_INACCESSIBLE" and nothing else.
+
+Maximum 4000 words. Focus on:
+- What the company does (homepage hero + product description)
+- Their mission, story, or about-us content
+- Any product features, services, or offerings described
+- Customer pain points or use cases mentioned
+
+Return only the extracted page text.`
+              }],
+              max_tokens: 4000
+            })
+          });
+          if (sonarContentRes.ok) {
+            const sonarContentData = await sonarContentRes.json();
+            const sonarExtractedText = (sonarContentData.choices?.[0]?.message?.content || '').trim();
+            if (sonarExtractedText && sonarExtractedText !== 'SITE_INACCESSIBLE' && sonarExtractedText.length > 200) {
+              scrapedContent = `SONAR-EXTRACTED CONTENT (site is JS-rendered — this is what a user sees):\n${sonarExtractedText}`;
+              console.log(`[Context Hub] Sonar content fallback succeeded: ${sonarExtractedText.length} chars`);
+            } else {
+              console.log(`[Context Hub] Sonar content fallback returned no usable content (${sonarExtractedText.slice(0, 100)})`);
+            }
+          } else {
+            console.log(`[Context Hub] Sonar content fallback HTTP ${sonarContentRes.status}`);
+          }
+        } catch (sonarErr) {
+          console.log(`[Context Hub] Sonar content fallback error:`, sonarErr.message);
+        }
       }
     } catch(e) {
       console.log(`[Context Hub] Scraper error (non-fatal):`, e.message);
