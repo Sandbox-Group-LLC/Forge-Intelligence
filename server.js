@@ -14519,6 +14519,245 @@ app.get('/robots.txt', async (req, res) => {
 // Admin endpoints for minting, listing, and revoking API keys. Gated by adminPassword
 // since key management is privileged (a key grants long-lived access without user rotation).
 
+// MCP server at POST /mcp — JSON-RPC 2.0 transport for MCP clients (Viktor, Slack-Claude,
+// future agentic tooling). Read-only by design. Auth: Forge api_keys (Bearer or X-Api-Key).
+// Scopes: mcp:campaigns:read, mcp:emails:read.
+
+async function mcpAuth(req, res, next) {
+  try {
+    let key = null;
+    const authHeader = req.headers.authorization || '';
+    if (authHeader.startsWith('Bearer ')) key = authHeader.slice(7).trim();
+    else if (req.headers['x-api-key']) key = String(req.headers['x-api-key']).trim();
+    if (!key) return res.status(401).json({ error: 'Missing Authorization: Bearer <key> or X-Api-Key header' });
+    const keyRow = await lookupApiKey(key, req.ip || req.headers['x-forwarded-for']);
+    if (!keyRow) return res.status(401).json({ error: 'Invalid or revoked API key' });
+    req.apiKeyAuth = {
+      keyId: keyRow.id,
+      label: keyRow.label,
+      brandIds: keyRow.brand_profile_ids || [],
+      scopes: keyRow.scopes || []
+    };
+    next();
+  } catch(e) {
+    console.error('[MCP auth]', e.message);
+    res.status(500).json({ error: 'auth_internal_error' });
+  }
+}
+
+const MCP_TOOLS = [
+  {
+    name: 'list_email_campaigns',
+    description: 'List email campaigns saved in Forge for the authorized brand. Returns campaign id, target persona, campaign type, status, number of emails, and the brief summary. Use this first to find the campaign you want, then call list_emails_in_campaign to see individual emails.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['complete', 'pending', 'draft', 'all'], description: 'Filter by status. Default: complete.' },
+        limit: { type: 'integer', minimum: 1, maximum: 50, description: 'Max campaigns to return. Default 20.' }
+      }
+    },
+    requiredScope: 'mcp:campaigns:read'
+  },
+  {
+    name: 'list_emails_in_campaign',
+    description: 'List the emails inside a specific email campaign. Returns each email index, send day, subject line variants (benefit/curiosity/pattern_interrupt), preview text, CTA, status, and the strategic job each email is meant to do. Use this to see what is in a campaign before pulling the full copy of one email.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        campaign_id: { type: 'string', description: 'The campaign id from list_email_campaigns.' }
+      },
+      required: ['campaign_id']
+    },
+    requiredScope: 'mcp:emails:read'
+  },
+  {
+    name: 'get_email_copy',
+    description: 'Get the full copy of a single email — ready to paste into Attio, an email client, or anywhere else. Returns subject line variants, preview text, body, CTA text + URL placeholder, optional PS, and the strategic job the email performs.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        email_id: { type: 'string', description: 'The email id from list_emails_in_campaign.' },
+        subject_variant: { type: 'string', enum: ['benefit', 'curiosity', 'pattern_interrupt', 'all'], description: 'Which subject variant to highlight. Default all.' }
+      },
+      required: ['email_id']
+    },
+    requiredScope: 'mcp:emails:read'
+  }
+];
+
+async function mcpToolListCampaigns({ args, brandIds }) {
+  const status = (args.status && args.status !== 'all') ? args.status : null;
+  const limit = Math.min(Math.max(parseInt(args.limit, 10) || 20, 1), 50);
+  const params = [brandIds];
+  let where = `brand_profile_id = ANY($1::text[])`;
+  if (status) { params.push(status); where += ` AND status = $${params.length}`; }
+  else { where += ` AND status = 'complete'`; }
+  const result = await pool.query(
+    `SELECT c.id, c.brand_profile_id, c.status, c.brief, c.created_at,
+            (SELECT COUNT(*) FROM email_campaign_emails e WHERE e.campaign_id = c.id) AS email_count
+       FROM email_campaigns c WHERE ${where}
+       ORDER BY c.created_at DESC LIMIT ${limit}`,
+    params
+  );
+  return result.rows.map(r => {
+    const brief = (typeof r.brief === 'string'
+      ? (() => { try { return JSON.parse(r.brief); } catch { return {}; } })()
+      : (r.brief || {}));
+    return {
+      campaign_id: r.id,
+      brand_profile_id: r.brand_profile_id,
+      status: r.status,
+      target_persona: brief.target_persona || null,
+      campaign_type: brief.campaign_type || null,
+      smart_goal: brief.smart_goal || null,
+      pain_point: brief.pain_point ? String(brief.pain_point).slice(0, 300) : null,
+      email_count: parseInt(r.email_count, 10) || 0,
+      created_at: r.created_at
+    };
+  });
+}
+
+async function mcpToolListEmails({ args, brandIds }) {
+  const campaignId = args.campaign_id;
+  if (!campaignId || typeof campaignId !== 'string') throw new Error('campaign_id required');
+  const cRes = await pool.query(
+    `SELECT id, brand_profile_id, brief, status FROM email_campaigns
+      WHERE id = $1 AND brand_profile_id = ANY($2::text[]) LIMIT 1`,
+    [campaignId, brandIds]
+  );
+  if (cRes.rows.length === 0) throw new Error('campaign not found or not accessible');
+  const eRes = await pool.query(
+    `SELECT id, email_index, job, send_day, subject_lines, preview_text, cta_text, status
+       FROM email_campaign_emails WHERE campaign_id = $1 ORDER BY email_index ASC`,
+    [campaignId]
+  );
+  return {
+    campaign_id: campaignId,
+    campaign_status: cRes.rows[0].status,
+    emails: eRes.rows.map(e => ({
+      email_id: e.id,
+      email_index: e.email_index,
+      send_day: e.send_day,
+      job: e.job,
+      subject_lines: typeof e.subject_lines === 'string'
+        ? (() => { try { return JSON.parse(e.subject_lines); } catch { return {}; } })()
+        : (e.subject_lines || {}),
+      preview_text: e.preview_text,
+      cta_text: e.cta_text,
+      status: e.status
+    }))
+  };
+}
+
+async function mcpToolGetEmail({ args, brandIds }) {
+  const emailId = args.email_id;
+  if (!emailId || typeof emailId !== 'string') throw new Error('email_id required');
+  const variant = args.subject_variant || 'all';
+  const r = await pool.query(
+    `SELECT e.*, c.brand_profile_id
+       FROM email_campaign_emails e JOIN email_campaigns c ON c.id = e.campaign_id
+      WHERE e.id = $1 AND c.brand_profile_id = ANY($2::text[]) LIMIT 1`,
+    [emailId, brandIds]
+  );
+  if (r.rows.length === 0) throw new Error('email not found or not accessible');
+  const e = r.rows[0];
+  const subjects = typeof e.subject_lines === 'string'
+    ? (() => { try { return JSON.parse(e.subject_lines); } catch { return {}; } })()
+    : (e.subject_lines || {});
+  return {
+    email_id: e.id,
+    campaign_id: e.campaign_id,
+    email_index: e.email_index,
+    send_day: e.send_day,
+    job: e.job,
+    preview_text: e.preview_text,
+    body: e.body,
+    cta_text: e.cta_text,
+    cta_url_placeholder: e.cta_url_placeholder,
+    ps: e.ps,
+    confidence_score: e.confidence_score,
+    status: e.status,
+    subject_lines: variant === 'all' ? subjects : { [variant]: subjects[variant] }
+  };
+}
+
+app.post('/mcp', express.json({ limit: '256kb' }), mcpAuth, async (req, res) => {
+  const rpc = req.body || {};
+  const id = rpc.id !== undefined ? rpc.id : null;
+  const method = rpc.method;
+  const sendError = (code, message, data) => res.json({
+    jsonrpc: '2.0', id, error: { code, message, ...(data ? { data } : {}) }
+  });
+  const sendResult = (result) => res.json({ jsonrpc: '2.0', id, result });
+
+  try {
+    if (rpc.jsonrpc !== '2.0') return sendError(-32600, 'Invalid Request: jsonrpc must be "2.0"');
+    if (!method) return sendError(-32600, 'Invalid Request: method required');
+
+    if (method === 'initialize') {
+      return sendResult({
+        protocolVersion: '2024-11-05',
+        capabilities: { tools: {} },
+        serverInfo: { name: 'forge-intelligence-mcp', version: '0.1.0' }
+      });
+    }
+
+    if (method === 'tools/list') {
+      const allowed = MCP_TOOLS
+        .filter(t => req.apiKeyAuth.scopes.includes(t.requiredScope))
+        .map(({ name, description, inputSchema }) => ({ name, description, inputSchema }));
+      return sendResult({ tools: allowed });
+    }
+
+    if (method === 'tools/call') {
+      const params = rpc.params || {};
+      const toolName = params.name;
+      const args = params.arguments || {};
+      const tool = MCP_TOOLS.find(t => t.name === toolName);
+      if (!tool) return sendError(-32601, `Unknown tool: ${toolName}`);
+      if (!req.apiKeyAuth.scopes.includes(tool.requiredScope)) return sendError(-32000, `Missing scope: ${tool.requiredScope}`);
+      const brandIds = req.apiKeyAuth.brandIds;
+      if (!brandIds || brandIds.length === 0) return sendError(-32000, 'API key has no associated brands');
+
+      try {
+        let toolResult;
+        if (toolName === 'list_email_campaigns') toolResult = await mcpToolListCampaigns({ args, brandIds });
+        else if (toolName === 'list_emails_in_campaign') toolResult = await mcpToolListEmails({ args, brandIds });
+        else if (toolName === 'get_email_copy') toolResult = await mcpToolGetEmail({ args, brandIds });
+        else return sendError(-32601, `Tool '${toolName}' has no implementation`);
+
+        return sendResult({
+          content: [{ type: 'text', text: JSON.stringify(toolResult, null, 2) }],
+          isError: false
+        });
+      } catch (toolErr) {
+        console.error(`[MCP tool ${toolName}]`, toolErr.message);
+        return sendResult({
+          content: [{ type: 'text', text: `Tool error: ${toolErr.message}` }],
+          isError: true
+        });
+      }
+    }
+
+    return sendError(-32601, `Method not found: ${method}`);
+  } catch(e) {
+    console.error('[MCP]', e.message);
+    return sendError(-32603, 'Internal error', { message: e.message });
+  }
+});
+
+app.get('/mcp', (req, res) => {
+  res.json({
+    server: 'forge-intelligence-mcp',
+    version: '0.1.0',
+    transport: 'http',
+    protocol: 'JSON-RPC 2.0',
+    auth: 'Bearer token in Authorization header (or X-Api-Key)',
+    docs: 'POST { jsonrpc: "2.0", id: 1, method: "tools/list" } with auth header',
+    tools: MCP_TOOLS.map(({ name, description }) => ({ name, description }))
+  });
+});
+
 // POST /api/admin/api-keys — mint a new key. Plaintext returned ONCE; thereafter only hash.
 // Body: { adminPassword, label, brandProfileIds: [uuid], scopes: [string], env?: 'live'|'test' }
 app.post('/api/admin/api-keys', express.json({ limit: '50kb' }), async (req, res) => {
