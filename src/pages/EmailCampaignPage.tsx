@@ -143,9 +143,21 @@ function EmailCard({ email, idx }: { email: EmailRecord; idx: number }) {
           <div className="ec-section">
             <div className="ec-section-label-row">
               <span className="ec-section-label">EMAIL BODY</span>
-              <button className="ec-copy-btn-sm" onClick={() => copy(email.body + (email.ps ? `\n\nP.S. ${email.ps}` : ''), 'body')}>
-                {copiedField === 'body' ? <><Check /> Copied</> : <><Copy /> Copy all</>}
-              </button>
+              <div className="ec-section-label-actions">
+                <button className="ec-copy-btn-sm" onClick={() => copy(email.body + (email.ps ? `\n\nP.S. ${email.ps}` : ''), 'body')}>
+                  {copiedField === 'body' ? <><Check /> Copied</> : <><Copy /> Copy all</>}
+                </button>
+                {onPushToHubSpot && email.id && (
+                  <button
+                    className="ec-copy-btn-sm"
+                    onClick={() => onPushToHubSpot(email.id!)}
+                    disabled={pushing}
+                    title="Save to HubSpot as Email Template"
+                  >
+                    <HubSpot /> {pushing ? 'Saving...' : 'Save to HubSpot'}
+                  </button>
+                )}
+              </div>
             </div>
             <pre className="ec-body-text">{email.body}</pre>
             {email.ps && (
@@ -623,7 +635,15 @@ export default function EmailCampaignPage() {
             )}
 
             <div className="ec-emails-list">
-              {emails.map((email, idx) => <EmailCard key={email.id || idx} email={email} idx={idx} />)}
+              {emails.map((email, idx) => (
+                <EmailCard
+                  key={email.id || idx}
+                  email={email}
+                  idx={idx}
+                  onPushToHubSpot={pushEmailToHubSpot}
+                  pushing={pushing}
+                />
+              ))}
             </div>
 
             <div className="ec-results-footer">
