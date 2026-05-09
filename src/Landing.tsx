@@ -140,7 +140,7 @@ export default function Landing() {
           <p style={styles.eyebrow}>Brand Intelligence · Free Analysis</p>
           <h1 style={styles.headline}>The intelligence layer behind modern marketing.</h1>
           <p style={styles.subline}>
-            Enter your URL. We'll read your brand to filth — voice profile, audience signals, competitive gaps — in under 10 minutes. Free.
+            Drop your URL. Forge reads your brand the way a strategist would — voice, audience, competitive gaps — and gives you the intelligence brief in under 10 minutes. Free.
             <br /><br />
             Then unlock the full Forge pipeline free for 7 days. No credit card. Brain stays saved when the trial ends.
           </p>
@@ -223,17 +223,20 @@ export default function Landing() {
         </div>
 
         <div style={styles.footer}>
-          <span>© 2026 Forge Intelligence LLC</span>
-          <span style={styles.footerDivider}>·</span>
-          <a href="mailto:hello@forgeintelligence.ai" style={styles.footerLink}>hello@forgeintelligence.ai</a>
-          <span style={styles.footerDivider}>·</span>
-          <a href="/privacy" style={styles.footerLink}>Privacy Policy</a>
-          <span style={styles.footerDivider}>·</span>
-          <a href="/terms" style={styles.footerLink}>Terms of Service</a>
-          <span style={styles.footerDivider}>·</span>
-          <a href="/faq" style={styles.footerLink}>FAQ</a>
-          <span style={styles.footerDivider}>·</span>
-          <a href="/acceptable-use" style={styles.footerLink}>Acceptable Use</a>
+          <div style={styles.footerRow}>
+            <span>© 2026 Forge Intelligence LLC</span>
+            <span style={styles.footerDivider}>·</span>
+            <a href="mailto:hello@forgeintelligence.ai" style={styles.footerLink}>hello@forgeintelligence.ai</a>
+          </div>
+          <div style={styles.footerRow}>
+            <a href="/privacy" style={styles.footerLink}>Privacy Policy</a>
+            <span style={styles.footerDivider}>·</span>
+            <a href="/terms" style={styles.footerLink}>Terms of Service</a>
+            <span style={styles.footerDivider}>·</span>
+            <a href="/faq" style={styles.footerLink}>FAQ</a>
+            <span style={styles.footerDivider}>·</span>
+            <a href="/acceptable-use" style={styles.footerLink}>Acceptable Use</a>
+          </div>
         </div>
       </div>
     </div>
@@ -325,7 +328,8 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'rgba(255,255,255,0.5)', fontSize: '13px',
     cursor: 'pointer', fontFamily: 'inherit',
   },
-  footer: { display: 'flex', gap: '12px', alignItems: 'center', fontSize: '12px', color: '#475569' },
+  footer: { display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-start', fontSize: '12px', color: '#475569' },
+  footerRow: { display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' },
   footerDivider: { color: '#334155' },
   footerLink: { color: '#475569', textDecoration: 'none' },
 };
