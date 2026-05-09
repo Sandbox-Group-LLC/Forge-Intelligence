@@ -61,6 +61,109 @@ The Context Agent Architecture article's central thesis ("the sequence is the mo
 
 That's not a coincidence. Brain Memory's feedback loop is the architecture; this session's outcomes are the architecture working as designed on its own product. Worth feeding back into PreCog v3 calibration as a deliberate scoring dimension: **evidence chain coverage**. Articles backed by FAQ + social + structured data + external citations outperform isolated thought leadership. The chain itself is a citation driver, not just individual article quality.
 
+## Context Hub upgrade — SPA-aware scraping + ICP override validation (late May 8)
+
+After the main Zernio + Reddit shipments, ran into a Context Hub failure mode while
+adding a new brand (forge-bysandbox.tech, a Vite-built SPA marketing site). The
+scraper logs were self-contradictory:
+
+```
+[Context Hub] Homepage scraped from https://forge-bysandbox.tech (10907 bytes)
+[Context Hub] Scraping returned minimal content — Claude will rely on Sonar context
+[Context Hub] ⚠️ SCRAPER FAILED for https://forge-bysandbox.tech
+```
+
+10kb of HTML scraped, declared minimal content, scraper failed. All three lines
+true at the same time. The Brand Profile that came out hallucinated the brand
+as a fintech tool because Sonar's Tool 1 had guessed wrong about the ICP and
+Tool 2 had nothing real to override it with.
+
+### Root cause
+
+`stripHtml()` operates on body text only. Modern SPA sites have a literal
+`<div id="root"></div>` body — everything renders client-side. So 10,907 bytes
+of HTML stripped down to ~64 chars of <title> bleed-through, below the 200-char
+threshold. The scraper "succeeded" (HTTP 200) but yielded no usable text.
+
+But here's the thing: **the brand's most informative content was already in
+the response, just in `<head>`.** SPA developers know JS-rendered <body> isn't
+crawlable, so they pack <head> with rich SEO + structured data: <title>,
+<meta description>, <meta keywords>, OpenGraph tags, schema.org JSON-LD blocks
+with full service catalogs. For forge-bysandbox.tech that meant ~2-4kb of
+high-quality structured brand content per page — ProfessionalService schema
+with all 4 capabilities and their descriptions, parent-org reference,
+positioning statement — all sitting in the response we were already fetching.
+We just weren't reading it.
+
+### Fix (`8dccee90`)
+
+Added `metaExtract()` helper that runs BEFORE `stripHtml()`. Extracts:
+- `<title>`
+- `<meta name="description">` / `og:description`
+- `<meta name="keywords">`
+- `og:site_name`, `og:title`, `<meta name="author">`
+- All `<script type="application/ld+json">` blocks, parsed and rendered as
+  readable structured text (Schema (Organization): / Name: / Description: /
+  Services: / Offerings: with per-item bullets)
+
+Result on forge-bysandbox.tech: **5,551 chars across 4 pages** (homepage +
+`/services` + `/about` + `/how-it-works`). Each page contributing meta + JSON-LD
+plus whatever body text the strip can salvage. Plenty for Tool 2 Claude to do
+real brand analysis instead of hallucinating from the domain name.
+
+Earlier in the same evening, shipped a Sonar-fallback path (`fb37f9e6`) that
+calls Perplexity to render-and-summarize the page when local scrape yields
+nothing. That fallback turned out NOT to work for forge-bysandbox.tech (Sonar
+returned `SITE_INACCESSIBLE` — likely host-side bot blocking or rate
+limiting from prior Sonar pulls). So the metaExtract fix isn't just elegant,
+it's the only path that actually works for some brands. Sonar fallback stays
+as a third-tier safety net for sites that have neither body content nor head
+metadata, but `metaExtract()` handles the dominant SPA case directly.
+
+### The validation moment
+
+Tool 2 Claude, fed the real scraped content, **overrode Sonar's wrong ICP guess**.
+Sonar's Tool 1 had returned: "Fintech founders and CTOs at early-stage startups."
+That's nothing to do with what Forge by Sandbox actually does. After Tool 2 ran
+with the full structured content from the scrape, the resulting Brand Profile
+target buyer read:
+
+> Head of Operations, RevOps Lead, or CTO at growth-stage companies (50-500
+> employees) who need custom operational tooling but lack internal engineering
+> bandwidth for internal systems
+
+That's exactly right. The schema.org services list (CRM Extensions, Workflow
+Automation, Operational Dashboards, Event Check-In Systems) plus the title
+("Bespoke Operational Software for Growth Teams") plus the keywords ("HubSpot
+integration," "internal tools") triangulated to RevOps-buying-custom-tooling.
+
+This is the second time today Forge's architecture proved itself doing exactly
+what it was designed to do. The first was Google AI Mode synthesizing the
+"context decay" vocabulary from Forge's own coined positioning. This one is
+quieter but structurally important: **the brain correctly overrode an
+unreliable upstream signal (Sonar's confident-sounding wrong guess) with a
+high-fidelity primary source (the brand's own structured data).** That's not
+a happy accident; it's the architecture working as designed.
+
+### Strategic implication — worth landing on the strategy branch
+
+Most competitors crawl rendered HTML. By treating JSON-LD as first-class brand
+intelligence — parsing schema.org markup directly into the analysis pipeline
+— Forge can analyze brands competitors literally can't see. Every brand using
+modern SPA frameworks (Vite, Next, SvelteKit, headless WordPress, Webflow's
+SPA mode) is in this category. The pool isn't small.
+
+Worth a STRATEGY.md entry on the strategy branch tomorrow: "Schema.org-first
+brand analysis as a category-defining capability." Pairs cleanly with the
+existing positioning around context-based brand intelligence — the structured
+data IS context, just in a form competitors don't read.
+
+### Commits this addendum
+- `fb37f9e6` — Sonar fallback for SPA scraping (third-tier safety net)
+- `8dccee90` — metaExtract: head + JSON-LD before body strip (the actual fix)
+
+---
+
 ## Recurring architectural patterns surfaced this session
 
 **Write/read state mismatches.** Same shape across multiple bugs (count this session: ~9 instances):
