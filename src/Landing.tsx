@@ -229,6 +229,8 @@ export default function Landing() {
             <a href="mailto:hello@forgeintelligence.ai" style={styles.footerLink}>hello@forgeintelligence.ai</a>
           </div>
           <div style={styles.footerRow}>
+            <a href="/articles/forgeintelligence-ai" style={styles.footerLink}>Published by Forge</a>
+            <span style={styles.footerDivider}>·</span>
             <a href="/privacy" style={styles.footerLink}>Privacy Policy</a>
             <span style={styles.footerDivider}>·</span>
             <a href="/terms" style={styles.footerLink}>Terms of Service</a>
