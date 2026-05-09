@@ -190,6 +190,15 @@
 .ec-section-label { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-muted); }
 .ec-section-label-row { display: flex; align-items: center; justify-content: space-between; }
 
+/* HubSpot 'Save to HubSpot' lives next to 'Copy all' in the body section
+   header. Wrap them in a flex group so they sit on the right. */
+.ec-section-label-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-left: auto;
+}
+
 .ec-subject-row {
   display: flex; align-items: baseline; gap: 10px;
   padding: 8px 12px; background: var(--color-bg-elevated);
