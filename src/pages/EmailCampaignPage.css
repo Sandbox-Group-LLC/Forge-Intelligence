@@ -122,6 +122,40 @@
 }
 .ec-sequence-notes p { font-size: 0.875rem; color: var(--color-text-secondary); margin: 8px 0 0; line-height: 1.6; }
 .ec-results-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* Attio CSV export: variant picker + button as a grouped pill so they
+   feel like one control. Picker matches the ghost button's height and
+   border-radius family; CSS vars keep theming consistent with the rest
+   of the page. */
+.ec-attio-export {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0;
+}
+.ec-attio-variant {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-right: none;
+  border-radius: 6px 0 0 6px;
+  color: var(--color-text-secondary);
+  padding: 8px 28px 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23999' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+.ec-attio-variant:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-border-hover);
+}
+.ec-attio-variant:focus { outline: none; border-color: var(--color-border-hover); }
+.ec-attio-export .ec-btn-ghost {
+  border-radius: 0 6px 6px 0;
+}
+
 .ec-push-result {
   font-size: 0.8125rem; padding: 10px 14px; border-radius: 8px;
 }
