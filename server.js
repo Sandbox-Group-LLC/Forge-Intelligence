@@ -3876,6 +3876,79 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
         .replace(/\s+/g, ' ')
         .trim();
 
+      // Extract crawler-targeted brand content from <head>: meta tags + JSON-LD structured data.
+      // SPA sites (Vite/Next/SvelteKit/etc.) put their brand description, services list, and
+      // schema.org markup in <head> precisely because they know JS-rendered <body> content
+      // isn't visible to crawlers. stripHtml() throws all of this away — wholesale-strips
+      // <script> (kills JSON-LD) and operates on body text only. metaExtract() runs first
+      // and pulls the high-value structured content into a readable text block.
+      const metaExtract = (html) => {
+        const parts = [];
+
+        const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+        if (titleMatch) {
+          const t = titleMatch[1].replace(/\s+/g, ' ').trim();
+          if (t && t.length > 5) parts.push(`Title: ${t}`);
+        }
+
+        // Meta tags: description (multiple forms), keywords, og:site_name, author
+        const metaPatterns = [
+          { re: /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i, label: 'Description' },
+          { re: /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i, label: 'OG Description' },
+          { re: /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i, label: 'Description' },  // attr order swap
+          { re: /<meta[^>]+name=["']keywords["'][^>]+content=["']([^"']+)["']/i, label: 'Keywords' },
+          { re: /<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i, label: 'Site name' },
+          { re: /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i, label: 'OG Title' },
+          { re: /<meta[^>]+name=["']author["'][^>]+content=["']([^"']+)["']/i, label: 'Author' },
+        ];
+        const seen = new Set();
+        for (const { re, label } of metaPatterns) {
+          const m = html.match(re);
+          if (m && m[1]) {
+            const v = m[1].replace(/\s+/g, ' ').trim();
+            const key = `${label}:${v}`;
+            if (v.length > 10 && !seen.has(key)) {
+              parts.push(`${label}: ${v}`);
+              seen.add(key);
+            }
+          }
+        }
+
+        // JSON-LD structured data blocks. Parse them and render as readable structured text
+        // so Tool 2 Claude can use the schema fields directly (services, descriptions, etc.).
+        const jsonLdMatches = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
+        for (const block of jsonLdMatches) {
+          const inner = block.replace(/<script[^>]*>/i, '').replace(/<\/script>/i, '').trim();
+          try {
+            const data = JSON.parse(inner);
+            const items = Array.isArray(data) ? data : [data];
+            for (const item of items) {
+              const type = item['@type'] || 'Schema';
+              const lines = [`Schema (${type}):`];
+              if (item.name) lines.push(`  Name: ${item.name}`);
+              if (item.description) lines.push(`  Description: ${item.description}`);
+              if (item.serviceType) lines.push(`  Services: ${Array.isArray(item.serviceType) ? item.serviceType.join(', ') : item.serviceType}`);
+              if (item.areaServed) lines.push(`  Area served: ${item.areaServed}`);
+              const offers = item.hasOfferCatalog?.itemListElement || [];
+              if (offers.length > 0) {
+                lines.push(`  Offerings:`);
+                for (const o of offers) {
+                  const svc = o.itemOffered;
+                  if (svc?.name) lines.push(`    - ${svc.name}${svc.description ? ': ' + svc.description : ''}`);
+                }
+              }
+              if (item.parentOrganization?.name) lines.push(`  Parent organization: ${item.parentOrganization.name}`);
+              if (item.alternateName) lines.push(`  Also known as: ${item.alternateName}`);
+              if (lines.length > 1) parts.push(lines.join('\n'));
+            }
+          } catch {
+            // Malformed JSON-LD — skip silently
+          }
+        }
+
+        return parts.join('\n\n');
+      };
+
       // Tell the developer exactly why a fetch failed (not just "it didn't work")
       const describeFetchFailure = (err) => {
         if (!err) return 'unknown';
@@ -3939,6 +4012,15 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
       }
 
       if (homeHtml) {
+        // Extract meta + JSON-LD FIRST — captures brand content from SPA sites where the
+        // body strip yields nothing. For server-rendered sites, this adds high-quality
+        // structured context on top of the body text.
+        const homeMeta = metaExtract(homeHtml);
+        if (homeMeta && homeMeta.length > 30) {
+          scrapedContent += `HOMEPAGE METADATA:\n${homeMeta}\n\n`;
+        }
+        // Then run the body strip as before. May add nothing on SPAs, but useful on
+        // server-rendered sites where <body> has the actual content.
         const homeText = stripHtml(homeHtml).slice(0, 3000);
         if (homeText.length > 80) scrapedContent += `HOMEPAGE CONTENT:\n${homeText}\n\n`;
       }
@@ -3963,7 +4045,14 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
             pageAttempt = await fetchWithDiag(pageUrl, { ua: CHROME_UA, timeout: 8000 });
           }
           if (pageAttempt.html) {
+            // Subpages: meta tags less interesting (usually duplicate the homepage), so just
+            // pull JSON-LD + body text. JSON-LD on a /pricing or /about page often has
+            // page-specific schema that's worth capturing.
+            const pageMeta = metaExtract(pageAttempt.html);
             const pageText = stripHtml(pageAttempt.html).slice(0, 2000);
+            // Filter pageMeta to only schema blocks (drop title/desc duplicates)
+            const pageSchemas = pageMeta.split('\n\n').filter(b => b.startsWith('Schema (')).join('\n\n');
+            if (pageSchemas) scrapedContent += `PAGE (${path}) METADATA:\n${pageSchemas}\n\n`;
             if (pageText.length > 100) {
               scrapedContent += `PAGE (${path}):\n${pageText}\n\n`;
             }
