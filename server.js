@@ -12198,6 +12198,114 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
       }
     }
 
+    // ── Reddit analytics (Zernio-only) ──
+    // Forge's Reddit publishing always routes through Zernio (no legacy direct OAuth path
+    // for Reddit — Phase 1 of the Reddit wire-up was Zernio-first by design). So this
+    // branch only handles the Zernio analytics pull.
+    if (channel === 'reddit' || channel === 'all') {
+      const rdLogRes = await pool.query(
+        `SELECT pl.content_id, pl.response_data, pl.attempted_at AS published_at,
+                pl.published_url, ct.title, ct.campaign_id
+           FROM publish_log pl
+           LEFT JOIN generated_content_${safeId} ct ON ct.id::text = pl.content_id
+          WHERE pl.brand_profile_id = $1 AND pl.channel = 'reddit' AND pl.status = 'published'
+            AND (pl.live_status IS NULL OR pl.live_status != 'deleted')
+          ORDER BY pl.attempted_at DESC`,
+        [brandProfileId]
+      ).catch(() => ({ rows: [] }));
+
+      const rdCredRes = await pool.query(
+        `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'reddit' AND is_active = true LIMIT 1`,
+        [brandProfileId]
+      ).catch(() => ({ rows: [] }));
+      const rdCreds = rdCredRes.rows[0]?.credentials || {};
+      const rdIsZernio = !!rdCreds.zernioAccountId && !!process.env.ZERNIO_API_KEY;
+      console.log(`[Analytics/Reddit] Found ${rdLogRes.rows.length} published posts, provider=${rdIsZernio ? 'zernio' : 'unsupported'}`);
+
+      for (const row of rdLogRes.rows) {
+        try {
+          const rd = row.response_data || {};
+          const postId = rd.postId || rd.post_id || rd.id;
+          if (!postId) { errors.push({ contentId: row.content_id, error: 'no_post_id' }); continue; }
+
+          let impressions = 0, clicks = 0, reactions = 0, comments = 0, reposts = 0;
+          let rawData = {};
+          let dataSource = 'none';
+
+          if (rdIsZernio) {
+            const analyticsRes = await callZernio('GET', `/analytics?postId=${encodeURIComponent(postId)}`);
+            console.log(`[Analytics/Reddit] Zernio analytics for ${postId}: HTTP ${analyticsRes.status}`);
+
+            if (analyticsRes.status === 202) {
+              console.log(`[Analytics/Reddit] Sync pending for ${postId} — will retry next sync`);
+              continue;
+            }
+            if (analyticsRes.status === 424 || !analyticsRes.ok) {
+              errors.push({ contentId: row.content_id, error: `zernio_analytics_${analyticsRes.status}` });
+              continue;
+            }
+
+            const analytics = analyticsRes.parsed;
+            const platforms = analytics?.post?.platforms || analytics?.platforms || [];
+            const rdMetrics = platforms.find(p => p.platform === 'reddit')?.analytics
+              || analytics?.post?.analytics
+              || analytics?.analytics
+              || analytics || {};
+
+            // Reddit metric name mapping. Reddit's terminology differs from LI/FB:
+            //   upvotes/score → reactions (positive engagement)
+            //   crossposts    → reposts (closest analog — someone reshared to another sub)
+            //   views         → impressions (Zernio surfaces this if Reddit returned it)
+            //   comments      → comments (1:1)
+            // Reddit's `score` is upvotes minus downvotes; we prefer raw upvotes when available
+            // and fall back to score. Downvotes get parked in raw_data for later analysis.
+            impressions = rdMetrics.impressions || rdMetrics.views || rdMetrics.view_count || 0;
+            clicks      = rdMetrics.clicks || rdMetrics.link_clicks || rdMetrics.url_clicks || 0;
+            reactions   = rdMetrics.upvotes || rdMetrics.ups || rdMetrics.score || rdMetrics.likes || 0;
+            comments    = rdMetrics.comments || rdMetrics.num_comments || rdMetrics.comment_count || 0;
+            reposts     = rdMetrics.crossposts || rdMetrics.num_crossposts || rdMetrics.shares || 0;
+            rawData     = { zernio: analytics };
+            dataSource  = 'zernio';
+            console.log(`[Analytics/Reddit] Zernio metrics for ${postId}: ${impressions} views, ${reactions} upvotes, ${comments} comments, ${reposts} crossposts, ${clicks} clicks`);
+          } else {
+            console.log(`[Analytics/Reddit] No Zernio account on Reddit channel — skipping ${postId}`);
+            continue;
+          }
+
+          if (dataSource === 'none') continue;
+
+          const totalEngagement = reactions + comments + reposts + clicks;
+          const ctr = impressions > 0 ? parseFloat((clicks / impressions * 100).toFixed(2)) : 0;
+          const engagementRate = impressions > 0
+            ? parseFloat((totalEngagement / impressions * 100).toFixed(2))
+            : 0;
+
+          await pool.query(
+            `INSERT INTO content_analytics
+               (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at, campaign_id)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),$14)
+             ON CONFLICT (content_id, channel) DO UPDATE SET
+               impressions      = CASE WHEN EXCLUDED.impressions > 0 THEN EXCLUDED.impressions ELSE content_analytics.impressions END,
+               clicks           = CASE WHEN EXCLUDED.impressions > 0 THEN EXCLUDED.clicks      ELSE content_analytics.clicks      END,
+               ctr              = CASE WHEN EXCLUDED.impressions > 0 THEN EXCLUDED.ctr         ELSE content_analytics.ctr         END,
+               engagement_rate  = CASE WHEN EXCLUDED.impressions > 0 THEN EXCLUDED.engagement_rate ELSE content_analytics.engagement_rate END,
+               reactions        = GREATEST(COALESCE(content_analytics.reactions, 0), EXCLUDED.reactions),
+               comments         = GREATEST(COALESCE(content_analytics.comments, 0),  EXCLUDED.comments),
+               reposts          = GREATEST(COALESCE(content_analytics.reposts, 0),   EXCLUDED.reposts),
+               raw_data         = COALESCE(content_analytics.raw_data, '{}'::jsonb) || EXCLUDED.raw_data,
+               synced_at        = NOW(),
+               campaign_id      = COALESCE(EXCLUDED.campaign_id, content_analytics.campaign_id)`,
+            [brandProfileId, row.content_id, 'reddit', postId,
+             impressions, clicks, reactions, comments, reposts, ctr, engagementRate,
+             JSON.stringify(rawData), row.published_at, row.campaign_id || null]
+          );
+          synced.push({ contentId: row.content_id, title: row.title, postId, reactions, comments, reposts, impressions, dataSource });
+        } catch(e) {
+          errors.push({ contentId: row.content_id, error: e.message });
+        }
+      }
+    }
+
     // Ghost sync
     if (channel === 'ghost' || channel === 'all') {
       // Prefer per-brand credentials from publishing_channels, fall back to env vars
