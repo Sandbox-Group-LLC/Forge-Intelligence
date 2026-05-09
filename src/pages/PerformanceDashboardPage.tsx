@@ -540,9 +540,9 @@ export default function PerformanceDashboardPage() {
                 { label: 'Positive Feedback', value: fmt(data?.totals?.positiveFeedback || 0), sub: 'Reader thumbs up', icon: 'heart', spark: false },
                 { label: 'Negative Feedback', value: fmt(data?.totals?.negativeFeedback || 0), sub: 'Reader thumbs down', icon: 'trend', spark: false },
               ] : [
-                { label: 'Impressions', value: fmt(data?.totals?.impressions || 0), sub: 'Total views', icon: 'eye', spark: true },
+                { label: activeChannel === 'reddit' ? 'Views' : 'Impressions', value: fmt(data?.totals?.impressions || 0), sub: activeChannel === 'reddit' ? 'Reddit views' : 'Total views', icon: 'eye', spark: true },
                 { label: 'Link Clicks', value: fmt(data?.totals?.clicks || 0), sub: `${data?.totals?.avgCtr || '0'}% avg CTR`, icon: 'click', spark: false },
-                { label: 'Reactions', value: fmt(data?.totals?.reactions || 0), sub: `${data?.totals?.comments || 0} comments · ${data?.totals?.reposts || 0} reposts`, icon: 'heart', spark: false },
+                { label: activeChannel === 'reddit' ? 'Upvotes' : 'Reactions', value: fmt(data?.totals?.reactions || 0), sub: activeChannel === 'reddit' ? `${data?.totals?.comments || 0} comments · ${data?.totals?.reposts || 0} crossposts` : `${data?.totals?.comments || 0} comments · ${data?.totals?.reposts || 0} reposts`, icon: 'heart', spark: false },
                 { label: 'Engagement Rate', value: `${data?.totals?.avgEngagementRate || '0'}%`, sub: `Across ${data?.totals?.posts || 0} posts`, icon: 'trend', spark: false },
               ]).map(kpi => (
                 <div key={kpi.label} className="perf-kpi-card">
@@ -562,7 +562,7 @@ export default function PerformanceDashboardPage() {
             {/* ── 30-Day Trend ── */}
             {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && activeChannel !== 'geo' && activeChannel !== 'predictions' && activeChannel !== 'patterns' && activeChannel !== 'webflow' && activeChannel !== 'pipeline' && <div className="perf-section">
               <div className="perf-section-header">
-                <h2 className="perf-section-title">30-Day Impressions</h2>
+                <h2 className="perf-section-title">30-Day {activeChannel === 'reddit' ? 'Views' : 'Impressions'}</h2>
                 {(data?.trend?.length ?? 0) > 0 && (
                   <span className="perf-section-meta">{data?.trend?.length} data points</span>
                 )}
@@ -595,10 +595,13 @@ export default function PerformanceDashboardPage() {
                           <th className="num">👍 Feedback</th>
                           <th className="num">👎 Feedback</th>
                         </>) : (<>
-                          <th className="num">Impressions</th>
+                          <th className="num">{activeChannel === 'reddit' ? 'Views' : 'Impressions'}</th>
+
                           <th className="num">Clicks</th>
+
                           <th className="num">CTR</th>
-                          <th className="num">Reactions</th>
+
+                          <th className="num">{activeChannel === 'reddit' ? 'Upvotes' : 'Reactions'}</th>
                           <th className="num">Engagement</th>
                         </>)}
                         <th>Published</th>
