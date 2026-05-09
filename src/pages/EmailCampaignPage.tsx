@@ -214,6 +214,7 @@ export default function EmailCampaignPage() {
   const [error, setError] = useState('');
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
+  const [subjectVariant, setSubjectVariant] = useState<'benefit' | 'curiosity' | 'pattern_interrupt'>('benefit');
   const [templateName, setTemplateName] = useState('');
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [pushing, setPushing] = useState(false);
@@ -362,6 +363,53 @@ export default function EmailCampaignPage() {
     const a = document.createElement('a');
     a.href = url;
     a.download = `email-campaign-${campaignId.slice(0, 8)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // CSV export for Attio import. The user's Attio workspace has an Object
+  // called "Generated Emails" with attributes "Email Subject" and "Email
+  // Body". Header row matches those exactly so Attio's CSV importer maps
+  // columns automatically with no manual step.
+  //
+  // One row per email. The user picks which subject variant
+  // (benefit / curiosity / pattern_interrupt) to export — each Attio
+  // sequence step takes a single subject, not three, so we don't ship all
+  // three. Default variant is 'benefit' since it's the most universally
+  // on-brand starting point; user can switch via the dropdown next to
+  // the button before clicking export.
+  const exportAsAttioCsv = () => {
+    // CSV-safe field: wrap in quotes, double up internal quotes. Required
+    // because email bodies contain commas, newlines, and (occasionally)
+    // straight quotes in punctuation.
+    const csvField = (v: string | null | undefined) => {
+      const s = String(v ?? '');
+      return `"${s.replace(/"/g, '""')}"`;
+    };
+
+    const variant = subjectVariant; // 'benefit' | 'curiosity' | 'pattern_interrupt'
+    const header = ['Email Subject', 'Email Body'].map(csvField).join(',');
+
+    const rows = emails.map(e => {
+      const subjects = e.subject_lines || ({} as any);
+      const subject = subjects[variant] || subjects.benefit || '';
+      // Body + PS as a single field. Blank line between body and PS so
+      // it renders cleanly when pasted into a sequence step or read in
+      // Attio's record viewer.
+      const body = e.ps ? `${e.body}\n\nP.S. ${e.ps}` : e.body;
+      return [csvField(subject), csvField(body)].join(',');
+    });
+
+    // \r\n line endings are CSV-spec correct and what Attio's importer
+    // expects. BOM upfront so Excel-on-Windows previews don't mangle
+    // unicode (em dashes, smart quotes) if Brian opens the CSV before
+    // uploading.
+    const csv = '\uFEFF' + [header, ...rows].join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `attio-import-${campaignId.slice(0, 8)}-${variant}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -548,6 +596,21 @@ export default function EmailCampaignPage() {
 
             <div className="ec-results-actions">
               <button className="ec-btn-ghost" onClick={exportAsText}>Export as .txt</button>
+              <div className="ec-attio-export">
+                <select
+                  className="ec-attio-variant"
+                  value={subjectVariant}
+                  onChange={(e) => setSubjectVariant(e.target.value as 'benefit' | 'curiosity' | 'pattern_interrupt')}
+                  title="Which subject line variant to export"
+                >
+                  <option value="benefit">Benefit subject</option>
+                  <option value="curiosity">Curiosity subject</option>
+                  <option value="pattern_interrupt">Pattern interrupt subject</option>
+                </select>
+                <button className="ec-btn-ghost" onClick={exportAsAttioCsv}>
+                  Export for Attio (.csv)
+                </button>
+              </div>
               <button className="ec-btn-hubspot" onClick={pushToHubSpot} disabled={pushing}>
                 <HubSpot /> {pushing ? 'Pushing...' : 'Push to HubSpot as Drafts'}
               </button>
