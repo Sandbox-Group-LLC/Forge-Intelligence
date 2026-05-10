@@ -917,7 +917,17 @@ export default function EmailCampaignPage() {
             {sequenceNotes && (
               <div className="ec-sequence-notes">
                 <div className="ec-section-label">SEQUENCE ASSESSMENT</div>
-                <p>{sequenceNotes}</p>
+                {/* Sanitize: strip [bracket_identifier] tokens (LLM jargon) and
+                    split into readable paragraphs. The system prompt now asks
+                    for prose, but legacy campaigns and any future slip-ups
+                    benefit from this defense-in-depth. */}
+                {sequenceNotes
+                  .replace(/\[([a-z][a-z0-9_]+)\]/gi, '')   // strip [snake_case_tokens]
+                  .replace(/\s{2,}/g, ' ')                    // collapse multi-spaces from removed tokens
+                  .split(/\n\n+|(?<=\.\s)(?=[A-Z])/)        // paragraphs OR sentence-boundary fallback
+                  .map(s => s.trim())
+                  .filter(Boolean)
+                  .map((para, i) => <p key={i}>{para}</p>)}
               </div>
             )}
 
