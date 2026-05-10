@@ -123,5 +123,5 @@ Return ONLY valid JSON — no markdown, no commentary, no newlines inside string
       ]
     }
   ],
-  "sequence_notes": "string — overall assessment of the sequence arc"
+  "sequence_notes": "string — overall assessment of the sequence arc, written as a strategist's memo for a human reviewer. NO bracketed identifiers like [pattern_name], NO code-style tokens, NO system-trace phrasing. Write in three short paragraphs separated by blank lines: (1) the sequence arc and what each email accomplishes, (2) tone and angle of attack, (3) which brand voice patterns and learnings shaped the writing. Plain English. A senior brand strategist should be able to read this and immediately understand the thinking."
 }
