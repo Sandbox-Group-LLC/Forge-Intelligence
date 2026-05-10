@@ -812,21 +812,30 @@ export default function IntegrationsPage() {
                           <SetupGuide guide={ch.setupGuide} />
                         </div>
                         <div className="int-fields">
-                          {ch.credentialFields.map(f => (
-                            <div key={f.key} className="int-field">
-                              <label className="int-field-label">{f.label}</label>
-                              <input
-                                className="int-field-input"
-                                type={connected ? 'password' : (f.type || 'text')}
-                                placeholder={connected ? '••••••••••••' : f.placeholder}
-                                value={credentials[ch.id][f.key] !== undefined ? credentials[ch.id][f.key] : (connected ? (savedChannels[ch.id] as any)?.credentials?.[f.key] || '' : '')}
-                                onChange={e => setCredentials(prev => ({
-                                  ...prev,
-                                  [ch.id]: { ...prev[ch.id], [f.key]: e.target.value }
-                                }))}
-                              />
-                            </div>
-                          ))}
+                          {ch.credentialFields.map(f => {
+                            const getFieldValue = (channelId: string, fieldKey: string, isConnected: boolean) => {
+                              const currentValue = credentials[channelId]?.[fieldKey];
+                              if (currentValue !== undefined) return currentValue;
+                              if (isConnected) return (savedChannels[channelId] as any)?.credentials?.[fieldKey] || '';
+                              return '';
+                            };
+
+                            return (
+                              <div key={f.key} className="int-field">
+                                <label className="int-field-label">{f.label}</label>
+                                <input
+                                  className="int-field-input"
+                                  type={connected ? 'password' : (f.type || 'text')}
+                                  placeholder={connected ? '••••••••••••' : f.placeholder}
+                                  value={getFieldValue(ch.id, f.key, connected)}
+                                  onChange={e => setCredentials(prev => ({
+                                    ...prev,
+                                    [ch.id]: { ...prev[ch.id], [f.key]: e.target.value }
+                                  }))}
+                                />
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
