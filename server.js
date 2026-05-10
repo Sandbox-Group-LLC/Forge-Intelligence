@@ -9893,11 +9893,24 @@ async function refreshHubSpotToken(brandProfileId) {
 }
 
 // POST /api/hubspot/push-email-template
-// Pushes ONE generated email (by email_id) as a saved Email Template in
-// HubSpot. The user later picks it from HubSpot's compose UI.
+// Pushes ONE generated email to HubSpot's Design Manager as an email template
+// (HTML+HubL file with email-rendering annotation). The template appears in
+// HubSpot's Marketing > Files and Templates > Design Manager AND in the
+// email composer's template picker.
 //
 // Body: { brandProfileId, emailId, subjectVariant? }
 //   subjectVariant: 'benefit' | 'curiosity' | 'pattern_interrupt' (default 'benefit')
+//
+// Uses the CMS Source Code API: PUT /cms/v3/source-code/published/content/{path}
+// Multipart form-data — the HTML file is uploaded as a binary attachment.
+// Required scope: 'content'.
+//
+// Why this approach (vs. /content/api/v2/templates which 403s):
+//   - The legacy v2 endpoint enforces Marketing Hub Pro+ at the API level
+//   - The modern v3 source-code endpoint is the actual API behind the
+//     Design Manager UI, which Sales Hub Starter and above can access
+//   - Same destination as 'paste HTML into Design Manager > Create new email
+//     template', just programmatic
 app.post('/api/hubspot/push-email-template', requireAuth, async (req, res) => {
   const { brandProfileId, emailId, subjectVariant } = req.body;
   if (!brandProfileId || !emailId) {
@@ -9921,41 +9934,89 @@ app.post('/api/hubspot/push-email-template', requireAuth, async (req, res) => {
     const variant = subjectVariant || 'benefit';
     const subject = subjects[variant] || subjects.benefit || subjects.curiosity || 'Email Template';
 
-    const paragraphs = (email.body || '').split(/\n\n+/).map(p => `<p>${p.trim().replace(/\n/g, '<br>')}</p>`).join('\n');
-    const psHtml = email.ps ? `<p style="margin-top:24px;"><em>P.S. ${email.ps}</em></p>` : '';
-    const ctaHtml = email.cta_text ? `<p style="margin-top:24px;"><a href="${email.cta_url_placeholder || '#'}">${email.cta_text}</a></p>` : '';
-    const html = `<div>${paragraphs}${ctaHtml}${psHtml}</div>`;
-
+    // Build the HTML body. CMS Source Code API expects a complete HubL+HTML
+    // template file. The annotation block at the top is what marks it as
+    // an email template (isEnabledForEmailV3Rendering) and gives it a label
+    // visible in the Design Manager + email composer.
     const brief = (typeof email.brief === 'string' ? JSON.parse(email.brief) : email.brief) || {};
     const persona = brief.target_persona || 'Email';
-    const templateName = `[Forge] ${persona} — ${subject}`.slice(0, 100);
+    const templateLabel = `[Forge] ${persona} — ${subject}`.slice(0, 100);
 
-    const hsRes = await fetch('https://api.hubapi.com/content/api/v2/templates', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        label: templateName,
-        source: html,
-        is_available_for_new_content: true,
-        template_type: 2  // 2 = email template
-      })
+    const paragraphs = (email.body || '').split(/\n\n+/).map(p => `<p>${p.trim().replace(/\n/g, '<br>')}</p>`).join('\n  ');
+    const psHtml = email.ps ? `\n  <p style="margin-top:24px;"><em>P.S. ${email.ps}</em></p>` : '';
+    const ctaHtml = email.cta_text
+      ? `\n  <p style="margin-top:24px;"><a href="${email.cta_url_placeholder || '#'}" style="color:#1d6ad8;">${email.cta_text}</a></p>`
+      : '';
+
+    // Email template annotation block + HTML body. Required for HubSpot
+    // to recognize this as a usable email template in the Marketing UI.
+    const escapedLabel = templateLabel.replace(/"/g, '&quot;');
+    const htmlContent = `<!--
+  templateType: email
+  isAvailableForNewContent: true
+  label: ${escapedLabel}
+  isEnabledForEmailV3Rendering: true
+-->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${escapedLabel}</title>
+</head>
+<body>
+<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1e293b; line-height: 1.6;">
+  ${paragraphs}${ctaHtml}${psHtml}
+</div>
+</body>
+</html>`;
+
+    // Build a unique path inside the CMS file system. Lives under a
+    // forge-owned folder so it's easy to find in Design Manager.
+    const personaSlug = persona.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'email';
+    const idx = email.email_index || 1;
+    const ts = Date.now();
+    const filePath = `forge/email-templates/${personaSlug}-${idx}-${ts}.html`;
+
+    // Multipart form-data upload to /cms/v3/source-code/published/content/{path}
+    // Manual multipart encoding because Node's built-in fetch + FormData
+    // works but constructing it cleanly with binary content as 'file' field.
+    const boundary = `----forge${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+    const fileBuffer = Buffer.from(htmlContent, 'utf-8');
+    const preamble = Buffer.from(
+      `--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="file"; filename="${personaSlug}.html"\r\n` +
+      `Content-Type: text/html\r\n\r\n`,
+      'utf-8'
+    );
+    const epilogue = Buffer.from(`\r\n--${boundary}--\r\n`, 'utf-8');
+    const multipartBody = Buffer.concat([preamble, fileBuffer, epilogue]);
+
+    const apiUrl = `https://api.hubapi.com/cms/v3/source-code/published/content/${encodeURI(filePath)}`;
+    const hsRes = await fetch(apiUrl, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': String(multipartBody.length)
+      },
+      body: multipartBody
     });
 
     if (!hsRes.ok) {
       const errText = await hsRes.text().catch(() => '');
-      console.error(`[HubSpot] Email template push failed: HTTP ${hsRes.status} ${errText.slice(0, 300)}`);
+      console.error(`[HubSpot] CMS source-code upload failed: HTTP ${hsRes.status} ${errText.slice(0, 500)}`);
       return res.status(hsRes.status).json({
-        error: `HubSpot rejected template (HTTP ${hsRes.status}): ${errText.slice(0, 200)}`
+        error: `HubSpot rejected upload (HTTP ${hsRes.status}): ${errText.slice(0, 300)}`
       });
     }
-    const hsTemplate = await hsRes.json();
-    console.log(`[HubSpot] Email template created: id=${hsTemplate.id} label=${hsTemplate.label}`);
+    const hsResult = await hsRes.json().catch(() => ({}));
+    console.log(`[HubSpot] Email template uploaded to Design Manager: ${filePath}`);
 
     res.json({
       success: true,
-      templateId: hsTemplate.id,
-      templateName: hsTemplate.label || templateName,
-      hubDomain: hsTemplate.portal_id || null
+      templateName: templateLabel,
+      filePath,
+      hubspotResponse: hsResult
     });
   } catch (err) {
     console.error('[HubSpot] push-email-template error:', err.message);
