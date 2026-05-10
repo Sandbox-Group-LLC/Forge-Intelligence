@@ -29,7 +29,7 @@ export default function Landing() {
   const [claimed, setClaimed] = useState(false);
   const [returning, setReturning] = useState<{ brandUrl: string; brandName: string; expiresAt: string | null } | null>(null);
 
-  // Check for existing unexpired brain on mount
+  // Check for existing unexpired brand on mount
   useEffect(() => {
     try {
       const stored = localStorage.getItem('forge_active_brand');
@@ -142,7 +142,7 @@ export default function Landing() {
           <p style={styles.subline}>
             Drop your URL. Forge reads your brand the way a strategist would — voice, audience, competitive gaps — and gives you the intelligence brief in under 10 minutes. Free.
             <br /><br />
-            Then unlock the full Forge pipeline free for 7 days. No credit card. Brain stays saved when the trial ends.
+            Then unlock the full Forge pipeline free for 7 days. No credit card. Your brand profile stays saved when the trial ends.
           </p>
 
           {claimed ? (
@@ -200,7 +200,7 @@ export default function Landing() {
                   placeholder="yourcompany.com"
                   style={styles.input}
                   disabled={status === 'loading'}
-                  autoComplete="url"
+                  autoComplete="off"
                   autoFocus
                 />
                 <button
@@ -216,7 +216,7 @@ export default function Landing() {
                 </button>
               </div>
               {error && <p style={styles.errorMsg}>{error}</p>}
-              <p style={styles.formCaption}>No account needed. Enter your domain again within 24hrs to return to your brain.</p>
+              <p style={styles.formCaption}>No account needed. Enter your domain again within 24hrs to return to your brand profile.</p>
               <p style={{ fontSize: '11px', color: '#475569', margin: 0 }}>Already scanned? Just enter your domain above to resume.</p>
             </form>
           )}
