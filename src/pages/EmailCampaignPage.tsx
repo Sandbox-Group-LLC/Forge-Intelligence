@@ -228,7 +228,6 @@ export default function EmailCampaignPage() {
   const [subjectVariant, setSubjectVariant] = useState<'benefit' | 'curiosity' | 'pattern_interrupt'>('benefit');
   const [templateName, setTemplateName] = useState('');
   const [savingTemplate, setSavingTemplate] = useState(false);
-  const [pushing, setPushing] = useState(false);
   const [pushResult, setPushResult] = useState('');
   const [sequenceNotes, setSequenceNotes] = useState('');
   const esRef = useRef<EventSource | null>(null);
