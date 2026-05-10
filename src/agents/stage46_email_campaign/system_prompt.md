@@ -108,7 +108,7 @@ Return ONLY valid JSON — no markdown, no commentary, no newlines inside string
         "pattern_interrupt": "string"
       },
       "preview_text": "string — 40-90 chars, extends subject",
-      "body": "string — full email body in brand voice, plain text format with line breaks as \\n",
+      "body": "string — full email body in brand voice; in JSON, represent line breaks using escaped newline sequences \\n (backslash + n), not literal newline characters inside the string",
       "cta_text": "string — action + outcome, under 8 words",
       "cta_url_placeholder": "{{cta_url}}",
       "ps": "string or null — P.S. line for conversion emails",
