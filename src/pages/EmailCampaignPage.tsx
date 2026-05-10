@@ -76,7 +76,7 @@ function FlagPill({ flag }: { flag: { type: string; severity: string; detail: st
   );
 }
 
-function EmailCard({ email, idx, onPushToHubSpot, pushing }: { email: EmailRecord; idx: number; onPushToHubSpot?: (emailId: string) => void; pushing?: boolean }) {
+function EmailCard({ email, idx, onCopyForHubSpot }: { email: EmailRecord; idx: number; onCopyForHubSpot?: (email: EmailRecord) => void }) {
   const [open, setOpen] = useState(idx === 0);
   const [copiedField, setCopiedField] = useState('');
 
@@ -147,14 +147,13 @@ function EmailCard({ email, idx, onPushToHubSpot, pushing }: { email: EmailRecor
                 <button className="ec-copy-btn-sm" onClick={() => copy(email.body + (email.ps ? `\n\nP.S. ${email.ps}` : ''), 'body')}>
                   {copiedField === 'body' ? <><Check /> Copied</> : <><Copy /> Copy all</>}
                 </button>
-                {onPushToHubSpot && email.id && (
+                {onCopyForHubSpot && (
                   <button
                     className="ec-copy-btn-sm"
-                    onClick={() => onPushToHubSpot(email.id!)}
-                    disabled={pushing}
-                    title="Save to HubSpot as Email Template"
+                    onClick={() => onCopyForHubSpot(email)}
+                    title="Copy as HubSpot-paste-ready HTML"
                   >
-                    <HubSpot /> {pushing ? 'Saving...' : 'Save to HubSpot'}
+                    <HubSpot /> Copy for HubSpot
                   </button>
                 )}
               </div>
@@ -335,35 +334,35 @@ export default function EmailCampaignPage() {
     });
   };
 
-  // Push ONE email to HubSpot as an Email Template. The user picks the
-  // template later from HubSpot's compose UI when sending. Per-email
-  // (not per-sequence) because HubSpot Templates are individual artifacts
-  // and each email has different copy. Variant = the subject the user
-  // currently has selected from the export dropdown.
-  const pushEmailToHubSpot = async (emailId: string) => {
-    if (!activeBrandId || !emailId) return;
-    setPushing(true);
-    setPushResult('');
-    try {
-      const res = await fetch('/api/hubspot/push-email-template', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...ah },
-        body: JSON.stringify({
-          brandProfileId: activeBrandId,
-          emailId,
-          subjectVariant
-        }),
+  // Copy ONE email to clipboard as HubSpot-paste-ready HTML. The user
+  // pastes into HubSpot Sales > Templates > New > Source view to create
+  // a saved template. Two-click manual flow because HubSpot's public API
+  // gates email-template creation behind Marketing Hub Pro+ at every
+  // tier-accessible endpoint.
+  const copyAsHubSpotHtml = (email: EmailRecord) => {
+    const subjects = email.subject_lines || ({} as any);
+    const subject = subjects[subjectVariant] || subjects.benefit || subjects.curiosity || '';
+    const paragraphs = (email.body || '')
+      .split(/\n\n+/)
+      .map(p => `<p>${p.trim().replace(/\n/g, '<br>')}</p>`)
+      .join('\n  ');
+    const psHtml = email.ps ? `\n  <p style="margin-top:24px;"><em>P.S. ${email.ps}</em></p>` : '';
+    const ctaHtml = email.cta_text
+      ? `\n  <p style="margin-top:24px;"><a href="${email.cta_url_placeholder || '#'}" style="color:#1d6ad8;">${email.cta_text}</a></p>`
+      : '';
+    const html = `<!-- Subject: ${subject} -->
+<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1e293b; line-height: 1.6;">
+  ${paragraphs}${ctaHtml}${psHtml}
+</div>`;
+
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(html).then(() => {
+        setPushResult('✓ HTML copied. Paste into HubSpot Sales > Templates > New > Source view.');
+      }).catch(() => {
+        setPushResult('Clipboard write blocked by browser. Try the .txt export instead.');
       });
-      const data = await res.json();
-      setPushing(false);
-      if (data.success) {
-        setPushResult(`✓ "${data.templateName}" saved as a HubSpot Email Template.`);
-      } else {
-        setPushResult(`Failed: ${data.error || 'unknown error'}`);
-      }
-    } catch (err) {
-      setPushing(false);
-      setPushResult(`Failed: ${(err as Error).message}`);
+    } else {
+      setPushResult('Clipboard API unavailable. Use the .txt export instead.');
     }
   };
 
@@ -640,8 +639,7 @@ export default function EmailCampaignPage() {
                   key={email.id || idx}
                   email={email}
                   idx={idx}
-                  onPushToHubSpot={pushEmailToHubSpot}
-                  pushing={pushing}
+                  onCopyForHubSpot={copyAsHubSpotHtml}
                 />
               ))}
             </div>
