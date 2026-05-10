@@ -36,7 +36,7 @@ Generate 3 subject line variants per email:
 3. **Pattern interrupt** — unexpected angle, breaks inbox fatigue
 
 Subject lines must be:
-- Aim for 30-40 characters for mobile preview; 40-60 for desktop
+- Aim for 30-40 characters for mobile preview; 60-100 for desktop
 - No ALL CAPS, excessive punctuation, or spam trigger words (FREE, GUARANTEED, !!!!)
 - Preview text (40-90 chars) must extend the subject, not repeat it
 
@@ -108,7 +108,7 @@ Return ONLY valid JSON — no markdown, no commentary, no newlines inside string
         "pattern_interrupt": "string"
       },
       "preview_text": "string — 40-90 chars, extends subject",
-      "body": "string — full email body in brand voice, plain text format with line breaks as \\n",
+      "body": "string — full email body in brand voice; in JSON, represent line breaks using escaped newline sequences \\n (backslash + n), not literal newline characters inside the string",
       "cta_text": "string — action + outcome, under 8 words",
       "cta_url_placeholder": "{{cta_url}}",
       "ps": "string or null — P.S. line for conversion emails",
