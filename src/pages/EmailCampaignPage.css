@@ -273,3 +273,174 @@
 .ec-history-status.complete { color: #14B8A6; }
 .ec-template-section { margin-top: 20px; display: flex; flex-direction: column; gap: 8px; }
 .ec-empty { font-size: 0.875rem; color: var(--color-text-muted); padding: 32px; text-align: center; }
+
+
+/* ── Phase 2: edit mode + flag actions ─────────────────────────────── */
+
+/* Edit mode controls in the section-label-actions row.
+   Primary variant (Save button) gets accent color. */
+.ec-copy-btn-sm.primary {
+  background: var(--color-accent, #1d6ad8);
+  color: white;
+  border-color: var(--color-accent, #1d6ad8);
+}
+.ec-copy-btn-sm.primary:hover {
+  background: var(--color-accent-hover, #1759b8);
+  border-color: var(--color-accent-hover, #1759b8);
+}
+
+/* Textarea and input fields for editing. Match body-text styling
+   (monospace) for body textarea but keep regular sans for fields. */
+.ec-edit-textarea {
+  width: 100%;
+  min-height: 200px;
+  background: var(--color-bg-elevated, #f8fafc);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 6px;
+  padding: 12px 14px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-text-primary, #1e293b);
+  resize: vertical;
+  margin: 8px 0;
+}
+.ec-edit-textarea:focus {
+  outline: none;
+  border-color: var(--color-accent, #1d6ad8);
+}
+
+.ec-edit-input {
+  flex: 1;
+  background: var(--color-bg-elevated, #f8fafc);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 14px;
+  color: var(--color-text-primary, #1e293b);
+}
+.ec-edit-input:focus {
+  outline: none;
+  border-color: var(--color-accent, #1d6ad8);
+}
+
+.ec-edit-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 10px 0;
+  flex-wrap: wrap;
+}
+.ec-edit-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted, #64748b);
+  letter-spacing: 0.05em;
+  min-width: 40px;
+  padding-top: 10px;
+}
+
+/* Per-flag actions row (Mark resolved / Add citation / Dismiss).
+   Hidden by default until user opens an action; the row sits below
+   the flag detail text. */
+.ec-flag-detail-row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.ec-flag-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.ec-flag-action-btn {
+  background: transparent;
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--color-text-secondary, #475569);
+  cursor: pointer;
+  font-family: inherit;
+}
+.ec-flag-action-btn:hover {
+  color: var(--color-text-primary, #1e293b);
+  border-color: var(--color-border-hover, #cbd5e1);
+}
+.ec-flag-action-btn.dismiss {
+  color: #dc2626;
+}
+.ec-flag-action-btn.dismiss:hover {
+  border-color: #dc2626;
+}
+.ec-flag-action-btn.primary {
+  background: var(--color-accent, #1d6ad8);
+  color: white;
+  border-color: var(--color-accent, #1d6ad8);
+}
+.ec-flag-action-btn.primary:hover {
+  background: var(--color-accent-hover, #1759b8);
+}
+.ec-flag-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Citation/dismiss reason input form */
+.ec-flag-action-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+.ec-flag-action-form .ec-edit-input {
+  min-width: 240px;
+  flex: 1;
+}
+
+/* Resolved flag state: strikethrough + dimmed text. The status badge
+   on the right shows what action was taken. */
+.ec-flag-detail-item.resolved .ec-flag-detail-text,
+.ec-flag-detail-item.resolved .ec-flag-detail-type {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+.ec-flag-status {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 3px 8px;
+  border-radius: 10px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.ec-flag-status.edited,
+.ec-flag-status.cited {
+  background: #d1fae5;
+  color: #065f46;
+}
+.ec-flag-status.dismissed {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* Detail line for the resolution (citation URL or dismiss reason).
+   Sits below the flag detail row, indented to align with the flag
+   text. */
+.ec-flag-resolution-detail {
+  margin-top: 6px;
+  padding-left: 16px;
+  font-size: 12px;
+  color: var(--color-text-muted, #64748b);
+  font-style: italic;
+}
+.ec-flag-resolution-detail a {
+  color: var(--color-accent, #1d6ad8);
+  text-decoration: underline;
+  word-break: break-all;
+}
