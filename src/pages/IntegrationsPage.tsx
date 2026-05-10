@@ -812,21 +812,30 @@ export default function IntegrationsPage() {
                                 <div className="int-pipedream-badge">
                                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
                                   Connected via {provider}
-                                </div>
-                                <span className="int-pipedream-sub">{subText}</span>
-                              </>
-                            );
-                          })()}
-                          <button className="int-reauth-btn" onClick={() => handleSave(ch.id)}>Reconnect</button>
-                        </div>
-                      </div>
-                    )}
+                          {ch.credentialFields.map(f => {
+                            const getFieldValue = (channelId: string, fieldKey: string, isConnected: boolean) => {
+                              const currentValue = credentials[channelId]?.[fieldKey];
+                              if (currentValue !== undefined) return currentValue;
+                              if (isConnected) return (savedChannels[channelId] as any)?.credentials?.[fieldKey] || '';
+                              return '';
+                            };
 
-                    {/* Reddit-specific: allowed subreddits manager. Only renders for connected Reddit channels.
-                        The brand declares which subs they have permission to post in; Forge refuses to publish
-                        outside the list. Stored as creds.allowedSubreddits via a dedicated JSONB-merge endpoint
-                        so this list update doesn't wipe the OAuth credentials. */}
-                    {ch.id === 'reddit' && ch.oauthFlow && connected && (
+                            return (
+                              <div key={f.key} className="int-field">
+                                <label className="int-field-label">{f.label}</label>
+                                <input
+                                  className="int-field-input"
+                                  type={connected ? 'password' : (f.type || 'text')}
+                                  placeholder={connected ? '••••••••••••' : f.placeholder}
+                                  value={getFieldValue(ch.id, f.key, connected)}
+                                  onChange={e => setCredentials(prev => ({
+                                    ...prev,
+                                    [ch.id]: { ...prev[ch.id], [f.key]: e.target.value }
+                                  }))}
+                                />
+                              </div>
+                            );
+                          })}
                       <RedditAllowedSubreddits
                         brandProfileId={selectedBrand}
                         savedCredentials={(saved?.credentials || {}) as Record<string, unknown>}
