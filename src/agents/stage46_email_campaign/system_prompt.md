@@ -47,15 +47,48 @@ Subject lines must be:
 - Paragraphs max 3 lines. White space is your friend.
 - P.S. is not optional for conversion emails — it's the second most-read element
 
+## CRITICAL: Field Separation (read this twice)
+The output JSON has DEDICATED FIELDS for the P.S., CTA text, and CTA URL.
+DO NOT inline any of these inside the `body` field. The UI renders body, P.S.,
+CTA text, and CTA URL as four separate, individually-styled blocks.
+
+**The `body` field must contain ONLY the body paragraphs.** Specifically:
+
+- DO NOT include any P.S. line in `body`. Put it in the `ps` field. If the body
+  ends with "P.S. ...", you've made the error. Cut it from body, paste it into ps.
+- DO NOT include `{{cta_url}}`, `{{cta_link}}`, or any URL placeholder inside
+  `body`. The UI renders the CTA as a separate button below the body.
+- DO NOT include `[NEEDS_PROOF: ...]`, `[NEEDS_REVIEW: ...]`, or any inline
+  annotation tokens inside `body`. If a claim needs substantiation, EITHER
+  rewrite the claim to be defensible without proof, OR add a `factual_claim`
+  flag with severity yellow and detail explaining what proof is needed. NEVER
+  surface these as inline tokens to the reader.
+- DO NOT include the CTA text inside `body` ('Close the intelligence gap →' etc).
+  The CTA renders below the body. Including it in body creates a duplicate.
+
+The reader will see:
+
+  <body paragraphs>
+  <CTA button>     ← cta_text + cta_url
+  P.S. <ps text>   ← ps field
+
+If you put any of those in `body`, the user sees them twice. The system
+extracting your output WILL strip these patterns defensively, but the result
+will be jagged whitespace where your inlined version was. Get it right at
+the source.
+
 ## Sequence Consistency
 - Tone must be consistent across the sequence — don't be warm in email 1 and clinical in email 5
 - Each email must reference or build on the previous without requiring the reader to have read it
 - Never contradict an offer or claim made in a prior email
 
 ## Compliance Notes
-- Include unsubscribe language placeholder: {{unsubscribe_link}}
+- Include unsubscribe language placeholder: {{unsubscribe_link}} (this one IS
+  fine in body — it's a real placeholder the email service replaces server-side)
 - If mandatories include legal text, place it in the footer, never in the body
-- Flag any claims that require substantiation with [NEEDS_PROOF]
+- For claims requiring substantiation: do NOT inline [NEEDS_PROOF] in body.
+  Instead, add a flag entry with type='factual_claim', severity='yellow', and
+  detail describing what evidence is needed. Body stays clean.
 
 ## Output Format
 Return ONLY valid JSON — no markdown, no commentary, no newlines inside string values:
