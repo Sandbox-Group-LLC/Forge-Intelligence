@@ -84,6 +84,9 @@ export default function Landing() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: brandUrl }),
       });
+      if (!check.ok) {
+        throw new Error(`Domain check failed with status ${check.status}`);
+      }
       const data = await check.json();
       if (data.claimed) {
         setClaimed(true);
