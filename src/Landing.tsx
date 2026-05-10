@@ -142,7 +142,7 @@ export default function Landing() {
           <p style={styles.subline}>
             Drop your URL. Forge reads your brand the way a strategist would — voice, audience, competitive gaps — and gives you the intelligence brief in under 10 minutes. Free.
             <br /><br />
-            Then unlock the full Forge pipeline free for 7 days. No credit card. Brain stays saved when the trial ends.
+            Then unlock the full Forge pipeline free for 7 days. No credit card. Your brand profile stays saved when the trial ends.
           </p>
 
           {claimed ? (
