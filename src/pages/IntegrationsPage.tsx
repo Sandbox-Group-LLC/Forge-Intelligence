@@ -556,7 +556,22 @@ export default function IntegrationsPage() {
         if (!token) throw new Error('Could not get connect token');
 
         // Open Pipedream Connect iframe directly — bypass SDK token resolution issues
-        const oauthAppId = (channel as any).pipedreamOauthAppId && (channel as any).pipedreamOauthAppId !== 'FACEBOOK_OAUTH_APP_ID' ? (channel as any).pipedreamOauthAppId : (await fetch('/api/pipedream/config').then(r => r.json()).then(c => c.oauthAppIds?.[channel.pipedreamApp!]).catch(() => null));
+        const channelWithOauthApp = channel as { pipedreamOauthAppId?: string };
+        const configuredOauthAppId = channelWithOauthApp.pipedreamOauthAppId;
+        let oauthAppId: string | null = null;
+
+        if (configuredOauthAppId && configuredOauthAppId !== 'FACEBOOK_OAUTH_APP_ID') {
+          oauthAppId = configuredOauthAppId;
+        } else {
+          try {
+            const configResponse = await fetch('/api/pipedream/config');
+            const configJson = await configResponse.json();
+            oauthAppId = configJson.oauthAppIds?.[channel.pipedreamApp!] ?? null;
+          } catch {
+            oauthAppId = null;
+          }
+        }
+
         const iframeUrl = `https://pipedream.com/_static/connect.html?token=${encodeURIComponent(token)}${oauthAppId ? `&oauthAppId=${encodeURIComponent(oauthAppId)}` : ''}&app=${encodeURIComponent(channel.pipedreamApp || '')}`;
 
         await new Promise<void>((resolve) => {
