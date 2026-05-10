@@ -115,6 +115,22 @@ export default function Landing() {
           0%, 100% { color: #3B82F6; text-shadow: 0 0 4px rgba(59,130,246,0.3); }
           50% { color: #60A5FA; text-shadow: 0 0 12px rgba(59,130,246,0.6), 0 0 24px rgba(59,130,246,0.2); }
         }
+
+        .signin-nav-link {
+          color: rgba(255,255,255,0.5);
+          font-size: 0.8rem;
+          font-weight: 500;
+          text-decoration: none;
+          padding: 8px 16px;
+          border: 1px solid rgba(255,255,255,0.12);
+          border-radius: 8px;
+          transition: all 0.2s;
+        }
+
+        .signin-nav-link:hover {
+          color: #fff;
+          border-color: rgba(255,255,255,0.3);
+        }
       `}</style>
       <div style={styles.gridOverlay} aria-hidden="true" />
       <div style={styles.container}>
@@ -129,10 +145,8 @@ export default function Landing() {
               style={{ color: '#3B82F6', fontSize: '0.8rem', fontWeight: 600, textDecoration: 'none', animation: 'productPulse 2s ease-in-out infinite' }}
             >Product</a>
             <a href="https://accounts.forgeintelligence.ai/sign-in?redirect_url=https://forgeintelligence.ai/app/context-hub"
-              style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem', fontWeight: 500, textDecoration: 'none', padding: '8px 16px', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', transition: 'all 0.2s' }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.3)'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.5)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'; }}
-          >Sign In</a>
+              className="signin-nav-link"
+            >Sign In</a>
           </div>
         </div>
 
