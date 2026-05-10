@@ -9940,7 +9940,13 @@ app.post('/api/hubspot/push-email-template', requireAuth, async (req, res) => {
     // visible in the Design Manager + email composer.
     const brief = (typeof email.brief === 'string' ? JSON.parse(email.brief) : email.brief) || {};
     const persona = brief.target_persona || 'Email';
-    const templateLabel = `[Forge] ${persona} — ${subject}`.slice(0, 100);
+    // Sanitize: brackets in label tripped HubSpot's annotation parser
+    // ('[Forge]' was being deserialized as a JSON array). Use a colon
+    // prefix instead. Also strip any chars the YAML-ish annotation
+    // parser is likely to choke on: brackets, braces, colons in
+    // unexpected positions.
+    const safe = (s) => String(s || '').replace(/[\[\]{}]/g, '').replace(/\s+/g, ' ').trim();
+    const templateLabel = `Forge: ${safe(persona)} — ${safe(subject)}`.slice(0, 100);
 
     const paragraphs = (email.body || '').split(/\n\n+/).map(p => `<p>${p.trim().replace(/\n/g, '<br>')}</p>`).join('\n  ');
     const psHtml = email.ps ? `\n  <p style="margin-top:24px;"><em>P.S. ${email.ps}</em></p>` : '';
