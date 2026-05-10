@@ -44,6 +44,18 @@ interface EmailRecord {
   confidence_score: number;
   confidence_reason: string;
   flags: { type: string; severity: string; detail: string }[];
+  // flag_resolutions: keyed by flag index (string), value is the resolution.
+  // Stored in DB as JSONB, populated by /resolve-flag and
+  // /dismiss-flag-as-false-positive endpoints. UI uses presence + action
+  // value to render strikethrough + status badge on resolved flags.
+  flag_resolutions?: Record<string, FlagResolution>;
+}
+
+interface FlagResolution {
+  action: 'edited' | 'cited' | 'dismissed';
+  resolvedAt: string;
+  citationUrl?: string;
+  dismissReason?: string;
 }
 
 const CAMPAIGN_TYPES = ['nurture', 'conversion', 'onboarding', 're-engagement', 'win-back'];
@@ -76,9 +88,84 @@ function FlagPill({ flag }: { flag: { type: string; severity: string; detail: st
   );
 }
 
-function EmailCard({ email, idx, onCopyForHubSpot }: { email: EmailRecord; idx: number; onCopyForHubSpot?: (email: EmailRecord) => void }) {
+function EmailCard({
+  email, idx, onCopyForHubSpot, onEditEmail, onResolveFlag, onDismissFlag,
+}: {
+  email: EmailRecord;
+  idx: number;
+  onCopyForHubSpot?: (email: EmailRecord) => void;
+  onEditEmail?: (emailId: string, patch: Partial<EmailRecord>) => Promise<void>;
+  onResolveFlag?: (emailId: string, flagIndex: number, action: 'edited' | 'cited' | 'dismissed', extras?: { citationUrl?: string; dismissReason?: string }) => Promise<void>;
+  onDismissFlag?: (emailId: string, flagIndex: number, reason: string) => Promise<void>;
+}) {
   const [open, setOpen] = useState(idx === 0);
   const [copiedField, setCopiedField] = useState('');
+  // Edit mode: when true, every text field becomes a textarea/input. Save
+  // sends a PATCH and updates parent state; Cancel reverts the draft.
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState<Partial<EmailRecord>>({});
+  // Per-flag action UI state (which flag is in 'add citation' or 'dismiss' mode)
+  const [flagActionIdx, setFlagActionIdx] = useState<number | null>(null);
+  const [flagActionMode, setFlagActionMode] = useState<'cite' | 'dismiss' | null>(null);
+  const [flagActionInput, setFlagActionInput] = useState('');
+  const [flagSaving, setFlagSaving] = useState(false);
+
+  const startEditing = () => {
+    setDraft({
+      body: email.body,
+      ps: email.ps,
+      cta_text: email.cta_text,
+      cta_url_placeholder: email.cta_url_placeholder,
+      subject_lines: { ...email.subject_lines },
+    });
+    setEditing(true);
+  };
+  const cancelEditing = () => { setDraft({}); setEditing(false); };
+  const saveEdits = async () => {
+    if (!email.id || !onEditEmail) return;
+    setSaving(true);
+    try {
+      await onEditEmail(email.id, draft);
+      setEditing(false);
+      setDraft({});
+    } catch (err) {
+      // parent shows error toast
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const beginFlagAction = (i: number, mode: 'cite' | 'dismiss') => {
+    setFlagActionIdx(i);
+    setFlagActionMode(mode);
+    setFlagActionInput('');
+  };
+  const cancelFlagAction = () => {
+    setFlagActionIdx(null);
+    setFlagActionMode(null);
+    setFlagActionInput('');
+  };
+  const submitFlagAction = async () => {
+    if (flagActionIdx === null || !email.id) return;
+    setFlagSaving(true);
+    try {
+      if (flagActionMode === 'cite' && onResolveFlag) {
+        await onResolveFlag(email.id, flagActionIdx, 'cited', { citationUrl: flagActionInput });
+      } else if (flagActionMode === 'dismiss' && onDismissFlag) {
+        await onDismissFlag(email.id, flagActionIdx, flagActionInput);
+      }
+      cancelFlagAction();
+    } catch (err) { /* parent toast */ } finally {
+      setFlagSaving(false);
+    }
+  };
+  const resolveAsEdited = async (i: number) => {
+    if (!email.id || !onResolveFlag) return;
+    setFlagSaving(true);
+    try { await onResolveFlag(email.id, i, 'edited'); } catch (err) { /* toast */ }
+    finally { setFlagSaving(false); }
+  };
 
   const copy = (text: string, field: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -139,19 +226,35 @@ function EmailCard({ email, idx, onCopyForHubSpot }: { email: EmailRecord; idx: 
           {/* Subject Lines */}
           <div className="ec-section">
             <div className="ec-section-label">SUBJECT LINES</div>
-            {[
-              { label: 'Curiosity', value: subjects.curiosity },
-              { label: 'Direct Benefit', value: subjects.benefit },
-              { label: 'Pattern Interrupt', value: subjects.pattern_interrupt },
-            ].map(({ label, value }) => value && (
-              <div key={label} className="ec-subject-row">
-                <span className="ec-subject-type">{label}</span>
-                <span className="ec-subject-text">{value}</span>
-                <button className="ec-copy-btn" onClick={() => copy(value, label)} title="Copy">
-                  {copiedField === label ? <Check /> : <Copy />}
-                </button>
-              </div>
-            ))}
+            {(['curiosity', 'benefit', 'pattern_interrupt'] as const).map((key) => {
+              const labelMap = { curiosity: 'Curiosity', benefit: 'Direct Benefit', pattern_interrupt: 'Pattern Interrupt' };
+              const label = labelMap[key];
+              const draftSubjects = (draft.subject_lines as any) || subjects;
+              const value = editing ? (draftSubjects[key] || '') : (subjects as any)[key];
+              if (!editing && !value) return null;
+              return (
+                <div key={key} className="ec-subject-row">
+                  <span className="ec-subject-type">{label}</span>
+                  {editing ? (
+                    <input
+                      className="ec-edit-input"
+                      value={value}
+                      onChange={(e) => setDraft({
+                        ...draft,
+                        subject_lines: { ...draftSubjects, [key]: e.target.value }
+                      })}
+                    />
+                  ) : (
+                    <>
+                      <span className="ec-subject-text">{value}</span>
+                      <button className="ec-copy-btn" onClick={() => copy(value, label)} title="Copy">
+                        {copiedField === label ? <Check /> : <Copy />}
+                      </button>
+                    </>
+                  )}
+                </div>
+              );
+            })}
             {email.preview_text && (
               <div className="ec-subject-row preview">
                 <span className="ec-subject-type">Preview</span>
@@ -168,10 +271,17 @@ function EmailCard({ email, idx, onCopyForHubSpot }: { email: EmailRecord; idx: 
             <div className="ec-section-label-row">
               <span className="ec-section-label">EMAIL BODY</span>
               <div className="ec-section-label-actions">
-                <button className="ec-copy-btn-sm" onClick={() => copy(cleanBody + (email.ps ? `\n\nP.S. ${email.ps}` : ''), 'body')}>
-                  {copiedField === 'body' ? <><Check /> Copied</> : <><Copy /> Copy all</>}
-                </button>
-                {onCopyForHubSpot && (
+                {!editing && onEditEmail && email.id && (
+                  <button className="ec-copy-btn-sm" onClick={startEditing} title="Edit this email">
+                    ✎ Edit
+                  </button>
+                )}
+                {!editing && (
+                  <button className="ec-copy-btn-sm" onClick={() => copy(cleanBody + (email.ps ? `\n\nP.S. ${email.ps}` : ''), 'body')}>
+                    {copiedField === 'body' ? <><Check /> Copied</> : <><Copy /> Copy all</>}
+                  </button>
+                )}
+                {!editing && onCopyForHubSpot && (
                   <button
                     className="ec-copy-btn-sm"
                     onClick={() => onCopyForHubSpot(email)}
@@ -180,21 +290,68 @@ function EmailCard({ email, idx, onCopyForHubSpot }: { email: EmailRecord; idx: 
                     <HubSpot /> Copy for HubSpot
                   </button>
                 )}
+                {editing && (
+                  <>
+                    <button className="ec-copy-btn-sm primary" onClick={saveEdits} disabled={saving}>
+                      {saving ? 'Saving…' : 'Save'}
+                    </button>
+                    <button className="ec-copy-btn-sm" onClick={cancelEditing} disabled={saving}>
+                      Cancel
+                    </button>
+                  </>
+                )}
               </div>
             </div>
-            <pre className="ec-body-text">{cleanBody}</pre>
-            {email.ps && (
-              <p className="ec-ps-line"><strong>P.S.</strong> {email.ps}</p>
+            {editing ? (
+              <textarea
+                className="ec-edit-textarea"
+                value={draft.body || ''}
+                onChange={(e) => setDraft({ ...draft, body: e.target.value })}
+                rows={12}
+              />
+            ) : (
+              <pre className="ec-body-text">{cleanBody}</pre>
+            )}
+            {editing ? (
+              <div className="ec-edit-row">
+                <label className="ec-edit-label">P.S.</label>
+                <textarea
+                  className="ec-edit-textarea"
+                  value={draft.ps || ''}
+                  onChange={(e) => setDraft({ ...draft, ps: e.target.value })}
+                  rows={2}
+                  placeholder="Optional postscript"
+                />
+              </div>
+            ) : (
+              email.ps && <p className="ec-ps-line"><strong>P.S.</strong> {email.ps}</p>
             )}
           </div>
 
           {/* CTA */}
           <div className="ec-section">
             <div className="ec-section-label">CTA</div>
-            <div className="ec-cta-row">
-              <span className="ec-cta-text">{email.cta_text}</span>
-              <span className="ec-cta-url">{email.cta_url_placeholder}</span>
-            </div>
+            {editing ? (
+              <div className="ec-edit-row">
+                <input
+                  className="ec-edit-input"
+                  value={draft.cta_text || ''}
+                  onChange={(e) => setDraft({ ...draft, cta_text: e.target.value })}
+                  placeholder="CTA text (e.g. 'See how it works →')"
+                />
+                <input
+                  className="ec-edit-input"
+                  value={draft.cta_url_placeholder || ''}
+                  onChange={(e) => setDraft({ ...draft, cta_url_placeholder: e.target.value })}
+                  placeholder="CTA URL or {{cta_url}}"
+                />
+              </div>
+            ) : (
+              <div className="ec-cta-row">
+                <span className="ec-cta-text">{email.cta_text}</span>
+                <span className="ec-cta-url">{email.cta_url_placeholder}</span>
+              </div>
+            )}
           </div>
 
           {/* Flags */}
@@ -205,12 +362,72 @@ function EmailCard({ email, idx, onCopyForHubSpot }: { email: EmailRecord; idx: 
                 {email.flags.map((f, i) => <FlagPill key={i} flag={f} />)}
               </div>
               <div className="ec-flags-detail">
-                {email.flags.map((f, i) => (
-                  <div key={i} className={`ec-flag-detail-item ${f.severity}`}>
-                    <span className="ec-flag-detail-type">{f.type.replace(/_/g, ' ')}</span>
-                    <span className="ec-flag-detail-text">{f.detail}</span>
-                  </div>
-                ))}
+                {email.flags.map((f, i) => {
+                  const resolution = email.flag_resolutions?.[String(i)];
+                  const isResolved = !!resolution;
+                  const isActionOpen = flagActionIdx === i;
+                  return (
+                    <div key={i} className={`ec-flag-detail-item ${f.severity}${isResolved ? ' resolved' : ''}`}>
+                      <div className="ec-flag-detail-row">
+                        <span className="ec-flag-detail-type">{f.type.replace(/_/g, ' ')}</span>
+                        <span className="ec-flag-detail-text">{f.detail}</span>
+                        {isResolved && (
+                          <span className={`ec-flag-status ${resolution.action}`}>
+                            {resolution.action === 'edited' && '✓ Resolved (edited)'}
+                            {resolution.action === 'cited' && '✓ Cited'}
+                            {resolution.action === 'dismissed' && '× Dismissed'}
+                          </span>
+                        )}
+                      </div>
+                      {isResolved && resolution.citationUrl && (
+                        <div className="ec-flag-resolution-detail">
+                          Source: <a href={resolution.citationUrl} target="_blank" rel="noopener noreferrer">{resolution.citationUrl}</a>
+                        </div>
+                      )}
+                      {isResolved && resolution.dismissReason && (
+                        <div className="ec-flag-resolution-detail">
+                          Reason: {resolution.dismissReason}
+                        </div>
+                      )}
+                      {!isResolved && !isActionOpen && email.id && (onResolveFlag || onDismissFlag) && (
+                        <div className="ec-flag-actions">
+                          {onResolveFlag && (
+                            <button className="ec-flag-action-btn" onClick={() => resolveAsEdited(i)} disabled={flagSaving} title="Mark as resolved (you've edited the body to address it)">
+                              ✓ Mark resolved
+                            </button>
+                          )}
+                          {onResolveFlag && (
+                            <button className="ec-flag-action-btn" onClick={() => beginFlagAction(i, 'cite')} disabled={flagSaving} title="Add a citation URL backing the claim">
+                              + Add citation
+                            </button>
+                          )}
+                          {onDismissFlag && (
+                            <button className="ec-flag-action-btn dismiss" onClick={() => beginFlagAction(i, 'dismiss')} disabled={flagSaving} title="Dismiss as false positive (writes to brain memory so future runs suppress)">
+                              × Dismiss
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      {isActionOpen && (
+                        <div className="ec-flag-action-form">
+                          <input
+                            className="ec-edit-input"
+                            value={flagActionInput}
+                            onChange={(e) => setFlagActionInput(e.target.value)}
+                            placeholder={flagActionMode === 'cite' ? 'https://... (citation URL)' : 'Why is this a false positive? (10+ chars)'}
+                            autoFocus
+                          />
+                          <button className="ec-flag-action-btn primary" onClick={submitFlagAction} disabled={flagSaving || (flagActionMode === 'dismiss' && flagActionInput.length < 10) || (flagActionMode === 'cite' && !flagActionInput)}>
+                            {flagSaving ? 'Saving…' : flagActionMode === 'cite' ? 'Save citation' : 'Confirm dismiss'}
+                          </button>
+                          <button className="ec-flag-action-btn" onClick={cancelFlagAction} disabled={flagSaving}>
+                            Cancel
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -362,6 +579,71 @@ export default function EmailCampaignPage() {
   // a saved template. Two-click manual flow because HubSpot's public API
   // gates email-template creation behind Marketing Hub Pro+ at every
   // tier-accessible endpoint.
+  // PATCH /api/email-campaign/email/:id — update one email's editable fields
+  // Updates local state on success so the open card reflects the edit
+  // without a full re-fetch.
+  const editEmail = async (emailId: string, patch: Partial<EmailRecord>) => {
+    const res = await fetch(`/api/email-campaign/email/${emailId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...ah },
+      body: JSON.stringify(patch),
+    });
+    const data = await res.json();
+    if (data.success && data.email) {
+      setEmails((prev) => prev.map((e) => (e.id === emailId ? { ...e, ...data.email } : e)));
+      setPushResult('✓ Email updated.');
+    } else {
+      setPushResult(`Edit failed: ${data.error || 'unknown'}`);
+      throw new Error(data.error || 'edit failed');
+    }
+  };
+
+  // POST /api/email-campaign/email/:id/resolve-flag — mark a flag resolved
+  const resolveFlag = async (
+    emailId: string,
+    flagIndex: number,
+    action: 'edited' | 'cited' | 'dismissed',
+    extras?: { citationUrl?: string; dismissReason?: string }
+  ) => {
+    const res = await fetch(`/api/email-campaign/email/${emailId}/resolve-flag`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...ah },
+      body: JSON.stringify({ flagIndex, action, ...(extras || {}) }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setEmails((prev) => prev.map((e) =>
+        e.id === emailId ? { ...e, flag_resolutions: data.flag_resolutions } : e
+      ));
+      setPushResult('✓ Flag resolved.');
+    } else {
+      setPushResult(`Resolve failed: ${data.error || 'unknown'}`);
+      throw new Error(data.error || 'resolve failed');
+    }
+  };
+
+  // POST /api/email-campaign/email/:id/dismiss-flag-as-false-positive
+  // Same outcome as resolve-flag dismissed, BUT also writes to brain_mistakes
+  // so future Compliance Gate runs learn from this dismissal.
+  const dismissFlag = async (emailId: string, flagIndex: number, reason: string) => {
+    const res = await fetch(`/api/email-campaign/email/${emailId}/dismiss-flag-as-false-positive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...ah },
+      body: JSON.stringify({ flagIndex, reason }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      // Re-fetch the email to get fresh flag_resolutions
+      const emailRes = await fetch(`/api/email-campaign/${campaignId}`, { headers: ah });
+      const emailData = await emailRes.json();
+      if (emailData.emails) setEmails(emailData.emails);
+      setPushResult('✓ Flag dismissed. Brain updated.');
+    } else {
+      setPushResult(`Dismiss failed: ${data.error || 'unknown'}`);
+      throw new Error(data.error || 'dismiss failed');
+    }
+  };
+
   const copyAsHubSpotHtml = (email: EmailRecord) => {
     const subjects = email.subject_lines || ({} as any);
     const subject = subjects[subjectVariant] || subjects.benefit || subjects.curiosity || '';
@@ -671,6 +953,9 @@ export default function EmailCampaignPage() {
                   email={email}
                   idx={idx}
                   onCopyForHubSpot={copyAsHubSpotHtml}
+                  onEditEmail={editEmail}
+                  onResolveFlag={resolveFlag}
+                  onDismissFlag={dismissFlag}
                 />
               ))}
             </div>
