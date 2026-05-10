@@ -1,5 +1,50 @@
 
 
+# 2026-05-10 (overnight) — Copilot Autofix incident + Morgan Chasser experiment
+
+Short addendum to the May 9 marathon. Two unrelated items.
+
+## Copilot Autofix wrecked dev for ~5 hours overnight
+
+Between 06:13–06:37 UTC (≈11:13–11:37pm PT) GitHub's Copilot Autofix bot ran 7 unsupervised `ai-findings-autofix/*` PRs against the repo, auto-merging each one. PRs #60–#66 in rapid succession touched `src/Landing.tsx`, `src/pages/IntegrationsPage.tsx`, and the email_campaign agent files — each claiming to fix "code quality findings" from CodeQL.
+
+The Landing.tsx changes were benign (added try/catch logging in DEV mode, error-status check on a fetch). The IntegrationsPage.tsx changes were not. The bot tried to extract dependency-array values for the Reddit subreddit-allowlist `useEffect` and ended up with a half-applied refactor at L320–333: the `allowedSubreddits` ternary lost its else branch, code that should have been INSIDE useEffect was floating at module level, and the `useEffect` itself had an empty body. Cascade parser errors fired at L977.
+
+**Dev build went red at 06:20 UTC.** Five consecutive failed deploys on commits `ae6c018de51f`, `9a666b5416eb`, `aa95f40e833e`. Production never affected because the autofix PRs only merged into `main` (dev branch); production branch was last synced at 04:34 UTC.
+
+### Fix
+
+Single-file surgical revert. Pulled `src/pages/IntegrationsPage.tsx` from commit `f1dfc7fe57f1` (my May 9 HubSpot demolition / Integrations card removal, last known-good state), overwrote main's broken version, triggered Render rebuild. Dev came up clean on `85b8236216a1` at 11:48 UTC.
+
+Brian disabled Copilot Autofix entirely from repo Settings → Code security afterward. CodeQL findings will still surface as alerts; they just won't auto-generate PRs anymore. Going forward, any autofix-style refactor needs manual review before merge.
+
+### Lessons logged
+
+- **AI-generated PRs that auto-merge = same risk profile as running my own commit scripts without your eyes on them.** Both produce structurally fragile changes that pass surface-level checks but break in subtle ways. Auto-merge on either is unacceptable.
+- **The Copilot Autofix bot doesn't understand JSX nesting depth or React hook rules well enough to refactor a 900-line component.** It mangled three statements that were structurally interdependent. Findings worth seeing; fixes not worth trusting.
+- **Render deploys don't auto-retry after a build failure on the same commit.** Once dev fell behind, it stayed behind until I explicitly triggered a new deploy with `POST /deploys`. Worth knowing: a permafailed deploy state requires either a new commit OR a manual redeploy trigger to clear.
+- **Sync prod from main only on intentional ship moments, not casually.** Today reinforced: prod was protected from the autofix mess only because I hadn't synced since 04:34 UTC. If I'd been auto-syncing as part of every dev commit pattern, prod would have inherited the corruption.
+
+## Morgan Chasser experiment
+
+Brian's friend Morgan (field marketing manager at Monte Carlo, 6+ years B2B SaaS) wanted to try Forge for personal brand. Context Hub got a hard no on her Wix portfolio (insufficient text content). Tested whether the brain architecture works on a synthesized profile rather than a scraped one.
+
+Bypassed Context Hub entirely. Hand-synthesized a `brand_profiles` row from her resume PDF, modeling the full Forge profile_data shape (voiceProfile, personas, competitiveGaps, strategicMoats, campaignArcs, strategicRecommendations, businessProfile, marketCategory, thirdPartySignals). Inserted via SQL relay.
+
+- Brand profile ID: `abfd54ce-f13d-4742-83a2-a1afe9a6c139`
+- brand_url: `https://www.linkedin.com/in/morganchasser-9b82bb154`
+- Tethered to Brian's clerk_user_id with `is_paid: true` so it sits in Brian's brand switcher alongside the other 24 brands without trial gating.
+
+The interesting test is whether downstream stages (GEO Strategist, Topic Brief Builder, Content Generator, Email Campaign Generator) produce content that bends toward Morgan's actual voice register (quantification-first, action-led verbs, B2B SaaS-fluent) vs. defaulting to generic personal-brand voice. The voiceProfile and keyPhrases were synthesized from her resume's bullet-structure rather than from her LinkedIn posts, so there's an inference gap that would close with one round of human-edited brand-settings corrections feeding back into the brain.
+
+If the experiment works, it's a real positioning thread: **Forge for personal brands** is a viable expansion vector. Morgan can test the downstream output and report back.
+
+## Adjacent cleanup
+
+Three duplicate "Brand Intelligence Brief: Six Deliverables" article drafts existed in Forge's generated_content table due to a browser glitch during a generation run. Same `enriched_brief_id` (`920548ef-f200-454a-8f27-eccb69d1af42`), same title, slightly different bodies. Kept the newest (`427f51b6-...`), deleted the older two (`4ebe4e03-...`, `7f8922ad-...`). Cleaned up 20 orphaned `geo_citations` rows that referenced the deleted articles via content_id (10 rows per deleted article).
+
+**Pattern flagged for future janitor job:** `DELETE FROM geo_citations WHERE content_id NOT IN (SELECT id FROM <each_brand_table>)` periodically would catch this class of orphan automatically as users delete duplicate drafts.
+
 # 2026-05-09 — MCP server, Attio CSV export, HubSpot demolition arc, Email Campaign Generator polish
 
 A 13-hour session that started with shipping the MCP server for Viktor and ended at 4am with a fully overhauled Email Campaign Generator. Major pivots, hard lessons about external API gating, and one of the cleaner closing arcs Forge has put together — flag actions wired with brain feedback loop, edit mode on every email, render-side sanitization defense in depth.
