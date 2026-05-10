@@ -923,8 +923,16 @@ export default function EmailCampaignPage() {
                     benefit from this defense-in-depth. */}
                 {sequenceNotes
                   .replace(/\[([a-z][a-z0-9_]+)\]/gi, '')   // strip [snake_case_tokens]
-                  .replace(/\s{2,}/g, ' ')                    // collapse multi-spaces from removed tokens
-                  .split(/\n\n+|(?<=\.\s)(?=[A-Z])/)        // paragraphs OR sentence-boundary fallback
+                  // Clean up artifacts from removed bracket tokens:
+                  //   ', , word'    → ', word'   (orphan commas in lists)
+                  //   ': , word'    → ': word'   (orphan after colon)
+                  //   '(, )'        → ''         (empty parenthetical)
+                  .replace(/(,\s*){2,}/g, ', ')
+                  .replace(/:\s*,\s*/g, ': ')
+                  .replace(/\(\s*,\s*\)/g, '')
+                  .replace(/\s{2,}/g, ' ')                    // collapse multi-spaces
+                  .replace(/\s+([.,;:])/g, '$1')               // tighten orphan space-before-punctuation
+                  .split(/\n\n+/)                             // ONLY split on real paragraph breaks
                   .map(s => s.trim())
                   .filter(Boolean)
                   .map((para, i) => <p key={i}>{para}</p>)}
