@@ -556,7 +556,22 @@ export default function IntegrationsPage() {
           setError(`Could not connect ${channel.label}: ${e.message}`);
         }
       }
-      return;
+        const channelWithOauthApp = channel as { pipedreamOauthAppId?: string };
+        const configuredOauthAppId = channelWithOauthApp.pipedreamOauthAppId;
+        let oauthAppId: string | null = null;
+
+        if (configuredOauthAppId && configuredOauthAppId !== 'FACEBOOK_OAUTH_APP_ID') {
+          oauthAppId = configuredOauthAppId;
+        } else {
+          try {
+            const configResponse = await fetch('/api/pipedream/config');
+            const configJson = await configResponse.json();
+            oauthAppId = configJson.oauthAppIds?.[channel.pipedreamApp!] ?? null;
+          } catch {
+            oauthAppId = null;
+          }
+        }
+
     }
 
     if (channel?.pipedreamApp) {
