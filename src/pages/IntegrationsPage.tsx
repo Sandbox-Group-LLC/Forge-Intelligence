@@ -314,23 +314,15 @@ function RedditAllowedSubreddits({
   const [err, setErr] = useState('');
   const [ok, setOk] = useState('');
 
-  const allowedSubreddits = Array.isArray(savedCredentials.allowedSubreddits)
-    ? (savedCredentials.allowedSubreddits as string[])
-    : [];
-  const allowedSubredditsDep = allowedSubreddits.join('\u0000');
-  const defaultSubredditDep = (savedCredentials.defaultSubreddit as string) || '';
-
-  const allowedSubreddits = Array.isArray(savedCredentials.allowedSubreddits)
-    ? (savedCredentials.allowedSubreddits as string[])
-    const list = allowedSubreddits;
-    const def = defaultSubredditDep || (list[0] || '');
   // Re-hydrate when the parent reloads with fresh creds.
   useEffect(() => {
-  }, [allowedSubredditsDep, allowedSubreddits.length, defaultSubredditDep]);
-    const def = defaultSubredditDep || (list[0] || '');
+    const list = Array.isArray(savedCredentials.allowedSubreddits)
+      ? (savedCredentials.allowedSubreddits as string[])
+      : [];
+    const def = (savedCredentials.defaultSubreddit as string) || (list[0] || '');
     setAllowedList(list);
     setDefaultSub(def);
-  }, [allowedSubredditsDep, allowedSubreddits.length, defaultSubredditDep]);
+  }, [JSON.stringify(savedCredentials.allowedSubreddits), savedCredentials.defaultSubreddit]);
 
   const normalize = (raw: string) => raw.trim().replace(/^r\//i, '').replace(/^\//, '');
   const valid = (raw: string) => /^[A-Za-z0-9][A-Za-z0-9_]{2,20}$/.test(raw);
@@ -488,30 +480,8 @@ export default function IntegrationsPage() {
             }
           }
           setUtmTemplates(newUtm);
-  const resolveBrandId = () => {
-    if (activeBrand?.id) return activeBrand.id;
-    try {
-      const storedBrandId = localStorage.getItem('forge_active_brand_id');
-      if (storedBrandId) return storedBrandId;
-    } catch (e) {
-      // Ignore storage access errors and continue fallback chain
-    }
-    return new URLSearchParams(window.location.search).get('brand') || '';
-  };
-
         }
       });
-  };
-
-  const resolveBrandId = () => {
-    if (activeBrand?.id) return activeBrand.id;
-    try {
-      const storedBrandId = localStorage.getItem('forge_active_brand_id');
-      const brand = resolveBrandId();
-    } catch (e) {
-      // Ignore storage access errors and continue fallback chain
-    }
-    return new URLSearchParams(window.location.search).get('brand') || '';
   };
 
   useEffect(() => {
@@ -522,7 +492,7 @@ export default function IntegrationsPage() {
       setSuccess(`${platform.charAt(0).toUpperCase() + platform.slice(1)} connected via Zernio!`);
       setExpanded(platform as ChannelId);
       window.history.replaceState({}, '', '/app/integrations');
-      const brand = resolveBrandId();
+      const brand = activeBrand?.id || (() => { try { return localStorage.getItem('forge_active_brand_id'); } catch(e) { return ''; } })() || new URLSearchParams(window.location.search).get('brand') || '';
       if (brand) setTimeout(() => loadChannels(brand), 500);
     }
     if (params.get('linkedin_error') || connected === 'error') {
@@ -571,22 +541,7 @@ export default function IntegrationsPage() {
           setError(`Could not connect ${channel.label}: ${e.message}`);
         }
       }
-        const channelWithOauthApp = channel as { pipedreamOauthAppId?: string };
-        const configuredOauthAppId = channelWithOauthApp.pipedreamOauthAppId;
-        let oauthAppId: string | null = null;
-
-        if (configuredOauthAppId && configuredOauthAppId !== 'FACEBOOK_OAUTH_APP_ID') {
-          oauthAppId = configuredOauthAppId;
-        } else {
-          try {
-            const configResponse = await fetch('/api/pipedream/config');
-            const configJson = await configResponse.json();
-            oauthAppId = configJson.oauthAppIds?.[channel.pipedreamApp!] ?? null;
-          } catch {
-            oauthAppId = null;
-          }
-        }
-
+      return;
     }
 
     if (channel?.pipedreamApp) {
@@ -601,22 +556,7 @@ export default function IntegrationsPage() {
         if (!token) throw new Error('Could not get connect token');
 
         // Open Pipedream Connect iframe directly — bypass SDK token resolution issues
-        const channelWithOauthApp = channel as { pipedreamOauthAppId?: string };
-        const configuredOauthAppId = channelWithOauthApp.pipedreamOauthAppId;
-        let oauthAppId: string | null = null;
-
-        if (configuredOauthAppId && configuredOauthAppId !== 'FACEBOOK_OAUTH_APP_ID') {
-          oauthAppId = configuredOauthAppId;
-        } else {
-          try {
-            const configResponse = await fetch('/api/pipedream/config');
-            const configJson = await configResponse.json();
-            oauthAppId = configJson.oauthAppIds?.[channel.pipedreamApp!] ?? null;
-          } catch {
-            oauthAppId = null;
-          }
-        }
-
+        const oauthAppId = (channel as any).pipedreamOauthAppId && (channel as any).pipedreamOauthAppId !== 'FACEBOOK_OAUTH_APP_ID' ? (channel as any).pipedreamOauthAppId : (await fetch('/api/pipedream/config').then(r => r.json()).then(c => c.oauthAppIds?.[channel.pipedreamApp!]).catch(() => null));
         const iframeUrl = `https://pipedream.com/_static/connect.html?token=${encodeURIComponent(token)}${oauthAppId ? `&oauthAppId=${encodeURIComponent(oauthAppId)}` : ''}&app=${encodeURIComponent(channel.pipedreamApp || '')}`;
 
         await new Promise<void>((resolve) => {
@@ -842,30 +782,21 @@ export default function IntegrationsPage() {
                                 <div className="int-pipedream-badge">
                                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
                                   Connected via {provider}
-                          {ch.credentialFields.map(f => {
-                            const getFieldValue = (channelId: string, fieldKey: string, isConnected: boolean) => {
-                              const currentValue = credentials[channelId]?.[fieldKey];
-                              if (currentValue !== undefined) return currentValue;
-                              if (isConnected) return (savedChannels[channelId] as any)?.credentials?.[fieldKey] || '';
-                              return '';
-                            };
-
-                            return (
-                              <div key={f.key} className="int-field">
-                                <label className="int-field-label">{f.label}</label>
-                                <input
-                                  className="int-field-input"
-                                  type={connected ? 'password' : (f.type || 'text')}
-                                  placeholder={connected ? '••••••••••••' : f.placeholder}
-                                  value={getFieldValue(ch.id, f.key, connected)}
-                                  onChange={e => setCredentials(prev => ({
-                                    ...prev,
-                                    [ch.id]: { ...prev[ch.id], [f.key]: e.target.value }
-                                  }))}
-                                />
-                              </div>
+                                </div>
+                                <span className="int-pipedream-sub">{subText}</span>
+                              </>
                             );
-                          })}
+                          })()}
+                          <button className="int-reauth-btn" onClick={() => handleSave(ch.id)}>Reconnect</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Reddit-specific: allowed subreddits manager. Only renders for connected Reddit channels.
+                        The brand declares which subs they have permission to post in; Forge refuses to publish
+                        outside the list. Stored as creds.allowedSubreddits via a dedicated JSONB-merge endpoint
+                        so this list update doesn't wipe the OAuth credentials. */}
+                    {ch.id === 'reddit' && ch.oauthFlow && connected && (
                       <RedditAllowedSubreddits
                         brandProfileId={selectedBrand}
                         savedCredentials={(saved?.credentials || {}) as Record<string, unknown>}
@@ -881,30 +812,21 @@ export default function IntegrationsPage() {
                           <SetupGuide guide={ch.setupGuide} />
                         </div>
                         <div className="int-fields">
-                          {ch.credentialFields.map(f => {
-                            const getFieldValue = (channelId: string, fieldKey: string, isConnected: boolean) => {
-                              const currentValue = credentials[channelId]?.[fieldKey];
-                              if (currentValue !== undefined) return currentValue;
-                              if (isConnected) return (savedChannels[channelId] as any)?.credentials?.[fieldKey] || '';
-                              return '';
-                            };
-
-                            return (
-                              <div key={f.key} className="int-field">
-                                <label className="int-field-label">{f.label}</label>
-                                <input
-                                  className="int-field-input"
-                                  type={connected ? 'password' : (f.type || 'text')}
-                                  placeholder={connected ? '••••••••••••' : f.placeholder}
-                                  value={getFieldValue(ch.id, f.key, connected)}
-                                  onChange={e => setCredentials(prev => ({
-                                    ...prev,
-                                    [ch.id]: { ...prev[ch.id], [f.key]: e.target.value }
-                                  }))}
-                                />
-                              </div>
-                            );
-                          })}
+                          {ch.credentialFields.map(f => (
+                            <div key={f.key} className="int-field">
+                              <label className="int-field-label">{f.label}</label>
+                              <input
+                                className="int-field-input"
+                                type={connected ? 'password' : (f.type || 'text')}
+                                placeholder={connected ? '••••••••••••' : f.placeholder}
+                                value={credentials[ch.id][f.key] !== undefined ? credentials[ch.id][f.key] : (connected ? (savedChannels[ch.id] as any)?.credentials?.[f.key] || '' : '')}
+                                onChange={e => setCredentials(prev => ({
+                                  ...prev,
+                                  [ch.id]: { ...prev[ch.id], [f.key]: e.target.value }
+                                }))}
+                              />
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}
@@ -913,7 +835,7 @@ export default function IntegrationsPage() {
                       <div className="int-form-label">
                         UTM Template
                         <span className="int-utm-hint">Tokens: {`{campaign_slug} {article_slug} {brand_slug} {channel}`}</span>
-                                body: JSON.stringify({ brandProfileId: selectedBrand, channel: ch.id, credentials: ch.pipedreamApp ? savedChannels[ch.id]?.credentials : credentials[ch.id], utmTemplate: utmTemplates[ch.id] })
+                      </div>
                       <div className="int-utm-grid">
                         {Object.entries(utmTemplates[ch.id]).map(([k, v]) => (
                           <div key={k} className="int-utm-row">
@@ -952,7 +874,7 @@ export default function IntegrationsPage() {
                             try {
                               const r = await fetch('/api/publishing/channels', {
                                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ brandProfileId: selectedBrand, channel: ch.id, credentials: ch.pipedreamApp ? savedChannels[ch.id]?.credentials : credentials[ch.id], utmTemplate: utmTemplates[ch.id] })
+                                body: JSON.stringify({ brandProfileId: selectedBrand, channel: ch.id, credentials: ch.pipedreamApp ? savedChannels[ch.id] : credentials[ch.id], utmTemplate: utmTemplates[ch.id] })
                               });
                               const d = await r.json();
                               if (d.success) { setSuccess('UTM template saved'); setTimeout(() => setSuccess(''), 3000); }
