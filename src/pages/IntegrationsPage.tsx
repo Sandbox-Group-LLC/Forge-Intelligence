@@ -484,6 +484,17 @@ export default function IntegrationsPage() {
             }
           }
           setUtmTemplates(newUtm);
+  const resolveBrandId = () => {
+    if (activeBrand?.id) return activeBrand.id;
+    try {
+      const storedBrandId = localStorage.getItem('forge_active_brand_id');
+      if (storedBrandId) return storedBrandId;
+    } catch (e) {
+      // Ignore storage access errors and continue fallback chain
+    }
+    return new URLSearchParams(window.location.search).get('brand') || '';
+  };
+
         }
       });
   };
@@ -492,7 +503,7 @@ export default function IntegrationsPage() {
     if (activeBrand?.id) return activeBrand.id;
     try {
       const storedBrandId = localStorage.getItem('forge_active_brand_id');
-      if (storedBrandId) return storedBrandId;
+      const brand = resolveBrandId();
     } catch (e) {
       // Ignore storage access errors and continue fallback chain
     }
