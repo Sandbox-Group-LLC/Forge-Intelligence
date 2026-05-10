@@ -4451,6 +4451,141 @@ app.get('/api/email-campaign/:id', requireAuth, async (req, res) => {
   }
 });
 
+// PATCH /api/email-campaign/email/:id
+// Update an individual email within a campaign. Brand-scoped via campaign join.
+// Allowed fields: body, ps, cta_text, cta_url_placeholder, subject_lines.
+app.patch('/api/email-campaign/email/:id', requireAuth, async (req, res) => {
+  const { body, ps, cta_text, cta_url_placeholder, subject_lines } = req.body || {};
+
+  const fieldsProvided = [body, ps, cta_text, cta_url_placeholder, subject_lines].some(v => v !== undefined);
+  if (!fieldsProvided) return res.status(400).json({ error: 'No editable fields provided' });
+
+  try {
+    const check = await pool.query(
+      `SELECT e.id, c.brand_profile_id
+         FROM email_campaign_emails e
+         JOIN email_campaigns c ON c.id = e.campaign_id
+        WHERE e.id = $1 LIMIT 1`,
+      [req.params.id]
+    );
+    if (!check.rows.length) return res.status(404).json({ error: 'Email not found' });
+
+    // Build dynamic UPDATE only for provided fields
+    const sets = [];
+    const vals = [];
+    let i = 1;
+    if (body !== undefined)                  { sets.push(`body = $${i++}`);                vals.push(body); }
+    if (ps !== undefined)                    { sets.push(`ps = $${i++}`);                  vals.push(ps || null); }
+    if (cta_text !== undefined)              { sets.push(`cta_text = $${i++}`);            vals.push(cta_text); }
+    if (cta_url_placeholder !== undefined)   { sets.push(`cta_url_placeholder = $${i++}`); vals.push(cta_url_placeholder); }
+    if (subject_lines !== undefined)         { sets.push(`subject_lines = $${i++}`);       vals.push(JSON.stringify(subject_lines)); }
+    sets.push(`updated_at = NOW()`);
+    vals.push(req.params.id);
+
+    const upd = await pool.query(
+      `UPDATE email_campaign_emails SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
+      vals
+    );
+    res.json({ success: true, email: upd.rows[0] });
+  } catch (err) {
+    console.error('[EMAIL CAMPAIGN] PATCH email error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/email-campaign/email/:id/resolve-flag
+// Mark a flag resolved with action: 'edited' | 'cited' | 'dismissed'.
+// Resolution stored in flag_resolutions JSONB keyed by flag index. The
+// flag itself stays in flags array — UI uses resolution to show
+// strikethrough + status badge, preserving audit trail.
+app.post('/api/email-campaign/email/:id/resolve-flag', requireAuth, async (req, res) => {
+  const { flagIndex, action, citationUrl, dismissReason } = req.body || {};
+  if (typeof flagIndex !== 'number') return res.status(400).json({ error: 'flagIndex (number) required' });
+  if (!['edited', 'cited', 'dismissed'].includes(action)) return res.status(400).json({ error: 'action must be edited|cited|dismissed' });
+  if (action === 'cited' && !citationUrl) return res.status(400).json({ error: 'citationUrl required for action=cited' });
+  if (action === 'dismissed' && !dismissReason) return res.status(400).json({ error: 'dismissReason required for action=dismissed' });
+
+  try {
+    const resolution = {
+      action,
+      resolvedAt: new Date().toISOString(),
+      ...(citationUrl && { citationUrl }),
+      ...(dismissReason && { dismissReason })
+    };
+
+    const result = await pool.query(
+      `UPDATE email_campaign_emails
+          SET flag_resolutions = COALESCE(flag_resolutions, '{}'::jsonb) || jsonb_build_object($1::text, $2::jsonb),
+              updated_at = NOW()
+        WHERE id = $3
+        RETURNING flag_resolutions`,
+      [String(flagIndex), JSON.stringify(resolution), req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Email not found' });
+    res.json({ success: true, flag_resolutions: result.rows[0].flag_resolutions });
+  } catch (err) {
+    console.error('[EMAIL CAMPAIGN] resolve-flag error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/email-campaign/email/:id/dismiss-flag-as-false-positive
+// Same as resolve-flag with action='dismissed', but ALSO writes a brain_mistakes
+// row so future Compliance Gate runs learn this pattern is a false-positive
+// for the brand. Closes the feedback loop on AI-generated flags.
+app.post('/api/email-campaign/email/:id/dismiss-flag-as-false-positive', requireAuth, async (req, res) => {
+  const { flagIndex, reason } = req.body || {};
+  if (typeof flagIndex !== 'number') return res.status(400).json({ error: 'flagIndex (number) required' });
+  if (!reason || reason.length < 10) return res.status(400).json({ error: 'reason (min 10 chars) required' });
+
+  try {
+    const check = await pool.query(
+      `SELECT e.flags, c.brand_profile_id
+         FROM email_campaign_emails e
+         JOIN email_campaigns c ON c.id = e.campaign_id
+        WHERE e.id = $1 LIMIT 1`,
+      [req.params.id]
+    );
+    if (!check.rows.length) return res.status(404).json({ error: 'Email not found' });
+
+    const flags = check.rows[0].flags || [];
+    const flag = flags[flagIndex];
+    if (!flag) return res.status(400).json({ error: `flagIndex ${flagIndex} not found in flags` });
+
+    const resolution = {
+      action: 'dismissed',
+      resolvedAt: new Date().toISOString(),
+      dismissReason: reason,
+      flagType: flag.type,
+      flagDetail: flag.detail,
+      writtenToBrainMistakes: true
+    };
+    await pool.query(
+      `UPDATE email_campaign_emails
+          SET flag_resolutions = COALESCE(flag_resolutions, '{}'::jsonb) || jsonb_build_object($1::text, $2::jsonb),
+              updated_at = NOW()
+        WHERE id = $3`,
+      [String(flagIndex), JSON.stringify(resolution), req.params.id]
+    );
+
+    await pool.query(
+      `INSERT INTO brain_mistakes (brand_profile_id, mistake_type, description, human_feedback, severity, created_at)
+       VALUES ($1, $2, $3, $4, 'medium', NOW())`,
+      [
+        check.rows[0].brand_profile_id,
+        `compliance_false_positive:${flag.type}`,
+        `Compliance Gate flagged: "${flag.detail}". User dismissed as false positive.`,
+        `False positive: ${reason.slice(0, 500)}. Do NOT flag similar content in future critiques for this brand.`
+      ]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[EMAIL CAMPAIGN] dismiss-flag-as-false-positive error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/email-campaign/generate/:id — SSE — generate all emails sequentially
 app.get('/api/email-campaign/generate/:id', requireAuth, async (req, res) => {
   // Duplicate stream guard
