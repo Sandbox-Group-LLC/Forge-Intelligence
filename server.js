@@ -9781,8 +9781,12 @@ app.get('/api/hubspot/auth', (req, res) => {
   const brandProfileId = req.query.state?.split('|')[0] || req.query.brandProfileId || 'system';
   const nonce = randomBytes(16).toString('hex');
   const state = `${brandProfileId}|${nonce}`;
-  // `content` covers Email Templates (CMS Hub Free+). Nothing else.
-  const scopes = ['content', 'oauth'].join('%20');
+  // Scope list. Must match the HubSpot dev portal's app scope config exactly.
+  //   - content: Email Templates API (CMS/Marketing Hub Free+)
+  //   - oauth: required for refresh tokens
+  //   - crm.objects.contacts.read: forced by HubSpot due to existing webhook
+  //     subscriptions on the app definition. Read-only, free-tier safe.
+  const scopes = ['content', 'oauth', 'crm.objects.contacts.read'].join('%20');
   const url = `https://app.hubspot.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scopes}&state=${encodeURIComponent(state)}`;
   res.json({ authUrl: url });
 });
