@@ -1,5 +1,135 @@
 
 
+# 2026-05-09 — MCP server, Attio CSV export, HubSpot demolition arc, Email Campaign Generator polish
+
+A 13-hour session that started with shipping the MCP server for Viktor and ended at 4am with a fully overhauled Email Campaign Generator. Major pivots, hard lessons about external API gating, and one of the cleaner closing arcs Forge has put together — flag actions wired with brain feedback loop, edit mode on every email, render-side sanitization defense in depth.
+
+## What shipped (chronological)
+
+**Mid-afternoon:** MCP server live at `/mcp` for Viktor (Slack assistant) integration (`58590c88`). JSON-RPC 2.0 endpoint, dual-auth (Bearer + X-Api-Key), three read-only tools exposed: `list_email_campaigns`, `list_emails_in_campaign`, `get_email_copy`. New scope namespace (`mcp:campaigns:read`, `mcp:emails:read`). Brian's API key minted: `fik_live_c2310c2c…b12f` scoped to the Forge brand only. Smoke tested end-to-end.
+
+**Attio CSV export** (`42c88466` + `58611337`). Brian out-engineered the OAuth-into-Attio rabbit hole I'd started architecting by simply creating an Attio Object called "Generated Emails" with two attributes (Email Subject, Email Body) and pointing me at Attio's CSV import. Per-email-with-variant CSV download from the Email Campaign Generator results screen. Filename: `attio-import-{campaignId8}-{variant}.csv`. RFC-compliant CSV escaping + UTF-8 BOM so Excel-on-Windows doesn't mojibake em dashes. Variant picker (benefit / curiosity / pattern_interrupt) defaults to benefit. Two columns matching Attio attribute names exactly so the importer auto-maps with no manual step.
+
+**Lesson logged:** I went deep on "build OAuth-with-Attio" before checking whether the simplest workable solution would actually meet the user's need. Brian's CSV approach took less code, no auth, no scope drama, no API rate limits, and works on Attio's free tier. **Pattern: propose simplest workable path FIRST before architecting OAuth flows.**
+
+**Landing page polish (`dbcdca61` + `b9cdb365`).** "Read your brand to filth" replaced with on-brand language: *"Drop your URL. Forge reads your brand the way a strategist would — voice, audience, competitive gaps — and gives you the intelligence brief in under 10 minutes. Free."* Strategist framing pulled forward, "intelligence brief" echoes the brain-certified positioning. Footer split into two rows (copyright + email on row 1, legal/info links on row 2) — the previous 7-items-in-a-line was cramped on narrow viewports. **"Published by Forge"** added as the lead link in row 2, pointing at `/articles/forgeintelligence-ai` (brand-specific public hub). Proof-of-craft earns lead position; legal/info follows.
+
+## The HubSpot demolition arc
+
+**The original sin:** The HubSpot integration was built around three different API surfaces (article publishing to Knowledge Base, contact CRM upsert, attribution-style engagement logging) that Brian had never used in production. Database evidence: `hubspot_sync_log` had zero rows, `campaigns.hubspot_synced_at` had zero populated rows. The integration was theoretical. And it was broken — every stored refresh token returned `HTTP 403 BAD_SCOPES` because the connected portal had lost access to `cms.knowledge_base.articles.*` (Service Hub Pro+ scope) since the last successful auth.
+
+**Round 1: Demolish the broken article path, rebuild as Email Templates only (`29df055d`).** Stripped 5 broken endpoints + helper `syncUserToHubSpot`, rebuilt with narrow `content` scope and a single `POST /api/hubspot/push-email-template` endpoint. Frontend per-email "Save to HubSpot" button replaced the dead sequence-level "Push to HubSpot as Drafts" button. Atomic-fix commit (`e7501ea4`) recovered from a half-applied state where two earlier scripts crashed on assertions AFTER partial in-memory edits but BEFORE commit, leaving main with EmailCard prop signature wrong + old handler still present + 6 TS errors at build time. **Lesson logged:** sequencing 4 in-memory edits across 3 separate commit scripts with intermediate assertions = fragile. Either land everything in one atomic PUT, or use strict 'edit → sanity-check → commit' template per script.
+
+**Round 2: Fresh OAuth app, scope sync, env var rotation (`1a4a682c` + `ece3929d` + multiple env operations).** The original HubSpot dev portal app had accumulated cruft from the previous integration that wouldn't fully clear (still serving stale scope state at the auth-server level even after dev portal showed clean scope list). Brian created a new HubSpot app (App ID `39088507`, Client ID `78a09da5-…`). Render env-vars updated via single-var PATCH (NOT bulk PUT — that destroys all 47 vars in the env group), Brian rotated the client secret directly in dashboard. Both prod + dev redeployed to pick up new `process.env.HUBSPOT_CLIENT_*` since Node caches env at startup.
+
+**Round 3: The paywall reveal.** Authorization succeeded with the new app. Then `Save to HubSpot` started returning new errors:
+
+- `/content/api/v2/email-templates` → HTML 404 (the path doesn't exist; I'd written it from memory)
+- `/content/api/v2/templates` → 403 MISSING_SCOPES, *"You need Marketing Professional or above in order to make this compatible with email"*
+- Pivot to `/cms/v3/source-code/published/content/{path}` (the Design Manager's actual API surface) → 403 MISSING_EMAIL_SCOPES the moment the file's `isEnabledForEmailV3Rendering: true` annotation was set
+
+Bracketing through three different YAML/annotation parser errors along the way (`[Forge]` parsed as JSON array, `Forge: subject:` parsed as nested mapping). Each pivot revealed a different facet of the same paywall: HubSpot's public API gates email-template creation behind Marketing Hub Pro+ at every endpoint accessible to Sales Hub Starter. The HubSpot UI lets Sales Hub Starter users create email templates manually because the UI uses internal endpoints with looser scope checks. The public API enforces strict tier gating on every email-eligible artifact.
+
+**Round 4: Strip everything, replace with clipboard copy (`31d6c357` + `bc140a71` + `978c5487` + `f1dfc7fe`).** Brian called the right answer: stop fighting HubSpot's paywall, ship a "Copy for HubSpot" button that formats the email as paste-ready HTML (subject as comment, body + CTA + PS as styled HTML in 600px wrapper) and writes to clipboard via `navigator.clipboard`. User pastes into HubSpot Sales > Templates > New > Source view manually. Two-click flow, works on every HubSpot tier including free.
+
+Removed 4 endpoints + the OAuth callback + `refreshHubSpotToken` helper + the HubSpot card from IntegrationsPage + the lingering `[pushing, setPushing]` state + the dead `publishing_channels` row for hubspot. Same UX shape as the Attio CSV export — both ship as user-side imports.
+
+**Lesson logged from the full arc:** **When you hit the same paywall twice in different shapes, that's the paywall talking. Stop pivoting and tell the user.** I burned ~90 minutes pivoting between four different HubSpot endpoints, each one revealing the same Marketing Pro+ requirement under a different name. The right answer was visible after the second 403; I just didn't want to call it because I'd already invested in the first three approaches. Brian was patient through all four iterations; future-me should be faster to the honest "this isn't going to work" call.
+
+## Email Campaign Generator polish
+
+After the HubSpot mess settled, Brian flagged three rendering bugs in the Email Campaign Generator: P.S. appearing twice (in body AND in dedicated PS block), `{{cta_url}}` rendering inline in body AND as a CTA pill below, `[NEEDS_PROOF: ...]` tokens appearing as inline annotations. Plus the structural gap: compliance flags existed but the user couldn't act on them — no edit, no acknowledge, no citation.
+
+**Phase 1 — sanitize body at the source AND on render (`7bb60878` + `9457c1203cf1`).** Root cause analysis traced two of three bugs to explicit instructions in the system prompt at `src/agents/stage46_email_campaign/system_prompt.md`:
+
+- *"P.S. is not optional for conversion emails"* — LLM put P.S. in body AND in dedicated `ps` field
+- *"Flag any claims that require substantiation with [NEEDS_PROOF]"* — LLM was literally told to inline these as text
+
+Prompt rewritten with a CRITICAL: Field Separation section listing explicit don'ts: don't inline P.S., don't inline `{{cta_url}}`, don't inline `[NEEDS_PROOF]` markers, don't inline the CTA text. Compliance Notes section rewritten so factual claims become flag entries with `type='factual_claim'`, severity='yellow', and detail describing what proof is needed — not inline tokens.
+
+Defense-in-depth render sanitization in EmailCard: `sanitizeBody()` helper strips `{{cta_url}}` / `{{cta_link}}` placeholders, strips `[NEEDS_PROOF: ...]` / `[NEEDS_REVIEW: ...]` / `[NEEDS_CITATION: ...]` / `[NEEDS_VERIFICATION: ...]` annotations, strips trailing P.S. paragraph (preserved in dedicated `ps` field), collapses 3+ newlines to 2. Applied to body render, Copy-all button output, and Copy-for-HubSpot HTML output. Existing campaigns clean up retroactively without regeneration.
+
+**Phase 2 — inline edit + flag actions (`031b0b89` + `55064054` + `f97ff666`).** Three new endpoints + atomic frontend overhaul:
+
+- `PATCH /api/email-campaign/email/:id` — update body, ps, cta_text, cta_url_placeholder, subject_lines on one email. Brand-scoped via campaign join. Dynamic UPDATE, only provided fields touched.
+- `POST /api/email-campaign/email/:id/resolve-flag` — mark a flag resolved with action: 'edited' | 'cited' | 'dismissed'. Stored in new `flag_resolutions` JSONB column keyed by flag index. Flag itself stays in `flags` array — UI uses resolution to show strikethrough + status badge, audit trail preserved.
+- `POST /api/email-campaign/email/:id/dismiss-flag-as-false-positive` — same as resolve-flag with `action='dismissed'` BUT also writes a `brain_mistakes` row with `mistake_type='compliance_false_positive:<type>'` so the Compliance Gate's brain learns to suppress this pattern for the brand on future runs. **Closes the feedback loop on AI-generated flags.**
+
+DB migration: `ALTER TABLE email_campaign_emails ADD COLUMN flag_resolutions JSONB DEFAULT '{}'::jsonb;`
+
+EmailCard frontend got an Edit mode (subject_lines + body + ps + cta_text + cta_url_placeholder all become inputs/textareas with Save/Cancel), per-flag action buttons (Mark resolved / Add citation / Dismiss as false positive), and resolved-flag indicators (strikethrough + colored badges + citation URL or dismiss reason rendered below). All committed in one atomic PUT to avoid the half-applied state issue from the HubSpot rounds.
+
+**Phase 3 — Sequence Assessment readability (`fcaa41ed` + `6dd587cf` + `72f3684f`).** Brian flagged sequence_notes was rendering as code-language jargon: *"Brain patterns leveraged: [citation_outcome_validated], [verbatim_quote], structural metaphor."* Useful content, unreadable form. Two fixes: system prompt rewritten to ask for three short paragraphs (arc, tone, brand-voice shaping) in plain English with no bracket identifiers; render-side cleanup strips `[snake_case_token]` patterns + cleans up orphan commas + tightens punctuation spacing. Initial fix had over-engineering (sentence-boundary fallback split that fragmented the assessment more than the wall did) — caught and reverted. Final state: only split on real `\n\n`, trust the new prompt for source-of-truth structure.
+
+## What the Email Campaign Generator looks like now
+
+End-of-day state of arguably Forge's most customer-facing screen:
+
+- HubSpot integration ripped, replaced with honest copy-to-clipboard flow matching Attio CSV pattern
+- Three rendering bugs gone (duplicate P.S., inline `{{cta_url}}`, `[NEEDS_PROOF]` tokens) — both at source (prompt rewrite) and at render (sanitization)
+- Edit mode on every EmailCard with all fields editable + atomic PATCH save
+- Per-flag actions wired (resolve / cite / dismiss-as-false-positive)
+- Brain learns from dismissals via `brain_mistakes` write — false-positive flags train the Compliance Gate to suppress similar patterns on the brand
+- Sequence Assessment readable, no more `[bracket_pattern_name]` jargon
+
+Material change in user trust posture. The screen went from "ships content with weird artifacts and unactionable flags" to "ships clean content with editable copy and a closed feedback loop on compliance flags."
+
+## Recurring architectural patterns flagged this session
+
+**Half-applied state from intermediate-assertion crashes (recurring).** Two scripts crashed on assertions AFTER partial in-memory edits but BEFORE the commit step, leaving main with self-inconsistent state: EmailCard call site passing props to a signature that didn't accept them. Required a fix-up commit and burned a build cycle. **Convention going forward:** for multi-step edits to a single file, do everything in memory first, sanity-check before any commit, then ONE atomic PUT.
+
+**Render-side defense-in-depth as wrong default (this session).** When Brian flagged sequence_notes formatting, my first instinct was sentence-boundary split as a fallback for legacy data. That over-engineering fragmented the assessment more than the original wall did. **Lesson:** defense-in-depth only adds value where the default behavior is genuinely problematic. For "LLM trained on new prompt produces good output, legacy data merely benefits from minimal cleanup," minimal cleanup is the right scope.
+
+**Render-side strip vs. source-of-truth fix (general).** Both the body sanitization (Phase 1) and sequence_notes cleanup (Phase 3) used the pattern: rewrite prompt for source-of-truth durable cure, add render-side sanitization as defense in depth so legacy data also cleans up. This pattern is correct and reusable.
+
+## Final commit log (28 commits, chronological)
+
+```
+58590c88  15:37  MCP server at /mcp — read-only email + campaign tools
+42c88466  17:46  feat(email-campaign): Attio CSV export
+58611337  17:46  style(email-campaign): Attio CSV export controls
+dbcdca61  23:26  style(landing): on-brand subline + 2-row footer
+b9cdb365  23:33  feat(landing): add 'Published by Forge' link to footer
+29df055d  23:50  refactor(hubspot): strip broken integration, rebuild as Email Templates only
+60562b28  23:51  feat(email-campaign): per-email HubSpot Template push (replaces broken Drafts batch push)
+bd478fd6  23:52  fix(integrations): HubSpot card — honest description for Email Templates flow
+cc46ee7a  23:52  style(email-campaign): button-group wrapper for body section actions
+e7501ea4  23:55  fix(email-campaign): atomic fix — EmailCard sig + handler swap + button removal
+1a4a682c  00:07  fix(hubspot): align OAuth scope request with HubSpot app config
+ece3929d  00:31  fix(hubspot): drop crm.objects.contacts.read — new app doesn't require it
+94c4422e  01:21  fix(hubspot): correct Email Templates endpoint URL
+91e81148  02:02  fix(hubspot): pivot Email Template push to CMS Source Code API
+cfe77338  02:07  fix(hubspot): label format — brackets in [Forge] tripped annotation parser
+395afccc  02:22  fix(hubspot): YAML-safe annotation block
+31d6c357  03:33  refactor(hubspot): strip API integration entirely
+bc140a71  03:33  refactor(email-campaign): replace HubSpot API push with clipboard copy
+978c5487  03:34  fix(email-campaign): remove unused [pushing, setPushing] state
+f1dfc7fe  03:35  refactor(integrations): remove HubSpot card
+7bb60878  03:49  fix(email-prompt): explicit field separation rules
+9457c120  03:49  fix(email-campaign): sanitize body on render — strip duplicate P.S./CTA/proof tokens
+031b0b89  03:54  feat(email-campaign): inline edit + flag resolution endpoints
+55064054  03:56  feat(email-campaign): inline edit + flag actions in EmailCard
+f97ff666  03:57  style(email-campaign): edit mode + flag action UI
+fcaa41ed  04:07  fix(email-prompt): sequence_notes as strategist memo, not system trace
+6dd587cf  04:08  fix(email-campaign): readable Sequence Assessment
+72f3684f  04:11  fix(email-campaign): sequence_notes orphan commas + drop sentence-split
+```
+
+## What's queued for next session
+
+- Regenerate a campaign on a fresh test to validate the new sequence_notes prompt produces three-paragraph output as designed
+- Pipedream cancellation ($150/mo savings — Zernio fully migrated, FB Pipedream env vars stale)
+- Sandbox-XM, Sandbox-GTM, Attio LinkedIn migrations through Zernio (Forge done; others still on direct OAuth)
+- Reddit Phase 4: per-publish subreddit picker in queue UI + flair selection
+- LinkedIn OAuth callback to MERGE credentials instead of overwriting (server.js ~L9262)
+- WORKING-STATE.md refresh against today's surface changes
+- STRATEGY.md (strategy branch) update with HubSpot-paywall lesson + Email Campaign Generator improvements
+
+## Endpoint count
+
+194 HTTP endpoints in server.js mid-day, then through demolition + rebuild + rebuild + final demolition: net change is roughly 6 endpoints removed (5 HubSpot + 1 email-campaign push) and 3 added (PATCH email + 2 flag-resolution endpoints). Final ballpark: ~191 HTTP endpoints + 3 logical MCP tools at `/mcp`.
+
+
 # 2026-05-08 — Zernio migration + Reddit wire-up + Brain Memory closes the loop
 
 A 24-hour run that started as "validate Zernio for Facebook" and ended with the entire publishing pipeline migrated, two outcome-driven brain patterns stamped, Reddit live with a brand-safety architecture, and Google AI Mode describing Forge using Forge's coined vocabulary. The biggest session in Forge's history measured by lines moved + product surface area shipped + strategic items resolved.
