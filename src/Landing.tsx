@@ -29,7 +29,7 @@ export default function Landing() {
   const [claimed, setClaimed] = useState(false);
   const [returning, setReturning] = useState<{ brandUrl: string; brandName: string; expiresAt: string | null } | null>(null);
 
-  // Check for existing unexpired brain on mount
+  // Check for existing unexpired brand on mount
   useEffect(() => {
     try {
       const stored = localStorage.getItem('forge_active_brand');
