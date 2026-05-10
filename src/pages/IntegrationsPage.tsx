@@ -80,7 +80,7 @@ function SetupGuide({ guide }: { guide: SetupGuide }) {
 }
 
 // ── Channel definitions ───────────────────────────────────────────────────────
-type ChannelId = 'wordpress' | 'webflow' | 'hubspot' | 'linkedin' | 'x' | 'facebook' | 'reddit' | 'medium' | 'ghost';
+type ChannelId = 'wordpress' | 'webflow' | 'linkedin' | 'x' | 'facebook' | 'reddit' | 'medium' | 'ghost';
 
 interface ChannelDef {
   id: ChannelId;
@@ -140,28 +140,6 @@ const CHANNELS: ChannelDef[] = [
         { text: 'Copy the token and paste it above.' },
         { text: 'Find your Site ID: Settings → General → Site ID.' },
         { text: 'Find your Collection ID: CMS → Collections → click your blog collection → the ID is in the URL.' },
-      ],
-    },
-  },
-  {
-    id: 'hubspot',
-    label: 'HubSpot',
-    oauthFlow: true,
-    description: 'Save generated emails to HubSpot as Email Templates. Pick them later in HubSpot when composing Marketing Email, Sequences, or 1:1 sends. Works on every HubSpot tier including free.',
-    color: '#FF7A59',
-    logo: 'HS',
-    liveStatus: 'live',
-    credentialFields: [
-      { key: 'accessToken', label: 'Private App Token', placeholder: 'pat-na2-...', type: 'password' },
-      { key: 'portalId', label: 'Portal ID', placeholder: '244954048' },
-    ],
-    setupGuide: {
-      title: 'Connect HubSpot via OAuth',
-      steps: [
-        { text: 'Click Connect above. You\'ll be redirected to HubSpot to authorize Forge Intelligence.' },
-        { text: 'Log in to HubSpot if prompted and select the account you want to connect.' },
-        { text: 'Approve the `content` scope — the only permission Forge needs to save Email Templates.' },
-        { text: 'HubSpot will redirect you back automatically once authorized — no token or portal ID needed.' },
       ],
     },
   },
@@ -290,7 +268,6 @@ const CHANNELS: ChannelDef[] = [
 const DEFAULT_UTM: Record<ChannelId, Record<string, string>> = {
   wordpress: { utm_source: 'forge', utm_medium: 'organic', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   webflow:   { utm_source: 'forge', utm_medium: 'organic', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
-  hubspot:   { utm_source: 'hubspot', utm_medium: 'attribution', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   linkedin:  { utm_source: 'linkedin', utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   x:         { utm_source: 'x',        utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   facebook:  { utm_source: 'facebook', utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
@@ -461,11 +438,11 @@ export default function IntegrationsPage() {
   
   const selectedBrand = activeBrand?.id || '';
   const [savedChannels, setSavedChannels] = useState<Record<ChannelId, SavedChannel | null>>({
-    wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null, facebook: null, reddit: null, medium: null, ghost: null
+    wordpress: null, webflow: null, linkedin: null, x: null, facebook: null, reddit: null, medium: null, ghost: null
   });
   const [expanded, setExpanded] = useState<ChannelId | null>(null);
   const [credentials, setCredentials] = useState<Record<ChannelId, Record<string, string>>>({
-    wordpress: {}, webflow: {}, hubspot: {}, linkedin: {}, x: {}, facebook: {}, reddit: {}, medium: {}, ghost: {}
+    wordpress: {}, webflow: {}, linkedin: {}, x: {}, facebook: {}, reddit: {}, medium: {}, ghost: {}
   });
   const [utmTemplates, setUtmTemplates] = useState<Record<ChannelId, Record<string, string>>>(DEFAULT_UTM);
   const [saving, setSaving] = useState<ChannelId | null>(null);
@@ -492,7 +469,7 @@ export default function IntegrationsPage() {
       .then(d => {
         if (d.success) {
           const map: Record<ChannelId, SavedChannel | null> = {
-            wordpress: null, webflow: null, hubspot: null, linkedin: null, x: null, facebook: null, reddit: null, medium: null, ghost: null
+            wordpress: null, webflow: null, linkedin: null, x: null, facebook: null, reddit: null, medium: null, ghost: null
           };
           for (const ch of d.channels) map[ch.channel as ChannelId] = ch;
           setSavedChannels(map);
@@ -549,8 +526,7 @@ export default function IntegrationsPage() {
 
     // Native OAuth channels — redirect flow
     const nativeOAuthRoutes: Record<string, string> = {
-      hubspot:  '/api/hubspot/auth',
-      webflow:  '/api/webflow/auth',
+          webflow:  '/api/webflow/auth',
       x:        '/api/x/auth',
     };
     if (channel?.oauthFlow && nativeOAuthRoutes[channelId]) {
