@@ -874,7 +874,7 @@ export default function IntegrationsPage() {
                             try {
                               const r = await fetch('/api/publishing/channels', {
                                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ brandProfileId: selectedBrand, channel: ch.id, credentials: ch.pipedreamApp ? savedChannels[ch.id] : credentials[ch.id], utmTemplate: utmTemplates[ch.id] })
+                                body: JSON.stringify({ brandProfileId: selectedBrand, channel: ch.id, credentials: ch.pipedreamApp ? savedChannels[ch.id]?.credentials : credentials[ch.id], utmTemplate: utmTemplates[ch.id] })
                               });
                               const d = await r.json();
                               if (d.success) { setSuccess('UTM template saved'); setTimeout(() => setSuccess(''), 3000); }
