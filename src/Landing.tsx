@@ -200,7 +200,7 @@ export default function Landing() {
                   placeholder="yourcompany.com"
                   style={styles.input}
                   disabled={status === 'loading'}
-                  autoComplete="url"
+                  autoComplete="off"
                   autoFocus
                 />
                 <button
