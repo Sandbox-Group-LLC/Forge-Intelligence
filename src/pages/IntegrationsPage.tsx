@@ -874,7 +874,7 @@ export default function IntegrationsPage() {
                       <div className="int-form-label">
                         UTM Template
                         <span className="int-utm-hint">Tokens: {`{campaign_slug} {article_slug} {brand_slug} {channel}`}</span>
-                      </div>
+                                body: JSON.stringify({ brandProfileId: selectedBrand, channel: ch.id, credentials: ch.pipedreamApp ? savedChannels[ch.id]?.credentials : credentials[ch.id], utmTemplate: utmTemplates[ch.id] })
                       <div className="int-utm-grid">
                         {Object.entries(utmTemplates[ch.id]).map(([k, v]) => (
                           <div key={k} className="int-utm-row">
