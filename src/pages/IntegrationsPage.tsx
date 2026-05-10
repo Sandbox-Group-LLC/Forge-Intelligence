@@ -484,6 +484,17 @@ export default function IntegrationsPage() {
       });
   };
 
+  const resolveBrandId = () => {
+    if (activeBrand?.id) return activeBrand.id;
+    try {
+      const storedBrandId = localStorage.getItem('forge_active_brand_id');
+      if (storedBrandId) return storedBrandId;
+    } catch (e) {
+      // Ignore storage access errors and continue fallback chain
+    }
+    return new URLSearchParams(window.location.search).get('brand') || '';
+  };
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const connected = params.get('connected');
@@ -492,7 +503,7 @@ export default function IntegrationsPage() {
       setSuccess(`${platform.charAt(0).toUpperCase() + platform.slice(1)} connected via Zernio!`);
       setExpanded(platform as ChannelId);
       window.history.replaceState({}, '', '/app/integrations');
-      const brand = activeBrand?.id || (() => { try { return localStorage.getItem('forge_active_brand_id'); } catch(e) { return ''; } })() || new URLSearchParams(window.location.search).get('brand') || '';
+      const brand = resolveBrandId();
       if (brand) setTimeout(() => loadChannels(brand), 500);
     }
     if (params.get('linkedin_error') || connected === 'error') {
