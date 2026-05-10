@@ -9945,8 +9945,14 @@ app.post('/api/hubspot/push-email-template', requireAuth, async (req, res) => {
     // prefix instead. Also strip any chars the YAML-ish annotation
     // parser is likely to choke on: brackets, braces, colons in
     // unexpected positions.
-    const safe = (s) => String(s || '').replace(/[\[\]{}]/g, '').replace(/\s+/g, ' ').trim();
-    const templateLabel = `Forge: ${safe(persona)} — ${safe(subject)}`.slice(0, 100);
+    // Sanitize values for YAML annotation: strip brackets/braces (parsed
+    // as arrays/maps), strip colons (create nested-mapping syntax errors),
+    // strip double quotes (would break the quoted value), collapse whitespace.
+    const safe = (s) => String(s || '').replace(/[\[\]{}:"]/g, '').replace(/\s+/g, ' ').trim();
+    // Use a pipe separator instead of colons — colons in YAML annotation
+    // values create nested mapping syntax errors. Pipe is ASCII-safe and
+    // visually clear in the Design Manager template list.
+    const templateLabel = `Forge | ${safe(persona)} — ${safe(subject)}`.slice(0, 100);
 
     const paragraphs = (email.body || '').split(/\n\n+/).map(p => `<p>${p.trim().replace(/\n/g, '<br>')}</p>`).join('\n  ');
     const psHtml = email.ps ? `\n  <p style="margin-top:24px;"><em>P.S. ${email.ps}</em></p>` : '';
@@ -9960,7 +9966,7 @@ app.post('/api/hubspot/push-email-template', requireAuth, async (req, res) => {
     const htmlContent = `<!--
   templateType: email
   isAvailableForNewContent: true
-  label: ${escapedLabel}
+  label: "${escapedLabel}"
   isEnabledForEmailV3Rendering: true
 -->
 <!DOCTYPE html>
