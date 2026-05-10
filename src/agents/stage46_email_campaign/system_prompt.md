@@ -36,7 +36,7 @@ Generate 3 subject line variants per email:
 3. **Pattern interrupt** — unexpected angle, breaks inbox fatigue
 
 Subject lines must be:
-- Aim for 30-40 characters for mobile preview; 40-60 for desktop
+- Aim for 30-40 characters for mobile preview; 60-100 for desktop
 - No ALL CAPS, excessive punctuation, or spam trigger words (FREE, GUARANTEED, !!!!)
 - Preview text (40-90 chars) must extend the subject, not repeat it
 
