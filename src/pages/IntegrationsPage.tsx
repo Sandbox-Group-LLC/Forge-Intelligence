@@ -314,15 +314,19 @@ function RedditAllowedSubreddits({
   const [err, setErr] = useState('');
   const [ok, setOk] = useState('');
 
+  const allowedSubreddits = Array.isArray(savedCredentials.allowedSubreddits)
+    ? (savedCredentials.allowedSubreddits as string[])
+    : [];
+  const allowedSubredditsDep = allowedSubreddits.join('\u0000');
+  const defaultSubredditDep = (savedCredentials.defaultSubreddit as string) || '';
+
   // Re-hydrate when the parent reloads with fresh creds.
   useEffect(() => {
-    const list = Array.isArray(savedCredentials.allowedSubreddits)
-      ? (savedCredentials.allowedSubreddits as string[])
-      : [];
-    const def = (savedCredentials.defaultSubreddit as string) || (list[0] || '');
+    const list = allowedSubreddits;
+    const def = defaultSubredditDep || (list[0] || '');
     setAllowedList(list);
     setDefaultSub(def);
-  }, [JSON.stringify(savedCredentials.allowedSubreddits), savedCredentials.defaultSubreddit]);
+  }, [allowedSubredditsDep, allowedSubreddits.length, defaultSubredditDep]);
 
   const normalize = (raw: string) => raw.trim().replace(/^r\//i, '').replace(/^\//, '');
   const valid = (raw: string) => /^[A-Za-z0-9][A-Za-z0-9_]{2,20}$/.test(raw);
