@@ -43,7 +43,11 @@ export default function Landing() {
           localStorage.removeItem('forge_active_brand_id');
         }
       }
-    } catch { /* silent */ }
+    } catch (err) {
+      if (import.meta.env.DEV) {
+        console.warn('Failed to read forge_active_brand from localStorage:', err);
+      }
+    }
   }, []);
 
   useEffect(() => {
