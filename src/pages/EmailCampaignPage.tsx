@@ -90,6 +90,30 @@ function EmailCard({ email, idx, onCopyForHubSpot }: { email: EmailRecord; idx: 
   const emailIdx = email.email_index ?? email.index ?? idx + 1;
   const subjects = email.subject_lines || {};
 
+  // Defense-in-depth body sanitizer. The system prompt now tells the LLM to
+  // keep P.S./CTA/proof annotations OUT of body, but if it slips up we strip
+  // the duplicates here so the user never sees them twice. Each pattern is
+  // documented as it relates to the field-separation rules in the prompt.
+  const sanitizeBody = (raw: string): string => {
+    if (!raw) return '';
+    let s = raw;
+    // 1. Strip any inline {{cta_url}} / {{cta_link}} placeholder. The CTA
+    //    URL renders as a button below body — inline placeholder is duplicate.
+    s = s.replace(/\{\{\s*cta_(?:url|link)\s*\}\}/gi, '');
+    // 2. Strip [NEEDS_PROOF: ...] / [NEEDS_REVIEW: ...] inline annotations.
+    //    These should be flag entries, not body text. Multi-line capable.
+    s = s.replace(/\[NEEDS_(?:PROOF|REVIEW|CITATION|VERIFICATION)\s*:[^\]]*\]/gi, '');
+    // 3. Strip a trailing P.S. paragraph from body. The dedicated ps field
+    //    renders separately. Match 'P.S.' (with or without periods/spacing)
+    //    at the start of a line through the end of the body.
+    s = s.replace(/(?:\r?\n){1,2}P\.?\s*S\.?\s*[\s\S]*$/i, '');
+    // 4. Collapse 3+ consecutive newlines (left over from removed blocks) to 2.
+    s = s.replace(/\n{3,}/g, '\n\n');
+    return s.trim();
+  };
+
+  const cleanBody = sanitizeBody(email.body);
+
   return (
     <div className={`ec-email-card ${open ? 'open' : ''}`}>
       <button className="ec-email-header" onClick={() => setOpen(o => !o)}>
@@ -144,7 +168,7 @@ function EmailCard({ email, idx, onCopyForHubSpot }: { email: EmailRecord; idx: 
             <div className="ec-section-label-row">
               <span className="ec-section-label">EMAIL BODY</span>
               <div className="ec-section-label-actions">
-                <button className="ec-copy-btn-sm" onClick={() => copy(email.body + (email.ps ? `\n\nP.S. ${email.ps}` : ''), 'body')}>
+                <button className="ec-copy-btn-sm" onClick={() => copy(cleanBody + (email.ps ? `\n\nP.S. ${email.ps}` : ''), 'body')}>
                   {copiedField === 'body' ? <><Check /> Copied</> : <><Copy /> Copy all</>}
                 </button>
                 {onCopyForHubSpot && (
@@ -158,7 +182,7 @@ function EmailCard({ email, idx, onCopyForHubSpot }: { email: EmailRecord; idx: 
                 )}
               </div>
             </div>
-            <pre className="ec-body-text">{email.body}</pre>
+            <pre className="ec-body-text">{cleanBody}</pre>
             {email.ps && (
               <p className="ec-ps-line"><strong>P.S.</strong> {email.ps}</p>
             )}
@@ -341,7 +365,15 @@ export default function EmailCampaignPage() {
   const copyAsHubSpotHtml = (email: EmailRecord) => {
     const subjects = email.subject_lines || ({} as any);
     const subject = subjects[subjectVariant] || subjects.benefit || subjects.curiosity || '';
-    const paragraphs = (email.body || '')
+    // Apply same sanitization the EmailCard uses so the HubSpot copy doesn't
+    // contain duplicate P.S./CTA/proof annotations either.
+    const sanitized = (email.body || '')
+      .replace(/\{\{\s*cta_(?:url|link)\s*\}\}/gi, '')
+      .replace(/\[NEEDS_(?:PROOF|REVIEW|CITATION|VERIFICATION)\s*:[^\]]*\]/gi, '')
+      .replace(/(?:\r?\n){1,2}P\.?\s*S\.?\s*[\s\S]*$/i, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    const paragraphs = sanitized
       .split(/\n\n+/)
       .map(p => `<p>${p.trim().replace(/\n/g, '<br>')}</p>`)
       .join('\n  ');
