@@ -314,15 +314,19 @@ function RedditAllowedSubreddits({
   const [err, setErr] = useState('');
   const [ok, setOk] = useState('');
 
+  const allowedSubreddits = Array.isArray(savedCredentials.allowedSubreddits)
+    ? (savedCredentials.allowedSubreddits as string[])
+    : [];
+  const allowedSubredditsDep = allowedSubreddits.join('\u0000');
+  const defaultSubredditDep = (savedCredentials.defaultSubreddit as string) || '';
+
   // Re-hydrate when the parent reloads with fresh creds.
   useEffect(() => {
-    const list = Array.isArray(savedCredentials.allowedSubreddits)
-      ? (savedCredentials.allowedSubreddits as string[])
-      : [];
-    const def = (savedCredentials.defaultSubreddit as string) || (list[0] || '');
+    const list = allowedSubreddits;
+    const def = defaultSubredditDep || (list[0] || '');
     setAllowedList(list);
     setDefaultSub(def);
-  }, [JSON.stringify(savedCredentials.allowedSubreddits), savedCredentials.defaultSubreddit]);
+  }, [allowedSubredditsDep, allowedSubreddits.length, defaultSubredditDep]);
 
   const normalize = (raw: string) => raw.trim().replace(/^r\//i, '').replace(/^\//, '');
   const valid = (raw: string) => /^[A-Za-z0-9][A-Za-z0-9_]{2,20}$/.test(raw);
@@ -484,6 +488,17 @@ export default function IntegrationsPage() {
       });
   };
 
+  const resolveBrandId = () => {
+    if (activeBrand?.id) return activeBrand.id;
+    try {
+      const storedBrandId = localStorage.getItem('forge_active_brand_id');
+      if (storedBrandId) return storedBrandId;
+    } catch (e) {
+      // Ignore storage access errors and continue fallback chain
+    }
+    return new URLSearchParams(window.location.search).get('brand') || '';
+  };
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const connected = params.get('connected');
@@ -492,7 +507,7 @@ export default function IntegrationsPage() {
       setSuccess(`${platform.charAt(0).toUpperCase() + platform.slice(1)} connected via Zernio!`);
       setExpanded(platform as ChannelId);
       window.history.replaceState({}, '', '/app/integrations');
-      const brand = activeBrand?.id || (() => { try { return localStorage.getItem('forge_active_brand_id'); } catch(e) { return ''; } })() || new URLSearchParams(window.location.search).get('brand') || '';
+      const brand = resolveBrandId();
       if (brand) setTimeout(() => loadChannels(brand), 500);
     }
     if (params.get('linkedin_error') || connected === 'error') {
@@ -556,7 +571,22 @@ export default function IntegrationsPage() {
         if (!token) throw new Error('Could not get connect token');
 
         // Open Pipedream Connect iframe directly — bypass SDK token resolution issues
-        const oauthAppId = (channel as any).pipedreamOauthAppId && (channel as any).pipedreamOauthAppId !== 'FACEBOOK_OAUTH_APP_ID' ? (channel as any).pipedreamOauthAppId : (await fetch('/api/pipedream/config').then(r => r.json()).then(c => c.oauthAppIds?.[channel.pipedreamApp!]).catch(() => null));
+        const channelWithOauthApp = channel as { pipedreamOauthAppId?: string };
+        const configuredOauthAppId = channelWithOauthApp.pipedreamOauthAppId;
+        let oauthAppId: string | null = null;
+
+        if (configuredOauthAppId && configuredOauthAppId !== 'FACEBOOK_OAUTH_APP_ID') {
+          oauthAppId = configuredOauthAppId;
+        } else {
+          try {
+            const configResponse = await fetch('/api/pipedream/config');
+            const configJson = await configResponse.json();
+            oauthAppId = configJson.oauthAppIds?.[channel.pipedreamApp!] ?? null;
+          } catch {
+            oauthAppId = null;
+          }
+        }
+
         const iframeUrl = `https://pipedream.com/_static/connect.html?token=${encodeURIComponent(token)}${oauthAppId ? `&oauthAppId=${encodeURIComponent(oauthAppId)}` : ''}&app=${encodeURIComponent(channel.pipedreamApp || '')}`;
 
         await new Promise<void>((resolve) => {
@@ -812,21 +842,30 @@ export default function IntegrationsPage() {
                           <SetupGuide guide={ch.setupGuide} />
                         </div>
                         <div className="int-fields">
-                          {ch.credentialFields.map(f => (
-                            <div key={f.key} className="int-field">
-                              <label className="int-field-label">{f.label}</label>
-                              <input
-                                className="int-field-input"
-                                type={connected ? 'password' : (f.type || 'text')}
-                                placeholder={connected ? '••••••••••••' : f.placeholder}
-                                value={credentials[ch.id][f.key] !== undefined ? credentials[ch.id][f.key] : (connected ? (savedChannels[ch.id] as any)?.credentials?.[f.key] || '' : '')}
-                                onChange={e => setCredentials(prev => ({
-                                  ...prev,
-                                  [ch.id]: { ...prev[ch.id], [f.key]: e.target.value }
-                                }))}
-                              />
-                            </div>
-                          ))}
+                          {ch.credentialFields.map(f => {
+                            const getFieldValue = (channelId: string, fieldKey: string, isConnected: boolean) => {
+                              const currentValue = credentials[channelId]?.[fieldKey];
+                              if (currentValue !== undefined) return currentValue;
+                              if (isConnected) return (savedChannels[channelId] as any)?.credentials?.[fieldKey] || '';
+                              return '';
+                            };
+
+                            return (
+                              <div key={f.key} className="int-field">
+                                <label className="int-field-label">{f.label}</label>
+                                <input
+                                  className="int-field-input"
+                                  type={connected ? 'password' : (f.type || 'text')}
+                                  placeholder={connected ? '••••••••••••' : f.placeholder}
+                                  value={getFieldValue(ch.id, f.key, connected)}
+                                  onChange={e => setCredentials(prev => ({
+                                    ...prev,
+                                    [ch.id]: { ...prev[ch.id], [f.key]: e.target.value }
+                                  }))}
+                                />
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -874,7 +913,7 @@ export default function IntegrationsPage() {
                             try {
                               const r = await fetch('/api/publishing/channels', {
                                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ brandProfileId: selectedBrand, channel: ch.id, credentials: ch.pipedreamApp ? savedChannels[ch.id] : credentials[ch.id], utmTemplate: utmTemplates[ch.id] })
+                                body: JSON.stringify({ brandProfileId: selectedBrand, channel: ch.id, credentials: ch.pipedreamApp ? savedChannels[ch.id]?.credentials : credentials[ch.id], utmTemplate: utmTemplates[ch.id] })
                               });
                               const d = await r.json();
                               if (d.success) { setSuccess('UTM template saved'); setTimeout(() => setSuccess(''), 3000); }
