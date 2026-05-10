@@ -112,7 +112,7 @@ Return ONLY valid JSON — no markdown, no commentary, no newlines inside string
       "cta_text": "string — action + outcome, under 8 words",
       "cta_url_placeholder": "{{cta_url}}",
       "ps": "string or null — P.S. line for conversion emails",
-      "confidence_score": 70-95,
+      "confidence_score": "integer (70-95)",
       "confidence_reason": "string — why this score",
       "flags": [
         {
