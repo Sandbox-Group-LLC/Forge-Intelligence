@@ -9930,7 +9930,7 @@ app.post('/api/hubspot/push-email-template', requireAuth, async (req, res) => {
     const persona = brief.target_persona || 'Email';
     const templateName = `[Forge] ${persona} — ${subject}`.slice(0, 100);
 
-    const hsRes = await fetch('https://api.hubapi.com/content/api/v2/email-templates', {
+    const hsRes = await fetch('https://api.hubapi.com/content/api/v2/templates', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
