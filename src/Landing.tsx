@@ -216,7 +216,7 @@ export default function Landing() {
                 </button>
               </div>
               {error && <p style={styles.errorMsg}>{error}</p>}
-              <p style={styles.formCaption}>No account needed. Enter your domain again within 24hrs to return to your brain.</p>
+              <p style={styles.formCaption}>No account needed. Enter your domain again within 24hrs to return to your brand profile.</p>
               <p style={{ fontSize: '11px', color: '#475569', margin: 0 }}>Already scanned? Just enter your domain above to resume.</p>
             </form>
           )}
