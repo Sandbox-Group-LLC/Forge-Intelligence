@@ -320,9 +320,13 @@ function RedditAllowedSubreddits({
   const allowedSubredditsDep = allowedSubreddits.join('\u0000');
   const defaultSubredditDep = (savedCredentials.defaultSubreddit as string) || '';
 
+  const allowedSubreddits = Array.isArray(savedCredentials.allowedSubreddits)
+    ? (savedCredentials.allowedSubreddits as string[])
+    const list = allowedSubreddits;
+    const def = defaultSubredditDep || (list[0] || '');
   // Re-hydrate when the parent reloads with fresh creds.
   useEffect(() => {
-    const list = allowedSubreddits;
+  }, [allowedSubredditsDep, allowedSubreddits.length, defaultSubredditDep]);
     const def = defaultSubredditDep || (list[0] || '');
     setAllowedList(list);
     setDefaultSub(def);
