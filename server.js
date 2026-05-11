@@ -11469,23 +11469,31 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
         try {
           const rd = row.response_data || {};
           const postId = rd.postId || rd.post_id || rd.id;
+          // Zernio's internal _id, populated for posts published after the
+          // Zernio migration. Pre-migration posts have null here; sync routes
+          // them via legacy LinkedIn API fallback below.
+          const zernioPostId = rd.zernioPostId || rd.zernio_post_id || null;
           if (!postId) { errors.push({ contentId: row.content_id, error: 'no_post_id' }); continue; }
 
           let impressions = 0, clicks = 0, reactions = 0, comments = 0, reposts = 0;
           let rawData = {};
           let dataSource = 'none';
 
-          if (isZernio) {
-            // ── Zernio Analytics path ──
-            const analyticsRes = await callZernio('GET', `/analytics?postId=${encodeURIComponent(postId)}`);
-            console.log(`[Analytics/LinkedIn] Zernio analytics for ${postId}: HTTP ${analyticsRes.status}`);
+          // Use Zernio analytics ONLY when:
+          //   1. Brand is migrated to Zernio (provider === 'zernio')
+          //   2. This specific post has a Zernio _id (i.e. was published through Zernio)
+          // Pre-Zernio posts on Zernio-routed brands fall through to legacy fallback.
+          if (isZernio && zernioPostId) {
+            // ── Zernio Analytics path (uses Zernio _id, NOT platform URN) ──
+            const analyticsRes = await callZernio('GET', `/analytics?postId=${encodeURIComponent(zernioPostId)}`);
+            console.log(`[Analytics/LinkedIn] Zernio analytics for ${zernioPostId} (URN ${postId}): HTTP ${analyticsRes.status}`);
 
             if (analyticsRes.status === 202) {
-              console.log(`[Analytics/LinkedIn] Sync pending for ${postId} — will retry next sync`);
+              console.log(`[Analytics/LinkedIn] Sync pending for ${zernioPostId} — will retry next sync`);
               continue;
             }
             if (analyticsRes.status === 424) {
-              console.log(`[Analytics/LinkedIn] All platforms failed for ${postId}`);
+              console.log(`[Analytics/LinkedIn] All platforms failed for ${zernioPostId}`);
               errors.push({ contentId: row.content_id, error: 'zernio_analytics_424' });
               continue;
             }
@@ -11496,12 +11504,15 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
             }
 
             const analytics = analyticsRes.parsed;
-            // Zernio returns metrics at post level or per-platform — extract LinkedIn metrics
-            const platforms = analytics?.post?.platforms || analytics?.platforms || [];
-            const liMetrics = platforms.find(p => p.platform === 'linkedin')?.analytics
-              || analytics?.post?.analytics
+            // Zernio analytics response shape (verified via probe): metrics live at
+            // analytics.platformAnalytics[].analytics for the LinkedIn entry, OR at
+            // analytics.analytics as the rolled-up post-level metrics.
+            const platformAnalytics = analytics?.platformAnalytics || [];
+            const liEntry = platformAnalytics.find(p => p.platform === 'linkedin');
+            const liMetrics = liEntry?.analytics
               || analytics?.analytics
-              || analytics || {};
+              || analytics?.post?.analytics
+              || {};
 
             impressions = liMetrics.impressions || liMetrics.views || liMetrics.impression_count || 0;
             clicks      = liMetrics.clicks || liMetrics.link_clicks || liMetrics.clickCount || 0;
@@ -11510,7 +11521,7 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
             reposts     = liMetrics.shares || liMetrics.reposts || liMetrics.repostCount || liMetrics.shareCount || 0;
             rawData     = { zernio: analytics };
             dataSource  = 'zernio';
-            console.log(`[Analytics/LinkedIn] Zernio metrics for ${postId}: ${impressions} impr, ${reactions} likes, ${comments} comments, ${reposts} shares, ${clicks} clicks`);
+            console.log(`[Analytics/LinkedIn] Zernio metrics for ${zernioPostId}: ${impressions} impr, ${reactions} likes, ${comments} comments, ${reposts} shares, ${clicks} clicks`);
 
           } else if (token) {
             // ── Legacy direct LinkedIn API path ──
