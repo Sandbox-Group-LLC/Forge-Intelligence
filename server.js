@@ -10662,6 +10662,8 @@ Output only the post text.` }]
                 status: 'published',
                 url: zr.postUrl,
                 postId: zr.postId,
+                // Zernio's internal _id — needed by analytics sync for Zernio lookups
+                zernioPostId: zr.zernioPostId,
                 via: 'zernio',
                 utmParams
               };
@@ -14391,7 +14393,14 @@ const zernioPublish = async ({ platform, accountId, content }) => {
 
   return {
     status: 'published',
-    postId: platformResult.platformPostId || post._id,
+    // platformPostId is the platform-native ID (LinkedIn URN, X tweetId, etc).
+    // This is what platform-direct APIs use and what appears in user-visible URLs.
+    postId: platformResult.platformPostId,
+    // Zernio's internal _id. REQUIRED for Zernio's /analytics endpoint — it
+    // does NOT accept platformPostId. Saving both means the analytics sync
+    // can use zernioPostId for Zernio lookups while preserving platform ID
+    // for everything else.
+    zernioPostId: post._id,
     postUrl: platformResult.platformPostUrl,
     publishedAt: platformResult.publishedAt,
     raw: post
