@@ -45,6 +45,53 @@ Three duplicate "Brand Intelligence Brief: Six Deliverables" article drafts exis
 
 **Pattern flagged for future janitor job:** `DELETE FROM geo_citations WHERE content_id NOT IN (SELECT id FROM <each_brand_table>)` periodically would catch this class of orphan automatically as users delete duplicate drafts.
 
+## Late May 10 — Publish status mirror bug (100% of articles affected)
+
+Brian noticed content_id `e4214303-c827-45fe-9951-b7dac88be4c1` had 1,360 LinkedIn impressions but wasn't showing in Performance Dashboard. Investigation traced this to a systemic data-write gap that had been live since the publishing pipeline was built.
+
+**The bug:** `/api/publishing/publish` updated 4 places on success:
+  1. `publishing_queue.status = 'published'`
+  2. `publishing_queue.publish_results[channel]`
+  3. `publish_log` row insert
+  4. `memories` row insert
+
+But NEVER touched the parent `generated_content_<brand>.status` row. So `publishing_queue.status='published'` happened (with live URLs across all 5 channels in `publish_results`) while `content.status` stayed stuck at `'draft'`. The Performance Dashboard filters on `content.status='published'` — so it never showed a single published article since the publishing pipeline was built.
+
+**Audit result:** 25 out of 25 published articles across 3 brands (Forge: 15, Sandbox-XM: 6, Sandbox-GTM: 4). **100% failure rate.** Every single piece of published content was invisible in Performance Dashboard across the entire history of the platform.
+
+**Backfill:** Updated all 25 stuck rows from `status='draft'` to `status='published'` via SQL relay. Re-audit confirmed 0 remaining.
+
+**Systemic fix (`c5b2b005`):** Added the 5th UPDATE to the publish endpoint:
+
+```javascript
+if (allPublished || newStatus === 'published') {
+  try {
+    const brandTable = `generated_content_${item.brand_profile_id.replace(/-/g, '_')}`;
+    await pool.query(
+      `UPDATE ${brandTable}
+          SET status = 'published', updated_at = NOW()
+        WHERE id = $1 AND status IN ('draft', 'pending_review')`,
+      [item.content_id]
+    );
+  } catch (e) {
+    console.error('[PUBLISH] Parent content status sync failed:', e.message);
+  }
+}
+```
+
+Try/catch wrapped because channel publishes already succeeded — a status-sync write failure shouldn't 500 the response. Best-effort sync.
+
+**What didn't ship:** the unpublish-side mirror. When a channel is unpublished, `publishing_queue.status` recomputes to `staged` or `partial` based on remaining live channels. The parent content row should follow the same logic (`'published'` if any channel still live, `'draft'` if all gone). Deferred to a separate commit because:
+- More complex than publish-side (per-channel recompute, not single update)
+- Brian hasn't unpublished recently
+- Avoiding half-applied state from over-eager refactor
+
+**Lessons logged:**
+
+- **The architectural pattern flagged 9+ times before — 'write paths needing to update multiple tables atomically' — just hit its biggest manifestation yet.** This wasn't a duplicate-record or merge-vs-overwrite issue. It was a missing write entirely. The fix is one block of code, but the root cause is the same shape: write paths that touch multiple tables need a defined contract about what the full write set includes, and that contract needs to live somewhere visible (a helper function, a comment block, or an actual integration test). Right now it lives in 'whoever last touched this code remembered the convention.' That's how this kind of bug ships.
+- **The two tables had different semantic owners.** `generated_content.status` was built for the pre-publish workflow (draft → pending_review → approved). `publishing_queue.status` was built for the publish-and-after lifecycle. Neither table's owner explicitly thought 'when publish succeeds, ALSO update the pre-publish lifecycle table.' Both were doing the right thing in isolation. The bug was the missing handshake. Worth a future audit of all multi-table write paths to find similar gaps before users do.
+- **100% failure rates hide because they look like 'feature doesn't exist' to the user.** Brian assumed Performance Dashboard just wasn't showing his analytics because the integration wasn't done yet — not because the analytics were correctly fetching from a filter that excluded every article. When the failure rate is total, there's no working example to compare against to spot the bug. Need to be more suspicious of 'this whole feature seems broken' — it might be 100% data inconsistency, not 100% missing code.
+
 # 2026-05-09 — MCP server, Attio CSV export, HubSpot demolition arc, Email Campaign Generator polish
 
 A 13-hour session that started with shipping the MCP server for Viktor and ended at 4am with a fully overhauled Email Campaign Generator. Major pivots, hard lessons about external API gating, and one of the cleaner closing arcs Forge has put together — flag actions wired with brain feedback loop, edit mode on every email, render-side sanitization defense in depth.
