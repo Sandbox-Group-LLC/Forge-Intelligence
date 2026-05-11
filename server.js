@@ -14525,6 +14525,22 @@ const getOrCreateZernioProfile = async (brandProfileId) => {
   return profileId;
 };
 
+
+// POST /api/admin/zernio/raw — Generic Zernio API probe for admin debugging.
+// Body: { adminPassword, method: 'GET'|'POST'|..., path: '/analytics?postId=...', body?: {...} }
+// Used to validate API behavior without redeploying. Live tool, not test-only.
+app.post('/api/admin/zernio/raw', async (req, res) => {
+  if (!zernioGuard(req, res)) return;
+  try {
+    const { method = 'GET', path, body } = req.body;
+    if (!path) return res.status(400).json({ success: false, error: 'path required' });
+    const result = await callZernio(method, path, body);
+    res.json({ success: true, request: { method, path, body }, ...result });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 app.post('/api/zernio/connect', requireAuth, async (req, res) => {
   try {
     const { brandProfileId, platform } = req.body;
