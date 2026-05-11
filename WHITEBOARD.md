@@ -92,6 +92,94 @@ Try/catch wrapped because channel publishes already succeeded — a status-sync 
 - **The two tables had different semantic owners.** `generated_content.status` was built for the pre-publish workflow (draft → pending_review → approved). `publishing_queue.status` was built for the publish-and-after lifecycle. Neither table's owner explicitly thought 'when publish succeeds, ALSO update the pre-publish lifecycle table.' Both were doing the right thing in isolation. The bug was the missing handshake. Worth a future audit of all multi-table write paths to find similar gaps before users do.
 - **100% failure rates hide because they look like 'feature doesn't exist' to the user.** Brian assumed Performance Dashboard just wasn't showing his analytics because the integration wasn't done yet — not because the analytics were correctly fetching from a filter that excluded every article. When the failure rate is total, there's no working example to compare against to spot the bug. Need to be more suspicious of 'this whole feature seems broken' — it might be 100% data inconsistency, not 100% missing code.
 
+## Late May 10 / Early May 11 — Zernio dual-ID analytics fix
+
+Followup to the publish-status-mirror bug from earlier in the night. Backfilled status to 'published', but Brian noticed the 1,360-impression LinkedIn article still wasn't showing in Performance Dashboard. Probed.
+
+### The real bug (not the one I first diagnosed)
+
+Initial theory was that Performance Dashboard filtered on `content.status='published'`. Wrong. The dashboard reads from `content_analytics` table keyed by `(brand_profile_id, content_id, channel)`. The actual gap was: **no `content_analytics` row existed for that article on the LinkedIn channel.**
+
+Drilled deeper. The analytics sync endpoint `/api/analytics/sync/:brandProfileId` (LinkedIn branch at L11427) was silently 404'ing on every Zernio-routed publish because of an ID mismatch:
+
+- **Zernio's `/analytics?postId=X` endpoint requires Zernio's internal `_id` (e.g. `6a0112757e1cbf16e42f0b98`)**
+- **`zernioPublish()` was saving `platformPostId` (LinkedIn URN like `urn:li:share:7458519670`) as `postId`** because of a `||` fallback that resolved to the platform-native ID whenever Zernio returned one
+- Sync called Zernio with the URN, Zernio said 'Post not found', sync moved on
+
+Confirmed with a probe before any code changes. Added `/api/admin/zernio/raw` admin endpoint (kept it — useful general tool):
+
+```
+POST /api/admin/zernio/raw  {method, path, body?}
+→ returns the raw Zernio response
+```
+
+Probe 1: `GET /analytics?postId=urn:li:share:7459381602910019584` → **404 'Post not found'**
+Probe 2: `GET /analytics?postId=6a0112757e1cbf16e42f0b98` → **200 with full metrics**
+
+Theory confirmed before writing fix code. Lesson: this is the right pattern — probe before pivoting. Earlier in the night I burned 90 minutes pivoting HubSpot endpoints without probing first; this time the probe saved me from shipping a wrong fix.
+
+### The four-step fix
+
+Shipped as 4 atomic commits:
+
+**Step 1 (`caf0df3d`):** `zernioPublish()` now returns BOTH IDs:
+```js
+return {
+  postId: platformResult.platformPostId,  // LinkedIn URN — used for platform-direct APIs
+  zernioPostId: post._id,                 // Zernio internal — used for Zernio /analytics
+  postUrl, publishedAt, raw
+};
+```
+Publish path saves both into `publish_log.response_data`.
+
+**Step 2 (`6757b863`):** LinkedIn analytics sync uses `zernioPostId` when present, falls through to legacy direct LinkedIn API path when missing. The legacy path is the safety net for both (a) brands still on direct OAuth and (b) pre-Zernio-migration posts on Zernio-routed brands.
+
+Also fixed the Zernio analytics response parser. Previous code looked for metrics at `analytics.post.platforms[]` (wrong shape). Probe confirmed real shape is `analytics.platformAnalytics[].analytics` (per-platform) or `analytics.analytics` (rolled-up). Updated parser.
+
+**Step 3 (backfill, no code commit):** Pulled Zernio's `/posts?limit=100` listing, built a `URN → _id` map for all 18 posts. Found 14 publish_log rows (LinkedIn + Reddit + Facebook across Forge) with `via='zernio'` but no `zernioPostId`. Backfilled all 14 by URN matching. Next analytics sync run will populate `content_analytics` for these.
+
+**Step 4 (no commit — accepted gap):** The 14 pre-Zernio Forge LinkedIn posts (April 17 – May 7) cannot sync analytics. Their credentials are gone:
+- `publishing_channels.credentials` for Forge LinkedIn was overwritten by the Zernio migration (no `accessToken` / `authorUrn` remaining)
+- No `LINKEDIN_ACCESS_TOKEN` env var on Render
+- LinkedIn's analytics endpoints require Marketing Developer Platform approval that the old token had; can't restore from public OAuth flow
+
+**These 14 articles are still real publishes with real engagement** — they just won't appear in Performance Dashboard's LinkedIn channel view. The content rows are `status='published'` (from the earlier backfill), and the publish_log entries are intact with valid LinkedIn URLs. Only the metrics sync is broken.
+
+Affected article IDs (pre-Zernio Forge LinkedIn legacy):
+```
+e4214303 (2026-05-07, 1,360 impressions on LinkedIn UI)  ← the one that started this
+46e58956 (2026-05-06)
+7f3f4063 (2026-05-03)
+e20b2b20 (2026-04-30)
+7cbe3629 (2026-04-25)
+44ca384f (2026-04-25)
+984267e0 (2026-04-23)
+843e3718 (2026-04-21)
+81b0e0e3 (2026-04-20)
+3d7eef76 (2026-04-20)
+57ee5cba (2026-04-20)
+4bc0e177 (2026-04-18)
+d3078459 (2026-04-17)
+7aa8d7ca (2026-04-17)
+```
+
+Going forward, every new Zernio-routed publish gets BOTH IDs saved correctly, and analytics sync works automatically. The pre-Zernio gap is bounded — it will never grow.
+
+### Final session state
+
+- `publish_log`: 17 LinkedIn / 4 Reddit / 5 Facebook / 7 Ghost / 6 X for Forge brand
+- `zernioPostId` populated on all Zernio-era rows (14 total across channels)
+- `content.status` correctly set to 'published' on all 25 published articles (from earlier-night fix)
+- Performance Dashboard now reflects analytics for the Zernio-era LinkedIn posts on next sync run; legacy 14 will remain blank
+
+### Patterns and lessons logged
+
+- **The dual-ID problem applies to ALL Zernio-routed channels, not just LinkedIn.** Reddit and Facebook publishes through Zernio also save `platformPostId` and lose `_id`. Reddit and Facebook sync paths (separate code blocks at L11593+ and L11675+) need the same dual-ID treatment. Step 2 only fixed LinkedIn. **Followup: replicate steps 1+2 for Reddit + Facebook + any other Zernio-routed channel.**
+- **Backfill via API listing is robust when the platform exposes a 'list all posts' endpoint with both ID shapes.** Zernio's `/posts?limit=100` was the key. Other API integrations may not be as cooperative; check listing endpoints before assuming backfill is possible.
+- **'My theory is well-supported but unverified' is not a reason to skip the probe.** Earlier in the night I pivoted four HubSpot endpoints based on inference. Tonight I probed Zernio first, confirmed theory in 30 seconds, then shipped a fix I was sure was right. Massively better signal-to-noise.
+- **API auth state is fragile across migrations.** The Zernio migration overwrote Forge's LinkedIn `publishing_channels.credentials` row. Pre-migration `accessToken` is gone forever. Pattern: when migrating credentials, archive the old state somewhere recoverable OR build the migration to MERGE credentials instead of REPLACE. **Followup: LinkedIn OAuth callback should merge into existing credentials, not overwrite.**
+- **'Analytics not showing up' can have multiple compounding causes.** Tonight: (a) parent content row status wasn't being updated on publish (fixed earlier); (b) dual-ID mismatch broke Zernio analytics sync (fixed in this commit set); (c) legacy LinkedIn API auth no longer available (accepted as gap). Each layer hid the next; only the deepest one (auth gap) was actually unsolvable. Lesson: when investigation reveals one cause, keep investigating — there may be more underneath.
+
 # 2026-05-09 — MCP server, Attio CSV export, HubSpot demolition arc, Email Campaign Generator polish
 
 A 13-hour session that started with shipping the MCP server for Viktor and ended at 4am with a fully overhauled Email Campaign Generator. Major pivots, hard lessons about external API gating, and one of the cleaner closing arcs Forge has put together — flag actions wired with brain feedback loop, edit mode on every email, render-side sanitization defense in depth.
