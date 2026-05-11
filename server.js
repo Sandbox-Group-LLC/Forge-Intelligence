@@ -11359,6 +11359,32 @@ ${canonicalNote}`,
       [newStatus, JSON.stringify(targets), JSON.stringify(persistResults), allPublished ? new Date() : null, queueItemId]
     );
 
+    // Mirror status onto the parent generated_content_<brand> row so the
+    // Performance Dashboard (which filters on content.status='published')
+    // sees it. Before this, the publish endpoint updated publishing_queue
+    // + publish_log + memories but left content.status stuck at 'draft' —
+    // every successfully-published article was invisible in analytics
+    // until manual SQL backfill.
+    //
+    // Brand-scoped table name: generated_content_{brand_profile_id-with-dashes-as-underscores}.
+    // Wrapped in try/catch — channel publishes already succeeded; status
+    // sync is best-effort and a write failure here shouldn't 500 the
+    // response.
+    if (allPublished || newStatus === 'published') {
+      try {
+        const brandTable = `generated_content_${item.brand_profile_id.replace(/-/g, '_')}`;
+        await pool.query(
+          `UPDATE ${brandTable}
+              SET status = 'published',
+                  updated_at = NOW()
+            WHERE id = $1 AND status IN ('draft', 'pending_review')`,
+          [item.content_id]
+        );
+      } catch (e) {
+        console.error('[PUBLISH] Parent content status sync failed:', e.message);
+      }
+    }
+
     // Write memory to Brain on any successful publish
     const successfulChannels = targets.filter(ch => results[ch]?.status === 'published' || results[ch]?.status === 'staged');
     if (successfulChannels.length > 0) {
