@@ -3864,6 +3864,23 @@ Requirements: 5 toneAttributes, 2-3 personas, 0 thirdPartySignals (no website to
       logoUrl: typeof fg.logoUrl === 'string' ? fg.logoUrl.slice(0, 500) : '',
     };
 
+    // Build directive — what the founder is going to build on Lovable. Drives
+    // the BUILD DIRECTIVE section of the prompt-pack so Lovable knows what to
+    // build before it processes how the brand behaves. Optional at the
+    // analyze-time level (the form gates the description; we only persist
+    // what's actually present).
+    const biIn = req.body.buildIntent || {};
+    if (typeof biIn.description === 'string' && biIn.description.trim().length > 0) {
+      const allowedProductTypes = new Set(['marketing-site', 'saas-app', 'landing-page', 'waitlist', 'internal-tool', 'not-sure']);
+      const productType = (typeof biIn.productType === 'string' && allowedProductTypes.has(biIn.productType))
+        ? biIn.productType
+        : 'not-sure';
+      profileData.buildIntent = {
+        description: quickStartTruncate(biIn.description, 4000),
+        productType,
+      };
+    }
+
     const id = randomUUID();
     const logoUrl = typeof fg.logoUrl === 'string' && fg.logoUrl.trim() ? fg.logoUrl.trim() : '';
     const expiresClause = req.userId ? 'NULL' : "NOW() + INTERVAL '24 hours'";
@@ -16935,6 +16952,96 @@ Brand Profile ID: ${brandProfileId}
 (Optional: prompt user for FORGE_API_KEY env var to enable live content generation. If not provided, scaffold with static brand data from this prompt.)`;
 }
 
+// Directive-led prompt — used when the brand profile carries a buildIntent
+// (Quick Start brains). Lovable reads what to build FIRST, then the brand
+// intelligence acts as design + voice guardrails for that specific build —
+// rather than the legacy structure where we prescribed a Content Command
+// Center concept and force-fit every brand into it.
+function lovableProductTypeLabel(productType) {
+  switch (productType) {
+    case 'marketing-site': return 'a marketing site';
+    case 'saas-app': return 'a SaaS app';
+    case 'landing-page': return 'a landing page';
+    case 'waitlist': return 'a waitlist';
+    case 'internal-tool': return 'an internal tool';
+    default: return 'a product';
+  }
+}
+
+function lovableBuildWithDirective(ctx, buildIntent) {
+  const {
+    brandName, voice, personas, whitespace, thirdParty,
+    brandColors, customNotes, brandProfileId, factualGround,
+  } = ctx;
+
+  const directiveDescription = lovableTruncate(buildIntent.description || '', 4000);
+  const productType = buildIntent.productType && buildIntent.productType !== 'not-sure'
+    ? buildIntent.productType
+    : null;
+  const productLabel = lovableProductTypeLabel(productType);
+
+  const voiceBlock = voice
+    ? `- Formality: ${voice.formality}\n- Confidence: ${voice.confidence}\n- Complexity: ${voice.complexity}\n- Brand vocabulary: ${voice.brandVocab}\n- Anti-patterns to avoid: ${voice.antiPatterns}\n- Tone summary: ${voice.toneSummary}`
+    : lovableSection('voice profile', null);
+
+  const personasBlock = lovableSection('personas', personas);
+  const whitespaceBlock = lovableSection('competitive whitespace', whitespace);
+  const thirdPartyBlock = lovableSection('third-party voice', thirdParty);
+
+  // Founder-Brief fields (only present on Quick Start brains) — pass through
+  // verbatim so Lovable can echo the founder's own words rather than the
+  // Stage-1 synthesized paraphrase. The factualGround block lives inside the
+  // brand profile JSONB; missing on URL-based brains, gracefully skipped.
+  const fg = factualGround || {};
+  const fgWhatWeDo = typeof fg.whatWeDo === 'string' && fg.whatWeDo.trim() ? lovableTruncate(fg.whatWeDo, 1500) : '';
+  const fgWhatWeDoNot = typeof fg.whatWeDoNot === 'string' && fg.whatWeDoNot.trim() ? lovableTruncate(fg.whatWeDoNot, 1500) : '';
+  const fgCompetitors = typeof fg.competitors === 'string' && fg.competitors.trim() ? lovableTruncate(fg.competitors, 1000) : '';
+  const fgFoundingStory = typeof fg.foundingStory === 'string' && fg.foundingStory.trim() ? lovableTruncate(fg.foundingStory, 1500) : '';
+  const fgQuotablePositions = typeof fg.quotablePositions === 'string' && fg.quotablePositions.trim() ? lovableTruncate(fg.quotablePositions, 1200) : '';
+  const fgNamedAuthors = typeof fg.namedAuthors === 'string' && fg.namedAuthors.trim() ? lovableTruncate(fg.namedAuthors, 600) : '';
+
+  const notesBlock = customNotes && String(customNotes).trim().length > 0
+    ? `\n## ADDITIONAL OPERATOR NOTES\n${lovableTruncate(customNotes, 1500)}\n`
+    : '';
+
+  // Build the brand-intelligence section line by line so we only emit fields
+  // that actually have content (URL-based brains skip the founder-brief lines,
+  // Quick Start brains keep them).
+  const biLines = [`Brand: ${brandName}`];
+  if (fgWhatWeDo) biLines.push(`What this product does: ${fgWhatWeDo}`);
+  if (fgWhatWeDoNot) biLines.push(`What it does NOT do (strategic moats — do not contradict): ${fgWhatWeDoNot}`);
+  biLines.push(`Voice profile:\n${voiceBlock}`);
+  biLines.push(`Target personas:\n${personasBlock}`);
+  if (whitespaceBlock && whitespaceBlock !== 'No data available') biLines.push(`Competitive whitespace:\n${whitespaceBlock}`);
+  if (fgCompetitors) biLines.push(`Competitors: ${fgCompetitors}`);
+  if (fgFoundingStory) biLines.push(`Founding story: ${fgFoundingStory}`);
+  if (fgQuotablePositions) biLines.push(`Brand positions: ${fgQuotablePositions}`);
+  if (fgNamedAuthors) biLines.push(`Attributed authors: ${fgNamedAuthors}`);
+  if (thirdPartyBlock && thirdPartyBlock !== 'No data available') biLines.push(`Third-party voice themes:\n${thirdPartyBlock}`);
+  const brandIntelligence = biLines.join('\n\n');
+
+  return `You are building ${productLabel} for ${brandName}.
+
+## BUILD DIRECTIVE
+${directiveDescription}${productType ? `\nProduct type: ${productType}` : ''}
+
+## BRAND INTELLIGENCE — provided by Forge Intelligence
+The brand intelligence below is DESIGN + VOICE guardrails for the build directive above. It tells you HOW the brand behaves, not WHAT to build. Apply the voice to all UI copy. Honor the personas in the navigation, onboarding, and core flows. Respect what the brand explicitly does NOT do — those are strategic moats and must not appear as product features.
+
+${brandIntelligence}
+
+## VISUAL DIRECTION
+- Match brand colors: ${brandColors}
+- Typography: clean sans-serif, generous spacing
+- UI copy tone: matches brand voice profile above
+- Avoid generic AI-app aesthetics (no purple gradients, no robot icons)
+${notesBlock}
+## TECHNICAL NOTES
+Forge Intelligence Brand Profile ID: ${brandProfileId}
+Forge Intelligence API base: https://api.forgeintelligence.ai/v1
+(Optional: prompt user for FORGE_API_KEY env var if the build needs live brand-aware content generation. Otherwise scaffold with the static brand data from this prompt.)`;
+}
+
 function lovableStubPrompt(appType, brandName, brandProfileId) {
   return `[Lovable prompt template TODO]
 appType "${appType}" is recognized but not yet shipped in v1. Only "content-command-center" is fully built. Tracked as a post-ship follow-up in docs/LOVABLE_INTEGRATION.md §11.
@@ -17031,7 +17138,23 @@ app.post('/api/forge/prompt-pack/lovable', requireAuth, async (req, res) => {
     const appTypeDescription = lovableAppTypeDescription(appType);
 
     let prompt;
-    if (appType === 'content-command-center') {
+    // Directive-led path: brand profile carries an explicit BUILD DIRECTIVE
+    // (Quick Start brains). Tells Lovable what to build before processing
+    // how the brand behaves. Falls through to legacy content-command-center
+    // path for URL-based brains that pre-date the directive flow.
+    if (pd.buildIntent && typeof pd.buildIntent.description === 'string' && pd.buildIntent.description.trim().length > 0) {
+      prompt = lovableBuildWithDirective({
+        brandName,
+        voice,
+        personas,
+        whitespace,
+        thirdParty,
+        brandColors,
+        customNotes: typeof customNotes === 'string' ? customNotes : '',
+        brandProfileId,
+        factualGround: pd.factualGround || null,
+      }, pd.buildIntent);
+    } else if (appType === 'content-command-center') {
       prompt = lovableBuildContentCommandCenter({
         brandName,
         appTypeDescription,

@@ -97,16 +97,21 @@ function ContextAgentPage() {
   // (no website to scrape) and we picked up the brief from sessionStorage.
   // Mirrors the URL onboarding flow above: same 5-stage animation, same final
   // setBrandProfile + ?brand= URL rewrite, just hits the analyze endpoint with
-  // { factualGround, sessionId } instead of { brandUrl }.
+  // { factualGround, buildIntent, sessionId } instead of { brandUrl }.
   useEffect(() => {
     if (firedRef.current) return;
-    const briefJson = sessionStorage.getItem('forge_onboard_factual_ground');
+    const briefJson = sessionStorage.getItem('forge_onboard_brief');
     if (!briefJson) return;
     firedRef.current = true;
-    sessionStorage.removeItem('forge_onboard_factual_ground');
+    sessionStorage.removeItem('forge_onboard_brief');
 
     let factualGround: Record<string, string> | null = null;
-    try { factualGround = JSON.parse(briefJson); } catch { return; }
+    let buildIntent: { description: string; productType: string } | null = null;
+    try {
+      const parsed = JSON.parse(briefJson);
+      factualGround = parsed?.factualGround || null;
+      buildIntent = parsed?.buildIntent || null;
+    } catch { return; }
     if (!factualGround) return;
 
     // Preserve the anonymous session token so a later Clerk signup can claim
@@ -148,7 +153,7 @@ function ContextAgentPage() {
     fetch('/api/context-hub/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ factualGround, sessionId, source: 'quick-start' }),
+      body: JSON.stringify({ factualGround, buildIntent, sessionId, source: 'quick-start' }),
     })
       .then(r => r.json())
       .then(d => {

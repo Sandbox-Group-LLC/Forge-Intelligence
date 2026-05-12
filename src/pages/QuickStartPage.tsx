@@ -16,6 +16,22 @@ interface FounderBrief {
   logoUrl: string;
 }
 
+interface BuildIntent {
+  description: string;
+  productType: ProductType;
+}
+
+type ProductType = 'marketing-site' | 'saas-app' | 'landing-page' | 'waitlist' | 'internal-tool' | 'not-sure';
+
+const PRODUCT_TYPES: ReadonlyArray<{ value: ProductType; label: string }> = [
+  { value: 'marketing-site', label: 'Marketing site' },
+  { value: 'saas-app', label: 'SaaS app' },
+  { value: 'landing-page', label: 'Landing page' },
+  { value: 'waitlist', label: 'Waitlist' },
+  { value: 'internal-tool', label: 'Internal tool' },
+  { value: 'not-sure', label: 'Not sure yet' },
+];
+
 const emptyBrief: FounderBrief = {
   brandName: '',
   whatWeDo: '',
@@ -27,6 +43,11 @@ const emptyBrief: FounderBrief = {
   quotablePositions: '',
   namedAuthors: '',
   logoUrl: '',
+};
+
+const emptyBuildIntent: BuildIntent = {
+  description: '',
+  productType: 'not-sure',
 };
 
 const REQUIRED_KEYS: Array<keyof FounderBrief> = ['brandName', 'whatWeDo', 'whatWeDoNot', 'competitors'];
@@ -41,10 +62,13 @@ function genSessionId(): string {
 export default function QuickStartPage() {
   const navigate = useNavigate();
   const [brief, setBrief] = useState<FounderBrief>(emptyBrief);
+  const [buildIntent, setBuildIntent] = useState<BuildIntent>(emptyBuildIntent);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const canSubmit = REQUIRED_KEYS.every(k => brief[k].trim().length > 0) && !submitting;
+  const canSubmit = REQUIRED_KEYS.every(k => brief[k].trim().length > 0)
+    && buildIntent.description.trim().length > 0
+    && !submitting;
 
   const update = (k: keyof FounderBrief) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setBrief(b => ({ ...b, [k]: e.target.value }));
@@ -56,11 +80,16 @@ export default function QuickStartPage() {
     setSubmitting(true);
 
     // Trim everything; only send non-empty optional fields to keep the payload tight.
-    const trimmed: Partial<FounderBrief> = {};
+    const trimmedFG: Partial<FounderBrief> = {};
     (Object.keys(brief) as Array<keyof FounderBrief>).forEach(k => {
       const v = brief[k].trim();
-      if (v) trimmed[k] = v;
+      if (v) trimmedFG[k] = v;
     });
+
+    const trimmedBI: BuildIntent = {
+      description: buildIntent.description.trim(),
+      productType: buildIntent.productType,
+    };
 
     // Anonymous session token — survives until the founder signs up via Clerk,
     // at which point the server can claim profiles owned by this session.
@@ -73,7 +102,13 @@ export default function QuickStartPage() {
     }
 
     try {
-      sessionStorage.setItem('forge_onboard_factual_ground', JSON.stringify(trimmed));
+      // Single onboarding payload — sessionStorage holds the whole submission
+      // (build directive + founder brief). ContextAgentPage reads this and
+      // forwards everything to /api/context-hub/analyze in one POST.
+      sessionStorage.setItem('forge_onboard_brief', JSON.stringify({
+        factualGround: trimmedFG,
+        buildIntent: trimmedBI,
+      }));
     } catch {
       // sessionStorage blocked — fall back to URL state? For MVP, surface a
       // browser-level error rather than silently dropping the brief.
@@ -96,7 +131,39 @@ export default function QuickStartPage() {
       </header>
 
       <form className="qs-form" onSubmit={handleSubmit} noValidate>
-        <div className="qs-section-label">The Founder Brief</div>
+        <div className="qs-section-label">Build Directive</div>
+
+        <div className="qs-field">
+          <label htmlFor="buildDescription">What are you building? <span className="qs-req">*</span></label>
+          <textarea
+            id="buildDescription"
+            value={buildIntent.description}
+            onChange={(e) => setBuildIntent(b => ({ ...b, description: e.target.value }))}
+            placeholder="Describe the app, tool, or product you want to create — in plain language. What should it do? Who uses it?"
+            rows={4}
+          />
+          <p className="qs-helper">This is what Lovable will build. The brand context below shapes <strong>how</strong> it sounds and looks — not what it is.</p>
+        </div>
+
+        <div className="qs-field">
+          <label>What kind of thing is this?</label>
+          <div className="qs-pill-group" role="radiogroup" aria-label="Product type">
+            {PRODUCT_TYPES.map(pt => (
+              <button
+                type="button"
+                key={pt.value}
+                role="radio"
+                aria-checked={buildIntent.productType === pt.value}
+                className={`qs-pill ${buildIntent.productType === pt.value ? 'qs-pill-active' : ''}`}
+                onClick={() => setBuildIntent(b => ({ ...b, productType: pt.value }))}
+              >
+                {pt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="qs-section-label qs-section-label-secondary">The Founder Brief</div>
 
         <div className="qs-field">
           <label htmlFor="brandName">Brand Name <span className="qs-req">*</span></label>
