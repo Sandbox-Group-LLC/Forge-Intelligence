@@ -16522,6 +16522,374 @@ app.get('/unsubscribe', async (req, res) => {
   } catch(e) { res.status(500).send('Error processing unsubscribe'); }
 });
 
+// ── Lovable Integration ──────────────────────────────────────────────────────
+// POST /api/forge/prompt-pack/lovable
+// Turns a Brand Intelligence Profile into a deterministic, URL-encoded prompt
+// for Lovable's public Build-with-URL flow. No LLM calls — pure templating.
+// Spec: docs/LOVABLE_INTEGRATION.md (FI-LOVABLE-001).
+
+const LOVABLE_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const LOVABLE_URL_SAFE_LIMIT = 12000;
+const LOVABLE_MAX_PROMPT_CHARS = 50000;
+const LOVABLE_SUPPORTED_APP_TYPES = new Set([
+  'content-command-center',
+  'geo-monitor',
+  'campaign-planner',
+  'brand-voice-studio',
+]);
+
+function lovableTruncate(value, maxLength) {
+  if (value == null) return '';
+  const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+  if (text.length <= maxLength) return text;
+  return text.slice(0, Math.max(0, maxLength - 16)).trim() + '... [truncated]';
+}
+
+function lovableSafeJoin(arr, maxLength) {
+  if (!Array.isArray(arr)) return '';
+  return lovableTruncate(arr.map(v => (v == null ? '' : String(v))).filter(Boolean).join(', '), maxLength);
+}
+
+function lovableHasData(value) {
+  if (value == null) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  if (typeof value === 'string') return value.trim().length > 0;
+  return true;
+}
+
+function lovableFormatVoice(voice, compact) {
+  if (!lovableHasData(voice)) return null;
+  const tones = Array.isArray(voice.toneAttributes) ? voice.toneAttributes : [];
+  const scoreFor = (label) => {
+    const hit = tones.find(t => String(t.attribute || '').toLowerCase() === label);
+    return hit && typeof hit.score === 'number' ? hit.score : null;
+  };
+  const formality = scoreFor('formality');
+  const confidence = scoreFor('confidence');
+  const complexity = scoreFor('complexity');
+  const phrases = Array.isArray(voice.keyPhrases) ? voice.keyPhrases : [];
+  const summary = typeof voice.summary === 'string' ? voice.summary : '';
+  const style = typeof voice.writingStyle === 'string' ? voice.writingStyle : '';
+  const phraseCap = compact ? 240 : 1200;
+  const summaryCap = compact ? 600 : 4000;
+  const styleCap = compact ? 400 : 2000;
+  return {
+    formality: formality != null ? `${formality}/10` : 'not measured',
+    confidence: confidence != null ? `${confidence}/10` : 'not measured',
+    complexity: complexity != null ? `${complexity}/10` : 'not measured',
+    brandVocab: phrases.length ? lovableSafeJoin(phrases, phraseCap) : 'none recorded',
+    antiPatterns: 'generic corporate copy, hype language, AI-generated cliches',
+    toneSummary: summary ? lovableTruncate(summary, summaryCap) : (style ? lovableTruncate(style, styleCap) : 'voice profile present but no summary recorded'),
+  };
+}
+
+function lovableFormatPersonas(personas, compact) {
+  if (!Array.isArray(personas) || personas.length === 0) return null;
+  const max = compact ? 3 : personas.length;
+  const perPersonaCap = compact ? 500 : 2000;
+  const blocks = personas.slice(0, max).map((p, i) => {
+    const name = p.name || p.role || `Persona ${i + 1}`;
+    const role = p.role || '';
+    const pains = lovableSafeJoin(p.painPoints || [], 240);
+    const triggers = lovableSafeJoin(p.triggers || [], 240);
+    const skepticism = lovableTruncate(p.skepticism || '', 200);
+    const block = [
+      `- ${name}${role && role !== name ? ` (${role})` : ''}`,
+      pains ? `  Pain points: ${pains}` : '',
+      triggers ? `  Triggers: ${triggers}` : '',
+      skepticism ? `  Skepticism: ${skepticism}` : '',
+    ].filter(Boolean).join('\n');
+    return lovableTruncate(block, perPersonaCap);
+  });
+  return blocks.join('\n');
+}
+
+function lovableFormatWhitespace(gaps, compact) {
+  if (!Array.isArray(gaps) || gaps.length === 0) return null;
+  const cap = compact ? 1500 : 6000;
+  const lines = gaps.slice(0, compact ? 6 : gaps.length).map(g => {
+    const topic = g.topic || 'Untitled gap';
+    const opp = g.whitespaceOpportunity || g.opportunity || '';
+    const owned = g.ownedBy ? ` (currently owned by ${g.ownedBy})` : ' (unclaimed)';
+    return `- ${topic}${owned}${opp ? ` — ${opp}` : ''}`;
+  });
+  return lovableTruncate(lines.join('\n'), cap);
+}
+
+function lovableFormatThirdParty(signals, compact) {
+  if (!Array.isArray(signals) || signals.length === 0) return null;
+  const cap = compact ? 1200 : 5000;
+  const lines = signals.slice(0, compact ? 8 : signals.length).map(s => {
+    const src = s.source || 'unknown source';
+    const type = s.signalType || s.type || 'signal';
+    const val = s.value != null ? String(s.value) : '';
+    return `- [${src}] ${type}${val ? `: ${val}` : ''}`;
+  });
+  return lovableTruncate(lines.join('\n'), cap);
+}
+
+function lovableFormatGeo(geoBrief, compact) {
+  if (!lovableHasData(geoBrief)) return null;
+  const opps = Array.isArray(geoBrief.geoOpportunitiesNorm)
+    ? geoBrief.geoOpportunitiesNorm
+    : (Array.isArray(geoBrief.geoOpportunities) ? geoBrief.geoOpportunities : []);
+  if (!opps.length) return null;
+  const cap = compact ? 1200 : 5000;
+  const lines = opps.slice(0, compact ? 6 : opps.length).map(o => {
+    const topic = o.topic || o.query || 'Untitled opportunity';
+    const cp = typeof o.citationProbability === 'number' ? ` (citation probability ${Math.round(o.citationProbability * 100)}%)` : '';
+    return `- ${topic}${cp}`;
+  });
+  return lovableTruncate(lines.join('\n'), cap);
+}
+
+function lovableSection(label, content, fallback) {
+  if (content && String(content).trim().length > 0) return content;
+  return fallback || `No ${label.toLowerCase()} data available yet. Design this section to be populated later.`;
+}
+
+function lovableBuildContentCommandCenter(ctx) {
+  const {
+    brandName, appTypeDescription, voice, personas, whitespace, thirdParty, geo,
+    unclaimed, brandColors, customNotes, brandProfileId,
+  } = ctx;
+  const voiceBlock = voice
+    ? `- Formality: ${voice.formality}\n- Confidence: ${voice.confidence}\n- Complexity: ${voice.complexity}\n- Brand vocabulary: ${voice.brandVocab}\n- Anti-patterns to avoid: ${voice.antiPatterns}\n- Tone summary: ${voice.toneSummary}`
+    : lovableSection('voice profile', null);
+
+  const personasBlock = lovableSection('personas', personas);
+  const whitespaceBlock = lovableSection('competitive whitespace', whitespace);
+  const thirdPartyBlock = lovableSection('third-party voice', thirdParty);
+  const geoBlock = lovableSection('GEO opportunities', geo);
+
+  const notesBlock = customNotes && String(customNotes).trim().length > 0
+    ? `\n## ADDITIONAL OPERATOR NOTES\n${lovableTruncate(customNotes, 1500)}\n`
+    : '';
+
+  return `You are building a production Brand Intelligence Command Center for ${brandName}.
+
+## APP CONCEPT
+A ${appTypeDescription} that helps ${brandName}'s marketing team turn brand intelligence into shipped content. The app must feel like a strategic GTM operating system, not a generic AI content generator.
+
+## BRAND VOICE (apply to ALL UI copy and generated content)
+${voiceBlock}
+
+## TARGET PERSONAS
+${personasBlock}
+(Each persona: role, pain points, trigger events, skepticism objections)
+
+## COMPETITIVE WHITESPACE
+${whitespaceBlock}
+Unclaimed positioning territory: ${unclaimed || 'derive from whitespace block above'}
+
+## THIRD-PARTY VOICE THEMES
+Top customer language patterns from reviews, complaints, testimonials:
+${thirdPartyBlock}
+
+## AI SEARCH / GEO OPPORTUNITIES
+Top citation opportunities to optimize for:
+${geoBlock}
+
+## REQUIRED SCREENS
+1. Dashboard — brand health, content velocity, AI citation score
+2. Brand Brain — voice profile, personas, whitespace (read-only)
+3. Content Generator — articles/social/email with confidence scores
+4. Campaign Planner — 8-article campaign with rotating angles
+5. AI Citation Monitor — track GEO opportunities and citation status
+6. Approval Queue — review with E-E-A-T flags before publish
+
+## DATA MODEL (use Supabase — Lovable native)
+- brand_context (singleton, holds profile passed in this prompt)
+- generated_content (id, type, body, confidence_scores, status, created_at)
+- campaigns (id, topic_cluster, article_count, status)
+- citation_opportunities (id, prompt, current_status, target_status)
+
+## CORE WORKFLOW
+1. User opens dashboard.
+2. User reviews the Brand Brain.
+3. User selects a topic cluster or content opportunity.
+4. App generates a campaign plan.
+5. User reviews generated content with confidence scores, source needs, and E-E-A-T flags.
+6. User approves or edits outputs.
+7. Approved content moves into publishing queue.
+
+## INTEGRATIONS
+- Supabase for persistence (Lovable native)
+- Resend for content preview emails
+- Stripe (optional, for app monetization)
+
+## VISUAL DIRECTION
+- Match brand colors: ${brandColors}
+- Typography: clean sans-serif, generous spacing
+- UI copy tone: matches brand voice profile above
+- Avoid generic AI-app aesthetics (no purple gradients, no robot icons)
+
+## SUCCESS CRITERIA
+A marketer at ${brandName} should say "this knows our brand better than our agency does" within 2 minutes of opening the app.
+${notesBlock}
+## TECHNICAL NOTES
+Forge Intelligence API base: https://api.forgeintelligence.ai/v1
+Brand Profile ID: ${brandProfileId}
+(Optional: prompt user for FORGE_API_KEY env var to enable live content generation. If not provided, scaffold with static brand data from this prompt.)`;
+}
+
+function lovableStubPrompt(appType, brandName, brandProfileId) {
+  return `[Lovable prompt template TODO]
+appType "${appType}" is recognized but not yet shipped in v1. Only "content-command-center" is fully built. Tracked as a post-ship follow-up in docs/LOVABLE_INTEGRATION.md §11.
+
+Brand: ${brandName}
+Brand Profile ID: ${brandProfileId}`;
+}
+
+function lovableRecommendedAppName(appType, brandName) {
+  const friendly = brandName && brandName !== 'this brand' ? brandName : 'Your Brand';
+  switch (appType) {
+    case 'content-command-center': return `${friendly} Content Intelligence Command Center`;
+    case 'geo-monitor':              return `${friendly} GEO Citation Monitor`;
+    case 'campaign-planner':         return `${friendly} Campaign Planner`;
+    case 'brand-voice-studio':       return `${friendly} Brand Voice Studio`;
+    default:                          return `${friendly} Lovable App`;
+  }
+}
+
+function lovableAppTypeDescription(appType) {
+  switch (appType) {
+    case 'content-command-center': return 'Brand Intelligence Command Center';
+    case 'geo-monitor':            return 'GEO Citation Monitor';
+    case 'campaign-planner':       return 'Campaign Planner';
+    case 'brand-voice-studio':     return 'Brand Voice Studio';
+    default:                        return 'brand-aware marketing application';
+  }
+}
+
+app.post('/api/forge/prompt-pack/lovable', requireAuth, async (req, res) => {
+  const { brandProfileId, appType: rawAppType, compact: rawCompact, customNotes } = req.body || {};
+
+  if (!brandProfileId || typeof brandProfileId !== 'string') {
+    return res.status(400).json({ success: false, error: 'Invalid request', details: 'brandProfileId is required' });
+  }
+  if (!LOVABLE_UUID_RE.test(brandProfileId)) {
+    return res.status(400).json({ success: false, error: 'Invalid request', details: 'brandProfileId must be a valid UUID' });
+  }
+
+  const appType = (typeof rawAppType === 'string' && rawAppType.trim()) ? rawAppType.trim() : 'content-command-center';
+  if (!LOVABLE_SUPPORTED_APP_TYPES.has(appType)) {
+    return res.status(400).json({ success: false, error: 'Invalid request', details: `appType "${appType}" is not supported` });
+  }
+  const compact = rawCompact === false ? false : true;
+
+  try {
+    if (!(await verifyBrandAccess(brandProfileId, req.userId))) {
+      return res.status(403).json({ success: false, error: 'Access denied', details: 'You do not have access to this brand profile' });
+    }
+
+    const profileRes = await pool.query(
+      'SELECT id, brand_name, brand_url, logo_url, profile_data, settings FROM brand_profiles WHERE id = $1',
+      [brandProfileId]
+    );
+    if (!profileRes.rows.length) {
+      return res.status(404).json({ success: false, error: 'Brand profile not found', details: `No brand profile with id ${brandProfileId}` });
+    }
+    const row = profileRes.rows[0];
+    const pd = row.profile_data || {};
+    const settings = row.settings || {};
+    const business = pd.businessProfile || {};
+
+    const brandName = row.brand_name || business.companyName || pd.brandName || 'this brand';
+    const voice = lovableFormatVoice(pd.voiceProfile || {}, compact);
+    const personas = lovableFormatPersonas(pd.personas || [], compact);
+    const whitespace = lovableFormatWhitespace(pd.competitiveGaps || pd.competitiveWhitespace || [], compact);
+    const thirdParty = lovableFormatThirdParty(pd.thirdPartySignals || [], compact);
+
+    // Best-effort supplementary briefs — never block the response on them
+    let geoBriefData = null;
+    let enrichedBriefData = null;
+    try {
+      const geoRes = await pool.query(
+        'SELECT brief_data FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY version DESC LIMIT 1',
+        [brandProfileId]
+      );
+      if (geoRes.rows.length) geoBriefData = geoRes.rows[0].brief_data || null;
+    } catch (e) { /* table may not exist or query may fail — non-blocking */ }
+    try {
+      const enrRes = await pool.query(
+        'SELECT enriched_data FROM enriched_briefs WHERE brand_profile_id = $1 ORDER BY updated_at DESC LIMIT 1',
+        [brandProfileId]
+      );
+      if (enrRes.rows.length) enrichedBriefData = enrRes.rows[0].enriched_data || null;
+    } catch (e) { /* non-blocking */ }
+
+    const geoFormatted = lovableFormatGeo(geoBriefData || {}, compact);
+
+    const brandColors = (settings.brandColors && Array.isArray(settings.brandColors))
+      ? lovableSafeJoin(settings.brandColors, 200)
+      : 'derive from the brand voice profile; lean clean, professional, signal-forward';
+
+    const recommendedAppName = lovableRecommendedAppName(appType, brandName);
+    const appTypeDescription = lovableAppTypeDescription(appType);
+
+    let prompt;
+    if (appType === 'content-command-center') {
+      prompt = lovableBuildContentCommandCenter({
+        brandName,
+        appTypeDescription,
+        voice,
+        personas,
+        whitespace,
+        thirdParty,
+        geo: geoFormatted,
+        unclaimed: pd.unclaimedTerritory || '',
+        brandColors,
+        customNotes: typeof customNotes === 'string' ? customNotes : '',
+        brandProfileId,
+      });
+    } else {
+      prompt = lovableStubPrompt(appType, brandName, brandProfileId);
+    }
+
+    // Hard guard against accidental Lovable-side rejection. The packer should
+    // already be well under this even with compact:false on a rich profile.
+    if (prompt.length > LOVABLE_MAX_PROMPT_CHARS) {
+      prompt = prompt.slice(0, LOVABLE_MAX_PROMPT_CHARS - 32).trim() + '\n\n[truncated to Lovable 50K cap]';
+    }
+
+    const encodedPrompt = encodeURIComponent(prompt);
+    const buildUrl = `https://lovable.dev/?autosubmit=true#prompt=${encodedPrompt}`;
+    const isUrlSafe = buildUrl.length <= LOVABLE_URL_SAFE_LIMIT;
+
+    const brainConsumption = {
+      voiceProfile: lovableHasData(pd.voiceProfile),
+      personas: Array.isArray(pd.personas) && pd.personas.length > 0,
+      competitiveWhitespace: Array.isArray(pd.competitiveGaps) && pd.competitiveGaps.length > 0,
+      geoBrief: lovableHasData(geoBriefData),
+      thirdPartyVoice: Array.isArray(pd.thirdPartySignals) && pd.thirdPartySignals.length > 0,
+      enrichedBrief: lovableHasData(enrichedBriefData),
+    };
+
+    return res.json({
+      success: true,
+      data: {
+        platform: 'lovable',
+        brandProfileId,
+        appType,
+        recommendedAppName,
+        prompt,
+        promptLength: prompt.length,
+        encodedPrompt,
+        encodedLength: encodedPrompt.length,
+        buildUrl,
+        isUrlSafe,
+        fallbackRequired: !isUrlSafe,
+        brainConsumption,
+      },
+    });
+  } catch (err) {
+    console.error('[LOVABLE-PACK]', err.message);
+    return res.status(500).json({ success: false, error: 'Internal error', details: err.message });
+  }
+});
+
 app.get('*', function (req, res) {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
