@@ -237,37 +237,6 @@ export function BrandProfile() {
         </div>
       )}
 
-      {/* Factual Ground discovery tip — surface the override path so users don't suffer in silence */}
-      <div style={{
-        padding: '12px 16px',
-        marginBottom: 16,
-        background: 'rgba(20, 184, 166, 0.06)',
-        border: '1px solid rgba(20, 184, 166, 0.25)',
-        borderRadius: 10,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        fontSize: 13,
-        lineHeight: 1.55
-      }}>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#14B8A6" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-          <circle cx="12" cy="12" r="10"/>
-          <path d="M12 16v-4"/>
-          <path d="M12 8h.01"/>
-        </svg>
-        <div style={{ color: '#334155' }}>
-          Something look off? Anything you add to{' '}
-          <a
-            href="/app/brand-settings#factual-ground"
-            onClick={e => { e.preventDefault(); navigate('/app/brand-settings#factual-ground'); }}
-            style={{ color: '#0d9488', fontWeight: 600, textDecoration: 'underline', cursor: 'pointer' }}
-          >
-            Factual Ground
-          </a>{' '}
-          is used <strong>verbatim</strong> in every generated article — use it to override anything the profile got wrong.
-        </div>
-      </div>
-
       <div className="profile-tabs">
         <button
           className={`tab-button ${activeTab === 'facts' ? 'active' : ''}`}
