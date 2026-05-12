@@ -61,6 +61,50 @@
   border-bottom: 1px solid #f1f5f9;
 }
 
+.qs-section-label-secondary {
+  margin-top: 28px;
+}
+
+.qs-pill-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.qs-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  color: #475569;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  cursor: pointer;
+  line-height: 1;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.qs-pill:hover {
+  border-color: #4f46e5;
+  color: #4f46e5;
+}
+
+.qs-pill-active {
+  background: #4f46e5;
+  border-color: #4f46e5;
+  color: #fff;
+}
+
+.qs-pill-active:hover {
+  background: #4338ca;
+  border-color: #4338ca;
+  color: #fff;
+}
+
 .qs-field {
   margin-bottom: 20px;
 }
