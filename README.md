@@ -37,7 +37,7 @@
 
 ---
 
-## Platform Status (May 2, 2026)
+## Platform Status (May 11, 2026)
 
 ### All 8 Stages Live
 
@@ -48,10 +48,10 @@
 | 3 | Authenticity Enricher | ✅ LIVE | Perplexity Sonar (SME signals) + Claude Sonnet 4.6 (EEAT/injection/assembly) — SSE progress, enriched brief selector |
 | 4 | Content Generator | ✅ LIVE | Claude Sonnet 4.6 — requires enriched brief, published briefs filtered |
 | 4.5 | Campaign Generator | ✅ LIVE | Claude Sonnet 4.6 |
-| 4.6 | Email Campaign Generator | ✅ LIVE | Mistral Large (optimized for lead-gen writing) |
+| 4.6 | Email Campaign Generator | ✅ LIVE | Mistral Large — inline edit + per-flag actions (resolve/cite/dismiss) + brain feedback loop on false-positive dismissals + render-side sanitization for P.S./CTA/proof-token leakage |
 | 5 | Compliance Gate | ✅ LIVE | Claude Sonnet 4.6 |
 | 6 | Publishing & Distribution | ✅ LIVE | Queue + multi-channel |
-| 7 | Performance Intelligence | ✅ LIVE | LinkedIn + X + Ghost + GSC + GEO |
+| 7 | Performance Intelligence | ✅ LIVE | LinkedIn + X + Ghost + GSC + GEO + Facebook + Reddit (Zernio-routed for LinkedIn/Reddit/Facebook with dual-ID sync as of May 11) |
 | 8 | Feedback Loop | ✅ LIVE | Pattern Extractor (Claude Haiku 4.5) |
 | — | Hero Image Generation | ✅ LIVE | Claude Haiku 4.5 (prompt) + Flux Schnell via fal.ai (render) |
 
@@ -101,6 +101,29 @@
 - Applied at every LLM JSON.parse call: context agent, content generator (2 paths), campaign plan, campaign articles (×8), compliance critique
 - Handles bare newlines/tabs/control chars inside Claude's streamed string values
 
+### Recent Major Work (May 7–11, 2026)
+
+**Zernio LinkedIn migration (May 7–8):** Forge LinkedIn publishing migrated from direct OAuth to Zernio's API. Sandbox-XM, Sandbox-GTM, and Attio still on direct OAuth pending migration. **Critical:** Zernio's `/analytics` endpoint requires Zernio's internal `_id`, NOT the platform-native `postId`. `zernioPublish()` returns both: `{ postId: platformPostId, zernioPostId: post._id, ... }`. Analytics sync uses `zernioPostId` when present, falls back to legacy LinkedIn API path when absent.
+
+**Email Campaign Generator polish (May 9–10):** Three rendering bugs fixed (duplicate P.S., inline `{{cta_url}}`, `[NEEDS_PROOF]` tokens) — both at source (prompt rewrite at `src/agents/stage46_email_campaign/system_prompt.md`) and at render (sanitization helper). Edit mode on every EmailCard (subject_lines + body + ps + cta_text + cta_url_placeholder all editable). Per-flag actions: Mark resolved / Add citation / Dismiss as false positive. **Dismissals write `brain_mistakes` rows with `mistake_type='compliance_false_positive:<type>'` so the Compliance Gate's brain learns to suppress patterns** — closes the feedback loop on AI-generated flags. Sequence Assessment readability: plain English, three paragraphs, no `[bracket_identifiers]`.
+
+**MCP server live (May 9):** `POST /mcp` endpoint exposes 3 read-only tools to external MCP clients (Viktor/Slack assistant): `list_email_campaigns`, `list_emails_in_campaign`, `get_email_copy`. JSON-RPC 2.0, dual-auth (Bearer + X-Api-Key), new scope namespace `mcp:campaigns:read` / `mcp:emails:read`.
+
+**Attio CSV export (May 9):** Per-email CSV download with subject-variant picker (benefit / curiosity / pattern_interrupt). Two columns matching Attio's "Generated Emails" Object attributes exactly. RFC-compliant escaping + UTF-8 BOM. Same pattern adopted for HubSpot copy-to-clipboard.
+
+**HubSpot integration stripped (May 9):** Four rebuild attempts confirmed HubSpot's public API gates email-template creation behind Marketing Hub Pro+ at every tier-accessible endpoint. Sales Hub Starter users can manually create email templates via HubSpot's UI but not via any public API. Replaced API push with a "Copy for HubSpot" button on each email card — formats email as paste-ready HTML and writes to clipboard. User pastes into HubSpot Sales > Templates > New > Source view. No OAuth, no scope drama, works on every tier.
+
+**Publish-status mirror bug (May 10):** 100% failure rate caught by Brian noticing one specific article was missing in Performance Dashboard. Investigation found `/api/publishing/publish` updated `publishing_queue.status` + `publish_log` + `memories` but never the parent `generated_content_<brand>.status` row. 25 of 25 published articles across 3 brands were stuck at `status='draft'` despite being live. Backfilled + added the missing 5th UPDATE so future publishes self-correct.
+
+**Copilot Autofix disabled (May 10):** 7 unsupervised auto-merge PRs overnight broke dev's `IntegrationsPage.tsx`. Reverted single-file from last-known-good commit. Autofix bot disabled at repo level. CodeQL findings still surface in Security tab; just no auto-PRs.
+
+**Lessons logged (folded into ARCHITECTURE_RULES below):**
+- **Probe before pivot.** A 30-second API call to validate a theory beats 90 minutes of pivot-based-on-inference. Used `/api/admin/zernio/raw` to confirm Zernio analytics ID requirements before writing a fix.
+- **Multi-table write contracts need to live somewhere visible.** The publish flow needed to update 5 tables (publishing_queue, publish_log, memories, agent_activity_log, and the parent content table). Knowing the contract lived only in "whoever last touched this code remembered." 25 articles were silently broken because of it.
+- **Same paywall in different shapes = stop pivoting, call it.** Cost: 90 min of HubSpot endpoint pivots before recognizing the Marketing Hub Pro+ tier gate.
+- **Atomic single-PUT commits when editing one file across multiple in-memory steps.** Two scripts crashed mid-edit and left main with self-inconsistent state. Convention: do everything in memory first, sanity-check, then ONE PUT.
+- **API auth state is fragile across migrations.** The Zernio migration overwrote Forge's LinkedIn `publishing_channels.credentials.accessToken`. **TODO: LinkedIn OAuth callback should MERGE credentials, not REPLACE.**
+
 ---
 
 ## Infrastructure
@@ -132,6 +155,9 @@
 - **Promo code flow** uses softAuth + brandProfileId resolution fallback (auth token → clerk_user_id → most recent active brand)
 - **All GateModal instances** pass `brandProfileId={activeBrand?.id}` — required for promo codes to flip `is_paid`
 - **Neon daily snapshots** enabled on production branch (expires rolling 35 days)
+- **HubSpot integration is clipboard-copy only** — the HubSpot public API gates email-template creation behind Marketing Hub Pro+ at every tier-accessible endpoint. Sales Hub Starter cannot create email templates via API. Do NOT rebuild OAuth-based HubSpot push. The "Copy for HubSpot" button is the durable answer.
+- **Zernio dual-ID** — every `zernioPublish()` returns `{ postId, zernioPostId, ... }`. `postId` is the platform-native ID (LinkedIn URN, X tweet ID, Reddit post slug); `zernioPostId` is Zernio's internal `_id`. The analytics sync MUST use `zernioPostId` when calling Zernio's `/analytics` endpoint — it does NOT accept platform-native IDs. Sync code already in place for LinkedIn at L11427; **Reddit and Facebook sync paths still need the same dual-ID treatment** (followup queued).
+- **Multi-table write contracts** — the publish flow updates 5 tables: `publishing_queue.status`, `publishing_queue.publish_results`, `publish_log` (insert), `memories` (insert), and the brand-scoped `generated_content_<brand>.status`. All 5 must be updated atomically for the article to be visible across the system. Missing the 5th caused 100% of published articles to be invisible in Performance Dashboard prior to May 10.
 
 ### Pipeline UX Flow (Critical — updated April 17, 2026)
 Every stage persists results and points forward:
@@ -329,6 +355,11 @@ BEFORE generating:
 | GET | `/api/publishing/queue/:brandProfileId` | required | Queue items |
 | POST | `/api/publishing/publish` | required | Publish to channel |
 | POST | `/api/analytics/sync/:brandProfileId` | required | Sync channel analytics |
+| PATCH | `/api/email-campaign/email/:id` | required | Stage 4.6 — update body/ps/cta/subject_lines on one email |
+| POST | `/api/email-campaign/email/:id/resolve-flag` | required | Stage 4.6 — mark a compliance flag resolved (edited/cited/dismissed) |
+| POST | `/api/email-campaign/email/:id/dismiss-flag-as-false-positive` | required | Stage 4.6 — dismiss flag + write `brain_mistakes` row for future suppression |
+| POST | `/mcp` | required (Bearer or X-Api-Key) | MCP server — JSON-RPC 2.0, 3 read-only tools for external MCP clients |
+| POST | `/api/admin/zernio/raw` | dev/strategy + admin password | Generic Zernio API probe — `{method, path, body?}` → forwards to Zernio |
 | POST | `/api/analytics/extract-patterns/:brandId` | required | Stage 8 — pattern extraction |
 | GET | `/api/admin/stats` | required | Auth-scoped KPIs |
 | GET | `/articles/:brandSlug/:articleSlug` | public | Server-rendered article page |
@@ -356,7 +387,7 @@ BEFORE generating:
 
 | Item | Priority | Notes |
 |------|----------|-------|
-| LinkedIn impressions/clicks | Medium | Requires MDP approval — reactions/comments live |
+| LinkedIn analytics for legacy pre-Zernio posts | Low | 14 Forge LinkedIn articles published April 17 – May 7 won't sync analytics. Pre-Zernio credentials were overwritten by the migration. Articles are live with real engagement; only the sync into Performance Dashboard is broken. Bounded gap — will not grow. Going forward, Zernio dual-ID (postId + zernioPostId) ensures every new publish syncs correctly. |
 | WordPress live API publish | Medium | Pending |
 | Webflow live API publish | Medium | Pipedream Connect wired, logic pending |
 | authToken rollout | Medium | Remaining unauthenticated fetches in PublishingQueuePage |
@@ -395,7 +426,7 @@ Sandbox Group: **Sandbox-XM** (experience marketing) + **Sandbox-GTM** (event re
 
 ---
 
-## Updated: April 17, 2026
+## Updated: May 11, 2026
 
 ### Auth Architecture
 - Clerk JWT template `jwt-template-600` — 600 second token lifetime
@@ -441,3 +472,14 @@ Sandbox Group: **Sandbox-XM** (experience marketing) + **Sandbox-GTM** (event re
 - `--shadow-card` blue-tinted outer glow
 - `--shadow-chrome-x/y` for sidebar/topbar floating effect
 - Sidebar + TopBar: white, no border, chrome shadow
+
+---
+
+### Recent Updates Index
+
+For session-level technical detail, see `WHITEBOARD.md`. Recent major entries:
+
+- **May 10–11** — Zernio dual-ID analytics fix; publish-status mirror bug (100% failure rate caught); Copilot Autofix incident; Morgan Chasser personal-brand experiment
+- **May 9** — MCP server live; Attio CSV export; HubSpot demolition (4 rebuild rounds → clipboard copy); Email Campaign Generator Phase 1+2+3 (rendering bugs + edit mode + flag actions + readable Sequence Assessment)
+- **May 8** — Zernio LinkedIn migration for Forge brand
+- **April 17** — Cherry-pick architecture in GEO Strategist; Compliance Gate AI rewrite + Find Sources; Factual Ground + Territory injection
