@@ -1,3 +1,145 @@
+# Quick Start Route — `/app/quick-start`
+
+## Summary
+
+A standalone, pre-auth entry point that lets founders build a Brand Brain from structured input (no website URL required). Designed as a partnership-agnostic onramp — currently wired to Lovable, swappable to any vibe coding platform via a single env var.
+
+---
+
+## Route
+/app/quick-start
+
+text
+
+No Clerk auth required. No brand profile prerequisite. Zero gates.
+
+---
+
+## User Flow
+/app/quick-start
+│
+▼
+Founder Brief Form (structured fields, no URL)
+│
+▼
+"Build My Brand Brain →" CTA
+→ POST /api/analyze { factualGround: {...}, websiteUrl: null, source: "quick-start" }
+→ Context Agent skips Firecrawl
+→ Synthesizes brand profile from Factual Ground fields only
+│
+▼
+Loading state
+│
+▼
+/app/brand-profile (existing page, no modifications)
+→ Brand profile rendered as normal
+→ "Deploy This Brain" card visible with partner CTA
+→ "Correct these?" card links to Factual Ground in Brand Settings
+│
+▼
+User clicks "Build with Lovable" → exits to partner (no gate)
+— OR —
+User clicks "Run GEO Strategy" / any Stage 2+ → Clerk auth + pay gate fires
+
+text
+
+---
+
+## Page: `QuickStartPage.tsx`
+
+### Location
+src/pages/QuickStartPage.tsx
+src/pages/QuickStartPage.css
+
+text
+
+### Page Copy
+
+**Headline:**
+> Tell us what your product actually does.
+
+**Subhead:**
+> We'll build the brand brain. Then you build the product.
+
+**Form section label:**
+> The Founder Brief
+
+**CTA button:**
+> Build My Brand Brain →
+
+**Loading state copy:**
+> Building your brand brain...
+> (This takes about 60 seconds. We're synthesizing your positioning, voice, personas, and competitive whitespace.)
+
+---
+
+### Form Fields
+
+#### Core (always visible)
+
+| Field | Input Type | Placeholder / Helper Text | Required |
+|-------|-----------|--------------------------|----------|
+| Brand Name | text | "What's it called?" | ✓ |
+| What we actually do | textarea | "In plain language — what does your product do and for whom?" | ✓ |
+| What we do NOT do | textarea | "What do people assume you do that you don't? What's explicitly out of scope?" | ✓ |
+| Competitors | textarea | "Who are you most often compared to? Who would a buyer also evaluate?" | ✓ |
+| Founding story | textarea | "Why does this exist? What happened that made you build it?" | |
+
+#### Advanced (collapsed accordion: "Add more context ▸")
+
+| Field | Input Type | Placeholder / Helper Text | Required |
+|-------|-----------|--------------------------|----------|
+| Methodology / Approach | textarea | "How do you do what you do differently than everyone else?" | |
+| Team composition | textarea | "Who's building this? Relevant backgrounds, expertise." | |
+| Quotable positions | textarea | "Hot takes, beliefs, contrarian stances your brand owns." | |
+| Named Authors | textarea | "Real humans who should be attributed as thought leaders." | |
+| Logo URL | text | "https://..." | |
+
+---
+
+### Validation
+
+- Brand Name + "What we actually do" + "What we do NOT do" + Competitors = minimum required
+- All textareas: no character limit enforced in UI (backend can truncate for token budget)
+- Form submits disabled until required fields have content
+
+---
+
+## API Contract
+
+### Request
+POST /api/analyze
+
+text
+
+```json
+{
+  "websiteUrl": null,
+  "source": "quick-start",
+  "factualGround": {
+    "brandName": "string",
+    "whatWeDo": "string",
+    "whatWeDoNot": "string",
+    "competitors": "string",
+    "foundingStory": "string | null",
+    "methodology": "string | null",
+    "teamComposition": "string | null",
+    "quotablePositions": "string | null",
+    "namedAuthors": "string | null",
+    "logoUrl": "string | null"
+  }
+}
+```
+
+### Context Agent Behavior
+IF websiteUrl === null && factualGround exists:
+SKIP Firecrawl scrape entirely
+Construct Claude prompt using factualGround fields as sole context
+Generate brand profile (same output schema as URL-based analysis)
+Store result with source: "quick-start" flag
+Return brand profile to client
+
+text
 
 The Claude prompt for quick-start analyses should include a system instruction like:
 
