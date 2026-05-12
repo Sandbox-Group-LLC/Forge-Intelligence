@@ -3710,8 +3710,209 @@ app.post('/api/domain/check', async (req, res) => {
   }
 });
 
+// ── Quick Start: synthesize a brand profile from a Founder Brief ──────────
+// Used when the founder has no marketing website (typical Lovable / vibe-coding
+// audience). We skip Firecrawl, Sonar, and the cache check; Claude generates
+// the full BrandProfile JSON from the structured Founder Brief alone.
+//
+// Each Quick Start gets a synthetic brand_url ("quickstart://<uuid>") so the
+// `idx_bp_active_url` unique-by-active index never collides with real domains
+// and so /app/context-hub re-analyze never tries to re-scrape a non-existent
+// site. Anonymous-session semantics (24h expiry, onboard_session_id) match the
+// URL-based flow exactly so Clerk signup can later claim these rows.
+function quickStartTruncate(value, maxLength) {
+  if (typeof value !== 'string') return '';
+  return value.length > maxLength ? value.slice(0, maxLength).trim() + '…' : value;
+}
+
+async function handleQuickStartSynthesis(req, res) {
+  const startTime = Date.now();
+  try {
+    const fg = req.body.factualGround || {};
+    const required = ['brandName', 'whatWeDo', 'whatWeDoNot', 'competitors'];
+    for (const k of required) {
+      if (typeof fg[k] !== 'string' || fg[k].trim().length === 0) {
+        return res.status(400).json({ success: false, error: `factualGround.${k} is required` });
+      }
+    }
+
+    const brandName = fg.brandName.trim();
+    const sessionId = req.body.sessionId || null;
+    const syntheticBrandUrl = `quickstart://${randomUUID()}`;
+
+    const briefLines = [
+      `**Brand Name:** ${brandName}`,
+      ``,
+      `**What we actually do (founder's own words):**`,
+      quickStartTruncate(fg.whatWeDo, 2000),
+      ``,
+      `**What we explicitly do NOT do (out of scope, common misconceptions):**`,
+      quickStartTruncate(fg.whatWeDoNot, 2000),
+      ``,
+      `**Competitors / who buyers also evaluate:**`,
+      quickStartTruncate(fg.competitors, 1500),
+    ];
+    if (fg.foundingStory && fg.foundingStory.trim()) {
+      briefLines.push('', `**Founding story:**`, quickStartTruncate(fg.foundingStory, 1500));
+    }
+    if (fg.methodology && fg.methodology.trim()) {
+      briefLines.push('', `**Methodology / approach:**`, quickStartTruncate(fg.methodology, 1500));
+    }
+    if (fg.teamComposition && fg.teamComposition.trim()) {
+      briefLines.push('', `**Team composition:**`, quickStartTruncate(fg.teamComposition, 1000));
+    }
+    if (fg.quotablePositions && fg.quotablePositions.trim()) {
+      briefLines.push('', `**Quotable positions / hot takes:**`, quickStartTruncate(fg.quotablePositions, 1500));
+    }
+    if (fg.namedAuthors && fg.namedAuthors.trim()) {
+      briefLines.push('', `**Named authors (real humans to attribute):**`, quickStartTruncate(fg.namedAuthors, 800));
+    }
+    const founderBrief = briefLines.join('\n');
+
+    const prompt = `You are the Forge Intelligence Context Agent — Stage 1 of an 8-stage Brand Intelligence platform.
+
+The following brand context was provided DIRECTLY by the founder via a Quick Start form. There is no website to scrape and no third-party signals. Generate a complete brand profile using ONLY the provided information.
+
+CRITICAL RULES:
+- Do NOT hallucinate details not present in the Founder Brief. If you don't know something, say so or omit it — never invent personas, competitors, or positioning that isn't supported by the brief.
+- The "What we explicitly do NOT do" content is INTENTIONAL — those non-actions surface as strategicMoats, NOT as competitiveGaps. competitiveGaps should be derived from what the brand CAN compete on but isn't yet talking about.
+- discoveredCompetitors must come from the founder's competitors list verbatim. Do not invent additional competitors.
+- For visualStyle / accentColor: with no website to inspect, use conservative defaults grounded in the brand category. Mark accentColor as a descriptor like 'neutral slate' or 'deep indigo' rather than guessing a hex.
+
+## FOUNDER BRIEF
+
+${founderBrief}
+
+Return ONLY valid JSON (no markdown, no explanation, no newlines inside string values — use spaces instead):
+{
+  "brandName": "${brandName.replace(/"/g, '\\"')}",
+  "voiceProfile": {
+    "summary": "string",
+    "toneAttributes": [{ "attribute": "string", "score": 0-100, "description": "string" }],
+    "writingStyle": "string",
+    "keyPhrases": ["string"],
+    "industry": "string",
+    "positioning": "string — one tight sentence: what they do, for whom, why they win",
+    "targetPersona": "string — primary buyer in plain language",
+    "visualStyle": "string — conservative descriptor since there's no site to inspect",
+    "accentColor": "string — descriptor like 'deep indigo' or 'neutral slate', not a guessed hex"
+  },
+  "personas": [{
+    "id": "string", "name": "string", "role": "string",
+    "painPoints": ["string"], "triggers": ["string"],
+    "skepticism": "string", "motivations": ["string"]
+  }],
+  "thirdPartySignals": [],
+  "competitiveGaps": [{ "topic": "string", "ownedBy": "string or null", "whitespaceOpportunity": "string", "priority": "high|medium|low" }],
+  "strategicMoats": [{ "capability": "string — drawn directly from 'What we do NOT do'", "rationale": "string", "protects": "string" }],
+  "strategicRecommendations": [{ "id": "string", "category": "string", "title": "string", "description": "string", "impact": "high|medium|low", "effort": "high|medium|low" }],
+  "campaignArcs": [{ "id": "string", "title": "string", "thesis": "string", "acts": [{ "actNumber": 1, "actTitle": "string", "actPremise": "string" }], "recommendedLength": "number 3-8", "targetPersona": "string" }],
+  "businessProfile": {
+    "whatTheyDo": "string — drawn from 'What we actually do'",
+    "productsOrServices": ["string"],
+    "revenueModel": "string",
+    "targetBuyer": "string",
+    "companyScale": "string",
+    "geography": "string"
+  },
+  "discoveredCompetitors": ["string — verbatim from founder's competitors list"],
+  "marketCategory": "string"
+}
+Requirements: 5 toneAttributes, 2-3 personas, 0 thirdPartySignals (no website to inspect), 3-5 competitiveGaps (real missed opportunities), 1-4 strategicMoats (one per item in 'What we do NOT do'), 4-6 strategicRecommendations, 2-4 campaignArcs, 1 businessProfile (all fields required). Ground every field in the Founder Brief.`;
+
+    let profileData;
+    let lastErr;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const message = await anthropic.messages.create({
+          model: 'claude-opus-4-6',
+          max_tokens: 8192,
+          messages: [{ role: 'user', content: prompt }]
+        });
+        const raw = message.content[0].text;
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) { lastErr = new Error('Claude returned no valid JSON'); continue; }
+        try {
+          profileData = safeParseLLM(jsonMatch[0], 'object', 'quick-start');
+          break;
+        } catch (parseErr) {
+          const fixed = jsonMatch[0].replace(/:\s*"([\s\S]*?)"/g, (m, val) => ': "' + val.replace(/\n/g, ' ').replace(/\r/g, ' ') + '"');
+          profileData = JSON.parse(fixed);
+          break;
+        }
+      } catch (e) { lastErr = e; }
+    }
+    if (!profileData) {
+      console.error('[QUICK-START] Claude synthesis failed:', lastErr?.message);
+      return res.status(502).json({ success: false, error: 'Synthesis failed', details: lastErr?.message || 'Unknown error' });
+    }
+
+    // Stamp Quick Start provenance into the JSONB so downstream tooling can
+    // distinguish profiles built from a Founder Brief vs. ones built from a
+    // real website scan, without requiring a schema migration.
+    profileData.source = 'quick-start';
+    profileData.factualGround = {
+      brandName,
+      whatWeDo: quickStartTruncate(fg.whatWeDo, 4000),
+      whatWeDoNot: quickStartTruncate(fg.whatWeDoNot, 4000),
+      competitors: quickStartTruncate(fg.competitors, 2000),
+      foundingStory: quickStartTruncate(fg.foundingStory || '', 4000),
+      methodology: quickStartTruncate(fg.methodology || '', 3000),
+      teamComposition: quickStartTruncate(fg.teamComposition || '', 2000),
+      quotablePositions: quickStartTruncate(fg.quotablePositions || '', 3000),
+      namedAuthors: quickStartTruncate(fg.namedAuthors || '', 1500),
+      logoUrl: typeof fg.logoUrl === 'string' ? fg.logoUrl.slice(0, 500) : '',
+    };
+
+    const id = randomUUID();
+    const logoUrl = typeof fg.logoUrl === 'string' && fg.logoUrl.trim() ? fg.logoUrl.trim() : '';
+    const expiresClause = req.userId ? 'NULL' : "NOW() + INTERVAL '24 hours'";
+    const inserted = await pool.query(
+      `INSERT INTO brand_profiles
+         (id, brand_url, brand_name, version, is_active, cache_status, profile_data, logo_url, clerk_user_id, onboard_session_id, expires_at, created_at, updated_at)
+       VALUES ($1, $2, $3, 1, true, 'fresh', $4, $5, $6, $7, ${expiresClause}, NOW(), NOW())
+       RETURNING *`,
+      [id, syntheticBrandUrl, brandName, JSON.stringify(profileData), logoUrl, req.userId || null, sessionId]
+    );
+    const r = inserted.rows[0];
+    const latencyMs = Date.now() - startTime;
+    console.log(`[QUICK-START] Created brand ${r.id} for "${brandName}" in ${latencyMs}ms`);
+
+    return res.json({
+      success: true,
+      cached: false,
+      data: {
+        id: r.id,
+        brandUrl: r.brand_url,
+        brandName: r.brand_name,
+        version: r.version,
+        isActive: r.is_active,
+        cacheStatus: r.cache_status,
+        latencyMs,
+        discoveredCompetitors: Array.isArray(profileData.discoveredCompetitors) ? profileData.discoveredCompetitors : [],
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+        ...profileData,
+      },
+    });
+  } catch (err) {
+    console.error('[QUICK-START]', err.message);
+    return res.status(500).json({ success: false, error: 'Internal error', details: err.message });
+  }
+}
+
 app.post('/api/context-hub/analyze', softAuth, async (req, res) => {
   const { brandUrl, competitorUrls = [], audienceNotes = '', strategicNotes = '', checkBrainFirst = true, saveToBrain = true } = req.body;
+
+  // ── Quick Start branch ────────────────────────────────────────────────────
+  // No website to scrape — the founder gave us a structured Founder Brief
+  // (factualGround) and we synthesize a profile from those fields alone.
+  // Skips Firecrawl, Sonar, and cache check (each Quick Start run gets a
+  // synthetic unique brand_url so it never collides with a real domain).
+  if (!brandUrl && req.body.factualGround && typeof req.body.factualGround === 'object') {
+    return handleQuickStartSynthesis(req, res);
+  }
+
   if (!brandUrl) {
     return res.status(400).json({ success: false, error: 'brandUrl is required' });
   }

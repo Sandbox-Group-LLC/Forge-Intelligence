@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import { Rocket, ExternalLink, Copy, Loader2, Info } from 'lucide-react';
+import { activePartner } from '../config/deployPartner';
 
 type Phase = 'idle' | 'loading' | 'fallback' | 'error';
 
-interface BuildWithLovableButtonProps {
+interface BuildWithPartnerButtonProps {
   brandProfileId: string;
   brandName?: string;
   appType?: string;
@@ -15,7 +16,7 @@ interface BuildWithLovableButtonProps {
 interface PromptPackResponse {
   success: boolean;
   data?: {
-    platform: 'lovable';
+    platform: string;
     brandProfileId: string;
     appType: string;
     recommendedAppName: string;
@@ -39,19 +40,20 @@ const EXTERNAL = (
   <ExternalLink size={14} strokeWidth={1.5} aria-hidden="true" />
 );
 
-export function BuildWithLovableButton({
+export function BuildWithPartnerButton({
   brandProfileId,
   brandName,
   appType = 'content-command-center',
   variant = 'primary',
   disabled = false,
-}: BuildWithLovableButtonProps) {
+}: BuildWithPartnerButtonProps) {
   const { getToken } = useAuth();
   const [phase, setPhase] = useState<Phase>('idle');
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [fallbackPrompt, setFallbackPrompt] = useState<string>('');
   const [copyStatus, setCopyStatus] = useState<string>('');
 
+  const partner = activePartner;
   const isDisabled = disabled || phase === 'loading';
 
   const handleClick = async () => {
@@ -61,7 +63,7 @@ export function BuildWithLovableButton({
     setCopyStatus('');
     try {
       const token = await getToken();
-      const res = await fetch('/api/forge/prompt-pack/lovable', {
+      const res = await fetch(partner.endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -86,7 +88,7 @@ export function BuildWithLovableButton({
       // user gets every byte of context, not the truncated compact version.
       let promptForFallback = pack.prompt;
       try {
-        const fullRes = await fetch('/api/forge/prompt-pack/lovable', {
+        const fullRes = await fetch(partner.endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -102,7 +104,7 @@ export function BuildWithLovableButton({
       setFallbackPrompt(promptForFallback);
       setPhase('fallback');
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Could not generate Lovable prompt. Try again.';
+      const msg = e instanceof Error ? e.message : `Could not generate ${partner.name} prompt. Try again.`;
       setErrorMsg(msg);
       setPhase('error');
     }
@@ -112,14 +114,14 @@ export function BuildWithLovableButton({
     if (!fallbackPrompt) return;
     try {
       await navigator.clipboard.writeText(fallbackPrompt);
-      setCopyStatus('Copied. Paste into Lovable’s prompt box.');
+      setCopyStatus(`Copied. Paste into ${partner.name}’s prompt box.`);
     } catch {
       setCopyStatus('Clipboard blocked by browser. Select the prompt manually and copy.');
     }
   };
 
-  const handleOpenLovable = () => {
-    window.open('https://lovable.dev/', '_blank', 'noopener,noreferrer');
+  const handleOpenPartner = () => {
+    window.open(partner.homepageUrl, '_blank', 'noopener,noreferrer');
   };
 
   const handleDismissFallback = () => {
@@ -154,8 +156,12 @@ export function BuildWithLovableButton({
     opacity: isDisabled ? 0.6 : 1,
   };
 
-  const label = phase === 'loading' ? 'Packing brand brain…' : 'Build with Lovable';
+  const label = phase === 'loading' ? 'Packing brand brain…' : partner.ctaLabel;
   const icon = phase === 'loading' ? <Loader2 size={16} strokeWidth={1.5} aria-hidden="true" style={{ animation: 'forge-spin 1s linear infinite' }} /> : ROCKET;
+  const firstUseHint = `First time? ${partner.name} will ask you to sign in — your brand prompt is preserved and the app starts building right after.`;
+  const subtitle = brandName
+    ? `Turn ${brandName}’s Brand Brain into a working product. Your brand brain becomes the foundation.`
+    : 'Turn this Brand Brain into a working product. Your brand brain becomes the foundation.';
 
   return (
     <section
@@ -178,13 +184,11 @@ export function BuildWithLovableButton({
             Deploy This Brain
           </h3>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>
-            Turn {brandName ? `${brandName}’s` : 'this'} Brand Brain into a working app.
+            {subtitle}
           </p>
           <p style={{ display: 'flex', alignItems: 'flex-start', gap: 6, margin: '6px 0 0', fontSize: 12, color: '#94a3b8', lineHeight: 1.45 }}>
             <Info size={13} strokeWidth={1.5} aria-hidden="true" style={{ flexShrink: 0, marginTop: 1 }} />
-            <span>
-              First time? Lovable will ask you to sign in — your brand prompt is preserved and the app starts building right after.
-            </span>
+            <span>{firstUseHint}</span>
           </p>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
@@ -193,7 +197,7 @@ export function BuildWithLovableButton({
             onClick={handleClick}
             disabled={isDisabled}
             aria-busy={phase === 'loading'}
-            title={disabled ? 'Brand profile is incomplete — run a full analysis first' : 'Opens Lovable in a new tab with this Brand Brain pre-loaded. On first use, Lovable will ask you to sign in — your prompt is preserved and building starts automatically after auth.'}
+            title={disabled ? 'Brand profile is incomplete — run a full analysis first' : partner.tooltip}
             style={primaryStyle}
           >
             <span style={{ display: 'inline-flex', alignItems: 'center' }}>{icon}</span>
@@ -204,7 +208,7 @@ export function BuildWithLovableButton({
           </button>
           {phase === 'error' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#B91C1C' }}>
-              <span>{errorMsg || 'Could not generate Lovable prompt.'}</span>
+              <span>{errorMsg || `Could not generate ${partner.name} prompt.`}</span>
               <button
                 type="button"
                 onClick={handleRetry}
@@ -240,7 +244,7 @@ export function BuildWithLovableButton({
           }}
         >
           <div style={{ fontSize: 13, color: '#0F172A', marginBottom: 8, lineHeight: 1.5 }}>
-            This Brand Brain is too rich for a safe one-click URL. Copy the prompt and paste it into Lovable.
+            This Brand Brain is too rich for a safe one-click URL. Copy the prompt and paste it into {partner.name}.
           </div>
           <textarea
             readOnly
@@ -286,7 +290,7 @@ export function BuildWithLovableButton({
             </button>
             <button
               type="button"
-              onClick={handleOpenLovable}
+              onClick={handleOpenPartner}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -304,7 +308,7 @@ export function BuildWithLovableButton({
                 lineHeight: 1,
               }}
             >
-              <ExternalLink size={14} strokeWidth={1.5} aria-hidden="true" /> Open Lovable
+              <ExternalLink size={14} strokeWidth={1.5} aria-hidden="true" /> Open {partner.name}
             </button>
             <button
               type="button"
@@ -336,4 +340,4 @@ export function BuildWithLovableButton({
   );
 }
 
-export default BuildWithLovableButton;
+export default BuildWithPartnerButton;

@@ -142,6 +142,15 @@ export function NewAnalysis() {
                 <button onClick={() => setScanError("")} style={{ background: 'none', border: 'none', color: 'inherit', textDecoration: 'underline', cursor: 'pointer', fontSize: 'inherit', padding: 0, fontFamily: 'inherit' }}>Try again</button>
               </p>
             )}
+            <p style={{ fontSize: '0.8125rem', color: '#64748b', margin: '8px 0 0', lineHeight: 1.5 }}>
+              No website yet?{' '}
+              <a
+                href="/app/quick-start"
+                style={{ color: '#4F46E5', fontWeight: 500, textDecoration: 'underline', textUnderlineOffset: 2 }}
+              >
+                Build a Brand Brain from a Founder Brief instead →
+              </a>
+            </p>
             <div className="auto-discover-hint">
               <span className="hint-pipeline">
                 <span className="hint-step">

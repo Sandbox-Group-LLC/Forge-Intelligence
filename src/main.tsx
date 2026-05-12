@@ -30,6 +30,7 @@ import PrivacyPage from './pages/PrivacyPage';
 import TermsPage from './pages/TermsPage';
 import AcceptableUsePage from './pages/AcceptableUsePage';
 import EmailCampaignPage from './pages/EmailCampaignPage';
+import QuickStartPage from './pages/QuickStartPage';
 import './index.css';
 
 
@@ -84,6 +85,12 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/product" element={<Product />} />
           <Route path="/faq" element={<Faq />} />
         <Route path="/welcome" element={<WelcomePage />} />
+
+        {/* Public Quick Start onramp — no Clerk gate, no AppProvider. Founders
+            without a marketing website fill the Founder Brief here; submission
+            stashes the brief in sessionStorage and redirects to /app/context-hub
+            which handles the synthesis + brand-profile transition. */}
+        <Route path="/app/quick-start" element={<QuickStartPage />} />
 
         {/* App — all product routes live under /app/ */}
         <Route
