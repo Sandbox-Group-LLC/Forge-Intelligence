@@ -452,7 +452,35 @@ export function BrandProfile() {
           </div>
         )}
 
-        {activeTab === 'signals' && (
+        {activeTab === 'signals' && (() => {
+          const visibleSignals = brandProfile.thirdPartySignals.filter(s => s.value !== null && s.confidence > 0);
+          if (visibleSignals.length === 0) {
+            const isQuickStart = brandProfile.brandUrl?.startsWith('quickstart://');
+            return (
+              <div className="tab-content signals-content">
+                <div
+                  style={{
+                    padding: '32px 24px',
+                    textAlign: 'center',
+                    background: '#f8fafc',
+                    border: '1px dashed #cbd5e1',
+                    borderRadius: 12,
+                  }}
+                >
+                  <h3 style={{ margin: '0 0 8px', fontSize: 15, fontWeight: 600, color: '#0f172a' }}>
+                    No third-party signals yet
+                  </h3>
+                  <p style={{ margin: 0, fontSize: 13, color: '#64748b', lineHeight: 1.6, maxWidth: 520, marginLeft: 'auto', marginRight: 'auto' }}>
+                    {isQuickStart
+                      ? <>These surface when Forge analyzes a live website — G2 ratings, Reddit mentions, press coverage, and the like. Add your URL anytime from <strong>Brand Settings</strong> to unlock them.</>
+                      : <>Forge didn't find third-party signals for this brand yet. These often grow over time — try a re-analysis later as your footprint expands.</>
+                    }
+                  </p>
+                </div>
+              </div>
+            );
+          }
+          return (
           <div className="tab-content signals-content">
             <div className="signals-table">
               <div className="table-header">
@@ -461,7 +489,7 @@ export function BrandProfile() {
                 <span className="th-value">Value</span>
                 <span className="th-confidence">Confidence</span>
               </div>
-              {brandProfile.thirdPartySignals.filter(s => s.value !== null && s.confidence > 0).map((signal, idx) => (
+              {visibleSignals.map((signal, idx) => (
                 <div key={idx} className="table-row">
                   <span className="td-source">{signal.source}</span>
                   <span className="td-type">{signal.signalType}</span>
@@ -490,11 +518,12 @@ export function BrandProfile() {
               ))}
             </div>
             <p className="signals-note">
-              Third-party signals are gathered from public sources and may vary in accuracy. 
+              Third-party signals are gathered from public sources and may vary in accuracy.
               Last checked: {formatDate(brandProfile.thirdPartySignals[0]?.lastChecked || brandProfile.updatedAt)}
             </p>
           </div>
-        )}
+          );
+        })()}
 
         {activeTab === 'gaps' && (
           <div className="tab-content gaps-content">
