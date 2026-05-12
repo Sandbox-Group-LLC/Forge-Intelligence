@@ -93,6 +93,100 @@ function ContextAgentPage() {
       });
   }, []);
 
+  // Quick Start handoff — founder filled the Founder Brief at /app/quick-start
+  // (no website to scrape) and we picked up the brief from sessionStorage.
+  // Mirrors the URL onboarding flow above: same 5-stage animation, same final
+  // setBrandProfile + ?brand= URL rewrite, just hits the analyze endpoint with
+  // { factualGround, sessionId } instead of { brandUrl }.
+  useEffect(() => {
+    if (firedRef.current) return;
+    const briefJson = sessionStorage.getItem('forge_onboard_factual_ground');
+    if (!briefJson) return;
+    firedRef.current = true;
+    sessionStorage.removeItem('forge_onboard_factual_ground');
+
+    let factualGround: Record<string, string> | null = null;
+    try { factualGround = JSON.parse(briefJson); } catch { return; }
+    if (!factualGround) return;
+
+    // Preserve the anonymous session token so a later Clerk signup can claim
+    // the profile (the server stamped this same token onto onboard_session_id).
+    let sessionId: string;
+    try {
+      sessionId = localStorage.getItem('forge_quick_start_session')
+        || (crypto.randomUUID ? crypto.randomUUID() : `qs-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      localStorage.setItem('forge_quick_start_session', sessionId);
+    } catch {
+      sessionId = `qs-${Date.now()}`;
+    }
+
+    setCurrentView('active-run');
+    setIsProcessing(true);
+
+    const stageTimings = [12500, 15500, 19000, 15500, 12500];
+    let cancelled = false;
+    let stages: ProcessingStage[] = initialProcessingStages.map(s => ({ ...s, status: 'pending' as const }));
+
+    const driveStages = async () => {
+      for (let i = 0; i < stageTimings.length; i++) {
+        if (cancelled) break;
+        stages = stages.map((s, idx) =>
+          idx === i ? { ...s, status: 'running' as const, startTime: Date.now() } : s
+        );
+        setProcessingStages([...stages]);
+        await new Promise(r => setTimeout(r, stageTimings[i]));
+        if (cancelled) break;
+        stages = stages.map((s, idx) =>
+          idx === i ? { ...s, status: 'complete' as const, endTime: Date.now() } : s
+        );
+        setProcessingStages([...stages]);
+      }
+    };
+
+    driveStages();
+
+    fetch('/api/context-hub/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ factualGround, sessionId, source: 'quick-start' }),
+    })
+      .then(r => r.json())
+      .then(d => {
+        cancelled = true;
+        if (d.success && d.data) {
+          setProcessingStages(initialProcessingStages.map(s => ({ ...s, status: 'complete' as const })));
+          setBrandProfile(d.data);
+
+          const activeBrand = {
+            id: d.data.id,
+            brandUrl: d.data.brandUrl,
+            brandName: d.data.brandName,
+            expiresAt: d.data.expiresAt || null,
+            isPaid: d.data.isPaid || false,
+          };
+          try { localStorage.setItem('forge_active_brand', JSON.stringify(activeBrand)); } catch(e) {}
+          try { localStorage.setItem('forge_active_brand_id', d.data.id); } catch(e) {}
+          window.history.replaceState({}, '', `/app/context-hub?brand=${d.data.id}`);
+          setIsProcessing(false);
+          setCurrentView('brand-profile');
+        } else {
+          setIsProcessing(false);
+          setCurrentView('new-analysis');
+          window.dispatchEvent(new CustomEvent('forge:scan-error', {
+            detail: { message: d?.error || d?.details || 'Synthesis failed. Please try again.' }
+          }));
+        }
+      })
+      .catch((err) => {
+        cancelled = true;
+        setIsProcessing(false);
+        setCurrentView('new-analysis');
+        window.dispatchEvent(new CustomEvent('forge:scan-error', {
+          detail: { message: err?.message || 'Synthesis failed. Please try again.' }
+        }));
+      });
+  }, []);
+
   // Seed URL from active brand when landing on new-analysis with no pending onboard URL
   // This covers the full-page-reload path (window.location.href navigation)
   useEffect(() => {

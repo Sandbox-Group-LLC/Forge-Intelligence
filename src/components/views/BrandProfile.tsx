@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
-import { BuildWithLovableButton } from '../BuildWithLovableButton';
+import { BuildWithPartnerButton } from '../BuildWithPartnerButton';
 import './BrandProfile.css';
 
 // Lucide-style icons
@@ -218,7 +218,7 @@ export function BrandProfile() {
         </div>
       </div>
 
-      <BuildWithLovableButton
+      <BuildWithPartnerButton
         brandProfileId={brandProfile.id}
         brandName={brandProfile.brandName}
         disabled={!brandProfile.voiceProfile || !brandProfile.voiceProfile.summary}
