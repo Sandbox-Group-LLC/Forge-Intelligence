@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '@clerk/clerk-react';
-import { Rocket, ExternalLink, Copy, Loader2 } from 'lucide-react';
+import { Rocket, ExternalLink, Copy, Loader2, Info } from 'lucide-react';
 
 type Phase = 'idle' | 'loading' | 'fallback' | 'error';
 
@@ -180,6 +180,12 @@ export function BuildWithLovableButton({
           <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>
             Turn {brandName ? `${brandName}’s` : 'this'} Brand Brain into a working app.
           </p>
+          <p style={{ display: 'flex', alignItems: 'flex-start', gap: 6, margin: '6px 0 0', fontSize: 12, color: '#94a3b8', lineHeight: 1.45 }}>
+            <Info size={13} strokeWidth={1.5} aria-hidden="true" style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>
+              First time? Lovable will ask you to sign in — your brand prompt is preserved and the app starts building right after.
+            </span>
+          </p>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
           <button
@@ -187,7 +193,7 @@ export function BuildWithLovableButton({
             onClick={handleClick}
             disabled={isDisabled}
             aria-busy={phase === 'loading'}
-            title={disabled ? 'Brand profile is incomplete — run a full analysis first' : 'Open Lovable with this Brain pre-loaded'}
+            title={disabled ? 'Brand profile is incomplete — run a full analysis first' : 'Opens Lovable in a new tab with this Brand Brain pre-loaded. On first use, Lovable will ask you to sign in — your prompt is preserved and building starts automatically after auth.'}
             style={primaryStyle}
           >
             <span style={{ display: 'inline-flex', alignItems: 'center' }}>{icon}</span>
