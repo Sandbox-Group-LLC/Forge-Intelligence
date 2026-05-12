@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
+import { BuildWithLovableButton } from '../BuildWithLovableButton';
 import './BrandProfile.css';
 
 // Lucide-style icons
@@ -216,6 +217,12 @@ export function BrandProfile() {
           </button>
         </div>
       </div>
+
+      <BuildWithLovableButton
+        brandProfileId={brandProfile.id}
+        brandName={brandProfile.brandName}
+        disabled={!brandProfile.voiceProfile || !brandProfile.voiceProfile.summary}
+      />
 
       {brandProfile.scraperSuccess === false && (
         <div style={{ padding: '14px 20px', marginBottom: 16, background: '#FFF7ED', border: '1px solid #FDBA74', borderRadius: 10, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
