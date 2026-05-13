@@ -11707,7 +11707,17 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
             console.log(`[Analytics/LinkedIn] Zernio analytics for ${zernioPostId} (URN ${postId}): HTTP ${analyticsRes.status}`);
 
             if (analyticsRes.status === 202) {
-              console.log(`[Analytics/LinkedIn] Sync pending for ${zernioPostId} — will retry next sync`);
+              // Ensure a placeholder content_analytics row exists so the article
+              // appears in Performance Dashboard while we wait for Zernio. DO NOTHING
+              // on conflict — never clobber real metrics that arrived in a later sync.
+              await pool.query(
+                `INSERT INTO content_analytics
+                   (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at)
+                 VALUES ($1, $2, 'linkedin', $3, 0, 0, 0, 0, 0, 0, 0, $4::jsonb, COALESCE($5, NOW()), NOW())
+                 ON CONFLICT (content_id, channel) DO NOTHING`,
+                [brandProfileId, row.content_id, postId, JSON.stringify({ pending: true, zernioPostId }), row.published_at]
+              ).catch(e => console.error('[Analytics/LinkedIn] pending placeholder failed:', e.message));
+              console.log(`[Analytics/LinkedIn] Sync pending for ${zernioPostId} — placeholder inserted, will retry next sync`);
               continue;
             }
             if (analyticsRes.status === 424) {
@@ -11959,7 +11969,14 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
             console.log(`[Analytics/Facebook] Zernio analytics for ${postId}: HTTP ${analyticsRes.status}`);
 
             if (analyticsRes.status === 202) {
-              console.log(`[Analytics/Facebook] Sync pending for ${postId} — will retry next sync`);
+              await pool.query(
+                `INSERT INTO content_analytics
+                   (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at)
+                 VALUES ($1, $2, 'facebook', $3, 0, 0, 0, 0, 0, 0, 0, $4::jsonb, COALESCE($5, NOW()), NOW())
+                 ON CONFLICT (content_id, channel) DO NOTHING`,
+                [brandProfileId, row.content_id, postId, JSON.stringify({ pending: true }), row.published_at]
+              ).catch(e => console.error('[Analytics/Facebook] pending placeholder failed:', e.message));
+              console.log(`[Analytics/Facebook] Sync pending for ${postId} — placeholder inserted, will retry next sync`);
               continue;
             }
             if (analyticsRes.status === 424 || !analyticsRes.ok) {
@@ -12078,7 +12095,14 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
             console.log(`[Analytics/Reddit] Zernio analytics for ${postId}: HTTP ${analyticsRes.status}`);
 
             if (analyticsRes.status === 202) {
-              console.log(`[Analytics/Reddit] Sync pending for ${postId} — will retry next sync`);
+              await pool.query(
+                `INSERT INTO content_analytics
+                   (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at)
+                 VALUES ($1, $2, 'reddit', $3, 0, 0, 0, 0, 0, 0, 0, $4::jsonb, COALESCE($5, NOW()), NOW())
+                 ON CONFLICT (content_id, channel) DO NOTHING`,
+                [brandProfileId, row.content_id, postId, JSON.stringify({ pending: true }), row.published_at]
+              ).catch(e => console.error('[Analytics/Reddit] pending placeholder failed:', e.message));
+              console.log(`[Analytics/Reddit] Sync pending for ${postId} — placeholder inserted, will retry next sync`);
               continue;
             }
             if (analyticsRes.status === 424 || !analyticsRes.ok) {
