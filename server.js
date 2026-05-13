@@ -7389,18 +7389,58 @@ OUTPUT ONLY valid JSON matching this schema exactly. No prose before or after.
       messages: [{ role: 'user', content: prompt }]
     });
 
-    // Parse Claude's response — strip code fences if present, then JSON parse
+    // Parse Claude's response. Strip code fences if present, then try direct
+    // parse first — normal case. Only if that fails, apply careful escaping
+    // INSIDE string values for bare control chars (the rare hardening case).
     let raw = msg.content?.[0]?.text || '';
     raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
-    // Strip control chars that break JSON.parse (Claude sometimes streams literal newlines in strings)
-    raw = raw.replace(/[\u0000-\u001f]+/g, c => c === '\n' ? '\\n' : c === '\t' ? '\\t' : '');
 
     let parsed;
     try {
+      // First attempt: parse as-is. Claude's JSON is usually valid.
       parsed = JSON.parse(raw);
-    } catch (parseErr) {
-      console.error('[REGEN-ARCS] JSON parse failed:', parseErr.message, 'raw:', raw.slice(0, 500));
-      return res.status(500).json({ success: false, error: 'Model returned invalid JSON. Please try again.' });
+    } catch (firstErr) {
+      // Fallback: escape bare control chars but ONLY inside double-quoted
+      // string regions. The original blanket replace was destroying
+      // structural whitespace between tokens (\n between { and "key")
+      // and producing invalid JSON.
+      try {
+        let inString = false;
+        let escaped = false;
+        let out = '';
+        for (let i = 0; i < raw.length; i++) {
+          const ch = raw[i];
+          if (inString) {
+            if (escaped) {
+              out += ch;
+              escaped = false;
+            } else if (ch === '\\') {
+              out += ch;
+              escaped = true;
+            } else if (ch === '"') {
+              out += ch;
+              inString = false;
+            } else if (ch === '\n') {
+              out += '\\n';
+            } else if (ch === '\r') {
+              out += '\\r';
+            } else if (ch === '\t') {
+              out += '\\t';
+            } else if (ch.charCodeAt(0) < 0x20) {
+              // strip other control chars inside strings
+            } else {
+              out += ch;
+            }
+          } else {
+            if (ch === '"') inString = true;
+            out += ch;
+          }
+        }
+        parsed = JSON.parse(out);
+      } catch (secondErr) {
+        console.error('[REGEN-ARCS] JSON parse failed (both attempts):', firstErr.message, '/', secondErr.message, 'raw start:', raw.slice(0, 300));
+        return res.status(500).json({ success: false, error: 'Model returned invalid JSON. Please try again.' });
+      }
     }
 
     const newArcs = parsed.campaignArcs || [];
