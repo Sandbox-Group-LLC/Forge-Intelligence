@@ -7274,6 +7274,158 @@ app.get('/api/social-generator/arcs/:brandProfileId', requireAuth, async (req, r
   }
 });
 
+// POST /api/social-generator/regenerate-arcs/:brandProfileId
+// Generates a fresh set of campaignArcs[] for the brand's profile_data
+// WITHOUT a full Context Hub rescan. The Social Generator UI calls this
+// when the user wants alternate narrative angles to choose from.
+//
+// Body (all optional):
+//   leanIntoMoats:    string[]  — strategicMoat capabilities to emphasize
+//   leanIntoPersonas: string[]  — persona IDs to emphasize
+//   leanIntoGaps:     string[]  — competitiveGap topics to emphasize
+//   guidance:         string    — free-text nudge (max 500 chars)
+//
+// Returns: { success: true, arcs: CampaignArc[] }
+//
+// Persistence: REPLACES profile_data.campaignArcs with the new set.
+// Old arcs are not preserved (no brain_history table yet — add audit
+// when that table exists).
+app.post('/api/social-generator/regenerate-arcs/:brandProfileId', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.params;
+  if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+
+  const {
+    leanIntoMoats = [],
+    leanIntoPersonas = [],
+    leanIntoGaps = [],
+    guidance = ''
+  } = req.body || {};
+
+  // Validate guidance length defensively
+  const cleanGuidance = String(guidance || '').slice(0, 500).trim();
+
+  try {
+    // Load brand profile
+    const pr = await pool.query('SELECT brand_name, profile_data FROM brand_profiles WHERE id = $1', [brandProfileId]);
+    if (!pr.rows.length) return res.status(404).json({ error: 'Brand not found' });
+    const profile = pr.rows[0];
+    const pd = profile.profile_data || {};
+
+    const personas = pd.personas || [];
+    const moats = pd.strategicMoats || [];
+    const gaps = pd.competitiveGaps || [];
+    const voiceProfile = pd.voiceProfile || pd.voice_profile || {};
+    const existingArcs = pd.campaignArcs || [];
+
+    // Build emphasis blocks. If user selected specific moats/personas/gaps,
+    // surface them first and most prominently. Otherwise pass the whole list
+    // (model picks angles itself, equivalent to current Context Hub flow).
+    const moatsForPrompt = leanIntoMoats.length
+      ? moats.filter(m => leanIntoMoats.includes(m.capability))
+      : moats;
+    const personasForPrompt = leanIntoPersonas.length
+      ? personas.filter(p => leanIntoPersonas.includes(p.id))
+      : personas;
+    const gapsForPrompt = leanIntoGaps.length
+      ? gaps.filter(g => leanIntoGaps.includes(g.topic))
+      : gaps;
+
+    const emphasisBlock = (leanIntoMoats.length || leanIntoPersonas.length || leanIntoGaps.length)
+      ? `\nUSER-SPECIFIED EMPHASIS (lean into these, not the others):\n` +
+        (leanIntoMoats.length ? `\nMoats: ${leanIntoMoats.join(', ')}\n` : '') +
+        (leanIntoPersonas.length ? `Personas: ${leanIntoPersonas.join(', ')}\n` : '') +
+        (leanIntoGaps.length ? `Gaps: ${leanIntoGaps.join(', ')}\n` : '')
+      : '';
+
+    const guidanceBlock = cleanGuidance ? `\nUSER GUIDANCE: ${cleanGuidance}\n` : '';
+
+    const existingTitles = existingArcs.map(a => a.title).filter(Boolean);
+    const avoidBlock = existingTitles.length
+      ? `\nAVOID REPRODUCING EXISTING ARC TITLES OR THESES. The user already has these and wants ALTERNATE angles:\n${existingTitles.map(t => `  - "${t}"`).join('\n')}\n`
+      : '';
+
+    const prompt = `You are generating fresh CAMPAIGN ARCS for a brand's content strategy. These arcs will be picked by the brand's social-post generator as the spine of multi-post sequences — each arc is a sustained narrative the brand argues across many short-form posts.
+
+BRAND: ${profile.brand_name}
+
+VOICE PROFILE:
+${JSON.stringify(voiceProfile, null, 2).slice(0, 1500)}
+
+PERSONAS (these are who the brand speaks to):
+${JSON.stringify(personasForPrompt, null, 2).slice(0, 2000)}
+
+STRATEGIC MOATS (what the brand deliberately does NOT do — leverage as positioning):
+${JSON.stringify(moatsForPrompt, null, 2).slice(0, 1500)}
+
+COMPETITIVE GAPS (topics where peers own the conversation and the brand could plausibly win):
+${JSON.stringify(gapsForPrompt, null, 2).slice(0, 2000)}
+${emphasisBlock}${guidanceBlock}${avoidBlock}
+TASK: Write 3-5 fresh campaign arcs. Each arc must be:
+- A narrative spine the brand can argue for weeks/months
+- Ownable — something the brand specifically can claim, not generic
+- Provocative — a real point of view, not a topic survey
+- Tied to one persona primarily
+
+OUTPUT ONLY valid JSON matching this schema exactly. No prose before or after.
+
+{
+  "campaignArcs": [
+    {
+      "id": "kebab-case-slug",
+      "title": "Evocative name of the campaign series (not generic)",
+      "thesis": "1-2 sentence core claim of the whole series. Provocative, ownable, tied to the brand's POV. NOT a summary of what will be covered — the argument itself.",
+      "acts": [
+        { "actNumber": 1, "actTitle": "string", "actPremise": "what this act establishes, proves, or resolves" }
+      ],
+      "recommendedLength": 4,
+      "targetPersona": "persona id from the input"
+    }
+  ]
+}`;
+
+    const msg = await anthropic.messages.create({
+      model: 'claude-opus-4-6',
+      max_tokens: 4000,
+      messages: [{ role: 'user', content: prompt }]
+    });
+
+    // Parse Claude's response — strip code fences if present, then JSON parse
+    let raw = msg.content?.[0]?.text || '';
+    raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+    // Strip control chars that break JSON.parse (Claude sometimes streams literal newlines in strings)
+    raw = raw.replace(/[\u0000-\u001f]+/g, c => c === '\n' ? '\\n' : c === '\t' ? '\\t' : '');
+
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (parseErr) {
+      console.error('[REGEN-ARCS] JSON parse failed:', parseErr.message, 'raw:', raw.slice(0, 500));
+      return res.status(500).json({ success: false, error: 'Model returned invalid JSON. Please try again.' });
+    }
+
+    const newArcs = parsed.campaignArcs || [];
+    if (!Array.isArray(newArcs) || newArcs.length === 0) {
+      return res.status(500).json({ success: false, error: 'Model returned no arcs. Please try again.' });
+    }
+
+    // Persist: jsonb_set replaces only the campaignArcs key, preserves everything else
+    await pool.query(
+      `UPDATE brand_profiles
+          SET profile_data = jsonb_set(COALESCE(profile_data, '{}'::jsonb), '{campaignArcs}', $1::jsonb),
+              version = version + 1,
+              updated_at = NOW()
+        WHERE id = $2`,
+      [JSON.stringify(newArcs), brandProfileId]
+    );
+
+    console.log(`[REGEN-ARCS] Brand ${brandProfileId.slice(0,8)}… generated ${newArcs.length} fresh arcs`);
+    res.json({ success: true, arcs: newArcs });
+  } catch (e) {
+    console.error('[REGEN-ARCS] error:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // GET /api/social-generator/recent/:brandProfileId — list recent batches
 app.get('/api/social-generator/recent/:brandProfileId', requireAuth, async (req, res) => {
   const { brandProfileId } = req.params;
