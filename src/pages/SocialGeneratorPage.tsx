@@ -355,22 +355,26 @@ function SocialGeneratorContent() {
   };
 
   // Open the Regenerate Arcs modal. First open lazy-loads brain elements
-  // via /api/context-hub/brand/:brandId which returns profile_data fields
-  // flattened into the response (NOT nested under .profile_data).
+  // via /api/context-hub/brains/:id (requireAuth, no expires_at filter).
+  // Same flattened shape: profile_data fields live at top of d.data.
+  //
+  // We previously tried /api/context-hub/brand/:brandId, which has an
+  // expires_at filter that excludes Forge (and most owned brands whose
+  // expiry was set during a trial-style scan and never cleared).
   const openRegenerate = async () => {
     setRegenOpen(true);
     setRegenError('');
-    if (brainElements || !selectedBrainId) return;
+    if (brainElements || !selectedBrainId || !authToken) return;
     setBrainLoading(true);
     try {
-      const r = await fetch(`/api/context-hub/brand/${selectedBrainId}`);
+      const r = await fetch(`/api/context-hub/brains/${selectedBrainId}`, {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
       const d = await r.json();
       if (!d.success || !d.data) {
         setRegenError(d.error || 'Brand not found');
         return;
       }
-      // d.data has profile_data flattened in (personas, strategicMoats,
-      // competitiveGaps live at top level, alongside id/brandUrl/etc).
       const pd = d.data;
       setBrainElements({
         personas: (pd.personas || []).map((p: { id?: string; name?: string; role?: string }) => ({
