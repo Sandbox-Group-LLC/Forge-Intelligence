@@ -1,3 +1,147 @@
+## 2026-05-13 (late PT) — Social Generator regenerate-arcs + X v2 media upload fix
+
+Two unrelated items shipped in one long session. Both are worth logging
+because each one taught a lesson the hard way — the same lesson twice,
+actually, which is the lesson.
+
+### Social Campaign Generator — regenerate campaign arcs in-place
+
+Added the ability to regenerate `profile_data.campaignArcs` from inside the
+Social Generator without running a full Context Hub rescan. The arc picker
+got a new "↻ Generate new arcs" button. Click it → modal opens with chips
+for moats / personas / gaps + an optional 500-char guidance textarea. Pick
+which brand elements to lean into (leaving everything unchecked passes the
+full brain), submit, and `campaignArcs` gets REPLACED with the new set.
+
+Existing arc titles are passed to the model as "do not duplicate" so the
+new arcs are genuinely alternate angles rather than near-clones.
+
+**Commits:**
+- `2b14cf4b` — POST /api/social-generator/regenerate-arcs/:brandProfileId
+- `366c2d4a` — SocialGeneratorPage.tsx atomic FE (interfaces + state + handlers + button + modal)
+- `8748b4bb` — SocialGeneratorPage.css for modal + chips + button styling
+- `c0514e3b` — wrong endpoint fix attempt #1 (still wrong, see below)
+- `84e48345` — wrong endpoint fix attempt #2 (right endpoint, hit a different bug)
+- `78ee3c14` — JSON parse pipeline fix (the third bug)
+
+**Three bugs in a row, all preventable, all the same lesson:**
+
+1. I assumed `/api/context-hub/get-profile` existed without curling. It
+   doesn't. Real endpoint is `/api/context-hub/brand/:brandId`. Wasted a
+   commit on a 404.
+
+2. I assumed `/api/context-hub/brand/:brandId` would work for Forge.
+   It doesn't — it filters on `expires_at`, and Forge's expires_at is
+   April 7, 2026 (a month past). Almost EVERY brand in Brian's account
+   has expired `expires_at` despite being `is_active=true` + tethered
+   to his clerk_user. Trial-state semantic leaking into paid-state
+   behavior. Wasted a second commit. Switched to
+   `/api/context-hub/brains/:id` which has no expiry filter.
+
+3. The JSON parser ran a blanket `replace(/[\u0000-\u001f]+/g, ...)`
+   BEFORE attempting parse, which destroyed structural whitespace
+   between JSON tokens (real `\n` between `{` and the first key
+   became literal `\n` — invalid JSON outside a quoted string).
+   Switched to a state-machine that only escapes control chars
+   INSIDE quoted-string regions, and only as a fallback after a
+   direct parse attempt fails.
+
+The pattern: in all three cases, I wrote transformation/integration code
+without first probing the actual upstream behavior. A single `curl` of
+the endpoint or a single `JSON.parse(raw)` test on Claude's actual
+output would have caught each one in 30 seconds.
+
+### X v2 media upload — X enforced v1.1 deprecation today
+
+After regenerate-arcs shipped, Brian tried to publish an X post with an
+image. Failed with the diagnostic:
+
+```
+[X-MEDIA-DIAG] HTTP 403 | raw body: (empty)
+[X-MEDIA-DIAG] auth method: oauth2
+[X-SOCIAL] OAuth2 media upload failed: X media upload failed: HTTP 403
+```
+
+I almost immediately pivoted to "v1.1 doesn't accept OAuth 2.0 tokens,
+let's switch to v2." Brian (correctly) stopped me — the same code path
+had been working for over a week, including a successful publish at
+06:06 UTC the same day. So either:
+  (a) X-side change today
+  (b) Forge regression today
+  (c) Token-state issue specific to this brand
+
+**Probed it properly this time (FOUR probes, 2 minutes total):**
+
+1. `GET /2/users/me` with the stored OAuth2 token → **HTTP 200**, correct
+   user identity. Auth is fine.
+2. `POST upload.twitter.com/1.1/media/upload.json` with same token +
+   minimal 1x1 PNG → **HTTP 403 empty body**. Reproduces the prod
+   failure independent of Forge code, ruling out content/image issues.
+3. `POST api.x.com/2/media/upload` with same token + wrong body shape
+   → **HTTP 400** with precise error: `$.media: is missing but it is
+   required, $.media_category: is missing but it is required, $.media_data:
+   is not defined in the schema`. Auth accepted, body shape wrong.
+4. `POST api.x.com/2/media/upload` with same token + `media` (binary
+   multipart part) + `media_category=tweet_image` → **HTTP 200** with
+   `{ data: { id, media_key, ... } }`. Working path.
+
+That's the answer. X enforced v1.1 deprecation for OAuth 2.0 user-context
+tokens on 2026-05-13. The earlier "v1.1 + OAuth2 still works" was riding
+a grace-period exception that ended sometime between 06:06 UTC and 22:21
+UTC. The OAuth 1.0a env-var fallback path still works on v1.1 (X didn't
+deprecate it for OAuth 1.0a signatures).
+
+**Fix (`2c3e86e1`):** `uploadXMedia()` branches by auth method.
+
+| Auth | Endpoint | Body shape | Response |
+|---|---|---|---|
+| OAuth 2.0 Bearer | `api.x.com/2/media/upload` | `media` (binary) + `media_category=tweet_image` | `data.id` |
+| OAuth 1.0a sig   | `upload.twitter.com/1.1/media/upload.json` | `media_data` (base64) + optional `additional_owners` | `media_id_string` |
+
+The existing response parser already handles both shapes via
+`upData.media_id_string || upData.data?.id` — no downstream changes.
+
+`additional_owners` is dropped on the v2 path. v2 doesn't accept it
+in multipart, and the OAuth 2.0 user uploading the media IS the user
+posting the tweet (no cross-user attach scenario).
+
+### The lesson (logged for the third time this week)
+
+**Probe before pivot.** I've now learned this same lesson three times in
+the past five days:
+- HubSpot integration: pivoted four endpoints over 90 minutes before
+  recognizing the Marketing Hub Pro+ tier gate. One probe would have
+  caught it.
+- Zernio dual-ID analytics: I probed before pivoting on this one, which
+  saved 90 minutes. Got it right.
+- Regenerate arcs: didn't probe, three commits to land what should have
+  been one.
+- X v2 media upload: started to repeat the HubSpot mistake; Brian caught
+  me; then four probes in 2 minutes resolved it cleanly.
+
+The rule is: when writing code that integrates with an external API or
+transforms its output, the FIRST step is a probe. Not after the first
+failure. Not as a fallback. First. The probe takes 30 seconds and either
+confirms or destroys the working theory. Everything else flows from
+there.
+
+I'm going to write this into the README's architecture rules so future-
+me (or future-Claude) can't miss it.
+
+### Adjacent followup queued
+
+**expires_at field is leaking trial semantics into paid brands.** Almost
+every owned brand in Brian's account has expired `expires_at` despite
+being `is_active=true` + tethered to his clerk_user_id. The Context Hub
+brand endpoint's expiry filter silently 404s on these brands. Options:
+- One-time SQL cleanup: `UPDATE brand_profiles SET expires_at = NULL WHERE clerk_user_id IS NOT NULL`
+- OR update `/api/context-hub/brand` to accept `OR clerk_user_id IS NOT NULL`
+
+Either fixes a broader class of silent failures across the platform. Not
+done tonight — logged for a future cleanup pass.
+
+---
+
 
 
 # 2026-05-10 (overnight) — Copilot Autofix incident + Morgan Chasser experiment
@@ -44,6 +188,8 @@ If the experiment works, it's a real positioning thread: **Forge for personal br
 Three duplicate "Brand Intelligence Brief: Six Deliverables" article drafts existed in Forge's generated_content table due to a browser glitch during a generation run. Same `enriched_brief_id` (`920548ef-f200-454a-8f27-eccb69d1af42`), same title, slightly different bodies. Kept the newest (`427f51b6-...`), deleted the older two (`4ebe4e03-...`, `7f8922ad-...`). Cleaned up 20 orphaned `geo_citations` rows that referenced the deleted articles via content_id (10 rows per deleted article).
 
 **Pattern flagged for future janitor job:** `DELETE FROM geo_citations WHERE content_id NOT IN (SELECT id FROM <each_brand_table>)` periodically would catch this class of orphan automatically as users delete duplicate drafts.
+
+## 2026-05-13 (late PT) — [see addendum below]
 
 ## Late May 10 — Publish status mirror bug (100% of articles affected)
 
