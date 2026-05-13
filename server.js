@@ -11866,7 +11866,13 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
         console.warn(`[Analytics/X] No credentials configured (no OAuth2 token, no OAuth1 fallback) — skipping all ${xLogRes.rows.length} eligible posts`);
         errors.push({ channel: 'x', error: 'no_x_credentials_configured', detail: 'Connect X in Integrations or configure X_OAUTH1CONSUMER_KEY / X_OAUTH1ACCESS_TOKEN env vars.' });
       } else {
+        // Track refresh state across the loop: refresh at most once per sync
+        // call so a permanently-bad refresh_token can't burn a request per
+        // tweet. Mirrors the publish path's pattern (server.js:11038-11071).
+        let xRefreshAttempted = false;
+        let xAuthHardFailed = false;
         for (const row of xLogRes.rows) {
+          if (xAuthHardFailed) break;
           try {
             const rd = row.response_data || row.queue_results?.x || {};
             const tweetId = rd.tweetId || rd.id
@@ -11881,8 +11887,10 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
             const endpoint = `https://api.twitter.com/2/tweets/${tweetId}`;
             const queryString = 'tweet.fields=public_metrics,non_public_metrics,created_at,author_id';
             let authHeader;
+            let usedOAuth2 = false;
             if (xCreds.oauth2AccessToken) {
               authHeader = `Bearer ${xCreds.oauth2AccessToken}`;
+              usedOAuth2 = true;
             } else {
               const xApiKey       = xCreds.apiKey       || process.env.X_OAUTH1CONSUMER_KEY;
               const xApiSecret    = xCreds.apiSecret    || process.env.X_OAUTH1CONSUMER_SECRET;
@@ -11900,9 +11908,46 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
                 Object.fromEntries(new URLSearchParams(queryString)));
             }
 
-            const tweetRes = await fetch(`${endpoint}?${queryString}`, {
+            let tweetRes = await fetch(`${endpoint}?${queryString}`, {
               headers: { 'Authorization': authHeader }
             });
+
+            // 401 with OAuth 2.0 → access token expired. Try a one-shot
+            // refresh, persist the new token, retry the request once.
+            // Mirrors the publish-path refresh at server.js:11038-11071.
+            if (tweetRes.status === 401 && usedOAuth2 && xCreds.oauth2RefreshToken && !xRefreshAttempted) {
+              xRefreshAttempted = true;
+              try {
+                const refreshed = await refreshXOAuth2Token(xCreds.oauth2RefreshToken);
+                xCreds.oauth2AccessToken = refreshed.access_token;
+                if (refreshed.refresh_token) xCreds.oauth2RefreshToken = refreshed.refresh_token;
+                await pool.query(
+                  `UPDATE publishing_channels SET credentials = credentials || $1 WHERE brand_profile_id = $2 AND channel = 'x'`,
+                  [JSON.stringify({ oauth2AccessToken: xCreds.oauth2AccessToken, oauth2RefreshToken: xCreds.oauth2RefreshToken }), brandProfileId]
+                );
+                console.log(`[Analytics/X] Refreshed OAuth2 token mid-sync for brand=${brandProfileId}, retrying tweet=${tweetId}`);
+                tweetRes = await fetch(`${endpoint}?${queryString}`, {
+                  headers: { 'Authorization': `Bearer ${xCreds.oauth2AccessToken}` }
+                });
+              } catch(e) {
+                console.error(`[Analytics/X] Token refresh failed for brand=${brandProfileId}: ${e.message}`);
+                const msg = (e.message || '').toLowerCase();
+                if (msg.includes('invalid') || msg.includes('revoked') || msg.includes('expired')) {
+                  await pool.query(
+                    `UPDATE publishing_channels SET credentials = credentials - 'oauth2AccessToken' - 'oauth2RefreshToken' WHERE brand_profile_id = $1 AND channel = 'x'`,
+                    [brandProfileId]
+                  ).catch(() => {});
+                  console.error(`[Analytics/X] Cleared expired tokens for brand=${brandProfileId} — user must reconnect`);
+                  errors.push({ channel: 'x', error: 'x_auth_expired', detail: 'X authentication expired. Please reconnect X in Integrations.' });
+                } else {
+                  errors.push({ contentId: row.content_id, error: 'token_refresh_failed:' + e.message });
+                }
+                // No point hammering api.twitter.com with a dead token for the
+                // remaining tweets — break out and let the next sync retry.
+                xAuthHardFailed = true;
+                break;
+              }
+            }
 
             let impressions = 0, clicks = 0, reactions = 0, comments = 0, reposts = 0;
             let rawData = {};
