@@ -1037,3 +1037,228 @@
   }
 }
 
+
+/* ── Regenerate Arcs button + modal ─────────────────────────────────── */
+
+.sg-arc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.sg-arc-regen-btn {
+  background: transparent;
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--color-text-secondary, #475569);
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s ease;
+}
+.sg-arc-regen-btn:hover {
+  color: var(--color-accent, #1d6ad8);
+  border-color: var(--color-accent, #1d6ad8);
+}
+
+.sg-arc-empty-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.sg-arc-empty-cta.primary {
+  background: var(--color-accent, #1d6ad8);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 9px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+}
+.sg-arc-empty-cta.primary:hover {
+  background: var(--color-accent-hover, #1759b8);
+}
+
+/* Modal overlay + container — matches Forge's elevated-card aesthetic */
+.sg-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 24px;
+  animation: sg-modal-fade 0.15s ease;
+}
+@keyframes sg-modal-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.sg-modal {
+  background: var(--color-bg-card, white);
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.2);
+  width: 100%;
+  max-width: 640px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sg-modal-header {
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--color-border, #e2e8f0);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sg-modal-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--color-text-emphasis, #0F172A);
+}
+.sg-modal-close {
+  background: transparent;
+  border: none;
+  font-size: 26px;
+  line-height: 1;
+  color: var(--color-text-muted, #64748b);
+  cursor: pointer;
+  padding: 0 4px;
+}
+.sg-modal-close:hover {
+  color: var(--color-text-primary, #1e293b);
+}
+
+.sg-modal-body {
+  padding: 20px 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+.sg-modal-intro {
+  font-size: 13px;
+  color: var(--color-text-muted, #64748b);
+  margin: 0 0 18px 0;
+  line-height: 1.5;
+}
+
+.sg-modal-section {
+  margin-bottom: 20px;
+}
+.sg-modal-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted, #64748b);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.sg-modal-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.sg-modal-chip {
+  background: var(--color-bg-elevated, #f8fafc);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 16px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--color-text-secondary, #475569);
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+.sg-modal-chip:hover {
+  border-color: var(--color-accent, #1d6ad8);
+}
+.sg-modal-chip.active {
+  background: var(--color-accent, #1d6ad8);
+  color: white;
+  border-color: var(--color-accent, #1d6ad8);
+}
+
+.sg-modal-textarea {
+  width: 100%;
+  background: var(--color-bg-elevated, #f8fafc);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--color-text-primary, #1e293b);
+  resize: vertical;
+  min-height: 60px;
+}
+.sg-modal-textarea:focus {
+  outline: none;
+  border-color: var(--color-accent, #1d6ad8);
+}
+.sg-modal-charcount {
+  font-size: 11px;
+  color: var(--color-text-muted, #64748b);
+  text-align: right;
+  margin-top: 4px;
+}
+
+.sg-modal-loading,
+.sg-modal-error {
+  padding: 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  text-align: center;
+}
+.sg-modal-loading {
+  background: var(--color-bg-elevated, #f8fafc);
+  color: var(--color-text-muted, #64748b);
+}
+.sg-modal-error {
+  background: #fee2e2;
+  color: #991b1b;
+  margin-top: 12px;
+}
+
+.sg-modal-footer {
+  padding: 14px 24px;
+  border-top: 1px solid var(--color-border, #e2e8f0);
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.sg-modal-btn {
+  background: transparent;
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  color: var(--color-text-secondary, #475569);
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s ease;
+}
+.sg-modal-btn:hover:not(:disabled) {
+  border-color: var(--color-text-muted, #64748b);
+}
+.sg-modal-btn.primary {
+  background: var(--color-accent, #1d6ad8);
+  color: white;
+  border-color: var(--color-accent, #1d6ad8);
+}
+.sg-modal-btn.primary:hover:not(:disabled) {
+  background: var(--color-accent-hover, #1759b8);
+}
+.sg-modal-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
