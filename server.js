@@ -9069,30 +9069,54 @@ async function uploadXMedia({ imageUrl, oauth2Token, oauth1Header, additionalOwn
   if (!imgRes.ok) throw new Error(`Image fetch failed: ${imgRes.status}`);
   const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
 
-  // 2. Build multipart body. v1.1 expects `media` (binary) or `media_data` (base64). We use
-  //    `media_data` to keep the multipart structure simple and avoid binary-in-form quirks.
-  //    additional_owners goes in a separate field if provided.
+  // 2. Build multipart body + select endpoint. Branch by auth method because
+  //    X enforced v1.1 deprecation for OAuth 2.0 tokens on 2026-05-13 (last
+  //    successful publish via v1.1+OAuth2 was 06:06 UTC; subsequent attempts
+  //    returned 403 empty body with NO Forge code change between them — X-side
+  //    rollout). v1.1 still accepts OAuth 1.0a signatures, so the env-var
+  //    fallback path keeps using it.
+  //
+  //    OAuth 2.0 path: v2 /media/upload, binary 'media' part + 'media_category'.
+  //    OAuth 1.0a path: v1.1 /media/upload.json, base64 'media_data' + optional 'additional_owners'.
+  //    additional_owners is only meaningful for the cross-user v1.1 path (system
+  //    user uploads, brand user attaches). On OAuth 2.0 the uploader IS the
+  //    attacher, so additional_owners is irrelevant and v2 doesn't accept it.
   const boundary = '----ForgeMediaBoundary' + Math.random().toString(36).slice(2);
   const CRLF = '\r\n';
-  const partsList = [];
-  if (additionalOwners) {
-    partsList.push(`--${boundary}${CRLF}Content-Disposition: form-data; name="additional_owners"${CRLF}${CRLF}${additionalOwners}${CRLF}`);
+  let body, uploadUrl, authHeader;
+
+  if (oauth2Token) {
+    // v2 endpoint expects binary 'media' part + 'media_category' text part
+    const parts = [];
+    parts.push(Buffer.from(`--${boundary}${CRLF}Content-Disposition: form-data; name="media_category"${CRLF}${CRLF}tweet_image${CRLF}`, 'utf8'));
+    parts.push(Buffer.from(`--${boundary}${CRLF}Content-Disposition: form-data; name="media"; filename="image.png"${CRLF}Content-Type: image/png${CRLF}${CRLF}`, 'utf8'));
+    parts.push(imgBuffer);
+    parts.push(Buffer.from(`${CRLF}--${boundary}--${CRLF}`, 'utf8'));
+    body = Buffer.concat(parts);
+    uploadUrl = 'https://api.x.com/2/media/upload';
+    authHeader = `Bearer ${oauth2Token}`;
+  } else if (oauth1Header) {
+    // v1.1 endpoint expects base64 'media_data' + optional 'additional_owners'
+    const partsList = [];
+    if (additionalOwners) {
+      partsList.push(`--${boundary}${CRLF}Content-Disposition: form-data; name="additional_owners"${CRLF}${CRLF}${additionalOwners}${CRLF}`);
+    }
+    partsList.push(`--${boundary}${CRLF}Content-Disposition: form-data; name="media_data"${CRLF}${CRLF}${imgBuffer.toString('base64')}${CRLF}`);
+    const head = Buffer.from(partsList.join(''), 'utf8');
+    const tail = Buffer.from(`--${boundary}--${CRLF}`, 'utf8');
+    body = Buffer.concat([head, tail]);
+    uploadUrl = 'https://upload.twitter.com/1.1/media/upload.json';
+    authHeader = oauth1Header;
+  } else {
+    throw new Error('No auth header for media upload');
   }
-  partsList.push(`--${boundary}${CRLF}Content-Disposition: form-data; name="media_data"${CRLF}${CRLF}${imgBuffer.toString('base64')}${CRLF}`);
-  const head = Buffer.from(partsList.join(''), 'utf8');
-  const tail = Buffer.from(`--${boundary}--${CRLF}`, 'utf8');
-  const body = Buffer.concat([head, tail]);
 
   const headers = {
+    'Authorization': authHeader,
     'Content-Type': `multipart/form-data; boundary=${boundary}`,
     'Content-Length': String(body.length),
   };
-  if (oauth2Token) headers['Authorization'] = `Bearer ${oauth2Token}`;
-  else if (oauth1Header) headers['Authorization'] = oauth1Header;
-  else throw new Error('No auth header for media upload');
 
-  // v1.1 endpoint — same media system as v2 /tweets, but param shape is multipart-friendly
-  const uploadUrl = 'https://upload.twitter.com/1.1/media/upload.json';
   const upRes = await fetch(uploadUrl, { method: 'POST', headers, body });
   const rawText = await upRes.text();
   let upData = {};
