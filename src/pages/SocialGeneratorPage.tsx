@@ -32,6 +32,14 @@ interface CampaignArc {
   recommendedLength?: number;
 }
 
+// Brain elements used by the Regenerate Arcs modal so the user can lean
+// into specific moats / personas / gaps. Loaded lazily on first open.
+interface BrainElements {
+  personas: { id: string; name: string; role?: string }[];
+  moats: { capability: string; protects?: string }[];
+  gaps: { topic: string; priority?: string }[];
+}
+
 type Platform = 'x' | 'instagram';
 type Angle = 'provocation' | 'proof' | 'how-to' | 'counter-take';
 type ConfidenceTier = 'green' | 'yellow' | 'red';
@@ -136,6 +144,17 @@ function SocialGeneratorContent() {
   const [selectedArcId, setSelectedArcId] = useState<string | null>(null);
   const [arcs, setArcs] = useState<CampaignArc[]>([]);
   const [arcsLoading, setArcsLoading] = useState(false);
+
+  // Regenerate Arcs modal state — lazy-loads brain elements on first open
+  const [regenOpen, setRegenOpen] = useState(false);
+  const [regenLoading, setRegenLoading] = useState(false);
+  const [regenError, setRegenError] = useState('');
+  const [brainElements, setBrainElements] = useState<BrainElements | null>(null);
+  const [brainLoading, setBrainLoading] = useState(false);
+  const [leanIntoMoats, setLeanIntoMoats] = useState<string[]>([]);
+  const [leanIntoPersonas, setLeanIntoPersonas] = useState<string[]>([]);
+  const [leanIntoGaps, setLeanIntoGaps] = useState<string[]>([]);
+  const [guidance, setGuidance] = useState('');
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [mandatories, setMandatories] = useState('');
   const [constraints, setConstraints] = useState('');
@@ -335,6 +354,66 @@ function SocialGeneratorContent() {
     setSelectedArcId(null);
   };
 
+  // Open the Regenerate Arcs modal. First open lazy-loads brain elements.
+  const openRegenerate = async () => {
+    setRegenOpen(true);
+    setRegenError('');
+    if (brainElements || !selectedBrainId || !authToken) return;
+    setBrainLoading(true);
+    try {
+      const r = await fetch(`/api/context-hub/get-profile?brandProfileId=${selectedBrainId}`, {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      const d = await r.json();
+      const pd = d?.profile?.profile_data || d?.profile_data || {};
+      setBrainElements({
+        personas: (pd.personas || []).map((p: { id?: string; name?: string; role?: string }) => ({ id: p.id || p.name || '', name: p.name || p.id || 'Unnamed', role: p.role })),
+        moats: (pd.strategicMoats || []).map((m: { capability?: string; protects?: string }) => ({ capability: m.capability || '', protects: m.protects })),
+        gaps: (pd.competitiveGaps || []).map((g: { topic?: string; priority?: string }) => ({ topic: g.topic || '', priority: g.priority })),
+      });
+    } catch {
+      setRegenError('Could not load brand brain elements');
+    } finally {
+      setBrainLoading(false);
+    }
+  };
+
+  const closeRegenerate = () => {
+    setRegenOpen(false);
+    setLeanIntoMoats([]); setLeanIntoPersonas([]); setLeanIntoGaps([]);
+    setGuidance('');
+    setRegenError('');
+  };
+
+  const toggleInList = (list: string[], setList: (v: string[]) => void, value: string) => {
+    setList(list.includes(value) ? list.filter(v => v !== value) : [...list, value]);
+  };
+
+  const regenerateArcs = async () => {
+    if (!selectedBrainId || !authToken || regenLoading) return;
+    setRegenLoading(true);
+    setRegenError('');
+    try {
+      const r = await fetch(`/api/social-generator/regenerate-arcs/${selectedBrainId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+        body: JSON.stringify({ leanIntoMoats, leanIntoPersonas, leanIntoGaps, guidance: guidance.trim() })
+      });
+      const d = await r.json();
+      if (!d.success) {
+        setRegenError(d.error || 'Regeneration failed');
+        return;
+      }
+      setArcs(d.arcs || []);
+      setSelectedArcId(null);
+      closeRegenerate();
+    } catch (e) {
+      setRegenError((e as Error).message || 'Network error');
+    } finally {
+      setRegenLoading(false);
+    }
+  };
+
   const selectArc = (arc: CampaignArc) => {
     if (selectedArcId === arc.id) {
       // Deselect
@@ -409,16 +488,31 @@ function SocialGeneratorContent() {
               <div className="sg-arc-empty">
                 <div className="sg-arc-empty-title">No campaign arcs in this brand's brain.</div>
                 <div className="sg-arc-empty-body">
-                  Campaign arcs come from Context Hub. If your brand was scanned a while ago or never had arcs generated, the brain is stale — a fresh rescan will produce arcs you can build short-form against.
+                  Campaign arcs are narrative spines for multi-post sequences. Generate a fresh set below, or rescan the brand in Context Hub for a full brain refresh.
                 </div>
-                <a className="sg-arc-empty-cta" href="/app/context-hub">
-                  Rescan brand in Context Hub →
-                </a>
+                <div className="sg-arc-empty-actions">
+                  <button type="button" className="sg-arc-empty-cta primary" onClick={openRegenerate}>
+                    ↻ Generate new arcs
+                  </button>
+                  <a className="sg-arc-empty-cta" href="/app/context-hub">
+                    Rescan brand in Context Hub →
+                  </a>
+                </div>
               </div>
             </div>
           ) : (
             <div className="sg-row">
-              <label className="sg-label">Pick a campaign arc</label>
+              <div className="sg-arc-header">
+                <label className="sg-label">Pick a campaign arc</label>
+                <button
+                  type="button"
+                  className="sg-arc-regen-btn"
+                  onClick={openRegenerate}
+                  title="Generate a fresh set of campaign arcs"
+                >
+                  ↻ Generate new arcs
+                </button>
+              </div>
               <div className="sg-arc-list">
                 {arcs.map(arc => (
                   <button
@@ -609,6 +703,109 @@ function SocialGeneratorContent() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Regenerate Arcs modal */}
+      {regenOpen && (
+        <div className="sg-modal-overlay" onClick={closeRegenerate}>
+          <div className="sg-modal" onClick={e => e.stopPropagation()}>
+            <div className="sg-modal-header">
+              <div className="sg-modal-title">Generate new campaign arcs</div>
+              <button className="sg-modal-close" onClick={closeRegenerate}>×</button>
+            </div>
+            <div className="sg-modal-body">
+              <p className="sg-modal-intro">
+                Pick which brand elements to lean into. Leave everything unchecked to let the model use the full brain. Existing arc titles are passed in as “do not duplicate.”
+              </p>
+
+              {brainLoading ? (
+                <div className="sg-modal-loading">Loading brand brain…</div>
+              ) : !brainElements ? (
+                <div className="sg-modal-error">Could not load brain. Try closing and reopening.</div>
+              ) : (
+                <>
+                  {brainElements.moats.length > 0 && (
+                    <div className="sg-modal-section">
+                      <div className="sg-modal-section-label">Strategic moats to emphasize</div>
+                      <div className="sg-modal-chips">
+                        {brainElements.moats.map(m => (
+                          <button
+                            key={m.capability}
+                            type="button"
+                            className={`sg-modal-chip ${leanIntoMoats.includes(m.capability) ? 'active' : ''}`}
+                            onClick={() => toggleInList(leanIntoMoats, setLeanIntoMoats, m.capability)}
+                          >
+                            {m.capability}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {brainElements.personas.length > 0 && (
+                    <div className="sg-modal-section">
+                      <div className="sg-modal-section-label">Personas to target</div>
+                      <div className="sg-modal-chips">
+                        {brainElements.personas.map(p => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            className={`sg-modal-chip ${leanIntoPersonas.includes(p.id) ? 'active' : ''}`}
+                            onClick={() => toggleInList(leanIntoPersonas, setLeanIntoPersonas, p.id)}
+                          >
+                            {p.name}{p.role ? ` — ${p.role}` : ''}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {brainElements.gaps.length > 0 && (
+                    <div className="sg-modal-section">
+                      <div className="sg-modal-section-label">Competitive gaps to lean into</div>
+                      <div className="sg-modal-chips">
+                        {brainElements.gaps.map(g => (
+                          <button
+                            key={g.topic}
+                            type="button"
+                            className={`sg-modal-chip ${leanIntoGaps.includes(g.topic) ? 'active' : ''}`}
+                            onClick={() => toggleInList(leanIntoGaps, setLeanIntoGaps, g.topic)}
+                          >
+                            {g.topic}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="sg-modal-section">
+                    <div className="sg-modal-section-label">Optional guidance</div>
+                    <textarea
+                      className="sg-modal-textarea"
+                      value={guidance}
+                      onChange={e => setGuidance(e.target.value.slice(0, 500))}
+                      placeholder="e.g. 'Less event-focused, more attribution methodology' or 'Make arcs more provocative'"
+                      rows={3}
+                    />
+                    <div className="sg-modal-charcount">{guidance.length} / 500</div>
+                  </div>
+                </>
+              )}
+
+              {regenError && <div className="sg-modal-error">{regenError}</div>}
+            </div>
+            <div className="sg-modal-footer">
+              <button className="sg-modal-btn" onClick={closeRegenerate} disabled={regenLoading}>Cancel</button>
+              <button
+                className="sg-modal-btn primary"
+                onClick={regenerateArcs}
+                disabled={regenLoading || !brainElements}
+              >
+                {regenLoading ? 'Generating…' : 'Generate new arcs'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
