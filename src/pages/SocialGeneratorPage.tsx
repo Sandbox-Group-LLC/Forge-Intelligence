@@ -354,25 +354,41 @@ function SocialGeneratorContent() {
     setSelectedArcId(null);
   };
 
-  // Open the Regenerate Arcs modal. First open lazy-loads brain elements.
+  // Open the Regenerate Arcs modal. First open lazy-loads brain elements
+  // via /api/context-hub/brand/:brandId which returns profile_data fields
+  // flattened into the response (NOT nested under .profile_data).
   const openRegenerate = async () => {
     setRegenOpen(true);
     setRegenError('');
-    if (brainElements || !selectedBrainId || !authToken) return;
+    if (brainElements || !selectedBrainId) return;
     setBrainLoading(true);
     try {
-      const r = await fetch(`/api/context-hub/get-profile?brandProfileId=${selectedBrainId}`, {
-        headers: { 'Authorization': `Bearer ${authToken}` }
-      });
+      const r = await fetch(`/api/context-hub/brand/${selectedBrainId}`);
       const d = await r.json();
-      const pd = d?.profile?.profile_data || d?.profile_data || {};
+      if (!d.success || !d.data) {
+        setRegenError(d.error || 'Brand not found');
+        return;
+      }
+      // d.data has profile_data flattened in (personas, strategicMoats,
+      // competitiveGaps live at top level, alongside id/brandUrl/etc).
+      const pd = d.data;
       setBrainElements({
-        personas: (pd.personas || []).map((p: { id?: string; name?: string; role?: string }) => ({ id: p.id || p.name || '', name: p.name || p.id || 'Unnamed', role: p.role })),
-        moats: (pd.strategicMoats || []).map((m: { capability?: string; protects?: string }) => ({ capability: m.capability || '', protects: m.protects })),
-        gaps: (pd.competitiveGaps || []).map((g: { topic?: string; priority?: string }) => ({ topic: g.topic || '', priority: g.priority })),
+        personas: (pd.personas || []).map((p: { id?: string; name?: string; role?: string }) => ({
+          id: p.id || p.name || '',
+          name: p.name || p.id || 'Unnamed',
+          role: p.role
+        })),
+        moats: (pd.strategicMoats || []).map((m: { capability?: string; protects?: string }) => ({
+          capability: m.capability || '',
+          protects: m.protects
+        })),
+        gaps: (pd.competitiveGaps || []).map((g: { topic?: string; priority?: string }) => ({
+          topic: g.topic || '',
+          priority: g.priority
+        })),
       });
-    } catch {
-      setRegenError('Could not load brand brain elements');
+    } catch (e) {
+      setRegenError(`Could not load brand brain: ${(e as Error).message || 'network error'}`);
     } finally {
       setBrainLoading(false);
     }
