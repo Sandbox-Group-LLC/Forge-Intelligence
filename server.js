@@ -11851,85 +11851,116 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
       ).catch(() => ({ rows: [] }));
       const xCreds = xCredRes.rows[0]?.credentials || {};
 
-      for (const row of xLogRes.rows) {
-        try {
-          const rd = row.response_data || row.queue_results?.x || {};
-          const tweetId = rd.tweetId || rd.id
-            || (row.published_url?.match(/\/status\/(\d+)/)?.[1]);
-          if (!tweetId) {
-            errors.push({ contentId: row.content_id, error: 'no_tweet_id_in:' + row.published_url });
-            continue;
+      const xHasOAuth2 = !!xCreds.oauth2AccessToken;
+      const xHasOAuth1 = !!(xCreds.apiKey || process.env.X_OAUTH1CONSUMER_KEY)
+        && !!(xCreds.accessToken || process.env.X_OAUTH1ACCESS_TOKEN);
+      const xSyncedStart = synced.length;
+      const xErrorsStart = errors.length;
+      console.log(`[Analytics/X] Found ${xLogRes.rows.length} published posts for brand=${brandProfileId}, oauth2=${xHasOAuth2}, oauth1=${xHasOAuth1}`);
+
+      // Fail fast if no credentials at all — otherwise the per-row loop hits
+      // the silent `if (!xApiKey || !xAccessToken) continue;` for every tweet
+      // and the response comes back synced=0, errors=[] which is
+      // indistinguishable from "nothing to sync."
+      if (xLogRes.rows.length > 0 && !xHasOAuth2 && !xHasOAuth1) {
+        console.warn(`[Analytics/X] No credentials configured (no OAuth2 token, no OAuth1 fallback) — skipping all ${xLogRes.rows.length} eligible posts`);
+        errors.push({ channel: 'x', error: 'no_x_credentials_configured', detail: 'Connect X in Integrations or configure X_OAUTH1CONSUMER_KEY / X_OAUTH1ACCESS_TOKEN env vars.' });
+      } else {
+        for (const row of xLogRes.rows) {
+          try {
+            const rd = row.response_data || row.queue_results?.x || {};
+            const tweetId = rd.tweetId || rd.id
+              || (row.published_url?.match(/\/status\/(\d+)/)?.[1]);
+            if (!tweetId) {
+              console.warn(`[Analytics/X] no_tweet_id_in: ${row.published_url || '(no published_url)'} content=${row.content_id}`);
+              errors.push({ contentId: row.content_id, error: 'no_tweet_id_in:' + row.published_url });
+              continue;
+            }
+
+            // Build auth header — OAuth 2.0 preferred, 1.0a fallback
+            const endpoint = `https://api.twitter.com/2/tweets/${tweetId}`;
+            const queryString = 'tweet.fields=public_metrics,non_public_metrics,created_at,author_id';
+            let authHeader;
+            if (xCreds.oauth2AccessToken) {
+              authHeader = `Bearer ${xCreds.oauth2AccessToken}`;
+            } else {
+              const xApiKey       = xCreds.apiKey       || process.env.X_OAUTH1CONSUMER_KEY;
+              const xApiSecret    = xCreds.apiSecret    || process.env.X_OAUTH1CONSUMER_SECRET;
+              const xAccessToken  = xCreds.accessToken  || process.env.X_OAUTH1ACCESS_TOKEN;
+              const xAccessSecret = xCreds.accessSecret || process.env.X_OAUTH1ACCESS_SECRET;
+              if (!xApiKey || !xAccessToken) {
+                // Defense-in-depth — the pre-loop check above should have caught
+                // this. If only some rows hit here it means brand credentials
+                // are partial; surface it instead of silently skipping.
+                console.warn(`[Analytics/X] missing OAuth1 creds mid-loop for tweet=${tweetId} content=${row.content_id} — skipping`);
+                errors.push({ contentId: row.content_id, error: 'no_x_credentials_for_row' });
+                continue;
+              }
+              authHeader = buildXOAuthHeader('GET', endpoint, xApiKey, xApiSecret, xAccessToken, xAccessSecret,
+                Object.fromEntries(new URLSearchParams(queryString)));
+            }
+
+            const tweetRes = await fetch(`${endpoint}?${queryString}`, {
+              headers: { 'Authorization': authHeader }
+            });
+
+            let impressions = 0, clicks = 0, reactions = 0, comments = 0, reposts = 0;
+            let rawData = {};
+
+            if (tweetRes.ok) {
+              const tweetData = await tweetRes.json();
+              const pub  = tweetData.data?.public_metrics     || {};
+              const priv = tweetData.data?.non_public_metrics || {};
+              impressions = pub.impression_count || 0;
+              reactions   = pub.like_count       || 0;
+              comments    = pub.reply_count      || 0;
+              reposts     = (pub.retweet_count || 0) + (pub.quote_count || 0);
+              // url_link_clicks lives in non_public_metrics — falls back gracefully if unavailable
+              clicks      = priv.url_link_clicks || priv.user_profile_clicks || 0;
+              rawData     = { public_metrics: pub, non_public_metrics: priv };
+            } else {
+              const errBody = await tweetRes.json().catch(() => ({}));
+              const reason = errBody?.detail || errBody?.title || `HTTP ${tweetRes.status}`;
+              console.warn(`[Analytics/X] tweet=${tweetId} content=${row.content_id} → HTTP ${tweetRes.status}: ${reason}`);
+              errors.push({ contentId: row.content_id, error: reason });
+              continue;
+            }
+
+            const ctr = impressions > 0 ? parseFloat((clicks / impressions * 100).toFixed(2)) : 0;
+            const engagementRate = impressions > 0
+              ? parseFloat(((reactions + comments + reposts + clicks) / impressions * 100).toFixed(2))
+              : 0;
+
+            await pool.query(
+              `INSERT INTO content_analytics
+                 (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at, campaign_id)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),$14)
+               ON CONFLICT (content_id, channel) DO UPDATE SET
+                 post_id=EXCLUDED.post_id,
+                 impressions=GREATEST(content_analytics.impressions, EXCLUDED.impressions),
+                 clicks=GREATEST(content_analytics.clicks, EXCLUDED.clicks),
+                 reactions=GREATEST(content_analytics.reactions, EXCLUDED.reactions),
+                 comments=GREATEST(content_analytics.comments, EXCLUDED.comments),
+                 reposts=GREATEST(content_analytics.reposts, EXCLUDED.reposts),
+                 ctr=EXCLUDED.ctr,
+                 engagement_rate=EXCLUDED.engagement_rate,
+                 raw_data=EXCLUDED.raw_data, synced_at=NOW(),
+                 campaign_id=COALESCE(EXCLUDED.campaign_id, content_analytics.campaign_id)`,
+              [brandProfileId, row.content_id, 'x', tweetId,
+               impressions, clicks, reactions, comments, reposts, ctr, engagementRate,
+               JSON.stringify(rawData), row.published_at, row.campaign_id || null]
+            );
+            synced.push({ contentId: row.content_id, title: row.title, tweetId, impressions, reactions, comments, reposts, clicks });
+          } catch(e) {
+            console.warn(`[Analytics/X] content=${row.content_id} threw: ${e.message}`);
+            errors.push({ contentId: row.content_id, error: e.message });
           }
-
-          // Build auth header — OAuth 2.0 preferred, 1.0a fallback
-          const endpoint = `https://api.twitter.com/2/tweets/${tweetId}`;
-          const queryString = 'tweet.fields=public_metrics,non_public_metrics,created_at,author_id';
-          let authHeader;
-          if (xCreds.oauth2AccessToken) {
-            authHeader = `Bearer ${xCreds.oauth2AccessToken}`;
-          } else {
-            const xApiKey       = xCreds.apiKey       || process.env.X_OAUTH1CONSUMER_KEY;
-            const xApiSecret    = xCreds.apiSecret    || process.env.X_OAUTH1CONSUMER_SECRET;
-            const xAccessToken  = xCreds.accessToken  || process.env.X_OAUTH1ACCESS_TOKEN;
-            const xAccessSecret = xCreds.accessSecret || process.env.X_OAUTH1ACCESS_SECRET;
-            if (!xApiKey || !xAccessToken) continue; // X not connected
-            authHeader = buildXOAuthHeader('GET', endpoint, xApiKey, xApiSecret, xAccessToken, xAccessSecret,
-              Object.fromEntries(new URLSearchParams(queryString)));
-          }
-
-          const tweetRes = await fetch(`${endpoint}?${queryString}`, {
-            headers: { 'Authorization': authHeader }
-          });
-
-          let impressions = 0, clicks = 0, reactions = 0, comments = 0, reposts = 0;
-          let rawData = {};
-
-          if (tweetRes.ok) {
-            const tweetData = await tweetRes.json();
-            const pub  = tweetData.data?.public_metrics     || {};
-            const priv = tweetData.data?.non_public_metrics || {};
-            impressions = pub.impression_count || 0;
-            reactions   = pub.like_count       || 0;
-            comments    = pub.reply_count      || 0;
-            reposts     = (pub.retweet_count || 0) + (pub.quote_count || 0);
-            // url_link_clicks lives in non_public_metrics — falls back gracefully if unavailable
-            clicks      = priv.url_link_clicks || priv.user_profile_clicks || 0;
-            rawData     = { public_metrics: pub, non_public_metrics: priv };
-          } else {
-            const errBody = await tweetRes.json().catch(() => ({}));
-            errors.push({ contentId: row.content_id, error: errBody?.detail || errBody?.title || `HTTP ${tweetRes.status}` });
-            continue;
-          }
-
-          const ctr = impressions > 0 ? parseFloat((clicks / impressions * 100).toFixed(2)) : 0;
-          const engagementRate = impressions > 0
-            ? parseFloat(((reactions + comments + reposts + clicks) / impressions * 100).toFixed(2))
-            : 0;
-
-          await pool.query(
-            `INSERT INTO content_analytics
-               (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at, campaign_id)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),$14)
-             ON CONFLICT (content_id, channel) DO UPDATE SET
-               post_id=EXCLUDED.post_id,
-               impressions=GREATEST(content_analytics.impressions, EXCLUDED.impressions),
-               clicks=GREATEST(content_analytics.clicks, EXCLUDED.clicks),
-               reactions=GREATEST(content_analytics.reactions, EXCLUDED.reactions),
-               comments=GREATEST(content_analytics.comments, EXCLUDED.comments),
-               reposts=GREATEST(content_analytics.reposts, EXCLUDED.reposts),
-               ctr=EXCLUDED.ctr,
-               engagement_rate=EXCLUDED.engagement_rate,
-               raw_data=EXCLUDED.raw_data, synced_at=NOW(),
-               campaign_id=COALESCE(EXCLUDED.campaign_id, content_analytics.campaign_id)`,
-            [brandProfileId, row.content_id, 'x', tweetId,
-             impressions, clicks, reactions, comments, reposts, ctr, engagementRate,
-             JSON.stringify(rawData), row.published_at, row.campaign_id || null]
-          );
-          synced.push({ contentId: row.content_id, title: row.title, tweetId, impressions, reactions, comments, reposts, clicks });
-        } catch(e) {
-          errors.push({ contentId: row.content_id, error: e.message });
         }
       }
+
+      const xSyncedDelta = synced.length - xSyncedStart;
+      const xErrorsDelta = errors.length - xErrorsStart;
+      console.log(`[Analytics/X] Done for brand=${brandProfileId}: synced=${xSyncedDelta}, errors=${xErrorsDelta}, eligible=${xLogRes.rows.length}`);
     }
 
     // ── Facebook analytics (via Zernio) ─────────────────────────────────────
