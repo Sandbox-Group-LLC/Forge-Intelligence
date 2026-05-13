@@ -158,6 +158,12 @@
 - **HubSpot integration is clipboard-copy only** — the HubSpot public API gates email-template creation behind Marketing Hub Pro+ at every tier-accessible endpoint. Sales Hub Starter cannot create email templates via API. Do NOT rebuild OAuth-based HubSpot push. The "Copy for HubSpot" button is the durable answer.
 - **Zernio dual-ID** — every `zernioPublish()` returns `{ postId, zernioPostId, ... }`. `postId` is the platform-native ID (LinkedIn URN, X tweet ID, Reddit post slug); `zernioPostId` is Zernio's internal `_id`. The analytics sync MUST use `zernioPostId` when calling Zernio's `/analytics` endpoint — it does NOT accept platform-native IDs. Sync code already in place for LinkedIn at L11427; **Reddit and Facebook sync paths still need the same dual-ID treatment** (followup queued).
 - **Multi-table write contracts** — the publish flow updates 5 tables: `publishing_queue.status`, `publishing_queue.publish_results`, `publish_log` (insert), `memories` (insert), and the brand-scoped `generated_content_<brand>.status`. All 5 must be updated atomically for the article to be visible across the system. Missing the 5th caused 100% of published articles to be invisible in Performance Dashboard prior to May 10.
+- **X media upload — branch by auth method.** As of 2026-05-13, X enforces v1.1 media upload deprecation for OAuth 2.0 user-context tokens. `uploadXMedia()` MUST branch:
+  - **OAuth 2.0 Bearer** → `POST https://api.x.com/2/media/upload` with multipart `media` (binary) + `media_category=tweet_image`. Returns `data.id`.
+  - **OAuth 1.0a signature** (env-var fallback) → `POST https://upload.twitter.com/1.1/media/upload.json` with `media_data` (base64) + optional `additional_owners` (csv). Returns `media_id_string`.
+  - The response parser uses `upData.media_id_string || upData.data?.id` so downstream `POST /2/tweets` works for both shapes. **Don't unify the two paths** — v1.1 doesn't accept OAuth 2.0 tokens and v2 doesn't accept OAuth 1.0a multipart bodies.
+- **Probe before pivot.** When writing code that integrates with an external API or parses an external service's output, FIRST step is a probe. `curl` the endpoint with the exact auth + body Forge would use, look at the actual response bytes. Then write the code. This rule has saved hours of pivot-debugging on Zernio analytics, and cost hours when skipped on HubSpot (4 endpoint pivots before recognizing the Marketing Hub Pro+ tier gate). Use the `/api/admin/zernio/raw` pattern for any new external integration's first development sessions — a dev-only generic raw-probe endpoint lets you validate API behavior without redeploying.
+- **expires_at on owned brands is broken.** Almost every brand with `clerk_user_id IS NOT NULL` (i.e., paid/owned) has an `expires_at` in the past despite being `is_active=true`. The Context Hub brand endpoint (`/api/context-hub/brand/:brandId`) filters on `expires_at IS NULL OR expires_at > NOW()` and silently 404s on these brands. Workaround: use `/api/context-hub/brains/:id` instead (no expiry filter). Followup queued to either NULL out expires_at on tethered brands or update the filter to accept tethered brands.
 
 ### Pipeline UX Flow (Critical — updated April 17, 2026)
 Every stage persists results and points forward:
@@ -360,6 +366,7 @@ BEFORE generating:
 | POST | `/api/email-campaign/email/:id/dismiss-flag-as-false-positive` | required | Stage 4.6 — dismiss flag + write `brain_mistakes` row for future suppression |
 | POST | `/mcp` | required (Bearer or X-Api-Key) | MCP server — JSON-RPC 2.0, 3 read-only tools for external MCP clients |
 | POST | `/api/admin/zernio/raw` | dev/strategy + admin password | Generic Zernio API probe — `{method, path, body?}` → forwards to Zernio |
+| POST | `/api/social-generator/regenerate-arcs/:brandProfileId` | required | Stage 4.5 — regenerate `profile_data.campaignArcs` in-place. Body: `{leanIntoMoats?, leanIntoPersonas?, leanIntoGaps?, guidance?}`. Replaces (not appends) the arc set. Existing titles passed to model as 'do not duplicate'. |
 | POST | `/api/analytics/extract-patterns/:brandId` | required | Stage 8 — pattern extraction |
 | GET | `/api/admin/stats` | required | Auth-scoped KPIs |
 | GET | `/articles/:brandSlug/:articleSlug` | public | Server-rendered article page |
@@ -426,7 +433,7 @@ Sandbox Group: **Sandbox-XM** (experience marketing) + **Sandbox-GTM** (event re
 
 ---
 
-## Updated: May 11, 2026
+## Updated: May 13, 2026
 
 ### Auth Architecture
 - Clerk JWT template `jwt-template-600` — 600 second token lifetime
@@ -479,6 +486,7 @@ Sandbox Group: **Sandbox-XM** (experience marketing) + **Sandbox-GTM** (event re
 
 For session-level technical detail, see `WHITEBOARD.md`. Recent major entries:
 
+- **May 13** — Social Generator regenerate-arcs feature (in-place brand arc regen with moat/persona/gap emphasis); X v2 media upload fix (X enforced v1.1 deprecation for OAuth 2.0 tokens today — `uploadXMedia()` now branches by auth method); Performance Dashboard pending-row placeholder fix (zero-row content_analytics on Zernio 202 so new articles appear immediately)
 - **May 10–11** — Zernio dual-ID analytics fix; publish-status mirror bug (100% failure rate caught); Copilot Autofix incident; Morgan Chasser personal-brand experiment
 - **May 9** — MCP server live; Attio CSV export; HubSpot demolition (4 rebuild rounds → clipboard copy); Email Campaign Generator Phase 1+2+3 (rendering bugs + edit mode + flag actions + readable Sequence Assessment)
 - **May 8** — Zernio LinkedIn migration for Forge brand
