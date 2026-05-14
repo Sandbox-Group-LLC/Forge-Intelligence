@@ -72,7 +72,12 @@ const pathTitles: Record<string, string> = {
 };
 
 export function TopBar({ pageTitle }: { pageTitle?: string }) {
-  const { currentView, brandProfile, activeBrand, sidebarCollapsed, setSidebarCollapsed, allBrands, switchBrand, trial, isSuperAdmin } = useApp();
+  const { currentView, brandProfile, activeBrand, sidebarCollapsed, setSidebarCollapsed, allBrands, switchBrand, trial } = useApp();
+  // Hotfix: pinned to false until the isSuperAdmin gate is verified after the
+  // production-into-main merge regression. Mission Control nav entry already
+  // hidden in #84 for the same reason. Restore by re-destructuring isSuperAdmin
+  // from useApp() once /api/auth/me is confirmed gating correctly.
+  const isSuperAdmin = false;
   const { user } = useUser();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
