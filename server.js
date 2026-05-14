@@ -2149,6 +2149,124 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
   }
 });
 
+// ── Articles library SSR — canonical + robots ─────────────────────────────
+// Google flagged "Duplicate without user-selected canonical" on
+// /articles/forgeintelligence-ai because the SPA shell served at both
+// /articles and /articles/:brandSlug had no <link rel="canonical">. The
+// per-article route at line 1880 already does the full SSR treatment; this
+// extends the same pattern to the library views so Search Console sees one
+// canonical Articles URL per publisher.
+app.get('/articles/:brandSlug', async (req, res) => {
+  const { brandSlug } = req.params;
+  try {
+    const brandsRes = await pool.query('SELECT id, brand_url, brand_name, profile_data FROM brand_profiles');
+    let matchedBrand = null;
+    for (const b of brandsRes.rows) {
+      const slug = (b.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+      if (slug === brandSlug) { matchedBrand = b; break; }
+    }
+    if (!matchedBrand) {
+      for (const b of brandsRes.rows) {
+        const slug = (b.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+        const nameSlug = ((b.profile_data?.voice_profile?.brand_name) || '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+        const nameSlug2 = (b.brand_name || '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+        if (slug.startsWith(brandSlug) || brandSlug.startsWith(slug) ||
+            nameSlug.startsWith(brandSlug) || nameSlug2.startsWith(brandSlug)) {
+          matchedBrand = b; break;
+        }
+      }
+    }
+    if (!matchedBrand) return res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+
+    // Force canonical brand slug — same SSOT logic as the article route.
+    const canonicalBrandSlug = (matchedBrand.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
+    if (canonicalBrandSlug && brandSlug !== canonicalBrandSlug) {
+      const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+      return res.redirect(301, `/articles/${canonicalBrandSlug}${qs}`);
+    }
+
+    const artBaseDomain = process.env.BASE_DOMAIN || 'forgeintelligence.ai';
+    const FORGE_OWN_BRAND_ID = 'cde5feeb-b3d7-4990-adee-a54977ab9c52';
+    const isForgeOwnContent = matchedBrand.id === FORGE_OWN_BRAND_ID;
+    const brandName = (matchedBrand.brand_name || matchedBrand.profile_data?.voice_profile?.brand_name || brandSlug).replace(/"/g, '&quot;');
+
+    // Canonical resolution mirrors the per-article route at line 1953:
+    //   - Forge's own library is canonical to itself (forgeintelligence.ai)
+    //   - Customer libraries canonical at the customer's article_base_url or
+    //     brand root, since the Forge-hosted library is a preview, not the
+    //     publisher.
+    let canonicalUrl;
+    if (isForgeOwnContent) {
+      canonicalUrl = `https://${artBaseDomain}/articles/${brandSlug}`;
+    } else if (matchedBrand.article_base_url && matchedBrand.article_base_url.trim()) {
+      canonicalUrl = matchedBrand.article_base_url.replace(/\/+$/, '');
+    } else if (matchedBrand.brand_url) {
+      const rootUrl = matchedBrand.brand_url.startsWith('http')
+        ? matchedBrand.brand_url.replace(/\/+$/, '')
+        : `https://${matchedBrand.brand_url.replace(/\/+$/, '')}`;
+      canonicalUrl = rootUrl;
+    } else {
+      canonicalUrl = `https://${artBaseDomain}/articles/${brandSlug}`;
+    }
+
+    const robotsMeta = isForgeOwnContent
+      ? 'index, follow, max-image-preview:large, max-snippet:-1'
+      : 'noindex, nofollow, noarchive';
+
+    const titleStr = `${brandName} — Articles`;
+    const descStr = `Browse articles from ${brandName}.`.replace(/"/g, '&quot;');
+
+    const headTags = `
+  <title>${titleStr}</title>
+  <meta name="description" content="${descStr}" />
+  <link rel="canonical" href="${canonicalUrl}" />
+  <meta name="robots" content="${robotsMeta}" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="${brandName}" />
+  <meta property="og:title" content="${titleStr}" />
+  <meta property="og:description" content="${descStr}" />
+  <meta property="og:url" content="${canonicalUrl}" />`;
+
+    const html = await fs.promises.readFile(path.join(__dirname, 'dist', 'index.html'), 'utf8');
+    const injected = html
+      .replace(/<title>[^<]*<\/title>/, '')
+      .replace('<head>', '<head>' + headTags);
+    res.set('Cache-Control', 'no-cache');
+    return res.send(injected);
+  } catch(e) {
+    console.error('[ARTICLES-LIBRARY-SSR]', e.message);
+    return res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  }
+});
+
+// Bare /articles renders the same component as /articles/:brandSlug for the
+// union of all brands. That's the duplicate Google flagged. Redirect to
+// Forge's canonical brand library so there is exactly one indexable Articles
+// URL on this domain. Customer brand libraries remain reachable via their own
+// brand-scoped URL (and get noindex'd per the handler above).
+app.get('/articles', async (req, res) => {
+  const FORGE_OWN_BRAND_ID = 'cde5feeb-b3d7-4990-adee-a54977ab9c52';
+  try {
+    const forgeBrand = await pool.query(
+      'SELECT brand_url FROM brand_profiles WHERE id = $1',
+      [FORGE_OWN_BRAND_ID]
+    );
+    const brandUrl = forgeBrand.rows[0]?.brand_url || '';
+    const forgeSlug = brandUrl
+      .replace(/https?:\/\//, '')
+      .replace(/[^a-z0-9]/gi, '-')
+      .toLowerCase()
+      .replace(/^-+|-+$/g, '');
+    if (forgeSlug) {
+      const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+      return res.redirect(301, `/articles/${forgeSlug}${qs}`);
+    }
+  } catch(e) {
+    console.error('[ARTICLES-BARE-SSR]', e.message);
+  }
+  return res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
+
 // ── Marketing pages SSR — inject real content so scrapers + crawlers see it ──
 // Without this, SPA shell returns 1538 bytes of empty <div id="root"></div>
 // Forge's own scraper AND Google both need real HTML to extract product info.
