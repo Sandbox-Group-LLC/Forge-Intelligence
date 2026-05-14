@@ -239,6 +239,26 @@ const topNavItems: TopNavItem[] = [
 export function Sidebar() {
   const { currentView, setCurrentView, setAnalysisInput, analysisInput, sidebarCollapsed, setSidebarCollapsed, isProcessing, brandProfile, isPaid, brandLoading, activeBrand, refetchBrand, isSuperAdmin } = useApp();
   const [gateFeature, setGateFeature] = useState<string | null>(null);
+  const [seededPromoCode, setSeededPromoCode] = useState<string>('');
+
+  // Partner / prospect deep-link support:
+  //   ?gate=open    → auto-open GateModal on mount (soft paywall on landing)
+  //   ?promo=CODE   → pre-fill promo input so the prospect just clicks Apply
+  // Both params are consumed once and stripped from the URL so a refresh
+  // doesn't re-pop the modal. ?brand= and other query params are preserved.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const wantsGate = params.get('gate') === 'open';
+    const promo = params.get('promo') || '';
+    if (!wantsGate && !promo) return;
+    if (promo) setSeededPromoCode(promo);
+    if (wantsGate) setGateFeature('Forge Intelligence');
+    params.delete('gate');
+    params.delete('promo');
+    const qs = params.toString();
+    const url = window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash;
+    window.history.replaceState({}, '', url);
+  }, []);
   const LOCKED_ROUTES = [
     '/app/geo-strategist', '/app/authenticity-enricher', '/app/content-generator',
     '/app/campaign-generator', '/app/social-generator', '/app/compliance-gate', '/app/publishing-queue', '/app/calendar',
@@ -351,6 +371,7 @@ export function Sidebar() {
           onClose={() => setGateFeature(null)}
           brandProfileId={activeBrand?.id || (brandProfile as any)?.id || (() => { try { return localStorage.getItem('forge_active_brand_id'); } catch(e) { return null; } })() || new URLSearchParams(window.location.search).get('brand') || undefined}
           onUnlocked={() => { setGateFeature(null); refetchBrand(); }}
+          initialPromoCode={seededPromoCode}
         />
       )}
       {/* Mobile backdrop */}
