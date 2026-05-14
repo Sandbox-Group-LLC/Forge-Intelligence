@@ -221,11 +221,7 @@ const publishingNavItems = [
 const settingsNavItems = [
   { id: 'brand-settings', label: 'Brand Settings', icon: 'settings', href: '/app/brand-settings' },
   { id: 'integrations',   label: 'Integrations',   icon: 'plug',     href: '/app/integrations' },
-  // Mission Control sidebar entry intentionally removed in this hotfix —
-  // production was accidentally merged into main and the isSuperAdmin guard
-  // at the filter site (~line 550) was leaking the entry to non-admin users.
-  // /app/mc remains accessible by direct URL for super-admins until the gate
-  // logic is verified and the entry is reinstated in a follow-up PR.
+  { id: 'admin',          label: 'Mission Control', icon: 'cpu',     href: '/app/mc' },
 ] as const;
 
 const topNavItems: TopNavItem[] = [
@@ -241,7 +237,7 @@ const topNavItems: TopNavItem[] = [
 ];
 
 export function Sidebar() {
-  const { currentView, setCurrentView, setAnalysisInput, analysisInput, sidebarCollapsed, setSidebarCollapsed, isProcessing, brandProfile, isPaid, brandLoading, activeBrand, refetchBrand } = useApp();
+  const { currentView, setCurrentView, setAnalysisInput, analysisInput, sidebarCollapsed, setSidebarCollapsed, isProcessing, brandProfile, isPaid, brandLoading, activeBrand, refetchBrand, isSuperAdmin } = useApp();
   const [gateFeature, setGateFeature] = useState<string | null>(null);
   const [seededPromoCode, setSeededPromoCode] = useState<string>('');
 
@@ -551,7 +547,7 @@ export function Sidebar() {
               </button>
               {!sidebarCollapsed && settingsGroupOpen && (
                 <div className="nav-group-children">
-                  {settingsNavItems.map(child => {
+                  {settingsNavItems.filter(c => c.id !== 'admin' || isSuperAdmin).map(child => {
                     const childActive = path.startsWith(child.href);
                     return (
                       <a
