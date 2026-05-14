@@ -7,6 +7,7 @@ interface GateModalProps {
   onClose: () => void;
   brandProfileId?: string;
   onUnlocked?: () => void;
+  initialPromoCode?: string;
 }
 
 declare global { interface Window { paypal: any; } }
@@ -14,7 +15,7 @@ declare global { interface Window { paypal: any; } }
 const PAYPAL_CLIENT_ID = 'AV1QAbjyqG1YTRCWKXzWjZr1Ls7uNLRnk5SzoC-ajEb3rZaq5h58SCUoi9lcZgd9OCvJrM2WchL1om6l';
 const CLERK_SIGNUP_URL = 'https://accounts.forgeintelligence.ai/sign-up';
 
-export default function GateModal({ featureName, onClose, brandProfileId, onUnlocked }: GateModalProps) {
+export default function GateModal({ featureName, onClose, brandProfileId, onUnlocked, initialPromoCode }: GateModalProps) {
   const { trial } = useApp();
   // Trial-expired headline: user got the 7-day trial and it ended (eligible AND !active).
   const trialExpired = trial?.eligible && !trial.active;
@@ -27,7 +28,7 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
   const [ppLoading, setPpLoading] = useState(true);
   const [ppError, setPpError] = useState('');
   const [paid, setPaid] = useState(false);
-  const [promoCode, setPromoCode] = useState('');
+  const [promoCode, setPromoCode] = useState(initialPromoCode || '');
   const [promoStatus, setPromoStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [promoMsg, setPromoMsg] = useState('');
 
