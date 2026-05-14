@@ -72,7 +72,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const params = new URLSearchParams(window.location.search);
     const viewParam = params.get('view');
     const valid: ViewType[] = ['new-analysis', 'active-run', 'brand-profile', 'strategy', 'brain-history', 'content-generator', 'campaign-generator'];
-    return (valid.includes(viewParam as ViewType) ? viewParam : 'new-analysis') as ViewType;
+    if (valid.includes(viewParam as ViewType)) return viewParam as ViewType;
+    // ?brand=<uuid> deep-link → seed brand-profile synchronously so first
+    // paint doesn't flash New Analysis before the post-mount useEffect
+    // switches the view. Partner / prospect deep-links should land directly.
+    if (params.get('brand')) return 'brand-profile';
+    return 'new-analysis';
   });
   const [brandProfile, setBrandProfile] = useState<BrandProfile | null>(null);
   const [analysisInput, setAnalysisInput] = useState<AnalysisInput>({

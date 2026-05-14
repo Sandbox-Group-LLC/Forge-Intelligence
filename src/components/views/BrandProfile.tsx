@@ -106,6 +106,22 @@ export function BrandProfile() {
   }, [brandProfile?.brandUrl, reanalyzing, setBrandProfile]);
 
   if (!brandProfile) {
+    // Deep-link fetch in flight — ContextAgentPage's ?brand=<uuid> useEffect
+    // is loading the profile. Show a quiet loading skeleton instead of the
+    // "No Brand Profile Available" empty state so partner deep-links don't
+    // flash a misleading "run an analysis" CTA during the network hop.
+    const isAwaitingDeepLink = typeof window !== 'undefined'
+      && !!new URLSearchParams(window.location.search).get('brand');
+    if (isAwaitingDeepLink) {
+      return (
+        <div className="brand-profile empty-state" aria-busy="true" aria-live="polite">
+          <div className="empty-icon" style={{ animation: 'forge-pulse 1.2s ease-in-out infinite' }}>{icons.layers}</div>
+          <h2 className="empty-title">Loading Brand Profile…</h2>
+          <p className="empty-description">Pulling your brand brain.</p>
+          <style>{`@keyframes forge-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>
+        </div>
+      );
+    }
     return (
       <div className="brand-profile empty-state">
         <div className="empty-icon">{icons.layers}</div>
