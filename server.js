@@ -14271,6 +14271,7 @@ const PROMO_CODES = new Map([
   ['FORGEFRIEND',   { discount: 100, description: 'Friend of Forge' }],
   ['EARLYBIRD',     { discount: 100, description: 'Early Access' }],
   ['SANDBOX100',    { discount: 100, description: 'Sandbox Group Internal' }],
+  ['NANGO',         { discount: 100, description: 'Nango Partnership' }],
 ]);
 
 // POST /api/promo/validate — validate a promo code (unlimited use)
