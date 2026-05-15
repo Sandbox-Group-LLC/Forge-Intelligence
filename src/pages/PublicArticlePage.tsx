@@ -81,11 +81,114 @@ function renderBody(raw: string): React.ReactNode {
 
   return (
     <>
-      {paragraphs.map((para, pi) => (
-        <p key={pi} style={{ marginBottom: '1rem' }}>{renderInline(para, `p${pi}`)}</p>
-      ))}
+      {paragraphs.map((para, pi) => {
+        const table = tryParseTable(para);
+        if (table) {
+          return (
+            <table
+              key={pi}
+              style={{
+                borderCollapse: 'collapse',
+                width: '100%',
+                margin: '1.25rem 0',
+                fontSize: '0.95em',
+                lineHeight: 1.55,
+              }}
+            >
+              <thead>
+                <tr>
+                  {table.headers.map((h, ci) => (
+                    <th
+                      key={ci}
+                      style={{
+                        textAlign: 'left',
+                        padding: '8px 12px',
+                        borderBottom: '2px solid #E2E8F0',
+                        fontWeight: 600,
+                        color: '#0F172A',
+                      }}
+                    >
+                      {renderInline(h, `t${pi}-h${ci}`)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {table.rows.map((row, ri) => (
+                  <tr key={ri}>
+                    {row.map((cell, ci) => (
+                      <td
+                        key={ci}
+                        style={{
+                          padding: '8px 12px',
+                          borderBottom: '1px solid #F1F5F9',
+                          verticalAlign: 'top',
+                          color: '#1E293B',
+                        }}
+                      >
+                        {renderInline(cell, `t${pi}-r${ri}-c${ci}`)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          );
+        }
+        return (
+          <p key={pi} style={{ marginBottom: '1rem' }}>{renderInline(para, `p${pi}`)}</p>
+        );
+      })}
     </>
   );
+}
+
+// Markdown table parser. Handles both well-formed multi-line GFM and the
+// degenerate single-line-flat case where the Content Generator emits a table
+// without newlines between rows (the article 63ed73dd-… case). Detection key
+// is the GFM separator row "|---|...|" with 3+ dashes per cell.
+//
+// Approach: ignore whitespace (including newlines), split on "|", trim, then
+// use the separator's column count to slice header + data rows out of the
+// non-empty cells. Works the same way regardless of how line breaks landed,
+// so a single-line flat table and a properly newlined table both round-trip
+// to the same structure.
+function tryParseTable(raw: string): { headers: string[]; rows: string[][] } | null {
+  if (!raw.includes('|')) return null;
+  if (!/\|\s*:?-{3,}:?\s*\|/.test(raw)) return null;
+
+  const cells = raw.split('|').map(c => c.trim());
+  const isSep = (c: string) => /^:?-{3,}:?$/.test(c);
+
+  const sepStart = cells.findIndex(isSep);
+  if (sepStart === -1) return null;
+  let sepEnd = sepStart;
+  while (sepEnd < cells.length && isSep(cells[sepEnd])) sepEnd++;
+  const colCount = sepEnd - sepStart;
+  if (colCount < 1) return null;
+
+  // Headers: the last `colCount` non-empty cells before the separator.
+  const headers: string[] = [];
+  for (let i = sepStart - 1; i >= 0 && headers.length < colCount; i--) {
+    if (cells[i].length > 0) headers.unshift(cells[i]);
+  }
+  if (headers.length !== colCount) return null;
+
+  // Rows: walk cells after the separator in chunks of colCount, skipping
+  // row-boundary empties between each chunk. (Empty cells WITHIN a row are
+  // preserved because the chunk takes exactly colCount cells without filtering.)
+  const after = cells.slice(sepEnd);
+  let idx = 0;
+  while (idx < after.length && after[idx].length === 0) idx++;
+  const rows: string[][] = [];
+  while (idx + colCount <= after.length) {
+    rows.push(after.slice(idx, idx + colCount));
+    idx += colCount;
+    while (idx < after.length && after[idx].length === 0) idx++;
+  }
+  if (rows.length === 0) return null;
+
+  return { headers, rows };
 }
 
 

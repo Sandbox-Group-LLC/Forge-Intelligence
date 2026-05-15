@@ -2107,11 +2107,51 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
 
     // ── Build SSR body content for AI crawlers (ChatGPT, Perplexity, GPTBot, Googlebot) ──
     // React hydrates over this on client load. Wrapped in off-screen container so humans don't see it twice.
+    // Table-aware: GFM markdown tables (including the single-line-flat shape
+    // that Content Generator sometimes emits, e.g. article 63ed73dd-…) get
+    // promoted to real <table> markup so AI crawlers cite them as tabular
+    // data instead of seeing literal pipe characters in a paragraph.
+    const ssrTryParseTable = (raw) => {
+      if (!raw.includes('|')) return null;
+      if (!/\|\s*:?-{3,}:?\s*\|/.test(raw)) return null;
+      const cells = raw.split('|').map(c => c.trim());
+      const isSep = (c) => /^:?-{3,}:?$/.test(c);
+      const sepStart = cells.findIndex(isSep);
+      if (sepStart === -1) return null;
+      let sepEnd = sepStart;
+      while (sepEnd < cells.length && isSep(cells[sepEnd])) sepEnd++;
+      const colCount = sepEnd - sepStart;
+      if (colCount < 1) return null;
+      const headers = [];
+      for (let i = sepStart - 1; i >= 0 && headers.length < colCount; i--) {
+        if (cells[i].length > 0) headers.unshift(cells[i]);
+      }
+      if (headers.length !== colCount) return null;
+      const after = cells.slice(sepEnd);
+      let idx = 0;
+      while (idx < after.length && after[idx].length === 0) idx++;
+      const rows = [];
+      while (idx + colCount <= after.length) {
+        rows.push(after.slice(idx, idx + colCount));
+        idx += colCount;
+        while (idx < after.length && after[idx].length === 0) idx++;
+      }
+      if (rows.length === 0) return null;
+      return { headers, rows };
+    };
+    const ssrRenderParagraph = (para) => {
+      const table = ssrTryParseTable(para);
+      if (table) {
+        const thead = `<thead><tr>${table.headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>`;
+        const tbody = `<tbody>${table.rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody>`;
+        return `<table>${thead}${tbody}</table>`;
+      }
+      return `<p>${para.trim().replace(/\n/g, '<br>')}</p>`;
+    };
     const sectionsHtml = (aj.sections || []).map(s => {
       const heading = (s.heading || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       const body = (s.body || s.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      // Preserve paragraph breaks
-      const paragraphs = body.split(/\n\n+/).map(p => `<p>${p.trim().replace(/\n/g, '<br>')}</p>`).join('\n');
+      const paragraphs = body.split(/\n\n+/).map(ssrRenderParagraph).join('\n');
       return `<section><h2>${heading}</h2>${paragraphs}</section>`;
     }).join('\n');
 
