@@ -14351,6 +14351,106 @@ app.post('/api/promo/validate', softAuth, async (req, res) => {
 
 
 
+// POST /api/admin/mark-unpublished — flip a (content_id, channel) pair back to
+// "not yet published" across every place the publishing system tracks state.
+// Manual SQL against publish_log alone was insufficient because the UI reads
+// `publishing_queue.publish_results` (JSONB per-channel map) to render the
+// "channel X is published" badge. Mirrors the per-channel reset path the
+// /api/publishing/queue/:id/reset-channel endpoint already implements at
+// server.js:9806 — same DB writes, but keyed on content_id instead of
+// queue_item_id so the operator doesn't have to look up the join.
+//
+// Auth: adminPassword (same shape as other /api/admin/* endpoints).
+//
+// Body: { contentId: string (UUID), channel: string, adminPassword: string }
+//
+// Effects on success:
+//   - publishing_queue.publish_results[channel] removed
+//   - publishing_queue.status recomputed → 'partial' if any other channel
+//     still published, else 'staged' (so the queue card resurfaces as
+//     ready-to-republish)
+//   - publish_log rows for (content_id, channel) deleted
+//
+// Idempotent: zero rows is a 200 with queueItemsAffected=0.
+app.post('/api/admin/mark-unpublished', async (req, res) => {
+  const { contentId, channel, adminPassword } = req.body || {};
+  if (adminPassword !== process.env.ADMIN_PASSWORD) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  if (!contentId || typeof contentId !== 'string') {
+    return res.status(400).json({ error: 'contentId required' });
+  }
+  if (!channel || typeof channel !== 'string') {
+    return res.status(400).json({ error: 'channel required' });
+  }
+
+  try {
+    // Find every queue item that has a publish_log row for this (contentId, channel).
+    // Same content_id can have multiple log rows from prior republish attempts; we
+    // touch every queue item linked to any of them so the system fully forgets the
+    // publish across the board.
+    const logRes = await pool.query(
+      `SELECT DISTINCT queue_item_id, published_url
+         FROM publish_log
+        WHERE content_id = $1 AND channel = $2 AND queue_item_id IS NOT NULL`,
+      [contentId, channel]
+    );
+
+    const queueItemIds = logRes.rows.map(r => r.queue_item_id);
+    const queueResults = [];
+
+    for (const queueItemId of queueItemIds) {
+      const row = await pool.query(
+        'SELECT publish_results, status FROM publishing_queue WHERE id = $1',
+        [queueItemId]
+      );
+      if (!row.rows.length) continue;
+      const results = row.rows[0].publish_results || {};
+      const hadEntry = Object.prototype.hasOwnProperty.call(results, channel);
+      delete results[channel];
+      const hasAnyPublished = Object.values(results).some(
+        r => r && r.status === 'published'
+      );
+      const newStatus = hasAnyPublished ? 'partial' : 'staged';
+      await pool.query(
+        'UPDATE publishing_queue SET publish_results = $1, status = $2, updated_at = NOW() WHERE id = $3',
+        [JSON.stringify(results), newStatus, queueItemId]
+      );
+      queueResults.push({
+        queueItemId,
+        previousStatus: row.rows[0].status,
+        newStatus,
+        publishResultsHadChannel: hadEntry,
+      });
+    }
+
+    // Clear publish_log rows for this content+channel. DELETE (not soft-delete)
+    // matches the reset-channel endpoint's behavior — full forget so the next
+    // publish writes fresh log rows from scratch.
+    const delRes = await pool.query(
+      'DELETE FROM publish_log WHERE content_id = $1 AND channel = $2 RETURNING id',
+      [contentId, channel]
+    );
+
+    console.log(`[ADMIN/MARK-UNPUBLISHED] contentId=${contentId} channel=${channel} queueItemsTouched=${queueResults.length} logRowsDeleted=${delRes.rows.length}`);
+
+    return res.json({
+      success: true,
+      contentId,
+      channel,
+      queueItemsAffected: queueResults.length,
+      queueResults,
+      publishLogRowsDeleted: delRes.rows.length,
+      message: queueResults.length === 0 && delRes.rows.length === 0
+        ? 'No publishing state found for this content+channel — already unpublished or never published.'
+        : `Cleared ${queueResults.length} queue item(s) and ${delRes.rows.length} publish_log row(s). Channel is now ready to republish.`,
+    });
+  } catch (err) {
+    console.error('[ADMIN/MARK-UNPUBLISHED]', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/admin/reset-brand-paid — dev only, resets is_paid for testing
 app.post('/api/admin/reset-brand-paid', async (req, res) => {
   if (process.env.NODE_ENV === 'production' && !req.body.adminPassword === process.env.ADMIN_PASSWORD) {
