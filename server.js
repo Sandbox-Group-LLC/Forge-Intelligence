@@ -4442,9 +4442,51 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
         console.log(`[Context Hub] Scraped ${scrapedContent.length} chars from ${aboutPaths.length + 1} pages (base: ${workingBaseUrl})`);
       } else {
         // Local scrape failed to extract usable content — typically a JS-rendered SPA where the
-        // raw HTML is 10kb+ but stripHtml() yields a few dozen chars (title tag only). Fall back
-        // to Sonar, which runs full server-side rendering and sees what users actually see.
-        console.log(`[Context Hub] Local scrape minimal (${scrapedContent.length} chars from ${homeHtml.length} bytes HTML) — falling back to Sonar content extraction`);
+        // raw HTML is 10kb+ but stripHtml() yields a few dozen chars (title tag only). Two-tier
+        // fallback follows: first Jina Reader (renders the page server-side in real time —
+        // works even on brand-new sites that aren't indexed anywhere yet), then Sonar (relies on
+        // Perplexity's index — fast when the site is already crawled, useless for brand-new sites).
+        //
+        // Order matters: Jina runs first because it can handle brand-new SPAs. Sonar is the
+        // backup for the case where Jina's free tier rate-limits us OR returns an error.
+        console.log(`[Context Hub] Local scrape minimal (${scrapedContent.length} chars from ${homeHtml.length} bytes HTML) — trying Jina Reader fallback`);
+        try {
+          const jinaHeaders = { 'Accept': 'text/plain' };
+          if (process.env.JINA_API_KEY) {
+            jinaHeaders['Authorization'] = `Bearer ${process.env.JINA_API_KEY}`;
+          }
+          // Bound the request — Jina cold-renders can take 5-12s but anything beyond
+          // ~15s indicates the target site itself is slow / hanging and we should
+          // move on to Sonar rather than block the entire analyze call.
+          const jinaAbort = new AbortController();
+          const jinaTimeout = setTimeout(() => jinaAbort.abort(), 15000);
+          const jinaRes = await fetch(`https://r.jina.ai/${brandUrl}`, {
+            headers: jinaHeaders,
+            signal: jinaAbort.signal,
+          }).finally(() => clearTimeout(jinaTimeout));
+          if (jinaRes.ok) {
+            const jinaText = (await jinaRes.text()).trim();
+            if (jinaText.length > 200) {
+              // Cap at 8000 chars to match the local-scrape budget and keep the
+              // downstream Claude prompt under its size envelope.
+              scrapedContent = `JINA-EXTRACTED CONTENT (JS-rendered by Jina Reader — this is what a user sees):\n${jinaText.slice(0, 8000)}`;
+              console.log(`[Context Hub] Jina Reader fallback succeeded: ${jinaText.length} chars (capped to 8000)`);
+            } else {
+              console.log(`[Context Hub] Jina Reader returned minimal content (${jinaText.length} chars) — trying Sonar next`);
+            }
+          } else {
+            console.log(`[Context Hub] Jina Reader HTTP ${jinaRes.status} — trying Sonar next`);
+          }
+        } catch (jinaErr) {
+          console.log(`[Context Hub] Jina Reader error (non-fatal):`, jinaErr.message);
+        }
+      }
+
+      // Tier 3: Sonar fallback. Runs only if Jina didn't lift us past the threshold.
+      // Useful when Jina is rate-limited or the target is geo-blocked from Jina's
+      // egress IPs but already crawled into Perplexity's index.
+      if (scrapedContent.length <= 200) {
+        console.log(`[Context Hub] Jina + local still under threshold — falling back to Sonar content extraction`);
         try {
           const sonarContentRes = await fetch('https://api.perplexity.ai/chat/completions', {
             method: 'POST',
