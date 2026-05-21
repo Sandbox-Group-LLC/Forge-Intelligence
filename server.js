@@ -14198,110 +14198,192 @@ function requireApiKeyScope(scope) {
 
 // ── forgeScrape — the one scrape primitive ─────────────────────────────────
 // Every URL Forge fetches for content/intelligence purposes goes through
-// here. Single workhorse: Bright Data Web Unlocker. Handles anti-bot, JS
-// rendering (auto-detected upstream), 403s, CAPTCHAs. Replaces the
-// per-feature fetcher zoo (custom HTTP + Jina + Sonar fallback chains)
-// that produced "0 of 10 patterns" failures on every modern SPA.
+// here. Two-tier under the hood:
+//
+//   Tier 1: Bright Data Web Unlocker (cheap, fast, returns HTTP response)
+//   Tier 2: Bright Data Scraping Browser (CDP via puppeteer-core; real
+//           browser that JS-renders the page) — auto-fallback when Tier 1
+//           returns an SPA shell.
+//
+// Replaces the per-feature fetcher zoo (custom HTTP + Jina + Sonar) that
+// produced "0 of 10 patterns" failures on every modern SPA.
 //
 // Returns: { success, status, html, source, latencyMs, error }
 //
 // Logs every attempt to scrape_log so we can audit reliability without
-// reading server logs.
+// reading server logs. Tier 1 + Tier 2 attempts for the same URL log as
+// separate rows so the chain is visible.
 //
 // Required env:
 //   BRIGHTDATA_API_KEY        — bearer token (from BD dashboard → Settings)
-//   BRIGHTDATA_UNLOCKER_ZONE  — zone name (e.g. 'web_unlocker1')
-async function forgeScrape(url, opts = {}) {
-  const {
-    format = 'raw',           // 'raw' = HTML, 'markdown' = cleaned content
-    timeout = 60000,          // ms — Bright Data can take 5-15s on complex sites
-    country = null,           // optional ISO country code for geo-targeting
-    caller = 'unknown',       // string identifier for the log (e.g. 'context-hub', 'site-template')
-    metadata = {},            // anything else worth recording per call
-  } = opts;
+//   BRIGHTDATA_UNLOCKER_ZONE  — Unlocker zone name (e.g. 'forge_intelligence')
+//   BRIGHTDATA_BROWSER_AUTH   — Scraping Browser auth string (format:
+//                               'brd-customer-<CUSTOMER_ID>-zone-<ZONE>:<PASSWORD>')
+//                               OPTIONAL — if missing, Tier 2 is skipped and
+//                               an SPA-shell response from Tier 1 returns as-is.
 
+// Tier 2 (Scraping Browser) — CDP connection via puppeteer-core. We don't
+// bundle Chromium; we connect to Bright Data's remote browser over WebSocket.
+const puppeteer = require('puppeteer-core');
+
+const SPA_SHELL_RE = /<body[^>]*>\s*(?:<noscript>[\s\S]*?<\/noscript>\s*)?<div\s+id=["'](?:root|__next|app|svelte|nuxt)["'][^>]*>\s*<\/div>/i;
+function looksLikeSpaShell(html) {
+  if (!html) return false;
+  if (SPA_SHELL_RE.test(html)) return true;
+  // Fallback heuristic: tiny body content (after stripping scripts/styles)
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  if (!bodyMatch) return false;
+  const cleanedBody = bodyMatch[1]
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+    .trim();
+  return cleanedBody.length < 500;
+}
+
+async function _logScrape(row) {
+  try {
+    await pool.query(
+      `INSERT INTO scrape_log (url, source, status_code, body_size, latency_ms, success, caller, error, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [row.url, row.source, row.status_code ?? null, row.body_size ?? null, row.latency_ms ?? null,
+       row.success, row.caller ?? 'unknown', row.error ?? null, JSON.stringify(row.metadata ?? {})]
+    );
+  } catch { /* logging is best-effort */ }
+}
+
+async function _tryUnlocker(url, { format, timeout, country, caller, metadata }) {
   const apiKey = process.env.BRIGHTDATA_API_KEY;
   const zone = process.env.BRIGHTDATA_UNLOCKER_ZONE;
   const startTime = Date.now();
-
   if (!apiKey || !zone) {
-    const err = new Error('Bright Data not configured (BRIGHTDATA_API_KEY / BRIGHTDATA_UNLOCKER_ZONE missing)');
-    pool.query(
-      `INSERT INTO scrape_log (url, source, success, latency_ms, caller, error, metadata)
-       VALUES ($1, $2, false, 0, $3, $4, $5)`,
-      [url, 'brightdata_unlocker', caller, err.message, JSON.stringify(metadata)]
-    ).catch(() => {});
-    throw err;
+    const err = 'Bright Data Unlocker not configured (BRIGHTDATA_API_KEY / BRIGHTDATA_UNLOCKER_ZONE missing)';
+    await _logScrape({ url, source: 'brightdata_unlocker', success: false, latency_ms: 0, caller, error: err, metadata });
+    return { success: false, status: null, html: null, source: 'brightdata_unlocker', latencyMs: 0, error: err };
   }
-
   try {
     const body = { zone, url, format };
     if (country) body.country = country;
     if (format === 'markdown') body.data_format = 'markdown';
-
     const ac = new AbortController();
     const tid = setTimeout(() => ac.abort(), timeout);
     let resp;
     try {
       resp = await fetch('https://api.brightdata.com/request', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
         signal: ac.signal,
       });
-    } finally {
-      clearTimeout(tid);
-    }
-
+    } finally { clearTimeout(tid); }
     const responseBody = await resp.text();
     const latencyMs = Date.now() - startTime;
-
-    pool.query(
-      `INSERT INTO scrape_log (url, source, status_code, body_size, latency_ms, success, caller, error, metadata)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [url, 'brightdata_unlocker', resp.status, responseBody.length, latencyMs, resp.ok, caller,
-       resp.ok ? null : `HTTP ${resp.status}: ${responseBody.slice(0, 200)}`,
-       JSON.stringify(metadata)]
-    ).catch(() => {});
-
+    await _logScrape({
+      url, source: 'brightdata_unlocker',
+      status_code: resp.status, body_size: responseBody.length, latency_ms: latencyMs,
+      success: resp.ok, caller, metadata,
+      error: resp.ok ? null : `HTTP ${resp.status}: ${responseBody.slice(0, 200)}`,
+    });
     if (!resp.ok) {
-      return {
-        success: false,
-        status: resp.status,
-        html: null,
-        source: 'brightdata_unlocker',
-        latencyMs,
-        error: `HTTP ${resp.status}: ${responseBody.slice(0, 200)}`,
-      };
+      return { success: false, status: resp.status, html: null, source: 'brightdata_unlocker', latencyMs, error: `HTTP ${resp.status}: ${responseBody.slice(0, 200)}` };
     }
-
-    return {
-      success: true,
-      status: resp.status,
-      html: responseBody,
-      source: 'brightdata_unlocker',
-      latencyMs,
-      error: null,
-    };
+    return { success: true, status: resp.status, html: responseBody, source: 'brightdata_unlocker', latencyMs, error: null };
   } catch (e) {
     const latencyMs = Date.now() - startTime;
-    pool.query(
-      `INSERT INTO scrape_log (url, source, success, latency_ms, caller, error, metadata)
-       VALUES ($1, $2, false, $3, $4, $5, $6)`,
-      [url, 'brightdata_unlocker', latencyMs, caller, e.message, JSON.stringify(metadata)]
-    ).catch(() => {});
-    return {
-      success: false,
-      status: null,
-      html: null,
-      source: 'brightdata_unlocker',
-      latencyMs,
-      error: e.message,
-    };
+    await _logScrape({ url, source: 'brightdata_unlocker', success: false, latency_ms: latencyMs, caller, error: e.message, metadata });
+    return { success: false, status: null, html: null, source: 'brightdata_unlocker', latencyMs, error: e.message };
   }
+}
+
+async function _tryScrapingBrowser(url, { timeout, caller, metadata }) {
+  const browserAuth = process.env.BRIGHTDATA_BROWSER_AUTH;
+  const startTime = Date.now();
+  if (!browserAuth) {
+    const err = 'Bright Data Scraping Browser not configured (BRIGHTDATA_BROWSER_AUTH missing)';
+    await _logScrape({ url, source: 'brightdata_browser', success: false, latency_ms: 0, caller, error: err, metadata });
+    return { success: false, status: null, html: null, source: 'brightdata_browser', latencyMs: 0, error: err };
+  }
+  let browser = null;
+  try {
+    browser = await puppeteer.connect({
+      browserWSEndpoint: `wss://${browserAuth}@brd.superproxy.io:9222`,
+      // Each connection is single-shot; tear down promptly.
+    });
+    const page = await browser.newPage();
+    page.setDefaultNavigationTimeout(timeout);
+    // Block heavy resources we don't need for DOM extraction. Cuts bandwidth
+    // cost (Scraping Browser is bandwidth-billed) ~70% on most sites.
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      const type = req.resourceType();
+      if (['image', 'stylesheet', 'font', 'media'].includes(type)) req.abort();
+      else req.continue();
+    });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout });
+    // Best-effort: wait for the SPA mount point to hydrate. If the heuristic
+    // doesn't fire within 10s, proceed anyway — some sites hydrate weirdly
+    // and we'd rather take what we can get than fail entirely.
+    try {
+      await page.waitForFunction(() => {
+        const root = document.querySelector('#root, #__next, #app, #svelte, #nuxt');
+        return root && root.children.length > 0 && root.innerHTML.length > 1000;
+      }, { timeout: 10_000 });
+    } catch { /* hydration heuristic didn't fire — continue */ }
+    const html = await page.content();
+    await browser.close();
+    browser = null;
+    const latencyMs = Date.now() - startTime;
+    await _logScrape({
+      url, source: 'brightdata_browser',
+      status_code: 200, body_size: html.length, latency_ms: latencyMs,
+      success: true, caller, metadata,
+    });
+    return { success: true, status: 200, html, source: 'brightdata_browser', latencyMs, error: null };
+  } catch (e) {
+    if (browser) { try { await browser.close(); } catch {} }
+    const latencyMs = Date.now() - startTime;
+    await _logScrape({ url, source: 'brightdata_browser', success: false, latency_ms: latencyMs, caller, error: e.message, metadata });
+    return { success: false, status: null, html: null, source: 'brightdata_browser', latencyMs, error: e.message };
+  }
+}
+
+async function forgeScrape(url, opts = {}) {
+  const {
+    format = 'raw',           // 'raw' = HTML, 'markdown' = cleaned content
+    timeout = 60000,          // ms — Bright Data can take 5-15s on complex sites
+    country = null,           // optional ISO country code for geo-targeting
+    caller = 'unknown',       // string identifier for the log
+    metadata = {},
+    render = 'auto',          // 'auto' = Unlocker → Browser fallback on SPA shell
+                              // 'always' = skip Unlocker, go straight to Browser
+                              // 'never' = Unlocker only, no fallback
+  } = opts;
+
+  // 'always': caller knows this is a JS-heavy site, skip Tier 1
+  if (render === 'always') {
+    return await _tryScrapingBrowser(url, { timeout, caller, metadata });
+  }
+
+  // Tier 1: Web Unlocker
+  const unlockerResult = await _tryUnlocker(url, { format, timeout, country, caller, metadata });
+
+  // 'never': don't fall back even if shell detected
+  if (render === 'never') return unlockerResult;
+
+  // 'auto': fall back to Scraping Browser when Tier 1 returned a SPA shell
+  // OR when Tier 1 failed entirely (network/HTTP error). Markdown format
+  // skips the shell-detection branch since the body is reformatted text,
+  // not HTML.
+  if (format !== 'raw') return unlockerResult;
+  const needsBrowser = !unlockerResult.success || looksLikeSpaShell(unlockerResult.html);
+  if (!needsBrowser) return unlockerResult;
+
+  console.log(`[forgeScrape] Tier 1 ${unlockerResult.success ? 'returned shell' : 'failed'} for ${url} (caller=${caller}) — escalating to Scraping Browser`);
+  const browserResult = await _tryScrapingBrowser(url, { timeout, caller, metadata });
+  // If browser also failed, return whichever attempt produced more useful
+  // content (browser preferred when both have errors, since it's the
+  // higher-tier tool).
+  if (browserResult.success) return browserResult;
+  return unlockerResult.success ? unlockerResult : browserResult;
 }
 
 // Soft auth — attaches userId if present, continues either way (for public + authed routes)
