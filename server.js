@@ -10004,6 +10004,27 @@ app.post('/api/publishing/unpublish', requireAuth, async (req, res) => {
       [finalStatus, queueItemId, channel]
     );
 
+    // Also remove the channel from publishing_queue.publish_results JSONB.
+    // The PUBLISHED TO panel in the UI iterates over publish_results, so
+    // until this entry is cleared the unpublished channel keeps showing up
+    // (with whatever live_status the most recent log row has — including
+    // 'published' if a republish followed the unpublish). The reset-channel
+    // endpoint at server.js:9806 does this same write; mirroring here.
+    if (deleteFromChannel) {
+      const qrRow = await pool.query(
+        'SELECT publish_results FROM publishing_queue WHERE id = $1',
+        [queueItemId]
+      ).catch(() => ({ rows: [] }));
+      if (qrRow.rows.length) {
+        const updatedResults = qrRow.rows[0].publish_results || {};
+        delete updatedResults[channel];
+        await pool.query(
+          'UPDATE publishing_queue SET publish_results = $1 WHERE id = $2',
+          [JSON.stringify(updatedResults), queueItemId]
+        ).catch(() => {});
+      }
+    }
+
     // Recompute queue status from remaining live publish_log entries
     // Don't blindly set 'staged' — if other channels are still live, it's 'partial'
     const remainingLog = await pool.query(
