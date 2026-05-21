@@ -12,14 +12,18 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.37.0",
     "@clerk/clerk-react": "^5.61.3",
+    "@mozilla/readability": "^0.5.0",
     "@pipedream/sdk": "^2.4.3",
     "express": "^4.18.2",
     "jose": "^5.9.6",
+    "jsdom": "^25.0.1",
     "lucide-react": "^0.383.0",
     "pg": "^8.11.3",
+    "puppeteer-core": "^25.0.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^6.20.0"
+    "react-router-dom": "^6.20.0",
+    "turndown": "^7.2.0"
   },
   "devDependencies": {
     "@types/pg": "^8.11.0",

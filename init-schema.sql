@@ -239,6 +239,26 @@ CREATE TABLE IF NOT EXISTS content_analytics (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- forgeScrape observability — one row per outbound URL fetch through
+-- the Bright Data Web Unlocker primitive. Lets ops answer "did the
+-- scrape fail because of provider, network, or target site?" without
+-- bisecting through code.
+CREATE TABLE IF NOT EXISTS scrape_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  url TEXT NOT NULL,
+  source TEXT NOT NULL,
+  status_code INTEGER,
+  body_size INTEGER,
+  latency_ms INTEGER,
+  success BOOLEAN NOT NULL,
+  caller TEXT,
+  error TEXT,
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_scrape_log_created ON scrape_log(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_scrape_log_caller ON scrape_log(caller, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS precog_outcomes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   brand_profile_id TEXT NOT NULL,

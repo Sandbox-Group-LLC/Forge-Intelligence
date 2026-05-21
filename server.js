@@ -6,6 +6,10 @@ import pkg from 'pg';
 import Anthropic from '@anthropic-ai/sdk';
 import { randomUUID, randomBytes, createHmac, createHash } from 'crypto';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
+import puppeteer from 'puppeteer-core';
+import { Readability } from '@mozilla/readability';
+import { JSDOM } from 'jsdom';
+import TurndownService from 'turndown';
 
 const { Pool } = pkg;
 const __filename = fileURLToPath(import.meta.url);
@@ -834,6 +838,29 @@ async function initDB() {
       UNIQUE(content_id, channel)
     )`);
     console.log('NeonDB: content_analytics table ensured');
+
+    // ── scrape_log — observability for every URL Forge fetches ──────────────
+    // Every call to forgeScrape() writes one row here. Lets us answer "did
+    // sandbox-gtm.com fail because Bright Data was down, or because the URL
+    // 404'd?" without bisecting through code. Read endpoint at
+    // /api/admin/scrape-log.
+    await pool.query(`CREATE TABLE IF NOT EXISTS scrape_log (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      url TEXT NOT NULL,
+      source TEXT NOT NULL,
+      status_code INTEGER,
+      body_size INTEGER,
+      latency_ms INTEGER,
+      success BOOLEAN NOT NULL,
+      caller TEXT,
+      error TEXT,
+      metadata JSONB DEFAULT '{}',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_scrape_log_created ON scrape_log(created_at DESC)`).catch(() => {});
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_scrape_log_caller ON scrape_log(caller, created_at DESC)`).catch(() => {});
+    console.log('NeonDB: scrape_log table ensured');
+
     // Campaign analytics migrations
     await pool.query(`ALTER TABLE content_analytics ADD COLUMN IF NOT EXISTS campaign_id UUID`).catch(() => {});
     await pool.query(`ALTER TABLE publishing_queue ADD COLUMN IF NOT EXISTS campaign_id UUID`).catch(() => {});
@@ -2643,34 +2670,23 @@ app.post('/api/brand-settings/:brandProfileId/scrape-template', requireAuth, asy
     // Same threshold semantics as the regex version — # of fields Claude
     // successfully extracted (non-null) needs to clear the bar.
     const MIN_ARTICLE_EXTRACTED = 3;
-    const MIN_CATALOG_EXTRACTED = 2;
 
-    // Article = 10 trackable class fields, catalog = 6. Used for the
-    // "N of M DOM patterns matched" UI toast.
-    const ARTICLE_TOTAL = 10;
-    const CATALOG_TOTAL = 6;
+    // We grade extraction by regions located in the rendered HTML, not by
+    // stable class names found. Article pages have 6 regions (nav, hero,
+    // body, backLink, cta, footer); catalogs have 3 (grid, card, meta).
+    // A region counts as "located" when Claude can identify it by any
+    // means — semantic class, data-testid, HTML5 landmark, or unambiguous
+    // content match — even if no stable class is available. That's the
+    // honest measure of "did we read the page" vs. the prior count of
+    // "did we find inheritable class names," which is always zero on
+    // utility-class sites regardless of whether content was extractable.
+    const ARTICLE_TOTAL = 6;
+    const CATALOG_TOTAL = 3;
 
-    const fetchHtmlDirect = async (url) => {
-      const r = await fetch(url, { headers: { 'User-Agent': 'ForgeIntelligence/1.0' } });
-      if (!r.ok) throw new Error(`Failed to fetch ${url}: ${r.status}`);
-      return await r.text();
-    };
-
-    const fetchHtmlViaJina = async (url) => {
-      const headers = {
-        'Accept': 'text/html',
-        // Jina's documented switch for rendered HTML output. Without this
-        // header Jina returns cleaned markdown, which strips class names.
-        'X-Return-Format': 'html',
-      };
-      if (process.env.JINA_API_KEY) headers['Authorization'] = `Bearer ${process.env.JINA_API_KEY}`;
-      const abort = new AbortController();
-      const timer = setTimeout(() => abort.abort(), 15000);
-      const r = await fetch(`https://r.jina.ai/${url}`, { headers, signal: abort.signal })
-        .finally(() => clearTimeout(timer));
-      if (!r.ok) throw new Error(`Jina Reader ${r.status}`);
-      return await r.text();
-    };
+    // HTML fetching goes through forgeScrape — single workhorse via Bright
+    // Data Web Unlocker. Replaces the old direct-fetch + Jina + SPA-shell-
+    // heuristic chain. Bright Data auto-detects JS rendering, handles
+    // anti-bot, and returns the rendered DOM in one call.
 
     // Strip script + style + inline-svg noise before sending to Claude —
     // these bytes don't carry structural info and just eat into the prompt
@@ -2684,30 +2700,30 @@ app.post('/api/brand-settings/:brandProfileId/scrape-template', requireAuth, asy
 
     const claudeExtractArticle = async (html) => {
       const cleaned = cleanHtml(html).slice(0, 50000);
-      const prompt = `You are extracting reusable DOM structure from a published article page so a separate system can generate matching HTML for content exports.
+      const prompt = `You are extracting structural regions from a published article page. The output drives a content template: a "class" field provides a CSS hook for sites that have stable class names; a "found" boolean records whether the region exists in the page at all.
 
-Identify the following structural regions in the page below and return the most representative class name for each from the ACTUAL HTML. If a region exists but uses utility classes (Tailwind: text-3xl, mb-8), hash-suffixed CSS module classes (Hero_section__a1b2c), or styled-components hashes (sc-bdVaJa) — return null for that field rather than guessing. Only return class names that look stable and semantic.
+For each region:
+- "class" / "*Class": a stable, semantic CSS class string. Return null if the only available classes are utility classes (Tailwind: text-3xl, mb-8, flex), hash-suffixed CSS modules (Hero_section__a1b2c), or styled-components hashes (sc-bdVaJa). Don't guess.
+- "found": true if you can locate this region in the HTML by ANY means — a semantic class name, a data-testid attribute, an HTML5 landmark like <nav>/<article>/<main>/<footer>, an ARIA role, or unambiguous content (e.g. a <header> with a logo + links is clearly nav, an <h1> followed by paragraphs is clearly the article hero+body). Return false only when the region truly isn't present in the page.
+
+It's normal and expected for "class" to be null while "found" is true on modern sites that use utility CSS — that means the region exists but has no inheritable class hook. Both signals matter independently.
 
 Return ONLY valid JSON in this exact shape (no markdown, no commentary):
 {
-  "nav":      { "class": "string or null", "linksHtml": "first 800 chars of nav UL/menu inner HTML or empty string" },
-  "hero":     { "sectionClass": "string or null", "eyebrowClass": "string or null", "metaClass": "string or null", "imageWrapClass": "string or null" },
-  "body":     { "sectionClass": "string or null", "bodyClass": "string or null" },
-  "backLink": { "class": "string or null", "text": "the link's text content if present, else empty string" },
-  "cta":      { "class": "string or null" },
-  "footer":   { "class": "string or null" }
+  "nav":      { "class": "string|null", "found": true|false, "linksHtml": "first 800 chars of nav inner HTML or empty string" },
+  "hero":     { "sectionClass": "string|null", "eyebrowClass": "string|null", "metaClass": "string|null", "imageWrapClass": "string|null", "found": true|false },
+  "body":     { "sectionClass": "string|null", "bodyClass": "string|null", "found": true|false },
+  "backLink": { "class": "string|null", "text": "the link's text content if present, else empty string", "found": true|false },
+  "cta":      { "class": "string|null", "found": true|false },
+  "footer":   { "class": "string|null", "found": true|false }
 }
 
-Field meanings (in case the HTML uses non-obvious naming):
+Field meanings:
 - nav: site primary navigation, usually <nav> or <header>'s top bar
-- hero.sectionClass: the wrapper around the article title + meta
-- hero.eyebrowClass: the small kicker / category label above the title (often "Category", "Series", etc.)
-- hero.metaClass: the byline / date / read-time area
-- hero.imageWrapClass: the wrapper around the hero image
-- body.sectionClass: wrapper around each prose section
-- body.bodyClass: the inner prose container class
+- hero: the wrapper around the article title + meta (eyebrow = small kicker/category; meta = byline/date; imageWrap = hero image wrapper)
+- body: the prose container holding article paragraphs
 - backLink: a "Back to articles" / "View all" link at the top or bottom
-- cta: a call-to-action box at the article's end (often newsletter signup, demo CTA)
+- cta: a call-to-action box at the article's end (newsletter signup, demo CTA, etc.)
 - footer: site footer
 
 ARTICLE HTML (truncated to 50000 chars, scripts/styles/svg stripped):
@@ -2726,31 +2742,25 @@ ${cleaned}`;
 
     const claudeExtractCatalog = async (html) => {
       const cleaned = cleanHtml(html).slice(0, 50000);
-      const prompt = `You are extracting reusable DOM structure from an article catalog / index page.
+      const prompt = `You are extracting structural regions from an article catalog / index page. The output drives a content template: a "class" field provides a CSS hook for sites that have stable class names; a "found" boolean records whether the region exists in the page at all.
 
-Identify the structural regions below and return class names from the ACTUAL HTML. Return null for utility classes (Tailwind), hash-suffixed CSS modules, or styled-components hashes.
+For each region:
+- "class" / "*Class": a stable, semantic CSS class string. Return null if classes are utility classes (Tailwind), hash-suffixed CSS modules, or styled-components hashes. Don't guess.
+- "found": true if you can locate this region in the HTML by ANY means — semantic class, data-testid, HTML5 landmark, ARIA role, or unambiguous structural pattern (e.g. repeated card-like wrappers under a single parent is clearly the grid). Return false only when the region truly isn't present.
+
+It's normal for "class" to be null while "found" is true on modern utility-CSS sites — the region exists, just without an inheritable class hook.
 
 Return ONLY valid JSON in this exact shape:
 {
-  "grid": { "class": "string or null" },
-  "card": {
-    "class":      "string or null",
-    "imageClass": "string or null",
-    "bodyClass":  "string or null"
-  },
-  "meta": {
-    "categoryClass": "string or null",
-    "readMoreClass": "string or null"
-  }
+  "grid": { "class": "string|null", "found": true|false },
+  "card": { "class": "string|null", "imageClass": "string|null", "bodyClass": "string|null", "found": true|false },
+  "meta": { "categoryClass": "string|null", "readMoreClass": "string|null", "found": true|false }
 }
 
 Field meanings:
 - grid: the list/grid wrapper that contains all article cards
-- card.class: a single article card / preview wrapper
-- card.imageClass: the card's thumbnail wrapper
-- card.bodyClass: the card's text content area
-- meta.categoryClass: the small category tag on each card
-- meta.readMoreClass: the "Read more" / "→" link inside each card
+- card: a single article card / preview wrapper (image area + body area)
+- meta: per-card metadata — category tag + "Read more"/"→" link
 
 CATALOG HTML (truncated to 50000 chars, scripts/styles/svg stripped):
 ${cleaned}`;
@@ -2767,132 +2777,116 @@ ${cleaned}`;
     };
 
     // Build the persisted template from Claude's output, applying the
-    // existing hardcoded fallbacks for any field Claude marked null. Count
-    // non-null Claude results as "extracted" — those are real DOM finds.
+    // existing hardcoded fallbacks for any field Claude marked null.
+    // "extracted" counts regions Claude was able to locate in the HTML
+    // (claude[region].found === true) — not class-name hits. On Tailwind
+    // sites class strings are usually null while regions are still
+    // located via data-testid / semantic tags, which is the correct
+    // success state for downstream Smart Export.
     const buildArticleTemplate = (claude, sourceUrl) => {
       let extracted = 0;
-      const take = (val, fallback) => {
-        if (typeof val === 'string' && val.trim()) { extracted++; return val.trim(); }
-        return fallback;
+      const located = (region) => {
+        if (region?.found === true) { extracted++; return true; }
+        return false;
       };
+      const pickClass = (val, fallback) => (typeof val === 'string' && val.trim()) ? val.trim() : fallback;
+      located(claude?.nav);
+      located(claude?.hero);
+      located(claude?.body);
+      located(claude?.backLink);
+      located(claude?.cta);
+      located(claude?.footer);
       const tpl = {
         type: 'article',
         scrapedAt: new Date().toISOString(),
         sourceUrl,
         nav: {
-          class: take(claude?.nav?.class, 'navbar'),
+          class: pickClass(claude?.nav?.class, 'navbar'),
           linksHtml: typeof claude?.nav?.linksHtml === 'string' ? claude.nav.linksHtml.slice(0, 800) : '',
         },
         hero: {
-          sectionClass:   take(claude?.hero?.sectionClass,   'article-hero'),
-          eyebrowClass:   take(claude?.hero?.eyebrowClass,   'article-hero-eyebrow'),
-          metaClass:      take(claude?.hero?.metaClass,      'article-meta'),
-          imageWrapClass: take(claude?.hero?.imageWrapClass, 'article-hero-image'),
+          sectionClass:   pickClass(claude?.hero?.sectionClass,   'article-hero'),
+          eyebrowClass:   pickClass(claude?.hero?.eyebrowClass,   'article-hero-eyebrow'),
+          metaClass:      pickClass(claude?.hero?.metaClass,      'article-meta'),
+          imageWrapClass: pickClass(claude?.hero?.imageWrapClass, 'article-hero-image'),
         },
         body: {
-          sectionClass: take(claude?.body?.sectionClass, 'article-body-section'),
-          bodyClass:    take(claude?.body?.bodyClass,    'article-body'),
+          sectionClass: pickClass(claude?.body?.sectionClass, 'article-body-section'),
+          bodyClass:    pickClass(claude?.body?.bodyClass,    'article-body'),
         },
         backLink: {
-          class: take(claude?.backLink?.class, 'article-back'),
+          class: pickClass(claude?.backLink?.class, 'article-back'),
           text: (typeof claude?.backLink?.text === 'string' && claude.backLink.text.trim()) ? claude.backLink.text.trim() : 'Back to Articles',
           href: catalogUrl || '/',
         },
-        cta:    { class: take(claude?.cta?.class,    'article-cta-section') },
-        footer: { class: take(claude?.footer?.class, 'site-footer') },
+        cta:    { class: pickClass(claude?.cta?.class,    'article-cta-section') },
+        footer: { class: pickClass(claude?.footer?.class, 'site-footer') },
       };
       return { tpl, extracted, totalTrackable: ARTICLE_TOTAL };
     };
 
     const buildCatalogTemplate = (claude, sourceUrl) => {
       let extracted = 0;
-      const take = (val, fallback) => {
-        if (typeof val === 'string' && val.trim()) { extracted++; return val.trim(); }
-        return fallback;
+      const located = (region) => {
+        if (region?.found === true) { extracted++; return true; }
+        return false;
       };
+      const pickClass = (val, fallback) => (typeof val === 'string' && val.trim()) ? val.trim() : fallback;
+      located(claude?.grid);
+      located(claude?.card);
+      located(claude?.meta);
       const tpl = {
         type: 'catalog',
         scrapedAt: new Date().toISOString(),
         sourceUrl,
-        grid: { class: take(claude?.grid?.class, 'articles-grid') },
+        grid: { class: pickClass(claude?.grid?.class, 'articles-grid') },
         card: {
-          class:      take(claude?.card?.class,      'article-card'),
-          imageClass: take(claude?.card?.imageClass, 'article-card-image'),
-          bodyClass:  take(claude?.card?.bodyClass,  'article-card-body'),
+          class:      pickClass(claude?.card?.class,      'article-card'),
+          imageClass: pickClass(claude?.card?.imageClass, 'article-card-image'),
+          bodyClass:  pickClass(claude?.card?.bodyClass,  'article-card-body'),
         },
         meta: {
-          categoryClass: take(claude?.meta?.categoryClass, 'article-category'),
-          readMoreClass: take(claude?.meta?.readMoreClass, 'article-read-more'),
+          categoryClass: pickClass(claude?.meta?.categoryClass, 'article-category'),
+          readMoreClass: pickClass(claude?.meta?.readMoreClass, 'article-read-more'),
         },
       };
       return { tpl, extracted, totalTrackable: CATALOG_TOTAL };
     };
 
-    // Run scrape for one URL: fetch via direct HTTP (fast), fall back to Jina
-    // rendered HTML if the direct fetch gives us an SPA shell or fails.
-    // Detect SPA shells by looking at the BODY content size specifically.
-    // The old heuristic checked total cleaned-HTML length, but modern SPAs
-    // have huge <head> sections (Google Fonts preconnects, OpenGraph meta,
-    // tracking scripts) that easily clear 2k chars even when the body is
-    // literally `<div id="root"></div>`. Result: SPA shells passed the
-    // filter and got fed to Claude, which found zero structural regions.
-    // Now we extract just the <body> contents and gate on THAT size, plus
-    // a regex for the classic empty-mount-point shells.
-    const SPA_SHELL_RE = /<body[^>]*>\s*(?:<noscript>[\s\S]*?<\/noscript>\s*)?<div\s+id=["'](?:root|__next|app|svelte|nuxt)["'][^>]*>\s*<\/div>/i;
-    const looksLikeSpaShell = (html) => {
-      if (SPA_SHELL_RE.test(html)) return true;
-      const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-      if (!bodyMatch) return false;
-      const cleanedBody = cleanHtml(bodyMatch[1]).trim();
-      return cleanedBody.length < 500;
-    };
+    // Run scrape for one URL via forgeScrape (Bright Data Web Unlocker),
+    // then hand the rendered HTML to Claude for structural extraction.
+    const runScrape = async (url, type) => {
+      const fetched = await forgeScrape(url, {
+        caller: type === 'article' ? 'site-template-article' : 'site-template-catalog',
+        metadata: { brandProfileId },
+      });
 
-    // Then Claude extracts on the best HTML we have.
-    const runScrape = async (url, type, minExtracted) => {
-      let html = null;
-      let source = null;
-      try {
-        const direct = await fetchHtmlDirect(url);
-        if (!looksLikeSpaShell(direct)) {
-          html = direct;
-          source = 'local';
-        } else {
-          console.log(`[SCRAPE-TEMPLATE] direct fetch returned SPA shell for ${url} — skipping to Jina`);
-        }
-      } catch (e) {
-        console.warn(`[SCRAPE-TEMPLATE] direct fetch failed for ${url}: ${e.message}`);
+      if (!fetched.success || !fetched.html) {
+        console.warn(`[SCRAPE-TEMPLATE] forgeScrape failed for ${url}: ${fetched.error}`);
+        return { tpl: null, extracted: 0, totalTrackable: type === 'article' ? ARTICLE_TOTAL : CATALOG_TOTAL, source: fetched.source };
       }
-      if (!html) {
-        try {
-          html = await fetchHtmlViaJina(url);
-          source = 'jina';
-        } catch (e) {
-          console.warn(`[SCRAPE-TEMPLATE] Jina fetch failed for ${url}: ${e.message}`);
-        }
-      }
-      if (!html) return { tpl: null, extracted: 0, totalTrackable: 0, source: null };
 
       try {
-        const claude = type === 'article' ? await claudeExtractArticle(html) : await claudeExtractCatalog(html);
+        const claude = type === 'article' ? await claudeExtractArticle(fetched.html) : await claudeExtractCatalog(fetched.html);
         const built = type === 'article' ? buildArticleTemplate(claude, url) : buildCatalogTemplate(claude, url);
-        return { ...built, source };
+        return { ...built, source: fetched.source };
       } catch (e) {
         console.warn(`[SCRAPE-TEMPLATE] Claude extraction failed for ${url}: ${e.message}`);
         // Honest failure: don't fabricate a "successful" template from
         // hardcoded defaults if Claude couldn't read the HTML at all.
-        return { tpl: null, extracted: 0, totalTrackable: type === 'article' ? ARTICLE_TOTAL : CATALOG_TOTAL, source };
+        return { tpl: null, extracted: 0, totalTrackable: type === 'article' ? ARTICLE_TOTAL : CATALOG_TOTAL, source: fetched.source };
       }
     };
 
-    const article = await runScrape(articleUrl, 'article', MIN_ARTICLE_EXTRACTED);
-    const catalog = catalogUrl ? await runScrape(catalogUrl, 'catalog', MIN_CATALOG_EXTRACTED) : null;
+    const article = await runScrape(articleUrl, 'article');
+    const catalog = catalogUrl ? await runScrape(catalogUrl, 'catalog') : null;
 
     if (!article.tpl || article.extracted < MIN_ARTICLE_EXTRACTED) {
       console.log(`[SCRAPE-TEMPLATE] insufficient extraction (claude): ${article.extracted}/${article.totalTrackable} from ${article.source || 'no source'} for ${articleUrl}`);
       return res.json({
         success: false,
         error: 'template_extraction_insufficient',
-        warning: `Only ${article.extracted} of ${article.totalTrackable} structural regions extracted on the article page${article.source ? ` (read via ${article.source === 'jina' ? 'Jina rendered HTML' : 'local HTML'})` : ''}. Likely the site uses utility classes (Tailwind), CSS modules, or styled-components — class names aren't stable enough to inherit. Smart Export will fall back to generic semantic HTML.`,
+        warning: `Couldn't locate article structure in ${articleUrl}${article.source ? ` (read via ${article.source})` : ''}: only ${article.extracted} of ${article.totalTrackable} regions found. Likely causes: the page didn't fully render before we captured it, or this isn't a standard article layout. Smart Export will fall back to generic semantic HTML.`,
         extracted: { article: article.extracted, articleTotal: article.totalTrackable, source: article.source },
       });
     }
@@ -4454,9 +4448,14 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
 
 
     // ── Tool 1.5: Website Scraper — actual content extraction ─────────────────
+    // Two-tier fetch per page via getBrandPageContent:
+    //   Tier A: Jina Reader (semantic markdown — fast, free, the common case)
+    //   Tier B: forgeScrape (BD Tier 1 → Tier 2 cascade) + local Readability+Turndown
+    // Pages: homepage + up to 8 high-signal subpages discovered via sitemap.xml
+    // (link-extraction fallback). All fetched in parallel; every attempt logged
+    // to scrape_log with caller='context-hub'.
     console.log(`[Context Hub] Tool 1.5: Scraping website content for ${brandUrl}...`);
     let scrapedContent = '';
-    let homeHtml = '';
     let workingBaseUrl = '';
     // Masked-subdomain support: if the user set a scrapeUrlOverride in Brand Settings
     // (e.g., brand_url is a vanity domain pointing to a Render subservice), use the
@@ -4474,303 +4473,52 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
       }
     } catch { /* no profile yet, use brandUrl directly */ }
     try {
-      // Chrome UA — some sites (Squarespace, Vercel edge, etc.) 403 on unknown UAs. Forge UA tried first for honesty, Chrome as fallback.
-      const FORGE_UA = 'ForgeIntelligence/1.0 (Brand Analysis)';
-      const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
-
-      const stripHtml = (html) => html
-        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-        .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
-        .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
-        .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&[a-z]+;/gi, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-      // Extract crawler-targeted brand content from <head>: meta tags + JSON-LD structured data.
-      // SPA sites (Vite/Next/SvelteKit/etc.) put their brand description, services list, and
-      // schema.org markup in <head> precisely because they know JS-rendered <body> content
-      // isn't visible to crawlers. stripHtml() throws all of this away — wholesale-strips
-      // <script> (kills JSON-LD) and operates on body text only. metaExtract() runs first
-      // and pulls the high-value structured content into a readable text block.
-      const metaExtract = (html) => {
-        const parts = [];
-
-        const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-        if (titleMatch) {
-          const t = titleMatch[1].replace(/\s+/g, ' ').trim();
-          if (t && t.length > 5) parts.push(`Title: ${t}`);
-        }
-
-        // Meta tags: description (multiple forms), keywords, og:site_name, author
-        const metaPatterns = [
-          { re: /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i, label: 'Description' },
-          { re: /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i, label: 'OG Description' },
-          { re: /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i, label: 'Description' },  // attr order swap
-          { re: /<meta[^>]+name=["']keywords["'][^>]+content=["']([^"']+)["']/i, label: 'Keywords' },
-          { re: /<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i, label: 'Site name' },
-          { re: /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i, label: 'OG Title' },
-          { re: /<meta[^>]+name=["']author["'][^>]+content=["']([^"']+)["']/i, label: 'Author' },
-        ];
-        const seen = new Set();
-        for (const { re, label } of metaPatterns) {
-          const m = html.match(re);
-          if (m && m[1]) {
-            const v = m[1].replace(/\s+/g, ' ').trim();
-            const key = `${label}:${v}`;
-            if (v.length > 10 && !seen.has(key)) {
-              parts.push(`${label}: ${v}`);
-              seen.add(key);
-            }
-          }
-        }
-
-        // JSON-LD structured data blocks. Parse them and render as readable structured text
-        // so Tool 2 Claude can use the schema fields directly (services, descriptions, etc.).
-        const jsonLdMatches = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
-        for (const block of jsonLdMatches) {
-          const inner = block.replace(/<script[^>]*>/i, '').replace(/<\/script>/i, '').trim();
-          try {
-            const data = JSON.parse(inner);
-            const items = Array.isArray(data) ? data : [data];
-            for (const item of items) {
-              const type = item['@type'] || 'Schema';
-              const lines = [`Schema (${type}):`];
-              if (item.name) lines.push(`  Name: ${item.name}`);
-              if (item.description) lines.push(`  Description: ${item.description}`);
-              if (item.serviceType) lines.push(`  Services: ${Array.isArray(item.serviceType) ? item.serviceType.join(', ') : item.serviceType}`);
-              if (item.areaServed) lines.push(`  Area served: ${item.areaServed}`);
-              const offers = item.hasOfferCatalog?.itemListElement || [];
-              if (offers.length > 0) {
-                lines.push(`  Offerings:`);
-                for (const o of offers) {
-                  const svc = o.itemOffered;
-                  if (svc?.name) lines.push(`    - ${svc.name}${svc.description ? ': ' + svc.description : ''}`);
-                }
-              }
-              if (item.parentOrganization?.name) lines.push(`  Parent organization: ${item.parentOrganization.name}`);
-              if (item.alternateName) lines.push(`  Also known as: ${item.alternateName}`);
-              if (lines.length > 1) parts.push(lines.join('\n'));
-            }
-          } catch {
-            // Malformed JSON-LD — skip silently
-          }
-        }
-
-        return parts.join('\n\n');
-      };
-
-      // Tell the developer exactly why a fetch failed (not just "it didn't work")
-      const describeFetchFailure = (err) => {
-        if (!err) return 'unknown';
-        const code = err.cause?.code || err.code || '';
-        if (code === 'ENOTFOUND' || /ENOTFOUND|getaddrinfo/i.test(err.message || '')) return `DNS-NOT-FOUND (${err.message || code})`;
-        if (code === 'ECONNREFUSED') return 'CONNECTION-REFUSED';
-        if (code === 'ECONNRESET') return 'CONNECTION-RESET';
-        if (err.name === 'TimeoutError' || /timeout/i.test(err.message || '')) return 'TIMEOUT';
-        if (/certificate|TLS|SSL/i.test(err.message || '')) return `TLS-ERROR (${err.message})`;
-        return `${err.name || 'Error'}: ${err.message || code || 'no detail'}`;
-      };
-
-      // Fetch with detailed error surfacing. Returns { res, html, error } — never throws.
-      const fetchWithDiag = async (url, { ua = FORGE_UA, timeout = 10000 } = {}) => {
-        try {
-          const res = await fetch(url, {
-            headers: { 'User-Agent': ua, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9' },
-            redirect: 'follow',
-            signal: AbortSignal.timeout(timeout)
-          });
-          if (!res.ok) return { res, html: '', error: `HTTP-${res.status}` };
-          const html = await res.text();
-          return { res, html, error: null };
-        } catch(e) {
-          return { res: null, html: '', error: describeFetchFailure(e) };
-        }
-      };
-
-      // Build candidate base URLs. Brands saved as "example.com" may have apex-only or www-only DNS —
-      // try both, and try Chrome UA as a fallback if the Forge UA gets 403.
       const inputUrl = scrapeInputUrl.startsWith('http') ? scrapeInputUrl : `https://${scrapeInputUrl}`;
       const u = new URL(inputUrl);
-      const bareHost = u.hostname.replace(/^www\./, '');
-      const candidates = [];
-      if (u.hostname.startsWith('www.')) {
-        candidates.push(`${u.protocol}//${u.hostname}`, `${u.protocol}//${bareHost}`);
+      workingBaseUrl = `${u.protocol}//${u.host}`;
+
+      // Fetch the homepage first so we can seed subpage discovery with its
+      // already-fetched content — avoids a redundant homepage fetch inside
+      // discoverSubpages on SPAs where Jina has already returned clean
+      // markdown. Net latency: home fetch (~5-10s Jina, longer on Tier B)
+      // then parallel subpage fan-out.
+      const homeContent = await getBrandPageContent(workingBaseUrl, { caller: 'context-hub' });
+
+      const subpages = await discoverSubpages(workingBaseUrl, 8, {
+        seedMarkdown: homeContent?.success ? homeContent.markdown : null,
+      });
+
+      // Fan out to all discovered subpages in parallel.
+      const subContents = subpages.length
+        ? await Promise.all(subpages.map(pageUrl =>
+            getBrandPageContent(pageUrl, { caller: 'context-hub' }).catch(err => ({ success: false, markdown: null, source: 'error', error: err?.message }))
+          ))
+        : [];
+
+      // Concatenate per-page markdown (20 KB per page) into the section
+      // siteContentSection consumes. Tagged by URL + source so downstream
+      // Claude can attribute claims to specific pages.
+      if (homeContent?.success && homeContent.markdown) {
+        scrapedContent += `HOMEPAGE (${workingBaseUrl}, via ${homeContent.source}):\n${homeContent.markdown.slice(0, 20000)}\n\n`;
       } else {
-        candidates.push(`${u.protocol}//${u.hostname}`, `${u.protocol}//www.${u.hostname}`);
+        console.log(`[Context Hub] Homepage fetch failed — ${homeContent?.error || 'no detail'}`);
       }
-
-      // Try each candidate with Forge UA, then Chrome UA
-      for (const candidate of candidates) {
-        let attempt = await fetchWithDiag(candidate, { ua: FORGE_UA });
-        if (!attempt.html && /HTTP-4\d\d/.test(attempt.error || '')) {
-          // Some sites 403/406 unknown UAs. Retry same URL with a standard Chrome UA.
-          console.log(`[Context Hub] ${candidate} returned ${attempt.error} with Forge UA — retrying with Chrome UA`);
-          attempt = await fetchWithDiag(candidate, { ua: CHROME_UA });
-        }
-        if (attempt.html) {
-          homeHtml = attempt.html;
-          workingBaseUrl = candidate;
-          // Log raw HTML bytes, but also flag SPA shells where the visible content will be empty
-          // after stripHtml() because everything renders client-side. Without this hint, the
-          // contradiction in the logs ("X bytes scraped" + "minimal content") is confusing.
-          const isSpaShell = /<div[^>]+id=["'](root|app|__next|svelte)["']/i.test(attempt.html);
-          console.log(`[Context Hub] Homepage scraped from ${candidate} (${attempt.html.length} bytes${isSpaShell ? ' — SPA shell detected, expect minimal extracted text' : ''})`);
-          break;
-        } else {
-          console.log(`[Context Hub] Homepage fetch failed for ${candidate} — ${attempt.error}`);
+      for (let i = 0; i < subContents.length; i++) {
+        const p = subContents[i];
+        if (p?.success && p.markdown) {
+          scrapedContent += `PAGE (${subpages[i]}, via ${p.source}):\n${p.markdown.slice(0, 20000)}\n\n`;
         }
       }
 
-      if (homeHtml) {
-        // Extract meta + JSON-LD FIRST — captures brand content from SPA sites where the
-        // body strip yields nothing. For server-rendered sites, this adds high-quality
-        // structured context on top of the body text.
-        const homeMeta = metaExtract(homeHtml);
-        if (homeMeta && homeMeta.length > 30) {
-          scrapedContent += `HOMEPAGE METADATA:\n${homeMeta}\n\n`;
-        }
-        // Then run the body strip as before. May add nothing on SPAs, but useful on
-        // server-rendered sites where <body> has the actual content.
-        const homeText = stripHtml(homeHtml).slice(0, 3000);
-        if (homeText.length > 80) scrapedContent += `HOMEPAGE CONTENT:\n${homeText}\n\n`;
-      }
-
-      // Extract internal links from homepage for deeper crawl
-      const linkMatches = homeHtml.match(/href=["'](\/[^"'#?]+)["']/g) || [];
-      const internalPaths = [...new Set(
-        linkMatches
-          .map(m => m.match(/href=["'](\/[^"'#?]+)["']/)?.[1])
-          .filter(Boolean)
-          .filter(p => /\/(about|story|product|service|blog|mission|team|who-we|what-we|our-)/i.test(p))
-      )].slice(0, 4);
-
-      // Also try common about paths if none found
-      const aboutPaths = internalPaths.length > 0 ? internalPaths : ['/about', '/about-us', '/pages/about'];
-
-      if (workingBaseUrl) {
-        for (const path of aboutPaths) {
-          const pageUrl = new URL(path, workingBaseUrl).href;
-          let pageAttempt = await fetchWithDiag(pageUrl, { ua: FORGE_UA, timeout: 8000 });
-          if (!pageAttempt.html && /HTTP-4\d\d/.test(pageAttempt.error || '')) {
-            pageAttempt = await fetchWithDiag(pageUrl, { ua: CHROME_UA, timeout: 8000 });
-          }
-          if (pageAttempt.html) {
-            // Subpages: meta tags less interesting (usually duplicate the homepage), so just
-            // pull JSON-LD + body text. JSON-LD on a /pricing or /about page often has
-            // page-specific schema that's worth capturing.
-            const pageMeta = metaExtract(pageAttempt.html);
-            const pageText = stripHtml(pageAttempt.html).slice(0, 2000);
-            // Filter pageMeta to only schema blocks (drop title/desc duplicates)
-            const pageSchemas = pageMeta.split('\n\n').filter(b => b.startsWith('Schema (')).join('\n\n');
-            if (pageSchemas) scrapedContent += `PAGE (${path}) METADATA:\n${pageSchemas}\n\n`;
-            if (pageText.length > 100) {
-              scrapedContent += `PAGE (${path}):\n${pageText}\n\n`;
-            }
-          } else {
-            console.log(`[Context Hub] Subpage ${path} failed — ${pageAttempt.error}`);
-          }
-        }
-      }
-
-      if (scrapedContent.length > 200) {
-        console.log(`[Context Hub] Scraped ${scrapedContent.length} chars from ${aboutPaths.length + 1} pages (base: ${workingBaseUrl})`);
-      } else {
-        // Local scrape failed to extract usable content — typically a JS-rendered SPA where the
-        // raw HTML is 10kb+ but stripHtml() yields a few dozen chars (title tag only). Two-tier
-        // fallback follows: first Jina Reader (renders the page server-side in real time —
-        // works even on brand-new sites that aren't indexed anywhere yet), then Sonar (relies on
-        // Perplexity's index — fast when the site is already crawled, useless for brand-new sites).
-        //
-        // Order matters: Jina runs first because it can handle brand-new SPAs. Sonar is the
-        // backup for the case where Jina's free tier rate-limits us OR returns an error.
-        console.log(`[Context Hub] Local scrape minimal (${scrapedContent.length} chars from ${homeHtml.length} bytes HTML) — trying Jina Reader fallback`);
-        try {
-          const jinaHeaders = { 'Accept': 'text/plain' };
-          if (process.env.JINA_API_KEY) {
-            jinaHeaders['Authorization'] = `Bearer ${process.env.JINA_API_KEY}`;
-          }
-          // Bound the request — Jina cold-renders can take 5-12s but anything beyond
-          // ~15s indicates the target site itself is slow / hanging and we should
-          // move on to Sonar rather than block the entire analyze call.
-          const jinaAbort = new AbortController();
-          const jinaTimeout = setTimeout(() => jinaAbort.abort(), 15000);
-          const jinaRes = await fetch(`https://r.jina.ai/${brandUrl}`, {
-            headers: jinaHeaders,
-            signal: jinaAbort.signal,
-          }).finally(() => clearTimeout(jinaTimeout));
-          if (jinaRes.ok) {
-            const jinaText = (await jinaRes.text()).trim();
-            if (jinaText.length > 200) {
-              // Cap at 8000 chars to match the local-scrape budget and keep the
-              // downstream Claude prompt under its size envelope.
-              scrapedContent = `JINA-EXTRACTED CONTENT (JS-rendered by Jina Reader — this is what a user sees):\n${jinaText.slice(0, 8000)}`;
-              console.log(`[Context Hub] Jina Reader fallback succeeded: ${jinaText.length} chars (capped to 8000)`);
-            } else {
-              console.log(`[Context Hub] Jina Reader returned minimal content (${jinaText.length} chars) — trying Sonar next`);
-            }
-          } else {
-            console.log(`[Context Hub] Jina Reader HTTP ${jinaRes.status} — trying Sonar next`);
-          }
-        } catch (jinaErr) {
-          console.log(`[Context Hub] Jina Reader error (non-fatal):`, jinaErr.message);
-        }
-      }
-
-      // Tier 3: Sonar fallback. Runs only if Jina didn't lift us past the threshold.
-      // Useful when Jina is rate-limited or the target is geo-blocked from Jina's
-      // egress IPs but already crawled into Perplexity's index.
-      if (scrapedContent.length <= 200) {
-        console.log(`[Context Hub] Jina + local still under threshold — falling back to Sonar content extraction`);
-        try {
-          const sonarContentRes = await fetch('https://api.perplexity.ai/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              model: 'sonar',
-              messages: [{
-                role: 'user',
-                content: `Visit ${brandUrl} and extract the actual visible content from the homepage and any About/Product/Mission page. Return ONLY the raw text content from those pages — no commentary, no formatting, no markdown headers, no lists. Just the prose as a user would read it. If a page is JavaScript-rendered, render it and extract the resulting visible text. If you cannot access the site, return exactly the string "SITE_INACCESSIBLE" and nothing else.
-
-Maximum 4000 words. Focus on:
-- What the company does (homepage hero + product description)
-- Their mission, story, or about-us content
-- Any product features, services, or offerings described
-- Customer pain points or use cases mentioned
-
-Return only the extracted page text.`
-              }],
-              max_tokens: 4000
-            })
-          });
-          if (sonarContentRes.ok) {
-            const sonarContentData = await sonarContentRes.json();
-            const sonarExtractedText = (sonarContentData.choices?.[0]?.message?.content || '').trim();
-            if (sonarExtractedText && sonarExtractedText !== 'SITE_INACCESSIBLE' && sonarExtractedText.length > 200) {
-              scrapedContent = `SONAR-EXTRACTED CONTENT (site is JS-rendered — this is what a user sees):\n${sonarExtractedText}`;
-              console.log(`[Context Hub] Sonar content fallback succeeded: ${sonarExtractedText.length} chars`);
-            } else {
-              console.log(`[Context Hub] Sonar content fallback returned no usable content (${sonarExtractedText.slice(0, 100)})`);
-            }
-          } else {
-            console.log(`[Context Hub] Sonar content fallback HTTP ${sonarContentRes.status}`);
-          }
-        } catch (sonarErr) {
-          console.log(`[Context Hub] Sonar content fallback error:`, sonarErr.message);
-        }
-      }
+      const okPages = (homeContent?.success ? 1 : 0) + subContents.filter(p => p?.success).length;
+      console.log(`[Context Hub] Scraped ${scrapedContent.length} chars from ${okPages} page(s) (base: ${workingBaseUrl}, discovered: ${subpages.length})`);
     } catch(e) {
       console.log(`[Context Hub] Scraper error (non-fatal):`, e.message);
     }
 
     const scraperSuccess = scrapedContent.length > 200;
     const siteContentSection = scraperSuccess
-      ? `\n\nACTUAL WEBSITE CONTENT (scraped — use this as primary source, do NOT guess from domain name):\n${scrapedContent.slice(0, 8000)}`
+      ? `\n\nACTUAL WEBSITE CONTENT (scraped — use this as primary source, do NOT guess from domain name):\n${scrapedContent.slice(0, 100000)}`
       : '';
     if (!scraperSuccess) console.warn(`[Context Hub] ⚠️ SCRAPER FAILED for ${brandUrl} — Claude will guess from domain name + Sonar context only`);
 
@@ -14222,6 +13970,400 @@ function requireApiKeyScope(scope) {
   };
 }
 
+// ── forgeScrape — the one scrape primitive ─────────────────────────────────
+// Every URL Forge fetches for content/intelligence purposes goes through
+// here. Two-tier under the hood:
+//
+//   Tier 1: Bright Data Web Unlocker (cheap, fast, returns HTTP response)
+//   Tier 2: Bright Data Scraping Browser (CDP via puppeteer-core; real
+//           browser that JS-renders the page) — auto-fallback when Tier 1
+//           returns an SPA shell.
+//
+// Replaces the per-feature fetcher zoo (custom HTTP + Jina + Sonar) that
+// produced "0 of 10 patterns" failures on every modern SPA.
+//
+// Returns: { success, status, html, source, latencyMs, error }
+//
+// Logs every attempt to scrape_log so we can audit reliability without
+// reading server logs. Tier 1 + Tier 2 attempts for the same URL log as
+// separate rows so the chain is visible.
+//
+// Required env:
+//   BRIGHTDATA_API_KEY        — bearer token (from BD dashboard → Settings)
+//   BRIGHTDATA_UNLOCKER_ZONE  — Unlocker zone name (e.g. 'forge_intelligence')
+//   BRIGHTDATA_BROWSER_AUTH   — Scraping Browser auth string (format:
+//                               'brd-customer-<CUSTOMER_ID>-zone-<ZONE>:<PASSWORD>')
+//                               OPTIONAL — if missing, Tier 2 is skipped and
+//                               an SPA-shell response from Tier 1 returns as-is.
+
+// Tier 2 (Scraping Browser) — CDP connection via puppeteer-core. We don't
+// bundle Chromium; we connect to Bright Data's remote browser over WebSocket.
+// (puppeteer is imported at the top of the file alongside other ESM imports.)
+
+const SPA_SHELL_RE = /<body[^>]*>\s*(?:<noscript>[\s\S]*?<\/noscript>\s*)?<div\s+id=["'](?:root|__next|app|svelte|nuxt)["'][^>]*>\s*<\/div>/i;
+function looksLikeSpaShell(html) {
+  if (!html) return false;
+  if (SPA_SHELL_RE.test(html)) return true;
+  // Fallback heuristic: tiny body content (after stripping scripts/styles)
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  if (!bodyMatch) return false;
+  const cleanedBody = bodyMatch[1]
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+    .trim();
+  return cleanedBody.length < 500;
+}
+
+async function _logScrape(row) {
+  try {
+    await pool.query(
+      `INSERT INTO scrape_log (url, source, status_code, body_size, latency_ms, success, caller, error, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [row.url, row.source, row.status_code ?? null, row.body_size ?? null, row.latency_ms ?? null,
+       row.success, row.caller ?? 'unknown', row.error ?? null, JSON.stringify(row.metadata ?? {})]
+    );
+  } catch { /* logging is best-effort */ }
+}
+
+async function _tryUnlocker(url, { format, timeout, country, caller, metadata }) {
+  const apiKey = process.env.BRIGHTDATA_API_KEY;
+  const zone = process.env.BRIGHTDATA_UNLOCKER_ZONE;
+  const startTime = Date.now();
+  if (!apiKey || !zone) {
+    const err = 'Bright Data Unlocker not configured (BRIGHTDATA_API_KEY / BRIGHTDATA_UNLOCKER_ZONE missing)';
+    await _logScrape({ url, source: 'brightdata_unlocker', success: false, latency_ms: 0, caller, error: err, metadata });
+    return { success: false, status: null, html: null, source: 'brightdata_unlocker', latencyMs: 0, error: err };
+  }
+  try {
+    const body = { zone, url, format };
+    if (country) body.country = country;
+    if (format === 'markdown') body.data_format = 'markdown';
+    const ac = new AbortController();
+    const tid = setTimeout(() => ac.abort(), timeout);
+    let resp;
+    try {
+      resp = await fetch('https://api.brightdata.com/request', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: ac.signal,
+      });
+    } finally { clearTimeout(tid); }
+    const responseBody = await resp.text();
+    const latencyMs = Date.now() - startTime;
+    await _logScrape({
+      url, source: 'brightdata_unlocker',
+      status_code: resp.status, body_size: responseBody.length, latency_ms: latencyMs,
+      success: resp.ok, caller,
+      metadata: { ...(metadata ?? {}), body_sample: resp.ok ? responseBody.slice(0, 15000) : undefined },
+      error: resp.ok ? null : `HTTP ${resp.status}: ${responseBody.slice(0, 200)}`,
+    });
+    if (!resp.ok) {
+      return { success: false, status: resp.status, html: null, source: 'brightdata_unlocker', latencyMs, error: `HTTP ${resp.status}: ${responseBody.slice(0, 200)}` };
+    }
+    return { success: true, status: resp.status, html: responseBody, source: 'brightdata_unlocker', latencyMs, error: null };
+  } catch (e) {
+    const latencyMs = Date.now() - startTime;
+    await _logScrape({ url, source: 'brightdata_unlocker', success: false, latency_ms: latencyMs, caller, error: e.message, metadata });
+    return { success: false, status: null, html: null, source: 'brightdata_unlocker', latencyMs, error: e.message };
+  }
+}
+
+async function _tryScrapingBrowser(url, { timeout, caller, metadata }) {
+  const browserAuth = process.env.BRIGHTDATA_BROWSER_AUTH;
+  const startTime = Date.now();
+  if (!browserAuth) {
+    const err = 'Bright Data Scraping Browser not configured (BRIGHTDATA_BROWSER_AUTH missing)';
+    await _logScrape({ url, source: 'brightdata_browser', success: false, latency_ms: 0, caller, error: err, metadata });
+    return { success: false, status: null, html: null, source: 'brightdata_browser', latencyMs: 0, error: err };
+  }
+  let browser = null;
+  try {
+    browser = await puppeteer.connect({
+      browserWSEndpoint: `wss://${browserAuth}@brd.superproxy.io:9222`,
+      // Each connection is single-shot; tear down promptly.
+    });
+    const page = await browser.newPage();
+    page.setDefaultNavigationTimeout(timeout);
+    // Block heavy resources we don't need for DOM extraction. Cuts bandwidth
+    // cost (Scraping Browser is bandwidth-billed) ~70% on most sites.
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      const type = req.resourceType();
+      if (['image', 'stylesheet', 'font', 'media'].includes(type)) req.abort();
+      else req.continue();
+    });
+    await page.goto(url, { waitUntil: 'networkidle2', timeout });
+    // Wait for actual article-shaped content, not just any DOM. The previous
+    // heuristic (root has children + 1KB innerHTML) fires the moment the
+    // layout shell mounts — well before the article body actually renders,
+    // which is why Tier 2 was returning 10KB pages with no article in them.
+    // Now: require an h1 with real text AND at least 3 paragraphs. If that
+    // doesn't fire within 15s we take what we have rather than fail.
+    try {
+      await page.waitForFunction(() => {
+        const h1 = document.querySelector('h1');
+        const paragraphs = document.querySelectorAll('p').length;
+        return h1 && h1.textContent.trim().length > 10 && paragraphs >= 3;
+      }, { timeout: 15_000 });
+    } catch { /* content heuristic didn't fire — continue with what we have */ }
+    const html = await page.content();
+    await browser.close();
+    browser = null;
+    const latencyMs = Date.now() - startTime;
+    await _logScrape({
+      url, source: 'brightdata_browser',
+      status_code: 200, body_size: html.length, latency_ms: latencyMs,
+      success: true, caller,
+      metadata: { ...(metadata ?? {}), body_sample: html.slice(0, 15000) },
+    });
+    return { success: true, status: 200, html, source: 'brightdata_browser', latencyMs, error: null };
+  } catch (e) {
+    if (browser) { try { await browser.close(); } catch {} }
+    const latencyMs = Date.now() - startTime;
+    await _logScrape({ url, source: 'brightdata_browser', success: false, latency_ms: latencyMs, caller, error: e.message, metadata });
+    return { success: false, status: null, html: null, source: 'brightdata_browser', latencyMs, error: e.message };
+  }
+}
+
+async function forgeScrape(url, opts = {}) {
+  const {
+    format = 'raw',           // 'raw' = HTML, 'markdown' = cleaned content
+    timeout = 60000,          // ms — Bright Data can take 5-15s on complex sites
+    country = null,           // optional ISO country code for geo-targeting
+    caller = 'unknown',       // string identifier for the log
+    metadata = {},
+    render = 'auto',          // 'auto' = Unlocker → Browser fallback on SPA shell
+                              // 'always' = skip Unlocker, go straight to Browser
+                              // 'never' = Unlocker only, no fallback
+  } = opts;
+
+  // 'always': caller knows this is a JS-heavy site, skip Tier 1
+  if (render === 'always') {
+    return await _tryScrapingBrowser(url, { timeout, caller, metadata });
+  }
+
+  // Tier 1: Web Unlocker
+  const unlockerResult = await _tryUnlocker(url, { format, timeout, country, caller, metadata });
+
+  // 'never': don't fall back even if shell detected
+  if (render === 'never') return unlockerResult;
+
+  // 'auto': fall back to Scraping Browser when Tier 1 returned a SPA shell
+  // OR when Tier 1 failed entirely (network/HTTP error). Markdown format
+  // skips the shell-detection branch since the body is reformatted text,
+  // not HTML.
+  if (format !== 'raw') return unlockerResult;
+  const needsBrowser = !unlockerResult.success || looksLikeSpaShell(unlockerResult.html);
+  if (!needsBrowser) return unlockerResult;
+
+  console.log(`[forgeScrape] Tier 1 ${unlockerResult.success ? 'returned shell' : 'failed'} for ${url} (caller=${caller}) — escalating to Scraping Browser`);
+  const browserResult = await _tryScrapingBrowser(url, { timeout, caller, metadata });
+  // If browser also failed, return whichever attempt produced more useful
+  // content (browser preferred when both have errors, since it's the
+  // higher-tier tool).
+  if (browserResult.success) return browserResult;
+  return unlockerResult.success ? unlockerResult : browserResult;
+}
+
+// ── getBrandPageContent — Stage 1 page-content primitive ───────────────────
+// Returns clean markdown for a single brand page. Two-tier:
+//
+//   Tier A: Jina Reader (r.jina.ai) — semantic content extraction with built-in
+//           JS rendering. Returns markdown directly. Fast on the common case.
+//   Tier B: forgeScrape (Tier 1 → Tier 2 cascade) + local Mozilla Readability
+//           + Turndown. For sites Jina can't reach (rate-limit, geo-block,
+//           outright failure) — we render via Bright Data and extract locally.
+//
+// Returns { success, markdown, source, latencyMs, error }
+//   source: 'jina_reader' | 'brightdata_unlocker' | 'brightdata_browser'
+//
+// Every attempt is logged to scrape_log with caller='context-hub' for audit.
+const _turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced', emDelimiter: '_' });
+function htmlToMarkdown(html, url) {
+  try {
+    const dom = new JSDOM(html, { url });
+    const article = new Readability(dom.window.document).parse();
+    if (!article?.content) return '';
+    return _turndown.turndown(article.content).trim();
+  } catch {
+    return '';
+  }
+}
+
+async function getBrandPageContent(url, { caller = 'context-hub', metadata = {}, jinaTimeout = 15000 } = {}) {
+  // ── Tier A: Jina Reader ──────────────────────────────────────────────────
+  const jinaStart = Date.now();
+  try {
+    // X-With-Links-Summary asks Jina to append a "Links/Buttons:" section
+    // after the readability-extracted markdown. Crucial for SPA marketing
+    // pages: readability drops the <nav>/<header> region, so without this
+    // header the markdown contains content-area links only — missing the
+    // primary nav (pricing, blog, book-demo, etc.) that we need for
+    // subpage discovery. The appended section uses standard [text](url)
+    // syntax, so our existing extractMarkdownLinks regex picks it up
+    // automatically.
+    const headers = { 'Accept': 'text/plain', 'X-With-Links-Summary': 'true' };
+    if (process.env.JINA_API_KEY) headers['Authorization'] = `Bearer ${process.env.JINA_API_KEY}`;
+    const ac = new AbortController();
+    const tid = setTimeout(() => ac.abort(), jinaTimeout);
+    let resp;
+    try {
+      resp = await fetch(`https://r.jina.ai/${url}`, { headers, signal: ac.signal });
+    } finally { clearTimeout(tid); }
+    const latencyMs = Date.now() - jinaStart;
+    if (resp.ok) {
+      const markdown = (await resp.text()).trim();
+      const usable = markdown.length > 500;
+      await _logScrape({
+        url, source: 'jina_reader', status_code: resp.status, body_size: markdown.length,
+        latency_ms: latencyMs, success: usable, caller,
+        metadata: { ...metadata, body_sample: markdown.slice(0, 2000) },
+        error: usable ? null : `markdown under threshold (${markdown.length} chars)`,
+      });
+      if (usable) return { success: true, markdown, source: 'jina_reader', latencyMs, error: null };
+    } else {
+      await _logScrape({
+        url, source: 'jina_reader', status_code: resp.status, body_size: 0,
+        latency_ms: latencyMs, success: false, caller, metadata,
+        error: `HTTP ${resp.status}`,
+      });
+    }
+  } catch (e) {
+    await _logScrape({
+      url, source: 'jina_reader', success: false, latency_ms: Date.now() - jinaStart,
+      caller, metadata, error: e.message,
+    });
+  }
+
+  // ── Tier B: forgeScrape → Readability + Turndown ─────────────────────────
+  // forgeScrape logs its own attempts (Tier 1 + Tier 2 rows) — no double-log here.
+  const fetched = await forgeScrape(url, { caller, metadata });
+  if (!fetched.success || !fetched.html) {
+    return { success: false, markdown: null, source: fetched.source, latencyMs: fetched.latencyMs, error: fetched.error || 'forgeScrape returned no html' };
+  }
+  const markdown = htmlToMarkdown(fetched.html, url);
+  if (markdown.length < 200) {
+    return { success: false, markdown: null, source: fetched.source, latencyMs: fetched.latencyMs, error: `Readability extracted ${markdown.length} chars (under threshold)` };
+  }
+  return { success: true, markdown, source: fetched.source, latencyMs: fetched.latencyMs, error: null };
+}
+
+// ── discoverSubpages — sitemap.xml first, link-extraction fallback ─────────
+// Returns up to `max` same-origin URLs likely to contain brand-defining
+// content (about, customers, pricing, integrations, FAQ, etc.). Skips noise
+// (login, legal, blog post slugs, search/tag/category aggregates) and
+// non-page assets (.css, .js, images, fonts, JSON, etc.).
+//
+// Discovery priority:
+//   1. sitemap.xml (most reliable, follows sitemapindex)
+//   2. seedMarkdown — parse [text](url) links from already-fetched home
+//      content. Avoids a redundant homepage fetch when the caller already
+//      has Jina markdown in hand.
+//   3. seedHtml — parse <a href> links from already-fetched home HTML
+//      (forgeScrape fallback path).
+//   4. Last resort: forgeScrape the homepage just to get its links. Tight
+//      20s timeout — we'd rather return [] than spend 60s here.
+function rankBrandPages(urls) {
+  const HIGH = /\/(about|story|mission|team|company|why-us|our-)/i;
+  const MED  = /\/(product|service|customer|case-stud|pricing|integration|faq|how-it-works|solution|platform)/i;
+  // Block non-page assets and admin/auth/legal noise. Asset extensions are
+  // the common bleed source — link-extraction picks up <link rel="stylesheet">,
+  // <link rel="icon">, font preconnects, etc. We reject them here as a
+  // belt-and-suspenders alongside the anchor-only regex in extractAnchorHrefs.
+  const SKIP_PATH = /\/(login|signup|sign-in|sign-up|legal|privacy|terms|cookie|sitemap|robots|admin|account|password|settings|cart|checkout|search\?|tag\/|tags\/|category\/|categories\/|author\/|feed|rss|wp-json|wp-admin|api\/)/i;
+  const SKIP_EXT  = /\.(css|js|mjs|cjs|map|png|jpe?g|gif|svg|ico|webp|avif|bmp|tiff?|pdf|xml|json|txt|woff2?|ttf|otf|eot|mp4|webm|mp3|wav|zip|gz)(\?|$)/i;
+  const seen = new Set();
+  const scored = [];
+  for (const raw of urls) {
+    // Strip fragment, query, AND trailing slash so /about and /about/ dedupe
+    // and don't appear as two distinct subpages.
+    const u = raw.replace(/#.*$/, '').replace(/\?.*$/, '').replace(/\/+$/, '');
+    if (!u || seen.has(u) || SKIP_PATH.test(u) || SKIP_EXT.test(u)) continue;
+    seen.add(u);
+    scored.push({ url: u, score: HIGH.test(u) ? 3 : MED.test(u) ? 2 : 1 });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  return scored.map(s => s.url);
+}
+
+// Extract only anchor-tag hrefs (<a href="...">) from HTML — ignores
+// <link>, <img>, <script>, <iframe>, etc. The naive /href="[^"]+"/ regex
+// scoops up stylesheet links, favicon preconnects, and font URLs, which
+// then ride through ranking as fake "subpages."
+function extractAnchorHrefs(html) {
+  return [...html.matchAll(/<a\b[^>]*\shref\s*=\s*["']([^"']+)["']/gi)].map(m => m[1]);
+}
+
+// Extract URLs from Markdown link syntax [text](url) — used when we already
+// have Jina markdown for the homepage and want to skip a second fetch.
+function extractMarkdownLinks(markdown) {
+  return [...markdown.matchAll(/\[(?:[^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)].map(m => m[1]);
+}
+
+async function discoverSubpages(baseUrl, max = 8, { seedMarkdown = null, seedHtml = null } = {}) {
+  const baseHost = new URL(baseUrl).host;
+  const origin = new URL(baseUrl).origin;
+  const sameOrigin = (u) => { try { return new URL(u).host === baseHost; } catch { return false; } };
+  // Strip fragment and trailing slash for comparison/dedup. Without this,
+  // [See How It Works](https://example.com/#capabilities) escapes the
+  // baseUrl filter (URL with fragment !== baseUrl) and rides through as
+  // a "subpage" — even though it's literally the homepage with an anchor.
+  const canonical = (u) => u.replace(/#.*$/, '').replace(/\/+$/, '');
+  const baseCanonical = canonical(baseUrl);
+  const normalize = (u) => u.startsWith('/') ? origin + u : u;
+  const isPage = (u) => /^https?:\/\//i.test(u) && sameOrigin(u) && canonical(u) !== baseCanonical;
+
+  // Step 1: sitemap.xml (handles sitemapindex by following the first child)
+  try {
+    const sm = await fetch(new URL('/sitemap.xml', baseUrl).href, { signal: AbortSignal.timeout(8000) });
+    if (sm.ok) {
+      let xml = await sm.text();
+      let urls = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m => m[1].trim());
+      if (/<sitemapindex/i.test(xml) && urls.length) {
+        try {
+          const child = await fetch(urls[0], { signal: AbortSignal.timeout(8000) });
+          if (child.ok) {
+            const cx = await child.text();
+            urls = [...cx.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m => m[1].trim());
+          }
+        } catch { /* child fetch failed — fall through with index URLs */ }
+      }
+      const ranked = rankBrandPages(urls.filter(sameOrigin).filter(u => u !== baseUrl && u !== `${baseUrl}/`));
+      if (ranked.length) return ranked.slice(0, max);
+    }
+  } catch { /* sitemap missing/slow — fall through to link extraction */ }
+
+  // Step 2: parse Jina markdown the caller already fetched. Cheap, zero
+  // additional latency. Works for any site Jina could read.
+  if (seedMarkdown) {
+    const links = extractMarkdownLinks(seedMarkdown).map(normalize).filter(isPage);
+    const ranked = rankBrandPages(links);
+    if (ranked.length) return ranked.slice(0, max);
+  }
+
+  // Step 3: parse anchor hrefs from HTML the caller already has (Tier B path).
+  if (seedHtml) {
+    const links = extractAnchorHrefs(seedHtml).map(normalize).filter(isPage);
+    const ranked = rankBrandPages(links);
+    if (ranked.length) return ranked.slice(0, max);
+  }
+
+  // Step 4: last resort — forgeScrape the homepage just for its links.
+  // Tight 20s timeout: if the home is a slow SPA we'd rather return [] than
+  // spend 60s on a discovery fetch that the analyze handler already paid
+  // separately for as primary content.
+  try {
+    const home = await forgeScrape(baseUrl, { caller: 'context-hub-discover', timeout: 20000 });
+    if (home.success && home.html) {
+      const links = extractAnchorHrefs(home.html).map(normalize).filter(isPage);
+      return rankBrandPages(links).slice(0, max);
+    }
+  } catch { /* all discovery paths failed — caller continues with home only */ }
+
+  return [];
+}
+
 // Soft auth — attaches userId if present, continues either way (for public + authed routes)
 async function softAuth(req, res, next) {
   try {
@@ -14678,6 +14820,56 @@ app.post('/api/promo/validate', softAuth, async (req, res) => {
 //     still published, else 'staged' (so the queue card resurfaces as
 //     ready-to-republish)
 //   - publish_log rows for (content_id, channel) deleted
+// GET /api/admin/scrape-log — recent forgeScrape activity for observability.
+// No more "did the scrape fail because of X or Y?" guessing — answer is
+// always a SQL query away. Filterable by caller (which feature triggered
+// the scrape) and url substring.
+//
+// Auth: adminPassword query param (?adminPassword=...) — matches the
+// existing /api/admin/* shape so ops can hit it from a browser without
+// needing a Clerk token.
+//
+// Query params:
+//   adminPassword — required
+//   caller        — optional, filters by caller string ('context-hub',
+//                   'site-template', etc.)
+//   url           — optional, ILIKE substring match against the URL
+//   limit         — default 100, max 500
+app.get('/api/admin/scrape-log', async (req, res) => {
+  if (req.query.adminPassword !== process.env.ADMIN_PASSWORD) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const { caller, url } = req.query;
+  const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
+  const conditions = [];
+  const params = [];
+  if (caller) { conditions.push(`caller = $${params.length + 1}`); params.push(caller); }
+  if (url) { conditions.push(`url ILIKE $${params.length + 1}`); params.push(`%${url}%`); }
+  const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  params.push(limit);
+  try {
+    const r = await pool.query(
+      `SELECT id, url, source, status_code, body_size, latency_ms, success, caller, error, metadata, created_at
+       FROM scrape_log
+       ${whereClause}
+       ORDER BY created_at DESC
+       LIMIT $${params.length}`,
+      params
+    );
+    // Summary stats over the returned window
+    const total = r.rows.length;
+    const successes = r.rows.filter(row => row.success).length;
+    const avgLatency = total ? Math.round(r.rows.reduce((s, row) => s + (row.latency_ms || 0), 0) / total) : 0;
+    res.json({
+      success: true,
+      summary: { total, successes, failures: total - successes, successRate: total ? (successes / total) : 0, avgLatencyMs: avgLatency },
+      rows: r.rows,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 //
 // Idempotent: zero rows is a 200 with queueItemsAffected=0.
 app.post('/api/admin/mark-unpublished', async (req, res) => {
