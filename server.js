@@ -834,6 +834,29 @@ async function initDB() {
       UNIQUE(content_id, channel)
     )`);
     console.log('NeonDB: content_analytics table ensured');
+
+    // ── scrape_log — observability for every URL Forge fetches ──────────────
+    // Every call to forgeScrape() writes one row here. Lets us answer "did
+    // sandbox-gtm.com fail because Bright Data was down, or because the URL
+    // 404'd?" without bisecting through code. Read endpoint at
+    // /api/admin/scrape-log.
+    await pool.query(`CREATE TABLE IF NOT EXISTS scrape_log (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      url TEXT NOT NULL,
+      source TEXT NOT NULL,
+      status_code INTEGER,
+      body_size INTEGER,
+      latency_ms INTEGER,
+      success BOOLEAN NOT NULL,
+      caller TEXT,
+      error TEXT,
+      metadata JSONB DEFAULT '{}',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_scrape_log_created ON scrape_log(created_at DESC)`).catch(() => {});
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_scrape_log_caller ON scrape_log(caller, created_at DESC)`).catch(() => {});
+    console.log('NeonDB: scrape_log table ensured');
+
     // Campaign analytics migrations
     await pool.query(`ALTER TABLE content_analytics ADD COLUMN IF NOT EXISTS campaign_id UUID`).catch(() => {});
     await pool.query(`ALTER TABLE publishing_queue ADD COLUMN IF NOT EXISTS campaign_id UUID`).catch(() => {});
@@ -2643,34 +2666,16 @@ app.post('/api/brand-settings/:brandProfileId/scrape-template', requireAuth, asy
     // Same threshold semantics as the regex version — # of fields Claude
     // successfully extracted (non-null) needs to clear the bar.
     const MIN_ARTICLE_EXTRACTED = 3;
-    const MIN_CATALOG_EXTRACTED = 2;
 
     // Article = 10 trackable class fields, catalog = 6. Used for the
     // "N of M DOM patterns matched" UI toast.
     const ARTICLE_TOTAL = 10;
     const CATALOG_TOTAL = 6;
 
-    const fetchHtmlDirect = async (url) => {
-      const r = await fetch(url, { headers: { 'User-Agent': 'ForgeIntelligence/1.0' } });
-      if (!r.ok) throw new Error(`Failed to fetch ${url}: ${r.status}`);
-      return await r.text();
-    };
-
-    const fetchHtmlViaJina = async (url) => {
-      const headers = {
-        'Accept': 'text/html',
-        // Jina's documented switch for rendered HTML output. Without this
-        // header Jina returns cleaned markdown, which strips class names.
-        'X-Return-Format': 'html',
-      };
-      if (process.env.JINA_API_KEY) headers['Authorization'] = `Bearer ${process.env.JINA_API_KEY}`;
-      const abort = new AbortController();
-      const timer = setTimeout(() => abort.abort(), 15000);
-      const r = await fetch(`https://r.jina.ai/${url}`, { headers, signal: abort.signal })
-        .finally(() => clearTimeout(timer));
-      if (!r.ok) throw new Error(`Jina Reader ${r.status}`);
-      return await r.text();
-    };
+    // HTML fetching goes through forgeScrape — single workhorse via Bright
+    // Data Web Unlocker. Replaces the old direct-fetch + Jina + SPA-shell-
+    // heuristic chain. Bright Data auto-detects JS rendering, handles
+    // anti-bot, and returns the rendered DOM in one call.
 
     // Strip script + style + inline-svg noise before sending to Claude —
     // these bytes don't carry structural info and just eat into the prompt
@@ -2828,71 +2833,40 @@ ${cleaned}`;
       return { tpl, extracted, totalTrackable: CATALOG_TOTAL };
     };
 
-    // Run scrape for one URL: fetch via direct HTTP (fast), fall back to Jina
-    // rendered HTML if the direct fetch gives us an SPA shell or fails.
-    // Detect SPA shells by looking at the BODY content size specifically.
-    // The old heuristic checked total cleaned-HTML length, but modern SPAs
-    // have huge <head> sections (Google Fonts preconnects, OpenGraph meta,
-    // tracking scripts) that easily clear 2k chars even when the body is
-    // literally `<div id="root"></div>`. Result: SPA shells passed the
-    // filter and got fed to Claude, which found zero structural regions.
-    // Now we extract just the <body> contents and gate on THAT size, plus
-    // a regex for the classic empty-mount-point shells.
-    const SPA_SHELL_RE = /<body[^>]*>\s*(?:<noscript>[\s\S]*?<\/noscript>\s*)?<div\s+id=["'](?:root|__next|app|svelte|nuxt)["'][^>]*>\s*<\/div>/i;
-    const looksLikeSpaShell = (html) => {
-      if (SPA_SHELL_RE.test(html)) return true;
-      const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-      if (!bodyMatch) return false;
-      const cleanedBody = cleanHtml(bodyMatch[1]).trim();
-      return cleanedBody.length < 500;
-    };
+    // Run scrape for one URL via forgeScrape (Bright Data Web Unlocker),
+    // then hand the rendered HTML to Claude for structural extraction.
+    const runScrape = async (url, type) => {
+      const fetched = await forgeScrape(url, {
+        caller: type === 'article' ? 'site-template-article' : 'site-template-catalog',
+        metadata: { brandProfileId },
+      });
 
-    // Then Claude extracts on the best HTML we have.
-    const runScrape = async (url, type, minExtracted) => {
-      let html = null;
-      let source = null;
-      try {
-        const direct = await fetchHtmlDirect(url);
-        if (!looksLikeSpaShell(direct)) {
-          html = direct;
-          source = 'local';
-        } else {
-          console.log(`[SCRAPE-TEMPLATE] direct fetch returned SPA shell for ${url} — skipping to Jina`);
-        }
-      } catch (e) {
-        console.warn(`[SCRAPE-TEMPLATE] direct fetch failed for ${url}: ${e.message}`);
+      if (!fetched.success || !fetched.html) {
+        console.warn(`[SCRAPE-TEMPLATE] forgeScrape failed for ${url}: ${fetched.error}`);
+        return { tpl: null, extracted: 0, totalTrackable: type === 'article' ? ARTICLE_TOTAL : CATALOG_TOTAL, source: fetched.source };
       }
-      if (!html) {
-        try {
-          html = await fetchHtmlViaJina(url);
-          source = 'jina';
-        } catch (e) {
-          console.warn(`[SCRAPE-TEMPLATE] Jina fetch failed for ${url}: ${e.message}`);
-        }
-      }
-      if (!html) return { tpl: null, extracted: 0, totalTrackable: 0, source: null };
 
       try {
-        const claude = type === 'article' ? await claudeExtractArticle(html) : await claudeExtractCatalog(html);
+        const claude = type === 'article' ? await claudeExtractArticle(fetched.html) : await claudeExtractCatalog(fetched.html);
         const built = type === 'article' ? buildArticleTemplate(claude, url) : buildCatalogTemplate(claude, url);
-        return { ...built, source };
+        return { ...built, source: fetched.source };
       } catch (e) {
         console.warn(`[SCRAPE-TEMPLATE] Claude extraction failed for ${url}: ${e.message}`);
         // Honest failure: don't fabricate a "successful" template from
         // hardcoded defaults if Claude couldn't read the HTML at all.
-        return { tpl: null, extracted: 0, totalTrackable: type === 'article' ? ARTICLE_TOTAL : CATALOG_TOTAL, source };
+        return { tpl: null, extracted: 0, totalTrackable: type === 'article' ? ARTICLE_TOTAL : CATALOG_TOTAL, source: fetched.source };
       }
     };
 
-    const article = await runScrape(articleUrl, 'article', MIN_ARTICLE_EXTRACTED);
-    const catalog = catalogUrl ? await runScrape(catalogUrl, 'catalog', MIN_CATALOG_EXTRACTED) : null;
+    const article = await runScrape(articleUrl, 'article');
+    const catalog = catalogUrl ? await runScrape(catalogUrl, 'catalog') : null;
 
     if (!article.tpl || article.extracted < MIN_ARTICLE_EXTRACTED) {
       console.log(`[SCRAPE-TEMPLATE] insufficient extraction (claude): ${article.extracted}/${article.totalTrackable} from ${article.source || 'no source'} for ${articleUrl}`);
       return res.json({
         success: false,
         error: 'template_extraction_insufficient',
-        warning: `Only ${article.extracted} of ${article.totalTrackable} structural regions extracted on the article page${article.source ? ` (read via ${article.source === 'jina' ? 'Jina rendered HTML' : 'local HTML'})` : ''}. Likely the site uses utility classes (Tailwind), CSS modules, or styled-components — class names aren't stable enough to inherit. Smart Export will fall back to generic semantic HTML.`,
+        warning: `Only ${article.extracted} of ${article.totalTrackable} structural regions extracted on the article page${article.source ? ` (read via ${article.source})` : ''}. The site likely uses utility classes (Tailwind), CSS modules, or styled-components — class names aren't stable enough to inherit. Smart Export will fall back to generic semantic HTML.`,
         extracted: { article: article.extracted, articleTotal: article.totalTrackable, source: article.source },
       });
     }
@@ -14222,6 +14196,114 @@ function requireApiKeyScope(scope) {
   };
 }
 
+// ── forgeScrape — the one scrape primitive ─────────────────────────────────
+// Every URL Forge fetches for content/intelligence purposes goes through
+// here. Single workhorse: Bright Data Web Unlocker. Handles anti-bot, JS
+// rendering (auto-detected upstream), 403s, CAPTCHAs. Replaces the
+// per-feature fetcher zoo (custom HTTP + Jina + Sonar fallback chains)
+// that produced "0 of 10 patterns" failures on every modern SPA.
+//
+// Returns: { success, status, html, source, latencyMs, error }
+//
+// Logs every attempt to scrape_log so we can audit reliability without
+// reading server logs.
+//
+// Required env:
+//   BRIGHTDATA_API_KEY        — bearer token (from BD dashboard → Settings)
+//   BRIGHTDATA_UNLOCKER_ZONE  — zone name (e.g. 'web_unlocker1')
+async function forgeScrape(url, opts = {}) {
+  const {
+    format = 'raw',           // 'raw' = HTML, 'markdown' = cleaned content
+    timeout = 60000,          // ms — Bright Data can take 5-15s on complex sites
+    country = null,           // optional ISO country code for geo-targeting
+    caller = 'unknown',       // string identifier for the log (e.g. 'context-hub', 'site-template')
+    metadata = {},            // anything else worth recording per call
+  } = opts;
+
+  const apiKey = process.env.BRIGHTDATA_API_KEY;
+  const zone = process.env.BRIGHTDATA_UNLOCKER_ZONE;
+  const startTime = Date.now();
+
+  if (!apiKey || !zone) {
+    const err = new Error('Bright Data not configured (BRIGHTDATA_API_KEY / BRIGHTDATA_UNLOCKER_ZONE missing)');
+    pool.query(
+      `INSERT INTO scrape_log (url, source, success, latency_ms, caller, error, metadata)
+       VALUES ($1, $2, false, 0, $3, $4, $5)`,
+      [url, 'brightdata_unlocker', caller, err.message, JSON.stringify(metadata)]
+    ).catch(() => {});
+    throw err;
+  }
+
+  try {
+    const body = { zone, url, format };
+    if (country) body.country = country;
+    if (format === 'markdown') body.data_format = 'markdown';
+
+    const ac = new AbortController();
+    const tid = setTimeout(() => ac.abort(), timeout);
+    let resp;
+    try {
+      resp = await fetch('https://api.brightdata.com/request', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+        signal: ac.signal,
+      });
+    } finally {
+      clearTimeout(tid);
+    }
+
+    const responseBody = await resp.text();
+    const latencyMs = Date.now() - startTime;
+
+    pool.query(
+      `INSERT INTO scrape_log (url, source, status_code, body_size, latency_ms, success, caller, error, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [url, 'brightdata_unlocker', resp.status, responseBody.length, latencyMs, resp.ok, caller,
+       resp.ok ? null : `HTTP ${resp.status}: ${responseBody.slice(0, 200)}`,
+       JSON.stringify(metadata)]
+    ).catch(() => {});
+
+    if (!resp.ok) {
+      return {
+        success: false,
+        status: resp.status,
+        html: null,
+        source: 'brightdata_unlocker',
+        latencyMs,
+        error: `HTTP ${resp.status}: ${responseBody.slice(0, 200)}`,
+      };
+    }
+
+    return {
+      success: true,
+      status: resp.status,
+      html: responseBody,
+      source: 'brightdata_unlocker',
+      latencyMs,
+      error: null,
+    };
+  } catch (e) {
+    const latencyMs = Date.now() - startTime;
+    pool.query(
+      `INSERT INTO scrape_log (url, source, success, latency_ms, caller, error, metadata)
+       VALUES ($1, $2, false, $3, $4, $5, $6)`,
+      [url, 'brightdata_unlocker', latencyMs, caller, e.message, JSON.stringify(metadata)]
+    ).catch(() => {});
+    return {
+      success: false,
+      status: null,
+      html: null,
+      source: 'brightdata_unlocker',
+      latencyMs,
+      error: e.message,
+    };
+  }
+}
+
 // Soft auth — attaches userId if present, continues either way (for public + authed routes)
 async function softAuth(req, res, next) {
   try {
@@ -14678,6 +14760,56 @@ app.post('/api/promo/validate', softAuth, async (req, res) => {
 //     still published, else 'staged' (so the queue card resurfaces as
 //     ready-to-republish)
 //   - publish_log rows for (content_id, channel) deleted
+// GET /api/admin/scrape-log — recent forgeScrape activity for observability.
+// No more "did the scrape fail because of X or Y?" guessing — answer is
+// always a SQL query away. Filterable by caller (which feature triggered
+// the scrape) and url substring.
+//
+// Auth: adminPassword query param (?adminPassword=...) — matches the
+// existing /api/admin/* shape so ops can hit it from a browser without
+// needing a Clerk token.
+//
+// Query params:
+//   adminPassword — required
+//   caller        — optional, filters by caller string ('context-hub',
+//                   'site-template', etc.)
+//   url           — optional, ILIKE substring match against the URL
+//   limit         — default 100, max 500
+app.get('/api/admin/scrape-log', async (req, res) => {
+  if (req.query.adminPassword !== process.env.ADMIN_PASSWORD) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const { caller, url } = req.query;
+  const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
+  const conditions = [];
+  const params = [];
+  if (caller) { conditions.push(`caller = $${params.length + 1}`); params.push(caller); }
+  if (url) { conditions.push(`url ILIKE $${params.length + 1}`); params.push(`%${url}%`); }
+  const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  params.push(limit);
+  try {
+    const r = await pool.query(
+      `SELECT id, url, source, status_code, body_size, latency_ms, success, caller, error, metadata, created_at
+       FROM scrape_log
+       ${whereClause}
+       ORDER BY created_at DESC
+       LIMIT $${params.length}`,
+      params
+    );
+    // Summary stats over the returned window
+    const total = r.rows.length;
+    const successes = r.rows.filter(row => row.success).length;
+    const avgLatency = total ? Math.round(r.rows.reduce((s, row) => s + (row.latency_ms || 0), 0) / total) : 0;
+    res.json({
+      success: true,
+      summary: { total, successes, failures: total - successes, successRate: total ? (successes / total) : 0, avgLatencyMs: avgLatency },
+      rows: r.rows,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 //
 // Idempotent: zero rows is a 200 with queueItemsAffected=0.
 app.post('/api/admin/mark-unpublished', async (req, res) => {

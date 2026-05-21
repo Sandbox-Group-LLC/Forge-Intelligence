@@ -386,12 +386,14 @@ export default function BrandSettingsPage() {
       });
       const d = await r.json();
       if (d.success) {
-        // Pull provenance from the response so the cute message reflects
-        // how many DOM patterns actually matched and which source got us
-        // there (local HTML vs Jina-rendered HTML).
+        // Pull provenance from the response so the message reflects how
+        // many DOM patterns actually matched and which fetcher got us there.
         const ex = d.template?.extraction?.article;
+        const sourceLabel = ex?.source === 'brightdata_unlocker'
+          ? 'Bright Data'
+          : (ex?.source || 'unknown source');
         const detail = ex
-          ? ` (${ex.extracted}/${ex.total} DOM patterns matched via ${ex.source === 'jina' ? 'Jina-rendered HTML' : 'local HTML'})`
+          ? ` (${ex.extracted}/${ex.total} DOM patterns matched via ${sourceLabel})`
           : '';
         setScrapeSuccessDetail(detail);
         setScrapeSuccess(true);
