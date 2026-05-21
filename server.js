@@ -1169,42 +1169,59 @@ app.post('/api/publishing/republish', requireAuth, async (req, res) => {
   const { queueItemId, channel } = req.body;
   if (!queueItemId || !channel) return res.status(400).json({ error: 'queueItemId and channel required' });
   try {
-    // Re-use the main publish endpoint logic by delegating
-    const fakeReq = { body: { queueItemId, channels: [channel] } };
-    const fakeRes = {
-      _data: null,
-      _status: 200,
-      status(s) { this._status = s; return this; },
-      json(d) { this._data = d; }
-    };
-    // Find the publish handler and invoke it
-    // Simpler: just call the DB directly and re-run the publish logic inline
     const queueRes = await pool.query('SELECT * FROM publishing_queue WHERE id = $1', [queueItemId]);
     if (!queueRes.rows.length) return res.status(404).json({ error: 'Queue item not found' });
-    const item = queueRes.rows[0];
 
-    // Mark any previous log entry for this channel as 'republishing'
+    // Mark any previous log entry for this channel as 'republishing'. We
+    // ALSO have to roll this back if the inner publish call fails — otherwise
+    // the row stays in 'republishing' forever and the UI thinks the operation
+    // is still in flight (Brian hit this after a disconnect/reconnect when
+    // the server-to-server publish call was 401'ing).
     await pool.query(
       "UPDATE publish_log SET live_status = 'republishing' WHERE queue_item_id = $1 AND channel = $2",
       [queueItemId, channel]
     );
 
-    // Forward to main publish route
+    // Forward to main publish route. The publish handler accepts EITHER a
+    // Clerk bearer token OR an adminPassword for cron-style server-to-server
+    // calls. We're already past requireAuth on the outer republish call so
+    // the user is verified — using adminPassword here is the right shape for
+    // the server-to-server hop. Without it the fetch lands on the 401 path
+    // and the publish never runs.
     const publishRes = await fetch(`${process.env.BASE_URL || 'http://localhost:' + (process.env.PORT || 3000)}/api/publishing/publish`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ queueItemId, channels: [channel] })
+      body: JSON.stringify({
+        queueItemId,
+        channels: [channel],
+        adminPassword: process.env.ADMIN_PASSWORD,
+      })
     });
     const publishData = await publishRes.json();
 
-    if (publishData.success) {
-      res.json({ success: true, result: publishData.results?.[channel] });
-    } else {
-      res.status(500).json({ error: publishData.error || 'Republish failed' });
+    if (publishRes.ok && publishData.success) {
+      return res.json({ success: true, result: publishData.results?.[channel] });
     }
+
+    // Inner publish failed — unstick the 'republishing' state so the queue
+    // card doesn't show "republishing…" forever. Reset to NULL (the canonical
+    // "no live status known" value, same as a fresh log row).
+    await pool.query(
+      "UPDATE publish_log SET live_status = NULL WHERE queue_item_id = $1 AND channel = $2 AND live_status = 'republishing'",
+      [queueItemId, channel]
+    ).catch(() => {});
+
+    const errMsg = publishData?.error || `Republish failed (HTTP ${publishRes.status})`;
+    console.error(`[REPUBLISH] queueItemId=${queueItemId} channel=${channel} status=${publishRes.status} error=${errMsg}`);
+    return res.status(500).json({ error: errMsg });
   } catch (err) {
+    // Catch-path: also unstick the row if the fetch itself threw.
+    await pool.query(
+      "UPDATE publish_log SET live_status = NULL WHERE queue_item_id = $1 AND channel = $2 AND live_status = 'republishing'",
+      [queueItemId, channel]
+    ).catch(() => {});
     console.error('[REPUBLISH]', err.message);
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 });
 
