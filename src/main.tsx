@@ -37,13 +37,39 @@ import './index.css';
 
 // ── Global fetch interceptor — auto-injects Clerk auth token on all /api/ calls ──
 // Token is written to window.__forgeToken by AppContext on sign-in and refreshed every 55s.
+//
+// Boot-race guard: pages that fire requireAuth'd GETs in mount-time useEffects can
+// outrun ClerkTokenSync's hydration, which writes __forgeToken. If a /api/ call goes
+// out before the token has been written, the server returns 401 and Mission Control
+// flags it as an error. To absorb that race, the interceptor briefly waits for the
+// token to appear during the first BOOT_GRACE_MS of the page lifetime. After the
+// grace window, missing tokens are treated as "user is genuinely anonymous" and the
+// request fires immediately (so Quick Start + unauth'd endpoints aren't slowed).
 const _origFetch = window.fetch.bind(window);
+const APP_BOOT_TIME = Date.now();
+const BOOT_GRACE_MS = 2500;    // window during which we'll wait for token hydration
+const BOOT_WAIT_MAX_MS = 1500; // max time we'll block a single request waiting
+
+async function awaitBootToken(): Promise<string | null> {
+  const existing = (window as any).__forgeToken;
+  if (existing) return existing;
+  const sinceBoot = Date.now() - APP_BOOT_TIME;
+  if (sinceBoot > BOOT_GRACE_MS) return null;
+  const deadline = Date.now() + Math.min(BOOT_WAIT_MAX_MS, BOOT_GRACE_MS - sinceBoot);
+  while (Date.now() < deadline) {
+    const t = (window as any).__forgeToken;
+    if (t) return t;
+    await new Promise(r => setTimeout(r, 50));
+  }
+  return null;
+}
+
 (window as any).fetch = async (input: RequestInfo | URL, init: RequestInit = {}) => {
   const url = typeof input === 'string' ? input
     : input instanceof URL ? input.href
     : (input as Request).url;
   if (url.startsWith('/api/')) {
-    const token = (window as any).__forgeToken;
+    const token = await awaitBootToken();
     if (token) {
       init = {
         ...init,
