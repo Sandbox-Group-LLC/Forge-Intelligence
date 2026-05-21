@@ -14281,7 +14281,8 @@ async function _tryUnlocker(url, { format, timeout, country, caller, metadata })
     await _logScrape({
       url, source: 'brightdata_unlocker',
       status_code: resp.status, body_size: responseBody.length, latency_ms: latencyMs,
-      success: resp.ok, caller, metadata,
+      success: resp.ok, caller,
+      metadata: { ...(metadata ?? {}), body_sample: resp.ok ? responseBody.slice(0, 2000) : undefined },
       error: resp.ok ? null : `HTTP ${resp.status}: ${responseBody.slice(0, 200)}`,
     });
     if (!resp.ok) {
@@ -14336,7 +14337,8 @@ async function _tryScrapingBrowser(url, { timeout, caller, metadata }) {
     await _logScrape({
       url, source: 'brightdata_browser',
       status_code: 200, body_size: html.length, latency_ms: latencyMs,
-      success: true, caller, metadata,
+      success: true, caller,
+      metadata: { ...(metadata ?? {}), body_sample: html.slice(0, 2000) },
     });
     return { success: true, status: 200, html, source: 'brightdata_browser', latencyMs, error: null };
   } catch (e) {
