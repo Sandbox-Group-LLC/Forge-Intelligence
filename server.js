@@ -14195,7 +14195,15 @@ async function getBrandPageContent(url, { caller = 'context-hub', metadata = {},
   // ── Tier A: Jina Reader ──────────────────────────────────────────────────
   const jinaStart = Date.now();
   try {
-    const headers = { 'Accept': 'text/plain' };
+    // X-With-Links-Summary asks Jina to append a "Links/Buttons:" section
+    // after the readability-extracted markdown. Crucial for SPA marketing
+    // pages: readability drops the <nav>/<header> region, so without this
+    // header the markdown contains content-area links only — missing the
+    // primary nav (pricing, blog, book-demo, etc.) that we need for
+    // subpage discovery. The appended section uses standard [text](url)
+    // syntax, so our existing extractMarkdownLinks regex picks it up
+    // automatically.
+    const headers = { 'Accept': 'text/plain', 'X-With-Links-Summary': 'true' };
     if (process.env.JINA_API_KEY) headers['Authorization'] = `Bearer ${process.env.JINA_API_KEY}`;
     const ac = new AbortController();
     const tid = setTimeout(() => ac.abort(), jinaTimeout);
@@ -14268,7 +14276,9 @@ function rankBrandPages(urls) {
   const seen = new Set();
   const scored = [];
   for (const raw of urls) {
-    const u = raw.replace(/#.*$/, '').replace(/\?.*$/, '');
+    // Strip fragment, query, AND trailing slash so /about and /about/ dedupe
+    // and don't appear as two distinct subpages.
+    const u = raw.replace(/#.*$/, '').replace(/\?.*$/, '').replace(/\/+$/, '');
     if (!u || seen.has(u) || SKIP_PATH.test(u) || SKIP_EXT.test(u)) continue;
     seen.add(u);
     scored.push({ url: u, score: HIGH.test(u) ? 3 : MED.test(u) ? 2 : 1 });
@@ -14295,8 +14305,14 @@ async function discoverSubpages(baseUrl, max = 8, { seedMarkdown = null, seedHtm
   const baseHost = new URL(baseUrl).host;
   const origin = new URL(baseUrl).origin;
   const sameOrigin = (u) => { try { return new URL(u).host === baseHost; } catch { return false; } };
+  // Strip fragment and trailing slash for comparison/dedup. Without this,
+  // [See How It Works](https://example.com/#capabilities) escapes the
+  // baseUrl filter (URL with fragment !== baseUrl) and rides through as
+  // a "subpage" — even though it's literally the homepage with an anchor.
+  const canonical = (u) => u.replace(/#.*$/, '').replace(/\/+$/, '');
+  const baseCanonical = canonical(baseUrl);
   const normalize = (u) => u.startsWith('/') ? origin + u : u;
-  const isPage = (u) => /^https?:\/\//i.test(u) && sameOrigin(u) && u !== baseUrl && u !== `${baseUrl}/`;
+  const isPage = (u) => /^https?:\/\//i.test(u) && sameOrigin(u) && canonical(u) !== baseCanonical;
 
   // Step 1: sitemap.xml (handles sitemapindex by following the first child)
   try {
