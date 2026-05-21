@@ -1547,7 +1547,16 @@ ${authorFooterHtml}
                           <RefreshCw /> {syncing === item.id ? 'Syncing...' : 'Sync Status'}
                         </button>
                       </div>
-                      {Object.entries(results).filter(([ch]) => !ch.startsWith('__')).map(([ch, res]) => {
+                      {Object.entries(results)
+                        .filter(([ch]) => !ch.startsWith('__'))
+                        // Hide channels whose latest publish_log row is marked deleted —
+                        // the channel was unpublished via the unplug modal and shouldn't
+                        // still appear in PUBLISHED TO claiming to be live.
+                        .filter(([ch]) => {
+                          const log = (publishLog[item.id] || []).find(l => l.channel === ch);
+                          return log?.live_status !== 'deleted';
+                        })
+                        .map(([ch, res]) => {
                         const log = (publishLog[item.id] || []).find(l => l.channel === ch);
                         // Prefer publish log live_status (most accurate) over publish result status
                         // If log says deleted, show deleted regardless of publish_results JSONB
@@ -1880,7 +1889,16 @@ return (
                           <RefreshCw /> {syncing === item.id ? 'Syncing...' : 'Sync Status'}
                         </button>
                       </div>
-                      {Object.entries(results).filter(([ch]) => !ch.startsWith('__')).map(([ch, res]) => {
+                      {Object.entries(results)
+                        .filter(([ch]) => !ch.startsWith('__'))
+                        // Hide channels whose latest publish_log row is marked deleted —
+                        // the channel was unpublished via the unplug modal and shouldn't
+                        // still appear in PUBLISHED TO claiming to be live.
+                        .filter(([ch]) => {
+                          const log = (publishLog[item.id] || []).find(l => l.channel === ch);
+                          return log?.live_status !== 'deleted';
+                        })
+                        .map(([ch, res]) => {
                         const log = (publishLog[item.id] || []).find(l => l.channel === ch);
                         // Prefer publish log live_status (most accurate) over publish result status
                         // If log says deleted, show deleted regardless of publish_results JSONB
