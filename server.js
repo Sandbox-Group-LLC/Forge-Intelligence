@@ -4477,11 +4477,16 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
       const u = new URL(inputUrl);
       workingBaseUrl = `${u.protocol}//${u.host}`;
 
-      // Discover subpages and fetch the homepage in parallel.
-      const [subpages, homeContent] = await Promise.all([
-        discoverSubpages(workingBaseUrl, 8),
-        getBrandPageContent(workingBaseUrl, { caller: 'context-hub' }),
-      ]);
+      // Fetch the homepage first so we can seed subpage discovery with its
+      // already-fetched content — avoids a redundant homepage fetch inside
+      // discoverSubpages on SPAs where Jina has already returned clean
+      // markdown. Net latency: home fetch (~5-10s Jina, longer on Tier B)
+      // then parallel subpage fan-out.
+      const homeContent = await getBrandPageContent(workingBaseUrl, { caller: 'context-hub' });
+
+      const subpages = await discoverSubpages(workingBaseUrl, 8, {
+        seedMarkdown: homeContent?.success ? homeContent.markdown : null,
+      });
 
       // Fan out to all discovered subpages in parallel.
       const subContents = subpages.length
@@ -14239,16 +14244,32 @@ async function getBrandPageContent(url, { caller = 'context-hub', metadata = {},
 // ── discoverSubpages — sitemap.xml first, link-extraction fallback ─────────
 // Returns up to `max` same-origin URLs likely to contain brand-defining
 // content (about, customers, pricing, integrations, FAQ, etc.). Skips noise
-// (login, legal, blog post slugs, search/tag/category aggregates).
+// (login, legal, blog post slugs, search/tag/category aggregates) and
+// non-page assets (.css, .js, images, fonts, JSON, etc.).
+//
+// Discovery priority:
+//   1. sitemap.xml (most reliable, follows sitemapindex)
+//   2. seedMarkdown — parse [text](url) links from already-fetched home
+//      content. Avoids a redundant homepage fetch when the caller already
+//      has Jina markdown in hand.
+//   3. seedHtml — parse <a href> links from already-fetched home HTML
+//      (forgeScrape fallback path).
+//   4. Last resort: forgeScrape the homepage just to get its links. Tight
+//      20s timeout — we'd rather return [] than spend 60s here.
 function rankBrandPages(urls) {
   const HIGH = /\/(about|story|mission|team|company|why-us|our-)/i;
   const MED  = /\/(product|service|customer|case-stud|pricing|integration|faq|how-it-works|solution|platform)/i;
-  const SKIP = /\/(login|signup|sign-in|sign-up|legal|privacy|terms|cookie|sitemap|robots|admin|account|password|settings|cart|checkout|search\?|tag\/|tags\/|category\/|categories\/|author\/|feed|rss|wp-json|wp-admin|api\/)/i;
+  // Block non-page assets and admin/auth/legal noise. Asset extensions are
+  // the common bleed source — link-extraction picks up <link rel="stylesheet">,
+  // <link rel="icon">, font preconnects, etc. We reject them here as a
+  // belt-and-suspenders alongside the anchor-only regex in extractAnchorHrefs.
+  const SKIP_PATH = /\/(login|signup|sign-in|sign-up|legal|privacy|terms|cookie|sitemap|robots|admin|account|password|settings|cart|checkout|search\?|tag\/|tags\/|category\/|categories\/|author\/|feed|rss|wp-json|wp-admin|api\/)/i;
+  const SKIP_EXT  = /\.(css|js|mjs|cjs|map|png|jpe?g|gif|svg|ico|webp|avif|bmp|tiff?|pdf|xml|json|txt|woff2?|ttf|otf|eot|mp4|webm|mp3|wav|zip|gz)(\?|$)/i;
   const seen = new Set();
   const scored = [];
   for (const raw of urls) {
     const u = raw.replace(/#.*$/, '').replace(/\?.*$/, '');
-    if (!u || seen.has(u) || SKIP.test(u)) continue;
+    if (!u || seen.has(u) || SKIP_PATH.test(u) || SKIP_EXT.test(u)) continue;
     seen.add(u);
     scored.push({ url: u, score: HIGH.test(u) ? 3 : MED.test(u) ? 2 : 1 });
   }
@@ -14256,9 +14277,26 @@ function rankBrandPages(urls) {
   return scored.map(s => s.url);
 }
 
-async function discoverSubpages(baseUrl, max = 8) {
+// Extract only anchor-tag hrefs (<a href="...">) from HTML — ignores
+// <link>, <img>, <script>, <iframe>, etc. The naive /href="[^"]+"/ regex
+// scoops up stylesheet links, favicon preconnects, and font URLs, which
+// then ride through ranking as fake "subpages."
+function extractAnchorHrefs(html) {
+  return [...html.matchAll(/<a\b[^>]*\shref\s*=\s*["']([^"']+)["']/gi)].map(m => m[1]);
+}
+
+// Extract URLs from Markdown link syntax [text](url) — used when we already
+// have Jina markdown for the homepage and want to skip a second fetch.
+function extractMarkdownLinks(markdown) {
+  return [...markdown.matchAll(/\[(?:[^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)].map(m => m[1]);
+}
+
+async function discoverSubpages(baseUrl, max = 8, { seedMarkdown = null, seedHtml = null } = {}) {
   const baseHost = new URL(baseUrl).host;
+  const origin = new URL(baseUrl).origin;
   const sameOrigin = (u) => { try { return new URL(u).host === baseHost; } catch { return false; } };
+  const normalize = (u) => u.startsWith('/') ? origin + u : u;
+  const isPage = (u) => /^https?:\/\//i.test(u) && sameOrigin(u) && u !== baseUrl && u !== `${baseUrl}/`;
 
   // Step 1: sitemap.xml (handles sitemapindex by following the first child)
   try {
@@ -14280,21 +14318,32 @@ async function discoverSubpages(baseUrl, max = 8) {
     }
   } catch { /* sitemap missing/slow — fall through to link extraction */ }
 
-  // Step 2: link extraction from homepage HTML (uses forgeScrape so we get a
-  // rendered DOM if the homepage is a SPA — link maps are usually in the
-  // hydrated nav, not the shell).
+  // Step 2: parse Jina markdown the caller already fetched. Cheap, zero
+  // additional latency. Works for any site Jina could read.
+  if (seedMarkdown) {
+    const links = extractMarkdownLinks(seedMarkdown).map(normalize).filter(isPage);
+    const ranked = rankBrandPages(links);
+    if (ranked.length) return ranked.slice(0, max);
+  }
+
+  // Step 3: parse anchor hrefs from HTML the caller already has (Tier B path).
+  if (seedHtml) {
+    const links = extractAnchorHrefs(seedHtml).map(normalize).filter(isPage);
+    const ranked = rankBrandPages(links);
+    if (ranked.length) return ranked.slice(0, max);
+  }
+
+  // Step 4: last resort — forgeScrape the homepage just for its links.
+  // Tight 20s timeout: if the home is a slow SPA we'd rather return [] than
+  // spend 60s on a discovery fetch that the analyze handler already paid
+  // separately for as primary content.
   try {
-    const home = await forgeScrape(baseUrl, { caller: 'context-hub-discover' });
+    const home = await forgeScrape(baseUrl, { caller: 'context-hub-discover', timeout: 20000 });
     if (home.success && home.html) {
-      const origin = new URL(baseUrl).origin;
-      const hrefs = [...home.html.matchAll(/href=["']([^"']+)["']/g)].map(m => m[1])
-        .map(h => h.startsWith('/') ? origin + h : h)
-        .filter(h => /^https?:\/\//i.test(h))
-        .filter(sameOrigin)
-        .filter(h => h !== baseUrl && h !== `${baseUrl}/`);
-      return rankBrandPages(hrefs).slice(0, max);
+      const links = extractAnchorHrefs(home.html).map(normalize).filter(isPage);
+      return rankBrandPages(links).slice(0, max);
     }
-  } catch { /* both discovery paths failed — caller continues with home only */ }
+  } catch { /* all discovery paths failed — caller continues with home only */ }
 
   return [];
 }
