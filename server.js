@@ -2668,10 +2668,17 @@ app.post('/api/brand-settings/:brandProfileId/scrape-template', requireAuth, asy
     // successfully extracted (non-null) needs to clear the bar.
     const MIN_ARTICLE_EXTRACTED = 3;
 
-    // Article = 10 trackable class fields, catalog = 6. Used for the
-    // "N of M DOM patterns matched" UI toast.
-    const ARTICLE_TOTAL = 10;
-    const CATALOG_TOTAL = 6;
+    // We grade extraction by regions located in the rendered HTML, not by
+    // stable class names found. Article pages have 6 regions (nav, hero,
+    // body, backLink, cta, footer); catalogs have 3 (grid, card, meta).
+    // A region counts as "located" when Claude can identify it by any
+    // means — semantic class, data-testid, HTML5 landmark, or unambiguous
+    // content match — even if no stable class is available. That's the
+    // honest measure of "did we read the page" vs. the prior count of
+    // "did we find inheritable class names," which is always zero on
+    // utility-class sites regardless of whether content was extractable.
+    const ARTICLE_TOTAL = 6;
+    const CATALOG_TOTAL = 3;
 
     // HTML fetching goes through forgeScrape — single workhorse via Bright
     // Data Web Unlocker. Replaces the old direct-fetch + Jina + SPA-shell-
@@ -2690,30 +2697,30 @@ app.post('/api/brand-settings/:brandProfileId/scrape-template', requireAuth, asy
 
     const claudeExtractArticle = async (html) => {
       const cleaned = cleanHtml(html).slice(0, 50000);
-      const prompt = `You are extracting reusable DOM structure from a published article page so a separate system can generate matching HTML for content exports.
+      const prompt = `You are extracting structural regions from a published article page. The output drives a content template: a "class" field provides a CSS hook for sites that have stable class names; a "found" boolean records whether the region exists in the page at all.
 
-Identify the following structural regions in the page below and return the most representative class name for each from the ACTUAL HTML. If a region exists but uses utility classes (Tailwind: text-3xl, mb-8), hash-suffixed CSS module classes (Hero_section__a1b2c), or styled-components hashes (sc-bdVaJa) — return null for that field rather than guessing. Only return class names that look stable and semantic.
+For each region:
+- "class" / "*Class": a stable, semantic CSS class string. Return null if the only available classes are utility classes (Tailwind: text-3xl, mb-8, flex), hash-suffixed CSS modules (Hero_section__a1b2c), or styled-components hashes (sc-bdVaJa). Don't guess.
+- "found": true if you can locate this region in the HTML by ANY means — a semantic class name, a data-testid attribute, an HTML5 landmark like <nav>/<article>/<main>/<footer>, an ARIA role, or unambiguous content (e.g. a <header> with a logo + links is clearly nav, an <h1> followed by paragraphs is clearly the article hero+body). Return false only when the region truly isn't present in the page.
+
+It's normal and expected for "class" to be null while "found" is true on modern sites that use utility CSS — that means the region exists but has no inheritable class hook. Both signals matter independently.
 
 Return ONLY valid JSON in this exact shape (no markdown, no commentary):
 {
-  "nav":      { "class": "string or null", "linksHtml": "first 800 chars of nav UL/menu inner HTML or empty string" },
-  "hero":     { "sectionClass": "string or null", "eyebrowClass": "string or null", "metaClass": "string or null", "imageWrapClass": "string or null" },
-  "body":     { "sectionClass": "string or null", "bodyClass": "string or null" },
-  "backLink": { "class": "string or null", "text": "the link's text content if present, else empty string" },
-  "cta":      { "class": "string or null" },
-  "footer":   { "class": "string or null" }
+  "nav":      { "class": "string|null", "found": true|false, "linksHtml": "first 800 chars of nav inner HTML or empty string" },
+  "hero":     { "sectionClass": "string|null", "eyebrowClass": "string|null", "metaClass": "string|null", "imageWrapClass": "string|null", "found": true|false },
+  "body":     { "sectionClass": "string|null", "bodyClass": "string|null", "found": true|false },
+  "backLink": { "class": "string|null", "text": "the link's text content if present, else empty string", "found": true|false },
+  "cta":      { "class": "string|null", "found": true|false },
+  "footer":   { "class": "string|null", "found": true|false }
 }
 
-Field meanings (in case the HTML uses non-obvious naming):
+Field meanings:
 - nav: site primary navigation, usually <nav> or <header>'s top bar
-- hero.sectionClass: the wrapper around the article title + meta
-- hero.eyebrowClass: the small kicker / category label above the title (often "Category", "Series", etc.)
-- hero.metaClass: the byline / date / read-time area
-- hero.imageWrapClass: the wrapper around the hero image
-- body.sectionClass: wrapper around each prose section
-- body.bodyClass: the inner prose container class
+- hero: the wrapper around the article title + meta (eyebrow = small kicker/category; meta = byline/date; imageWrap = hero image wrapper)
+- body: the prose container holding article paragraphs
 - backLink: a "Back to articles" / "View all" link at the top or bottom
-- cta: a call-to-action box at the article's end (often newsletter signup, demo CTA)
+- cta: a call-to-action box at the article's end (newsletter signup, demo CTA, etc.)
 - footer: site footer
 
 ARTICLE HTML (truncated to 50000 chars, scripts/styles/svg stripped):
@@ -2732,31 +2739,25 @@ ${cleaned}`;
 
     const claudeExtractCatalog = async (html) => {
       const cleaned = cleanHtml(html).slice(0, 50000);
-      const prompt = `You are extracting reusable DOM structure from an article catalog / index page.
+      const prompt = `You are extracting structural regions from an article catalog / index page. The output drives a content template: a "class" field provides a CSS hook for sites that have stable class names; a "found" boolean records whether the region exists in the page at all.
 
-Identify the structural regions below and return class names from the ACTUAL HTML. Return null for utility classes (Tailwind), hash-suffixed CSS modules, or styled-components hashes.
+For each region:
+- "class" / "*Class": a stable, semantic CSS class string. Return null if classes are utility classes (Tailwind), hash-suffixed CSS modules, or styled-components hashes. Don't guess.
+- "found": true if you can locate this region in the HTML by ANY means — semantic class, data-testid, HTML5 landmark, ARIA role, or unambiguous structural pattern (e.g. repeated card-like wrappers under a single parent is clearly the grid). Return false only when the region truly isn't present.
+
+It's normal for "class" to be null while "found" is true on modern utility-CSS sites — the region exists, just without an inheritable class hook.
 
 Return ONLY valid JSON in this exact shape:
 {
-  "grid": { "class": "string or null" },
-  "card": {
-    "class":      "string or null",
-    "imageClass": "string or null",
-    "bodyClass":  "string or null"
-  },
-  "meta": {
-    "categoryClass": "string or null",
-    "readMoreClass": "string or null"
-  }
+  "grid": { "class": "string|null", "found": true|false },
+  "card": { "class": "string|null", "imageClass": "string|null", "bodyClass": "string|null", "found": true|false },
+  "meta": { "categoryClass": "string|null", "readMoreClass": "string|null", "found": true|false }
 }
 
 Field meanings:
 - grid: the list/grid wrapper that contains all article cards
-- card.class: a single article card / preview wrapper
-- card.imageClass: the card's thumbnail wrapper
-- card.bodyClass: the card's text content area
-- meta.categoryClass: the small category tag on each card
-- meta.readMoreClass: the "Read more" / "→" link inside each card
+- card: a single article card / preview wrapper (image area + body area)
+- meta: per-card metadata — category tag + "Read more"/"→" link
 
 CATALOG HTML (truncated to 50000 chars, scripts/styles/svg stripped):
 ${cleaned}`;
@@ -2773,62 +2774,77 @@ ${cleaned}`;
     };
 
     // Build the persisted template from Claude's output, applying the
-    // existing hardcoded fallbacks for any field Claude marked null. Count
-    // non-null Claude results as "extracted" — those are real DOM finds.
+    // existing hardcoded fallbacks for any field Claude marked null.
+    // "extracted" counts regions Claude was able to locate in the HTML
+    // (claude[region].found === true) — not class-name hits. On Tailwind
+    // sites class strings are usually null while regions are still
+    // located via data-testid / semantic tags, which is the correct
+    // success state for downstream Smart Export.
     const buildArticleTemplate = (claude, sourceUrl) => {
       let extracted = 0;
-      const take = (val, fallback) => {
-        if (typeof val === 'string' && val.trim()) { extracted++; return val.trim(); }
-        return fallback;
+      const located = (region) => {
+        if (region?.found === true) { extracted++; return true; }
+        return false;
       };
+      const pickClass = (val, fallback) => (typeof val === 'string' && val.trim()) ? val.trim() : fallback;
+      located(claude?.nav);
+      located(claude?.hero);
+      located(claude?.body);
+      located(claude?.backLink);
+      located(claude?.cta);
+      located(claude?.footer);
       const tpl = {
         type: 'article',
         scrapedAt: new Date().toISOString(),
         sourceUrl,
         nav: {
-          class: take(claude?.nav?.class, 'navbar'),
+          class: pickClass(claude?.nav?.class, 'navbar'),
           linksHtml: typeof claude?.nav?.linksHtml === 'string' ? claude.nav.linksHtml.slice(0, 800) : '',
         },
         hero: {
-          sectionClass:   take(claude?.hero?.sectionClass,   'article-hero'),
-          eyebrowClass:   take(claude?.hero?.eyebrowClass,   'article-hero-eyebrow'),
-          metaClass:      take(claude?.hero?.metaClass,      'article-meta'),
-          imageWrapClass: take(claude?.hero?.imageWrapClass, 'article-hero-image'),
+          sectionClass:   pickClass(claude?.hero?.sectionClass,   'article-hero'),
+          eyebrowClass:   pickClass(claude?.hero?.eyebrowClass,   'article-hero-eyebrow'),
+          metaClass:      pickClass(claude?.hero?.metaClass,      'article-meta'),
+          imageWrapClass: pickClass(claude?.hero?.imageWrapClass, 'article-hero-image'),
         },
         body: {
-          sectionClass: take(claude?.body?.sectionClass, 'article-body-section'),
-          bodyClass:    take(claude?.body?.bodyClass,    'article-body'),
+          sectionClass: pickClass(claude?.body?.sectionClass, 'article-body-section'),
+          bodyClass:    pickClass(claude?.body?.bodyClass,    'article-body'),
         },
         backLink: {
-          class: take(claude?.backLink?.class, 'article-back'),
+          class: pickClass(claude?.backLink?.class, 'article-back'),
           text: (typeof claude?.backLink?.text === 'string' && claude.backLink.text.trim()) ? claude.backLink.text.trim() : 'Back to Articles',
           href: catalogUrl || '/',
         },
-        cta:    { class: take(claude?.cta?.class,    'article-cta-section') },
-        footer: { class: take(claude?.footer?.class, 'site-footer') },
+        cta:    { class: pickClass(claude?.cta?.class,    'article-cta-section') },
+        footer: { class: pickClass(claude?.footer?.class, 'site-footer') },
       };
       return { tpl, extracted, totalTrackable: ARTICLE_TOTAL };
     };
 
     const buildCatalogTemplate = (claude, sourceUrl) => {
       let extracted = 0;
-      const take = (val, fallback) => {
-        if (typeof val === 'string' && val.trim()) { extracted++; return val.trim(); }
-        return fallback;
+      const located = (region) => {
+        if (region?.found === true) { extracted++; return true; }
+        return false;
       };
+      const pickClass = (val, fallback) => (typeof val === 'string' && val.trim()) ? val.trim() : fallback;
+      located(claude?.grid);
+      located(claude?.card);
+      located(claude?.meta);
       const tpl = {
         type: 'catalog',
         scrapedAt: new Date().toISOString(),
         sourceUrl,
-        grid: { class: take(claude?.grid?.class, 'articles-grid') },
+        grid: { class: pickClass(claude?.grid?.class, 'articles-grid') },
         card: {
-          class:      take(claude?.card?.class,      'article-card'),
-          imageClass: take(claude?.card?.imageClass, 'article-card-image'),
-          bodyClass:  take(claude?.card?.bodyClass,  'article-card-body'),
+          class:      pickClass(claude?.card?.class,      'article-card'),
+          imageClass: pickClass(claude?.card?.imageClass, 'article-card-image'),
+          bodyClass:  pickClass(claude?.card?.bodyClass,  'article-card-body'),
         },
         meta: {
-          categoryClass: take(claude?.meta?.categoryClass, 'article-category'),
-          readMoreClass: take(claude?.meta?.readMoreClass, 'article-read-more'),
+          categoryClass: pickClass(claude?.meta?.categoryClass, 'article-category'),
+          readMoreClass: pickClass(claude?.meta?.readMoreClass, 'article-read-more'),
         },
       };
       return { tpl, extracted, totalTrackable: CATALOG_TOTAL };
@@ -2867,7 +2883,7 @@ ${cleaned}`;
       return res.json({
         success: false,
         error: 'template_extraction_insufficient',
-        warning: `Only ${article.extracted} of ${article.totalTrackable} structural regions extracted on the article page${article.source ? ` (read via ${article.source})` : ''}. The site likely uses utility classes (Tailwind), CSS modules, or styled-components — class names aren't stable enough to inherit. Smart Export will fall back to generic semantic HTML.`,
+        warning: `Couldn't locate article structure in ${articleUrl}${article.source ? ` (read via ${article.source})` : ''}: only ${article.extracted} of ${article.totalTrackable} regions found. Likely causes: the page didn't fully render before we captured it, or this isn't a standard article layout. Smart Export will fall back to generic semantic HTML.`,
         extracted: { article: article.extracted, articleTotal: article.totalTrackable, source: article.source },
       });
     }
