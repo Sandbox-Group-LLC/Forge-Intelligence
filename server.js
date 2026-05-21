@@ -2830,17 +2830,34 @@ ${cleaned}`;
 
     // Run scrape for one URL: fetch via direct HTTP (fast), fall back to Jina
     // rendered HTML if the direct fetch gives us an SPA shell or fails.
+    // Detect SPA shells by looking at the BODY content size specifically.
+    // The old heuristic checked total cleaned-HTML length, but modern SPAs
+    // have huge <head> sections (Google Fonts preconnects, OpenGraph meta,
+    // tracking scripts) that easily clear 2k chars even when the body is
+    // literally `<div id="root"></div>`. Result: SPA shells passed the
+    // filter and got fed to Claude, which found zero structural regions.
+    // Now we extract just the <body> contents and gate on THAT size, plus
+    // a regex for the classic empty-mount-point shells.
+    const SPA_SHELL_RE = /<body[^>]*>\s*(?:<noscript>[\s\S]*?<\/noscript>\s*)?<div\s+id=["'](?:root|__next|app|svelte|nuxt)["'][^>]*>\s*<\/div>/i;
+    const looksLikeSpaShell = (html) => {
+      if (SPA_SHELL_RE.test(html)) return true;
+      const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+      if (!bodyMatch) return false;
+      const cleanedBody = cleanHtml(bodyMatch[1]).trim();
+      return cleanedBody.length < 500;
+    };
+
     // Then Claude extracts on the best HTML we have.
     const runScrape = async (url, type, minExtracted) => {
       let html = null;
       let source = null;
       try {
         const direct = await fetchHtmlDirect(url);
-        // Heuristic: a body of <2k chars after cleaning is almost certainly
-        // an SPA shell. Skip straight to Jina in that case.
-        if (cleanHtml(direct).length >= 2000) {
+        if (!looksLikeSpaShell(direct)) {
           html = direct;
           source = 'local';
+        } else {
+          console.log(`[SCRAPE-TEMPLATE] direct fetch returned SPA shell for ${url} — skipping to Jina`);
         }
       } catch (e) {
         console.warn(`[SCRAPE-TEMPLATE] direct fetch failed for ${url}: ${e.message}`);
