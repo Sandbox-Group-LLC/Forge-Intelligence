@@ -6,6 +6,7 @@ import pkg from 'pg';
 import Anthropic from '@anthropic-ai/sdk';
 import { randomUUID, randomBytes, createHmac, createHash } from 'crypto';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
+import puppeteer from 'puppeteer-core';
 
 const { Pool } = pkg;
 const __filename = fileURLToPath(import.meta.url);
@@ -14224,7 +14225,7 @@ function requireApiKeyScope(scope) {
 
 // Tier 2 (Scraping Browser) — CDP connection via puppeteer-core. We don't
 // bundle Chromium; we connect to Bright Data's remote browser over WebSocket.
-const puppeteer = require('puppeteer-core');
+// (puppeteer is imported at the top of the file alongside other ESM imports.)
 
 const SPA_SHELL_RE = /<body[^>]*>\s*(?:<noscript>[\s\S]*?<\/noscript>\s*)?<div\s+id=["'](?:root|__next|app|svelte|nuxt)["'][^>]*>\s*<\/div>/i;
 function looksLikeSpaShell(html) {
