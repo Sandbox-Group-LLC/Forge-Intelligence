@@ -74,6 +74,7 @@ export default function BrandSettingsPage() {
 
   const [scraping, setScraping] = useState(false);
   const [scrapeSuccess, setScrapeSuccess] = useState(false);
+  const [scrapeSuccessDetail, setScrapeSuccessDetail] = useState('');
   const [scrapeError, setScrapeError] = useState('');
   const [articleTemplateUrl, setArticleTemplateUrl] = useState('');
   const [catalogTemplateUrl, setCatalogTemplateUrl] = useState('');
@@ -384,8 +385,23 @@ export default function BrandSettingsPage() {
         body: JSON.stringify({ articleUrl: articleTemplateUrl, catalogUrl: catalogTemplateUrl || undefined })
       });
       const d = await r.json();
-      if (d.success) { setScrapeSuccess(true); setTimeout(() => setScrapeSuccess(false), 4000); }
-      else setScrapeError(d.error || 'Scrape failed');
+      if (d.success) {
+        // Pull provenance from the response so the cute message reflects
+        // how many DOM patterns actually matched and which source got us
+        // there (local HTML vs Jina-rendered HTML).
+        const ex = d.template?.extraction?.article;
+        const detail = ex
+          ? ` (${ex.extracted}/${ex.total} DOM patterns matched via ${ex.source === 'jina' ? 'Jina-rendered HTML' : 'local HTML'})`
+          : '';
+        setScrapeSuccessDetail(detail);
+        setScrapeSuccess(true);
+        setTimeout(() => { setScrapeSuccess(false); setScrapeSuccessDetail(''); }, 6000);
+      } else if (d.warning) {
+        // Honest failure: server tried both local + Jina but couldn't extract enough.
+        setScrapeError(d.warning);
+      } else {
+        setScrapeError(d.error || 'Scrape failed');
+      }
     } catch { setScrapeError('Network error — check the URLs and try again'); }
     finally { setScraping(false); }
   };
@@ -792,7 +808,7 @@ export default function BrandSettingsPage() {
                   </div>
                   <div className="bs-scrape-row">
                     {scrapeError && <span className="bs-error">{scrapeError}</span>}
-                    {scrapeSuccess && <span className="bs-saved">✓ Template scraped — Smart Export HTML will now match your site structure</span>}
+                    {scrapeSuccess && <span className="bs-saved">✓ Template scraped — Smart Export HTML will now match your site structure{scrapeSuccessDetail}</span>}
                     <button className="bs-scrape-btn" onClick={handleScrape} disabled={scraping || !articleTemplateUrl}>
                       <IconRefresh />
                       {scraping ? 'Scraping...' : 'Scrape Template'}

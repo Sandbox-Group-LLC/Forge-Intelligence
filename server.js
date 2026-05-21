@@ -2623,81 +2623,179 @@ app.get('/api/context-hub/brains/:id', requireAuth, async (req, res) => {
 });
 
 // POST /api/brand-settings/:brandProfileId/scrape-template
+//
+// Honest tool, post-#98:
+//   - Per-field extraction tracking. Each regex match is either a real
+//     extraction (counted) or a fallback (logged as defaulted, not counted).
+//   - Raw-HTML fetch first. If too few fields extracted (likely JS-rendered
+//     SPA, since SPAs return ~5kb of shell with no real class names), retry
+//     via Jina Reader with X-Return-Format: html so we get the rendered DOM.
+//   - Returns extractedFields / totalFields / source so the UI can show
+//     "X of Y fields extracted from rendered page" instead of silently
+//     handing back hardcoded defaults dressed as a successful scrape.
+//   - If BOTH sources fail to extract enough fields, returns success: false
+//     with a warning that the caller can surface — no more cute-message
+//     false positives.
 app.post('/api/brand-settings/:brandProfileId/scrape-template', requireAuth, async (req, res) => {
   const { brandProfileId } = req.params;
   const { articleUrl, catalogUrl } = req.body;
   if (!articleUrl) return res.status(400).json({ error: 'articleUrl required' });
   try {
-    const scrape = async (url, type) => {
+    // Minimum number of real (non-defaulted) matches before we consider an
+    // article scrape "good enough." Below this we try Jina; below it on
+    // BOTH attempts we surface the failure to the user.
+    const MIN_ARTICLE_EXTRACTED = 3;
+    const MIN_CATALOG_EXTRACTED = 2;
+
+    const fetchHtmlDirect = async (url) => {
       const r = await fetch(url, { headers: { 'User-Agent': 'ForgeIntelligence/1.0' } });
       if (!r.ok) throw new Error(`Failed to fetch ${url}: ${r.status}`);
-      const html = await r.text();
-      const cls = (pattern) => html.match(pattern)?.[1] || null;
+      return await r.text();
+    };
 
+    const fetchHtmlViaJina = async (url) => {
+      const headers = {
+        'Accept': 'text/html',
+        // Jina Reader's documented switch for rendered HTML output. Without
+        // this header Jina returns cleaned markdown, which strips the class
+        // names we need.
+        'X-Return-Format': 'html',
+      };
+      if (process.env.JINA_API_KEY) headers['Authorization'] = `Bearer ${process.env.JINA_API_KEY}`;
+      const abort = new AbortController();
+      const timer = setTimeout(() => abort.abort(), 15000);
+      const r = await fetch(`https://r.jina.ai/${url}`, { headers, signal: abort.signal })
+        .finally(() => clearTimeout(timer));
+      if (!r.ok) throw new Error(`Jina Reader ${r.status}`);
+      return await r.text();
+    };
+
+    const extract = (html, type) => {
+      let extracted = 0;
+      const tryMatch = (pattern, fallback) => {
+        const m = html.match(pattern)?.[1];
+        if (m) { extracted++; return m; }
+        return fallback;
+      };
       if (type === 'article') {
-        return {
+        const tpl = {
           type: 'article',
           scrapedAt: new Date().toISOString(),
-          sourceUrl: url,
+          sourceUrl: '',
           nav: {
-            class: cls(/<nav[^>]*class="([^"]+)"/) || 'navbar',
+            class: tryMatch(/<nav[^>]*class="([^"]+)"/, 'navbar'),
             linksHtml: (html.match(/<ul[^>]*class="[^"]*nav[^"]*"[^>]*>([\s\S]*?)<\/ul>/) || [])[0]?.slice(0, 800) || '',
           },
           hero: {
-            sectionClass: cls(/<section[^>]*class="([^"]*(?:hero|article-hero)[^"]*)"/) || 'article-hero',
-            eyebrowClass: cls(/class="([^"]*eyebrow[^"]*)"/) || 'article-hero-eyebrow',
-            metaClass: cls(/class="([^"]*(?:article-meta|byline)[^"]*)"/) || 'article-meta',
-            imageWrapClass: cls(/class="([^"]*(?:hero-image|article-hero-image)[^"]*)"/) || 'article-hero-image',
+            sectionClass:  tryMatch(/<section[^>]*class="([^"]*(?:hero|article-hero)[^"]*)"/, 'article-hero'),
+            eyebrowClass:  tryMatch(/class="([^"]*eyebrow[^"]*)"/, 'article-hero-eyebrow'),
+            metaClass:     tryMatch(/class="([^"]*(?:article-meta|byline)[^"]*)"/, 'article-meta'),
+            imageWrapClass:tryMatch(/class="([^"]*(?:hero-image|article-hero-image)[^"]*)"/, 'article-hero-image'),
           },
           body: {
-            sectionClass: cls(/<section[^>]*class="([^"]*(?:body-section|article-body-section)[^"]*)"/) || 'article-body-section',
-            bodyClass: (html.match(/class="((?:article-body|post-body|content-body)(?:[^"-]*)?)"/) || [])[1] || 'article-body',
+            sectionClass: tryMatch(/<section[^>]*class="([^"]*(?:body-section|article-body-section)[^"]*)"/, 'article-body-section'),
+            bodyClass:    tryMatch(/class="((?:article-body|post-body|content-body)(?:[^"-]*)?)"/, 'article-body'),
           },
           backLink: {
-            class: cls(/class="([^"]*(?:article-back|back-link)[^"]*)"/) || 'article-back',
+            class: tryMatch(/class="([^"]*(?:article-back|back-link)[^"]*)"/, 'article-back'),
             text: (html.match(/class="[^"]*(?:article-back|back-link)[^"]*"[^>]*>([^<]+)</) || [])[1]?.trim() || 'Back to Articles',
             href: catalogUrl || '/',
           },
-          cta: {
-            class: cls(/class="([^"]*(?:article-cta|cta-section)[^"]*)"/) || 'article-cta-section',
-          },
-          footer: {
-            class: cls(/<footer[^>]*class="([^"]+)"/) || 'site-footer',
-          },
+          cta:    { class: tryMatch(/class="([^"]*(?:article-cta|cta-section)[^"]*)"/, 'article-cta-section') },
+          footer: { class: tryMatch(/<footer[^>]*class="([^"]+)"/, 'site-footer') },
         };
+        // total trackable fields = 11 (each tryMatch above)
+        return { tpl, extracted, totalTrackable: 11 };
       }
-
-      if (type === 'catalog') {
-        return {
-          type: 'catalog',
-          scrapedAt: new Date().toISOString(),
-          sourceUrl: url,
-          grid: { class: cls(/class="([^"]*(?:articles-grid|posts-grid|cards-grid|article-grid)[^"]*)"/) || 'articles-grid' },
-          card: {
-            class: cls(/class="([^"]*(?:article-card|post-card)[^"]*)"[^>]*>/) || 'article-card',
-            imageClass: cls(/class="([^"]*(?:article-card-image|card-image)[^"]*)"/) || 'article-card-image',
-            bodyClass: cls(/class="([^"]*(?:article-card-body|card-body)[^"]*)"/) || 'article-card-body',
-          },
-          meta: {
-            categoryClass: cls(/class="([^"]*(?:article-category|post-category|card-category)[^"]*)"/) || 'article-category',
-            readMoreClass: cls(/class="([^"]*(?:article-read-more|read-more)[^"]*)"/) || 'article-read-more',
-          },
-        };
-      }
+      // type === 'catalog'
+      const tpl = {
+        type: 'catalog',
+        scrapedAt: new Date().toISOString(),
+        sourceUrl: '',
+        grid: { class: tryMatch(/class="([^"]*(?:articles-grid|posts-grid|cards-grid|article-grid)[^"]*)"/, 'articles-grid') },
+        card: {
+          class:      tryMatch(/class="([^"]*(?:article-card|post-card)[^"]*)"[^>]*>/, 'article-card'),
+          imageClass: tryMatch(/class="([^"]*(?:article-card-image|card-image)[^"]*)"/, 'article-card-image'),
+          bodyClass:  tryMatch(/class="([^"]*(?:article-card-body|card-body)[^"]*)"/, 'article-card-body'),
+        },
+        meta: {
+          categoryClass: tryMatch(/class="([^"]*(?:article-category|post-category|card-category)[^"]*)"/, 'article-category'),
+          readMoreClass: tryMatch(/class="([^"]*(?:article-read-more|read-more)[^"]*)"/, 'article-read-more'),
+        },
+      };
+      return { tpl, extracted, totalTrackable: 6 };
     };
 
-    const articleTemplate = await scrape(articleUrl, 'article');
-    const catalogTemplate = catalogUrl ? await scrape(catalogUrl, 'catalog') : null;
+    // Run extraction against raw HTML, then if we didn't hit the threshold,
+    // try Jina-rendered HTML and keep whichever produced more real matches.
+    const runScrape = async (url, type, minExtracted) => {
+      let bestSource = 'local';
+      let best = null;
+      try {
+        const html = await fetchHtmlDirect(url);
+        const r = extract(html, type);
+        r.tpl.sourceUrl = url;
+        best = r;
+      } catch (e) {
+        console.warn(`[SCRAPE-TEMPLATE] direct fetch failed for ${url}: ${e.message}`);
+      }
+
+      if (!best || best.extracted < minExtracted) {
+        try {
+          const html = await fetchHtmlViaJina(url);
+          const r = extract(html, type);
+          r.tpl.sourceUrl = url;
+          if (!best || r.extracted > best.extracted) {
+            best = r;
+            bestSource = 'jina';
+          }
+        } catch (e) {
+          console.warn(`[SCRAPE-TEMPLATE] Jina fetch failed for ${url}: ${e.message}`);
+        }
+      }
+
+      if (!best) return { tpl: null, extracted: 0, totalTrackable: 0, source: null };
+      return { tpl: best.tpl, extracted: best.extracted, totalTrackable: best.totalTrackable, source: bestSource };
+    };
+
+    const article = await runScrape(articleUrl, 'article', MIN_ARTICLE_EXTRACTED);
+    const catalog = catalogUrl ? await runScrape(catalogUrl, 'catalog', MIN_CATALOG_EXTRACTED) : null;
+
+    // Honest failure: if the article (the required input) couldn't yield even
+    // the minimum extracted-field threshold, don't pretend it worked.
+    if (!article.tpl || article.extracted < MIN_ARTICLE_EXTRACTED) {
+      console.log(`[SCRAPE-TEMPLATE] insufficient extraction: ${article.extracted}/${article.totalTrackable} fields from ${article.source || 'no source'} for ${articleUrl}`);
+      return res.json({
+        success: false,
+        error: 'template_extraction_insufficient',
+        warning: `Only ${article.extracted} of ${article.totalTrackable} DOM patterns matched on the article page${article.source ? ` (tried ${article.source === 'jina' ? 'local + Jina rendered HTML' : 'local HTML'})` : ''}. The site may use class naming conventions we don't recognize, or it may need a JS render path we haven't covered. Smart Export will fall back to generic class names.`,
+        extracted: { article: article.extracted, articleTotal: article.totalTrackable, source: article.source },
+      });
+    }
 
     const existing = await pool.query('SELECT settings FROM brand_profiles WHERE id = $1', [brandProfileId]);
     const currentSettings = existing.rows[0]?.settings || {};
-    const newSettings = { ...currentSettings, siteTemplate: { article: articleTemplate, catalog: catalogTemplate, lastScrapedAt: new Date().toISOString() } };
+    const newSettings = {
+      ...currentSettings,
+      siteTemplate: {
+        article: article.tpl,
+        catalog: catalog?.tpl || null,
+        lastScrapedAt: new Date().toISOString(),
+        // Provenance for the UI / future debugging — which source got us the
+        // best extraction, and how many fields actually matched vs defaulted.
+        extraction: {
+          article: { extracted: article.extracted, total: article.totalTrackable, source: article.source },
+          catalog: catalog ? { extracted: catalog.extracted, total: catalog.totalTrackable, source: catalog.source } : null,
+        },
+      },
+    };
 
     await pool.query(
       'UPDATE brand_profiles SET settings = $1, updated_at = NOW() WHERE id = $2',
       [JSON.stringify(newSettings), brandProfileId]
     );
 
+    console.log(`[SCRAPE-TEMPLATE] OK: article ${article.extracted}/${article.totalTrackable} via ${article.source}${catalog ? `, catalog ${catalog.extracted}/${catalog.totalTrackable} via ${catalog.source}` : ''}`);
     res.json({ success: true, template: newSettings.siteTemplate });
   } catch (err) {
     console.error('[SCRAPE-TEMPLATE]', err.message);
