@@ -2624,28 +2624,31 @@ app.get('/api/context-hub/brains/:id', requireAuth, async (req, res) => {
 
 // POST /api/brand-settings/:brandProfileId/scrape-template
 //
-// Honest tool, post-#98:
-//   - Per-field extraction tracking. Each regex match is either a real
-//     extraction (counted) or a fallback (logged as defaulted, not counted).
-//   - Raw-HTML fetch first. If too few fields extracted (likely JS-rendered
-//     SPA, since SPAs return ~5kb of shell with no real class names), retry
-//     via Jina Reader with X-Return-Format: html so we get the rendered DOM.
-//   - Returns extractedFields / totalFields / source so the UI can show
-//     "X of Y fields extracted from rendered page" instead of silently
-//     handing back hardcoded defaults dressed as a successful scrape.
-//   - If BOTH sources fail to extract enough fields, returns success: false
-//     with a warning that the caller can surface — no more cute-message
-//     false positives.
+// Claude-powered extraction (post-#98 regex tool was honest but brittle —
+// modern frameworks use Tailwind utilities, CSS modules with hash suffixes,
+// BEM, or styled-components — none of which match the narrow regex patterns
+// the old tool relied on). This pass hands rendered HTML to Claude Haiku
+// and asks for structural identification regardless of naming convention.
+// Claude can read class="c-hero__inner", class="Hero_section__a1b2c", or
+// class="text-3xl font-bold mb-8" and tell us which is the hero. For
+// utility-class-only sites (Tailwind), Claude returns null for fields
+// that have no stable class to extract; the existing hardcoded defaults
+// kick in for those fields and the extraction count drops, which the
+// honest-failure framework from #98 already surfaces in the UI.
 app.post('/api/brand-settings/:brandProfileId/scrape-template', requireAuth, async (req, res) => {
   const { brandProfileId } = req.params;
   const { articleUrl, catalogUrl } = req.body;
   if (!articleUrl) return res.status(400).json({ error: 'articleUrl required' });
   try {
-    // Minimum number of real (non-defaulted) matches before we consider an
-    // article scrape "good enough." Below this we try Jina; below it on
-    // BOTH attempts we surface the failure to the user.
+    // Same threshold semantics as the regex version — # of fields Claude
+    // successfully extracted (non-null) needs to clear the bar.
     const MIN_ARTICLE_EXTRACTED = 3;
     const MIN_CATALOG_EXTRACTED = 2;
+
+    // Article = 10 trackable class fields, catalog = 6. Used for the
+    // "N of M DOM patterns matched" UI toast.
+    const ARTICLE_TOTAL = 10;
+    const CATALOG_TOTAL = 6;
 
     const fetchHtmlDirect = async (url) => {
       const r = await fetch(url, { headers: { 'User-Agent': 'ForgeIntelligence/1.0' } });
@@ -2656,9 +2659,8 @@ app.post('/api/brand-settings/:brandProfileId/scrape-template', requireAuth, asy
     const fetchHtmlViaJina = async (url) => {
       const headers = {
         'Accept': 'text/html',
-        // Jina Reader's documented switch for rendered HTML output. Without
-        // this header Jina returns cleaned markdown, which strips the class
-        // names we need.
+        // Jina's documented switch for rendered HTML output. Without this
+        // header Jina returns cleaned markdown, which strips class names.
         'X-Return-Format': 'html',
       };
       if (process.env.JINA_API_KEY) headers['Authorization'] = `Bearer ${process.env.JINA_API_KEY}`;
@@ -2670,105 +2672,210 @@ app.post('/api/brand-settings/:brandProfileId/scrape-template', requireAuth, asy
       return await r.text();
     };
 
-    const extract = (html, type) => {
+    // Strip script + style + inline-svg noise before sending to Claude —
+    // these bytes don't carry structural info and just eat into the prompt
+    // budget. We keep the cap at 50k chars after stripping so a richer
+    // article page still fits comfortably.
+    const cleanHtml = (html) => html
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+      .replace(/<svg\b[^<]*(?:(?!<\/svg>)<[^<]*)*<\/svg>/gi, '')
+      .replace(/<!--[\s\S]*?-->/g, '');
+
+    const claudeExtractArticle = async (html) => {
+      const cleaned = cleanHtml(html).slice(0, 50000);
+      const prompt = `You are extracting reusable DOM structure from a published article page so a separate system can generate matching HTML for content exports.
+
+Identify the following structural regions in the page below and return the most representative class name for each from the ACTUAL HTML. If a region exists but uses utility classes (Tailwind: text-3xl, mb-8), hash-suffixed CSS module classes (Hero_section__a1b2c), or styled-components hashes (sc-bdVaJa) — return null for that field rather than guessing. Only return class names that look stable and semantic.
+
+Return ONLY valid JSON in this exact shape (no markdown, no commentary):
+{
+  "nav":      { "class": "string or null", "linksHtml": "first 800 chars of nav UL/menu inner HTML or empty string" },
+  "hero":     { "sectionClass": "string or null", "eyebrowClass": "string or null", "metaClass": "string or null", "imageWrapClass": "string or null" },
+  "body":     { "sectionClass": "string or null", "bodyClass": "string or null" },
+  "backLink": { "class": "string or null", "text": "the link's text content if present, else empty string" },
+  "cta":      { "class": "string or null" },
+  "footer":   { "class": "string or null" }
+}
+
+Field meanings (in case the HTML uses non-obvious naming):
+- nav: site primary navigation, usually <nav> or <header>'s top bar
+- hero.sectionClass: the wrapper around the article title + meta
+- hero.eyebrowClass: the small kicker / category label above the title (often "Category", "Series", etc.)
+- hero.metaClass: the byline / date / read-time area
+- hero.imageWrapClass: the wrapper around the hero image
+- body.sectionClass: wrapper around each prose section
+- body.bodyClass: the inner prose container class
+- backLink: a "Back to articles" / "View all" link at the top or bottom
+- cta: a call-to-action box at the article's end (often newsletter signup, demo CTA)
+- footer: site footer
+
+ARTICLE HTML (truncated to 50000 chars, scripts/styles/svg stripped):
+${cleaned}`;
+
+      const msg = await anthropic.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1500,
+        messages: [{ role: 'user', content: prompt }]
+      });
+      const raw = msg.content[0]?.text || '';
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error('Claude returned no JSON');
+      return JSON.parse(jsonMatch[0]);
+    };
+
+    const claudeExtractCatalog = async (html) => {
+      const cleaned = cleanHtml(html).slice(0, 50000);
+      const prompt = `You are extracting reusable DOM structure from an article catalog / index page.
+
+Identify the structural regions below and return class names from the ACTUAL HTML. Return null for utility classes (Tailwind), hash-suffixed CSS modules, or styled-components hashes.
+
+Return ONLY valid JSON in this exact shape:
+{
+  "grid": { "class": "string or null" },
+  "card": {
+    "class":      "string or null",
+    "imageClass": "string or null",
+    "bodyClass":  "string or null"
+  },
+  "meta": {
+    "categoryClass": "string or null",
+    "readMoreClass": "string or null"
+  }
+}
+
+Field meanings:
+- grid: the list/grid wrapper that contains all article cards
+- card.class: a single article card / preview wrapper
+- card.imageClass: the card's thumbnail wrapper
+- card.bodyClass: the card's text content area
+- meta.categoryClass: the small category tag on each card
+- meta.readMoreClass: the "Read more" / "→" link inside each card
+
+CATALOG HTML (truncated to 50000 chars, scripts/styles/svg stripped):
+${cleaned}`;
+
+      const msg = await anthropic.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 800,
+        messages: [{ role: 'user', content: prompt }]
+      });
+      const raw = msg.content[0]?.text || '';
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error('Claude returned no JSON');
+      return JSON.parse(jsonMatch[0]);
+    };
+
+    // Build the persisted template from Claude's output, applying the
+    // existing hardcoded fallbacks for any field Claude marked null. Count
+    // non-null Claude results as "extracted" — those are real DOM finds.
+    const buildArticleTemplate = (claude, sourceUrl) => {
       let extracted = 0;
-      const tryMatch = (pattern, fallback) => {
-        const m = html.match(pattern)?.[1];
-        if (m) { extracted++; return m; }
+      const take = (val, fallback) => {
+        if (typeof val === 'string' && val.trim()) { extracted++; return val.trim(); }
         return fallback;
       };
-      if (type === 'article') {
-        const tpl = {
-          type: 'article',
-          scrapedAt: new Date().toISOString(),
-          sourceUrl: '',
-          nav: {
-            class: tryMatch(/<nav[^>]*class="([^"]+)"/, 'navbar'),
-            linksHtml: (html.match(/<ul[^>]*class="[^"]*nav[^"]*"[^>]*>([\s\S]*?)<\/ul>/) || [])[0]?.slice(0, 800) || '',
-          },
-          hero: {
-            sectionClass:  tryMatch(/<section[^>]*class="([^"]*(?:hero|article-hero)[^"]*)"/, 'article-hero'),
-            eyebrowClass:  tryMatch(/class="([^"]*eyebrow[^"]*)"/, 'article-hero-eyebrow'),
-            metaClass:     tryMatch(/class="([^"]*(?:article-meta|byline)[^"]*)"/, 'article-meta'),
-            imageWrapClass:tryMatch(/class="([^"]*(?:hero-image|article-hero-image)[^"]*)"/, 'article-hero-image'),
-          },
-          body: {
-            sectionClass: tryMatch(/<section[^>]*class="([^"]*(?:body-section|article-body-section)[^"]*)"/, 'article-body-section'),
-            bodyClass:    tryMatch(/class="((?:article-body|post-body|content-body)(?:[^"-]*)?)"/, 'article-body'),
-          },
-          backLink: {
-            class: tryMatch(/class="([^"]*(?:article-back|back-link)[^"]*)"/, 'article-back'),
-            text: (html.match(/class="[^"]*(?:article-back|back-link)[^"]*"[^>]*>([^<]+)</) || [])[1]?.trim() || 'Back to Articles',
-            href: catalogUrl || '/',
-          },
-          cta:    { class: tryMatch(/class="([^"]*(?:article-cta|cta-section)[^"]*)"/, 'article-cta-section') },
-          footer: { class: tryMatch(/<footer[^>]*class="([^"]+)"/, 'site-footer') },
-        };
-        // total trackable fields = 11 (each tryMatch above)
-        return { tpl, extracted, totalTrackable: 11 };
-      }
-      // type === 'catalog'
+      const tpl = {
+        type: 'article',
+        scrapedAt: new Date().toISOString(),
+        sourceUrl,
+        nav: {
+          class: take(claude?.nav?.class, 'navbar'),
+          linksHtml: typeof claude?.nav?.linksHtml === 'string' ? claude.nav.linksHtml.slice(0, 800) : '',
+        },
+        hero: {
+          sectionClass:   take(claude?.hero?.sectionClass,   'article-hero'),
+          eyebrowClass:   take(claude?.hero?.eyebrowClass,   'article-hero-eyebrow'),
+          metaClass:      take(claude?.hero?.metaClass,      'article-meta'),
+          imageWrapClass: take(claude?.hero?.imageWrapClass, 'article-hero-image'),
+        },
+        body: {
+          sectionClass: take(claude?.body?.sectionClass, 'article-body-section'),
+          bodyClass:    take(claude?.body?.bodyClass,    'article-body'),
+        },
+        backLink: {
+          class: take(claude?.backLink?.class, 'article-back'),
+          text: (typeof claude?.backLink?.text === 'string' && claude.backLink.text.trim()) ? claude.backLink.text.trim() : 'Back to Articles',
+          href: catalogUrl || '/',
+        },
+        cta:    { class: take(claude?.cta?.class,    'article-cta-section') },
+        footer: { class: take(claude?.footer?.class, 'site-footer') },
+      };
+      return { tpl, extracted, totalTrackable: ARTICLE_TOTAL };
+    };
+
+    const buildCatalogTemplate = (claude, sourceUrl) => {
+      let extracted = 0;
+      const take = (val, fallback) => {
+        if (typeof val === 'string' && val.trim()) { extracted++; return val.trim(); }
+        return fallback;
+      };
       const tpl = {
         type: 'catalog',
         scrapedAt: new Date().toISOString(),
-        sourceUrl: '',
-        grid: { class: tryMatch(/class="([^"]*(?:articles-grid|posts-grid|cards-grid|article-grid)[^"]*)"/, 'articles-grid') },
+        sourceUrl,
+        grid: { class: take(claude?.grid?.class, 'articles-grid') },
         card: {
-          class:      tryMatch(/class="([^"]*(?:article-card|post-card)[^"]*)"[^>]*>/, 'article-card'),
-          imageClass: tryMatch(/class="([^"]*(?:article-card-image|card-image)[^"]*)"/, 'article-card-image'),
-          bodyClass:  tryMatch(/class="([^"]*(?:article-card-body|card-body)[^"]*)"/, 'article-card-body'),
+          class:      take(claude?.card?.class,      'article-card'),
+          imageClass: take(claude?.card?.imageClass, 'article-card-image'),
+          bodyClass:  take(claude?.card?.bodyClass,  'article-card-body'),
         },
         meta: {
-          categoryClass: tryMatch(/class="([^"]*(?:article-category|post-category|card-category)[^"]*)"/, 'article-category'),
-          readMoreClass: tryMatch(/class="([^"]*(?:article-read-more|read-more)[^"]*)"/, 'article-read-more'),
+          categoryClass: take(claude?.meta?.categoryClass, 'article-category'),
+          readMoreClass: take(claude?.meta?.readMoreClass, 'article-read-more'),
         },
       };
-      return { tpl, extracted, totalTrackable: 6 };
+      return { tpl, extracted, totalTrackable: CATALOG_TOTAL };
     };
 
-    // Run extraction against raw HTML, then if we didn't hit the threshold,
-    // try Jina-rendered HTML and keep whichever produced more real matches.
+    // Run scrape for one URL: fetch via direct HTTP (fast), fall back to Jina
+    // rendered HTML if the direct fetch gives us an SPA shell or fails.
+    // Then Claude extracts on the best HTML we have.
     const runScrape = async (url, type, minExtracted) => {
-      let bestSource = 'local';
-      let best = null;
+      let html = null;
+      let source = null;
       try {
-        const html = await fetchHtmlDirect(url);
-        const r = extract(html, type);
-        r.tpl.sourceUrl = url;
-        best = r;
+        const direct = await fetchHtmlDirect(url);
+        // Heuristic: a body of <2k chars after cleaning is almost certainly
+        // an SPA shell. Skip straight to Jina in that case.
+        if (cleanHtml(direct).length >= 2000) {
+          html = direct;
+          source = 'local';
+        }
       } catch (e) {
         console.warn(`[SCRAPE-TEMPLATE] direct fetch failed for ${url}: ${e.message}`);
       }
-
-      if (!best || best.extracted < minExtracted) {
+      if (!html) {
         try {
-          const html = await fetchHtmlViaJina(url);
-          const r = extract(html, type);
-          r.tpl.sourceUrl = url;
-          if (!best || r.extracted > best.extracted) {
-            best = r;
-            bestSource = 'jina';
-          }
+          html = await fetchHtmlViaJina(url);
+          source = 'jina';
         } catch (e) {
           console.warn(`[SCRAPE-TEMPLATE] Jina fetch failed for ${url}: ${e.message}`);
         }
       }
+      if (!html) return { tpl: null, extracted: 0, totalTrackable: 0, source: null };
 
-      if (!best) return { tpl: null, extracted: 0, totalTrackable: 0, source: null };
-      return { tpl: best.tpl, extracted: best.extracted, totalTrackable: best.totalTrackable, source: bestSource };
+      try {
+        const claude = type === 'article' ? await claudeExtractArticle(html) : await claudeExtractCatalog(html);
+        const built = type === 'article' ? buildArticleTemplate(claude, url) : buildCatalogTemplate(claude, url);
+        return { ...built, source };
+      } catch (e) {
+        console.warn(`[SCRAPE-TEMPLATE] Claude extraction failed for ${url}: ${e.message}`);
+        // Honest failure: don't fabricate a "successful" template from
+        // hardcoded defaults if Claude couldn't read the HTML at all.
+        return { tpl: null, extracted: 0, totalTrackable: type === 'article' ? ARTICLE_TOTAL : CATALOG_TOTAL, source };
+      }
     };
 
     const article = await runScrape(articleUrl, 'article', MIN_ARTICLE_EXTRACTED);
     const catalog = catalogUrl ? await runScrape(catalogUrl, 'catalog', MIN_CATALOG_EXTRACTED) : null;
 
-    // Honest failure: if the article (the required input) couldn't yield even
-    // the minimum extracted-field threshold, don't pretend it worked.
     if (!article.tpl || article.extracted < MIN_ARTICLE_EXTRACTED) {
-      console.log(`[SCRAPE-TEMPLATE] insufficient extraction: ${article.extracted}/${article.totalTrackable} fields from ${article.source || 'no source'} for ${articleUrl}`);
+      console.log(`[SCRAPE-TEMPLATE] insufficient extraction (claude): ${article.extracted}/${article.totalTrackable} from ${article.source || 'no source'} for ${articleUrl}`);
       return res.json({
         success: false,
         error: 'template_extraction_insufficient',
-        warning: `Only ${article.extracted} of ${article.totalTrackable} DOM patterns matched on the article page${article.source ? ` (tried ${article.source === 'jina' ? 'local + Jina rendered HTML' : 'local HTML'})` : ''}. The site may use class naming conventions we don't recognize, or it may need a JS render path we haven't covered. Smart Export will fall back to generic class names.`,
+        warning: `Only ${article.extracted} of ${article.totalTrackable} structural regions extracted on the article page${article.source ? ` (read via ${article.source === 'jina' ? 'Jina rendered HTML' : 'local HTML'})` : ''}. Likely the site uses utility classes (Tailwind), CSS modules, or styled-components — class names aren't stable enough to inherit. Smart Export will fall back to generic semantic HTML.`,
         extracted: { article: article.extracted, articleTotal: article.totalTrackable, source: article.source },
       });
     }
@@ -2781,11 +2888,9 @@ app.post('/api/brand-settings/:brandProfileId/scrape-template', requireAuth, asy
         article: article.tpl,
         catalog: catalog?.tpl || null,
         lastScrapedAt: new Date().toISOString(),
-        // Provenance for the UI / future debugging — which source got us the
-        // best extraction, and how many fields actually matched vs defaulted.
         extraction: {
-          article: { extracted: article.extracted, total: article.totalTrackable, source: article.source },
-          catalog: catalog ? { extracted: catalog.extracted, total: catalog.totalTrackable, source: catalog.source } : null,
+          article: { extracted: article.extracted, total: article.totalTrackable, source: article.source, engine: 'claude' },
+          catalog: catalog ? { extracted: catalog.extracted, total: catalog.totalTrackable, source: catalog.source, engine: 'claude' } : null,
         },
       },
     };
@@ -2795,7 +2900,7 @@ app.post('/api/brand-settings/:brandProfileId/scrape-template', requireAuth, asy
       [JSON.stringify(newSettings), brandProfileId]
     );
 
-    console.log(`[SCRAPE-TEMPLATE] OK: article ${article.extracted}/${article.totalTrackable} via ${article.source}${catalog ? `, catalog ${catalog.extracted}/${catalog.totalTrackable} via ${catalog.source}` : ''}`);
+    console.log(`[SCRAPE-TEMPLATE] OK (claude): article ${article.extracted}/${article.totalTrackable} via ${article.source}${catalog ? `, catalog ${catalog.extracted}/${catalog.totalTrackable} via ${catalog.source}` : ''}`);
     res.json({ success: true, template: newSettings.siteTemplate });
   } catch (err) {
     console.error('[SCRAPE-TEMPLATE]', err.message);
