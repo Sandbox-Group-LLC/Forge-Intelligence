@@ -1441,6 +1441,12 @@ ${authorFooterHtml}
                               const liveStatus = logEntry?.live_status;
                               const isPublished = liveStatus === 'published' || (!logEntry && result?.status === 'published');
                               const chipClass = (() => {
+                                // If publish_results no longer carries this channel, the channel
+                                // is in pre-publish state — even if a historical publish_log row
+                                // exists from a prior publish/unpublish cycle. Treat as fresh so
+                                // the user can re-select it for publishing without fighting a
+                                // greyed-out chip.
+                                if (!result) return '';
                                 if (!logEntry) {
                                   if (result?.status === 'published') return 'published';
                                   if (result?.status === 'error') return 'error';
@@ -1783,6 +1789,12 @@ return (
                               const liveStatus = logEntry?.live_status;
                               const isPublished = liveStatus === 'published' || (!logEntry && result?.status === 'published');
                               const chipClass = (() => {
+                                // If publish_results no longer carries this channel, the channel
+                                // is in pre-publish state — even if a historical publish_log row
+                                // exists from a prior publish/unpublish cycle. Treat as fresh so
+                                // the user can re-select it for publishing without fighting a
+                                // greyed-out chip.
+                                if (!result) return '';
                                 if (!logEntry) {
                                   if (result?.status === 'published') return 'published';
                                   if (result?.status === 'error') return 'error';
