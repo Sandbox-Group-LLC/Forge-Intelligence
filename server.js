@@ -11129,9 +11129,17 @@ app.post('/api/publishing/publish', async (req, res) => {
       }
     }
 
-    // Load existing publish_log entries for this queue item — used to skip already-published channels
+    // Load existing publish_log entries for this queue item — used to skip already-published channels.
+    // Critical: also require live_status to still be live. After an unpublish, status stays
+    // 'published' (it really did publish, that's history) but live_status flips to 'deleted'.
+    // The old query (status='published' alone) treated unpublished-then-republished targets as
+    // duplicates and silently skipped them with a fake "Already published" response — the toast
+    // would say success but nothing actually hit the channel.
     const existingLogRes = await pool.query(
-      `SELECT channel FROM publish_log WHERE queue_item_id = $1 AND status = 'published'`,
+      `SELECT channel FROM publish_log
+       WHERE queue_item_id = $1
+         AND status = 'published'
+         AND (live_status IS NULL OR live_status = 'published')`,
       [queueItemId]
     ).catch(() => ({ rows: [] }));
     const alreadyPublished = new Set(existingLogRes.rows.map(r => r.channel));
