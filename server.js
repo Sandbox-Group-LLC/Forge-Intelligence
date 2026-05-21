@@ -7,6 +7,9 @@ import Anthropic from '@anthropic-ai/sdk';
 import { randomUUID, randomBytes, createHmac, createHash } from 'crypto';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import puppeteer from 'puppeteer-core';
+import { Readability } from '@mozilla/readability';
+import { JSDOM } from 'jsdom';
+import TurndownService from 'turndown';
 
 const { Pool } = pkg;
 const __filename = fileURLToPath(import.meta.url);
@@ -4445,9 +4448,14 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
 
 
     // ── Tool 1.5: Website Scraper — actual content extraction ─────────────────
+    // Two-tier fetch per page via getBrandPageContent:
+    //   Tier A: Jina Reader (semantic markdown — fast, free, the common case)
+    //   Tier B: forgeScrape (BD Tier 1 → Tier 2 cascade) + local Readability+Turndown
+    // Pages: homepage + up to 8 high-signal subpages discovered via sitemap.xml
+    // (link-extraction fallback). All fetched in parallel; every attempt logged
+    // to scrape_log with caller='context-hub'.
     console.log(`[Context Hub] Tool 1.5: Scraping website content for ${brandUrl}...`);
     let scrapedContent = '';
-    let homeHtml = '';
     let workingBaseUrl = '';
     // Masked-subdomain support: if the user set a scrapeUrlOverride in Brand Settings
     // (e.g., brand_url is a vanity domain pointing to a Render subservice), use the
@@ -4465,303 +4473,47 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
       }
     } catch { /* no profile yet, use brandUrl directly */ }
     try {
-      // Chrome UA — some sites (Squarespace, Vercel edge, etc.) 403 on unknown UAs. Forge UA tried first for honesty, Chrome as fallback.
-      const FORGE_UA = 'ForgeIntelligence/1.0 (Brand Analysis)';
-      const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
-
-      const stripHtml = (html) => html
-        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-        .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
-        .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
-        .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&[a-z]+;/gi, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-      // Extract crawler-targeted brand content from <head>: meta tags + JSON-LD structured data.
-      // SPA sites (Vite/Next/SvelteKit/etc.) put their brand description, services list, and
-      // schema.org markup in <head> precisely because they know JS-rendered <body> content
-      // isn't visible to crawlers. stripHtml() throws all of this away — wholesale-strips
-      // <script> (kills JSON-LD) and operates on body text only. metaExtract() runs first
-      // and pulls the high-value structured content into a readable text block.
-      const metaExtract = (html) => {
-        const parts = [];
-
-        const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-        if (titleMatch) {
-          const t = titleMatch[1].replace(/\s+/g, ' ').trim();
-          if (t && t.length > 5) parts.push(`Title: ${t}`);
-        }
-
-        // Meta tags: description (multiple forms), keywords, og:site_name, author
-        const metaPatterns = [
-          { re: /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i, label: 'Description' },
-          { re: /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i, label: 'OG Description' },
-          { re: /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i, label: 'Description' },  // attr order swap
-          { re: /<meta[^>]+name=["']keywords["'][^>]+content=["']([^"']+)["']/i, label: 'Keywords' },
-          { re: /<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i, label: 'Site name' },
-          { re: /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i, label: 'OG Title' },
-          { re: /<meta[^>]+name=["']author["'][^>]+content=["']([^"']+)["']/i, label: 'Author' },
-        ];
-        const seen = new Set();
-        for (const { re, label } of metaPatterns) {
-          const m = html.match(re);
-          if (m && m[1]) {
-            const v = m[1].replace(/\s+/g, ' ').trim();
-            const key = `${label}:${v}`;
-            if (v.length > 10 && !seen.has(key)) {
-              parts.push(`${label}: ${v}`);
-              seen.add(key);
-            }
-          }
-        }
-
-        // JSON-LD structured data blocks. Parse them and render as readable structured text
-        // so Tool 2 Claude can use the schema fields directly (services, descriptions, etc.).
-        const jsonLdMatches = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
-        for (const block of jsonLdMatches) {
-          const inner = block.replace(/<script[^>]*>/i, '').replace(/<\/script>/i, '').trim();
-          try {
-            const data = JSON.parse(inner);
-            const items = Array.isArray(data) ? data : [data];
-            for (const item of items) {
-              const type = item['@type'] || 'Schema';
-              const lines = [`Schema (${type}):`];
-              if (item.name) lines.push(`  Name: ${item.name}`);
-              if (item.description) lines.push(`  Description: ${item.description}`);
-              if (item.serviceType) lines.push(`  Services: ${Array.isArray(item.serviceType) ? item.serviceType.join(', ') : item.serviceType}`);
-              if (item.areaServed) lines.push(`  Area served: ${item.areaServed}`);
-              const offers = item.hasOfferCatalog?.itemListElement || [];
-              if (offers.length > 0) {
-                lines.push(`  Offerings:`);
-                for (const o of offers) {
-                  const svc = o.itemOffered;
-                  if (svc?.name) lines.push(`    - ${svc.name}${svc.description ? ': ' + svc.description : ''}`);
-                }
-              }
-              if (item.parentOrganization?.name) lines.push(`  Parent organization: ${item.parentOrganization.name}`);
-              if (item.alternateName) lines.push(`  Also known as: ${item.alternateName}`);
-              if (lines.length > 1) parts.push(lines.join('\n'));
-            }
-          } catch {
-            // Malformed JSON-LD — skip silently
-          }
-        }
-
-        return parts.join('\n\n');
-      };
-
-      // Tell the developer exactly why a fetch failed (not just "it didn't work")
-      const describeFetchFailure = (err) => {
-        if (!err) return 'unknown';
-        const code = err.cause?.code || err.code || '';
-        if (code === 'ENOTFOUND' || /ENOTFOUND|getaddrinfo/i.test(err.message || '')) return `DNS-NOT-FOUND (${err.message || code})`;
-        if (code === 'ECONNREFUSED') return 'CONNECTION-REFUSED';
-        if (code === 'ECONNRESET') return 'CONNECTION-RESET';
-        if (err.name === 'TimeoutError' || /timeout/i.test(err.message || '')) return 'TIMEOUT';
-        if (/certificate|TLS|SSL/i.test(err.message || '')) return `TLS-ERROR (${err.message})`;
-        return `${err.name || 'Error'}: ${err.message || code || 'no detail'}`;
-      };
-
-      // Fetch with detailed error surfacing. Returns { res, html, error } — never throws.
-      const fetchWithDiag = async (url, { ua = FORGE_UA, timeout = 10000 } = {}) => {
-        try {
-          const res = await fetch(url, {
-            headers: { 'User-Agent': ua, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9' },
-            redirect: 'follow',
-            signal: AbortSignal.timeout(timeout)
-          });
-          if (!res.ok) return { res, html: '', error: `HTTP-${res.status}` };
-          const html = await res.text();
-          return { res, html, error: null };
-        } catch(e) {
-          return { res: null, html: '', error: describeFetchFailure(e) };
-        }
-      };
-
-      // Build candidate base URLs. Brands saved as "example.com" may have apex-only or www-only DNS —
-      // try both, and try Chrome UA as a fallback if the Forge UA gets 403.
       const inputUrl = scrapeInputUrl.startsWith('http') ? scrapeInputUrl : `https://${scrapeInputUrl}`;
       const u = new URL(inputUrl);
-      const bareHost = u.hostname.replace(/^www\./, '');
-      const candidates = [];
-      if (u.hostname.startsWith('www.')) {
-        candidates.push(`${u.protocol}//${u.hostname}`, `${u.protocol}//${bareHost}`);
+      workingBaseUrl = `${u.protocol}//${u.host}`;
+
+      // Discover subpages and fetch the homepage in parallel.
+      const [subpages, homeContent] = await Promise.all([
+        discoverSubpages(workingBaseUrl, 8),
+        getBrandPageContent(workingBaseUrl, { caller: 'context-hub' }),
+      ]);
+
+      // Fan out to all discovered subpages in parallel.
+      const subContents = subpages.length
+        ? await Promise.all(subpages.map(pageUrl =>
+            getBrandPageContent(pageUrl, { caller: 'context-hub' }).catch(err => ({ success: false, markdown: null, source: 'error', error: err?.message }))
+          ))
+        : [];
+
+      // Concatenate per-page markdown (20 KB per page) into the section
+      // siteContentSection consumes. Tagged by URL + source so downstream
+      // Claude can attribute claims to specific pages.
+      if (homeContent?.success && homeContent.markdown) {
+        scrapedContent += `HOMEPAGE (${workingBaseUrl}, via ${homeContent.source}):\n${homeContent.markdown.slice(0, 20000)}\n\n`;
       } else {
-        candidates.push(`${u.protocol}//${u.hostname}`, `${u.protocol}//www.${u.hostname}`);
+        console.log(`[Context Hub] Homepage fetch failed — ${homeContent?.error || 'no detail'}`);
       }
-
-      // Try each candidate with Forge UA, then Chrome UA
-      for (const candidate of candidates) {
-        let attempt = await fetchWithDiag(candidate, { ua: FORGE_UA });
-        if (!attempt.html && /HTTP-4\d\d/.test(attempt.error || '')) {
-          // Some sites 403/406 unknown UAs. Retry same URL with a standard Chrome UA.
-          console.log(`[Context Hub] ${candidate} returned ${attempt.error} with Forge UA — retrying with Chrome UA`);
-          attempt = await fetchWithDiag(candidate, { ua: CHROME_UA });
-        }
-        if (attempt.html) {
-          homeHtml = attempt.html;
-          workingBaseUrl = candidate;
-          // Log raw HTML bytes, but also flag SPA shells where the visible content will be empty
-          // after stripHtml() because everything renders client-side. Without this hint, the
-          // contradiction in the logs ("X bytes scraped" + "minimal content") is confusing.
-          const isSpaShell = /<div[^>]+id=["'](root|app|__next|svelte)["']/i.test(attempt.html);
-          console.log(`[Context Hub] Homepage scraped from ${candidate} (${attempt.html.length} bytes${isSpaShell ? ' — SPA shell detected, expect minimal extracted text' : ''})`);
-          break;
-        } else {
-          console.log(`[Context Hub] Homepage fetch failed for ${candidate} — ${attempt.error}`);
+      for (let i = 0; i < subContents.length; i++) {
+        const p = subContents[i];
+        if (p?.success && p.markdown) {
+          scrapedContent += `PAGE (${subpages[i]}, via ${p.source}):\n${p.markdown.slice(0, 20000)}\n\n`;
         }
       }
 
-      if (homeHtml) {
-        // Extract meta + JSON-LD FIRST — captures brand content from SPA sites where the
-        // body strip yields nothing. For server-rendered sites, this adds high-quality
-        // structured context on top of the body text.
-        const homeMeta = metaExtract(homeHtml);
-        if (homeMeta && homeMeta.length > 30) {
-          scrapedContent += `HOMEPAGE METADATA:\n${homeMeta}\n\n`;
-        }
-        // Then run the body strip as before. May add nothing on SPAs, but useful on
-        // server-rendered sites where <body> has the actual content.
-        const homeText = stripHtml(homeHtml).slice(0, 3000);
-        if (homeText.length > 80) scrapedContent += `HOMEPAGE CONTENT:\n${homeText}\n\n`;
-      }
-
-      // Extract internal links from homepage for deeper crawl
-      const linkMatches = homeHtml.match(/href=["'](\/[^"'#?]+)["']/g) || [];
-      const internalPaths = [...new Set(
-        linkMatches
-          .map(m => m.match(/href=["'](\/[^"'#?]+)["']/)?.[1])
-          .filter(Boolean)
-          .filter(p => /\/(about|story|product|service|blog|mission|team|who-we|what-we|our-)/i.test(p))
-      )].slice(0, 4);
-
-      // Also try common about paths if none found
-      const aboutPaths = internalPaths.length > 0 ? internalPaths : ['/about', '/about-us', '/pages/about'];
-
-      if (workingBaseUrl) {
-        for (const path of aboutPaths) {
-          const pageUrl = new URL(path, workingBaseUrl).href;
-          let pageAttempt = await fetchWithDiag(pageUrl, { ua: FORGE_UA, timeout: 8000 });
-          if (!pageAttempt.html && /HTTP-4\d\d/.test(pageAttempt.error || '')) {
-            pageAttempt = await fetchWithDiag(pageUrl, { ua: CHROME_UA, timeout: 8000 });
-          }
-          if (pageAttempt.html) {
-            // Subpages: meta tags less interesting (usually duplicate the homepage), so just
-            // pull JSON-LD + body text. JSON-LD on a /pricing or /about page often has
-            // page-specific schema that's worth capturing.
-            const pageMeta = metaExtract(pageAttempt.html);
-            const pageText = stripHtml(pageAttempt.html).slice(0, 2000);
-            // Filter pageMeta to only schema blocks (drop title/desc duplicates)
-            const pageSchemas = pageMeta.split('\n\n').filter(b => b.startsWith('Schema (')).join('\n\n');
-            if (pageSchemas) scrapedContent += `PAGE (${path}) METADATA:\n${pageSchemas}\n\n`;
-            if (pageText.length > 100) {
-              scrapedContent += `PAGE (${path}):\n${pageText}\n\n`;
-            }
-          } else {
-            console.log(`[Context Hub] Subpage ${path} failed — ${pageAttempt.error}`);
-          }
-        }
-      }
-
-      if (scrapedContent.length > 200) {
-        console.log(`[Context Hub] Scraped ${scrapedContent.length} chars from ${aboutPaths.length + 1} pages (base: ${workingBaseUrl})`);
-      } else {
-        // Local scrape failed to extract usable content — typically a JS-rendered SPA where the
-        // raw HTML is 10kb+ but stripHtml() yields a few dozen chars (title tag only). Two-tier
-        // fallback follows: first Jina Reader (renders the page server-side in real time —
-        // works even on brand-new sites that aren't indexed anywhere yet), then Sonar (relies on
-        // Perplexity's index — fast when the site is already crawled, useless for brand-new sites).
-        //
-        // Order matters: Jina runs first because it can handle brand-new SPAs. Sonar is the
-        // backup for the case where Jina's free tier rate-limits us OR returns an error.
-        console.log(`[Context Hub] Local scrape minimal (${scrapedContent.length} chars from ${homeHtml.length} bytes HTML) — trying Jina Reader fallback`);
-        try {
-          const jinaHeaders = { 'Accept': 'text/plain' };
-          if (process.env.JINA_API_KEY) {
-            jinaHeaders['Authorization'] = `Bearer ${process.env.JINA_API_KEY}`;
-          }
-          // Bound the request — Jina cold-renders can take 5-12s but anything beyond
-          // ~15s indicates the target site itself is slow / hanging and we should
-          // move on to Sonar rather than block the entire analyze call.
-          const jinaAbort = new AbortController();
-          const jinaTimeout = setTimeout(() => jinaAbort.abort(), 15000);
-          const jinaRes = await fetch(`https://r.jina.ai/${brandUrl}`, {
-            headers: jinaHeaders,
-            signal: jinaAbort.signal,
-          }).finally(() => clearTimeout(jinaTimeout));
-          if (jinaRes.ok) {
-            const jinaText = (await jinaRes.text()).trim();
-            if (jinaText.length > 200) {
-              // Cap at 8000 chars to match the local-scrape budget and keep the
-              // downstream Claude prompt under its size envelope.
-              scrapedContent = `JINA-EXTRACTED CONTENT (JS-rendered by Jina Reader — this is what a user sees):\n${jinaText.slice(0, 8000)}`;
-              console.log(`[Context Hub] Jina Reader fallback succeeded: ${jinaText.length} chars (capped to 8000)`);
-            } else {
-              console.log(`[Context Hub] Jina Reader returned minimal content (${jinaText.length} chars) — trying Sonar next`);
-            }
-          } else {
-            console.log(`[Context Hub] Jina Reader HTTP ${jinaRes.status} — trying Sonar next`);
-          }
-        } catch (jinaErr) {
-          console.log(`[Context Hub] Jina Reader error (non-fatal):`, jinaErr.message);
-        }
-      }
-
-      // Tier 3: Sonar fallback. Runs only if Jina didn't lift us past the threshold.
-      // Useful when Jina is rate-limited or the target is geo-blocked from Jina's
-      // egress IPs but already crawled into Perplexity's index.
-      if (scrapedContent.length <= 200) {
-        console.log(`[Context Hub] Jina + local still under threshold — falling back to Sonar content extraction`);
-        try {
-          const sonarContentRes = await fetch('https://api.perplexity.ai/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              model: 'sonar',
-              messages: [{
-                role: 'user',
-                content: `Visit ${brandUrl} and extract the actual visible content from the homepage and any About/Product/Mission page. Return ONLY the raw text content from those pages — no commentary, no formatting, no markdown headers, no lists. Just the prose as a user would read it. If a page is JavaScript-rendered, render it and extract the resulting visible text. If you cannot access the site, return exactly the string "SITE_INACCESSIBLE" and nothing else.
-
-Maximum 4000 words. Focus on:
-- What the company does (homepage hero + product description)
-- Their mission, story, or about-us content
-- Any product features, services, or offerings described
-- Customer pain points or use cases mentioned
-
-Return only the extracted page text.`
-              }],
-              max_tokens: 4000
-            })
-          });
-          if (sonarContentRes.ok) {
-            const sonarContentData = await sonarContentRes.json();
-            const sonarExtractedText = (sonarContentData.choices?.[0]?.message?.content || '').trim();
-            if (sonarExtractedText && sonarExtractedText !== 'SITE_INACCESSIBLE' && sonarExtractedText.length > 200) {
-              scrapedContent = `SONAR-EXTRACTED CONTENT (site is JS-rendered — this is what a user sees):\n${sonarExtractedText}`;
-              console.log(`[Context Hub] Sonar content fallback succeeded: ${sonarExtractedText.length} chars`);
-            } else {
-              console.log(`[Context Hub] Sonar content fallback returned no usable content (${sonarExtractedText.slice(0, 100)})`);
-            }
-          } else {
-            console.log(`[Context Hub] Sonar content fallback HTTP ${sonarContentRes.status}`);
-          }
-        } catch (sonarErr) {
-          console.log(`[Context Hub] Sonar content fallback error:`, sonarErr.message);
-        }
-      }
+      const okPages = (homeContent?.success ? 1 : 0) + subContents.filter(p => p?.success).length;
+      console.log(`[Context Hub] Scraped ${scrapedContent.length} chars from ${okPages} page(s) (base: ${workingBaseUrl}, discovered: ${subpages.length})`);
     } catch(e) {
       console.log(`[Context Hub] Scraper error (non-fatal):`, e.message);
     }
 
     const scraperSuccess = scrapedContent.length > 200;
     const siteContentSection = scraperSuccess
-      ? `\n\nACTUAL WEBSITE CONTENT (scraped — use this as primary source, do NOT guess from domain name):\n${scrapedContent.slice(0, 8000)}`
+      ? `\n\nACTUAL WEBSITE CONTENT (scraped — use this as primary source, do NOT guess from domain name):\n${scrapedContent.slice(0, 100000)}`
       : '';
     if (!scraperSuccess) console.warn(`[Context Hub] ⚠️ SCRAPER FAILED for ${brandUrl} — Claude will guess from domain name + Sonar context only`);
 
@@ -14407,6 +14159,144 @@ async function forgeScrape(url, opts = {}) {
   // higher-tier tool).
   if (browserResult.success) return browserResult;
   return unlockerResult.success ? unlockerResult : browserResult;
+}
+
+// ── getBrandPageContent — Stage 1 page-content primitive ───────────────────
+// Returns clean markdown for a single brand page. Two-tier:
+//
+//   Tier A: Jina Reader (r.jina.ai) — semantic content extraction with built-in
+//           JS rendering. Returns markdown directly. Fast on the common case.
+//   Tier B: forgeScrape (Tier 1 → Tier 2 cascade) + local Mozilla Readability
+//           + Turndown. For sites Jina can't reach (rate-limit, geo-block,
+//           outright failure) — we render via Bright Data and extract locally.
+//
+// Returns { success, markdown, source, latencyMs, error }
+//   source: 'jina_reader' | 'brightdata_unlocker' | 'brightdata_browser'
+//
+// Every attempt is logged to scrape_log with caller='context-hub' for audit.
+const _turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced', emDelimiter: '_' });
+function htmlToMarkdown(html, url) {
+  try {
+    const dom = new JSDOM(html, { url });
+    const article = new Readability(dom.window.document).parse();
+    if (!article?.content) return '';
+    return _turndown.turndown(article.content).trim();
+  } catch {
+    return '';
+  }
+}
+
+async function getBrandPageContent(url, { caller = 'context-hub', metadata = {}, jinaTimeout = 15000 } = {}) {
+  // ── Tier A: Jina Reader ──────────────────────────────────────────────────
+  const jinaStart = Date.now();
+  try {
+    const headers = { 'Accept': 'text/plain' };
+    if (process.env.JINA_API_KEY) headers['Authorization'] = `Bearer ${process.env.JINA_API_KEY}`;
+    const ac = new AbortController();
+    const tid = setTimeout(() => ac.abort(), jinaTimeout);
+    let resp;
+    try {
+      resp = await fetch(`https://r.jina.ai/${url}`, { headers, signal: ac.signal });
+    } finally { clearTimeout(tid); }
+    const latencyMs = Date.now() - jinaStart;
+    if (resp.ok) {
+      const markdown = (await resp.text()).trim();
+      const usable = markdown.length > 500;
+      await _logScrape({
+        url, source: 'jina_reader', status_code: resp.status, body_size: markdown.length,
+        latency_ms: latencyMs, success: usable, caller,
+        metadata: { ...metadata, body_sample: markdown.slice(0, 2000) },
+        error: usable ? null : `markdown under threshold (${markdown.length} chars)`,
+      });
+      if (usable) return { success: true, markdown, source: 'jina_reader', latencyMs, error: null };
+    } else {
+      await _logScrape({
+        url, source: 'jina_reader', status_code: resp.status, body_size: 0,
+        latency_ms: latencyMs, success: false, caller, metadata,
+        error: `HTTP ${resp.status}`,
+      });
+    }
+  } catch (e) {
+    await _logScrape({
+      url, source: 'jina_reader', success: false, latency_ms: Date.now() - jinaStart,
+      caller, metadata, error: e.message,
+    });
+  }
+
+  // ── Tier B: forgeScrape → Readability + Turndown ─────────────────────────
+  // forgeScrape logs its own attempts (Tier 1 + Tier 2 rows) — no double-log here.
+  const fetched = await forgeScrape(url, { caller, metadata });
+  if (!fetched.success || !fetched.html) {
+    return { success: false, markdown: null, source: fetched.source, latencyMs: fetched.latencyMs, error: fetched.error || 'forgeScrape returned no html' };
+  }
+  const markdown = htmlToMarkdown(fetched.html, url);
+  if (markdown.length < 200) {
+    return { success: false, markdown: null, source: fetched.source, latencyMs: fetched.latencyMs, error: `Readability extracted ${markdown.length} chars (under threshold)` };
+  }
+  return { success: true, markdown, source: fetched.source, latencyMs: fetched.latencyMs, error: null };
+}
+
+// ── discoverSubpages — sitemap.xml first, link-extraction fallback ─────────
+// Returns up to `max` same-origin URLs likely to contain brand-defining
+// content (about, customers, pricing, integrations, FAQ, etc.). Skips noise
+// (login, legal, blog post slugs, search/tag/category aggregates).
+function rankBrandPages(urls) {
+  const HIGH = /\/(about|story|mission|team|company|why-us|our-)/i;
+  const MED  = /\/(product|service|customer|case-stud|pricing|integration|faq|how-it-works|solution|platform)/i;
+  const SKIP = /\/(login|signup|sign-in|sign-up|legal|privacy|terms|cookie|sitemap|robots|admin|account|password|settings|cart|checkout|search\?|tag\/|tags\/|category\/|categories\/|author\/|feed|rss|wp-json|wp-admin|api\/)/i;
+  const seen = new Set();
+  const scored = [];
+  for (const raw of urls) {
+    const u = raw.replace(/#.*$/, '').replace(/\?.*$/, '');
+    if (!u || seen.has(u) || SKIP.test(u)) continue;
+    seen.add(u);
+    scored.push({ url: u, score: HIGH.test(u) ? 3 : MED.test(u) ? 2 : 1 });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  return scored.map(s => s.url);
+}
+
+async function discoverSubpages(baseUrl, max = 8) {
+  const baseHost = new URL(baseUrl).host;
+  const sameOrigin = (u) => { try { return new URL(u).host === baseHost; } catch { return false; } };
+
+  // Step 1: sitemap.xml (handles sitemapindex by following the first child)
+  try {
+    const sm = await fetch(new URL('/sitemap.xml', baseUrl).href, { signal: AbortSignal.timeout(8000) });
+    if (sm.ok) {
+      let xml = await sm.text();
+      let urls = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m => m[1].trim());
+      if (/<sitemapindex/i.test(xml) && urls.length) {
+        try {
+          const child = await fetch(urls[0], { signal: AbortSignal.timeout(8000) });
+          if (child.ok) {
+            const cx = await child.text();
+            urls = [...cx.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m => m[1].trim());
+          }
+        } catch { /* child fetch failed — fall through with index URLs */ }
+      }
+      const ranked = rankBrandPages(urls.filter(sameOrigin).filter(u => u !== baseUrl && u !== `${baseUrl}/`));
+      if (ranked.length) return ranked.slice(0, max);
+    }
+  } catch { /* sitemap missing/slow — fall through to link extraction */ }
+
+  // Step 2: link extraction from homepage HTML (uses forgeScrape so we get a
+  // rendered DOM if the homepage is a SPA — link maps are usually in the
+  // hydrated nav, not the shell).
+  try {
+    const home = await forgeScrape(baseUrl, { caller: 'context-hub-discover' });
+    if (home.success && home.html) {
+      const origin = new URL(baseUrl).origin;
+      const hrefs = [...home.html.matchAll(/href=["']([^"']+)["']/g)].map(m => m[1])
+        .map(h => h.startsWith('/') ? origin + h : h)
+        .filter(h => /^https?:\/\//i.test(h))
+        .filter(sameOrigin)
+        .filter(h => h !== baseUrl && h !== `${baseUrl}/`);
+      return rankBrandPages(hrefs).slice(0, max);
+    }
+  } catch { /* both discovery paths failed — caller continues with home only */ }
+
+  return [];
 }
 
 // Soft auth — attaches userId if present, continues either way (for public + authed routes)
