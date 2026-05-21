@@ -14282,7 +14282,7 @@ async function _tryUnlocker(url, { format, timeout, country, caller, metadata })
       url, source: 'brightdata_unlocker',
       status_code: resp.status, body_size: responseBody.length, latency_ms: latencyMs,
       success: resp.ok, caller,
-      metadata: { ...(metadata ?? {}), body_sample: resp.ok ? responseBody.slice(0, 2000) : undefined },
+      metadata: { ...(metadata ?? {}), body_sample: resp.ok ? responseBody.slice(0, 15000) : undefined },
       error: resp.ok ? null : `HTTP ${resp.status}: ${responseBody.slice(0, 200)}`,
     });
     if (!resp.ok) {
@@ -14320,16 +14320,20 @@ async function _tryScrapingBrowser(url, { timeout, caller, metadata }) {
       if (['image', 'stylesheet', 'font', 'media'].includes(type)) req.abort();
       else req.continue();
     });
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout });
-    // Best-effort: wait for the SPA mount point to hydrate. If the heuristic
-    // doesn't fire within 10s, proceed anyway — some sites hydrate weirdly
-    // and we'd rather take what we can get than fail entirely.
+    await page.goto(url, { waitUntil: 'networkidle2', timeout });
+    // Wait for actual article-shaped content, not just any DOM. The previous
+    // heuristic (root has children + 1KB innerHTML) fires the moment the
+    // layout shell mounts — well before the article body actually renders,
+    // which is why Tier 2 was returning 10KB pages with no article in them.
+    // Now: require an h1 with real text AND at least 3 paragraphs. If that
+    // doesn't fire within 15s we take what we have rather than fail.
     try {
       await page.waitForFunction(() => {
-        const root = document.querySelector('#root, #__next, #app, #svelte, #nuxt');
-        return root && root.children.length > 0 && root.innerHTML.length > 1000;
-      }, { timeout: 10_000 });
-    } catch { /* hydration heuristic didn't fire — continue */ }
+        const h1 = document.querySelector('h1');
+        const paragraphs = document.querySelectorAll('p').length;
+        return h1 && h1.textContent.trim().length > 10 && paragraphs >= 3;
+      }, { timeout: 15_000 });
+    } catch { /* content heuristic didn't fire — continue with what we have */ }
     const html = await page.content();
     await browser.close();
     browser = null;
@@ -14338,7 +14342,7 @@ async function _tryScrapingBrowser(url, { timeout, caller, metadata }) {
       url, source: 'brightdata_browser',
       status_code: 200, body_size: html.length, latency_ms: latencyMs,
       success: true, caller,
-      metadata: { ...(metadata ?? {}), body_sample: html.slice(0, 2000) },
+      metadata: { ...(metadata ?? {}), body_sample: html.slice(0, 15000) },
     });
     return { success: true, status: 200, html, source: 'brightdata_browser', latencyMs, error: null };
   } catch (e) {
