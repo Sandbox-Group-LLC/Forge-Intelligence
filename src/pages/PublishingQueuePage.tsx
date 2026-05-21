@@ -33,9 +33,15 @@ const Archive = () => (
   </svg>
 );
 
-const Trash = () => (
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+const Unplug = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <path d="m19 5 3-3"/>
+    <path d="m2 22 3-3"/>
+    <path d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z"/>
+    <path d="M7.5 13.5 10 11"/>
+    <path d="M10.5 16.5 13 14"/>
+    <path d="m12 6 6 6"/>
+    <path d="M17.5 6.5a2.4 2.4 0 0 0 0-3.4l0 0a2.4 2.4 0 0 0-3.4 0L12 5.2 18 11l2.1-2.1a2.4 2.4 0 0 0 0-3.4Z"/>
   </svg>
 );
 const Link2 = () => (
@@ -1413,8 +1419,8 @@ ${authorFooterHtml}
                           <Archive />
                         </button>
                       )}
-                      <button className="pq-icon-btn danger" title="Remove from queue" aria-label="Remove this item from the queue" onClick={() => openDeleteModal(item)}>
-                        <Trash />
+                      <button className="pq-icon-btn danger" title="Unpublish by channel" aria-label="Unpublish this content from one or more channels" onClick={() => openDeleteModal(item)}>
+                        <Unplug />
                       </button>
                     </div>
                   </div>
@@ -1746,8 +1752,8 @@ return (
                           <Archive />
                         </button>
                       )}
-                      <button className="pq-icon-btn danger" title="Remove from queue" aria-label="Remove this item from the queue" onClick={() => openDeleteModal(item)}>
-                        <Trash />
+                      <button className="pq-icon-btn danger" title="Unpublish by channel" aria-label="Unpublish this content from one or more channels" onClick={() => openDeleteModal(item)}>
+                        <Unplug />
                       </button>
                     </div>
                   </div>
