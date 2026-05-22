@@ -11008,7 +11008,7 @@ Hard rules:
 
 Output only the post text.` }]
     });
-    const copy = copyRes.content[0]?.type === 'text' ? copyRes.content[0].text.trim() : '';
+    const copy = stripSocialMarkdown(copyRes.content[0]?.type === 'text' ? copyRes.content[0].text.trim() : '');
     res.json({ success: true, copy });
   } catch(e) {
     res.status(500).json({ error: e.message });
@@ -11295,7 +11295,7 @@ Hard rules:
 
 Output only the post text.` }]
                   });
-                  postText = copyRes.content[0]?.type === 'text' ? copyRes.content[0].text.trim() : '';
+                  postText = stripSocialMarkdown(copyRes.content[0]?.type === 'text' ? copyRes.content[0].text.trim() : '');
                 } catch(e) {
                   postText = `${article.title}\n\n${sections.slice(0,3).map(s => s.heading).filter(Boolean).join(' · ')}\n\nRead more: ${articleUrl}`;
                 }
@@ -11384,7 +11384,7 @@ Hard rules:
 
 Output only the post text.` }]
                 });
-                postText = copyRes.content[0]?.type === 'text' ? copyRes.content[0].text.trim() : '';
+                postText = stripSocialMarkdown(copyRes.content[0]?.type === 'text' ? copyRes.content[0].text.trim() : '');
               } catch(e) {
                 const wordCount2 = sections.reduce((acc, s) => acc + ((s.body || s.content || '').split(' ').length), 0);
                 const readMin = Math.max(2, Math.round(wordCount2 / 200));
@@ -11545,9 +11545,9 @@ Output only the post text.` }]
                 const haiku = await anthropic.messages.create({
                   model: 'claude-haiku-4-5-20251001',
                   max_tokens: 600,
-                  messages: [{ role: 'user', content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant tags. Include the URL ${utmUrl} naturally.\n\nArticle title: ${article.title}\n\nArticle excerpt: ${(article.article_json?.sections?.[0]?.body || '').slice(0, 500)}` }]
+                  messages: [{ role: 'user', content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant tags. Include the URL ${utmUrl} naturally.\n\nPlain text only — Facebook does not render markdown. Do not use # for headings or **double asterisks** for emphasis.\n\nArticle title: ${article.title}\n\nArticle excerpt: ${(article.article_json?.sections?.[0]?.body || '').slice(0, 500)}` }]
                 });
-                fbMessage = haiku.content[0]?.text || fbMessage;
+                fbMessage = stripSocialMarkdown(haiku.content[0]?.text) || fbMessage;
               } catch(e) {
                 console.warn('[FB-ZERNIO] Haiku post copy failed:', e.message);
               }
@@ -11610,9 +11610,9 @@ Output only the post text.` }]
                 const haiku = await anthropic.messages.create({
                   model: 'claude-haiku-4-5-20251001',
                   max_tokens: 600,
-                  messages: [{ role: 'user', content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant tags. Include the URL ${utmUrlWf} naturally.\n\nArticle title: ${article.title}\n\nArticle excerpt: ${(article.article_json?.sections?.[0]?.body || '').slice(0, 500)}` }]
+                  messages: [{ role: 'user', content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant tags. Include the URL ${utmUrlWf} naturally.\n\nPlain text only — Facebook does not render markdown. Do not use # for headings or **double asterisks** for emphasis.\n\nArticle title: ${article.title}\n\nArticle excerpt: ${(article.article_json?.sections?.[0]?.body || '').slice(0, 500)}` }]
                 });
-                fbMessageWf = haiku.content[0]?.text || fbMessageWf;
+                fbMessageWf = stripSocialMarkdown(haiku.content[0]?.text) || fbMessageWf;
               } catch (e) {
                 console.warn('[FB] Haiku post copy failed:', e.message);
               }
@@ -11670,10 +11670,10 @@ Output only the post text.` }]
                 max_tokens: 600,
                 messages: [{
                   role: 'user',
-                  content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant tags. Include the URL on its own line at the end.\n\nArticle title: ${article.title}\nArticle URL: ${utmUrl}`
+                  content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant tags. Include the URL on its own line at the end.\n\nPlain text only — Facebook does not render markdown. Do not use # for headings or **double asterisks** for emphasis.\n\nArticle title: ${article.title}\nArticle URL: ${utmUrl}`
                 }]
               });
-              fbMessage = haiku.content[0]?.text || fbMessage;
+              fbMessage = stripSocialMarkdown(haiku.content[0]?.text) || fbMessage;
             } catch (e) {
               console.warn('[FB] Haiku post copy failed, using fallback:', e.message);
             }
@@ -15815,6 +15815,32 @@ const zernioGuard = (req, res) => {
   }
   return true;
 };
+
+// stripSocialMarkdown — Claude defaults to producing markdown structure
+// (# headings, **bold**) because it's been trained to. Social platforms
+// like Facebook, LinkedIn, X, and Reddit don't render markdown — they
+// show the raw characters. Result: posts that open with a literal '#'
+// and have '**word**' embedded inline.
+//
+// Apply this to any Haiku-generated post copy before sending to a
+// platform that renders plain text. Conservative by design — only
+// strips the two patterns that demonstrably leak (leading H1-H6 and
+// double-asterisk/underscore bold). Single asterisks, backticks, list
+// markers, and link syntax are left intact: they appear naturally in
+// URLs and prose, and stripping them risks corrupting real content.
+//
+// NOT applied to user-supplied postCopy overrides — if a human typed
+// asterisks they wanted them literal.
+function stripSocialMarkdown(text) {
+  if (!text || typeof text !== 'string') return text;
+  return text
+    // Leading H1-H6 markers on any line: "# Heading" → "Heading"
+    .replace(/^[ \t]*#{1,6}[ \t]+/gm, '')
+    // **bold** → bold (non-greedy, single line)
+    .replace(/\*\*([^*\n]+?)\*\*/g, '$1')
+    // __bold__ → bold (less common; Claude uses it occasionally)
+    .replace(/__([^_\n]+?)__/g, '$1');
+}
 
 const callZernio = async (method, path, body) => {
   const url = `https://zernio.com/api/v1${path}`;
