@@ -1,0 +1,223 @@
+/* Docs page — two-column layout, dark theme matching the rest of the app */
+
+.docs-page {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  min-height: 100vh;
+  background: #0a0a0a;
+  color: #e5e5e5;
+}
+
+.docs-empty {
+  padding: 4rem;
+  color: #888;
+}
+
+/* ── Sidebar ────────────────────────────────────────────────────────────── */
+.docs-sidebar {
+  border-right: 1px solid #1f1f1f;
+  padding: 1.5rem 1rem;
+  background: #0a0a0a;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.docs-brand {
+  display: block;
+  color: #fff;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: -0.01em;
+  margin-bottom: 1.5rem;
+}
+.docs-brand:hover { color: #6366F1; }
+
+.docs-sidebar-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #666;
+  text-transform: uppercase;
+  margin-bottom: 0.75rem;
+}
+
+.docs-nav { display: flex; flex-direction: column; gap: 1.25rem; }
+.docs-nav-group { display: flex; flex-direction: column; gap: 2px; }
+
+.docs-nav-cat {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: #888;
+  text-transform: uppercase;
+  margin-bottom: 0.4rem;
+  padding: 0 0.5rem;
+}
+
+.docs-nav-link {
+  display: block;
+  padding: 6px 12px;
+  color: #aaa;
+  text-decoration: none;
+  font-size: 13.5px;
+  border-radius: 5px;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+.docs-nav-link:hover {
+  background: #1a1a1a;
+  color: #fff;
+}
+.docs-nav-link.active {
+  background: #1f1f2e;
+  color: #6366F1;
+  font-weight: 500;
+}
+
+/* ── Main content ───────────────────────────────────────────────────────── */
+.docs-main {
+  padding: 2.5rem 3rem 5rem;
+  overflow-x: hidden;
+}
+
+.docs-article {
+  max-width: 760px;
+  font-size: 15px;
+  line-height: 1.65;
+  color: #d4d4d4;
+}
+
+/* Typography */
+.docs-article h1 {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #fff;
+  margin: 0 0 0.5rem;
+  line-height: 1.2;
+}
+.docs-article h2 {
+  font-size: 22px;
+  font-weight: 600;
+  color: #fff;
+  margin: 2.5rem 0 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid #1a1a1a;
+  letter-spacing: -0.01em;
+}
+.docs-article h2:first-of-type { border-top: none; padding-top: 0; margin-top: 2rem; }
+.docs-article h3 {
+  font-size: 17px;
+  font-weight: 600;
+  color: #fff;
+  margin: 1.75rem 0 0.5rem;
+}
+.docs-article p {
+  margin: 0 0 1rem;
+}
+.docs-article strong { color: #fff; font-weight: 600; }
+.docs-article em { color: #c4c4c4; }
+
+/* Links */
+.docs-article a {
+  color: #6366F1;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(99, 102, 241, 0.3);
+  transition: border-color 0.15s ease;
+}
+.docs-article a:hover {
+  border-bottom-color: #6366F1;
+}
+
+/* Lists */
+.docs-article ul, .docs-article ol {
+  margin: 0.5rem 0 1.25rem;
+  padding-left: 1.5rem;
+}
+.docs-article li { margin-bottom: 0.4rem; }
+.docs-article li > ul, .docs-article li > ol { margin: 0.4rem 0 0.4rem; }
+
+/* Inline code */
+.docs-article :not(pre) > code {
+  background: #1a1a1a;
+  color: #f59e0b;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, monospace;
+  border: 1px solid #2a2a2a;
+}
+
+/* Code blocks rendered by SyntaxHighlighter already get their own styling.
+   The wrapping pre tag (PreTag="div") inherits the SH theme. */
+
+/* Tables */
+.docs-article table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1.25rem 0;
+  font-size: 13.5px;
+}
+.docs-article th, .docs-article td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #1f1f1f;
+}
+.docs-article th {
+  font-weight: 600;
+  color: #fff;
+  background: #131313;
+}
+.docs-article td { color: #c0c0c0; }
+.docs-article tr:last-child td { border-bottom: none; }
+
+/* Blockquote */
+.docs-article blockquote {
+  border-left: 3px solid #f59e0b;
+  padding: 0.5rem 0 0.5rem 1.25rem;
+  margin: 1.25rem 0;
+  color: #c0c0c0;
+  background: #1a1410;
+  border-radius: 0 6px 6px 0;
+}
+.docs-article blockquote p { margin: 0.25rem 0; }
+
+/* hr */
+.docs-article hr {
+  border: none;
+  border-top: 1px solid #1f1f1f;
+  margin: 2.5rem 0;
+}
+
+/* Not-found state */
+.docs-notfound {
+  text-align: center;
+  padding: 4rem 1rem;
+}
+.docs-notfound h1 { color: #fff; margin-bottom: 0.5rem; }
+.docs-notfound p { color: #888; margin-bottom: 1rem; }
+.docs-notfound code { background: #1a1a1a; padding: 2px 6px; border-radius: 4px; color: #f59e0b; }
+.docs-back-link {
+  color: #6366F1;
+  text-decoration: none;
+  font-size: 14px;
+}
+.docs-back-link:hover { text-decoration: underline; }
+
+/* Responsive — single column on narrow screens */
+@media (max-width: 768px) {
+  .docs-page {
+    grid-template-columns: 1fr;
+  }
+  .docs-sidebar {
+    position: static;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid #1f1f1f;
+  }
+  .docs-main { padding: 1.5rem 1.25rem 3rem; }
+  .docs-article h1 { font-size: 26px; }
+  .docs-article h2 { font-size: 19px; }
+}

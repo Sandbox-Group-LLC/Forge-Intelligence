@@ -279,7 +279,7 @@ const CHANNELS: ChannelDef[] = [
         { text: 'In this form, paste the full URL of that endpoint into the "Receiver endpoint URL" field, choose your preferred payload format (HTML, Markdown, or both), and click "Save config".' },
         { text: 'Click "Generate token" to produce a Forge-issued bearer secret. It will be shown ONCE — copy it immediately. Put it in your server\'s environment as FORGE_BEARER_TOKEN (or equivalent) and use it to validate incoming requests.' },
         { text: 'Click "Send test payload" to fire a sample article at your endpoint. If your receiver returns 200 OK, you\'re live.' },
-        { text: 'See docs/MY_WEBSITE_INTEGRATION.md for the full payload schema and copy-paste receiver samples (Node/Express + Next.js + Postgres).' },
+        { text: 'See the My Website docs page for the full payload schema and copy-paste receiver samples (Node/Express + Next.js + Postgres).', url: '/docs/my-website' },
       ],
     },
   },

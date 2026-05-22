@@ -28,6 +28,7 @@ import TopicQueuePage from './pages/TopicQueuePage';
 import ReviewPage from './pages/ReviewPage';
 import PrivacyPage from './pages/PrivacyPage';
 import TermsPage from './pages/TermsPage';
+import DocsPage from './pages/DocsPage';
 import AcceptableUsePage from './pages/AcceptableUsePage';
 import EmailCampaignPage from './pages/EmailCampaignPage';
 import QuickStartPage from './pages/QuickStartPage';
@@ -108,6 +109,8 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/acceptable-use" element={<AcceptableUsePage />} />
+        <Route path="/docs" element={<DocsPage />} />
+        <Route path="/docs/:slug" element={<DocsPage />} />
         <Route path="/product" element={<Product />} />
           <Route path="/faq" element={<Faq />} />
         <Route path="/welcome" element={<WelcomePage />} />
