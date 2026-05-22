@@ -11563,6 +11563,11 @@ Output only the post text.` }]
                 status: 'published',
                 url: zr.postUrl,
                 postId: zr.postId,
+                // Zernio's internal _id — needed by analytics sync for Zernio lookups.
+                // Zernio's /analytics endpoint expects this, NOT the Facebook platform URN
+                // (pageId_postId). Without it, the sync hits 404 on every Zernio-published
+                // Facebook post — which is what was happening before this was added.
+                zernioPostId: zr.zernioPostId,
                 via: 'zernio',
                 utmParams
               };
@@ -12464,15 +12469,25 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
         try {
           const rd = row.response_data || {};
           const postId = rd.postId || rd.post_id || rd.id;
+          // Zernio's internal _id (separate from the Facebook platform URN).
+          // Populated for posts published after the zernioPostId capture landed
+          // in the publish handler. Older Zernio posts have null here and route
+          // to the legacy Graph API fallback below.
+          const zernioPostId = rd.zernioPostId || rd.zernio_post_id || null;
           if (!postId) { errors.push({ contentId: row.content_id, error: 'no_post_id' }); continue; }
 
           let impressions = 0, clicks = 0, reactions = 0, comments = 0, reposts = 0;
           let rawData = {};
           let dataSource = 'none';
 
-          if (fbIsZernio) {
-            const analyticsRes = await callZernio('GET', `/analytics?postId=${encodeURIComponent(postId)}`);
-            console.log(`[Analytics/Facebook] Zernio analytics for ${postId}: HTTP ${analyticsRes.status}`);
+          // Use Zernio analytics ONLY when this specific post has a Zernio _id —
+          // Zernio's /analytics endpoint expects its internal _id, NOT the
+          // Facebook platform URN (pageId_postId). Posts published before the
+          // zernioPostId fix have no _id stored, so they route through the
+          // legacy Graph API fallback even if the brand is Zernio-routed.
+          if (fbIsZernio && zernioPostId) {
+            const analyticsRes = await callZernio('GET', `/analytics?postId=${encodeURIComponent(zernioPostId)}`);
+            console.log(`[Analytics/Facebook] Zernio analytics for ${zernioPostId} (URN ${postId}): HTTP ${analyticsRes.status}`);
 
             if (analyticsRes.status === 202) {
               await pool.query(
