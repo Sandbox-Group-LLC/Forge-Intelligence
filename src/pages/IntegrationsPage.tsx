@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { AppShell } from '../layouts/AppShell';
 import GateModal from '../components/GateModal';
 import { useApp } from '../context/AppContext';
+import MyWebsiteForm from '../components/MyWebsiteForm';
 import './IntegrationsPage.css';
 
 // ── Icons ────────────────────────────────────────────────────────────────────
@@ -80,7 +81,7 @@ function SetupGuide({ guide }: { guide: SetupGuide }) {
 }
 
 // ── Channel definitions ───────────────────────────────────────────────────────
-type ChannelId = 'wordpress' | 'webflow' | 'linkedin' | 'x' | 'facebook' | 'reddit' | 'medium' | 'ghost';
+type ChannelId = 'wordpress' | 'webflow' | 'linkedin' | 'x' | 'facebook' | 'reddit' | 'medium' | 'ghost' | 'website';
 
 interface ChannelDef {
   id: ChannelId;
@@ -263,6 +264,25 @@ const CHANNELS: ChannelDef[] = [
       ],
     },
   },
+  {
+    id: 'website',
+    label: 'My Website',
+    description: 'Publish Forge articles to your own self-hosted site via an authenticated webhook. Forge POSTs the article payload to an endpoint you control.',
+    color: '#6366F1',
+    logo: 'My',
+    liveStatus: 'live',
+    credentialFields: [],
+    setupGuide: {
+      title: 'Self-hosted webhook',
+      steps: [
+        { text: 'Add an authenticated POST endpoint to your site (e.g. /api/forge/publish). It accepts a JSON payload and validates the Authorization: Bearer header against a token you control.' },
+        { text: 'In this form, paste the full URL of that endpoint into the "Receiver endpoint URL" field, choose your preferred payload format (HTML, Markdown, or both), and click "Save config".' },
+        { text: 'Click "Generate token" to produce a Forge-issued bearer secret. It will be shown ONCE — copy it immediately. Put it in your server\'s environment as FORGE_BEARER_TOKEN (or equivalent) and use it to validate incoming requests.' },
+        { text: 'Click "Send test payload" to fire a sample article at your endpoint. If your receiver returns 200 OK, you\'re live.' },
+        { text: 'See docs/MY_WEBSITE_INTEGRATION.md for the full payload schema and copy-paste receiver samples (Node/Express + Next.js + Postgres).' },
+      ],
+    },
+  },
 ];
 
 const DEFAULT_UTM: Record<ChannelId, Record<string, string>> = {
@@ -274,6 +294,7 @@ const DEFAULT_UTM: Record<ChannelId, Record<string, string>> = {
   reddit:    { utm_source: 'reddit',   utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   medium:    { utm_source: 'medium',   utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   ghost:     { utm_source: 'ghost',    utm_medium: 'blog',   utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
+  website:   { utm_source: 'website',  utm_medium: 'blog',   utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
 };
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -438,11 +459,11 @@ export default function IntegrationsPage() {
   
   const selectedBrand = activeBrand?.id || '';
   const [savedChannels, setSavedChannels] = useState<Record<ChannelId, SavedChannel | null>>({
-    wordpress: null, webflow: null, linkedin: null, x: null, facebook: null, reddit: null, medium: null, ghost: null
+    wordpress: null, webflow: null, linkedin: null, x: null, facebook: null, reddit: null, medium: null, ghost: null, website: null
   });
   const [expanded, setExpanded] = useState<ChannelId | null>(null);
   const [credentials, setCredentials] = useState<Record<ChannelId, Record<string, string>>>({
-    wordpress: {}, webflow: {}, linkedin: {}, x: {}, facebook: {}, reddit: {}, medium: {}, ghost: {}
+    wordpress: {}, webflow: {}, linkedin: {}, x: {}, facebook: {}, reddit: {}, medium: {}, ghost: {}, website: {}
   });
   const [utmTemplates, setUtmTemplates] = useState<Record<ChannelId, Record<string, string>>>(DEFAULT_UTM);
   const [saving, setSaving] = useState<ChannelId | null>(null);
@@ -469,7 +490,7 @@ export default function IntegrationsPage() {
       .then(d => {
         if (d.success) {
           const map: Record<ChannelId, SavedChannel | null> = {
-            wordpress: null, webflow: null, linkedin: null, x: null, facebook: null, reddit: null, medium: null, ghost: null
+            wordpress: null, webflow: null, linkedin: null, x: null, facebook: null, reddit: null, medium: null, ghost: null, website: null
           };
           for (const ch of d.channels) map[ch.channel as ChannelId] = ch;
           setSavedChannels(map);
@@ -804,8 +825,17 @@ export default function IntegrationsPage() {
                       />
                     )}
 
+                    {/* My Website — fully custom form (URL + format + generate token + test) */}
+                    {ch.id === 'website' && selectedBrand && (
+                      <MyWebsiteForm
+                        brandProfileId={selectedBrand}
+                        saved={saved as unknown as { credentials?: { endpointUrl?: string; format?: 'html' | 'markdown' | 'both'; bearerToken?: string }; is_active?: boolean; updated_at?: string } | null}
+                        onChange={() => loadChannels(selectedBrand)}
+                      />
+                    )}
+
                     {/* Manual credential fields for non-Pipedream, non-OAuth channels */}
-                    {!ch.oauthFlow && (
+                    {!ch.oauthFlow && ch.id !== 'website' && (
                       <div className="int-form-section">
                         <div className="int-form-label">
                           Credentials
