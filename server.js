@@ -13791,6 +13791,161 @@ app.get('/api/admin/stats', async (req, res) => {
 
 
 // POST /api/admin/seed-brain — pre-seed a brand brain from a URL
+// POST /api/admin/backfill-facebook-zernio-ids — one-shot backfill
+// Repairs publish_log rows for Facebook posts published via Zernio BEFORE
+// the zernioPostId capture landed (PR #111). Those rows have the Facebook
+// platform URN (pageId_postId) in response_data.postId but no zernioPostId,
+// so the analytics sync can't look them up via Zernio's /analytics endpoint
+// (which expects Zernio's internal _id, not the platform URN).
+//
+// Strategy: list the brand's Zernio posts, find each one's platform-specific
+// post ID, match against our stored Facebook URNs, and merge the discovered
+// Zernio _id into response_data.
+//
+// Always defaults to dryRun:true — returns the proposed mapping without
+// touching the database. Call with body {dryRun: false} to actually update.
+//
+// Query: ?adminPassword=<...>
+// Body:  { brandProfileId: string, dryRun?: boolean (default true) }
+//
+// Response:
+//   {
+//     unmappedRows: [{ id, postId, attempted_at }],
+//     zernioPostsScanned: number,
+//     matched: [{ rowId, urn, zernioPostId }],
+//     unmatched: [{ rowId, urn }],
+//     updated: number,
+//     zernioSampleShape: object | null   // first Zernio post raw, for debugging
+//   }
+app.post('/api/admin/backfill-facebook-zernio-ids', async (req, res) => {
+  if (req.query.adminPassword !== process.env.ADMIN_PASSWORD) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const { brandProfileId, dryRun = true } = req.body || {};
+  if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
+  if (!process.env.ZERNIO_API_KEY) return res.status(500).json({ error: 'ZERNIO_API_KEY not configured' });
+
+  try {
+    // 1. Find Facebook publish_log rows missing zernioPostId.
+    const unmappedRes = await pool.query(
+      `SELECT id, content_id, response_data, attempted_at
+       FROM publish_log
+       WHERE brand_profile_id = $1
+         AND channel = 'facebook'
+         AND status = 'published'
+         AND response_data IS NOT NULL
+         AND response_data ->> 'zernioPostId' IS NULL
+         AND response_data ->> 'postId' IS NOT NULL
+       ORDER BY attempted_at DESC`,
+      [brandProfileId]
+    );
+    const unmappedRows = unmappedRes.rows.map(r => ({
+      id: r.id,
+      postId: r.response_data?.postId,
+      attempted_at: r.attempted_at,
+    }));
+    if (!unmappedRows.length) {
+      return res.json({ unmappedRows: [], zernioPostsScanned: 0, matched: [], unmatched: [], updated: 0, message: 'no rows needing backfill' });
+    }
+
+    // 2. Get the brand's Facebook Zernio accountId.
+    const credRes = await pool.query(
+      `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'facebook' AND is_active = true LIMIT 1`,
+      [brandProfileId]
+    );
+    const zernioAccountId = credRes.rows[0]?.credentials?.zernioAccountId;
+    if (!zernioAccountId) return res.status(400).json({ error: 'brand has no Facebook zernioAccountId — not a Zernio brand' });
+
+    // 3. Enumerate the brand's posts from Zernio. Pagination convention is
+    // unverified — try the most common shape (page/limit). Cap at 10 pages
+    // (~1000 posts) so we don't loop forever if the API doesn't paginate as
+    // expected. If we end up with zero posts on page 1, return the raw
+    // response shape for diagnostic.
+    const zernioPosts = [];
+    let zernioSampleShape = null;
+    let page = 1;
+    const PAGE_LIMIT = 10;
+    while (page <= PAGE_LIMIT) {
+      const listRes = await callZernio('GET', `/posts?accountId=${encodeURIComponent(zernioAccountId)}&page=${page}&limit=100`);
+      if (!listRes.ok) {
+        return res.json({
+          error: `Zernio GET /posts returned ${listRes.status}`,
+          zernioRaw: listRes.raw?.slice(0, 500),
+          unmappedRows,
+        });
+      }
+      // Tolerate a few common response shapes.
+      const parsed = listRes.parsed;
+      const batch = Array.isArray(parsed) ? parsed
+        : (parsed?.posts || parsed?.data || parsed?.items || []);
+      if (!zernioSampleShape && batch.length) zernioSampleShape = batch[0];
+      if (!batch.length) break;
+      zernioPosts.push(...batch);
+      if (batch.length < 100) break;
+      page++;
+    }
+
+    // 4. Build a map of every platform postId we can pull off any Zernio post.
+    // Walk each post's platform-specific fields tolerantly — different platforms
+    // surface the ID under different keys (platformPostId, postId, urn, id).
+    const urnToZernioId = new Map();
+    for (const post of zernioPosts) {
+      const zid = post._id || post.id;
+      if (!zid) continue;
+      // Pull every plausible platform-post-id field on the Zernio post.
+      const candidates = [];
+      const platforms = post.platforms || post.platformAnalytics || post.platformPosts || [];
+      for (const p of platforms) {
+        if (p?.platform !== 'facebook') continue;
+        if (p.platformPostId) candidates.push(p.platformPostId);
+        if (p.postId)         candidates.push(p.postId);
+        if (p.id)             candidates.push(p.id);
+        if (p.urn)            candidates.push(p.urn);
+      }
+      // Some Zernio response shapes inline the IDs on the post itself.
+      if (post.platformPostId) candidates.push(post.platformPostId);
+      for (const c of candidates) {
+        if (typeof c === 'string' && c.length) urnToZernioId.set(c, zid);
+      }
+    }
+
+    // 5. Match unmapped rows to discovered Zernio _ids.
+    const matched = [];
+    const unmatched = [];
+    for (const row of unmappedRows) {
+      const zid = urnToZernioId.get(row.postId);
+      if (zid) matched.push({ rowId: row.id, urn: row.postId, zernioPostId: zid });
+      else     unmatched.push({ rowId: row.id, urn: row.postId });
+    }
+
+    // 6. If not a dry run, write the matches back into response_data.
+    let updated = 0;
+    if (!dryRun && matched.length) {
+      for (const m of matched) {
+        await pool.query(
+          `UPDATE publish_log
+           SET response_data = response_data || jsonb_build_object('zernioPostId', $1::text)
+           WHERE id = $2`,
+          [m.zernioPostId, m.rowId]
+        );
+        updated++;
+      }
+    }
+
+    res.json({
+      dryRun,
+      unmappedRows,
+      zernioPostsScanned: zernioPosts.length,
+      matched,
+      unmatched,
+      updated,
+      zernioSampleShape,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/admin/seed-brain', async (req, res) => {
   const { url, brandName } = req.body;
   if (!url) return res.status(400).json({ error: 'url required' });
