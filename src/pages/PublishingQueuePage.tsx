@@ -123,6 +123,7 @@ const CHANNEL_LABELS: Record<string, { label: string; color: string }> = {
   reddit:    { label: 'Reddit',     color: '#FF4500' },
   medium:    { label: 'Medium',     color: '#A8A8A8' },
   ghost:     { label: 'Ghost',      color: '#738A94' },
+  website:   { label: 'My Website', color: '#6366F1' },
 };
 const ALL_CHANNELS = Object.keys(CHANNEL_LABELS);
 
@@ -464,7 +465,7 @@ export default function PublishingQueuePage() {
         .then(r => r.json())
         .then(d => {
           if (d.success) {
-            const PUBLISH_ONLY = ['wordpress','webflow','hubspot','linkedin','x','facebook','reddit','medium','ghost'];
+            const PUBLISH_ONLY = ['wordpress','webflow','hubspot','linkedin','x','facebook','reddit','medium','ghost','website'];
             setConnectedChannels(prev => ({
               ...prev,
               [bid]: d.channels.map((c: ConnectedChannel) => c.channel).filter((ch: string) => PUBLISH_ONLY.includes(ch))

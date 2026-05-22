@@ -258,6 +258,8 @@ export default function Landing() {
             <span style={styles.footerDivider}>·</span>
             <a href="/faq" style={styles.footerLink}>FAQ</a>
             <span style={styles.footerDivider}>·</span>
+            <a href="/docs" style={styles.footerLink}>Docs</a>
+            <span style={styles.footerDivider}>·</span>
             <a href="/acceptable-use" style={styles.footerLink}>Acceptable Use</a>
           </div>
         </div>

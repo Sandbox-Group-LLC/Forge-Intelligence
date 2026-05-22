@@ -10035,6 +10035,153 @@ app.get('/api/publishing/channels/:brandProfileId', requireAuth, async (req, res
 });
 
 // POST /api/publishing/channels — upsert channel connection
+// ── My Website channel (channel = 'website') ─────────────────────────────
+// Lets users publish Forge-generated articles directly to their own
+// self-hosted site via an authenticated webhook. Forge stores three pieces
+// of state per brand under publishing_channels.credentials:
+//
+//   endpointUrl   — full POST target on the user's site
+//   format        — 'html' | 'markdown' | 'both'
+//   bearerToken   — server-generated, prefix `forge_pub_`
+//
+// Token is shown to the user ONCE on generate/rotate, then masked in all
+// subsequent reads. Same pattern as GitHub PATs, Stripe restricted keys.
+//
+// Save / generate / test / delete are split into separate endpoints so the
+// token survives an endpoint-URL edit (it would otherwise be wiped by the
+// wholesale-overwrite in /api/publishing/channels).
+
+// POST /api/integrations/website/:brandProfileId/config
+// Body: { endpointUrl, format }
+// JSONB-merges into credentials so any existing bearerToken is preserved.
+app.post('/api/integrations/website/:brandProfileId/config', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.params;
+  const { endpointUrl, format } = req.body;
+  if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+  if (!endpointUrl || !/^https?:\/\//i.test(endpointUrl)) {
+    return res.status(400).json({ error: 'endpointUrl must be a full http(s) URL' });
+  }
+  if (format && !['html', 'markdown', 'both'].includes(format)) {
+    return res.status(400).json({ error: "format must be 'html', 'markdown', or 'both'" });
+  }
+  try {
+    const merge = { endpointUrl: endpointUrl.replace(/\/+$/, ''), format: format || 'both' };
+    await pool.query(
+      `INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active, updated_at)
+       VALUES ($1, 'website', $2::jsonb, true, NOW())
+       ON CONFLICT (brand_profile_id, channel)
+       DO UPDATE SET credentials = publishing_channels.credentials || $2::jsonb,
+                     is_active = true, updated_at = NOW()`,
+      [brandProfileId, JSON.stringify(merge)]
+    );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/integrations/website/:brandProfileId/generate-token
+// Generates a fresh forge_pub_<32-hex> token, JSONB-merges into credentials,
+// returns the plaintext token EXACTLY ONCE. Caller is responsible for
+// surfacing a "save this now, you won't see it again" UI.
+app.post('/api/integrations/website/:brandProfileId/generate-token', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.params;
+  if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+  try {
+    const bearerToken = `forge_pub_${randomBytes(32).toString('hex')}`;
+    await pool.query(
+      `INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active, updated_at)
+       VALUES ($1, 'website', $2::jsonb, true, NOW())
+       ON CONFLICT (brand_profile_id, channel)
+       DO UPDATE SET credentials = publishing_channels.credentials || $2::jsonb,
+                     is_active = true, updated_at = NOW()`,
+      [brandProfileId, JSON.stringify({ bearerToken })]
+    );
+    res.json({ success: true, bearerToken });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/integrations/website/:brandProfileId/test
+// Sends a sample payload at the configured endpoint with the stored token.
+// Does NOT write to publish_log — this is for user-side validation only.
+// Returns { ok, status, latencyMs, responseBody, error? }.
+app.post('/api/integrations/website/:brandProfileId/test', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.params;
+  if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+  try {
+    const r = await pool.query(
+      `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'website' LIMIT 1`,
+      [brandProfileId]
+    );
+    const creds = r.rows[0]?.credentials || {};
+    if (!creds.endpointUrl) return res.status(400).json({ ok: false, error: 'endpointUrl not configured' });
+    if (!creds.bearerToken) return res.status(400).json({ ok: false, error: 'bearerToken not generated yet' });
+
+    const samplePayload = {
+      test: true,
+      slug: 'forge-test-publish',
+      title: 'Forge Test Publish — Hello from your website integration',
+      excerpt: 'This is a test payload sent from Forge to verify your receiver is wired up correctly. Ignore or delete after confirming.',
+      heroImageUrl: 'https://forgeintelligence.ai/og-default.png',
+      canonical: `${creds.endpointUrl}/articles/forge-test-publish`,
+      publishedAt: new Date().toISOString(),
+      meta: { description: 'Forge test publish', ogImage: 'https://forgeintelligence.ai/og-default.png' },
+      ...(creds.format !== 'markdown' && {
+        html: '<article><h1>Forge Test Publish</h1><h2>Quick sanity check</h2><p>This is the first section of the test article. If you can read this rendered on your site, your receiver is parsing the <code>html</code> field correctly.</p></article>'
+      }),
+      ...(creds.format !== 'html' && {
+        markdown: '# Forge Test Publish\n\n## Quick sanity check\n\nThis is the first section of the test article. If you can read this rendered on your site, your receiver is parsing the `markdown` field correctly.'
+      }),
+    };
+
+    const start = Date.now();
+    let resp, bodyText = '';
+    try {
+      resp = await fetch(creds.endpointUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${creds.bearerToken}`,
+          'Content-Type': 'application/json',
+          'User-Agent': 'Forge-Intelligence/1.0',
+        },
+        body: JSON.stringify(samplePayload),
+        signal: AbortSignal.timeout(15000),
+      });
+      bodyText = (await resp.text()).slice(0, 2000);
+    } catch (e) {
+      return res.json({ ok: false, error: `request failed: ${e.message}`, latencyMs: Date.now() - start });
+    }
+    res.json({
+      ok: resp.ok,
+      status: resp.status,
+      latencyMs: Date.now() - start,
+      responseBody: bodyText,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// DELETE /api/integrations/website/:brandProfileId
+// Soft-disconnect — marks is_active = false but preserves credentials so a
+// user who reconnects within the same session doesn't have to regenerate.
+app.delete('/api/integrations/website/:brandProfileId', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.params;
+  if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+  try {
+    await pool.query(
+      `UPDATE publishing_channels SET is_active = false, updated_at = NOW()
+       WHERE brand_profile_id = $1 AND channel = 'website'`,
+      [brandProfileId]
+    );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 app.post('/api/publishing/channels', requireAuth, async (req, res) => {
   const { brandProfileId, channel, credentials, utmTemplate } = req.body;
   if (!brandProfileId || !channel) return res.status(400).json({ error: 'brandProfileId and channel required' });
@@ -11533,7 +11680,7 @@ Output only the post text.` }]
 
           // ── Priority 0: Zernio publish path ──
           if (creds.zernioAccountId) {
-            const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
+            const articleUrl = forgeArticleUrl;
             const utmUrl = `${articleUrl}${utmString ? '?' + utmString : ''}`;
             const fbPostCopyOverride = (req.body.postCopy || {})[channel];
             let fbMessage;
@@ -11598,7 +11745,7 @@ Output only the post text.` }]
           // existing Connect flow when the customer authorized Pipedream's pre-approved app).
           const pipedreamWorkflowUrl = process.env.FACEBOOK_PIPEDREAM_WORKFLOW_URL;
           if (pipedreamWorkflowUrl && pipedreamAccountId) {
-            const articleUrlWf = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
+            const articleUrlWf = forgeArticleUrl;
             const utmUrlWf = `${articleUrlWf}${utmString ? '?' + utmString : ''}`;
             const fbPostCopyOverrideWf = (req.body.postCopy || {})[channel];
             let fbMessageWf;
@@ -11652,7 +11799,7 @@ Output only the post text.` }]
 
           // Legacy path: pipedreamProxy via Pipedream Connect (existing infrastructure) — falls through if no workflow URL.
                     
-          const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
+          const articleUrl = forgeArticleUrl;
           const utmUrl = `${articleUrl}${utmString ? '?' + utmString : ''}`;
 
           // Priority 1: user-edited/generated post copy from the UI.
@@ -11759,7 +11906,7 @@ Output only the post text.` }]
             throw new Error(`Subreddit '${requestedSub}' is not in your allowed list. Add it under Integrations → Reddit → Allowed subreddits before publishing.`);
           }
 
-          const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
+          const articleUrl = forgeArticleUrl;
           const utmUrl = `${articleUrl}${utmString ? '?' + utmString : ''}`;
 
           // For Reddit link posts, `content` is the post TITLE (not a body). Reddit titles
@@ -11862,7 +12009,7 @@ Output only the post text.` }]
           const authorId = meData.data?.id;
           if (!authorId) throw new Error('Could not retrieve Medium author ID');
 
-          const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
+          const articleUrl = forgeArticleUrl;
           const utmUrl = `${articleUrl}${utmString ? '?' + utmString : ''}`;
 
           // Build HTML content from article sections
@@ -11959,6 +12106,80 @@ ${canonicalNote}`,
 
           const ghostPost = ghostData.posts?.[0];
           results[channel] = { status: 'published', url: ghostPost?.url, postId: ghostPost?.id, utmParams };
+
+        } else if (channel === 'website') {
+          // ── My Website webhook publish ──
+          // POSTs the article to the customer-configured endpoint with a
+          // bearer token. The customer's receiver is responsible for storing
+          // / rendering the content. We include both html and markdown in
+          // the payload by default (format='both'); customers can narrow
+          // to one if they want a smaller payload.
+          if (!creds.endpointUrl) throw new Error('My Website: endpointUrl not configured');
+          if (!creds.bearerToken) throw new Error('My Website: bearerToken not generated');
+
+          const articleJson = article.article_json || {};
+          const sections = articleJson.sections || [];
+          const htmlContent = sections.map(s =>
+            `${s.heading ? `<h2>${s.heading}</h2>` : ''}<p>${s.body || s.content || ''}</p>`
+          ).join('\n');
+          const markdownContent = sections.map(s =>
+            `${s.heading ? `## ${s.heading}\n\n` : ''}${s.body || s.content || ''}`
+          ).join('\n\n');
+          // Prefer the article's own meta description for excerpt — it's the
+          // hand-curated short summary. Falls back to a slice of the first
+          // section body only when the description is missing. Without this
+          // preference, receivers that render `excerpt` as a subtitle/lead
+          // end up showing the first paragraph twice (once as subtitle,
+          // once as the opening body paragraph).
+          const excerpt = (articleJson.metaDescription || '').trim()
+            || (sections[0]?.body || sections[0]?.content || '').replace(/<[^>]+>/g, '').slice(0, 200);
+
+          const payload = {
+            slug: articleSlug,
+            title: article.title,
+            excerpt,
+            heroImageUrl: article.hero_image_url || articleJson.hero_image_url || null,
+            canonical: forgeArticleUrl,
+            publishedAt: new Date().toISOString(),
+            meta: {
+              description: articleJson.metaDescription || excerpt,
+              ogImage: article.hero_image_url || articleJson.hero_image_url || null,
+              utm: utmParams,
+            },
+            ...(creds.format !== 'markdown' && { html: htmlContent }),
+            ...(creds.format !== 'html' && { markdown: markdownContent }),
+          };
+
+          const start = Date.now();
+          const r = await fetch(creds.endpointUrl, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${creds.bearerToken}`,
+              'Content-Type': 'application/json',
+              'User-Agent': 'Forge-Intelligence/1.0',
+            },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(30000),
+          });
+          const respText = (await r.text()).slice(0, 2000);
+          if (!r.ok) throw new Error(`Receiver returned HTTP ${r.status}: ${respText.slice(0, 300)}`);
+
+          // If the receiver returns JSON with a `url` field, use it as the
+          // published_url so the Publishing Queue's "View on site" link works.
+          let publishedUrl = null;
+          try {
+            const parsed = JSON.parse(respText);
+            if (typeof parsed?.url === 'string') publishedUrl = parsed.url;
+          } catch { /* receiver returned non-JSON, that's fine */ }
+          if (!publishedUrl) publishedUrl = payload.canonical;
+
+          results[channel] = {
+            status: 'published',
+            url: publishedUrl,
+            postId: payload.slug,
+            latencyMs: Date.now() - start,
+            utmParams,
+          };
 
         } else {
           results[channel] = { status: 'error', error: `Unknown channel: ${channel}` };

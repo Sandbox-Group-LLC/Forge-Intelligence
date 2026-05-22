@@ -767,12 +767,53 @@ export default function BrandSettingsPage() {
                   <h2 className="bs-section-title">Publishing</h2>
                   <p className="bs-section-sub">Configure where your articles live and how URLs are built.</p>
                 </div>
+
+                {/* Hosting destinations callout — surfaces the default (Forge-
+                    hosted) behavior up front so users aren't surprised when
+                    articles publish to forgeintelligence.ai/articles/<brand>
+                    after they expected to see them on their own domain.
+                    Uses theme CSS vars so it matches Brand Settings' light
+                    palette instead of fighting it. */}
+                <div style={{
+                  background: 'var(--color-accent-muted)',
+                  border: '1px solid var(--color-border-subtle)',
+                  borderRadius: 'var(--radius-md, 8px)',
+                  padding: '14px 16px',
+                  marginBottom: 20,
+                  fontSize: 13.5,
+                  lineHeight: 1.55,
+                  color: 'var(--color-text-secondary)',
+                }}>
+                  <div style={{ fontWeight: 600, color: 'var(--color-text-emphasis)', marginBottom: 6 }}>
+                    Where will my articles live?
+                  </div>
+                  <p style={{ margin: '0 0 8px' }}>
+                    <strong style={{ color: 'var(--color-text-emphasis)' }}>By default, Forge hosts your articles</strong> at{' '}
+                    <code style={{ background: 'var(--color-bg-elevated)', padding: '2px 5px', borderRadius: 3, fontSize: 12, color: 'var(--color-accent)', wordBreak: 'break-all' }}>
+                      forgeintelligence.ai/articles/&lt;brand&gt;/&lt;slug&gt;
+                    </code>
+                    . That's the destination if both fields below are blank and you haven't connected the My Website integration.
+                  </p>
+                  <p style={{ margin: '6px 0 4px', color: 'var(--color-text-muted)' }}>Two ways to host on your own domain instead:</p>
+                  <ol style={{ margin: '4px 0 0', paddingLeft: 20 }}>
+                    <li style={{ marginBottom: 4 }}>
+                      <strong style={{ color: 'var(--color-text-emphasis)' }}>Set Article Base URL below.</strong> Forge still hosts the article HTML, but every URL we publish (canonical tags, social posts, UTM destinations) uses your domain. You configure a redirect or reverse-proxy on your side to serve the Forge-hosted content.
+                    </li>
+                    <li>
+                      <strong style={{ color: 'var(--color-text-emphasis)' }}>Connect the My Website integration.</strong> Forge pushes the article payload to a receiver on your site; you store and render it natively — no proxy needed.{' '}
+                      <a href="/docs/my-website" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent)', textDecoration: 'none', borderBottom: '1px solid var(--color-accent-muted)', fontWeight: 600 }}>
+                        Docs →
+                      </a>
+                    </li>
+                  </ol>
+                </div>
+
                 <div className="bs-fields">
                   <div className="bs-field">
                     <label className="bs-label">Article Base URL <span className="bs-optional">BYO domain</span></label>
                     <input className="bs-input" value={form.article_base_url || ''} onChange={e => set('article_base_url', e.target.value)} placeholder="https://yoursite.com/articles" />
                     <span className="bs-field-hint">
-                      Leave blank to use Forge-hosted article pages at <code>forgeintelligence.ai/articles</code>.
+                      Leave blank to publish to Forge-hosted article pages at <code>forgeintelligence.ai/articles</code>.
                       Set this to your own domain and Forge will build all article URLs, UTM links, and canonical tags using it.
                     </span>
                   </div>
