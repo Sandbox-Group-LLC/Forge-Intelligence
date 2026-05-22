@@ -11680,7 +11680,7 @@ Output only the post text.` }]
 
           // ── Priority 0: Zernio publish path ──
           if (creds.zernioAccountId) {
-            const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
+            const articleUrl = forgeArticleUrl;
             const utmUrl = `${articleUrl}${utmString ? '?' + utmString : ''}`;
             const fbPostCopyOverride = (req.body.postCopy || {})[channel];
             let fbMessage;
@@ -11745,7 +11745,7 @@ Output only the post text.` }]
           // existing Connect flow when the customer authorized Pipedream's pre-approved app).
           const pipedreamWorkflowUrl = process.env.FACEBOOK_PIPEDREAM_WORKFLOW_URL;
           if (pipedreamWorkflowUrl && pipedreamAccountId) {
-            const articleUrlWf = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
+            const articleUrlWf = forgeArticleUrl;
             const utmUrlWf = `${articleUrlWf}${utmString ? '?' + utmString : ''}`;
             const fbPostCopyOverrideWf = (req.body.postCopy || {})[channel];
             let fbMessageWf;
@@ -11799,7 +11799,7 @@ Output only the post text.` }]
 
           // Legacy path: pipedreamProxy via Pipedream Connect (existing infrastructure) — falls through if no workflow URL.
                     
-          const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
+          const articleUrl = forgeArticleUrl;
           const utmUrl = `${articleUrl}${utmString ? '?' + utmString : ''}`;
 
           // Priority 1: user-edited/generated post copy from the UI.
@@ -11906,7 +11906,7 @@ Output only the post text.` }]
             throw new Error(`Subreddit '${requestedSub}' is not in your allowed list. Add it under Integrations → Reddit → Allowed subreddits before publishing.`);
           }
 
-          const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
+          const articleUrl = forgeArticleUrl;
           const utmUrl = `${articleUrl}${utmString ? '?' + utmString : ''}`;
 
           // For Reddit link posts, `content` is the post TITLE (not a body). Reddit titles
@@ -12009,7 +12009,7 @@ Output only the post text.` }]
           const authorId = meData.data?.id;
           if (!authorId) throw new Error('Could not retrieve Medium author ID');
 
-          const articleUrl = `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`;
+          const articleUrl = forgeArticleUrl;
           const utmUrl = `${articleUrl}${utmString ? '?' + utmString : ''}`;
 
           // Build HTML content from article sections
@@ -12139,7 +12139,7 @@ ${canonicalNote}`,
             title: article.title,
             excerpt,
             heroImageUrl: article.hero_image_url || articleJson.hero_image_url || null,
-            canonical: `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`,
+            canonical: forgeArticleUrl,
             publishedAt: new Date().toISOString(),
             meta: {
               description: articleJson.metaDescription || excerpt,
