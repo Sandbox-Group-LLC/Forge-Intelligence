@@ -98,6 +98,39 @@ export default function MyWebsiteForm({ brandProfileId, saved, onChange }: MyWeb
 
   return (
     <div className="int-form-section int-website-form">
+      {/* Docs callout — prominent because this integration requires the
+          customer to implement a receiver on their side, and they need
+          the payload schema + sample code to do it right. */}
+      <div style={{
+        padding: '10px 14px',
+        background: '#1a1a2e',
+        border: '1px solid #2a2a4a',
+        borderRadius: 6,
+        marginBottom: 20,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        fontSize: 13,
+      }}>
+        <span style={{ color: '#aaa' }}>
+          Setting this up requires implementing a receiver on your site.
+        </span>
+        <a
+          href="/docs/my-website"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            color: '#6366F1',
+            textDecoration: 'none',
+            fontWeight: 600,
+            whiteSpace: 'nowrap',
+            borderBottom: '1px solid rgba(99, 102, 241, 0.4)',
+          }}
+        >
+          Read the docs →
+        </a>
+      </div>
+
       {/* Endpoint URL */}
       <div className="int-form-label">Receiver endpoint URL</div>
       <input
