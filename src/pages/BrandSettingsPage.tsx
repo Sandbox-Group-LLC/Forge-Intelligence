@@ -789,7 +789,7 @@ export default function BrandSettingsPage() {
                   </div>
                   <p style={{ margin: '0 0 8px' }}>
                     <strong style={{ color: 'var(--color-text-emphasis)' }}>By default, Forge hosts your articles</strong> at{' '}
-                    <code style={{ background: 'var(--color-bg-elevated)', padding: '2px 5px', borderRadius: 3, fontSize: 12, color: 'var(--color-accent)' }}>
+                    <code style={{ background: 'var(--color-bg-elevated)', padding: '2px 5px', borderRadius: 3, fontSize: 12, color: 'var(--color-accent)', wordBreak: 'break-all' }}>
                       forgeintelligence.ai/articles/&lt;brand&gt;/&lt;slug&gt;
                     </code>
                     . That's the destination if both fields below are blank and you haven't connected the My Website integration.

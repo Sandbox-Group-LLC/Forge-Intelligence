@@ -177,6 +177,7 @@
   padding: 1px 5px;
   border-radius: 3px;
   color: var(--color-accent);
+  word-break: break-all;
 }
 
 /* URL preview */
