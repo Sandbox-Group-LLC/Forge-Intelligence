@@ -12125,7 +12125,14 @@ ${canonicalNote}`,
           const markdownContent = sections.map(s =>
             `${s.heading ? `## ${s.heading}\n\n` : ''}${s.body || s.content || ''}`
           ).join('\n\n');
-          const excerpt = (sections[0]?.body || sections[0]?.content || '').replace(/<[^>]+>/g, '').slice(0, 200);
+          // Prefer the article's own meta description for excerpt — it's the
+          // hand-curated short summary. Falls back to a slice of the first
+          // section body only when the description is missing. Without this
+          // preference, receivers that render `excerpt` as a subtitle/lead
+          // end up showing the first paragraph twice (once as subtitle,
+          // once as the opening body paragraph).
+          const excerpt = (articleJson.metaDescription || '').trim()
+            || (sections[0]?.body || sections[0]?.content || '').replace(/<[^>]+>/g, '').slice(0, 200);
 
           const payload = {
             slug: articleSlug,
@@ -12135,7 +12142,7 @@ ${canonicalNote}`,
             canonical: `https://${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}/articles/${brandSlug}/${articleSlug}`,
             publishedAt: new Date().toISOString(),
             meta: {
-              description: articleJson.meta_description || excerpt,
+              description: articleJson.metaDescription || excerpt,
               ogImage: article.hero_image_url || articleJson.hero_image_url || null,
               utm: utmParams,
             },
