@@ -76,7 +76,7 @@ function sameDay(a: Date, b: Date): boolean {
 
 function CalendarPage() {
   useWideLayout();
-  const { activeBrand } = useApp();
+  const { activeBrand, reportError } = useApp();
   const [items, setItems] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [viewDate, setViewDate] = useState(() => {
@@ -102,7 +102,7 @@ function CalendarPage() {
         else if (Array.isArray(d.queue)) setItems(d.queue);
         else if (Array.isArray(d)) setItems(d);
       })
-      .catch(err => console.error('[calendar] fetch failed:', err))
+      .catch(err => { console.error('[calendar] fetch failed:', err); reportError(err, { area: 'calendar' }); })
       .finally(() => setLoading(false));
   }, [activeBrand?.id]);
 

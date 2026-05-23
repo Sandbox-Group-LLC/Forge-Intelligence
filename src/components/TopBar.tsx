@@ -1,6 +1,7 @@
 import { useUser, SignOutButton, SignedIn, SignedOut } from '@clerk/clerk-react';
 import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
+import AlertsBell from './AlertsBell';
 import './TopBar.css';
 
 // Lucide-style icons
@@ -229,6 +230,9 @@ export function TopBar({ pageTitle }: { pageTitle?: string }) {
             </span>
           </div>
         )}
+        <SignedIn>
+          <AlertsBell />
+        </SignedIn>
         <div className="user-area" style={{ position: 'relative' }} ref={menuRef}>
           <SignedOut>
             <a href="https://accounts.forgeintelligence.ai/sign-in" style={{ fontSize: '0.875rem', color: '#ffffff', textDecoration: 'none', fontWeight: 600, padding: '8px 20px', background: 'var(--color-accent)', border: 'none', borderRadius: 8, display: 'inline-block' }}>

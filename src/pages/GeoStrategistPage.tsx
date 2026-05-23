@@ -76,7 +76,7 @@ const STAGES = [
 ];
 
 function GeoStrategistContent() {
-  const { setCurrentView, historyEntries, activeBrand, authToken } = useApp();
+  const { setCurrentView, historyEntries, activeBrand, authToken, reportError } = useApp();
   const { getToken } = useAuth();
   const [selectedBrainId, setSelectedBrainId] = useState('');
   const [isRunning, setIsRunning] = useState(false);
@@ -216,6 +216,7 @@ function GeoStrategistContent() {
     } catch(e: any) {
       // Preserve the full error object + stack in console so a repeat is diagnosable
       console.error('[buildBriefsForSelected] failed:', e, { name: e?.name, message: e?.message });
+      reportError(e, { area: 'geo-strategist' });
       setBriefBuildError(e?.message || 'Brief build failed — check console for details.');
     } finally {
       setBuildingBriefs(false);

@@ -834,6 +834,7 @@ function SocialGeneratorContent() {
 
 // ─── Post card with inline edit + queue ─────────────────────────────────────
 function PostCard({ post, authToken, xConnected, onUpdate }: { post: SocialPost; authToken: string | null; xConnected: boolean; onUpdate: (p: SocialPost) => void }) {
+  const { reportError } = useApp();
   const [isEditing, setIsEditing] = useState(false);
   const [editedBody, setEditedBody] = useState(post.user_edited_body || post.body);
   const [saving, setSaving] = useState(false);
@@ -881,6 +882,7 @@ function PostCard({ post, authToken, xConnected, onUpdate }: { post: SocialPost;
       // AbortError fires when the user dismisses the share sheet — not an error to surface.
       if (e instanceof Error && e.name === 'AbortError') return;
       console.error('[share-image] failed:', e);
+      reportError(e, { area: 'social-generator' });
       alert(`Couldn't share the image: ${e instanceof Error ? e.message : 'unknown error'}`);
     }
   };
