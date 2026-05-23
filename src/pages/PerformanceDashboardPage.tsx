@@ -114,7 +114,7 @@ function Sparkline({ data, key: _k }: { data: number[]; key?: string }) {
 
 
 export default function PerformanceDashboardPage() {
-  const { isPaid, brandLoading, activeBrand, authToken } = useApp();
+  const { isPaid, brandLoading, activeBrand, authToken, reportError } = useApp();
   
   // brandProfileId and ah computed before hooks — not hooks themselves
   const brandProfileId = activeBrand?.id ?? '';
@@ -356,7 +356,7 @@ export default function PerformanceDashboardPage() {
       const r = await fetch(`/api/analytics/webflow-seo/${brandProfileId}`, { headers: h });
       const d = await r.json();
       if (d.success) setWfSeo(d);
-    } catch(e) { console.error('Webflow SEO fetch error:', e); }
+    } catch(e) { console.error('Webflow SEO fetch error:', e); reportError(e, { area: 'performance' }); }
     finally { setWfSeoLoading(false); }
   };
 

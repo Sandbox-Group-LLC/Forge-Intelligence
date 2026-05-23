@@ -455,7 +455,7 @@ function RedditAllowedSubreddits({
 }
 
 export default function IntegrationsPage() {
-  const { isPaid, brandLoading, activeBrand } = useApp();
+  const { isPaid, brandLoading, activeBrand, reportError } = useApp();
   
   const selectedBrand = activeBrand?.id || '';
   const [savedChannels, setSavedChannels] = useState<Record<ChannelId, SavedChannel | null>>({
@@ -616,6 +616,7 @@ export default function IntegrationsPage() {
       } catch(e: any) {
         console.error('[Pipedream Connect Catch]', e);
         if (e?.message !== 'User closed the connect dialog') {
+          reportError(e, { area: 'integrations' });
           setError(`Could not connect ${channel.label}: ${e?.message || JSON.stringify(e)}`);
         }
       }

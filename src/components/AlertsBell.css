@@ -1,0 +1,208 @@
+/* AlertsBell — bell icon + dropdown panel.
+   Matches the visual language of TopBar.tsx's brand switcher / user menu. */
+
+.alerts-bell-root {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.alerts-bell-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.alerts-bell-btn:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.alerts-bell-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 0 0 2px #0F1720;
+  pointer-events: none;
+}
+
+.alerts-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  max-height: 480px;
+  display: flex;
+  flex-direction: column;
+  background: #1a1f2e;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  overflow: hidden;
+}
+
+.alerts-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.alerts-panel-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.85);
+}
+.alerts-panel-link {
+  background: none;
+  border: none;
+  color: #818CF8;
+  font-size: 0.75rem;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+}
+.alerts-panel-link:hover { color: #A5B4FC; text-decoration: underline; }
+.alerts-panel-meta {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.alerts-help-cta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.18), rgba(99, 102, 241, 0.06));
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+.alerts-help-cta:hover { background: rgba(99, 102, 241, 0.28); }
+.alerts-help-cta-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #ffffff;
+  flex-shrink: 0;
+}
+.alerts-help-cta strong {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.alerts-help-cta-sub {
+  display: block;
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.55);
+  margin-top: 1px;
+}
+
+.alerts-list {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.alerts-empty {
+  padding: 28px 16px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.alerts-row {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.alerts-row:last-child { border-bottom: none; }
+.alerts-row.unread {
+  background: rgba(99, 102, 241, 0.06);
+}
+.alerts-row.unread .alerts-row-msg { color: #ffffff; }
+
+.alerts-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  margin-top: 7px;
+  flex-shrink: 0;
+}
+.alerts-dot.error { background: #ef4444; }
+.alerts-dot.warn  { background: #f59e0b; }
+.alerts-dot.info  { background: #60a5fa; }
+
+.alerts-row-body { min-width: 0; flex: 1; }
+.alerts-row-msg {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.82);
+  line-height: 1.35;
+  word-break: break-word;
+}
+.alerts-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  font-size: 0.68rem;
+}
+.alerts-tag {
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.65);
+  font-family: ui-monospace, monospace;
+}
+.alerts-tag.dim {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.4);
+  padding-left: 0;
+  padding-right: 0;
+}
+.alerts-time {
+  color: rgba(255, 255, 255, 0.4);
+  margin-left: auto;
+}
+
+/* Mobile: anchor panel to the right edge of the viewport */
+@media (max-width: 640px) {
+  .alerts-panel {
+    right: -10px;
+    width: 320px;
+  }
+}

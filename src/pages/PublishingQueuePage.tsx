@@ -177,7 +177,7 @@ interface QueueItem {
 interface ConnectedChannel { channel: string; }
 
 export default function PublishingQueuePage() {
-  const { isPaid, activeBrand, brandLoading, authToken } = useApp();
+  const { isPaid, activeBrand, brandLoading, authToken, reportError } = useApp();
   const activeBrandId = activeBrand?.id ?? null;
   const ah: Record<string, string> = authToken ? { Authorization: `Bearer ${authToken}` } : {};
   
@@ -364,14 +364,14 @@ export default function PublishingQueuePage() {
     try {
       await fetch(`/api/publishing/queue/${item.id}/archive`, { method: 'POST', headers: ah });
       loadQueue();
-    } catch(e) { console.error('Archive failed', e); }
+    } catch(e) { console.error('Archive failed', e); reportError(e, { area: 'publishing-queue' }); }
   };
 
   const unarchiveItem = async (item: QueueItem) => {
     try {
       await fetch(`/api/publishing/queue/${item.id}/unarchive`, { method: 'POST', headers: ah });
       setItems(prev => prev.map(i => i.id === item.id ? { ...i, status: 'staged' } : i));
-    } catch(e) { console.error('Unarchive failed', e); }
+    } catch(e) { console.error('Unarchive failed', e); reportError(e, { area: 'publishing-queue' }); }
   };
 
   const archiveCampaign = async (campId: string, campaignName: string) => {
@@ -387,7 +387,7 @@ export default function PublishingQueuePage() {
       setSuccessMsg(`Campaign archived — ${data.archivedCount} article${data.archivedCount === 1 ? '' : 's'}`);
       setTimeout(() => setSuccessMsg(''), 4000);
       loadQueue();
-    } catch(e) { console.error('Archive campaign failed', e); }
+    } catch(e) { console.error('Archive campaign failed', e); reportError(e, { area: 'publishing-queue' }); }
   };
 
   const unarchiveCampaign = async (campId: string, campaignName: string) => {
@@ -402,7 +402,7 @@ export default function PublishingQueuePage() {
       setSuccessMsg(`Campaign "${campaignName}" restored — ${data.restoredCount} article${data.restoredCount === 1 ? '' : 's'}`);
       setTimeout(() => setSuccessMsg(''), 4000);
       loadQueue();
-    } catch(e) { console.error('Unarchive campaign failed', e); }
+    } catch(e) { console.error('Unarchive campaign failed', e); reportError(e, { area: 'publishing-queue' }); }
   };
 
   const loadQueue = useCallback(async () => {

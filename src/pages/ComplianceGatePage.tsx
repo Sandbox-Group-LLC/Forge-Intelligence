@@ -149,7 +149,7 @@ function HighlightedBody({ body, flag }: { body: string; flag: any }) {
 }
 
 function ComplianceGateContent() {
-  const { activeBrand, authToken } = useApp();
+  const { activeBrand, authToken, reportError } = useApp();
   const { getToken } = useAuth();
 
 
@@ -308,6 +308,7 @@ function ComplianceGateContent() {
       setDismissedFlags(p => ({ ...p, [sectionIdx]: true }));
     } catch(e) {
       console.error('Dismiss flag error:', e);
+      reportError(e, { area: 'compliance-gate' });
     }
   };
 
@@ -511,6 +512,7 @@ function ComplianceGateContent() {
       }
     } catch (err) {
       console.error('[rewrite-selection]', err);
+      reportError(err, { area: 'compliance-gate' });
     } finally {
       setRewriteSelLoading(false);
     }

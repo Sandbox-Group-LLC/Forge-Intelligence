@@ -493,3 +493,39 @@ CREATE TABLE IF NOT EXISTS outreach_log (
   error_message TEXT,
   sent_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- ── User Alerts & Support Tickets ────────────────────────────────────────────
+-- Surfaced through the topbar bell. Alerts are user-scoped (clerk_user_id).
+-- short_message is the only field shown to users; raw_message is admin-only.
+CREATE TABLE IF NOT EXISTS user_alerts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  clerk_user_id TEXT NOT NULL,
+  brand_profile_id TEXT,
+  severity TEXT NOT NULL DEFAULT 'error',  -- 'error' | 'warn' | 'info'
+  area TEXT,                                -- e.g. 'content-generator', 'brand-profile'
+  short_message TEXT NOT NULL,              -- human-readable, capped ~200 chars
+  raw_message TEXT,                         -- truncated original, admin-only
+  http_status INT,
+  url TEXT,                                 -- page path where it happened
+  read_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_user_alerts_user_created
+  ON user_alerts (clerk_user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS support_tickets (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  clerk_user_id TEXT NOT NULL,
+  brand_profile_id TEXT,
+  user_email TEXT,
+  category TEXT,                            -- 'bug' | 'question' | 'feature' | 'other'
+  subject TEXT NOT NULL,
+  body TEXT NOT NULL,
+  attached_alert_ids JSONB DEFAULT '[]',
+  user_agent TEXT,
+  page_url TEXT,
+  status TEXT NOT NULL DEFAULT 'open',      -- 'open' | 'in_progress' | 'closed'
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_status_created
+  ON support_tickets (status, created_at DESC);

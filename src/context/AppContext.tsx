@@ -1,8 +1,26 @@
 import { useActiveBrand, ActiveBrand, BrandMini } from '../hooks/useActiveBrand';
 import { useAuth } from '@clerk/clerk-react';
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { ViewType, BrandProfile, AnalysisInput, ProcessingStage, HistoryEntry } from '../types';
 import { initialProcessingStages, sampleAnalysisInput } from '../data/mockData';
+import { humanize, AlertSeverity } from '../lib/humanizeError';
+
+export interface Alert {
+  id: string;
+  severity: AlertSeverity;
+  area: string | null;
+  shortMessage: string;
+  httpStatus: number | null;
+  url: string | null;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export interface ReportErrorContext {
+  area?: string;
+  url?: string;
+  httpStatus?: number;
+}
 
 interface AppContextType {
   currentView: ViewType;
@@ -32,6 +50,12 @@ interface AppContextType {
   switchBrand: (brandId: string) => void;
   // 7-day full-access trial state. Null when not eligible.
   trial: { active: boolean; eligible: boolean; daysRemaining: number; endsAt: string | null } | null;
+  // Alerts (topbar bell)
+  alerts: Alert[];
+  unreadAlertCount: number;
+  reportError: (err: unknown, ctx?: ReportErrorContext) => void;
+  markAlertsRead: (ids?: string[]) => Promise<void>;
+  refetchAlerts: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -138,6 +162,134 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(interval);
   }, [isSignedIn, getToken]);
 
+  // ── Alerts (topbar bell) ────────────────────────────────────────────────────
+  // In-memory list; hydrated from /api/alerts on auth. Tracks ids we've already
+  // POSTed in this session to avoid re-posting local + server-confirmed alerts.
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const recentPostedRef = useRef<Map<string, number>>(new Map()); // key -> ts (ms)
+  const tokenRef = useRef<string>('');
+  useEffect(() => { tokenRef.current = authToken; }, [authToken]);
+
+  const refetchAlerts = useCallback(async () => {
+    const token = tokenRef.current;
+    if (!token) return;
+    try {
+      const res = await fetch('/api/alerts', { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data?.success && Array.isArray(data.alerts)) {
+        setAlerts(data.alerts as Alert[]);
+      }
+    } catch { /* silent — alerts plumbing must never throw on its own */ }
+  }, []);
+
+  // Hydrate alerts when auth becomes available
+  useEffect(() => {
+    if (!authToken) { setAlerts([]); return; }
+    refetchAlerts();
+  }, [authToken, refetchAlerts]);
+
+  const markAlertsRead = useCallback(async (ids?: string[]) => {
+    const token = tokenRef.current;
+    // Optimistic update first
+    setAlerts(prev => prev.map(a => {
+      if (ids && ids.length > 0) {
+        return ids.includes(a.id) && !a.readAt ? { ...a, readAt: new Date().toISOString() } : a;
+      }
+      return a.readAt ? a : { ...a, readAt: new Date().toISOString() };
+    }));
+    if (!token) return;
+    try {
+      await fetch('/api/alerts/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(ids && ids.length > 0 ? { ids } : {}),
+      });
+    } catch { /* silent */ }
+  }, []);
+
+  const reportError = useCallback((err: unknown, ctx: ReportErrorContext = {}) => {
+    const result = humanize(err, ctx);
+    if (result.suppress) return;
+    const area = ctx.area ?? null;
+    const dedupeKey = `${area || ''}|${result.shortMessage}`;
+    const now = Date.now();
+    const last = recentPostedRef.current.get(dedupeKey);
+    if (last && now - last < 60_000) return; // local de-dupe matching server's 60s window
+    recentPostedRef.current.set(dedupeKey, now);
+
+    // Optimistic in-memory alert with a temp id; replaced when server returns its row.
+    const tempId = `local-${now}-${Math.random().toString(36).slice(2, 8)}`;
+    const localAlert: Alert = {
+      id: tempId,
+      severity: result.severity,
+      area,
+      shortMessage: result.shortMessage,
+      httpStatus: result.httpStatus ?? ctx.httpStatus ?? null,
+      url: ctx.url ?? (typeof window !== 'undefined' ? window.location.pathname : null),
+      readAt: null,
+      createdAt: new Date().toISOString(),
+    };
+    setAlerts(prev => [localAlert, ...prev].slice(0, 50));
+
+    const token = tokenRef.current;
+    if (!token) return; // can't persist for signed-out users
+    fetch('/api/alerts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        severity: result.severity,
+        area,
+        shortMessage: result.shortMessage,
+        rawMessage: result.rawMessage,
+        httpStatus: result.httpStatus ?? ctx.httpStatus ?? null,
+        url: ctx.url ?? (typeof window !== 'undefined' ? window.location.pathname : null),
+      }),
+    })
+      .then(async r => {
+        if (!r.ok) return;
+        const data = await r.json();
+        const serverAlert = data?.alert;
+        if (!serverAlert) return;
+        setAlerts(prev => {
+          // If server's id is already in the list (dedupe), drop the temp and keep server row.
+          const existsIdx = prev.findIndex(a => a.id === serverAlert.id);
+          const mapped: Alert = {
+            id: serverAlert.id,
+            severity: serverAlert.severity,
+            area: serverAlert.area,
+            shortMessage: serverAlert.short_message,
+            httpStatus: serverAlert.http_status ?? null,
+            url: serverAlert.url ?? null,
+            readAt: serverAlert.read_at ?? null,
+            createdAt: serverAlert.created_at,
+          };
+          const withoutTemp = prev.filter(a => a.id !== tempId);
+          if (existsIdx >= 0) return withoutTemp;
+          return [mapped, ...withoutTemp].slice(0, 50);
+        });
+      })
+      .catch(() => { /* silent — never escalate alert-pipeline failures */ });
+  }, []);
+
+  // Global window listeners — catches errors no try/catch handled
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onError = (e: ErrorEvent) => {
+      reportError(e.error ?? e.message, { area: 'global', url: window.location.pathname });
+    };
+    const onRejection = (e: PromiseRejectionEvent) => {
+      reportError(e.reason, { area: 'global', url: window.location.pathname });
+    };
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => {
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onRejection);
+    };
+  }, [reportError]);
+
+  const unreadAlertCount = alerts.reduce((n, a) => n + (a.readAt ? 0 : 1), 0);
 
   const loadSampleData = () => setAnalysisInput(sampleAnalysisInput);
 
@@ -257,6 +409,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isPaid, brandLoading, activeBrand, refetchBrand, authToken,
       allBrands, isSuperAdmin, switchBrand,
       trial,
+      alerts, unreadAlertCount, reportError, markAlertsRead, refetchAlerts,
     }}>
       {children}
     </AppContext.Provider>

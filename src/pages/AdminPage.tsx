@@ -55,6 +55,16 @@ export default function AdminPage() {
   interface Deploy { id: string; status: string; commitMessage: string; commitId: string; createdAt: string; finishedAt: string; env: string; }
   const [deploys, setDeploys] = useState<{ production: Deploy[]; development: Deploy[] }>({ production: [], development: [] });
 
+  // Support tickets (Get Help submissions)
+  interface SupportTicket {
+    id: string; clerk_user_id: string; brand_profile_id: string | null; user_email: string | null;
+    category: string; subject: string; body: string; status: string; created_at: string;
+    page_url: string | null; user_agent: string | null; brand_name: string | null;
+    attached_alert_ids: string[];
+  }
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [expandedTicket, setExpandedTicket] = useState<string | null>(null);
+
   const loadData = useCallback(async () => {
     try {
       const token = await getToken();
@@ -117,6 +127,22 @@ export default function AdminPage() {
     };
     fetchDeploys();
     const interval = setInterval(fetchDeploys, 60000);
+    return () => clearInterval(interval);
+  }, [getToken]);
+
+  // Fetch support tickets every 60s
+  useEffect(() => {
+    const fetchTickets = async () => {
+      const token = await getToken();
+      if (!token) return;
+      try {
+        const r = await fetch('/api/admin/support/tickets', { headers: { 'Authorization': `Bearer ${token}` } });
+        const d = await r.json();
+        if (d.success && Array.isArray(d.tickets)) setTickets(d.tickets);
+      } catch(e) { console.error('Support tickets fetch error:', e); }
+    };
+    fetchTickets();
+    const interval = setInterval(fetchTickets, 60000);
     return () => clearInterval(interval);
   }, [getToken]);
 
@@ -445,6 +471,68 @@ export default function AdminPage() {
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* Support Tickets — user-submitted Get Help forms */}
+            <div className="mc-panel" style={{ gridColumn: '1 / -1' }}>
+              <div className="mc-panel-header">
+                <span className="mc-panel-title">SUPPORT TICKETS</span>
+                <span className="mc-panel-meta">{tickets.length} total</span>
+              </div>
+              {tickets.length === 0 ? (
+                <div className="mc-empty" style={{ padding: '20px 4px' }}>No tickets yet.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 480, overflowY: 'auto' }}>
+                  {tickets.map(t => {
+                    const isOpen = expandedTicket === t.id;
+                    const catColor =
+                      t.category === 'bug' ? '#ef4444' :
+                      t.category === 'feature' ? '#8b5cf6' :
+                      t.category === 'question' ? '#3b82f6' : '#64748b';
+                    return (
+                      <div key={t.id} style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, background: 'var(--color-bg, #f8fafc)' }}>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedTicket(isOpen ? null : t.id)}
+                          style={{
+                            width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                            padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer',
+                            fontFamily: 'inherit', textAlign: 'left',
+                          }}
+                        >
+                          <span style={{
+                            fontSize: 10, fontWeight: 700, color: '#ffffff', background: catColor,
+                            padding: '2px 8px', borderRadius: 4, textTransform: 'uppercase', letterSpacing: '0.05em',
+                          }}>{t.category}</span>
+                          <span style={{ fontSize: 13, fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--color-text, #1e293b)' }}>
+                            {t.subject}
+                          </span>
+                          <span style={{ fontSize: 11, color: '#64748b' }}>
+                            {t.brand_name || t.user_email || '—'}
+                          </span>
+                          <span style={{ fontSize: 11, color: '#94a3b8' }}>{timeAgo(t.created_at)}</span>
+                        </button>
+                        {isOpen && (
+                          <div style={{ borderTop: '1px solid var(--color-border, #e2e8f0)', padding: '10px 12px', fontSize: 12 }}>
+                            <div style={{ marginBottom: 8, color: '#64748b' }}>
+                              <div><strong>User:</strong> {t.user_email || '(no email)'} <code style={{ fontSize: 10, color: '#94a3b8' }}>{t.clerk_user_id}</code></div>
+                              <div><strong>Brand:</strong> {t.brand_name || '—'} <code style={{ fontSize: 10, color: '#94a3b8' }}>{t.brand_profile_id || ''}</code></div>
+                              <div><strong>Page:</strong> <code style={{ fontSize: 10 }}>{t.page_url || '—'}</code></div>
+                              <div><strong>Status:</strong> {t.status}</div>
+                              <div><strong>Attached alerts:</strong> {Array.isArray(t.attached_alert_ids) ? t.attached_alert_ids.length : 0}</div>
+                            </div>
+                            <div style={{
+                              whiteSpace: 'pre-wrap', background: '#ffffff',
+                              border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 6,
+                              padding: 10, fontSize: 12, lineHeight: 1.6, color: 'var(--color-text, #1e293b)',
+                            }}>{t.body}</div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
           </>

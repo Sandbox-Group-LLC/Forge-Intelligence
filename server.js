@@ -864,6 +864,40 @@ async function initDB() {
     // Campaign analytics migrations
     await pool.query(`ALTER TABLE content_analytics ADD COLUMN IF NOT EXISTS campaign_id UUID`).catch(() => {});
     await pool.query(`ALTER TABLE publishing_queue ADD COLUMN IF NOT EXISTS campaign_id UUID`).catch(() => {});
+
+    // ── User Alerts & Support Tickets (topbar bell + Get Help form) ──
+    await pool.query(`CREATE TABLE IF NOT EXISTS user_alerts (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      clerk_user_id TEXT NOT NULL,
+      brand_profile_id TEXT,
+      severity TEXT NOT NULL DEFAULT 'error',
+      area TEXT,
+      short_message TEXT NOT NULL,
+      raw_message TEXT,
+      http_status INT,
+      url TEXT,
+      read_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_user_alerts_user_created
+      ON user_alerts (clerk_user_id, created_at DESC)`).catch(() => {});
+    await pool.query(`CREATE TABLE IF NOT EXISTS support_tickets (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      clerk_user_id TEXT NOT NULL,
+      brand_profile_id TEXT,
+      user_email TEXT,
+      category TEXT,
+      subject TEXT NOT NULL,
+      body TEXT NOT NULL,
+      attached_alert_ids JSONB DEFAULT '[]',
+      user_agent TEXT,
+      page_url TEXT,
+      status TEXT NOT NULL DEFAULT 'open',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_support_tickets_status_created
+      ON support_tickets (status, created_at DESC)`).catch(() => {});
+    console.log('NeonDB: user_alerts + support_tickets tables ensured');
   } catch(e) { console.log('NeonDB: Brain tables note:', e.message); }
 
 
@@ -14955,6 +14989,261 @@ app.get('/api/admin/logs/recent', requireAuth, async (req, res) => {
 app.get('/api/admin/logs/errors', requireAuth, async (req, res) => {
   if (!SUPER_ADMIN_IDS.includes(req.userId)) return res.status(403).json({ error: 'Forbidden' });
   res.json({ success: true, errors: errorAggregates.slice().reverse(), total: errorAggregates.length });
+});
+
+
+// ── User-facing Alerts (topbar bell) ─────────────────────────────────────────
+// Scoped to clerk_user_id from the JWT. Never returns rows from other users.
+// short_message is the only field shown to end users; raw_message is admin-only.
+function truncateStr(s, max) {
+  if (s == null) return null;
+  const str = String(s);
+  return str.length > max ? str.slice(0, max) : str;
+}
+
+async function getActiveBrandIdForUser(userId) {
+  if (!userId) return null;
+  try {
+    const r = await pool.query(
+      `SELECT id FROM brand_profiles WHERE clerk_user_id = $1 AND is_active = true
+       ORDER BY updated_at DESC LIMIT 1`,
+      [userId]
+    );
+    return r.rows[0]?.id || null;
+  } catch { return null; }
+}
+
+// POST /api/alerts — store a client-reported alert
+app.post('/api/alerts', requireAuth, async (req, res) => {
+  try {
+    if (!req.userId) return res.status(401).json({ error: 'Unauthorized' });
+    const { severity, area, shortMessage, rawMessage, httpStatus, url } = req.body || {};
+    if (!shortMessage || typeof shortMessage !== 'string') {
+      return res.status(400).json({ error: 'shortMessage required' });
+    }
+    const allowedSev = ['error', 'warn', 'info'];
+    const sev = allowedSev.includes(severity) ? severity : 'error';
+    const shortMsg = truncateStr(shortMessage, 200);
+    const rawMsg = truncateStr(rawMessage, 2000);
+    const areaStr = truncateStr(area, 80);
+    const urlStr = truncateStr(url, 500);
+    const status = (typeof httpStatus === 'number' && Number.isFinite(httpStatus)) ? httpStatus : null;
+    const brandId = await getActiveBrandIdForUser(req.userId);
+
+    // De-dupe: same (user, short_message, area) inserted in last 60s -> return existing
+    const dup = await pool.query(
+      `SELECT id, clerk_user_id, brand_profile_id, severity, area, short_message,
+              http_status, url, read_at, created_at
+         FROM user_alerts
+         WHERE clerk_user_id = $1
+           AND short_message = $2
+           AND (area IS NOT DISTINCT FROM $3)
+           AND created_at > NOW() - INTERVAL '60 seconds'
+         ORDER BY created_at DESC LIMIT 1`,
+      [req.userId, shortMsg, areaStr]
+    );
+    if (dup.rows[0]) {
+      return res.json({ success: true, alert: dup.rows[0], deduped: true });
+    }
+
+    const ins = await pool.query(
+      `INSERT INTO user_alerts
+         (clerk_user_id, brand_profile_id, severity, area, short_message, raw_message, http_status, url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id, clerk_user_id, brand_profile_id, severity, area, short_message,
+                 http_status, url, read_at, created_at`,
+      [req.userId, brandId, sev, areaStr, shortMsg, rawMsg, status, urlStr]
+    );
+    res.json({ success: true, alert: ins.rows[0] });
+  } catch (e) {
+    console.error('POST /api/alerts error:', e.message);
+    res.status(500).json({ success: false, error: 'Failed to store alert' });
+  }
+});
+
+// GET /api/alerts — last 50 alerts for current user, last 14 days
+app.get('/api/alerts', requireAuth, async (req, res) => {
+  try {
+    if (!req.userId) return res.status(401).json({ error: 'Unauthorized' });
+    const result = await pool.query(
+      `SELECT id, severity, area, short_message, http_status, url, read_at, created_at
+         FROM user_alerts
+         WHERE clerk_user_id = $1
+           AND created_at > NOW() - INTERVAL '14 days'
+         ORDER BY created_at DESC
+         LIMIT 50`,
+      [req.userId]
+    );
+    const alerts = result.rows.map(r => ({
+      id: r.id,
+      severity: r.severity,
+      area: r.area,
+      shortMessage: r.short_message,
+      httpStatus: r.http_status,
+      url: r.url,
+      readAt: r.read_at,
+      createdAt: r.created_at,
+    }));
+    const unreadCount = alerts.filter(a => !a.readAt).length;
+    res.json({ success: true, alerts, unreadCount });
+  } catch (e) {
+    console.error('GET /api/alerts error:', e.message);
+    res.status(500).json({ success: false, error: 'Failed to load alerts' });
+  }
+});
+
+// POST /api/alerts/read — mark alerts read (ids[] or all)
+app.post('/api/alerts/read', requireAuth, async (req, res) => {
+  try {
+    if (!req.userId) return res.status(401).json({ error: 'Unauthorized' });
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter(x => typeof x === 'string') : null;
+    if (ids && ids.length > 0) {
+      await pool.query(
+        `UPDATE user_alerts SET read_at = NOW()
+           WHERE clerk_user_id = $1 AND id = ANY($2::uuid[]) AND read_at IS NULL`,
+        [req.userId, ids]
+      );
+    } else {
+      await pool.query(
+        `UPDATE user_alerts SET read_at = NOW()
+           WHERE clerk_user_id = $1 AND read_at IS NULL`,
+        [req.userId]
+      );
+    }
+    res.json({ success: true });
+  } catch (e) {
+    console.error('POST /api/alerts/read error:', e.message);
+    res.status(500).json({ success: false, error: 'Failed to mark read' });
+  }
+});
+
+// POST /api/support/ticket — submit a support request (Get Help form)
+app.post('/api/support/ticket', requireAuth, async (req, res) => {
+  try {
+    if (!req.userId) return res.status(401).json({ error: 'Unauthorized' });
+    const { category, subject, body, attachedAlertIds } = req.body || {};
+    if (!subject || typeof subject !== 'string') return res.status(400).json({ error: 'subject required' });
+    if (!body || typeof body !== 'string') return res.status(400).json({ error: 'body required' });
+    const allowedCat = ['bug', 'question', 'feature', 'other'];
+    const cat = allowedCat.includes(category) ? category : 'other';
+    const subj = truncateStr(subject.trim(), 120);
+    const bodyStr = truncateStr(body.trim(), 2000);
+    const alertIds = Array.isArray(attachedAlertIds)
+      ? attachedAlertIds.filter(x => typeof x === 'string').slice(0, 20)
+      : [];
+    const userAgent = truncateStr(req.headers['user-agent'] || '', 500);
+    const pageUrl = truncateStr(req.body?.pageUrl || req.headers['referer'] || '', 500);
+    const userEmail = truncateStr(req.body?.userEmail || '', 200);
+
+    // Look up active brand for context
+    const brandQ = await pool.query(
+      `SELECT id, brand_name, brand_url FROM brand_profiles
+        WHERE clerk_user_id = $1 AND is_active = true
+        ORDER BY updated_at DESC LIMIT 1`,
+      [req.userId]
+    );
+    const brand = brandQ.rows[0] || null;
+
+    const ins = await pool.query(
+      `INSERT INTO support_tickets
+         (clerk_user_id, brand_profile_id, user_email, category, subject, body,
+          attached_alert_ids, user_agent, page_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)
+       RETURNING id, created_at`,
+      [req.userId, brand?.id || null, userEmail, cat, subj, bodyStr,
+       JSON.stringify(alertIds), userAgent, pageUrl]
+    );
+    const ticketId = ins.rows[0].id;
+
+    // Pull attached alerts to embed in the email
+    let attached = [];
+    if (alertIds.length > 0) {
+      const ar = await pool.query(
+        `SELECT id, severity, area, short_message, raw_message, http_status, url, created_at
+           FROM user_alerts
+           WHERE clerk_user_id = $1 AND id = ANY($2::uuid[])
+           ORDER BY created_at DESC`,
+        [req.userId, alertIds]
+      );
+      attached = ar.rows;
+    }
+
+    // Fire-and-forget Resend email to Brian. Failures must NOT fail the request.
+    if (RESEND_API_KEY) {
+      const esc = (s) => String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const alertsHtml = attached.length
+        ? `<ul style="padding-left:18px;margin:8px 0">` + attached.map(a => `
+            <li style="margin:6px 0">
+              <strong>[${esc(a.severity)}]</strong>
+              <em>${esc(a.area || '-')}</em>
+              — ${esc(a.short_message)}
+              ${a.http_status ? `<span style="color:#94a3b8"> (HTTP ${esc(a.http_status)})</span>` : ''}
+              <div style="font-size:11px;color:#94a3b8">${esc(new Date(a.created_at).toISOString())} · ${esc(a.url || '')}</div>
+              ${a.raw_message ? `<pre style="background:#0F1720;color:#E2E8F0;padding:8px;border-radius:6px;font-size:11px;white-space:pre-wrap;margin:4px 0">${esc(String(a.raw_message).slice(0, 500))}</pre>` : ''}
+            </li>`).join('') + `</ul>`
+        : '<p style="color:#94a3b8;font-size:13px">No alerts attached.</p>';
+      const html = `<div style="font-family:Inter,system-ui,sans-serif;color:#0F1720;max-width:680px">
+        <p style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#3563FF;margin:0 0 12px">Forge Intelligence — Support Ticket</p>
+        <h1 style="font-size:20px;margin:0 0 8px">${esc(subj)}</h1>
+        <p style="font-size:12px;color:#64748b;margin:0 0 16px">Ticket <code>${esc(ticketId)}</code> · Category: <strong>${esc(cat)}</strong></p>
+        <table style="font-size:13px;color:#1e293b;border-collapse:collapse;margin-bottom:16px">
+          <tr><td style="padding:4px 12px 4px 0;color:#64748b">User</td><td>${esc(userEmail || '(no email)')}<br><code style="font-size:11px;color:#94a3b8">${esc(req.userId)}</code></td></tr>
+          <tr><td style="padding:4px 12px 4px 0;color:#64748b">Brand</td><td>${esc(brand?.brand_name || '-')} <code style="font-size:11px;color:#94a3b8">${esc(brand?.id || '')}</code><br><span style="font-size:11px;color:#94a3b8">${esc(brand?.brand_url || '')}</span></td></tr>
+          <tr><td style="padding:4px 12px 4px 0;color:#64748b">Page</td><td><code style="font-size:11px">${esc(pageUrl)}</code></td></tr>
+          <tr><td style="padding:4px 12px 4px 0;color:#64748b">User Agent</td><td style="font-size:11px;color:#64748b">${esc(userAgent)}</td></tr>
+        </table>
+        <h3 style="font-size:14px;margin:16px 0 6px">Description</h3>
+        <div style="white-space:pre-wrap;background:#F8FAFC;border:1px solid #E2E8F0;padding:12px;border-radius:8px;font-size:13px;line-height:1.6">${esc(bodyStr)}</div>
+        <h3 style="font-size:14px;margin:16px 0 6px">Attached alerts (${attached.length})</h3>
+        ${alertsHtml}
+      </div>`;
+      fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + RESEND_API_KEY,
+          'Content-Type': 'application/json',
+          'User-Agent': 'Forge-Intelligence-Server/1.0',
+        },
+        body: JSON.stringify({
+          from: 'Forge Alerts <alerts@forgeintelligence.ai>',
+          to: ['brian@sandbox-xm.com'],
+          reply_to: userEmail || undefined,
+          subject: `[Forge Support] ${cat}: ${subj}`,
+          html,
+        }),
+      }).then(r => {
+        if (!r.ok) r.text().then(t => console.error('Support ticket email failed:', r.status, t.slice(0, 200)));
+      }).catch(err => console.error('Support ticket email error:', err.message));
+    } else {
+      console.log('Support ticket created (no RESEND_API_KEY, email skipped):', ticketId);
+    }
+
+    res.json({ success: true, ticketId });
+  } catch (e) {
+    console.error('POST /api/support/ticket error:', e.message);
+    res.status(500).json({ success: false, error: 'Failed to submit ticket' });
+  }
+});
+
+// GET /api/admin/support/tickets — super-admin only
+app.get('/api/admin/support/tickets', requireAuth, async (req, res) => {
+  if (!SUPER_ADMIN_IDS.includes(req.userId)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const r = await pool.query(
+      `SELECT t.id, t.clerk_user_id, t.brand_profile_id, t.user_email, t.category,
+              t.subject, t.body, t.attached_alert_ids, t.user_agent, t.page_url,
+              t.status, t.created_at, bp.brand_name
+         FROM support_tickets t
+         LEFT JOIN brand_profiles bp ON bp.id = t.brand_profile_id
+         ORDER BY t.created_at DESC
+         LIMIT 100`
+    );
+    res.json({ success: true, tickets: r.rows, total: r.rows.length });
+  } catch (e) {
+    console.error('GET /api/admin/support/tickets error:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
 });
 
 
