@@ -9154,7 +9154,13 @@ app.get('/api/x/auth', requireAuth, (req, res) => {
   // With media.write, brands upload media + post tweets via their own OAuth 2.0 token,
   // eliminating the cross-account problem with system OAuth 1.0a creds.
   const scopes = ['tweet.write', 'tweet.read', 'users.read', 'offline.access', 'media.write'].join('%20');
-  const authUrl = `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&state=${state}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
+  // X migrated the OAuth endpoints to x.com — the legacy twitter.com/i/oauth2/authorize
+  // still serves but chains through their domain-migration redirect, which breaks the
+  // session cookie set during login (cookie lands on one domain, next redirect targets
+  // the other → "to use this app you have to be logged in" infinite loop). Use the
+  // canonical x.com URL throughout the OAuth path. See:
+  //   https://developer.x.com/en/docs/authentication/oauth-2-0/authorization-code
+  const authUrl = `https://x.com/i/oauth2/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&state=${state}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
 
   res.json({ authUrl });
 });
@@ -9175,7 +9181,7 @@ app.get('/auth/x/callback', async (req, res) => {
 
   try {
     // Exchange code for tokens
-    const tokenRes = await fetch('https://api.twitter.com/2/oauth2/token', {
+    const tokenRes = await fetch('https://api.x.com/2/oauth2/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -9329,7 +9335,7 @@ async function uploadXMedia({ imageUrl, oauth2Token, oauth1Header, additionalOwn
 async function refreshXOAuth2Token(refreshToken) {
   const clientId = process.env.X_OAUTH2CLIENT_ID;
   const clientSecret = process.env.X_OAUTH2CLIENT_SECRET;
-  const tokenRes = await fetch('https://api.twitter.com/2/oauth2/token', {
+  const tokenRes = await fetch('https://api.x.com/2/oauth2/token', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
