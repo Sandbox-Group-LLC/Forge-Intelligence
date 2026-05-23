@@ -102,7 +102,7 @@ function CampaignGeneratorContent() {
   const [streamBuffer, setStreamBuffer] = useState('');
   const [error, setError] = useState('');
   const esRef = useRef<EventSource | null>(null);
-  const { historyEntries, activeBrand } = useApp();
+  const { historyEntries, activeBrand, reportError } = useApp();
 
   const brains: Brain[] = historyEntries.map(e => ({ id: e.id, brandName: e.brandName, brandUrl: e.brandUrl }));
 
@@ -373,6 +373,7 @@ function CampaignGeneratorContent() {
       });
     } catch (err: any) {
       console.error('[RESTART]', err.message);
+      reportError(err, { area: 'campaign-generator' });
     } finally {
       setIsRestarting(false);
     }

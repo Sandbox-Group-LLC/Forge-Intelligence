@@ -89,6 +89,78 @@
   color: #d4d4d4;
 }
 
+/* ── Share With AI bar ──────────────────────────────────────────────────── */
+.docs-share-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  margin-bottom: 28px;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: 8px;
+  font-size: 13.5px;
+}
+
+.docs-share-bar-text {
+  color: #c4c4c4;
+}
+.docs-share-bar-text strong {
+  color: #fff;
+  font-weight: 600;
+}
+
+.docs-share-bar-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.docs-share-btn {
+  background: #6366F1;
+  color: #fff;
+  border: 1px solid #6366F1;
+  border-radius: 5px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s ease, border-color 0.12s ease;
+  white-space: nowrap;
+}
+.docs-share-btn:hover {
+  background: #4f51d6;
+  border-color: #4f51d6;
+}
+
+.docs-share-btn.docs-share-btn-secondary {
+  background: transparent;
+  color: #c4c4c4;
+  border-color: rgba(99, 102, 241, 0.45);
+}
+.docs-share-btn.docs-share-btn-secondary:hover {
+  background: rgba(99, 102, 241, 0.14);
+  border-color: #6366F1;
+  color: #fff;
+}
+
+@media (max-width: 600px) {
+  .docs-share-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .docs-share-bar-actions {
+    width: 100%;
+  }
+  .docs-share-btn {
+    flex: 1;
+    text-align: center;
+  }
+}
+
 /* Typography */
 .docs-article h1 {
   font-size: 32px;
