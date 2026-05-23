@@ -2145,6 +2145,22 @@
 .pq-retry-btn:hover { background: rgba(239,68,68,0.2); border-color: #EF4444; }
 .pq-retry-btn:disabled { opacity: 0.4; cursor: default; }
 
+/* Reconnect variant — fired when a publish error is auth-expired. Uses
+   amber instead of red because the action required is different
+   (re-authorize in Integrations, not "try again here"). Renders as a
+   link, not a button, since it navigates. */
+a.pq-retry-btn.pq-reconnect-btn {
+  display: inline-block;
+  background: rgba(245,158,11,0.12);
+  color: #F59E0B;
+  border-color: rgba(245,158,11,0.35);
+  text-decoration: none;
+}
+a.pq-retry-btn.pq-reconnect-btn:hover {
+  background: rgba(245,158,11,0.22);
+  border-color: #F59E0B;
+}
+
 /* ── Reviewer Dropdown ───────────────────────────────────────────────────── */
 .pq-reviewer-dropdown {
   position: absolute;

@@ -226,7 +226,7 @@ export default function PublishingQueuePage() {
   const [brandSettings, setBrandSettings] = useState<Record<string, { article_base_url?: string; article_url_suffix?: string; settings?: { siteTemplate?: any } }>>({});
   const [exportTab, setExportTab] = useState<'html' | 'markdown' | 'json' | 'link'>('html');
   const [copied, setCopied] = useState<string>('');
-  const [publishLog, setPublishLog] = useState<Record<string, { channel: string; live_status: string; published_url?: string; last_synced_at?: string }[]>>({});
+  const [publishLog, setPublishLog] = useState<Record<string, { channel: string; live_status: string; published_url?: string; last_synced_at?: string; error_message?: string }[]>>({});
   const [syncing, setSyncing] = useState<string | null>(null);
   const [republishing, setRepublishing] = useState<string | null>(null);
   const [reviewers, setReviewers] = useState<{id:string;name:string;email:string;title:string}[]>([]);
@@ -1623,16 +1623,44 @@ ${authorFooterHtml}
                               {republishing === repKey ? 'Republishing...' : '↺ Republish'}
                             </button>
                           )}
-                          {(res.status === 'error' || liveStatus === 'error') && (
-                            <button
-                              className="pq-retry-btn"
-                              onClick={() => handleRetry(item.id, ch)}
-                              disabled={republishing === repKey}
-                              title="Clear error and retry"
-                            >
-                              {republishing === repKey ? 'Resetting...' : '↺ Reset & Retry'}
-                            </button>
-                          )}
+                          {(res.status === 'error' || liveStatus === 'error') && (() => {
+                            // Auth-expired errors thrown by the publish handlers
+                            // ("X authentication expired. Please reconnect X in
+                            // Integrations." etc.) need a Reconnect link, not a
+                            // Reset & Retry button — retrying without fresh
+                            // credentials will fail the same way.
+                            const localLog = (publishLog[item.id] || []).find(l => l.channel === ch);
+                            const errMsg = localLog?.error_message || res.error || '';
+                            const isAuthError = /authentication expired|reconnect/i.test(errMsg);
+                            const label = CHANNEL_LABELS[ch]?.label || ch;
+                            if (isAuthError) {
+                              return (
+                                <>
+                                  <a className="pq-retry-btn pq-reconnect-btn" href="/app/integrations">
+                                    Reconnect {label} →
+                                  </a>
+                                  <span className="pq-result-error">Your {label} connection expired. Reconnect to publish.</span>
+                                </>
+                              );
+                            }
+                            return (
+                              <>
+                                <button
+                                  className="pq-retry-btn"
+                                  onClick={() => handleRetry(item.id, ch)}
+                                  disabled={republishing === repKey}
+                                  title="Clear error and retry"
+                                >
+                                  {republishing === repKey ? 'Resetting...' : '↺ Reset & Retry'}
+                                </button>
+                                {errMsg && (
+                                  <span className="pq-result-error" title={errMsg}>
+                                    {errMsg.length > 120 ? errMsg.slice(0, 120) + '…' : errMsg}
+                                  </span>
+                                )}
+                              </>
+                            );
+                          })()}
                           {res.error && liveStatus !== 'error' && liveStatus !== 'published' && <span className="pq-result-error">{res.error}</span>}
                           {res.message && liveStatus !== 'published' && !res.skipped && <span className="pq-result-msg">{res.message}</span>}
                         </div>
@@ -1971,16 +1999,44 @@ return (
                               {republishing === repKey ? 'Republishing...' : '↺ Republish'}
                             </button>
                           )}
-                          {(res.status === 'error' || liveStatus === 'error') && (
-                            <button
-                              className="pq-retry-btn"
-                              onClick={() => handleRetry(item.id, ch)}
-                              disabled={republishing === repKey}
-                              title="Clear error and retry"
-                            >
-                              {republishing === repKey ? 'Resetting...' : '↺ Reset & Retry'}
-                            </button>
-                          )}
+                          {(res.status === 'error' || liveStatus === 'error') && (() => {
+                            // Auth-expired errors thrown by the publish handlers
+                            // ("X authentication expired. Please reconnect X in
+                            // Integrations." etc.) need a Reconnect link, not a
+                            // Reset & Retry button — retrying without fresh
+                            // credentials will fail the same way.
+                            const localLog = (publishLog[item.id] || []).find(l => l.channel === ch);
+                            const errMsg = localLog?.error_message || res.error || '';
+                            const isAuthError = /authentication expired|reconnect/i.test(errMsg);
+                            const label = CHANNEL_LABELS[ch]?.label || ch;
+                            if (isAuthError) {
+                              return (
+                                <>
+                                  <a className="pq-retry-btn pq-reconnect-btn" href="/app/integrations">
+                                    Reconnect {label} →
+                                  </a>
+                                  <span className="pq-result-error">Your {label} connection expired. Reconnect to publish.</span>
+                                </>
+                              );
+                            }
+                            return (
+                              <>
+                                <button
+                                  className="pq-retry-btn"
+                                  onClick={() => handleRetry(item.id, ch)}
+                                  disabled={republishing === repKey}
+                                  title="Clear error and retry"
+                                >
+                                  {republishing === repKey ? 'Resetting...' : '↺ Reset & Retry'}
+                                </button>
+                                {errMsg && (
+                                  <span className="pq-result-error" title={errMsg}>
+                                    {errMsg.length > 120 ? errMsg.slice(0, 120) + '…' : errMsg}
+                                  </span>
+                                )}
+                              </>
+                            );
+                          })()}
                           {res.error && liveStatus !== 'error' && liveStatus !== 'published' && <span className="pq-result-error">{res.error}</span>}
                           {res.message && liveStatus !== 'published' && !res.skipped && <span className="pq-result-msg">{res.message}</span>}
                         </div>
