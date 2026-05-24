@@ -6,6 +6,7 @@ import WelcomePage from './pages/WelcomePage';
 import { AppProvider } from './context/AppContext';
 import Landing from './Landing';
 import Product from './Product';
+import About from './About';
 import Faq from './Faq';
 import ContextAgentPage from './pages/ContextAgentPage';
 import GeoStrategistPage from './pages/GeoStrategistPage';
@@ -113,6 +114,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/docs" element={<DocsPage />} />
         <Route path="/docs/:slug" element={<DocsPage />} />
         <Route path="/product" element={<Product />} />
+        <Route path="/about" element={<About />} />
           <Route path="/faq" element={<Faq />} />
         <Route path="/welcome" element={<WelcomePage />} />
 
