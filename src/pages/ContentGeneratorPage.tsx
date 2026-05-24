@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AppShell } from '../layouts/AppShell';
 import { useApp } from '../context/AppContext';
 import './ContentGeneratorPage.css';
@@ -135,7 +136,9 @@ function ContentGeneratorContent() {
   const [newIdeaNote, setNewIdeaNote] = useState('');
   const [savingIdea, setSavingIdea] = useState(false);
   const [preflight, setPreflight] = useState<{ status: string; signal?: string; confidence?: string; reframe?: string; reframeRationale?: string; reason?: string }>({ status: 'idle' });
+  const [buildingBrief, setBuildingBrief] = useState(false);
 
+  const navigate = useNavigate();
   const { historyEntries, activeBrand, authToken } = useApp();
   let brains: Brain[] = historyEntries.map(e => ({ id: e.id, brandName: e.brandName, brandUrl: e.brandUrl }));
 
@@ -252,6 +255,32 @@ function ContentGeneratorContent() {
     setIdeas(prev => prev.map(i => i.id === idea.id ? { ...i, status: 'in_progress' } : i));
     setIdeaDrawerOpen(false);
     setTimeout(() => document.querySelector<HTMLElement>('.cg-topic-input')?.focus(), 150);
+  };
+
+  // User typed a topic but hasn't selected an existing enriched brief — enter
+  // the pipeline at the brief-creation stage and hand off to the Authenticity
+  // Enricher (which auto-fires when arriving with ?topicBriefId=X).
+  const buildBriefFromTopic = async () => {
+    if (!activeBrand?.id || !topicPrompt.trim() || buildingBrief) return;
+    setBuildingBrief(true);
+    try {
+      const r = await fetch('/api/geo/topic-brief/from-topic', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          brandProfileId: activeBrand.id,
+          topic: topicPrompt.trim(),
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.success) throw new Error(d.error || 'Brief build failed');
+      navigate(`/app/authenticity-enricher?topicBriefId=${d.briefId}`);
+    } catch (e) {
+      console.error('[CG] from-topic brief build failed:', (e as Error).message);
+      alert(`Couldn't build brief from topic: ${(e as Error).message}`);
+    } finally {
+      setBuildingBrief(false);
+    }
   };
 
   const runGeneration = () => {
@@ -454,7 +483,8 @@ function ContentGeneratorContent() {
           <div className="geo-input-bar">
           <div style={{ flex: 1 }}>
             <input
-              className="geo-input cg-topic-input" placeholder="Optional: refine the angle within this brief"
+              className="geo-input cg-topic-input"
+              placeholder={selectedBriefId ? "Optional: refine the angle within the selected brief" : "Type a topic to start the pipeline (no GEO Strategist run required)"}
               value={topicPrompt}
               onChange={e => { setTopicPrompt(e.target.value); setPreflight({ status: 'idle' }); }}
               onBlur={checkTopic}
@@ -485,9 +515,27 @@ function ContentGeneratorContent() {
               </div>
             )}
           </div>
-          <button className="geo-run-btn" onClick={runGeneration} disabled={!selectedBrainId || !selectedBriefId}>
-            <FileText size={14} /> Generate Article
-          </button>
+          {/* Conditional CTA:
+                - Brief selected → "Generate Article" (proceed with that brief)
+                - No brief + typed topic → "Build brief →" (user-typed-topic
+                  entry into the pipeline; lands at Authenticity Enricher with
+                  the new brief auto-firing enrichment)
+                - Neither → disabled "Generate Article" with hint
+              The build-brief path replaces the dead-end UX where a typed topic
+              had no path forward unless the user backtracked to GEO Strategist. */}
+          {selectedBriefId ? (
+            <button className="geo-run-btn" onClick={runGeneration} disabled={!selectedBrainId}>
+              <FileText size={14} /> Generate Article
+            </button>
+          ) : topicPrompt.trim() ? (
+            <button className="geo-run-btn" onClick={buildBriefFromTopic} disabled={!selectedBrainId || buildingBrief}>
+              <FileText size={14} /> {buildingBrief ? 'Building brief…' : 'Build brief →'}
+            </button>
+          ) : (
+            <button className="geo-run-btn" disabled title="Select a brief or type a topic">
+              <FileText size={14} /> Generate Article
+            </button>
+          )}
           </div>
 
           {/* Advanced direction — only when user has typed a topic. Lets them

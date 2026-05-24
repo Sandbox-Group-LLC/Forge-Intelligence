@@ -17538,6 +17538,134 @@ Generate 5-7 H2s that build a coherent argument. Align entities with schema requ
   }
 });
 
+// POST /api/geo/topic-brief/from-topic — Stage 2.1 entry point for user-typed topics
+// Body: { brandProfileId, topic, refinement? }
+//
+// Lets a user enter the pipeline at brief-creation without first running the
+// GEO Strategist. Useful when the user already knows what they want to write
+// about (e.g., an exec passes down a topic) — they type it on the Content
+// Generator page, hit "Build brief →", and we drop them at the Authenticity
+// Enricher with a fresh topic brief ready to enrich.
+//
+// We materialize a synthetic geo_opportunities row so the schema constraints
+// (geo_topic_briefs.opportunity_id NOT NULL → geo_opportunities) keep
+// holding. Downstream code that joins topic briefs to opportunities by ID
+// continues to work unchanged.
+app.post('/api/geo/topic-brief/from-topic', requireAuth, express.json(), async (req, res) => {
+  const { brandProfileId, topic, refinement } = req.body || {};
+  if (!brandProfileId) return res.status(400).json({ success: false, error: 'brandProfileId required' });
+  if (!topic || !topic.trim()) return res.status(400).json({ success: false, error: 'topic required' });
+
+  try {
+    const profileRes = await pool.query(
+      `SELECT id, brand_url, brand_name, version, profile_data, settings FROM brand_profiles WHERE id = $1`,
+      [brandProfileId]
+    );
+    if (!profileRes.rows.length) return res.status(404).json({ success: false, error: 'Brand not found' });
+    const profile = profileRes.rows[0];
+    const pd = profile.profile_data || {};
+    const voiceProfile = pd.voice_profile || pd.voiceProfile || {};
+    const personas = pd.personas || [];
+
+    // Same brain + factual context as the standard Build Briefs path
+    const patternsRes = await pool.query(
+      `SELECT pattern_type, description FROM brain_patterns WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 20`,
+      [brandProfileId]
+    );
+    const brainContext = patternsRes.rows.length
+      ? 'BRAIN PATTERNS (respect these):\n' + patternsRes.rows.map(p => `- [${p.pattern_type}] ${p.description}`).join('\n')
+      : 'No brain patterns yet.';
+    const fg = (profile.settings || {}).factualGround || {};
+    const factualContext = [
+      fg.whatWeDo && `What we do: ${fg.whatWeDo}`,
+      fg.whatWeDontDo && `What we don't do: ${fg.whatWeDontDo}`,
+      fg.methodology && `Methodology: ${fg.methodology.slice(0, 400)}`
+    ].filter(Boolean).join('\n\n');
+
+    // 1) Materialize a synthetic opportunity row so the FK on geo_topic_briefs
+    //    holds. Source is implicit (no quick_win, no platform_scores, no TAC)
+    //    — downstream readers treat it as a hand-entered topic.
+    const oppInsert = await pool.query(
+      `INSERT INTO geo_opportunities (brand_profile_id, brain_version, topic, status, status_changed_at)
+       VALUES ($1, $2, $3, 'briefed', NOW()) RETURNING id`,
+      [brandProfileId, profile.version || 1, topic.trim()]
+    );
+    const opportunityId = oppInsert.rows[0].id;
+
+    // 2) Run the brief builder. Prompt mirrors /api/geo/opportunities/build-briefs
+    //    so output shape stays identical and downstream parsers don't drift.
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const briefRes = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 6144,
+      messages: [{ role: 'user', content: `${dateContext()}
+
+You are the Topic Brief Builder (Stage 2.1) for Forge Intelligence.
+
+BRAND: ${profile.brand_name}
+VOICE: ${JSON.stringify(voiceProfile).slice(0, 400)}
+PERSONAS: ${JSON.stringify(personas).slice(0, 400)}
+
+${factualContext ? 'FACTUAL GROUND (use verbatim):\n' + factualContext + '\n\n' : ''}${brainContext}
+
+TOPIC THE USER ENTERED: "${topic.trim()}"
+${refinement && refinement.trim() ? `USER REFINEMENT / ANGLE NOTES: "${refinement.trim()}"\n` : ''}
+NOTE: This topic was entered by the user directly (not surfaced by the GEO Strategist).
+There are no platform scores or topical-authority context for it yet — build the brief
+from the brand voice, personas, factual ground, and brain patterns above. If the topic
+is off-strategy for the brand, build it anyway but flag the tension in briefRationale.
+
+Build a GEO-optimized content brief for THIS SPECIFIC TOPIC. Return ONLY valid JSON:
+{
+  "h1": "string — compelling H1 with topic + differentiated angle",
+  "executiveSummary": "string — 2-3 sentences on what this article accomplishes",
+  "h2s": [{"heading":"string","intent":"string explaining why this section exists","geoAnchor":"string — key phrase for AI citation"}],
+  "entities": ["string"],
+  "faqStructure": [{"question":"string","answerDirection":"string"}],
+  "geoAnchors": ["string"],
+  "schemaRequirements": ["string"],
+  "targetPlatforms": ["string"],
+  "briefRationale": "string — why this angle, for this brand, now"
+}
+
+Generate 5-7 H2s that build a coherent argument. Align entities with schema requirements.`
+      }]
+    });
+
+    let briefData;
+    try {
+      const raw = briefRes.content[0].text;
+      briefData = JSON.parse(extractJSON(raw, 'object'));
+    } catch (parseErr) {
+      console.log('[FROM-TOPIC] parse warn for', topic, ':', parseErr.message);
+      briefData = {
+        h1: topic.trim(), executiveSummary: 'Brief generation incomplete — retry needed.',
+        h2s: [], entities: [], faqStructure: [], geoAnchors: [],
+        schemaRequirements: [], targetPlatforms: [], briefRationale: 'parse-error'
+      };
+    }
+
+    // 3) Persist the brief
+    const briefInsert = await pool.query(
+      `INSERT INTO geo_topic_briefs (opportunity_id, brand_profile_id, brief_data, brain_version, status)
+       VALUES ($1, $2, $3, $4, 'briefed') RETURNING id, created_at`,
+      [opportunityId, brandProfileId, JSON.stringify(briefData), profile.version || 1]
+    );
+
+    res.json({
+      success: true,
+      briefId: briefInsert.rows[0].id,
+      opportunityId,
+      topic: topic.trim(),
+      briefData,
+      createdAt: briefInsert.rows[0].created_at
+    });
+  } catch (e) {
+    console.error('[FROM-TOPIC] error:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // GET /api/geo/topic-briefs/:brandProfileId — briefed topics (includes backlog)
 app.get('/api/geo/topic-briefs/:brandProfileId', requireAuth, async (req, res) => {
   try {
