@@ -143,7 +143,7 @@ function AdsGeneratorContent() {
     <div className="geo-content">
       <div className="geo-header">
         <div>
-          <div className="geo-eyebrow">Stage 4.7 · PoC</div>
+          <div className="geo-eyebrow">Stage 4.7 — Google Ads</div>
           <h1 className="geo-title">Ads Generator</h1>
           <p className="geo-description">
             Complete Google Search campaign asset pack — 15 headlines, 4 descriptions, 2 display paths, 6 sitelinks, 8 callouts, and match-typed keywords — anchored to your brain, GEO territories, and Factual Ground. Paste straight into Google Ads or export the full pack as CSV.
