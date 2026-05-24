@@ -1,0 +1,42 @@
+/*
+ * Design tokens — ported from Forge Intelligence's 12-directive system so the
+ * platform shares one visual language. Dark foundation, Intelligence Blue
+ * accent, Signal Teal for positive states, Proof Amber used sparingly.
+ * Lucide icons (1.5 stroke), calm motion, NO emojis anywhere in the UI.
+ */
+:root {
+  /* Foundation */
+  --color-bg-base: #0F1720;
+  --color-bg-card: #1E293B;
+
+  /* Accents */
+  --color-accent: #3563FF;        /* Intelligence Blue — primary CTA / active */
+  --color-secondary: #14B8A6;     /* Signal Teal — positive / insight signals */
+  --color-highlight: #F5B942;     /* Proof Amber — sparing emphasis only */
+
+  /* Signal severity (consistency engine) */
+  --color-signal-info: #14B8A6;
+  --color-signal-warn: #F5B942;
+  --color-signal-critical: #EF4444;
+
+  /* Text */
+  --color-text: #E2E8F0;
+  --color-text-muted: #94A3B8;
+  --color-text-emphasis: #F8FAFC;
+
+  /* Shape & type */
+  --radius: 12px;                 /* 10–14px range */
+  --font-sans: Inter, Geist, system-ui, sans-serif;
+
+  /* Motion — purposeful only */
+  --transition: 160ms ease;
+}
+
+/* Light mode (blueberry) — parity with Forge's light system. */
+:root[data-theme="light"] {
+  --color-bg-base: #EDF1FF;
+  --color-bg-card: #FFFFFF;
+  --color-text: #0F172A;
+  --color-text-emphasis: #0F172A;
+  --color-text-muted: #475569;
+}
