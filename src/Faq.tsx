@@ -86,6 +86,10 @@ const SECTIONS: Section[] = [
       {
         q: "Why does most AI-generated B2B content get ignored by AI engines?",
         a: "AI engines cite content with distinctive concepts, named frameworks, and original definitions — content the engine can attribute back to a specific source. Most AI-generated B2B content has none of that. It paraphrases the same topics every competitor covers, with no original framework worth quoting. The fix isn't better prompts. It's a competitive worldview before generation, so the output contains things only your brand could have said."
+      },
+      {
+        q: "Why can't most AI content tools publish to custom-built websites?",
+        a: "Generation tools were built for a marketing-tool buying cycle: pick a tier, integrate with a fixed list of CMS platforms (WordPress, Webflow, Ghost), call it done. Custom-stack sites — Next.js, Astro, Vite, hand-rolled Express, Lovable builds — fall outside that integration matrix and get treated as edge cases. Forge ships the primitive that handles them: an authenticated webhook. Add a POST endpoint to your site, generate a Forge-issued bearer token, choose payload format (HTML, Markdown, or both), and every published article gets sent to your receiver. Your site decides storage and rendering. Copy-paste receivers for Node/Express + Postgres, Next.js App Router, and filesystem rebuilds are at /docs/my-website. Real-world setup runs under an hour per site. That's what content infrastructure looks like in practice — not another CMS picker."
       }
     ]
   },
@@ -149,7 +153,7 @@ export default function Faq() {
           <h1 style={styles.headline}>Questions about AI content. Answered with conviction.</h1>
           <p style={styles.subline}>
             Most AI content tools are stateless. Most AI content writing sounds the same. Most measurement
-            metrics miss what AI engines actually reward. Twenty-one answers to the questions content leaders
+            metrics miss what AI engines actually reward. Twenty-two answers to the questions content leaders
             should be asking.
           </p>
         </header>
