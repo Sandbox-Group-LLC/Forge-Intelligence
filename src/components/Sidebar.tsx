@@ -193,6 +193,7 @@ const NAV_ROUTES: Partial<Record<ViewType, string>> = {
   'content-generator':    '/app/content-generator',
   'campaign-generator':   '/app/campaign-generator',
   'social-generator':     '/app/social-generator',
+  'ads-generator':        '/app/ads-generator',
   'compliance-gate':      '/app/compliance-gate',
   'integrations':         '/app/integrations',
   'publishing-queue':     '/app/publishing-queue',
@@ -230,6 +231,7 @@ const topNavItems: TopNavItem[] = [
   { id: 'content-generator',     label: 'Content Generator',     icon: 'fileText',   href: '/app/content-generator' },
   { id: 'campaign-generator',    label: 'Campaign Generator',    icon: 'layers',     href: '/app/campaign-generator' },
   { id: 'social-generator',      label: 'Social Generator',      icon: 'share2',     href: '/app/social-generator' },
+  { id: 'ads-generator',         label: 'Ads Generator',          icon: 'target',     href: '/app/ads-generator' },
   { id: 'email-campaign',        label: 'Email Campaign',         icon: 'mail',       href: '/app/email-campaign' },
   { id: 'compliance-gate',       label: 'Compliance Gate',       icon: 'shieldCheck',href: '/app/compliance-gate' },
 
@@ -261,7 +263,7 @@ export function Sidebar() {
   }, []);
   const LOCKED_ROUTES = [
     '/app/geo-strategist', '/app/authenticity-enricher', '/app/content-generator',
-    '/app/campaign-generator', '/app/social-generator', '/app/compliance-gate', '/app/publishing-queue', '/app/calendar',
+    '/app/campaign-generator', '/app/social-generator', '/app/ads-generator', '/app/compliance-gate', '/app/publishing-queue', '/app/calendar',
     '/app/content-library', '/app/content-import', '/app/topic-queue',
     '/app/performance', '/app/integrations', '/app/mc', '/app/email-campaign',
   ];

@@ -7157,7 +7157,241 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Stage 4.5 — Social Generator (X + Instagram, 4 posts per batch)
+// Stage 4.7 — Ads Generator (Google Ads RSA asset pack)
+// ─────────────────────────────────────────────────────────────────────────────
+// Generates a Responsive Search Ads asset pack — 15 headlines (≤30 chars) +
+// 4 descriptions (≤90 chars) + 2 path fields (≤15 chars) — anchored to the
+// brand's brain patterns, GEO territories, and Factual Ground. Sync (small
+// JSON output, no SSE needed). No persistence yet — PoC mode. Future stages
+// add P-Max asset variants and Google Ads API publishing.
+app.post('/api/ads-generator/rsa', requireAuth, async (req, res) => {
+  const { brandProfileId, topic, finalUrl } = req.body || {};
+  if (!brandProfileId) return res.status(400).json({ success: false, error: 'brandProfileId required' });
+  if (!topic || !String(topic).trim()) return res.status(400).json({ success: false, error: 'topic required' });
+
+  try {
+    const [profileRes, patternsRes, mistakesRes, gbRes] = await Promise.all([
+      pool.query('SELECT * FROM brand_profiles WHERE id = $1', [brandProfileId]),
+      pool.query('SELECT pattern_type, description, confidence_score, tags FROM brain_patterns WHERE brand_profile_id = $1 ORDER BY confidence_score DESC LIMIT 8', [brandProfileId]).catch(() => ({ rows: [] })),
+      pool.query('SELECT mistake_type, description, severity FROM brain_mistakes WHERE brand_profile_id = $1 ORDER BY severity DESC, created_at DESC LIMIT 5', [brandProfileId]).catch(() => ({ rows: [] })),
+      pool.query('SELECT brief_data FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1', [brandProfileId]).catch(() => ({ rows: [] })),
+    ]);
+
+    if (!profileRes.rows.length) return res.status(404).json({ success: false, error: 'Brand profile not found' });
+    const profile = profileRes.rows[0];
+    const profileData = profile.profile_data || {};
+    const factualGround = profile.settings?.factualGround || null;
+
+    const territories = (gbRes.rows[0]?.brief_data?.topicalAuthorityMap || [])
+      .slice(0, 6)
+      .map(t => t.topic || t.cluster || t.name)
+      .filter(Boolean);
+
+    const voice = profileData.voice_profile || {};
+    const personas = (profileData.personas || []).slice(0, 2);
+
+    const systemPrompt = `You are the Ads Generator for Forge Intelligence. You produce complete Google Search campaign asset packs — the full set Google now requires for a Search ad to run: headlines, descriptions, display paths, sitelinks, callouts, and keywords. Every asset is anchored to a brand's intelligence layer (brain patterns, GEO territories, voice profile, Factual Ground).
+
+OUTPUT — return ONLY valid JSON (no markdown, no code fences, no commentary):
+{
+  "headlines": [
+    { "text": "≤30 char headline", "anchor": "one-line brain/voice rationale" }
+    // exactly 15 headlines
+  ],
+  "descriptions": [
+    { "text": "≤90 char description", "anchor": "one-line rationale" }
+    // exactly 4 descriptions
+  ],
+  "paths": ["≤15 char path1", "≤15 char path2"],
+  "sitelinks": [
+    {
+      "linkText": "≤25 char clickable link label",
+      "description1": "≤35 char benefit/detail line 1",
+      "description2": "≤35 char benefit/detail line 2",
+      "finalUrl": "destination URL — leave empty string if the ad's Final URL should be used"
+    }
+    // exactly 6 sitelinks
+  ],
+  "callouts": ["≤25 char non-clickable promo phrase", /* exactly 8 callouts */],
+  "keywords": {
+    "broad":  ["broad-match keyword phrase", /* 8-12 entries */],
+    "phrase": ["phrase-match keyword phrase", /* 8-12 entries */],
+    "exact":  ["exact-match keyword phrase", /* 8-12 entries */]
+  },
+  "notes": "1-2 sentences on the angle strategy across the pack"
+}
+
+HARD CONSTRAINTS — CHARACTER BUDGETS ARE ABSOLUTE CEILINGS, NOT TARGETS:
+
+Headlines:
+- AIM for 22-28 characters. HARD CEILING is 30 — anything 31+ is REJECTED.
+- Before submitting each headline, count characters letter-by-letter (including spaces and punctuation). If your count is 30 or under, submit. If 31 or higher, REWRITE — shorter words, drop articles ("the", "a"), drop conjunctions, drop punctuation, drop trailing periods.
+- Example PASS: "Context decay is the bug." (24 chars). FAIL: "Context decay is the silent bug killing your stack." (52 chars).
+- Spaces count. "AI Content Intelligence" = 23 chars including spaces.
+
+Descriptions:
+- AIM for 75-85 characters. HARD CEILING is 90 — anything 91+ is REJECTED.
+- Same counting protocol: count chars before submitting. Rewrite anything over 90.
+- Example PASS: "An 8-stage intelligence pipeline that conditions every word before generation." (80 chars). FAIL: "An 8-stage Context Agent Architecture that conditions every word before generation, powered by your brain." (108 chars).
+- If a sentence won't fit, split the idea or pick the punchier half. Do NOT submit a long version "for review" — that's a fail.
+
+Sitelinks:
+- linkText: AIM 18-22 chars, HARD CEILING 25 (Google clips past 25). Action phrasing — "See Pricing", "Read the May 7 Pillar", "Book a Demo".
+- description1 + description2: AIM 28-32 chars each, HARD CEILING 35 each. Treat as two short benefit lines that complement the link, NOT a sentence split across two lines.
+- finalUrl: leave as "" unless this sitelink deserves a different page than the ad's main Final URL (most sitelinks should differ — that's the point).
+- Example PASS: linkText "See the Pillar Article" (22), desc1 "May 7-8 Google AI Mode chain" (28), desc2 "Architecture, not volume" (24).
+- Exactly 6 sitelinks. Cover different intent paths (proof, pricing, product, founder story, latest pillar, FAQ).
+
+Callouts:
+- AIM 15-20 chars, HARD CEILING 25 each. Non-clickable promo phrases — short, punchy, benefit-led.
+- No articles ("the", "a"). No trailing punctuation.
+- Example PASS: "8-Stage Pipeline" (16), "Brand-Voice Locked" (18), "No Generic AI Slop" (18).
+- Exactly 8 callouts. Mix: feature, differentiator, social proof, urgency, brand-voice statement.
+
+Keywords:
+- 8-12 keywords per match type (broad, phrase, exact). 24-36 total across all three.
+- Plain keyword text only — NO match-type syntax. Do NOT wrap in quotes, brackets, or +modifiers. The downstream system applies the match type from the JSON key.
+- broad: looser variants, problem-language, persona pain phrases. e.g. "ai content that ranks", "fix generic ai copy".
+- phrase: 2-4 word commercial-intent phrases. e.g. "context agent architecture", "ai content intelligence platform".
+- exact: 1-3 word high-intent brand and category terms. e.g. "forge intelligence", "context agent architecture".
+- Lowercase. Do not duplicate the same phrase across match types unless intentional (e.g. brand terms in all three is fine).
+
+Path fields:
+- HARD CEILING 15 characters each. URL-safe (letters, numbers, hyphens only). Lowercase.
+
+Other:
+- Exact counts: 15 headlines, 4 descriptions, 2 paths, 6 sitelinks, 8 callouts, 24-36 keywords total.
+- Each headline / sitelink / callout must be DIFFERENT in angle — do not paraphrase the same line repeatedly. Cover: feature, benefit, persona pain, proof point, CTA, brand-voice statement, differentiator, urgency, named framework, social proof, question, comparison.
+- Never use competitor names unless explicitly in the brand's competitive gap map.
+- Never fabricate stats, awards, or credentials.
+
+COUNTING DISCIPLINE: The character budget is the single most common failure mode for AI-generated Google Ads. Treat every submission as something you've personally counted. When in doubt, write shorter.
+
+VOICE: match the brand's voice profile. Do not write generic "best-in-class" filler.
+
+BRAIN-FIRST: weave the strongest brain patterns into headlines/descriptions. Reference Factual Ground language verbatim where it fits the character budget. Brand-coined terms from the GEO territories are high-value anchors for Quality Score and AI synthesis.`;
+
+    const userPrompt = `BRAND: ${profile.brand_name || profileData.brand_name || profile.brand_url}
+TOPIC / AD GROUP THEME: "${String(topic).trim()}"
+${finalUrl ? `FINAL URL: ${finalUrl}\n` : ''}
+VOICE PROFILE:
+${JSON.stringify({ tone: voice.tone, formality_score: voice.formality_score, confidence_score: voice.confidence_score, signature_phrases: voice.signature_phrases }, null, 2)}
+
+PRIMARY PERSONAS (write to their pain):
+${personas.map(p => `  • ${p.persona_name || p.name || 'unnamed'} — ${p.pain_points || p.painPoint || p.pain || ''}`).join('\n') || '(none)'}
+
+STRATEGIC TERRITORIES (these are your authority anchors — use the language):
+${territories.length ? territories.map(t => `  • ${t}`).join('\n') : '(none)'}
+
+BRAIN PATTERNS — WHAT WORKS (use these to anchor headlines/descriptions):
+${patternsRes.rows.length ? JSON.stringify(patternsRes.rows.slice(0, 8), null, 2) : '(no patterns extracted yet)'}
+
+BRAIN MISTAKES — WHAT TO AVOID:
+${mistakesRes.rows.length ? JSON.stringify(mistakesRes.rows.slice(0, 5), null, 2) : '(none)'}
+
+${factualGround && Object.values(factualGround).some(v => v && (typeof v === 'string' ? v.trim() : Array.isArray(v) && v.length)) ? `FACTUAL GROUND — USE VERBATIM WHERE IT FITS:
+${factualGround.whatWeDo ? `- WHAT THIS COMPANY DOES: ${factualGround.whatWeDo}\n` : ''}${factualGround.methodology ? `- METHODOLOGY: ${String(factualGround.methodology).slice(0, 600)}\n` : ''}${factualGround.quotablePositions ? `- QUOTABLE POSITIONS: ${factualGround.quotablePositions}\n` : ''}${factualGround.companyFacts ? `- COMPANY FACTS: ${String(factualGround.companyFacts).slice(0, 400)}\n` : ''}` : ''}
+
+Return ONLY the JSON object specified in the system prompt.`;
+
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const aiRes = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      // Bumped from 3000 → 4500 to fit expanded asset pack (sitelinks + callouts
+      // + keywords nearly double the JSON payload vs RSA-only).
+      max_tokens: 4500,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }]
+    });
+
+    const raw = aiRes.content?.[0]?.text || '';
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    let parsed;
+    try { parsed = JSON.parse(jsonMatch ? jsonMatch[0] : raw); }
+    catch (e) {
+      console.error('[ADS-GEN] JSON parse failed:', e.message, raw.slice(0, 300));
+      return res.status(502).json({ success: false, error: 'Generator returned malformed JSON — try again.' });
+    }
+
+    // Server-side char-limit enforcement. Flag any overages instead of silently
+    // truncating — the user needs to know if Claude blew a budget so they can
+    // regen rather than ship a clipped asset.
+    const mkAsset = (text, anchor, cap) => {
+      const t = String(text || '').trim();
+      return { text: t, anchor: String(anchor || '').trim(), length: t.length, overLimit: t.length > cap };
+    };
+    const headlines = (parsed.headlines || []).map(h => mkAsset(h.text, h.anchor, 30));
+    const descriptions = (parsed.descriptions || []).map(d => mkAsset(d.text, d.anchor, 90));
+    const paths = (parsed.paths || []).slice(0, 2).map(p => String(p || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 15));
+
+    const sitelinks = (parsed.sitelinks || []).map(s => {
+      const linkText = String(s.linkText || '').trim();
+      const description1 = String(s.description1 || '').trim();
+      const description2 = String(s.description2 || '').trim();
+      return {
+        linkText, description1, description2,
+        finalUrl: String(s.finalUrl || '').trim(),
+        linkTextLength: linkText.length,
+        description1Length: description1.length,
+        description2Length: description2.length,
+        overLimit: linkText.length > 25 || description1.length > 35 || description2.length > 35,
+      };
+    });
+
+    const callouts = (parsed.callouts || []).map(c => {
+      const t = String(c || '').trim();
+      return { text: t, length: t.length, overLimit: t.length > 25 };
+    });
+
+    // Keywords: trim, lowercase, dedupe-within-match-type, strip stray syntax
+    // (e.g. quotes/brackets) so the user can apply match types cleanly downstream.
+    const cleanKeywordList = (arr) => {
+      const seen = new Set();
+      return (arr || [])
+        .map(k => String(k || '').trim().toLowerCase().replace(/^[\["+]+|["+\]]+$/g, '').trim())
+        .filter(k => k && !seen.has(k) && (seen.add(k), true));
+    };
+    const keywords = {
+      broad: cleanKeywordList(parsed.keywords?.broad),
+      phrase: cleanKeywordList(parsed.keywords?.phrase),
+      exact: cleanKeywordList(parsed.keywords?.exact),
+    };
+
+    const overages =
+      [...headlines, ...descriptions].filter(x => x.overLimit).length +
+      sitelinks.filter(s => s.overLimit).length +
+      callouts.filter(c => c.overLimit).length;
+
+    await pool.query(
+      `INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms) VALUES ($1, $2, $3, $4, $5)`,
+      ['stage4_7_ads_generator', brandProfileId, overages ? 'partial' : 'success',
+       (aiRes.usage?.input_tokens || 0) + (aiRes.usage?.output_tokens || 0), 0]
+    ).catch(() => {});
+
+    res.json({
+      success: true,
+      pack: {
+        headlines,
+        descriptions,
+        paths,
+        sitelinks,
+        callouts,
+        keywords,
+        notes: String(parsed.notes || '').trim(),
+        finalUrl: finalUrl || '',
+        topic: String(topic).trim(),
+        generatedAt: new Date().toISOString(),
+      },
+      overages,
+    });
+  } catch (e) {
+    console.error('[ADS-GEN]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Mirrors Content Generator's brain-loading + SSE pattern but produces 4 short-form
 // posts targeted at one platform (x or instagram). 1:1 imagery, brand voice enforced,
