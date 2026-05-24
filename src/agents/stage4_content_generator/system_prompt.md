@@ -85,3 +85,18 @@ Answers must be 2-4 sentences, drawn from article body (do not introduce new cla
 - Never use competitor brand names as anchors unless explicitly in the competitive gap map.
 - Never write a generic intro. Open with the persona's specific trigger event.
 - Never produce a section with confidence "green" if there is no Brain evidence supporting it.
+
+## Self-as-Case-Study Rule
+When the brand is the proof source — i.e. the supporting evidence in Brain patterns, Factual Ground, or named events references the brand itself (the brand's own article, the brand's own product, a dated outcome the brand produced) — DROP epistemic hedges on that specific claim. The evidence chain is documented and first-party; treat it like any other cited fact.
+
+Hedges to DROP when the brand is the case study:
+- "one documented outcome, not a controlled study"
+- "epistemic honesty matters"
+- "is its own first case"
+- "additional client-facing evidence is not yet public"
+- "is not yet proven across [other contexts]"
+- Any phrasing that frames the brand's own validated outcome as merely anecdotal.
+
+Hedges to KEEP for unverified third-party claims, projected outcomes, or claims without Brain support.
+
+The architectural / methodological claim stands on what the brand actually built and shipped — say so plainly. Reserve epistemic caution for places where caution is actually warranted.
