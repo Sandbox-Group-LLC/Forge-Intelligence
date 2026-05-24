@@ -6953,8 +6953,31 @@ ${(() => {
 `
       : '';
 
+    // Self-as-case-study detection: when the brand's own name appears in Brain
+    // pattern evidence/tags or Factual Ground, the brand IS the proof source
+    // for at least one claim in this article. Flag it so the system prompt's
+    // "Self-as-Case-Study Rule" fires and the writer drops epistemic hedges on
+    // first-party validated outcomes. (Alpha shipped with blanket humility to
+    // keep brands from over-claiming; mature brand brains earn the right to
+    // stand on their documented evidence.)
+    const brandName = profileData?.brand_name || profile.brand_name || '';
+    const brandHost = (() => {
+      try { return new URL(profileData?.brand_url || profile.brand_url || '').hostname.replace(/^www\./, ''); }
+      catch { return ''; }
+    })();
+    const selfAsCaseStudy = brandName && [
+      ...patternsRes.rows.map(p => `${p.description || ''} ${JSON.stringify(p.tags || '')}`),
+      JSON.stringify(factualGround || {})
+    ].some(text => {
+      const hay = text.toLowerCase();
+      return hay.includes(brandName.toLowerCase()) || (brandHost && hay.includes(brandHost.toLowerCase()));
+    });
+    const selfAsCaseStudyBlock = selfAsCaseStudy
+      ? `\nSELF-AS-CASE-STUDY DETECTED: Brain evidence or Factual Ground references "${brandName}" directly. Apply the Self-as-Case-Study Rule from the system prompt — drop epistemic hedges on first-party validated outcomes, let the architectural claim stand. Keep hedges for unverified third-party claims.\n`
+      : '';
+
         const userPrompt = `Generate a long-form article using the following Brand Intelligence context.
-${topicPrompt ? `\nUSER TOPIC DIRECTION (write the article around this specific topic/angle — this overrides the enriched brief's default topic selection):\n"${topicPrompt}"\n` : ''}${(mandatories || constraints || audience || ctaTarget || desiredAction || wordCountTarget) ? `\nUSER MANDATORIES & CONSTRAINTS (the user-supplied non-negotiables for this article — every section must respect these. Treat as harder than brand patterns):\n${mandatories ? `- MANDATORIES (must include): ${mandatories}\n` : ''}${constraints ? `- CONSTRAINTS (must NOT do): ${constraints}\n` : ''}${audience ? `- TARGET AUDIENCE: ${audience}\n` : ''}${ctaTarget ? `- CTA TARGET URL/PATH: ${ctaTarget} — every CTA in the article should reference this destination.\n` : ''}${desiredAction ? `- DESIRED READER ACTION: ${desiredAction} — shape the article and conclusion to drive toward this specific next step.\n` : ''}${wordCountTarget ? `- TARGET LENGTH: approximately ${wordCountTarget} words. Do not pad — depth over filler.\n` : ''}` : ''}${factualGroundBlock}${territoriesBlock}
+${topicPrompt ? `\nUSER TOPIC DIRECTION (write the article around this specific topic/angle — this overrides the enriched brief's default topic selection):\n"${topicPrompt}"\n` : ''}${(mandatories || constraints || audience || ctaTarget || desiredAction || wordCountTarget) ? `\nUSER MANDATORIES & CONSTRAINTS (the user-supplied non-negotiables for this article — every section must respect these. Treat as harder than brand patterns):\n${mandatories ? `- MANDATORIES (must include): ${mandatories}\n` : ''}${constraints ? `- CONSTRAINTS (must NOT do): ${constraints}\n` : ''}${audience ? `- TARGET AUDIENCE: ${audience}\n` : ''}${ctaTarget ? `- CTA TARGET URL/PATH: ${ctaTarget} — every CTA in the article should reference this destination.\n` : ''}${desiredAction ? `- DESIRED READER ACTION: ${desiredAction} — shape the article and conclusion to drive toward this specific next step.\n` : ''}${wordCountTarget ? `- TARGET LENGTH: approximately ${wordCountTarget} words. Do not pad — depth over filler.\n` : ''}` : ''}${selfAsCaseStudyBlock}${factualGroundBlock}${territoriesBlock}
 BRAND PROFILE:
 ${trimTo(profileData, 6000)}
 
