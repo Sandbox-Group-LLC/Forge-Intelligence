@@ -15997,11 +15997,34 @@ app.get('/sitemap.xml', async (req, res) => {
   const isProduction = req.hostname === 'forgeintelligence.ai';
   if (!isProduction) return res.status(404).send('No sitemap for dev');
 
+  const now = new Date().toISOString();
+
+  // Static public surface — every route in src/main.tsx that's intended for
+  // public indexing. Anything gated (/app/*) or post-signup (/welcome) is
+  // deliberately omitted.
   const urls = [
-    { loc: 'https://forgeintelligence.ai/', priority: '1.0', changefreq: 'weekly', lastmod: new Date().toISOString() },
-    { loc: 'https://forgeintelligence.ai/product', priority: '0.9', changefreq: 'weekly', lastmod: new Date().toISOString() },
-    { loc: 'https://forgeintelligence.ai/faq', priority: '0.85', changefreq: 'monthly', lastmod: new Date().toISOString() },
+    { loc: 'https://forgeintelligence.ai/',               priority: '1.0',  changefreq: 'weekly',  lastmod: now },
+    { loc: 'https://forgeintelligence.ai/product',        priority: '0.9',  changefreq: 'weekly',  lastmod: now },
+    { loc: 'https://forgeintelligence.ai/about',          priority: '0.85', changefreq: 'monthly', lastmod: now },
+    { loc: 'https://forgeintelligence.ai/faq',            priority: '0.85', changefreq: 'monthly', lastmod: now },
+    { loc: 'https://forgeintelligence.ai/docs',           priority: '0.7',  changefreq: 'monthly', lastmod: now },
+    { loc: 'https://forgeintelligence.ai/privacy',        priority: '0.3',  changefreq: 'yearly',  lastmod: now },
+    { loc: 'https://forgeintelligence.ai/terms',          priority: '0.3',  changefreq: 'yearly',  lastmod: now },
+    { loc: 'https://forgeintelligence.ai/acceptable-use', priority: '0.3',  changefreq: 'yearly',  lastmod: now },
   ];
+
+  // Doc slugs — hand-mirrored from src/docs/index.ts. Server-side enumeration
+  // would need a TS loader; cheaper to keep this list in sync at PR-review time
+  // (it grows ~1 entry per integration shipped).
+  const docSlugs = ['my-website'];
+  for (const slug of docSlugs) {
+    urls.push({
+      loc: `https://forgeintelligence.ai/docs/${slug}`,
+      priority: '0.6',
+      changefreq: 'monthly',
+      lastmod: now,
+    });
+  }
 
   // Pull the Forge Intelligence brand's own published articles so Google indexes them.
   // Only this brand's articles (not customer brands) — customer articles live on their own domains.
