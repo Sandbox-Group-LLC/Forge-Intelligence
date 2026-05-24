@@ -2998,14 +2998,19 @@ Evaluate the user's topic against this brand's performance data and return ONLY 
     const raw = aiData.content?.[0]?.text || '{}';
     const clean = raw.replace(/```json|```/g, '').trim();
     const parsed = safeParseLLM(clean, 'object', 'topic-check');
-    // Guard: if Anthropic returned an error, parsed will be empty — don't send a blank card
+    // Guard: if Anthropic returned an error, parsed will be empty — return
+    // success:false so the frontend hides the preflight card entirely rather
+    // than showing a contradictory green ✓ + "Check unavailable" panel that
+    // tells the user to "proceed with generation" even when the next step is
+    // actually "Build brief →".
     if (!parsed.signal) {
-      return res.json({ success: true, signal: 'strong', confidence: 'Check unavailable', reason: 'Could not evaluate topic against brain data right now. Proceed with generation.', reframe: null });
+      console.error('[TOPIC-CHECK] LLM returned no signal — hiding preflight card');
+      return res.json({ success: false, error: 'check_unavailable' });
     }
     res.json({ success: true, ...parsed });
   } catch(e) {
     console.error('[TOPIC-CHECK]', e.message);
-    res.json({ success: true, signal: 'strong', confidence: 'Check unavailable', reason: 'Could not evaluate topic against brain data right now. Proceed with generation.', reframe: null });
+    res.json({ success: false, error: 'check_unavailable' });
   }
 });
 
