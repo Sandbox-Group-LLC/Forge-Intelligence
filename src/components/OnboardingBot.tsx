@@ -79,7 +79,7 @@ const STEPS: Step[] = [
     id: 'brain',
     icon: <IconBrain />,
     title: "Your Brain is your foundation",
-    body: "Everything in Forge starts with the Context Hub. Drop in your brand URL and Forge runs Perplexity Sonar for competitor and ICP discovery, scrapes your LinkedIn company page for operational voice signals, then Claude Opus synthesizes it all into a full Brand Intelligence Profile. This is your Brain — it shapes every word the platform generates.",
+    body: "Everything in Forge starts with the Context Hub. Drop in your brand URL. Forge runs Perplexity Sonar for competitor and ICP discovery, then reads your full site — homepage, pricing, blog, about, customers, FAQ, anywhere with content — via Jina Reader (with a Bright Data Chromium fallback for SPAs and bot-protected sites). Claude Opus synthesizes it all into a full Brand Intelligence Profile. This is your Brain — it shapes every word the platform generates.",
     cta: { label: "Run your first Brain analysis →", href: "/app/context-hub" },
     nudge: "Not quite right? Tune your brand voice in Brand Settings →"
   },
@@ -108,7 +108,7 @@ const STEPS: Step[] = [
     id: 'publish',
     icon: <IconSend />,
     title: "Publish everywhere, track everything",
-    body: "Connect your channels once in Integrations — LinkedIn, X, Ghost, WordPress, Webflow, Facebook. Then publish from the Queue with one click. UTMs are injected automatically on every channel so you can trace every conversion back to the article that drove it.",
+    body: "Connect your channels once in Integrations — LinkedIn, X, Facebook, Reddit, Medium, Ghost, WordPress, Webflow, plus My Website (publish to your own self-hosted site via authenticated webhook). Then publish from the Queue with one click. UTMs are injected automatically on every channel so you can trace every conversion back to the article that drove it.",
     cta: { label: "Connect your channels →", href: "/app/integrations" }
   },
   {
@@ -129,16 +129,19 @@ const STEPS: Step[] = [
 
 const FAQ = [
   { q: "How do I re-run my brand analysis?", a: "Go to the Brand Profile view and click 'Re-analyze'. This updates your existing profile in place — all your content, analytics, and Brain data stay connected. No need to start over." },
-  { q: "Why does my brand profile show an orange warning?", a: "That means the website scraper couldn't read your site — usually because of Cloudflare bot protection or a firewall. The profile was built from search data only. Try re-analyzing, or reach out to support if it persists." },
+  { q: "Where will my articles live?", a: "By default, Forge hosts articles at forgeintelligence.ai/articles/<brand>/<slug>. Two ways to host on your own domain instead: (1) set an Article Base URL in Brand Settings — Forge still hosts the HTML but every URL we publish points to your domain (you proxy or redirect to ours); or (2) connect the My Website integration — Forge POSTs the article payload directly to a receiver on your site, you host natively. See /docs/my-website for the My Website setup guide." },
+  { q: "Why does my brand profile show an orange warning?", a: "Brand scans cascade Jina Reader → Bright Data Web Unlocker → Bright Data Scraping Browser, which handles most Cloudflare and bot-protection setups. An orange warning means even the rendering browser couldn't reach your site (rare — usually a custom WAF rule, geo-block, or rate limit). The profile was built from search + metadata only. Try re-analyzing in a few minutes, or reach out if it persists." },
   { q: "Why is my GEO score low?", a: "GEO scoring reflects your current AI citation presence — most brands start low. The opportunity score shows where AI platforms have gaps you can fill. A low score means high upside." },
   { q: "Where did my generated article go?", a: "Articles are saved automatically. If you navigate away and come back to the Content Generator, your last article will reload. You can also find all articles in the Content Library or Compliance Gate." },
   { q: "What's the Brain Match score?", a: "Brain Match measures how closely a generated article aligns with your brand's voice profile, personas, and strategic positioning. Higher scores mean the content sounds more like your brand, not generic AI." },
   { q: "How do I navigate the pipeline?", a: "Each stage has a 'Continue to...' button in the top-right that takes you to the next step. The full flow is: Context Hub → GEO Strategist → Authenticity Enricher → Content Generator → Compliance Gate → Publishing." },
   { q: "What's the Ideas feature?", a: "The Ideas button in the Content Generator header lets you save topic ideas for later. Park an idea, and when you're ready to write, you can pull it into the generator as a topic prompt." },
-  { q: "What channels can I publish to?", a: "LinkedIn, X (Twitter), Facebook Pages, Ghost CMS, WordPress, and Webflow are live. Connect them in Settings → Integrations." },
+  { q: "What channels can I publish to?", a: "LinkedIn, X (Twitter), Facebook Pages, Reddit, Medium, Ghost CMS, WordPress, and Webflow are all live. Plus 'My Website' — a webhook publisher for any self-hosted site you control. Connect them in Settings → Integrations." },
+  { q: "How does My Website work?", a: "It's a webhook publisher for any site you control. You add a POST endpoint on your site, Forge generates a one-time bearer token, choose payload format (HTML, Markdown, or both), then Forge sends each article whenever you publish. Your receiver decides storage and rendering. Full payload schema + copy-paste receivers for Node/Express + Postgres, Next.js, and filesystem rebuilds are at /docs/my-website." },
   { q: "How often should I sync analytics?", a: "Weekly is ideal. The Pattern Extractor runs after each sync and writes new learnings back to the Brain — so your next article is smarter than your last." },
   { q: "What's the Compliance Gate for?", a: "It reviews every article for factual claims, brand voice alignment, and citation opportunities before publishing. Sections are auto-approved or flagged for human review. You can also add reviewers who get an email link to approve or request changes." },
   { q: "How do I add a reviewer?", a: "Go to Settings → Brand Settings and scroll to the Reviewers section. Add them by name and email. When you send an article for review, they'll receive an email with a unique approval link." },
+  { q: "Why am I seeing a Reconnect button instead of Reset & Retry?", a: "Your platform OAuth token expired (LinkedIn, X, Facebook all rotate tokens periodically and invalidate them on password change). Forge clears the dead credentials and shows a Reconnect link because retrying the same publish would fail again — you need to re-authorize the channel in Integrations first." },
   { q: "Can I use a promo code?", a: "Yes — when you hit a paid feature gate, enter your promo code in the modal. If it's a 100% discount code, access unlocks immediately with no expiration." },
   { q: "What is Pre-cog scoring?", a: "Pre-cog predicts how an article will perform relative to your historical average, using your Brain data and past analytics. It runs automatically before content generation to catch weak topics early." },
   { q: "How do I export my Strategy Brief?", a: "On the Strategy Brief view, click 'Export Brief' in the header. This downloads a JSON file with your full strategic analysis including personas, positioning, and content recommendations." },
