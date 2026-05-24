@@ -58,6 +58,12 @@ function AdsGeneratorContent() {
   const [overages, setOverages] = useState(0);
   const [error, setError] = useState('');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  // Push-to-Topic-Queue state. Lets the user send Google-flagged low-volume
+  // keywords straight into the Topic Queue as content opportunities (the GEO
+  // play: keywords with no search volume are uncommoditized territory the
+  // brand should be creating content for, not bidding on).
+  const [pushingTopics, setPushingTopics] = useState(false);
+  const [pushResult, setPushResult] = useState<{ inserted: number; skipped: number } | null>(null);
 
   const brains: Brain[] = historyEntries.map(e => ({ id: e.id, brandName: e.brandName, brandUrl: e.brandUrl }));
   if (brains.length === 0 && activeBrand) {
@@ -137,6 +143,40 @@ function AdsGeneratorContent() {
       ...pack.keywords.exact.map(k => `[${k}]`),
     ];
     copy(lines.join('\n'), 'all-kw');
+  };
+
+  // Push all keywords (deduped across match types) into the brand's Topic
+  // Queue so the team can spin them up as content briefs. Match type is meta
+  // for ads, not for content — so we dedupe by raw phrase.
+  const pushKeywordsToTopicQueue = async () => {
+    if (!pack || !selectedBrainId || pushingTopics) return;
+    const all = Array.from(new Set([
+      ...pack.keywords.broad,
+      ...pack.keywords.phrase,
+      ...pack.keywords.exact,
+    ].map(k => k.trim()).filter(Boolean)));
+    if (!all.length) return;
+    setPushingTopics(true);
+    setPushResult(null);
+    try {
+      const r = await fetch('/api/topic-ideas/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
+        body: JSON.stringify({
+          brandProfileId: selectedBrainId,
+          topics: all,
+          note: `From Ads Generator — "${pack.topic}" keyword set. GEO play: low-volume Google keyword = uncommoditized content territory to own.`,
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.success) throw new Error(d.error || 'Push failed');
+      setPushResult({ inserted: d.inserted, skipped: d.skipped });
+    } catch (e) {
+      setPushResult({ inserted: 0, skipped: 0 });
+      setError(`Couldn't push to Topic Queue: ${(e as Error).message}`);
+    } finally {
+      setPushingTopics(false);
+    }
   };
 
   return (
@@ -344,8 +384,32 @@ function AdsGeneratorContent() {
             <section>
               <div style={sectionHeader}>
                 <span>Keywords · {pack.keywords.broad.length + pack.keywords.phrase.length + pack.keywords.exact.length} total · match-typed for bulk paste</span>
-                <button onClick={copyAllKeywords} style={smallBtn}><Copy size={12} /> {copiedKey === 'all-kw' ? 'Copied' : 'Copy all (match-typed)'}</button>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    onClick={pushKeywordsToTopicQueue}
+                    disabled={pushingTopics}
+                    style={smallBtn}
+                    title="Send these keywords to the Topic Queue as content opportunities — the GEO play for low-volume terms"
+                  >
+                    {pushingTopics ? '…' : '↗'} {pushingTopics ? 'Pushing…' : 'Push to Topic Queue'}
+                  </button>
+                  <button onClick={copyAllKeywords} style={smallBtn}><Copy size={12} /> {copiedKey === 'all-kw' ? 'Copied' : 'Copy all (match-typed)'}</button>
+                </div>
               </div>
+              {pushResult && (
+                <div style={{
+                  padding: '8px 12px',
+                  marginBottom: 8,
+                  background: 'var(--color-accent-muted, #eef2ff)',
+                  border: '1px solid var(--color-border, #e2e8f0)',
+                  borderRadius: 6,
+                  fontSize: 12,
+                  color: 'var(--color-text-secondary, #475569)',
+                }}>
+                  Pushed <strong>{pushResult.inserted}</strong> new {pushResult.inserted === 1 ? 'topic' : 'topics'} to the Topic Queue
+                  {pushResult.skipped > 0 && <> · {pushResult.skipped} skipped as duplicates</>}.
+                </div>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
                 <KeywordColumn label="Broad" hint="bare phrases" keywords={pack.keywords.broad} wrap={k => k} />
                 <KeywordColumn label="Phrase" hint='wrap "quotes"' keywords={pack.keywords.phrase} wrap={k => `"${k}"`} />
