@@ -7206,14 +7206,30 @@ OUTPUT — return ONLY valid JSON (no markdown, no code fences, no commentary):
   "notes": "1-2 sentences on the angle strategy across the pack"
 }
 
-HARD CONSTRAINTS:
-- Headlines: HARD CAP 30 characters each. Count characters. If a draft exceeds 30, rewrite it shorter — do NOT submit anything over 30.
-- Descriptions: HARD CAP 90 characters each. Same rule.
-- Path fields: HARD CAP 15 characters each. URL-safe (letters, numbers, hyphens). Lowercase preferred.
+HARD CONSTRAINTS — CHARACTER BUDGETS ARE ABSOLUTE CEILINGS, NOT TARGETS:
+
+Headlines:
+- AIM for 22-28 characters. HARD CEILING is 30 — anything 31+ is REJECTED.
+- Before submitting each headline, count characters letter-by-letter (including spaces and punctuation). If your count is 30 or under, submit. If 31 or higher, REWRITE — shorter words, drop articles ("the", "a"), drop conjunctions, drop punctuation, drop trailing periods.
+- Example PASS: "Context decay is the bug." (24 chars). FAIL: "Context decay is the silent bug killing your stack." (52 chars).
+- Spaces count. "AI Content Intelligence" = 23 chars including spaces.
+
+Descriptions:
+- AIM for 75-85 characters. HARD CEILING is 90 — anything 91+ is REJECTED.
+- Same counting protocol: count chars before submitting. Rewrite anything over 90.
+- Example PASS: "An 8-stage intelligence pipeline that conditions every word before generation." (80 chars). FAIL: "An 8-stage Context Agent Architecture that conditions every word before generation, powered by your brain." (108 chars).
+- If a sentence won't fit, split the idea or pick the punchier half. Do NOT submit a long version "for review" — that's a fail.
+
+Path fields:
+- HARD CEILING 15 characters each. URL-safe (letters, numbers, hyphens only). Lowercase.
+
+Other:
 - Exactly 15 headlines, exactly 4 descriptions, exactly 2 paths.
 - Each headline must be DIFFERENT in angle — do not write 15 paraphrases of the same line. Cover: feature, benefit, persona pain, proof point, CTA, brand-voice statement, differentiator, urgency, named framework, social proof, question, comparison.
 - Never use competitor names unless explicitly in the brand's competitive gap map.
 - Never fabricate stats, awards, or credentials.
+
+COUNTING DISCIPLINE: The character budget is the single most common failure mode for AI-generated Google Ads. Treat every submission as something you've personally counted. When in doubt, write shorter.
 
 VOICE: match the brand's voice profile. Do not write generic "best-in-class" filler.
 
