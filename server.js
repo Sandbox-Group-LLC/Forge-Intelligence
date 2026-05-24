@@ -7157,7 +7157,154 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Stage 4.5 — Social Generator (X + Instagram, 4 posts per batch)
+// Stage 4.7 — Ads Generator (Google Ads RSA asset pack)
+// ─────────────────────────────────────────────────────────────────────────────
+// Generates a Responsive Search Ads asset pack — 15 headlines (≤30 chars) +
+// 4 descriptions (≤90 chars) + 2 path fields (≤15 chars) — anchored to the
+// brand's brain patterns, GEO territories, and Factual Ground. Sync (small
+// JSON output, no SSE needed). No persistence yet — PoC mode. Future stages
+// add P-Max asset variants and Google Ads API publishing.
+app.post('/api/ads-generator/rsa', requireAuth, async (req, res) => {
+  const { brandProfileId, topic, finalUrl } = req.body || {};
+  if (!brandProfileId) return res.status(400).json({ success: false, error: 'brandProfileId required' });
+  if (!topic || !String(topic).trim()) return res.status(400).json({ success: false, error: 'topic required' });
+
+  try {
+    const [profileRes, patternsRes, mistakesRes, gbRes] = await Promise.all([
+      pool.query('SELECT * FROM brand_profiles WHERE id = $1', [brandProfileId]),
+      pool.query('SELECT pattern_type, description, confidence_score, tags FROM brain_patterns WHERE brand_profile_id = $1 ORDER BY confidence_score DESC LIMIT 8', [brandProfileId]).catch(() => ({ rows: [] })),
+      pool.query('SELECT mistake_type, description, severity FROM brain_mistakes WHERE brand_profile_id = $1 ORDER BY severity DESC, created_at DESC LIMIT 5', [brandProfileId]).catch(() => ({ rows: [] })),
+      pool.query('SELECT brief_data FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1', [brandProfileId]).catch(() => ({ rows: [] })),
+    ]);
+
+    if (!profileRes.rows.length) return res.status(404).json({ success: false, error: 'Brand profile not found' });
+    const profile = profileRes.rows[0];
+    const profileData = profile.profile_data || {};
+    const factualGround = profile.settings?.factualGround || null;
+
+    const territories = (gbRes.rows[0]?.brief_data?.topicalAuthorityMap || [])
+      .slice(0, 6)
+      .map(t => t.topic || t.cluster || t.name)
+      .filter(Boolean);
+
+    const voice = profileData.voice_profile || {};
+    const personas = (profileData.personas || []).slice(0, 2);
+
+    const systemPrompt = `You are the Ads Generator for Forge Intelligence. You write Google Responsive Search Ads (RSA) asset packs anchored to a brand's intelligence layer — brain patterns, GEO territories, voice profile, Factual Ground.
+
+OUTPUT — return ONLY valid JSON (no markdown, no code fences, no commentary):
+{
+  "headlines": [
+    { "text": "≤30 char headline", "anchor": "one-line brain/voice rationale" }
+    // exactly 15 headlines
+  ],
+  "descriptions": [
+    { "text": "≤90 char description", "anchor": "one-line rationale" }
+    // exactly 4 descriptions
+  ],
+  "paths": ["≤15 char path1", "≤15 char path2"],
+  "notes": "1-2 sentences on the angle strategy across the pack"
+}
+
+HARD CONSTRAINTS:
+- Headlines: HARD CAP 30 characters each. Count characters. If a draft exceeds 30, rewrite it shorter — do NOT submit anything over 30.
+- Descriptions: HARD CAP 90 characters each. Same rule.
+- Path fields: HARD CAP 15 characters each. URL-safe (letters, numbers, hyphens). Lowercase preferred.
+- Exactly 15 headlines, exactly 4 descriptions, exactly 2 paths.
+- Each headline must be DIFFERENT in angle — do not write 15 paraphrases of the same line. Cover: feature, benefit, persona pain, proof point, CTA, brand-voice statement, differentiator, urgency, named framework, social proof, question, comparison.
+- Never use competitor names unless explicitly in the brand's competitive gap map.
+- Never fabricate stats, awards, or credentials.
+
+VOICE: match the brand's voice profile. Do not write generic "best-in-class" filler.
+
+BRAIN-FIRST: weave the strongest brain patterns into headlines/descriptions. Reference Factual Ground language verbatim where it fits the character budget. Brand-coined terms from the GEO territories are high-value anchors for Quality Score and AI synthesis.`;
+
+    const userPrompt = `BRAND: ${profile.brand_name || profileData.brand_name || profile.brand_url}
+TOPIC / AD GROUP THEME: "${String(topic).trim()}"
+${finalUrl ? `FINAL URL: ${finalUrl}\n` : ''}
+VOICE PROFILE:
+${JSON.stringify({ tone: voice.tone, formality_score: voice.formality_score, confidence_score: voice.confidence_score, signature_phrases: voice.signature_phrases }, null, 2)}
+
+PRIMARY PERSONAS (write to their pain):
+${personas.map(p => `  • ${p.persona_name || p.name || 'unnamed'} — ${p.pain_points || p.painPoint || p.pain || ''}`).join('\n') || '(none)'}
+
+STRATEGIC TERRITORIES (these are your authority anchors — use the language):
+${territories.length ? territories.map(t => `  • ${t}`).join('\n') : '(none)'}
+
+BRAIN PATTERNS — WHAT WORKS (use these to anchor headlines/descriptions):
+${patternsRes.rows.length ? JSON.stringify(patternsRes.rows.slice(0, 8), null, 2) : '(no patterns extracted yet)'}
+
+BRAIN MISTAKES — WHAT TO AVOID:
+${mistakesRes.rows.length ? JSON.stringify(mistakesRes.rows.slice(0, 5), null, 2) : '(none)'}
+
+${factualGround && Object.values(factualGround).some(v => v && (typeof v === 'string' ? v.trim() : Array.isArray(v) && v.length)) ? `FACTUAL GROUND — USE VERBATIM WHERE IT FITS:
+${factualGround.whatWeDo ? `- WHAT THIS COMPANY DOES: ${factualGround.whatWeDo}\n` : ''}${factualGround.methodology ? `- METHODOLOGY: ${String(factualGround.methodology).slice(0, 600)}\n` : ''}${factualGround.quotablePositions ? `- QUOTABLE POSITIONS: ${factualGround.quotablePositions}\n` : ''}${factualGround.companyFacts ? `- COMPANY FACTS: ${String(factualGround.companyFacts).slice(0, 400)}\n` : ''}` : ''}
+
+Return ONLY the JSON object specified in the system prompt.`;
+
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const aiRes = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 3000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }]
+    });
+
+    const raw = aiRes.content?.[0]?.text || '';
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    let parsed;
+    try { parsed = JSON.parse(jsonMatch ? jsonMatch[0] : raw); }
+    catch (e) {
+      console.error('[ADS-GEN] JSON parse failed:', e.message, raw.slice(0, 300));
+      return res.status(502).json({ success: false, error: 'Generator returned malformed JSON — try again.' });
+    }
+
+    // Server-side char-limit enforcement. Flag any overages instead of silently
+    // truncating — the user needs to know if Claude blew a budget so they can
+    // regen rather than ship a clipped headline.
+    const headlines = (parsed.headlines || []).map(h => ({
+      text: String(h.text || '').trim(),
+      anchor: String(h.anchor || '').trim(),
+      length: String(h.text || '').trim().length,
+      overLimit: String(h.text || '').trim().length > 30,
+    }));
+    const descriptions = (parsed.descriptions || []).map(d => ({
+      text: String(d.text || '').trim(),
+      anchor: String(d.anchor || '').trim(),
+      length: String(d.text || '').trim().length,
+      overLimit: String(d.text || '').trim().length > 90,
+    }));
+    const paths = (parsed.paths || []).slice(0, 2).map(p => String(p || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 15));
+
+    const overages = [...headlines, ...descriptions].filter(x => x.overLimit).length;
+
+    await pool.query(
+      `INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms) VALUES ($1, $2, $3, $4, $5)`,
+      ['stage4_7_ads_generator', brandProfileId, overages ? 'partial' : 'success',
+       (aiRes.usage?.input_tokens || 0) + (aiRes.usage?.output_tokens || 0), 0]
+    ).catch(() => {});
+
+    res.json({
+      success: true,
+      pack: {
+        headlines,
+        descriptions,
+        paths,
+        notes: String(parsed.notes || '').trim(),
+        finalUrl: finalUrl || '',
+        topic: String(topic).trim(),
+        generatedAt: new Date().toISOString(),
+      },
+      overages,
+    });
+  } catch (e) {
+    console.error('[ADS-GEN]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Mirrors Content Generator's brain-loading + SSE pattern but produces 4 short-form
 // posts targeted at one platform (x or instagram). 1:1 imagery, brand voice enforced,
