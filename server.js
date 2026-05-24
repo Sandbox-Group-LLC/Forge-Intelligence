@@ -15997,11 +15997,34 @@ app.get('/sitemap.xml', async (req, res) => {
   const isProduction = req.hostname === 'forgeintelligence.ai';
   if (!isProduction) return res.status(404).send('No sitemap for dev');
 
+  const now = new Date().toISOString();
+
+  // Static public surface — every route in src/main.tsx that's intended for
+  // public indexing. Anything gated (/app/*) or post-signup (/welcome) is
+  // deliberately omitted.
   const urls = [
-    { loc: 'https://forgeintelligence.ai/', priority: '1.0', changefreq: 'weekly', lastmod: new Date().toISOString() },
-    { loc: 'https://forgeintelligence.ai/product', priority: '0.9', changefreq: 'weekly', lastmod: new Date().toISOString() },
-    { loc: 'https://forgeintelligence.ai/faq', priority: '0.85', changefreq: 'monthly', lastmod: new Date().toISOString() },
+    { loc: 'https://forgeintelligence.ai/',               priority: '1.0',  changefreq: 'weekly',  lastmod: now },
+    { loc: 'https://forgeintelligence.ai/product',        priority: '0.9',  changefreq: 'weekly',  lastmod: now },
+    { loc: 'https://forgeintelligence.ai/about',          priority: '0.85', changefreq: 'monthly', lastmod: now },
+    { loc: 'https://forgeintelligence.ai/faq',            priority: '0.85', changefreq: 'monthly', lastmod: now },
+    { loc: 'https://forgeintelligence.ai/docs',           priority: '0.7',  changefreq: 'monthly', lastmod: now },
+    { loc: 'https://forgeintelligence.ai/privacy',        priority: '0.3',  changefreq: 'yearly',  lastmod: now },
+    { loc: 'https://forgeintelligence.ai/terms',          priority: '0.3',  changefreq: 'yearly',  lastmod: now },
+    { loc: 'https://forgeintelligence.ai/acceptable-use', priority: '0.3',  changefreq: 'yearly',  lastmod: now },
   ];
+
+  // Doc slugs — hand-mirrored from src/docs/index.ts. Server-side enumeration
+  // would need a TS loader; cheaper to keep this list in sync at PR-review time
+  // (it grows ~1 entry per integration shipped).
+  const docSlugs = ['my-website'];
+  for (const slug of docSlugs) {
+    urls.push({
+      loc: `https://forgeintelligence.ai/docs/${slug}`,
+      priority: '0.6',
+      changefreq: 'monthly',
+      lastmod: now,
+    });
+  }
 
   // Pull the Forge Intelligence brand's own published articles so Google indexes them.
   // Only this brand's articles (not customer brands) — customer articles live on their own domains.
@@ -17266,6 +17289,50 @@ app.post('/api/topic-ideas', requireAuth, async (req, res) => {
     );
     res.json({ success: true, idea: r.rows[0] });
   } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// POST /api/topic-ideas/bulk — push a list of topics in one round-trip.
+// Used by the Ads Generator to send Google-flagged "low-volume" keywords
+// straight into the Topic Queue as content opportunities (the GEO play:
+// keywords with no search volume are uncommoditized territory the brand
+// should be creating content for, not bidding ads on).
+// Dedupes against the brand's existing ideas by case-insensitive topic match
+// to keep repeated pushes idempotent.
+app.post('/api/topic-ideas/bulk', requireAuth, async (req, res) => {
+  const { brandProfileId, topics, note: defaultNote } = req.body || {};
+  if (!brandProfileId) return res.status(400).json({ success: false, error: 'brandProfileId required' });
+  if (!Array.isArray(topics) || !topics.length) return res.status(400).json({ success: false, error: 'topics array required' });
+
+  try {
+    const existing = await pool.query(
+      `SELECT LOWER(topic) AS t FROM topic_ideas WHERE brand_profile_id = $1`,
+      [brandProfileId]
+    );
+    const seen = new Set(existing.rows.map(r => r.t));
+    const toInsert = [];
+    for (const item of topics) {
+      const topic = String((typeof item === 'string' ? item : item?.topic) || '').trim();
+      if (!topic) continue;
+      const key = topic.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const note = String((typeof item === 'object' ? item?.note : '') || defaultNote || '').trim() || null;
+      toInsert.push({ topic, note });
+    }
+    if (!toInsert.length) return res.json({ success: true, inserted: 0, skipped: topics.length });
+
+    // Single multi-row INSERT — atomic, one round-trip
+    const values = toInsert.map((_, i) => `($1, $${i * 2 + 2}, $${i * 2 + 3})`).join(', ');
+    const params = [brandProfileId, ...toInsert.flatMap(t => [t.topic, t.note])];
+    const r = await pool.query(
+      `INSERT INTO topic_ideas (brand_profile_id, topic, note) VALUES ${values} RETURNING id, topic`,
+      params
+    );
+    res.json({ success: true, inserted: r.rows.length, skipped: topics.length - r.rows.length, ideas: r.rows });
+  } catch(e) {
+    console.error('[TOPIC-IDEAS-BULK]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
 });
 
 // PATCH /api/topic-ideas/:id — update status (idea → in_progress → generated)
