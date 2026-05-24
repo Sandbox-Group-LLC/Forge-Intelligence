@@ -2655,7 +2655,7 @@ Stage 1 → 6 end-to-end complete.
 > "OAuth is not our core product. Intelligence is. Every hour debugging LinkedIn redirect URIs is an hour not spent on Pre-cog scores and GEO Citation."
 
 **On the Google Ads optimization score (May 24, 2026):**
-> "Forge's first auto-generated Search pack hit a 99.9% Google Ads optimization score on the Forge Intelligence account. Single pass. No manual tuning. That's the architecture working — keywords, headlines, descriptions, sitelinks, and callouts all sourced from one brain pass instead of stitched from five disconnected prompts. The score is also a CPC discount: Google rewards high optimization with better ad rank at lower bids."
+> "Forge's first auto-generated Search pack hit a 100% Google Ads optimization score on the Forge Intelligence account. Started at 99.9%, climbed to perfect within hours of Google scoring the ad rank. Single pass. No manual tuning. That's the architecture working — keywords, headlines, descriptions, sitelinks, and callouts all sourced from one brain pass instead of stitched from five disconnected prompts. The score is also a CPC discount: Google rewards high optimization with better ad rank at lower bids."
 
 **On low-volume keywords as a feature, not a bug:**
 > "Google flagged most of Forge's keywords as low search volume. That's the strategy working. Low volume means uncommoditized — terms Forge coined that the market hasn't caught up to yet. The play isn't to chase commodity keywords at agency CPCs. It's to publish into the language you own until search catches up — then collect the ad inventory you've been the only bidder on."
