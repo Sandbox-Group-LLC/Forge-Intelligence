@@ -6,10 +6,26 @@ import './ContentGeneratorPage.css';
 interface Brain { id: string; brandName: string; brandUrl: string }
 
 interface PackItem { text: string; anchor: string; length: number; overLimit: boolean }
+interface Sitelink {
+  linkText: string;
+  description1: string;
+  description2: string;
+  finalUrl: string;
+  linkTextLength: number;
+  description1Length: number;
+  description2Length: number;
+  overLimit: boolean;
+}
+interface Callout { text: string; length: number; overLimit: boolean }
+interface KeywordSet { broad: string[]; phrase: string[]; exact: string[] }
+
 interface AssetPack {
   headlines: PackItem[];
   descriptions: PackItem[];
   paths: string[];
+  sitelinks: Sitelink[];
+  callouts: Callout[];
+  keywords: KeywordSet;
   notes: string;
   finalUrl: string;
   topic: string;
@@ -82,25 +98,46 @@ function AdsGeneratorContent() {
     } catch {}
   };
 
-  // Google Ads bulk-upload CSV — one row per asset. Format matches Google Ads
-  // Editor / Google Ads UI's bulk-upload spec at the asset level so the user
-  // can paste headlines/descriptions in directly without per-row reformatting.
+  // Google Ads bulk-upload CSV — one row per asset, with the columns each asset
+  // type needs. The Google Ads bulk-upload spec uses one column set per asset
+  // type and ignores blank columns for types that don't use them, so a single
+  // wide CSV works for all 6 asset types here.
   const downloadCSV = () => {
     if (!pack) return;
-    const rows: string[] = ['Asset Type,Asset Text,Final URL,Path 1,Path 2'];
-    pack.headlines.forEach(h => rows.push(`Headline,"${h.text.replace(/"/g, '""')}","${pack.finalUrl}","${pack.paths[0] || ''}","${pack.paths[1] || ''}"`));
-    pack.descriptions.forEach(d => rows.push(`Description,"${d.text.replace(/"/g, '""')}","${pack.finalUrl}","${pack.paths[0] || ''}","${pack.paths[1] || ''}"`));
+    const esc = (s: string) => `"${(s || '').replace(/"/g, '""')}"`;
+    const header = 'Asset Type,Asset Text,Description 1,Description 2,Final URL,Path 1,Path 2,Match Type';
+    const rows: string[] = [header];
+    pack.headlines.forEach(h => rows.push(`Headline,${esc(h.text)},,,${esc(pack.finalUrl)},${esc(pack.paths[0] || '')},${esc(pack.paths[1] || '')},`));
+    pack.descriptions.forEach(d => rows.push(`Description,${esc(d.text)},,,${esc(pack.finalUrl)},${esc(pack.paths[0] || '')},${esc(pack.paths[1] || '')},`));
+    pack.sitelinks.forEach(s => rows.push(`Sitelink,${esc(s.linkText)},${esc(s.description1)},${esc(s.description2)},${esc(s.finalUrl || pack.finalUrl)},,,`));
+    pack.callouts.forEach(c => rows.push(`Callout,${esc(c.text)},,,,,,`));
+    pack.keywords.broad.forEach(k => rows.push(`Keyword,${esc(k)},,,,,,Broad`));
+    pack.keywords.phrase.forEach(k => rows.push(`Keyword,${esc(k)},,,,,,Phrase`));
+    pack.keywords.exact.forEach(k => rows.push(`Keyword,${esc(k)},,,,,,Exact`));
     const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `rsa-pack-${pack.topic.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}.csv`;
+    a.download = `search-pack-${pack.topic.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
   const copyAllHeadlines = () => pack && copy(pack.headlines.map(h => h.text).join('\n'), 'all-h');
   const copyAllDescriptions = () => pack && copy(pack.descriptions.map(d => d.text).join('\n'), 'all-d');
+  const copyAllCallouts = () => pack && copy(pack.callouts.map(c => c.text).join('\n'), 'all-co');
+  // Match-typed keyword export: applies Google Ads bulk-add syntax — phrase
+  // gets quotes, exact gets brackets, broad is bare. User can paste straight
+  // into the Google Ads keyword bulk-add textarea.
+  const copyAllKeywords = () => {
+    if (!pack) return;
+    const lines = [
+      ...pack.keywords.broad,
+      ...pack.keywords.phrase.map(k => `"${k}"`),
+      ...pack.keywords.exact.map(k => `[${k}]`),
+    ];
+    copy(lines.join('\n'), 'all-kw');
+  };
 
   return (
     <div className="geo-content">
@@ -109,7 +146,7 @@ function AdsGeneratorContent() {
           <div className="geo-eyebrow">Stage 4.7 · PoC</div>
           <h1 className="geo-title">Ads Generator</h1>
           <p className="geo-description">
-            Google Responsive Search Ads asset pack — 15 headlines, 4 descriptions, 2 display paths — anchored to your brain, GEO territories, and Factual Ground. Paste straight into Google Ads or export as CSV.
+            Complete Google Search campaign asset pack — 15 headlines, 4 descriptions, 2 display paths, 6 sitelinks, 8 callouts, and match-typed keywords — anchored to your brain, GEO territories, and Factual Ground. Paste straight into Google Ads or export the full pack as CSV.
           </p>
         </div>
       </div>
@@ -251,6 +288,71 @@ function AdsGeneratorContent() {
               </div>
             </section>
           )}
+
+          {pack.sitelinks && pack.sitelinks.length > 0 && (
+            <section>
+              <div style={sectionHeader}>
+                <span>Sitelinks · {pack.sitelinks.length} · link 25 / desc 35 max</span>
+              </div>
+              <div style={{ display: 'grid', gap: 8 }}>
+                {pack.sitelinks.map((s, i) => (
+                  <SitelinkRow
+                    key={`sl${i}`}
+                    index={i + 1}
+                    sitelink={s}
+                    fallbackUrl={pack.finalUrl}
+                    onCopy={() => copy(`${s.linkText}\n${s.description1}\n${s.description2}\n${s.finalUrl || pack.finalUrl}`, `sl${i}`)}
+                    copied={copiedKey === `sl${i}`}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {pack.callouts && pack.callouts.length > 0 && (
+            <section>
+              <div style={sectionHeader}>
+                <span>Callouts · {pack.callouts.length} · 25 char max</span>
+                <button onClick={copyAllCallouts} style={smallBtn}><Copy size={12} /> {copiedKey === 'all-co' ? 'Copied' : 'Copy all'}</button>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {pack.callouts.map((c, i) => (
+                  <button
+                    key={`co${i}`}
+                    onClick={() => copy(c.text, `co${i}`)}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      padding: '6px 10px', fontSize: 13,
+                      background: c.overLimit ? '#FEE2E2' : 'var(--color-bg-card, #fff)',
+                      border: c.overLimit ? '1px solid #FCA5A5' : '1px solid var(--color-border, #e2e8f0)',
+                      borderRadius: 6, cursor: 'pointer',
+                      color: c.overLimit ? '#991B1B' : 'inherit',
+                    }}
+                    title={`${c.length}/25${c.overLimit ? ' — over limit' : ''}`}
+                  >
+                    {c.text}
+                    <span style={{ fontSize: 10, color: c.overLimit ? '#991B1B' : 'var(--color-text-muted, #94a3b8)', fontFamily: 'ui-monospace, monospace' }}>
+                      {copiedKey === `co${i}` ? '✓' : `${c.length}`}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {pack.keywords && (pack.keywords.broad.length + pack.keywords.phrase.length + pack.keywords.exact.length > 0) && (
+            <section>
+              <div style={sectionHeader}>
+                <span>Keywords · {pack.keywords.broad.length + pack.keywords.phrase.length + pack.keywords.exact.length} total · match-typed for bulk paste</span>
+                <button onClick={copyAllKeywords} style={smallBtn}><Copy size={12} /> {copiedKey === 'all-kw' ? 'Copied' : 'Copy all (match-typed)'}</button>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+                <KeywordColumn label="Broad" hint="bare phrases" keywords={pack.keywords.broad} wrap={k => k} />
+                <KeywordColumn label="Phrase" hint='wrap "quotes"' keywords={pack.keywords.phrase} wrap={k => `"${k}"`} />
+                <KeywordColumn label="Exact" hint="wrap [brackets]" keywords={pack.keywords.exact} wrap={k => `[${k}]`} />
+              </div>
+            </section>
+          )}
         </div>
       )}
 
@@ -282,6 +384,60 @@ function AssetRow({ index, text, anchor, length, limit, overLimit, onCopy, copie
         <button onClick={onCopy} style={{ ...smallBtn, padding: '4px 8px' }}>
           <Copy size={12} /> {copied ? 'Copied' : 'Copy'}
         </button>
+      </div>
+    </div>
+  );
+}
+
+function SitelinkRow({ index, sitelink, fallbackUrl, onCopy, copied }: {
+  index: number; sitelink: Sitelink; fallbackUrl: string; onCopy: () => void; copied: boolean;
+}) {
+  const s = sitelink;
+  const ltColor = s.linkTextLength > 25 ? '#EF4444' : s.linkTextLength > 22 ? '#F5B942' : '#10B981';
+  const d1Color = s.description1Length > 35 ? '#EF4444' : s.description1Length > 32 ? '#F5B942' : '#10B981';
+  const d2Color = s.description2Length > 35 ? '#EF4444' : s.description2Length > 32 ? '#F5B942' : '#10B981';
+  return (
+    <div style={{
+      display: 'grid', gridTemplateColumns: '24px 1fr auto', gap: 10, alignItems: 'flex-start',
+      padding: 10, background: 'var(--color-bg-card, #fff)',
+      border: s.overLimit ? '1px solid #FCA5A5' : '1px solid var(--color-border, #e2e8f0)',
+      borderRadius: 8,
+    }}>
+      <div style={{ fontSize: 11, color: 'var(--color-text-muted, #94a3b8)', paddingTop: 2 }}>{index}</div>
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.4, color: s.linkTextLength > 25 ? '#991B1B' : 'inherit' }}>{s.linkText}</div>
+        <div style={{ fontSize: 13, color: s.description1Length > 35 ? '#991B1B' : 'var(--color-text-secondary, #475569)', marginTop: 2 }}>{s.description1}</div>
+        <div style={{ fontSize: 13, color: s.description2Length > 35 ? '#991B1B' : 'var(--color-text-secondary, #475569)' }}>{s.description2}</div>
+        <div style={{ fontSize: 11, color: 'var(--color-text-muted, #94a3b8)', marginTop: 4, wordBreak: 'break-all' }}>
+          → {s.finalUrl || fallbackUrl || '(uses ad Final URL)'}
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+        <div style={{ fontSize: 10, color: ltColor, fontFamily: 'ui-monospace, monospace' }}>link {s.linkTextLength}/25</div>
+        <div style={{ fontSize: 10, color: d1Color, fontFamily: 'ui-monospace, monospace' }}>d1 {s.description1Length}/35</div>
+        <div style={{ fontSize: 10, color: d2Color, fontFamily: 'ui-monospace, monospace' }}>d2 {s.description2Length}/35</div>
+        <button onClick={onCopy} style={{ ...smallBtn, padding: '4px 8px', marginTop: 4 }}>
+          <Copy size={12} /> {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function KeywordColumn({ label, hint, keywords, wrap }: {
+  label: string; hint: string; keywords: string[]; wrap: (k: string) => string;
+}) {
+  return (
+    <div style={{ background: 'var(--color-bg-card, #fff)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, padding: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+        <div style={{ fontSize: 12, fontWeight: 600 }}>{label}</div>
+        <div style={{ fontSize: 10, color: 'var(--color-text-muted, #94a3b8)' }}>{hint} · {keywords.length}</div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 13, fontFamily: 'ui-monospace, monospace' }}>
+        {keywords.length === 0
+          ? <div style={{ color: 'var(--color-text-muted, #94a3b8)', fontStyle: 'italic' }}>(none)</div>
+          : keywords.map((k, i) => <div key={`${label}-${i}`} style={{ color: 'var(--color-text-secondary, #475569)' }}>{wrap(k)}</div>)
+        }
       </div>
     </div>
   );
