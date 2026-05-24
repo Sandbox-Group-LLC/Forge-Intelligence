@@ -1,14 +1,16 @@
-# Forge Intelligence — Master SSOT
+# Forge Intelligence — Product & Platform Reference
 
-> **This README is the single source of truth for all AI sessions, dev work, and project decisions.**
-> Always read this file top to bottom before touching anything.
-> Always read WHITEBOARD.md second — it is the active working doc.
-> Always read the current file and capture its SHA before writing — never write blind.
-> Always commit with a descriptive message using conventional commits (feat:, fix:, refactor:, style:)
-> Never give Brian code to run themselves — make the commit directly.
-> Render auto-deploys on every push to production — no manual deploy step needed.
-> DO NOT narrate or ask Brian to confirm changes.
-> URL pattern: frontend routes match product names (e.g. /context-hub, /geo-strategist), API routes follow /api/{product-slug}/
+> This README is the product/platform reference for Forge Intelligence — what the platform does, what's live, the 8-stage architecture, infrastructure, and the architecture rules that must not be broken.
+>
+> **Agent / session instructions live elsewhere now.** Start here on every session:
+>
+> 1. **`CLAUDE.md`** — code-graph entry point (GitNexus output). Architectural orientation.
+> 2. **`SESSION-PROTOCOL.md`** — current operational rules (branch + PR workflow, Render ops, DB safety, communication norms).
+> 3. **`WORKING-STATE.md`** — what's in flight, what just shipped, what's next. Newest session on top.
+> 4. **`WHITEBOARD.md`** — long-form retrospective archive.
+> 5. **THIS FILE** — product/platform reference (less frequently changed than the above).
+>
+> URL pattern: frontend routes match product names (e.g. `/context-hub`, `/geo-strategist`), API routes follow `/api/{product-slug}/`.
 
 ---
 
@@ -37,21 +39,21 @@
 
 ---
 
-## Platform Status (May 11, 2026)
+## Platform Status (May 23, 2026)
 
 ### All 8 Stages Live
 
 | Stage | Name | Status | Model |
 |-------|------|--------|-------|
-| 1 | Context Hub | ✅ LIVE | Perplexity Sonar + Website Scraper + Claude Opus 4.6 (profile) + Claude Haiku 4.5 (brain ops) |
+| 1 | Context Hub | ✅ LIVE | Perplexity Sonar (research) + **Jina Reader (primary content extraction) + forgeScrape Tier 1→2 fallback** (BD Web Unlocker → Scraping Browser) + Claude Opus 4.6 (profile) + Claude Haiku 4.5 (brain ops). Stage 1 rebuilt 2026-05-21 — see Recent Major Work below. |
 | 2 | GEO Strategist | ✅ LIVE | Claude Sonnet 4.6 (3 tools) |
 | 3 | Authenticity Enricher | ✅ LIVE | Perplexity Sonar (SME signals) + Claude Sonnet 4.6 (EEAT/injection/assembly) — SSE progress, enriched brief selector |
 | 4 | Content Generator | ✅ LIVE | Claude Sonnet 4.6 — requires enriched brief, published briefs filtered |
 | 4.5 | Campaign Generator | ✅ LIVE | Claude Sonnet 4.6 |
 | 4.6 | Email Campaign Generator | ✅ LIVE | Mistral Large — inline edit + per-flag actions (resolve/cite/dismiss) + brain feedback loop on false-positive dismissals + render-side sanitization for P.S./CTA/proof-token leakage |
 | 5 | Compliance Gate | ✅ LIVE | Claude Sonnet 4.6 |
-| 6 | Publishing & Distribution | ✅ LIVE | Queue + multi-channel |
-| 7 | Performance Intelligence | ✅ LIVE | LinkedIn + X + Ghost + GSC + GEO + Facebook + Reddit (Zernio-routed for LinkedIn/Reddit/Facebook with dual-ID sync as of May 11) |
+| 6 | Publishing & Distribution | ✅ LIVE | Queue + multi-channel: LinkedIn (Zernio), X (OAuth2 — x.com migrated 2026-05-23), Facebook (Zernio + Pipedream), Reddit (Zernio), Medium, Ghost, WordPress, Webflow, **My Website (new — self-hosted webhook publisher, see `/docs/my-website`)** |
+| 7 | Performance Intelligence | ✅ LIVE | LinkedIn + X + Ghost + GSC + GEO + Facebook + Reddit. **All Zernio-routed channels (LinkedIn / Reddit / Facebook) use dual-ID sync** (zernioPostId for analytics lookup, platform URN for display); Facebook URN→_id backfill admin endpoint shipped 2026-05-22 |
 | 8 | Feedback Loop | ✅ LIVE | Pattern Extractor (Claude Haiku 4.5) |
 | — | Hero Image Generation | ✅ LIVE | Claude Haiku 4.5 (prompt) + Flux Schnell via fal.ai (render) |
 
@@ -101,28 +103,41 @@
 - Applied at every LLM JSON.parse call: context agent, content generator (2 paths), campaign plan, campaign articles (×8), compliance critique
 - Handles bare newlines/tabs/control chars inside Claude's streamed string values
 
-### Recent Major Work (May 7–11, 2026)
+### Recent Major Work (May 12–23, 2026)
 
-**Zernio LinkedIn migration (May 7–8):** Forge LinkedIn publishing migrated from direct OAuth to Zernio's API. Sandbox-XM, Sandbox-GTM, and Attio still on direct OAuth pending migration. **Critical:** Zernio's `/analytics` endpoint requires Zernio's internal `_id`, NOT the platform-native `postId`. `zernioPublish()` returns both: `{ postId: platformPostId, zernioPostId: post._id, ... }`. Analytics sync uses `zernioPostId` when present, falls back to legacy LinkedIn API path when absent.
+**Stage 1 (Context Hub crawl) rebuilt end-to-end (May 21):** Single biggest piece of work in this window. Old Stage 1 was raw `fetch()` with UA rotation, no anti-bot, no JS render, 3 KB body cap per page — silently returned SPA shells on most modern customer sites and built brand profiles off meta tags + JSON-LD alone. **New Stage 1 = Jina Reader primary + `forgeScrape` (BD Tier 1 → Tier 2) fallback** with parallel page fetches, sitemap.xml-aware discovery, and anchor-only link extraction. Wall-clock cut from ~60 s sequential to ~15–20 s parallel; brand profiles now capture full pricing pages, blog catalogs, security whitepapers. Validated on sandbox-gtm.com (v9 profile materially richer than v8) and forgeintelligence.ai (v12, with the GitNexus-aware brain profile). PRs #103–#110.
 
-**Email Campaign Generator polish (May 9–10):** Three rendering bugs fixed (duplicate P.S., inline `{{cta_url}}`, `[NEEDS_PROOF]` tokens) — both at source (prompt rewrite at `src/agents/stage46_email_campaign/system_prompt.md`) and at render (sanitization helper). Edit mode on every EmailCard (subject_lines + body + ps + cta_text + cta_url_placeholder all editable). Per-flag actions: Mark resolved / Add citation / Dismiss as false positive. **Dismissals write `brain_mistakes` rows with `mistake_type='compliance_false_positive:<type>'` so the Compliance Gate's brain learns to suppress patterns** — closes the feedback loop on AI-generated flags. Sequence Assessment readability: plain English, three paragraphs, no `[bracket_identifiers]`.
+**`forgeScrape` primitive (May 21):** Single source of truth for any Bright Data scraping. Tier 1 = Web Unlocker, Tier 2 = Scraping Browser (puppeteer-core CDP, real Chromium, residential IPs) auto-fires when Tier 1 returns an SPA shell. Extracts content via Mozilla Readability + Turndown locally — no second API call. Used by Stage 1 + Site Template. Every call logs to `scrape_log` with `caller` set for audit. Honest extraction metric replaces "0/10 class names found" with "regions located via any signal" (class, data-testid, semantic landmark, content match).
 
-**MCP server live (May 9):** `POST /mcp` endpoint exposes 3 read-only tools to external MCP clients (Viktor/Slack assistant): `list_email_campaigns`, `list_emails_in_campaign`, `get_email_copy`. JSON-RPC 2.0, dual-auth (Bearer + X-Api-Key), new scope namespace `mcp:campaigns:read` / `mcp:emails:read`.
+**My Website channel (May 22):** Brand-new self-hosted webhook publisher. Customers publish Forge articles to their own sites via authenticated webhook with Forge-issued `forge_pub_<32hex>` bearer token. Backend: 4 admin endpoints (config / generate-token / test / disconnect) + publish-handler branch + analytics. Frontend: `<MyWebsiteForm>` with URL input, format toggle (HTML / Markdown / both), show-once token reveal, test-publish button. Public docs at `/docs/my-website` with copy-paste receiver samples (Node/Express + Postgres, Next.js App Router, filesystem). PRs #117–#122.
 
-**Attio CSV export (May 9):** Per-email CSV download with subject-variant picker (benefit / curiosity / pattern_interrupt). Two columns matching Attio's "Generated Emails" Object attributes exactly. RFC-compliant escaping + UTF-8 BOM. Same pattern adopted for HubSpot copy-to-clipboard.
+**`/docs` page (May 22):** Public-route documentation site at `forgeintelligence.ai/docs`. Left sidebar grouped by category (Integrations / Concepts / Reference), syntax-highlighted markdown via `react-markdown` + `remark-gfm` + `react-syntax-highlighter`. **Share With AI button** on every doc downloads the markdown with a framing preamble for Claude/ChatGPT/Cursor. PRs #120, #123–#125, #134.
 
-**HubSpot integration stripped (May 9):** Four rebuild attempts confirmed HubSpot's public API gates email-template creation behind Marketing Hub Pro+ at every tier-accessible endpoint. Sales Hub Starter users can manually create email templates via HubSpot's UI but not via any public API. Replaced API push with a "Copy for HubSpot" button on each email card — formats email as paste-ready HTML and writes to clipboard. User pastes into HubSpot Sales > Templates > New > Source view. No OAuth, no scope drama, works on every tier.
+**`article_base_url` respected everywhere (May 23):** Five publish handlers (Facebook x3, Reddit, Medium) + My Website canonical were rebuilding URLs from `BASE_DOMAIN + brandSlug + articleSlug` instead of brand-aware `forgeArticleUrl`. Customers with `article_base_url` set were seeing Forge-hosted URLs in social posts instead of their own domain. PR #121 unified all six on `forgeArticleUrl`. PR #123 also adds an explicit "Where will my articles live?" Brand Settings callout so the default hosting destination isn't a surprise.
 
-**Publish-status mirror bug (May 10):** 100% failure rate caught by Brian noticing one specific article was missing in Performance Dashboard. Investigation found `/api/publishing/publish` updated `publishing_queue.status` + `publish_log` + `memories` but never the parent `generated_content_<brand>.status` row. 25 of 25 published articles across 3 brands were stuck at `status='draft'` despite being live. Backfilled + added the missing 5th UPDATE so future publishes self-correct.
+**Markdown leak fix on social copy (May 22):** Facebook + LinkedIn posts going out with literal `#` headings and `**bold**` markers — Haiku was writing markdown by default and the publish path didn't strip it. PR #115 adds `stripSocialMarkdown()` helper, updates Facebook prompts to request plain text, applies the strip at 6 sites. Reddit left intact (renders MD natively).
 
-**Copilot Autofix disabled (May 10):** 7 unsupervised auto-merge PRs overnight broke dev's `IntegrationsPage.tsx`. Reverted single-file from last-known-good commit. Autofix bot disabled at repo level. CodeQL findings still surface in Security tab; just no auto-PRs.
+**X (Twitter) OAuth migrated to x.com (May 23):** Forge was sending users to `twitter.com/i/oauth2/authorize`. Twitter's domain-migration redirect chain was breaking the login cookie across `twitter.com` ↔ `x.com`, producing a "to use this App you have to be logged in" infinite loop in fresh browsers. PR #132 swaps the authorize URL plus both token-exchange URLs (`api.twitter.com/2/oauth2/token` → `api.x.com/2/oauth2/token`). Runtime API endpoints (tweets, users/me, media-upload) left on `api.twitter.com` — working today via compat redirects.
 
-**Lessons logged (folded into ARCHITECTURE_RULES below):**
-- **Probe before pivot.** A 30-second API call to validate a theory beats 90 minutes of pivot-based-on-inference. Used `/api/admin/zernio/raw` to confirm Zernio analytics ID requirements before writing a fix.
-- **Multi-table write contracts need to live somewhere visible.** The publish flow needed to update 5 tables (publishing_queue, publish_log, memories, agent_activity_log, and the parent content table). Knowing the contract lived only in "whoever last touched this code remembered." 25 articles were silently broken because of it.
-- **Same paywall in different shapes = stop pivoting, call it.** Cost: 90 min of HubSpot endpoint pivots before recognizing the Marketing Hub Pro+ tier gate.
-- **Atomic single-PUT commits when editing one file across multiple in-memory steps.** Two scripts crashed mid-edit and left main with self-inconsistent state. Convention: do everything in memory first, sanity-check, then ONE PUT.
-- **API auth state is fragile across migrations.** The Zernio migration overwrote Forge's LinkedIn `publishing_channels.credentials.accessToken`. **TODO: LinkedIn OAuth callback should MERGE credentials, not REPLACE.**
+**Auth-expired = Reconnect, not Reset & Retry (May 23):** PR #130 detects auth-expired patterns in `publish_log.error_message`, swaps the button for an amber "Reconnect [Channel] →" link to `/app/integrations`, surfaces non-auth error messages directly.
+
+**Facebook analytics URN bug + backfill (May 22):** Facebook publishes via Zernio were storing only the platform URN; the analytics sync passed that URN to Zernio's `/analytics` endpoint which expects Zernio's internal `_id` — every Facebook post returned HTTP 404. PR #111 captures `zernioPostId` at publish time + uses it for sync (mirrors the LinkedIn pattern landed 2026-05-10). PRs #112/#113 ship a one-shot admin backfill endpoint that maps existing URNs → Zernio `_id`s; ran cleanly against the 2 historical Sandbox-GTM posts. **Facebook is now on dual-ID treatment, matching LinkedIn.**
+
+**GitNexus context files installed (May 22):** `npx gitnexus@latest analyze` against the repo produced `CLAUDE.md`, `AGENTS.md`, and `.claude/skills/gitnexus/` (6 skill files). 2,818 nodes / 3,968 edges / 61 clusters / 129 execution flows. **Aspirational without live MCP runtime** — GitNexus MCP is stdio-only, so cloud Claude Code sessions can't connect to it today; files ship as orientation for the day FleetView gains custom MCP support or upstream ships HTTP/SSE transport.
+
+**SESSION-PROTOCOL refresh + bootstrap consolidation (May 22):** `SESSION-PROTOCOL.md` rewritten for the current local-edit + git + draft-PR workflow (the original was for a deprecated GitHub Contents API + Python script flow) and moved from `docs/` to repo root alongside `CLAUDE.md`, `AGENTS.md`, `WORKING-STATE.md`, `WHITEBOARD.md`. PR #128.
+
+**Other notable (chronological):**
+- 2026-05-12 Lovable integration — prompt-pack endpoint, "Build with Lovable" button on Brand Profile, first-use hint
+- 2026-05-12 Quick Start no-website onramp (`/quick-start` route, partner-agnostic Deploy card)
+- 2026-05-13 X v2 media upload fix (branch by auth method — v2 for OAuth2, v1.1 for OAuth1)
+- 2026-05-13 Social Generator: Regenerate Arcs button + modal (rescan-free brand arc regeneration)
+- 2026-05-13 Security: Vite 5 → 8 upgrade, Clerk + postcss patches
+- 2026-05-13 X analytics: structured logging + OAuth2 token refresh on 401
+- 2026-05-14 Articles library: canonical + robots SSR; promo + gate URL params (`?promo=NANGO`, `?gate=open`); brand deep-link no-flash on first load
+- 2026-05-15 GFM table rendering for article markdown (single-line-flat → `<table>`)
+- 2026-05-17 `/api/admin/mark-unpublished` endpoint
+- 2026-05-23 Topbar alerts bell + Get Help support form
 
 ---
 
@@ -131,10 +146,11 @@
 | Service | Details |
 |---------|---------|
 | **Repo** | `github.com/Sandbox-Group-LLC/Forge-Intelligence` |
-| **Branch: main** | Development → `dev.forgeintelligence.ai` |
-| **Branch: production** | Public app → `forgeintelligence.ai/app/*` |
-| **Render (dev)** | `forge-dev` watching `main` |
-| **Render (prod)** | `forge-production` watching `production` |
+| **Branch: main** | Production → `forgeintelligence.ai` |
+| **Branch: development** | Staging → `dev.forgeintelligence.ai` (all feature/fix work integrates here first) |
+| **Render (dev)** | `forge-dev` watching `development` |
+| **Render (prod)** | `forge-production` watching `main` |
+| **Render env vars** | Shared between prod + dev via **Linked Environment Group** |
 | **Database** | NeonDB `ep-odd-waterfall-akyrdo6x-pooler` — **never revert to ep-cool-firefly** |
 | **Auth** | Clerk — org-slug multi-tenancy Phase 2 |
 | **Email** | Resend |
@@ -149,14 +165,20 @@
 - **requireAuth** on every endpoint that touches brand data
 - **sanitizeJson()** is a top-level shared utility — do not re-inline it
 - **activeBrand from useApp()** is the only source of brandProfileId — no direct brains fetches from pages
-- **Website Scraper (Tool 1.5)** — Context Hub crawls homepage + /about + /product + /blog pages before Claude analysis. Up to 8K chars injected with "ACTUAL WEBSITE CONTENT" header. Without this, Claude hallucinates from domain names.
+- **Stage 1 fetch = Jina-first, forgeScrape fallback.** As of 2026-05-21 the Context Hub crawl is Jina Reader primary (`r.jina.ai/<url>` — accept if returns > 500 chars markdown), `forgeScrape` (BD Tier 1 → Tier 2 cascade) fallback, with parallel page fetch. Sitemap.xml-first subpage discovery, anchor-only link extraction, asset blocklist. Up to 100 KB markdown injected with "ACTUAL WEBSITE CONTENT" header. **Do NOT revert to the pre-2026-05-21 direct-`fetch()` + UA-rotation + 3 KB-cap design** — that silently returned SPA shells and built brand profiles off meta tags alone.
+- **`forgeScrape` is the only Bright Data primitive.** Tier 1 = Web Unlocker, Tier 2 = Scraping Browser (puppeteer-core CDP, residential IPs) auto-fires on SPA shell. Used by Stage 1 + Site Template. Every call logs to `scrape_log` with `caller` set. If a new feature needs BD scraping, use `forgeScrape()` — do not build a parallel fetcher.
+- **`forgeArticleUrl` is the canonical article URL.** Every publish handler MUST use `forgeArticleUrl` (which honors `brand.article_base_url` if set, falls back to `forgeintelligence.ai/articles/<brandSlug>/<slug>`). Do NOT rebuild URLs from `BASE_DOMAIN + brandSlug + articleSlug` — that bypasses BYO-domain configuration and was the source of the cross-channel article-URL bug landed pre-2026-05-23 (PR #121 fixed 6 sites).
 - **Context Hub re-analyze** updates brand in place (same UUID) — never creates a new UUID, preserving all content tables, queue, analytics, and brain data
 - **GEO briefs endpoint** filters by brandProfileId — prevents cross-brand data leakage
 - **Promo code flow** uses softAuth + brandProfileId resolution fallback (auth token → clerk_user_id → most recent active brand)
 - **All GateModal instances** pass `brandProfileId={activeBrand?.id}` — required for promo codes to flip `is_paid`
 - **Neon daily snapshots** enabled on production branch (expires rolling 35 days)
 - **HubSpot integration is clipboard-copy only** — the HubSpot public API gates email-template creation behind Marketing Hub Pro+ at every tier-accessible endpoint. Sales Hub Starter cannot create email templates via API. Do NOT rebuild OAuth-based HubSpot push. The "Copy for HubSpot" button is the durable answer.
-- **Zernio dual-ID** — every `zernioPublish()` returns `{ postId, zernioPostId, ... }`. `postId` is the platform-native ID (LinkedIn URN, X tweet ID, Reddit post slug); `zernioPostId` is Zernio's internal `_id`. The analytics sync MUST use `zernioPostId` when calling Zernio's `/analytics` endpoint — it does NOT accept platform-native IDs. Sync code already in place for LinkedIn at L11427; **Reddit and Facebook sync paths still need the same dual-ID treatment** (followup queued).
+- **Zernio dual-ID** — every `zernioPublish()` returns `{ postId, zernioPostId, ... }`. `postId` is the platform-native ID (LinkedIn URN, X tweet ID, Reddit post slug); `zernioPostId` is Zernio's internal `_id`. The analytics sync MUST use `zernioPostId` when calling Zernio's `/analytics` endpoint — it does NOT accept platform-native IDs. **In place for LinkedIn (2026-05-10) and Facebook (2026-05-22, PR #111).** Reddit sync path on the same pattern; verify before adding any new Zernio-routed channel.
+- **Strip markdown from social-platform copy.** Haiku defaults to writing markdown. Facebook, LinkedIn, and X DON'T render `#` headings or `**bold**` — they show the raw characters. Apply `stripSocialMarkdown()` to any Haiku-generated post copy (already wired at all 6 sites as of PR #115). Reddit is the exception — it renders markdown natively, leave intact.
+- **X (Twitter) OAuth uses `x.com`, not `twitter.com`.** As of 2026-05-23 the authorize endpoint is `https://x.com/i/oauth2/authorize` and the token exchange is `https://api.x.com/2/oauth2/token`. The legacy `twitter.com` URLs serve but chain through a domain-migration redirect that breaks the login cookie → infinite login loop in fresh browsers. Runtime API endpoints (tweets, users/me, media-upload) still on `api.twitter.com` and working via compat redirects — leave alone unless they actually break.
+- **My Website channel uses webhook + bearer auth, not OAuth.** Customer provides a `POST` endpoint URL; Forge generates a `forge_pub_<32hex>` token (shown ONCE on generate/rotate, masked thereafter) and POSTs the article payload with `Authorization: Bearer <token>`. Customer receiver decides storage. Full payload schema + receiver samples at `/docs/my-website`.
+- **Auth-expired error in Publishing Queue → Reconnect, not Reset & Retry.** Publish handlers throw `"<Channel> authentication expired. Please reconnect <Channel> in Integrations."` on token revocation. The frontend (PR #130) detects auth-expired patterns in `publish_log.error_message` and renders an amber Reconnect link to `/app/integrations` instead of the misleading Reset & Retry button. Don't roll back — Reset & Retry can't fix an auth-expired error since credentials are already cleared.
 - **Multi-table write contracts** — the publish flow updates 5 tables: `publishing_queue.status`, `publishing_queue.publish_results`, `publish_log` (insert), `memories` (insert), and the brand-scoped `generated_content_<brand>.status`. All 5 must be updated atomically for the article to be visible across the system. Missing the 5th caused 100% of published articles to be invisible in Performance Dashboard prior to May 10.
 - **X media upload — branch by auth method.** As of 2026-05-13, X enforces v1.1 media upload deprecation for OAuth 2.0 user-context tokens. `uploadXMedia()` MUST branch:
   - **OAuth 2.0 Bearer** → `POST https://api.x.com/2/media/upload` with multipart `media` (binary) + `media_category=tweet_image`. Returns `data.id`.
@@ -201,23 +223,28 @@ Every stage persists results and points forward:
 - **Brand name from Claude:** Added `brandName` to Claude response schema — actual website name instead of domain parse
 - GitHub Contents API commits require a freshly fetched SHA — stale SHAs fail
 
-### Branch Strategy (updated April 19, 2026)
+### Branch Strategy (updated May 22, 2026)
 
-**Four branches. Three are identical. One has a feature flag.**
+**Trunk → integration → production model.** The old `main`/`production`/`Intel`/`strategy` surgical-patch model was retired; the `production` branch no longer exists.
 
 | Branch | Role |
 |--------|------|
-| `main` | Staging — new features built and tested on `dev.forgeintelligence.ai` |
-| `production` | Live — validated work ported via surgical patches only (`forgeintelligence.ai`) |
-| `Intel` | Identical to main/production — separate deployment target |
-| `strategy` | Identical to the rest **except** Brand Intelligence menu item is exposed in the sidebar (all other branches hide it) |
+| `main` | **Production.** Render's production service (`forgeintelligence.ai`) deploys from here. |
+| `development` | **Integration.** Render's dev service (`dev.forgeintelligence.ai`) deploys from here. All feature/fix work merges here first. |
+| `Intel` | Separate deployment target — kept in sync with `main` for the Intel-branded customer surface. |
+| `strategy` | Same content as the others EXCEPT Brand Intelligence sidebar entry is exposed (others hide it) + holds `STRATEGY.md`, the long-form strategic narrative. |
 
-**Rules:**
-- Never `git merge` between branches — surgical patches only
-- `main`, `production`, and `Intel` must stay byte-identical across shared files
-- `strategy` differs **only** on the Brand Intelligence sidebar/page files — never let other deltas creep in
-- When shipping any fix, port to all four branches in the same session unless it's strategy-specific
-- Test on dev first, port to production (+ Intel + strategy) when validated
+**Standard flow per change** (see `SESSION-PROTOCOL.md` for the full recipe):
+
+1. `git fetch origin development` → `git switch -c <feature|fix|chore>/<slug> origin/development`
+2. Edit locally via `Edit` / `Write` tools (NOT GitHub Contents API)
+3. Syntax check (`node --check server.js`) + type check (`npx tsc --noEmit`)
+4. Commit with multi-line conventional-commit message + session URL
+5. Push + open **draft PR** against `development` via the GitHub MCP tools
+6. Brian reviews + merges. Never merge your own PR unless explicitly authorized.
+7. **Promotion to `main`** = a separate `development → main` rollup PR (e.g., PR #102 was the Stage 1 rebuild rollup). Brian merges that too.
+
+`Intel` and `strategy` get the same architectural fixes as `main`, applied as separate merges when relevant.
 
 ---
 
@@ -394,8 +421,9 @@ BEFORE generating:
 
 | Item | Priority | Notes |
 |------|----------|-------|
-| LinkedIn analytics for legacy pre-Zernio posts | Low | 14 Forge LinkedIn articles published April 17 – May 7 won't sync analytics. Pre-Zernio credentials were overwritten by the migration. Articles are live with real engagement; only the sync into Performance Dashboard is broken. Bounded gap — will not grow. Going forward, Zernio dual-ID (postId + zernioPostId) ensures every new publish syncs correctly. |
-| WordPress live API publish | Medium | Pending |
+| LinkedIn analytics for legacy pre-Zernio posts | Low | 14 Forge LinkedIn articles published April 17 – May 7 won't sync analytics. Pre-Zernio credentials were overwritten by the migration. Articles are live with real engagement; only the sync into Performance Dashboard is broken. Bounded gap — will not grow. Backfilled via `/api/admin/zernio/raw` 2026-05-10. |
+| GitNexus MCP runtime in cloud sessions | Medium | `CLAUDE.md` + `.claude/skills/gitnexus/` are committed and aspirational. GitNexus MCP is stdio-only — FleetView/cloud Claude Code can't spawn it. Live until either GitNexus ships HTTP/SSE MCP transport or FleetView gains custom-MCP support. |
+| X runtime API on `twitter.com` | Low | OAuth (authorize + token exchange) migrated to `x.com` 2026-05-23. Runtime API calls (tweets, users/me, media-upload) still hit `api.twitter.com` and work via compat redirects. If they start failing the same way, apply the domain swap (PR #132 pattern). |
 | Webflow live API publish | Medium | Pipedream Connect wired, logic pending |
 | authToken rollout | Medium | Remaining unauthenticated fetches in PublishingQueuePage |
 | Full light mode CSS sweep | Medium | PerformanceDashboardPage.css + remaining PublishingQueue sections |
@@ -405,6 +433,8 @@ BEFORE generating:
 | Agency Dashboard | Backlog | Cross-brand bird's-eye view |
 | Pen test | Backlog | Required before Agency tier launch |
 | Medium integration | Legacy | New tokens unavailable since early 2025 |
+
+**Recently resolved** (removed from the list): WordPress live API publish (LIVE via REST + Application Password); Facebook analytics URN bug (PR #111); markdown-in-social-copy (PR #115); Publishing Queue auth-expired UX (PR #130); X OAuth login loop (PR #132); article URL ignoring `article_base_url` across 6 channels (PR #121).
 
 ---
 
@@ -433,7 +463,7 @@ Sandbox Group: **Sandbox-XM** (experience marketing) + **Sandbox-GTM** (event re
 
 ---
 
-## Updated: May 13, 2026
+## Updated: May 23, 2026
 
 ### Auth Architecture
 - Clerk JWT template `jwt-template-600` — 600 second token lifetime
@@ -484,10 +514,17 @@ Sandbox Group: **Sandbox-XM** (experience marketing) + **Sandbox-GTM** (event re
 
 ### Recent Updates Index
 
-For session-level technical detail, see `WHITEBOARD.md`. Recent major entries:
+For session-level technical detail, see `WORKING-STATE.md` (current pointer) and `WHITEBOARD.md` (archive). Recent major entries:
 
-- **May 13** — Social Generator regenerate-arcs feature (in-place brand arc regen with moat/persona/gap emphasis); X v2 media upload fix (X enforced v1.1 deprecation for OAuth 2.0 tokens today — `uploadXMedia()` now branches by auth method); Performance Dashboard pending-row placeholder fix (zero-row content_analytics on Zernio 202 so new articles appear immediately)
-- **May 10–11** — Zernio dual-ID analytics fix; publish-status mirror bug (100% failure rate caught); Copilot Autofix incident; Morgan Chasser personal-brand experiment
-- **May 9** — MCP server live; Attio CSV export; HubSpot demolition (4 rebuild rounds → clipboard copy); Email Campaign Generator Phase 1+2+3 (rendering bugs + edit mode + flag actions + readable Sequence Assessment)
+- **May 23** — X OAuth migrated to `x.com` (PR #132); auth-expired errors → Reconnect action in Publishing Queue (PR #130); `article_base_url` respected across Facebook/Reddit/Medium/My Website (PR #121); topbar alerts bell + Get Help support form
+- **May 22** — My Website channel live (self-hosted webhook publisher; PRs #117–#122); `/docs` page live with Share With AI button (PRs #120, #134); GitNexus context files installed; SESSION-PROTOCOL refreshed + moved to repo root; Facebook URN→Zernio _id fix + backfill (PRs #111–#113); markdown stripping for FB + LinkedIn social copy (PR #115)
+- **May 21** — Stage 1 (Context Hub crawl) rebuilt end-to-end: Jina-first + forgeScrape Tier 1→2 fallback, parallel discovery (PRs #103–#110)
+- **May 17** — `/api/admin/mark-unpublished` endpoint
+- **May 15** — GFM table rendering for article markdown
+- **May 14** — Articles library canonical + robots SSR; promo + gate URL params (`?promo=NANGO`, `?gate=open`); brand deep-link no-flash on first load
+- **May 13** — Social Generator regenerate-arcs feature; X v2 media upload fix (branch by auth method); Vite 5→8 security upgrade; Clerk + postcss patches; X analytics OAuth2 token refresh on 401
+- **May 12** — Lovable integration (prompt-pack endpoint + Build with Lovable button); Quick Start no-website onramp
+- **May 10–11** — Zernio dual-ID analytics fix (LinkedIn); publish-status mirror bug (100% failure rate caught); Copilot Autofix incident + revert
+- **May 9** — MCP server live for Viktor; Attio CSV export; HubSpot demolition (4 rebuild rounds → clipboard copy); Email Campaign Generator Phase 1+2+3
 - **May 8** — Zernio LinkedIn migration for Forge brand
 - **April 17** — Cherry-pick architecture in GEO Strategist; Compliance Gate AI rewrite + Find Sources; Factual Ground + Territory injection
