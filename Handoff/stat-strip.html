@@ -1,0 +1,45 @@
+<!doctype html>
+<html><head><meta charset="utf-8"/>
+<title>Stat strip — 4-column KPI row</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  html,body{margin:0;background:#EDF1FF;font-family:Inter,sans-serif;}
+  .wrap{padding:40px;max-width:880px;margin:0 auto;}
+  .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+  .stat-card{
+    background:#fff;border-radius:12px;
+    box-shadow:0 0 0 1px rgba(53,99,255,.07),0 4px 16px rgba(53,99,255,.08);
+    padding:20px;display:flex;flex-direction:column;gap:6px;
+  }
+  .stat-label{font:600 11px/1 Inter;color:#94A3B8;text-transform:uppercase;letter-spacing:.06em;}
+  .stat-number{font:700 28px/1 Inter;color:#0F172A;letter-spacing:-.02em;}
+  .stat-delta{font:600 12px/1 Inter;color:#0EA572;}
+  .stat-delta.flat{color:#94A3B8;font-weight:500;}
+  .stat-delta.down{color:#DC2626;}
+  .note{margin-top:20px;font:400 12px/1.5 Inter;color:#94A3B8;text-align:center;}
+  .note b{color:#1E293B;}
+</style></head><body><div class="wrap">
+  <div class="stat-row">
+    <div class="stat-card">
+      <span class="stat-label">In queue</span>
+      <span class="stat-number">12</span>
+      <span class="stat-delta">+3 vs last week</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">Published · 30d</span>
+      <span class="stat-number">42</span>
+      <span class="stat-delta">↑ 23.4%</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">GEO citations</span>
+      <span class="stat-number">1.3k</span>
+      <span class="stat-delta flat">Across 14 prompts</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">Channels live</span>
+      <span class="stat-number">8</span>
+      <span class="stat-delta flat">LinkedIn · X · Ghost…</span>
+    </div>
+  </div>
+  <p class="note"><b>Sits directly under any page-header</b>, above the main list/table. Always 4 columns on desktop, collapses to 2×2 on mobile.</p>
+</div></body></html>
