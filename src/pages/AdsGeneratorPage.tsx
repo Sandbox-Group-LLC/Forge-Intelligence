@@ -65,6 +65,24 @@ function AdsGeneratorContent() {
   const [pushingTopics, setPushingTopics] = useState(false);
   const [pushResult, setPushResult] = useState<{ inserted: number; skipped: number } | null>(null);
 
+  // Recent packs drawer. Mirrors Social Generator's history pattern — the
+  // drawer is collapsed by default; opens to show topic + finalUrl + date.
+  // "Open pack" rehydrates the existing pack UI without a server roundtrip
+  // because the full pack JSON ships with the list response.
+  interface RecentPack { id: string; topic: string; finalUrl: string; overages: number; createdAt: string; pack: AssetPack }
+  const [recentPacks, setRecentPacks] = useState<RecentPack[]>([]);
+  const [recentOpen, setRecentOpen] = useState(false);
+  const fetchRecent = async (brandId: string) => {
+    if (!brandId) return;
+    try {
+      const r = await fetch(`/api/ads-generator/recent/${brandId}`, {
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+      });
+      const d = await r.json();
+      if (d.success) setRecentPacks(d.packs || []);
+    } catch { /* non-fatal */ }
+  };
+
   const brains: Brain[] = historyEntries.map(e => ({ id: e.id, brandName: e.brandName, brandUrl: e.brandUrl }));
   if (brains.length === 0 && activeBrand) {
     brains.push({ id: activeBrand.id, brandName: activeBrand.brandName || activeBrand.brandUrl, brandUrl: activeBrand.brandUrl });
@@ -75,6 +93,27 @@ function AdsGeneratorContent() {
     if (id) setSelectedBrainId(id);
   }, []);
   useEffect(() => { if (activeBrand?.id && !selectedBrainId) setSelectedBrainId(activeBrand.id); }, [activeBrand?.id]);
+  // Load recent packs whenever brand changes (or first arrives)
+  useEffect(() => { if (selectedBrainId && authToken) fetchRecent(selectedBrainId); }, [selectedBrainId, authToken]);
+
+  const openPack = (rp: RecentPack) => {
+    setPack(rp.pack);
+    setOverages(rp.overages);
+    setError('');
+    setRecentOpen(false);
+  };
+
+  const deleteRecentPack = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm('Delete this saved pack?')) return;
+    try {
+      const r = await fetch(`/api/ads-generator/pack/${id}`, {
+        method: 'DELETE',
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+      });
+      if (r.ok) setRecentPacks(prev => prev.filter(p => p.id !== id));
+    } catch { /* non-fatal */ }
+  };
 
   const run = async () => {
     if (!selectedBrainId || !topic.trim() || running) return;
@@ -89,6 +128,8 @@ function AdsGeneratorContent() {
       if (!r.ok || !d.success) throw new Error(d.error || 'Generation failed');
       setPack(d.pack);
       setOverages(d.overages || 0);
+      // Refresh the recent drawer so the new pack appears immediately
+      if (selectedBrainId) fetchRecent(selectedBrainId);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -416,6 +457,77 @@ function AdsGeneratorContent() {
                 <KeywordColumn label="Exact" hint="wrap [brackets]" keywords={pack.keywords.exact} wrap={k => `[${k}]`} />
               </div>
             </section>
+          )}
+        </div>
+      )}
+
+      {/* Recent packs drawer — appears below input (when empty) or below
+          the rendered pack (when one is open). Collapsed by default to keep
+          the surface focused on the generation flow. */}
+      {recentPacks.length > 0 && (
+        <div style={{ marginTop: 24, borderTop: '1px solid var(--color-border, #e2e8f0)', paddingTop: 16 }}>
+          <button
+            onClick={() => setRecentOpen(o => !o)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '8px 0', background: 'none', border: 'none', cursor: 'pointer',
+              fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary, #475569)',
+            }}
+          >
+            <span>Recent packs</span>
+            <span style={{
+              padding: '1px 8px', background: 'var(--color-accent-muted, #eef2ff)',
+              borderRadius: 999, fontSize: 11, color: 'var(--color-text-secondary, #475569)',
+            }}>{recentPacks.length}</span>
+            <span style={{ fontSize: 12, marginLeft: 'auto', color: 'var(--color-text-muted, #94a3b8)' }}>{recentOpen ? '−' : '+'}</span>
+          </button>
+          {recentOpen && (
+            <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
+              {recentPacks.map(rp => (
+                <button
+                  key={rp.id}
+                  onClick={() => openPack(rp)}
+                  style={{
+                    display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: 12,
+                    padding: 10, alignItems: 'center',
+                    background: 'var(--color-bg-card, #fff)',
+                    border: '1px solid var(--color-border, #e2e8f0)',
+                    borderRadius: 8, cursor: 'pointer', textAlign: 'left',
+                  }}
+                  title="Open this pack"
+                >
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-primary, #1a1a1a)' }}>{rp.topic}</div>
+                    {rp.finalUrl && (
+                      <div style={{ fontSize: 11, color: 'var(--color-text-muted, #94a3b8)', marginTop: 2, wordBreak: 'break-all' }}>→ {rp.finalUrl}</div>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--color-text-muted, #94a3b8)', whiteSpace: 'nowrap' }}>
+                    {(() => {
+                      const raw = String(rp.createdAt || '');
+                      const normalized = /T/.test(raw) ? raw : raw.replace(' ', 'T') + (/(Z|[+-]\d{2}:?\d{2})$/.test(raw) ? '' : 'Z');
+                      const d = new Date(normalized);
+                      return isNaN(d.getTime()) ? '—' : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+                    })()}
+                  </div>
+                  {rp.overages > 0 && (
+                    <div style={{ fontSize: 10, color: '#92400E', background: '#FEF3C7', padding: '2px 6px', borderRadius: 4 }}>
+                      {rp.overages} over
+                    </div>
+                  )}
+                  <span
+                    onClick={(e) => deleteRecentPack(rp.id, e)}
+                    style={{
+                      fontSize: 11, color: 'var(--color-text-muted, #94a3b8)',
+                      padding: '4px 8px', borderRadius: 4, cursor: 'pointer',
+                    }}
+                    title="Delete pack"
+                  >
+                    ✕
+                  </span>
+                </button>
+              ))}
+            </div>
           )}
         </div>
       )}

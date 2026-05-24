@@ -7159,11 +7159,28 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
 // ─────────────────────────────────────────────────────────────────────────────
 // Stage 4.7 — Ads Generator (Google Ads RSA asset pack)
 // ─────────────────────────────────────────────────────────────────────────────
-// Generates a Responsive Search Ads asset pack — 15 headlines (≤30 chars) +
-// 4 descriptions (≤90 chars) + 2 path fields (≤15 chars) — anchored to the
-// brand's brain patterns, GEO territories, and Factual Ground. Sync (small
-// JSON output, no SSE needed). No persistence yet — PoC mode. Future stages
-// add P-Max asset variants and Google Ads API publishing.
+// Generates a complete Google Search campaign asset pack — headlines,
+// descriptions, paths, sitelinks, callouts, match-typed keywords — anchored
+// to the brand's brain patterns, GEO territories, and Factual Ground. Packs
+// are persisted to generated_ad_packs so the UI can show a history drawer
+// (no more pump-and-dump). Future stages add P-Max asset variants and
+// Google Ads API publishing.
+async function ensureGeneratedAdPacksTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS generated_ad_packs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      brand_profile_id UUID NOT NULL,
+      topic TEXT NOT NULL,
+      final_url TEXT,
+      pack_data JSONB NOT NULL,
+      overages INTEGER DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `).catch(() => {});
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_gap_brand_created ON generated_ad_packs(brand_profile_id, created_at DESC)`).catch(() => {});
+}
+
 app.post('/api/ads-generator/rsa', requireAuth, async (req, res) => {
   const { brandProfileId, topic, finalUrl } = req.body || {};
   if (!brandProfileId) return res.status(400).json({ success: false, error: 'brandProfileId required' });
@@ -7368,24 +7385,78 @@ Return ONLY the JSON object specified in the system prompt.`;
        (aiRes.usage?.input_tokens || 0) + (aiRes.usage?.output_tokens || 0), 0]
     ).catch(() => {});
 
-    res.json({
-      success: true,
-      pack: {
-        headlines,
-        descriptions,
-        paths,
-        sitelinks,
-        callouts,
-        keywords,
-        notes: String(parsed.notes || '').trim(),
-        finalUrl: finalUrl || '',
-        topic: String(topic).trim(),
-        generatedAt: new Date().toISOString(),
-      },
-      overages,
-    });
+    const pack = {
+      headlines,
+      descriptions,
+      paths,
+      sitelinks,
+      callouts,
+      keywords,
+      notes: String(parsed.notes || '').trim(),
+      finalUrl: finalUrl || '',
+      topic: String(topic).trim(),
+      generatedAt: new Date().toISOString(),
+    };
+
+    // Persist so the FE can show a history drawer and the user can open prior
+    // packs without regenerating (saves token spend on re-runs of the same topic).
+    let packId = null;
+    try {
+      await ensureGeneratedAdPacksTable();
+      const insRes = await pool.query(
+        `INSERT INTO generated_ad_packs (brand_profile_id, topic, final_url, pack_data, overages)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        [brandProfileId, pack.topic, pack.finalUrl || null, JSON.stringify(pack), overages]
+      );
+      packId = insRes.rows[0]?.id || null;
+    } catch (e) { console.error('[ADS-GEN] persist failed (non-fatal):', e.message); }
+
+    res.json({ success: true, packId, pack, overages });
   } catch (e) {
     console.error('[ADS-GEN]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /api/ads-generator/recent/:brandProfileId — list past packs for the drawer
+app.get('/api/ads-generator/recent/:brandProfileId', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.params;
+  if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+  try {
+    await ensureGeneratedAdPacksTable();
+    const r = await pool.query(
+      `SELECT id, topic, final_url, pack_data, overages, created_at
+       FROM generated_ad_packs
+       WHERE brand_profile_id = $1
+       ORDER BY created_at DESC LIMIT 30`,
+      [brandProfileId]
+    );
+    res.json({ success: true, packs: r.rows.map(row => ({
+      id: row.id,
+      topic: row.topic,
+      finalUrl: row.final_url || '',
+      overages: row.overages || 0,
+      createdAt: row.created_at,
+      pack: row.pack_data,
+    })) });
+  } catch (e) {
+    console.error('[ADS-GEN-RECENT]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// DELETE /api/ads-generator/pack/:packId — prune a single saved pack
+app.delete('/api/ads-generator/pack/:packId', requireAuth, async (req, res) => {
+  const { packId } = req.params;
+  try {
+    // Verify the pack belongs to a brand the user has access to before deleting.
+    const ownerRes = await pool.query(`SELECT brand_profile_id FROM generated_ad_packs WHERE id = $1`, [packId]);
+    if (!ownerRes.rows.length) return res.status(404).json({ error: 'Pack not found' });
+    if (!(await verifyBrandAccess(ownerRes.rows[0].brand_profile_id, req.userId))) return res.status(403).json({ error: 'Access denied' });
+    await pool.query(`DELETE FROM generated_ad_packs WHERE id = $1`, [packId]);
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[ADS-GEN-DELETE]', e.message);
     res.status(500).json({ success: false, error: e.message });
   }
 });
