@@ -50,6 +50,14 @@ const SECTIONS: Section[] = [
         a: "Brand brain memory is the persistent intelligence layer that stores everything an AI content system has ever learned: voice rules, founder facts, positioning claims, performance patterns, competitive context. In Forge's Context Agent Architecture this layer is named Brain Memory — the 8th and final agent that writes patterns back after every cycle. Without it, the system restarts from zero each session. The brain is the moat — not the model."
       },
       {
+        q: "What is Brain Memory in Forge's pipeline?",
+        a: "Brain Memory is the 8th and final agent in Forge's Context Agent Architecture. After every published article, it extracts what worked (patterns) and what didn't (mistakes) from engagement data, AI citation hits, and human compliance edits — then writes both back into a per-brand brain. The next cycle's brief is conditioned by everything that happened in every prior cycle. By month 12 the brain is a proprietary asset; switching to a competitor means starting over with no learned context."
+      },
+      {
+        q: "What does a Forge brand intelligence brief include?",
+        a: "Forge's brand intelligence brief is the output of Stages 1-3 of the pipeline: voice profile (tone, formality, signature phrases), personas with pain points and trigger events, competitive set with strategic moats and gap map, topical authority map ranked by AI citation probability, E-E-A-T injections (SME credentials, first-party evidence, author schema, FAQPage candidates), and per-section confidence scoring. It's a fully constructed competitive worldview compressed into a writeable artifact — not a topic and a few bullet points."
+      },
+      {
         q: "What is a citation heat map?",
         a: "A citation heat map is a per-section, per-FAQ view of where AI engines actually pull from in your content corpus. It distinguishes prose authority — when engines cite specific paragraphs — from domain authority, when they cite the URL without quoting. It also surfaces FAQ ROI: which questions actually get picked up as AI answers and which ones engines ignore."
       }
@@ -120,6 +128,18 @@ const SECTIONS: Section[] = [
       {
         q: "How do you assess if your B2B content team is AI-ready?",
         a: "AI readiness for content teams isn't about whether the tools work — it's about whether your team has the upstream conditions to make AI output meaningful. Forge's five-dimension framework: brand intelligence depth, content brief discipline, performance feedback structure, voice rule clarity, and competitive worldview. Teams strong on all five get distinctive output from any AI model. Teams weak on any one dimension get generic content competitors could have written."
+      },
+      {
+        q: "How does Forge's 8-stage pipeline produce intelligence briefs?",
+        a: "Stages 1-3 produce the brief. Stage 1 (Context Hub) crawls the brand and the competitive set in parallel and extracts voice, personas, strategic moats. Stage 2 (GEO Strategist) maps topical authority gaps ranked by citation probability across ChatGPT, Perplexity, and Gemini. Stage 3 (Authenticity Enricher) injects E-E-A-T signals — SME credentials, first-party evidence, FAQPage schema, author schema — into the brief. Stages 4-8 then write, gate, publish, measure, and learn from the output. The brain compounds with every cycle, so the brief produced on cycle 50 is materially stronger than the brief on cycle 1."
+      },
+      {
+        q: "How does Forge extract competitive intelligence from a competitor website?",
+        a: "Forge's Context Hub runs a parallel crawl using Jina Reader as the primary content extractor with Bright Data Web Unlocker and Bright Data Scraping Browser as Tier 1→2 fallbacks for SPAs and bot-protected sites. Sitemap.xml-aware discovery with anchor-only link extraction keeps the crawl focused on substantive pages. The same pass that builds your brand profile maps the competitive set: voice, positioning, pricing posture, topical coverage gaps, persona language. Full competitive crawl finishes in 15-20 seconds parallel — versus the 60+ seconds the sequential approach took."
+      },
+      {
+        q: "Can you do B2B competitive analysis without manual research?",
+        a: "Yes — Forge's Context Hub does it as a side effect of Stage 1. The same crawl that builds your brand profile maps your competitive set: voice, positioning claims, pricing posture, topical coverage gaps, persona language, strategic moats. Output is a competitive worldview rendered in about 60 seconds, refreshed automatically every time the brand profile re-extracts. The 'competitive analysis project' that traditionally takes a senior strategist 2-3 weeks becomes a continuous background process the team never has to schedule."
       }
     ]
   }
