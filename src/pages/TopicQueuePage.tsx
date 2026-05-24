@@ -37,12 +37,14 @@ const PlusIcon = () => (
   </svg>
 );
 
-function TopicRow({ t, ah, onUpdate, onDelete, onSend }: {
+function TopicRow({ t, ah, onUpdate, onDelete, onSend, sending, anySending }: {
   t: TopicIdea;
   ah: () => Record<string, string>;
   onUpdate: (id: string, fields: Partial<TopicIdea>) => void;
   onDelete: (id: string) => void;
   onSend: (t: TopicIdea) => void;
+  sending: boolean;
+  anySending: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [editTopic, setEditTopic] = useState(t.topic);
@@ -124,8 +126,13 @@ function TopicRow({ t, ah, onUpdate, onDelete, onSend }: {
               ● {STATUS_LABEL[t.status]}
             </span>
             {t.status !== 'generated' && (
-              <button className="tq-action-btn tq-send-btn" onClick={() => onSend(t)}>
-                Send to Generator <ArrowIcon />
+              <button
+                className="tq-action-btn tq-send-btn"
+                onClick={() => onSend(t)}
+                disabled={anySending}
+                title={anySending && !sending ? 'Another brief is building — wait for it to finish' : 'Build the brief and continue to Authenticity Enricher'}
+              >
+                {sending ? 'Building brief…' : <>Build brief <ArrowIcon /></>}
               </button>
             )}
             <button className="tq-action-btn tq-delete-btn" onClick={() => onDelete(t.id)}>
@@ -147,6 +154,10 @@ export default function TopicQueuePage() {
   const [topics, setTopics] = useState<TopicIdea[]>([]);
   const [filter, setFilter] = useState<Filter>('all');
   const [topic, setTopic] = useState('');
+  // Tracks which row is mid-brief-build so the button can disable + label.
+  // Single string instead of a Set because we serialize one brief build at a
+  // time — the GEO endpoint is LLM-bound and parallel runs waste API spend.
+  const [sendingId, setSendingId] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [adding, setAdding] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -188,14 +199,30 @@ export default function TopicQueuePage() {
     setTopics(prev => prev.filter(t => t.id !== id));
   };
 
-  const sendToGenerator = (t: TopicIdea) => {
-    fetch(`/api/topic-ideas/${t.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', ...ah() },
-      body: JSON.stringify({ status: 'in_progress' }),
-    });
-    setTopics(prev => prev.map(x => x.id === t.id ? { ...x, status: 'in_progress' } : x));
-    window.location.href = `/app/content-generator?topic=${encodeURIComponent(t.topic)}&brand=${t.brand_profile_id}`;
+  const sendToGenerator = async (t: TopicIdea) => {
+    if (sendingId) return;
+    setSendingId(t.id);
+    try {
+      const r = await fetch('/api/geo/topic-brief/from-topic', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...ah() },
+        body: JSON.stringify({ brandProfileId: t.brand_profile_id, topic: t.topic }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.success) throw new Error(d.error || 'Brief build failed');
+      // Mark in_progress only after the brief builds successfully — avoids
+      // status drift if the brief call fails and the user retries.
+      fetch(`/api/topic-ideas/${t.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...ah() },
+        body: JSON.stringify({ status: 'in_progress' }),
+      });
+      setTopics(prev => prev.map(x => x.id === t.id ? { ...x, status: 'in_progress' } : x));
+      window.location.href = `/app/authenticity-enricher?topicBriefId=${d.briefId}`;
+    } catch (e) {
+      alert(`Couldn't build brief from topic: ${(e as Error).message}`);
+      setSendingId(null);
+    }
   };
 
   const counts = {
@@ -257,7 +284,7 @@ export default function TopicQueuePage() {
         ) : (
           <div className="tq-list">
             {filtered.map(t => (
-              <TopicRow key={t.id} t={t} ah={ah} onUpdate={handleUpdate} onDelete={deleteTopic} onSend={sendToGenerator} />
+              <TopicRow key={t.id} t={t} ah={ah} onUpdate={handleUpdate} onDelete={deleteTopic} onSend={sendToGenerator} sending={sendingId === t.id} anySending={!!sendingId} />
             ))}
           </div>
         )}
