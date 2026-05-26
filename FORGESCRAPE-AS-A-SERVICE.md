@@ -68,9 +68,11 @@ across apps reintroduces the "fetcher zoo" forgeScrape was built to kill.
 
 ---
 
-## 2. Model A — the HTTP wrapper (proposed, not yet shipped)
+## 2. Model A — the HTTP wrapper (SHIPPED)
 
-Add to `server.js`. A thin authenticated endpoint over the existing function.
+Live in `server.js` as `POST /api/forge-scrape`. A thin authenticated endpoint
+over the existing function. The shipped version adds a per-key rate limiter and
+a `503` when the key isn't configured, on top of the skeleton below.
 
 ```js
 // POST /api/forge-scrape — cross-app scrape service.
@@ -177,6 +179,76 @@ On failure: `{ "success": false, "status": null|<code>, "html": null, "source": 
 
 ---
 
+## 3.5. Consuming-app setup (SYSOI.ai)
+
+Concrete steps to wire a consuming app (SYSOI.ai is the first) to the live
+endpoint.
+
+### Env vars
+
+**On Forge Intelligence (Render):** the endpoint validates against this.
+```
+FORGE_SCRAPE_SERVICE_KEY = <openssl rand -hex 32>     # the shared secret
+FORGE_SCRAPE_RATE_PER_MIN = 60                          # optional, defaults to 60
+```
+
+**On the consuming app (SYSOI):** same secret, plus the endpoint URL.
+```
+FORGE_SCRAPE_URL         = https://forgeintelligence.ai/api/forge-scrape
+FORGE_SCRAPE_SERVICE_KEY = <same value as on FI>
+```
+
+FI validates the key; the consuming app sends it. They MUST match. Generate once
+(`openssl rand -hex 32`) and paste the same value into both environments. Rotate
+by regenerating and updating both sides.
+
+### Client helper (drop into the consuming repo)
+
+```js
+// forgeScrape — call Forge's scrape service. Returns raw HTML by default.
+export async function forgeScrape(url, opts = {}) {
+  const res = await fetch(process.env.FORGE_SCRAPE_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Forge-Scrape-Key': process.env.FORGE_SCRAPE_SERVICE_KEY,
+    },
+    body: JSON.stringify({
+      url,
+      format: opts.format || 'raw',    // 'raw' (HTML) | 'markdown'
+      render: opts.render || 'auto',   // 'auto' | 'always' (skip Tier 1) | 'never' (Tier 1 only)
+      caller: 'sysoi',                 // appears in FI's scrape_log as svc:sysoi
+    }),
+  });
+  const data = await res.json();
+  if (!data.success) throw new Error(`forgeScrape failed: ${data.error}`);
+  return data.html;                    // (markdown only if FI ships the page-content mode)
+}
+```
+
+### Smoke test (after FI deploys + env is set)
+
+```bash
+curl -sS -X POST https://forgeintelligence.ai/api/forge-scrape \
+  -H "Content-Type: application/json" \
+  -H "X-Forge-Scrape-Key: $FORGE_SCRAPE_SERVICE_KEY" \
+  -d '{"url":"https://example.com","render":"auto","caller":"smoke-test"}' | head -c 300
+```
+
+Expected error responses while wiring up:
+- `401 Unauthorized` — key missing or doesn't match FI's value.
+- `503 Service not configured` — `FORGE_SCRAPE_SERVICE_KEY` not set on FI.
+- `400 host not allowed` — target resolved to localhost/RFC1918/metadata.
+- `429 Rate limit exceeded` — >`FORGE_SCRAPE_RATE_PER_MIN` requests in a minute.
+
+### Cost dial for SYSOI
+
+If SYSOI scrapes mostly static pages, set `render: 'never'` per call to hard-cap
+at Tier 1 (cheap Unlocker) and never escalate to the bandwidth-billed Scraping
+Browser. Use `render: 'auto'` (default) only when SYSOI expects JS-heavy SPAs.
+
+---
+
 ## 4. Guardrails before you point a second app at it
 
 These are not optional — a shared scrape service is an SSRF + cost-blowout vector
@@ -241,10 +313,11 @@ boot (this exact bug bit FI once on Render).
 | Centralized cost/audit | yes (scrape_log) | no |
 | Setup effort | ship 1 endpoint + share 1 secret | copy code + provision BD per app |
 
-**Default to Model A.** Ship the `POST /api/forge-scrape` wrapper once, share the
-service key, done. Only lift the code (Model B) if the calling app has a hard
+**Default to Model A.** The `POST /api/forge-scrape` wrapper is shipped — share the
+service key and go. Only lift the code (Model B) if the calling app has a hard
 requirement to scrape while FI is unavailable.
 
-> Neither the endpoint nor the lift is shipped yet — this is the integration
-> blueprint. Say the word and I'll ship the Model A wrapper (endpoint + SSRF
-> guard + rate limiter + service-key env) as a PR.
+> **Status: Model A is live.** Endpoint shipped in `server.js`; SYSOI.ai is the
+> first consumer (see §3.5 for env vars + client helper). Set
+> `FORGE_SCRAPE_SERVICE_KEY` on the FI Render service before first use — the
+> endpoint returns `503` until it's configured.
