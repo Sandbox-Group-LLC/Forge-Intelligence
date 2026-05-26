@@ -4,7 +4,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import pkg from 'pg';
 import Anthropic from '@anthropic-ai/sdk';
-import { randomUUID, randomBytes, createHmac, createHash } from 'crypto';
+import { randomUUID, randomBytes, createHmac, createHash, timingSafeEqual } from 'crypto';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import puppeteer from 'puppeteer-core';
 import { Readability } from '@mozilla/readability';
@@ -15122,6 +15122,92 @@ async function discoverSubpages(baseUrl, max = 8, { seedMarkdown = null, seedHtm
 
   return [];
 }
+
+// ── POST /api/forge-scrape — cross-app scrape service ──────────────────────
+// Exposes the internal forgeScrape primitive over HTTP so other apps (SYSOI,
+// Sandbox-GTM, etc.) can scrape through Forge's single Bright Data account +
+// scrape_log. Service-to-service auth via a shared secret (NOT a Clerk user
+// token). See FORGESCRAPE-AS-A-SERVICE.md for the integration guide.
+//
+// Env: FORGE_SCRAPE_SERVICE_KEY — long random shared secret (openssl rand -hex 32),
+//      set here AND in each calling app. Calling apps also set FORGE_SCRAPE_URL
+//      (= https://forgeintelligence.ai/api/forge-scrape) on their side.
+//
+// Note on SSRF: the actual page fetch happens inside Bright Data's network, not
+// from the FI server, so a target URL can't reach FI's own infra/metadata. The
+// host guard below is defense-in-depth + abuse/cost prevention, not the only
+// barrier.
+
+// Dependency-free per-key fixed-window rate limiter. Bright Data is usage-billed;
+// this caps a runaway loop in a calling app. Only valid keys reach this Map
+// (auth runs first), so it holds at most a handful of entries.
+const _forgeScrapeHits = new Map(); // key -> { count, windowStart }
+const FORGE_SCRAPE_RATE_PER_MIN = Number(process.env.FORGE_SCRAPE_RATE_PER_MIN) || 60;
+function _forgeScrapeRateLimited(key) {
+  const now = Date.now();
+  const windowMs = 60_000;
+  const entry = _forgeScrapeHits.get(key);
+  if (!entry || now - entry.windowStart >= windowMs) {
+    _forgeScrapeHits.set(key, { count: 1, windowStart: now });
+    return false;
+  }
+  entry.count++;
+  return entry.count > FORGE_SCRAPE_RATE_PER_MIN;
+}
+
+app.post('/api/forge-scrape', express.json({ limit: '16kb' }), async (req, res) => {
+  // 1) Service auth — constant-time compare. Length pre-check because
+  //    timingSafeEqual throws on unequal-length buffers.
+  const provided = req.get('X-Forge-Scrape-Key') || '';
+  const expected = process.env.FORGE_SCRAPE_SERVICE_KEY || '';
+  if (!expected) {
+    console.error('[forge-scrape] FORGE_SCRAPE_SERVICE_KEY not set — rejecting all requests');
+    return res.status(503).json({ success: false, error: 'Service not configured' });
+  }
+  const ok = provided.length === expected.length &&
+    timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
+  if (!ok) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+  // 2) Rate limit (per shared key)
+  if (_forgeScrapeRateLimited(expected)) {
+    return res.status(429).json({ success: false, error: `Rate limit exceeded (${FORGE_SCRAPE_RATE_PER_MIN}/min)` });
+  }
+
+  // 3) Input validation
+  const { url, format = 'raw', render = 'auto', country = null, timeout = 60000, caller } = req.body || {};
+  if (!url || typeof url !== 'string') return res.status(400).json({ success: false, error: 'url required' });
+  let parsed;
+  try { parsed = new URL(url); } catch { return res.status(400).json({ success: false, error: 'invalid url' }); }
+  if (!/^https?:$/.test(parsed.protocol)) return res.status(400).json({ success: false, error: 'http/https only' });
+  // SSRF guard — reject localhost / RFC1918 / link-local / metadata hosts
+  const host = parsed.hostname;
+  if (/^(localhost|127\.|10\.|192\.168\.|169\.254\.|::1|0\.0\.0\.0)/i.test(host) ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(host)) {
+    return res.status(400).json({ success: false, error: 'host not allowed' });
+  }
+
+  // 4) Clamp caller-settable knobs
+  const safeTimeout = Math.min(Math.max(Number(timeout) || 60000, 5000), 90000);
+  const safeRender = ['auto', 'always', 'never'].includes(render) ? render : 'auto';
+  const safeFormat = ['raw', 'markdown'].includes(format) ? format : 'raw';
+
+  // 5) Delegate to the primitive — caller tag namespaced so scrape_log shows
+  //    which external app drove the request (and the cost).
+  try {
+    const result = await forgeScrape(url, {
+      format: safeFormat,
+      render: safeRender,
+      country: country || null,
+      timeout: safeTimeout,
+      caller: `svc:${String(caller || 'external').slice(0, 40)}`,
+      metadata: { service: true },
+    });
+    res.json(result);
+  } catch (e) {
+    console.error('[forge-scrape]', e.message);
+    res.status(500).json({ success: false, status: null, html: null, source: null, error: e.message });
+  }
+});
 
 // Soft auth — attaches userId if present, continues either way (for public + authed routes)
 async function softAuth(req, res, next) {
