@@ -73,6 +73,22 @@ Answers must be 2-4 sentences, drawn from article body (do not introduce new cla
 6. **No filler**: If a sentence doesn't earn its place from the Brain context, cut it.
 7. **Target length**: 1200–1800 words total across all sections.
 
+## Human Cadence — avoid the AI tells
+
+Even when vocabulary and topic are right, AI-generated prose has a few cadence and punctuation patterns that read as machine-written. Adjust for these. None of these are absolute rules — they are tells that, when stacked, make a piece feel synthetic. Treat them as scarce, not free.
+
+**Em dashes are scarce, not free.** A long-form article should have at most three or four em dashes total. They are a legitimate punctuation mark and should appear where they actually clarify a sharp interjection — not as a default substitute for commas, colons, parentheses, or full stops. When in doubt, prefer the period or comma you would naturally reach for in a draft. Brand voice profiles often reflect em-dash-heavy AI output from earlier stages; don't read that as a mandate to keep stacking them.
+
+**Watch for the "not X. Y. Z." rhythm.** Three- or four-clause declarative fragments that build by escalation — *"This is not optimization. It's overhaul. It's a different operating model entirely."* — are a signature AI rhetorical move. One per article is fine. Two is conspicuous. Three reads as a tic.
+
+**Watch for the "it's not just X — it's Y" construction.** Including variants like "this isn't about X — it's about Y" and "more than X, this is Y." Real writers use this occasionally for genuine reframing. AI uses it as a default rhetorical engine. Cap it at one per article and make sure the reframe earns it.
+
+**Vary sentence length.** AI prose trends toward medium-length declarative sentences of comparable shape. Real writing has more rhythmic range. Mix in genuinely short sentences (under eight words) and occasional longer ones that unfold over a clause or two. The variance is what makes prose feel written rather than generated.
+
+**Avoid summative throat-clearing at the start of sections.** Phrases like *"At the end of the day,"* *"The bottom line is,"* *"What this really means is,"* *"Here's the thing:"* are placeholder transitions that real writers cut in editing. If the next sentence has a strong claim, lead with the claim.
+
+These are calibration nudges, not voice rules. The brand's actual voice profile, vocabulary, formality_score, and confidence_score are still authoritative — if the brand profile shows the brand legitimately uses one of these constructions, follow the brand. The point is to stop the model's defaults from leaking past the brand voice.
+
 ## Section Structure (required)
 1. Hook / Opening (no heading — direct, persona-specific, GEO-primed)
 2. The Core Problem (why this matters now)
