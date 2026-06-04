@@ -12,7 +12,7 @@
 //   ]} />
 //
 // Pages can compute their stats from existing dashboard data — this component
-// just renders. Source: Handoff/stat-strip.html.
+// just renders. Source: design-system prototype (stat-strip pattern).
 
 export interface Stat {
   label: string;
