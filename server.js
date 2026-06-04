@@ -2,7 +2,6 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import pkg from 'pg';
 import Anthropic from '@anthropic-ai/sdk';
 import { randomUUID, randomBytes, createHmac, createHash, timingSafeEqual } from 'crypto';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
@@ -10,8 +9,8 @@ import puppeteer from 'puppeteer-core';
 import { Readability } from '@mozilla/readability';
 import { JSDOM } from 'jsdom';
 import TurndownService from 'turndown';
+import { pool } from './src/server/db.js';
 
-const { Pool } = pkg;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -95,7 +94,6 @@ const SUPER_ADMIN_IDS = [
 ];
 
 
-const pool = new Pool({ connectionString: process.env.NEON_DATABASE_URL });
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 1200000 }); // 20min
 
 async function initDB() {
