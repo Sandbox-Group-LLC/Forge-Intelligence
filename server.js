@@ -12,6 +12,7 @@ import TurndownService from 'turndown';
 import { pool } from './src/server/db.js';
 import { extractJSON, safeParseLLM } from './src/server/llm-json.js';
 import { resolveUtmParams, buildUtmString } from './src/server/utm.js';
+import { truncateStr, truncateAtSentence, stripSocialMarkdown } from './src/server/text.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -5752,21 +5753,6 @@ app.get('/api/authenticity-enricher/briefs', requireAuth, async (req, res) => {
 // ── Truncate long text at last sentence boundary within budget ──
 // Prefers ending on a full sentence (. ! ?) rather than mid-word.
 // Falls back to word boundary if no sentence break found in window.
-function truncateAtSentence(text, maxChars) {
-  if (!text || typeof text !== 'string') return '';
-  if (text.length <= maxChars) return text.trim();
-  const window = text.slice(0, maxChars);
-  // Look for last sentence-ending punctuation followed by space/newline or at end
-  const sentenceMatch = window.match(/^.*[.!?](?=\s|$)/s);
-  if (sentenceMatch && sentenceMatch[0].length >= maxChars * 0.5) {
-    return sentenceMatch[0].trim();
-  }
-  // Fallback: last complete word
-  const lastSpace = window.lastIndexOf(' ');
-  if (lastSpace > maxChars * 0.5) return window.slice(0, lastSpace).trim() + '…';
-  return window.trim() + '…';
-}
-
 app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => {
   const { brandProfileId, geoBriefId, topicBriefId, manualInputs = {}, force = false } = req.body;
   if (!brandProfileId) return res.status(400).json({ success: false, error: 'brandProfileId is required' });
@@ -15459,12 +15445,6 @@ app.get('/api/admin/logs/errors', requireAuth, async (req, res) => {
 // ── User-facing Alerts (topbar bell) ─────────────────────────────────────────
 // Scoped to clerk_user_id from the JWT. Never returns rows from other users.
 // short_message is the only field shown to end users; raw_message is admin-only.
-function truncateStr(s, max) {
-  if (s == null) return null;
-  const str = String(s);
-  return str.length > max ? str.slice(0, max) : str;
-}
-
 async function getActiveBrandIdForUser(userId) {
   if (!userId) return null;
   try {
@@ -16899,17 +16879,6 @@ const zernioGuard = (req, res) => {
 //
 // NOT applied to user-supplied postCopy overrides — if a human typed
 // asterisks they wanted them literal.
-function stripSocialMarkdown(text) {
-  if (!text || typeof text !== 'string') return text;
-  return text
-    // Leading H1-H6 markers on any line: "# Heading" → "Heading"
-    .replace(/^[ \t]*#{1,6}[ \t]+/gm, '')
-    // **bold** → bold (non-greedy, single line)
-    .replace(/\*\*([^*\n]+?)\*\*/g, '$1')
-    // __bold__ → bold (less common; Claude uses it occasionally)
-    .replace(/__([^_\n]+?)__/g, '$1');
-}
-
 const callZernio = async (method, path, body) => {
   const url = `https://zernio.com/api/v1${path}`;
   const opts = {
