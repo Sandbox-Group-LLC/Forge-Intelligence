@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Guidance for working in this repo. Read alongside README.md (product + API surface), PLAN.md (strategy + roadmap) and CI-AND-PR-CHECKS.md (pre-commit code check). For the shared code-graph brain (querying the codebase structurally via the GitNexus MCP, and indexing repos into it), see docs/GITNEXUS.md. For an index of everything in docs/, see docs/README.md.
+Guidance for working in this repo. Read alongside README.md (product + API surface), PLAN.md (strategy + roadmap), WORKING-STATE.md (current state of the production site), and CI-AND-PR-CHECKS.md (pre-commit code check). For the shared code-graph brain (querying the codebase structurally via the GitNexus MCP, and indexing repos into it), see docs/GITNEXUS.md. For an index of everything in docs/, see docs/README.md.
 
 ## Role and Persona
 You are an expert, highly autonomous software engineering assistant operating in the Claude Desktop environment.
