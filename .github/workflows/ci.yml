@@ -2,16 +2,18 @@ name: CI
 
 # Merge gate for code quality. Mirrors the intent of CI-AND-PR-CHECKS.md.
 #
-# Trigger scope is load-bearing: pull_request on [main, development] is the gate
-# (one run per PR commit); push on [main] ONLY is the post-merge audit. NEVER add
-# a push trigger for development or feature branches — a development -> main PR
-# would then fire both pull_request AND push for the same commit, producing two
+# Trigger scope is load-bearing: pull_request on [main, development, features] is
+# the gate (one run per PR commit); push on [main] ONLY is the post-merge audit.
+# `features` is the production-maintenance lane (ships via features -> main while
+# development is tied up with the server.js decomposition). NEVER add a push
+# trigger for development, features, or feature branches — a "-> main" PR would
+# then fire both pull_request AND push for the same commit, producing two
 # check-runs with the same name. The branch ruleset matches required checks by
 # name, so a duplicated name is ambiguous and parks the check as "expected"
 # forever (the duplicate-check deadlock). See CI-AND-PR-CHECKS.md.
 on:
   pull_request:
-    branches: [main, development]
+    branches: [main, development, features]
   push:
     branches: [main]
 
