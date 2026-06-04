@@ -29,7 +29,7 @@ The root path serves a GitNexus SPA; `/docs` and `/redoc` serve the API docs.
 ## MCP wiring (`.mcp.json`)
 
 Every repo that wants to query the brain carries this entry. It's already in
-SYSOI.ai's `.mcp.json`:
+forgeintelligence.ai's `.mcp.json`:
 
 ```json
 "gitnexus-remote": {
@@ -53,7 +53,7 @@ rename) · `route_map` · `tool_map` · `shape_check` · `api_impact` · `group_
 · `group_sync`.
 
 With multiple repos indexed, pass `"repo":"<name>"` to scope a call (e.g.
-`"repo":"SYSOI.ai"`); `list_repos` shows what's available. Omit `repo` only when
+`"repo":"forgeintelligence.ai"`); `list_repos` shows what's available. Omit `repo` only when
 a single repo is indexed.
 
 ## Indexing a repo (the analyze flow)
@@ -66,7 +66,7 @@ builds the graph.
 # 1. Kick off (returns {"jobId":"…","status":"cloning"})
 curl -X POST https://sandbox-brain.onrender.com/api/analyze \
   -H 'Content-Type: application/json' \
-  -d '{"url":"https://github.com/Sandbox-Group-LLC/SYSOI.ai.git"}'
+  -d '{"url":"https://github.com/Sandbox-Group-LLC/Forge-Intelligence.ai.git"}'
 
 # 2. Poll job status until complete (DON'T use /progress — see gotchas)
 curl https://sandbox-brain.onrender.com/api/analyze/<jobId>
@@ -145,7 +145,7 @@ starts*, and the agent scopes calls with `"repo":"<name>"`.
 - **In-memory job state is lost on restart.** After a crash/redeploy, the job id
   returns `{"error":"Job not found"}` — but a *completed* index persists on
   `/data` (check `/api/repos`). Jobs are ephemeral; the graph is durable.
-- **512 MB OOMs on a real repo.** Indexing SYSOI.ai (~172 files) peaked >400 MB
+- **512 MB OOMs on a real repo.** Indexing forgeintelligence.ai (~172 files) peaked >400 MB
   and crashed Starter in ~49 s. Pro (4 GB) finishes the same repo in ~22 s. Keep
   the service on a plan with headroom as more/larger repos get added.
 - **Embeddings are off by default** (`embeddings: 0` in the stats). Semantic
