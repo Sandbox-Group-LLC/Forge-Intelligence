@@ -12744,7 +12744,16 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
           // Pre-Zernio posts on Zernio-routed brands fall through to legacy fallback.
           if (isZernio && zernioPostId) {
             // ── Zernio Analytics path (uses Zernio _id, NOT platform URN) ──
-            const analyticsRes = await callZernio('GET', `/analytics?postId=${encodeURIComponent(zernioPostId)}`);
+            let analyticsRes = await callZernio('GET', `/analytics?postId=${encodeURIComponent(zernioPostId)}`);
+            // Zernio analytics are eventually-consistent — the first GET often returns
+            // 202 (accepted, still computing). Re-poll a couple times so a manual
+            // refresh resolves freshly-published posts on the spot instead of parking
+            // them pending until the user happens to refresh again.
+            for (let zAttempt = 0; analyticsRes.status === 202 && zAttempt < 2; zAttempt++) {
+              await new Promise(r => setTimeout(r, 1500));
+              analyticsRes = await callZernio('GET', `/analytics?postId=${encodeURIComponent(zernioPostId)}`);
+              console.log(`[Analytics/LinkedIn] 202 re-poll #${zAttempt + 1} for ${zernioPostId}: HTTP ${analyticsRes.status}`);
+            }
             console.log(`[Analytics/LinkedIn] Zernio analytics for ${zernioPostId} (URN ${postId}): HTTP ${analyticsRes.status}`);
 
             if (analyticsRes.status === 202) {
@@ -12857,7 +12866,7 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
                reactions        = GREATEST(COALESCE(content_analytics.reactions, 0), EXCLUDED.reactions),
                comments         = GREATEST(COALESCE(content_analytics.comments, 0),  EXCLUDED.comments),
                reposts          = GREATEST(COALESCE(content_analytics.reposts, 0),   EXCLUDED.reposts),
-               raw_data         = COALESCE(content_analytics.raw_data, '{}'::jsonb) || EXCLUDED.raw_data,
+               raw_data         = (COALESCE(content_analytics.raw_data, '{}'::jsonb) - 'pending') || EXCLUDED.raw_data,
                synced_at        = NOW(),
                campaign_id      = COALESCE(EXCLUDED.campaign_id, content_analytics.campaign_id)`,
             [brandProfileId, row.content_id, 'linkedin', postId,
@@ -13169,7 +13178,7 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
                reactions        = GREATEST(COALESCE(content_analytics.reactions, 0), EXCLUDED.reactions),
                comments         = GREATEST(COALESCE(content_analytics.comments, 0),  EXCLUDED.comments),
                reposts          = GREATEST(COALESCE(content_analytics.reposts, 0),   EXCLUDED.reposts),
-               raw_data         = COALESCE(content_analytics.raw_data, '{}'::jsonb) || EXCLUDED.raw_data,
+               raw_data         = (COALESCE(content_analytics.raw_data, '{}'::jsonb) - 'pending') || EXCLUDED.raw_data,
                synced_at        = NOW(),
                campaign_id      = COALESCE(EXCLUDED.campaign_id, content_analytics.campaign_id)`,
             [brandProfileId, row.content_id, 'facebook', postId,
@@ -13284,7 +13293,7 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
                reactions        = GREATEST(COALESCE(content_analytics.reactions, 0), EXCLUDED.reactions),
                comments         = GREATEST(COALESCE(content_analytics.comments, 0),  EXCLUDED.comments),
                reposts          = GREATEST(COALESCE(content_analytics.reposts, 0),   EXCLUDED.reposts),
-               raw_data         = COALESCE(content_analytics.raw_data, '{}'::jsonb) || EXCLUDED.raw_data,
+               raw_data         = (COALESCE(content_analytics.raw_data, '{}'::jsonb) - 'pending') || EXCLUDED.raw_data,
                synced_at        = NOW(),
                campaign_id      = COALESCE(EXCLUDED.campaign_id, content_analytics.campaign_id)`,
             [brandProfileId, row.content_id, 'reddit', postId,
@@ -14547,6 +14556,141 @@ app.post('/api/admin/backfill-facebook-zernio-ids', async (req, res) => {
       updated,
       zernioSampleShape,
     });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/admin/backfill-linkedin-zernio-ids — one-shot backfill
+// LinkedIn analogue of /api/admin/backfill-facebook-zernio-ids. Repairs
+// publish_log rows for LinkedIn posts published via Zernio BEFORE the
+// zernioPostId capture landed — and, critically, posts whose pre-Zernio
+// LinkedIn access token was wiped when the brand was reconnected through
+// Zernio (the credential clobber fixed in the same branch). Those rows hold
+// the LinkedIn share URN (urn:li:share:<id>) in response_data.postId but no
+// zernioPostId, so the analytics sync skips them with "No credentials —
+// skipping": there's no Zernio _id to look up and no LinkedIn token for the
+// legacy fallback.
+//
+// Strategy: list the brand's Zernio posts, pull each LinkedIn post's platform
+// id (full URN or numeric share id), match against our stored URNs (full value
+// OR numeric tail), and merge the discovered Zernio _id into
+// response_data.zernioPostId so future syncs route them via the Zernio path.
+//
+// Defaults to dryRun:true — returns the proposed mapping plus a raw Zernio post
+// sample (zernioSampleShape) WITHOUT touching the DB. Run dryRun first as the
+// probe to verify Zernio's response shape; call with {dryRun:false} to write.
+//
+// Query: ?adminPassword=<...>
+// Body:  { brandProfileId: string, dryRun?: boolean (default true) }
+app.post('/api/admin/backfill-linkedin-zernio-ids', async (req, res) => {
+  if (req.query.adminPassword !== process.env.ADMIN_RELAY_PASSWORD) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const { brandProfileId, dryRun = true } = req.body || {};
+  if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
+  if (!process.env.ZERNIO_API_KEY) return res.status(500).json({ error: 'ZERNIO_API_KEY not configured' });
+
+  // Normalize a LinkedIn share id to its numeric tail so a stored full URN
+  // (urn:li:share:123) matches a Zernio-side numeric id (123) and vice versa.
+  const numericTail = (v) => (typeof v === 'string' ? (v.match(/(\d{6,})\s*$/)?.[1] || null) : null);
+
+  try {
+    // 1. LinkedIn publish_log rows missing zernioPostId.
+    const unmappedRes = await pool.query(
+      `SELECT id, content_id, response_data, attempted_at
+       FROM publish_log
+       WHERE brand_profile_id = $1
+         AND channel = 'linkedin'
+         AND status = 'published'
+         AND response_data IS NOT NULL
+         AND response_data ->> 'zernioPostId' IS NULL
+         AND response_data ->> 'postId' IS NOT NULL
+       ORDER BY attempted_at DESC`,
+      [brandProfileId]
+    );
+    const unmappedRows = unmappedRes.rows.map(r => ({
+      id: r.id,
+      postId: r.response_data?.postId,
+      attempted_at: r.attempted_at,
+    }));
+    if (!unmappedRows.length) {
+      return res.json({ unmappedRows: [], zernioPostsScanned: 0, matched: [], unmatched: [], updated: 0, message: 'no rows needing backfill' });
+    }
+
+    // 2. The brand's LinkedIn Zernio accountId.
+    const credRes = await pool.query(
+      `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'linkedin' AND is_active = true LIMIT 1`,
+      [brandProfileId]
+    );
+    const zernioAccountId = credRes.rows[0]?.credentials?.zernioAccountId;
+    if (!zernioAccountId) return res.status(400).json({ error: 'brand has no LinkedIn zernioAccountId — not a Zernio brand' });
+
+    // 3. Enumerate the brand's Zernio posts (same pagination convention as the
+    // Facebook backfill — unverified, capped at 10 pages).
+    const zernioPosts = [];
+    let zernioSampleShape = null;
+    let page = 1;
+    const PAGE_LIMIT = 10;
+    while (page <= PAGE_LIMIT) {
+      const listRes = await callZernio('GET', `/posts?accountId=${encodeURIComponent(zernioAccountId)}&page=${page}&limit=100`);
+      if (!listRes.ok) {
+        return res.json({ error: `Zernio GET /posts returned ${listRes.status}`, zernioRaw: listRes.raw?.slice(0, 500), unmappedRows });
+      }
+      const parsed = listRes.parsed;
+      const batch = Array.isArray(parsed) ? parsed : (parsed?.posts || parsed?.data || parsed?.items || []);
+      if (!zernioSampleShape && batch.length) zernioSampleShape = batch[0];
+      if (!batch.length) break;
+      zernioPosts.push(...batch);
+      if (batch.length < 100) break;
+      page++;
+    }
+
+    // 4. Map every LinkedIn platform id we can find (full value AND numeric tail) → Zernio _id.
+    const idToZernioId = new Map();
+    const addKey = (k, zid) => { if (typeof k === 'string' && k.length) idToZernioId.set(k, zid); };
+    for (const post of zernioPosts) {
+      const zid = post._id || post.id;
+      if (!zid) continue;
+      const platforms = post.platforms || post.platformAnalytics || post.platformPosts || [];
+      const candidates = [];
+      for (const p of platforms) {
+        if (p?.platform !== 'linkedin') continue;
+        for (const key of ['platformPostId', 'postId', 'id', 'urn']) if (p[key]) candidates.push(p[key]);
+      }
+      if (post.platformPostId) candidates.push(post.platformPostId);
+      for (const c of candidates) {
+        addKey(c, zid);
+        const tail = numericTail(c);
+        if (tail) addKey(tail, zid);
+      }
+    }
+
+    // 5. Match unmapped rows — try the full stored URN, then its numeric tail.
+    const matched = [];
+    const unmatched = [];
+    for (const row of unmappedRows) {
+      const tail = numericTail(row.postId);
+      const zid = idToZernioId.get(row.postId) || (tail ? idToZernioId.get(tail) : null);
+      if (zid) matched.push({ rowId: row.id, urn: row.postId, zernioPostId: zid });
+      else     unmatched.push({ rowId: row.id, urn: row.postId });
+    }
+
+    // 6. Write matches back into response_data unless this is a dry run.
+    let updated = 0;
+    if (!dryRun && matched.length) {
+      for (const m of matched) {
+        await pool.query(
+          `UPDATE publish_log
+           SET response_data = response_data || jsonb_build_object('zernioPostId', $1::text)
+           WHERE id = $2`,
+          [m.zernioPostId, m.rowId]
+        );
+        updated++;
+      }
+    }
+
+    res.json({ dryRun, unmappedRows, zernioPostsScanned: zernioPosts.length, matched, unmatched, updated, zernioSampleShape });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -18743,6 +18887,40 @@ app.post('/api/analytics/decay/:brandProfileId/resolve/:contentId', requireAuth,
   } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
+// Background re-sync for Zernio "pending" analytics. Zernio's /analytics is
+// eventually-consistent and returns 202 for freshly-published posts, which the
+// sync handler parks as pending:true placeholders. Without this job they'd only
+// resolve when a user manually refreshes the Performance dashboard. Every 30 min
+// we re-sync just the brands that still have pending rows — reusing the real
+// /api/analytics/sync endpoint via the adminPassword cron bypass so all
+// per-channel logic (and the 202 re-poll) is shared. Brands drop out of the set
+// as their posts resolve, so this self-limits.
+async function runAnalyticsResync() {
+  try {
+    const brandsRes = await pool.query(
+      `SELECT DISTINCT brand_profile_id FROM content_analytics WHERE raw_data->>'pending' = 'true' LIMIT 50`
+    );
+    if (!brandsRes.rows.length) return;
+    console.log(`[AnalyticsResync] ${brandsRes.rows.length} brand(s) with pending analytics — re-syncing`);
+    const baseUrl = process.env.BASE_URL || 'http://localhost:' + (process.env.PORT || 3000);
+    for (const { brand_profile_id } of brandsRes.rows) {
+      try {
+        const r = await fetch(`${baseUrl}/api/analytics/sync/${brand_profile_id}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channel: 'all', adminPassword: process.env.ADMIN_RELAY_PASSWORD })
+        });
+        const d = await r.json().catch(() => ({}));
+        console.log(`[AnalyticsResync] ${brand_profile_id}: HTTP ${r.status}, synced=${d.synced ?? '?'}`);
+      } catch (e) {
+        console.error(`[AnalyticsResync] ${brand_profile_id} failed:`, e.message);
+      }
+    }
+  } catch (e) {
+    console.error('[AnalyticsResync]', e.message);
+  }
+}
+
 // Start scheduler — runs 30s after boot then every 60s
 setTimeout(() => {
   runScheduledPublishes();
@@ -18750,10 +18928,14 @@ setTimeout(() => {
   // Decay monitoring runs every 6 hours
   runDecayMonitoring();
   setInterval(runDecayMonitoring, 6 * 60 * 60 * 1000);
+  // Pending-analytics re-sync runs every 30 minutes
+  runAnalyticsResync();
+  setInterval(runAnalyticsResync, 30 * 60 * 1000);
 }, 30 * 1000);
 
 console.log('[SCHEDULER] Scheduled publish runner active — polling every 60s');
 console.log('[SCHEDULER] Decay monitoring active — running every 6 hours');
+console.log('[SCHEDULER] Pending-analytics re-sync active — running every 30 minutes');
 
 // ── Performance Digest ─────────────────────────────────────────────────────
 // Scheduled: POST /api/digest/send-all (EasyCron, admin key)
