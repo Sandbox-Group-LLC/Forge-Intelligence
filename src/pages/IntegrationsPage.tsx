@@ -830,7 +830,7 @@ export default function IntegrationsPage() {
                     {ch.id === 'website' && selectedBrand && (
                       <MyWebsiteForm
                         brandProfileId={selectedBrand}
-                        saved={saved as unknown as { credentials?: { endpointUrl?: string; format?: 'html' | 'markdown' | 'both'; bearerToken?: string }; is_active?: boolean; updated_at?: string } | null}
+                        saved={saved as unknown as { credentials?: { endpointUrl?: string; format?: 'html' | 'markdown' | 'both'; bearerToken?: string; bearerTokenSet?: boolean; bearerTokenLast4?: string }; is_active?: boolean; updated_at?: string } | null}
                         onChange={() => loadChannels(selectedBrand)}
                       />
                     )}
@@ -886,7 +886,7 @@ export default function IntegrationsPage() {
 
                     <div className="int-form-footer">
                       <button className="int-cancel-btn" onClick={() => setExpanded(null)}>Close</button>
-                      {!ch.oauthFlow && (
+                      {!ch.oauthFlow && ch.id !== 'website' && (
                         <button
                           className="int-save-btn"
                           onClick={() => handleSave(ch.id)}
@@ -895,7 +895,7 @@ export default function IntegrationsPage() {
                           {saving === ch.id ? 'Saving...' : connected ? 'Update Connection' : `Connect ${ch.label}`}
                         </button>
                       )}
-                      {connected && (
+                      {connected && ch.id !== 'website' && (
                         <button
                           className="int-save-btn"
                           style={{ background: 'var(--color-bg-elevated)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}

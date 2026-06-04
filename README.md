@@ -7,7 +7,7 @@
 > 1. **`CLAUDE.md`** — code-graph entry point (GitNexus output). Architectural orientation.
 > 2. **`SESSION-PROTOCOL.md`** — current operational rules (branch + PR workflow, Render ops, DB safety, communication norms).
 > 3. **`WORKING-STATE.md`** — what's in flight, what just shipped, what's next. Newest session on top.
-> 4. **`WHITEBOARD.md`** — long-form retrospective archive.
+> 4. **`PLAN.md`** — long-form retrospective archive.
 > 5. **THIS FILE** — product/platform reference (less frequently changed than the above).
 >
 > URL pattern: frontend routes match product names (e.g. `/context-hub`, `/geo-strategist`), API routes follow `/api/{product-slug}/`.
@@ -125,7 +125,7 @@
 
 **GitNexus context files installed (May 22):** `npx gitnexus@latest analyze` against the repo produced `CLAUDE.md`, `AGENTS.md`, and `.claude/skills/gitnexus/` (6 skill files). 2,818 nodes / 3,968 edges / 61 clusters / 129 execution flows. **Aspirational without live MCP runtime** — GitNexus MCP is stdio-only, so cloud Claude Code sessions can't connect to it today; files ship as orientation for the day FleetView gains custom MCP support or upstream ships HTTP/SSE transport.
 
-**SESSION-PROTOCOL refresh + bootstrap consolidation (May 22):** `SESSION-PROTOCOL.md` rewritten for the current local-edit + git + draft-PR workflow (the original was for a deprecated GitHub Contents API + Python script flow) and moved from `docs/` to repo root alongside `CLAUDE.md`, `AGENTS.md`, `WORKING-STATE.md`, `WHITEBOARD.md`. PR #128.
+**SESSION-PROTOCOL refresh + bootstrap consolidation (May 22):** `SESSION-PROTOCOL.md` rewritten for the current local-edit + git + draft-PR workflow (the original was for a deprecated GitHub Contents API + Python script flow) and moved from `docs/` to repo root alongside `CLAUDE.md`, `AGENTS.md`, `WORKING-STATE.md`, `PLAN.md`. PR #128.
 
 **Other notable (chronological):**
 - 2026-05-12 Lovable integration — prompt-pack endpoint, "Build with Lovable" button on Brand Profile, first-use hint
@@ -253,7 +253,7 @@ Every stage persists results and points forward:
 ```
 /
 ├── README.md              ← THIS FILE. SSOT. Read before touching anything.
-├── WHITEBOARD.md          ← Active working doc. Session state, pending work, known issues.
+├── PLAN.md          ← Active working doc. Session state, pending work, known issues.
 ├── server.js              ← Express server + all API routes + shared utilities (sanitizeJson, buildImagePrompt, extractJSON)
 ├── src/
 │   ├── context/
@@ -450,7 +450,7 @@ BEFORE generating:
 ## For AI Sessions — Start Here
 
 1. Read this README top to bottom
-2. Read WHITEBOARD.md for current session state and pending work
+2. Read PLAN.md for current session state and pending work
 3. Fetch and read the specific file before editing — never write blind
 4. The Anthropic SDK is pinned at `^0.39.0` — do not change
 5. `NEON_DATABASE_URL` points to `ep-odd-waterfall-akyrdo6x-pooler` — this is correct and must not change
@@ -514,7 +514,7 @@ Sandbox Group: **Sandbox-XM** (experience marketing) + **Sandbox-GTM** (event re
 
 ### Recent Updates Index
 
-For session-level technical detail, see `WORKING-STATE.md` (current pointer) and `WHITEBOARD.md` (archive). Recent major entries:
+For session-level technical detail, see `WORKING-STATE.md` (current pointer) and `PLAN.md` (archive). Recent major entries:
 
 - **May 23** — X OAuth migrated to `x.com` (PR #132); auth-expired errors → Reconnect action in Publishing Queue (PR #130); `article_base_url` respected across Facebook/Reddit/Medium/My Website (PR #121); topbar alerts bell + Get Help support form
 - **May 22** — My Website channel live (self-hosted webhook publisher; PRs #117–#122); `/docs` page live with Share With AI button (PRs #120, #134); GitNexus context files installed; SESSION-PROTOCOL refreshed + moved to repo root; Facebook URN→Zernio _id fix + backfill (PRs #111–#113); markdown stripping for FB + LinkedIn social copy (PR #115)

@@ -239,7 +239,11 @@ const topNavItems: TopNavItem[] = [
 ];
 
 export function Sidebar() {
-  const { currentView, setCurrentView, setAnalysisInput, analysisInput, sidebarCollapsed, setSidebarCollapsed, isProcessing, brandProfile, isPaid, brandLoading, activeBrand, refetchBrand, isSuperAdmin } = useApp();
+  const { currentView, setCurrentView, setAnalysisInput, analysisInput, sidebarCollapsed, setSidebarCollapsed, isProcessing, brandProfile, isPaid, brandLoading, activeBrand, refetchBrand, isSuperAdmin, historyEntries } = useApp();
+  // Brain version: pulled from the active brand's history entry (which already
+  // carries version from the brand_profiles row). Falls through to undefined
+  // if the brand isn't in the history list yet — footer shows "idle" in that case.
+  const activeBrainVersion = historyEntries.find(h => h.id === activeBrand?.id)?.version;
   const [gateFeature, setGateFeature] = useState<string | null>(null);
   const [seededPromoCode, setSeededPromoCode] = useState<string>('');
 
@@ -450,6 +454,11 @@ export function Sidebar() {
           </div>
         )}
 
+        {/* Pipeline group label — matches the labeled-group pattern used by
+            Publishing and Settings below. Hidden in collapsed mode (no room
+            for the label, and the icons + tooltips carry the grouping). */}
+        {!sidebarCollapsed && <div className="nav-group-label">Pipeline</div>}
+
         {/* Top-level nav items — all use href for clean URL-based navigation */}
         {topNavItems.map(item => {
           // Insert Publishing group before Performance
@@ -572,10 +581,16 @@ export function Sidebar() {
 
       <div className="sidebar-footer">
         {!sidebarCollapsed && (
-          <div className="sidebar-status">
-            <span className="status-icon">{icons.cpu}</span>
-            <span className="status-dot connected"></span>
-            <span className="status-text">Brain Connected</span>
+          // Brain version + sync pulse. Version is bumped by the server on
+          // each meaningful brain update (factualGround save, pattern extract,
+          // etc.). syncState is "synced" once a brand is loaded — future:
+          // surface "syncing" / "stale" if a background job is mid-flight.
+          <div className="sidebar-status" title={activeBrand?.brandName || 'No brand loaded'}>
+            <span className="status-dot connected" />
+            <span className="footer-label">Brain</span>
+            <span className="footer-value">
+              {activeBrainVersion ? `v${activeBrainVersion} · synced` : 'idle'}
+            </span>
           </div>
         )}
       </div>

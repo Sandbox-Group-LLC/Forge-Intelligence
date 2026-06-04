@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AppShell } from '../layouts/AppShell';
 import { NoBrandEmpty } from '../components/NoBrandEmpty';
+import { StatStrip, type Stat } from '../components/StatStrip';
 import GateModal from '../components/GateModal';
 import { useApp } from '../context/AppContext';
 import './PublishingQueuePage.css';
@@ -1192,6 +1193,27 @@ ${authorFooterHtml}
             <a href={reviewUrl} target="_blank" rel="noopener noreferrer" className="pq-review-link">{reviewUrl}</a>
           </div>
         )}
+        {/* KPI strip — quick read on queue health. Stats computed from the
+            same items array the rest of the page renders, so they refresh in
+            lockstep with the list. Channels-live derived from publish_results
+            keys across all items (a channel "counts" if it's been used at
+            least once for this brand). */}
+        {items.length > 0 && (() => {
+          const inQueue = items.filter(i => i.status === 'staged' || i.status === 'scheduled').length;
+          const thirtyAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+          const published30d = items.filter(i => i.status === 'published' && i.published_at && new Date(i.published_at).getTime() >= thirtyAgo).length;
+          const failed = items.filter(i => i.status === 'failed' || i.status === 'partial').length;
+          const channelsLive = new Set(
+            items.flatMap(i => Object.keys(i.publish_results || {})).filter(k => !k.startsWith('__'))
+          ).size;
+          const stats: Stat[] = [
+            { label: 'In queue',       value: inQueue,      delta: `${items.length} total`,                       deltaTone: 'flat' },
+            { label: 'Published · 30d', value: published30d, delta: published30d > 0 ? `${published30d} this month` : 'No publishes yet', deltaTone: published30d > 0 ? 'positive' : 'flat' },
+            { label: 'Channels live',  value: channelsLive, delta: channelsLive > 0 ? 'Across this brand'        : 'Connect a channel',  deltaTone: 'flat' },
+            { label: 'Needs review',   value: failed,       delta: failed > 0 ? 'Failed or partial publishes'    : 'All clean',           deltaTone: failed > 0 ? 'negative' : 'positive' },
+          ];
+          return <StatStrip stats={stats} />;
+        })()}
       <div className="pq-controls-row">
         <button
           className="pq-sort-toggle"

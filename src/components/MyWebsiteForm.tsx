@@ -5,6 +5,8 @@ interface SavedWebsite {
     endpointUrl?: string;
     format?: 'html' | 'markdown' | 'both';
     bearerToken?: string;
+    bearerTokenSet?: boolean;
+    bearerTokenLast4?: string;
   };
   is_active?: boolean;
   updated_at?: string;
@@ -31,8 +33,12 @@ export default function MyWebsiteForm({ brandProfileId, saved, onChange }: MyWeb
   const [testResult, setTestResult] = useState<{ ok: boolean; status?: number; latencyMs?: number; error?: string; responseBody?: string } | null>(null);
   const [error, setError] = useState('');
 
-  const hasToken = !!saved?.credentials?.bearerToken;
-  const maskedToken = hasToken ? `forge_pub_••••${saved!.credentials!.bearerToken!.slice(-4)}` : '';
+  // "Token exists?" must NOT depend on the raw secret being echoed back — the
+  // read endpoint intentionally masks it. Use the server's non-secret flag,
+  // falling back to the raw token only for older payloads.
+  const hasToken = saved?.credentials?.bearerTokenSet ?? !!saved?.credentials?.bearerToken;
+  const last4 = saved?.credentials?.bearerTokenLast4 ?? saved?.credentials?.bearerToken?.slice(-4);
+  const maskedToken = hasToken ? `forge_pub_••••${last4 ?? '••••'}` : '';
 
   const saveConfig = async () => {
     if (!endpointUrl.match(/^https?:\/\//i)) {
