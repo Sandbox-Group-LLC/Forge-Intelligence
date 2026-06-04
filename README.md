@@ -4,11 +4,10 @@
 >
 > **Agent / session instructions live elsewhere now.** Start here on every session:
 >
-> 1. **`CLAUDE.md`** — code-graph entry point (GitNexus output). Architectural orientation.
-> 2. **`SESSION-PROTOCOL.md`** — current operational rules (branch + PR workflow, Render ops, DB safety, communication norms).
-> 3. **`WORKING-STATE.md`** — what's in flight, what just shipped, what's next. Newest session on top.
-> 4. **`PLAN.md`** — long-form retrospective archive.
-> 5. **THIS FILE** — product/platform reference (less frequently changed than the above).
+> 1. **`CLAUDE.md`** — the single source of truth for agent/session rules: code-graph orientation (GitNexus output) plus the operational rules (branch + PR workflow, Render ops, DB safety, communication norms). Consolidates the former `SESSION-PROTOCOL.md` and `AGENTS.md`.
+> 2. **`WORKING-STATE.md`** — what's in flight, what just shipped, what's next. Newest session on top.
+> 3. **`PLAN.md`** — long-form retrospective archive.
+> 4. **THIS FILE** — product/platform reference (less frequently changed than the above).
 >
 > URL pattern: frontend routes match product names (e.g. `/context-hub`, `/geo-strategist`), API routes follow `/api/{product-slug}/`.
 
@@ -234,7 +233,7 @@ Every stage persists results and points forward:
 | `Intel` | Separate deployment target — kept in sync with `main` for the Intel-branded customer surface. |
 | `strategy` | Same content as the others EXCEPT Brand Intelligence sidebar entry is exposed (others hide it) + holds `STRATEGY.md`, the long-form strategic narrative. |
 
-**Standard flow per change** (see `SESSION-PROTOCOL.md` for the full recipe):
+**Standard flow per change** (see `CLAUDE.md` for the full recipe):
 
 1. `git fetch origin development` → `git switch -c <feature|fix|chore>/<slug> origin/development`
 2. Edit locally via `Edit` / `Write` tools (NOT GitHub Contents API)
@@ -450,11 +449,11 @@ BEFORE generating:
 ## For AI Sessions — Start Here
 
 1. Read this README top to bottom
-2. Read PLAN.md for current session state and pending work
+2. Read WORKING-STATE.md for what's in flight and pending work (PLAN.md is the long-form retrospective archive)
 3. Fetch and read the specific file before editing — never write blind
 4. The Anthropic SDK is pinned at `^0.39.0` — do not change
 5. `NEON_DATABASE_URL` points to `ep-odd-waterfall-akyrdo6x-pooler` — this is correct and must not change
-6. All production commits go to the `production` branch
+6. All feature/fix work commits to `development` (auto-deploys to dev.forgeintelligence.ai for testing). Promotion to production is a `development → main` rollup PR that Brian merges once stable — never commit straight to `main`
 7. Render auto-deploys on every push — no manual step needed
 8. Brian is direct, works fast, expects commits not instructions. No narration. No confirmation requests.
 
