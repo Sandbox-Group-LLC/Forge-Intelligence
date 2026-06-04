@@ -37,6 +37,8 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Backend syntax check (server.js monolith)
         run: node --check server.js
+      - name: Lint (no-undef) — catches missed imports from extractions
+        run: npm run lint
       - name: Typecheck (React app)
         run: npm run typecheck
       - name: Unit tests (route-inventory guard + future units)
