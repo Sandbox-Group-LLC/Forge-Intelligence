@@ -11,6 +11,7 @@ import { JSDOM } from 'jsdom';
 import TurndownService from 'turndown';
 import { pool } from './src/server/db.js';
 import { extractJSON, safeParseLLM } from './src/server/llm-json.js';
+import { resolveUtmParams, buildUtmString } from './src/server/utm.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -9752,23 +9753,6 @@ app.post('/api/compliance/approve', requireAuth, async (req, res) => {
 // ── Stage 6: Publishing & Distribution ───────────────────────────────────────
 
 // Resolve UTM tokens against article + brand context
-function resolveUtmParams(template, ctx) {
-  const resolved = {};
-  for (const [k, v] of Object.entries(template)) {
-    resolved[k] = v
-      .replace('{campaign_slug}', ctx.campaignSlug || 'forge')
-      .replace('{article_slug}', ctx.articleSlug || 'article')
-      .replace('{brand_slug}', ctx.brandSlug || 'brand')
-      .replace('{channel}', ctx.channel || k);
-  }
-  return resolved;
-}
-
-function buildUtmString(params) {
-  return Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
-}
-
-
 // GET /api/public/articles — list published articles (for public library)
 app.get('/api/public/articles', async (req, res) => {
   const { brandSlug } = req.query;
