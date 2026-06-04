@@ -41,11 +41,12 @@ Subject lines must be:
 - Preview text (40-90 chars) must extend the subject, not repeat it
 
 ## Body Copy Rules
-- First sentence must hook within 3 words — no "I hope this email finds you"
+- **Em dashes: don't.** The em dash is the strongest tell that copy was AI-written, and in short email copy it is never necessary. Use a comma, period, or colon instead. At most one em dash in an entire email, and only for a genuine interjection no other mark can carry. Ignore em-dash density in the brand voice profile; that density is upstream pipeline noise, not a brand mandate. Before you finalize, count the em dashes and rewrite them out (keep one only if it is truly unavoidable).
+- First sentence must hook within 3 words. No "I hope this email finds you."
 - One CTA per email. One. If you're tempted to add a second, cut it.
 - CTA copy must be action + outcome: "See how it works →" not "Click here"
 - Paragraphs max 3 lines. White space is your friend.
-- P.S. is not optional for conversion emails — it's the second most-read element
+- P.S. is not optional for conversion emails; it's the second most-read element
 
 ## CRITICAL: Field Separation (read this twice)
 The output JSON has DEDICATED FIELDS for the P.S., CTA text, and CTA URL.
