@@ -1255,7 +1255,7 @@ app.post('/api/publishing/republish', requireAuth, async (req, res) => {
       body: JSON.stringify({
         queueItemId,
         channels: [channel],
-        adminPassword: process.env.ADMIN_PASSWORD,
+        adminPassword: process.env.ADMIN_RELAY_PASSWORD,
       })
     });
     const publishData = await publishRes.json();
@@ -3185,7 +3185,7 @@ app.get('/api/analytics/patterns/:brandProfileId', requireAuth, async (req, res)
 // ── Brain Distill — convert human edits into writing rules ───────────────────
 app.post('/api/brain/distill/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
-  const isCron = req.body?.adminPassword === process.env.ADMIN_PASSWORD;
+  const isCron = req.body?.adminPassword === process.env.ADMIN_RELAY_PASSWORD;
   if (!isCron) {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
@@ -3312,7 +3312,7 @@ Return ONLY valid JSON, no explanation:
 app.post('/api/analytics/extract-patterns/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
   // Allow cron/admin bypass with adminPassword, otherwise require Clerk JWT
-  const isCron = req.body?.adminPassword === process.env.ADMIN_PASSWORD;
+  const isCron = req.body?.adminPassword === process.env.ADMIN_RELAY_PASSWORD;
   if (!isCron) {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
@@ -11549,7 +11549,7 @@ Output only the post text.` }]
 
 app.post('/api/publishing/publish', async (req, res) => {
   // Allow scheduler to call without user auth via adminPassword
-  const isCron = req.body?.adminPassword === process.env.ADMIN_PASSWORD;
+  const isCron = req.body?.adminPassword === process.env.ADMIN_RELAY_PASSWORD;
   if (!isCron) {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
@@ -12688,7 +12688,7 @@ function buildGhostJWT(apiKey) {
 app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
   // Allow cron/admin bypass with adminPassword, otherwise require Clerk JWT
-  const isCron = req.body?.adminPassword === process.env.ADMIN_PASSWORD;
+  const isCron = req.body?.adminPassword === process.env.ADMIN_RELAY_PASSWORD;
   if (!isCron) {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
@@ -13766,7 +13766,7 @@ async function runScheduledPublishes() {
         const publishRes = await fetch(`${baseUrl}/api/publishing/publish`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ queueItemId: item.id, channels: targets, adminPassword: process.env.ADMIN_PASSWORD })
+          body: JSON.stringify({ queueItemId: item.id, channels: targets, adminPassword: process.env.ADMIN_RELAY_PASSWORD })
         });
         const publishData = await publishRes.json();
 
@@ -13942,7 +13942,7 @@ app.post('/api/pipedream/account', requireAuth, async (req, res) => {
 // but the OAuth token can't see them (scope/permission issue at the Meta level, not a Forge bug).
 app.get('/api/admin/facebook/diag', async (req, res) => {
   const { brandProfileId, adminPassword } = req.query;
-  if (adminPassword !== process.env.ADMIN_PASSWORD) return res.status(401).json({ error: 'unauthorized' });
+  if (adminPassword !== process.env.ADMIN_RELAY_PASSWORD) return res.status(401).json({ error: 'unauthorized' });
   if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
   try {
     const r = await pool.query(
@@ -14424,7 +14424,7 @@ app.get('/api/admin/stats', async (req, res) => {
 //     zernioSampleShape: object | null   // first Zernio post raw, for debugging
 //   }
 app.post('/api/admin/backfill-facebook-zernio-ids', async (req, res) => {
-  if (req.query.adminPassword !== process.env.ADMIN_PASSWORD) {
+  if (req.query.adminPassword !== process.env.ADMIN_RELAY_PASSWORD) {
     return res.status(403).json({ error: 'Forbidden' });
   }
   const { brandProfileId, dryRun = true } = req.body || {};
@@ -15953,7 +15953,7 @@ app.post('/api/promo/validate', softAuth, async (req, res) => {
 //   url           — optional, ILIKE substring match against the URL
 //   limit         — default 100, max 500
 app.get('/api/admin/scrape-log', async (req, res) => {
-  if (req.query.adminPassword !== process.env.ADMIN_PASSWORD) {
+  if (req.query.adminPassword !== process.env.ADMIN_RELAY_PASSWORD) {
     return res.status(403).json({ error: 'Forbidden' });
   }
   const { caller, url } = req.query;
@@ -15991,7 +15991,7 @@ app.get('/api/admin/scrape-log', async (req, res) => {
 // Idempotent: zero rows is a 200 with queueItemsAffected=0.
 app.post('/api/admin/mark-unpublished', async (req, res) => {
   const { contentId, channel, adminPassword } = req.body || {};
-  if (adminPassword !== process.env.ADMIN_PASSWORD) {
+  if (adminPassword !== process.env.ADMIN_RELAY_PASSWORD) {
     return res.status(403).json({ error: 'Forbidden' });
   }
   if (!contentId || typeof contentId !== 'string') {
@@ -16070,11 +16070,11 @@ app.post('/api/admin/mark-unpublished', async (req, res) => {
 
 // POST /api/admin/reset-brand-paid — dev only, resets is_paid for testing
 app.post('/api/admin/reset-brand-paid', async (req, res) => {
-  if (process.env.NODE_ENV === 'production' && !req.body.adminPassword === process.env.ADMIN_PASSWORD) {
+  if (process.env.NODE_ENV === 'production' && !req.body.adminPassword === process.env.ADMIN_RELAY_PASSWORD) {
     return res.status(403).json({ error: 'Forbidden' });
   }
   const { brandProfileId, adminPassword } = req.body;
-  if (adminPassword !== process.env.ADMIN_PASSWORD) return res.status(403).json({ error: 'Forbidden' });
+  if (adminPassword !== process.env.ADMIN_RELAY_PASSWORD) return res.status(403).json({ error: 'Forbidden' });
   try {
     await pool.query(
       `UPDATE brand_profiles SET is_paid = false, expires_at = NOW() + INTERVAL '24 hours', clerk_user_id = NULL, updated_at = NOW() WHERE id = $1`,
@@ -16286,9 +16286,9 @@ async function submitToIndexNow(urls, host = 'forgeintelligence.ai') {
 }
 
 // POST /api/admin/indexnow/backfill — submit every Forge Intelligence article to IndexNow.
-// Gated by ADMIN_PASSWORD. Use this after SEO hygiene fixes to force re-crawl.
+// Gated by ADMIN_RELAY_PASSWORD. Use this after SEO hygiene fixes to force re-crawl.
 app.post('/api/admin/indexnow/backfill', express.json({ limit: '50kb' }), async (req, res) => {
-  if (req.body?.adminPassword !== process.env.ADMIN_PASSWORD) {
+  if (req.body?.adminPassword !== process.env.ADMIN_RELAY_PASSWORD) {
     return res.status(403).json({ error: 'Unauthorized' });
   }
   try {
@@ -16342,7 +16342,7 @@ app.post('/api/admin/indexnow/backfill', express.json({ limit: '50kb' }), async 
 
 // POST /api/admin/indexnow/submit — submit arbitrary URLs (for targeted re-crawls)
 app.post('/api/admin/indexnow/submit', express.json({ limit: '100kb' }), async (req, res) => {
-  if (req.body?.adminPassword !== process.env.ADMIN_PASSWORD) {
+  if (req.body?.adminPassword !== process.env.ADMIN_RELAY_PASSWORD) {
     return res.status(403).json({ error: 'Unauthorized' });
   }
   const urls = Array.isArray(req.body?.urls) ? req.body.urls : [];
@@ -16680,7 +16680,7 @@ app.get('/mcp', (req, res) => {
 // POST /api/admin/api-keys — mint a new key. Plaintext returned ONCE; thereafter only hash.
 // Body: { adminPassword, label, brandProfileIds: [uuid], scopes: [string], env?: 'live'|'test' }
 app.post('/api/admin/api-keys', express.json({ limit: '50kb' }), async (req, res) => {
-  if (req.body?.adminPassword !== process.env.ADMIN_PASSWORD) {
+  if (req.body?.adminPassword !== process.env.ADMIN_RELAY_PASSWORD) {
     return res.status(403).json({ error: 'Unauthorized' });
   }
   const { label, brandProfileIds, scopes, env } = req.body;
@@ -16713,7 +16713,7 @@ app.post('/api/admin/api-keys', express.json({ limit: '50kb' }), async (req, res
 
 // GET /api/admin/api-keys?adminPassword=... — list (metadata only, no plaintext)
 app.get('/api/admin/api-keys', async (req, res) => {
-  if (req.query?.adminPassword !== process.env.ADMIN_PASSWORD) {
+  if (req.query?.adminPassword !== process.env.ADMIN_RELAY_PASSWORD) {
     return res.status(403).json({ error: 'Unauthorized' });
   }
   try {
@@ -16729,7 +16729,7 @@ app.get('/api/admin/api-keys', async (req, res) => {
 
 // DELETE /api/admin/api-keys/:id — revoke (soft-delete via revoked_at)
 app.delete('/api/admin/api-keys/:id', express.json({ limit: '10kb' }), async (req, res) => {
-  if (req.body?.adminPassword !== process.env.ADMIN_PASSWORD) {
+  if (req.body?.adminPassword !== process.env.ADMIN_RELAY_PASSWORD) {
     return res.status(403).json({ error: 'Unauthorized' });
   }
   try {
@@ -16748,7 +16748,7 @@ app.delete('/api/admin/api-keys/:id', express.json({ limit: '10kb' }), async (re
 // ── Neon SQL Relay ────────────────────────────────────────────────────────────
 app.post('/api/admin/relay', express.json({ limit: '500kb' }), async (req, res) => {
   const { adminPassword, query, values } = req.body;
-  if (adminPassword !== process.env.ADMIN_PASSWORD) {
+  if (adminPassword !== process.env.ADMIN_RELAY_PASSWORD) {
     return res.status(403).json({ success: false, error: 'Unauthorized' });
   }
   try {
@@ -16774,7 +16774,7 @@ const zernioGuard = (req, res) => {
     return false;
   }
   // Admin password gate
-  if (req.body?.adminPassword !== process.env.ADMIN_PASSWORD) {
+  if (req.body?.adminPassword !== process.env.ADMIN_RELAY_PASSWORD) {
     res.status(403).json({ success: false, error: 'Unauthorized' });
     return false;
   }
@@ -18367,7 +18367,7 @@ app.get('/api/content-generator/enriched-briefs/:brandProfileId', requireAuth, a
 app.post('/api/geo/track/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
   // Allow cron/admin bypass with adminPassword, otherwise require Clerk JWT
-  const isCron = req.body?.adminPassword === process.env.ADMIN_PASSWORD;
+  const isCron = req.body?.adminPassword === process.env.ADMIN_RELAY_PASSWORD;
   if (!isCron) {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
@@ -18949,7 +18949,7 @@ app.post('/api/digest/send/:brandProfileId', requireAuth, async (req, res) => {
 // Admin-password version for manual fires from CLI/scripts — same logic, no Clerk JWT required.
 app.post('/api/admin/digest/send/:brandProfileId', async (req, res) => {
   const { adminPassword } = req.body || {};
-  if (adminPassword !== process.env.ADMIN_PASSWORD) {
+  if (adminPassword !== process.env.ADMIN_RELAY_PASSWORD) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   try {
@@ -18966,7 +18966,7 @@ app.post('/api/admin/digest/send/:brandProfileId', async (req, res) => {
 // POST /api/digest/send-all — EasyCron weekly trigger (admin password protected)
 app.post('/api/digest/send-all', async (req, res) => {
   const { adminPassword } = req.body;
-  if (adminPassword !== process.env.ADMIN_PASSWORD) {
+  if (adminPassword !== process.env.ADMIN_RELAY_PASSWORD) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   try {
@@ -19051,7 +19051,7 @@ app.post('/api/utils/shorten-url', async (req, res) => {
 
 // POST /api/outreach/contacts — bulk insert contacts (admin only)
 app.post('/api/outreach/contacts', async (req, res) => {
-  if (req.body?.adminPassword !== process.env.ADMIN_PASSWORD) return res.status(401).json({ error: 'Unauthorized' });
+  if (req.body?.adminPassword !== process.env.ADMIN_RELAY_PASSWORD) return res.status(401).json({ error: 'Unauthorized' });
   const { contacts } = req.body;
   if (!Array.isArray(contacts)) return res.status(400).json({ error: 'contacts array required' });
   try {
@@ -19071,7 +19071,7 @@ app.post('/api/outreach/contacts', async (req, res) => {
 
 // GET /api/outreach/contacts — list contacts (admin only)
 app.get('/api/outreach/contacts', async (req, res) => {
-  if (req.query?.adminPassword !== process.env.ADMIN_PASSWORD) return res.status(401).json({ error: 'Unauthorized' });
+  if (req.query?.adminPassword !== process.env.ADMIN_RELAY_PASSWORD) return res.status(401).json({ error: 'Unauthorized' });
   try {
     const r = await pool.query('SELECT * FROM outreach_contacts ORDER BY created_at DESC');
     res.json({ success: true, contacts: r.rows });
@@ -19080,7 +19080,7 @@ app.get('/api/outreach/contacts', async (req, res) => {
 
 // POST /api/outreach/send — cron-triggered send to all pending contacts
 app.post('/api/outreach/send', async (req, res) => {
-  if (req.body?.adminPassword !== process.env.ADMIN_PASSWORD) return res.status(401).json({ error: 'Unauthorized' });
+  if (req.body?.adminPassword !== process.env.ADMIN_RELAY_PASSWORD) return res.status(401).json({ error: 'Unauthorized' });
   const RESEND_API_KEY = process.env.RESEND_API_KEY;
   if (!RESEND_API_KEY) return res.status(500).json({ error: 'RESEND_API_KEY not configured' });
   try {
