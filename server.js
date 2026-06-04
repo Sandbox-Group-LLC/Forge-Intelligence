@@ -10,6 +10,7 @@ import { Readability } from '@mozilla/readability';
 import { JSDOM } from 'jsdom';
 import TurndownService from 'turndown';
 import { pool } from './src/server/db.js';
+import { extractJSON, safeParseLLM } from './src/server/llm-json.js';
 import { resolveUtmParams, buildUtmString } from './src/server/utm.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -4768,7 +4769,7 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
       }});
 
     }
-    await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms) VALUES ($1,$2,$3,$4,$5)', ['stage1_context_agent', brandProfileId||null, 'success', (usage?.input_tokens||0)+(usage?.output_tokens||0), Date.now()-startTime]).catch(()=>{});
+    await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms) VALUES ($1,$2,$3,$4,$5)', ['stage1_context_agent', null, 'success', (message?.usage?.input_tokens||0)+(message?.usage?.output_tokens||0), Date.now()-startTime]).catch(()=>{});
         res.json({ success: true, cached: false, data: {
       id: randomUUID(), brandUrl, brandName,
       version: 1, isActive: false, cacheStatus: 'fresh',
@@ -5309,97 +5310,6 @@ function dateContext() {
     `When you reference dates, time periods, or 'recent' events, anchor them to this date — ` +
     `do not assume an earlier year. If you write phrases like 'in ${year - 1}' or 'this year', ` +
     `they must be accurate against ${year}, not your training cutoff.`;
-}
-
-function extractJSON(text, type = 'object') {
-  const open = type === 'array' ? '[' : '{';
-  const close = type === 'array' ? ']' : '}';
-  const start = text.indexOf(open);
-  if (start === -1) return null;
-  let depth = 0;
-  for (let i = start; i < text.length; i++) {
-    if (text[i] === open) depth++;
-    else if (text[i] === close) {
-      depth--;
-      if (depth === 0) return text.slice(start, i + 1);
-    }
-  }
-  // JSON was truncated (hit token limit) — attempt recovery by closing open structures
-  if (depth > 0) {
-    let partial = text.slice(start).trimEnd();
-    // Remove any trailing incomplete string or value
-    partial = partial.replace(/,\s*$/, '').replace(/"[^"]*$/, '"truncated"');
-    // Close all open braces/brackets
-    const stack = [];
-    for (const ch of partial) {
-      if (ch === '{') stack.push('}');
-      else if (ch === '[') stack.push(']');
-      else if (ch === '}' || ch === ']') stack.pop();
-    }
-    partial += stack.reverse().join('');
-    try { JSON.parse(partial); return partial; } catch(e) { /* unrecoverable */ }
-  }
-  return null;
-}
-
-// Not a library. Not an npm package. Just a dev who got tired of Claude's newlines.
-// ── Shared LLM JSON parser — sanitise + recover ──────────────────────────────
-function safeParseLLM(raw, type = 'object', caller = 'unknown') {
-  const stripped = raw
-    .replace(/```(?:json)?\s*/g, '')
-    .replace(/[\uFEFF\u200B\u200C\u200D\u2060\u00A0]/g, '')
-    .trim();
-  const extracted = extractJSON(stripped, type) || stripped;
-  // Step 2: fast path
-  try { return JSON.parse(extracted); } catch(_) {}
-  // Step 3: control chars + trailing commas
-  try {
-    const sanitized = extracted
-      .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, ' ')
-      .replace(/(?<!\\)\n(?=(?:[^"]*"[^"]*")*[^"]*"[^"]*$)/g, '\\n')
-      .replace(/,\s*([\]\}])/g, '$1');
-    const result = JSON.parse(sanitized);
-    console.warn('[safeParseLLM] Step 3 recovery (' + caller + ') control chars/trailing commas');
-    return result;
-  } catch(_) {}
-  // Step 4: brute-force
-  try {
-    const brute = extracted
-      .replace(/\r/g, '')
-      .replace(/\n/g, '\\n')
-      .replace(/\t/g, '\\t')
-      .replace(/[\x00-\x1f]/g, ' ')
-      .replace(/,\s*([\]\}])/g, '$1')
-      .replace(/("\s*)(\n\s*")/g, '$1,$2')
-      .replace(/(\}\s*)(\{)/g, '$1,$2')
-      .replace(/("\s*)(\{)/g, '$1,$2')
-      .replace(/(\}\s*)(")/g, '$1,$2')
-      .replace(/([\]\}])\s*([\[\{])/g, '$1,$2')
-      .replace(/(")\s*(")/g, '$1,$2');
-    const result = JSON.parse(brute);
-    console.warn('[safeParseLLM] Step 4 recovery (' + caller + ') brute-force escape');
-    return result;
-  } catch(_) {}
-  // Step 5: nuclear
-  try {
-    const open = type === 'array' ? '[' : '{';
-    const close = type === 'array' ? ']' : '}';
-    const first = stripped.indexOf(open);
-    const last = stripped.lastIndexOf(close);
-    if (first !== -1 && last > first) {
-      const sliced = stripped.slice(first, last + 1)
-        .replace(/[\x00-\x1f]/g, ' ')
-        .replace(/\n/g, '\\n')
-        .replace(/\r/g, '')
-        .replace(/\t/g, '\\t')
-        .replace(/,\s*([\]\}])/g, '$1');
-      const result = JSON.parse(sliced);
-      console.warn('[safeParseLLM] NUCLEAR Step 5 recovery (' + caller + ') prompt is broken. First 80: ' + stripped.slice(0, 80).replace(/\n/g, ' '));
-      return result;
-    }
-  } catch(_) {}
-  console.error('[safeParseLLM] TOTAL FAILURE (' + caller + ') First 300:', stripped.slice(0, 300));
-  throw new Error('LLM JSON parse failed after recovery');
 }
 
 app.get('/api/geo-strategist/briefs', requireAuth, async (req, res) => {
@@ -8347,8 +8257,7 @@ async function enrichAngleForCampaign({ angle, profileData, factualGround, brain
   const fgBlock = factualGround && Object.values(factualGround).some(v => v && (typeof v === 'string' ? v.trim() : (Array.isArray(v) && v.length)))
     ? `FACTUAL GROUND (verbatim, do not contradict):
 ${factualGround.whatWeDo ? `- What this company does: ${factualGround.whatWeDo}\n` : ''}${factualGround.whatWeDontDo ? `- What this company does NOT do: ${factualGround.whatWeDontDo}\n` : ''}${factualGround.companyFacts ? `- Company facts: ${factualGround.companyFacts}\n` : ''}${factualGround.foundingStory ? `- Founding: ${factualGround.foundingStory}\n` : ''}${factualGround.methodology ? `- Methodology: ${factualGround.methodology}\n` : ''}${(() => {
-  const assigned = enrichedBrief?.assignedAuthor;
-  const list = (assigned && assigned.name) ? [assigned] : (factualGround.authors || []);
+  const list = factualGround.authors || [];
   return list.length ? `- ${list.length > 1 ? 'Named authors/SMEs' : 'Assigned author'}: ${list.map(a => `${a.name} (${a.title || 'unspecified'})`).join('; ')}\n` : '';
 })()}`
     : '';
@@ -8409,10 +8318,8 @@ Return ONLY the JSON object.`;
   const parsed = safeParseLLM(match ? match[0] : raw, 'object', 'campaign-angle-enrichment');
 
   // Attach author schema from factualGround if the LLM didn't emit one
-  if ((!parsed.authorSchema || !parsed.authorSchema.name) && (enrichedBrief?.assignedAuthor || factualGround?.authors?.length)) {
-    const fallbackAuthor = enrichedBrief?.assignedAuthor && enrichedBrief.assignedAuthor.name
-      ? enrichedBrief.assignedAuthor
-      : factualGround.authors[0];
+  if ((!parsed.authorSchema || !parsed.authorSchema.name) && factualGround?.authors?.length) {
+    const fallbackAuthor = factualGround.authors[0];
     parsed.authorSchema = {
       name: fallbackAuthor.name || null,
       jobTitle: fallbackAuthor.title || null
@@ -8809,7 +8716,7 @@ app.get('/api/campaign/generate/:id', requireAuth, async (req, res) => {
     try {
       const gbRes = await pool.query(
         `SELECT brief_data FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
-        [brandProfileId]
+        [campaign.brand_profile_id]
       );
       const topicalMapRaw = gbRes.rows[0]?.brief_data?.topicalAuthorityMap || gbRes.rows[0]?.brief_data?.topicalMap?.gapsByCluster || [];
       topicalTerritories = topicalMapRaw
@@ -8832,7 +8739,7 @@ app.get('/api/campaign/generate/:id', requireAuth, async (req, res) => {
     try {
       const fgRes = await pool.query(
         `SELECT settings->'factualGround' as fg FROM brand_profiles WHERE id = $1`,
-        [brandProfileId]
+        [campaign.brand_profile_id]
       );
       if (fgRes.rows[0]?.fg) factualGround = fgRes.rows[0].fg;
     } catch(e) { console.log('[CONTENT-GEN] No factual ground:', e.message); }
@@ -15866,6 +15773,71 @@ app.post('/api/onboard/paypal-success', async (req, res) => {
 });
 
 
+// sendTrialWelcomeEmail — fire-and-forget 7-day-trial welcome email, sent once
+// when a regular user first tethers a brand. Callers wrap in .catch(); this is
+// defensive throughout and resolves quietly on any missing config or failure,
+// so it can never break the tether/auth path. Idempotency is enforced per-user
+// via brand_profiles.welcome_email_sent_at (trial scope is per-user, not
+// per-brand), so a user only ever receives one.
+async function sendTrialWelcomeEmail(clerkUserId, brandName) {
+  try {
+    if (!clerkUserId || !RESEND_API_KEY || !process.env.CLERK_SECRET_KEY) return;
+
+    // Already sent? (Any of the user's brands carrying the marker counts.)
+    const already = await pool.query(
+      `SELECT 1 FROM brand_profiles WHERE clerk_user_id = $1 AND welcome_email_sent_at IS NOT NULL LIMIT 1`,
+      [clerkUserId]
+    );
+    if (already.rows.length) return;
+
+    // Pull email + first name from Clerk.
+    const clerkRes = await fetch(`https://api.clerk.com/v1/users/${clerkUserId}`, {
+      headers: { 'Authorization': `Bearer ${process.env.CLERK_SECRET_KEY}` }
+    });
+    if (!clerkRes.ok) return;
+    const clerkUser = await clerkRes.json();
+    const email = clerkUser.email_addresses?.[0]?.email_address;
+    if (!email) return;
+    const firstName = (clerkUser.first_name || '').trim() || 'there';
+    const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const brand = (brandName || '').trim();
+
+    const subject = 'Welcome to Forge Intelligence: your 7-day trial is live';
+    const html = `<div style="font-family:Inter,system-ui,sans-serif;color:#0F1720;max-width:560px;line-height:1.6">
+      <p style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#3563FF;margin:0 0 14px">Forge Intelligence</p>
+      <h1 style="font-size:22px;margin:0 0 12px">Welcome, ${esc(firstName)}.</h1>
+      <p style="font-size:15px;margin:0 0 14px">Your 7-day full-access trial${brand ? ` for <strong>${esc(brand)}</strong>` : ''} is live. Every stage of the platform is open, from Context Hub through Publishing and Performance.</p>
+      <p style="font-size:15px;margin:0 0 14px">A good first move: run a Context Hub analysis, then let the GEO Strategist surface the topics worth owning. The system gets sharper with every cycle, so the sooner you publish, the faster it compounds.</p>
+      <p style="font-size:15px;margin:0 0 20px"><a href="https://forgeintelligence.ai/app/context-hub" style="color:#3563FF;font-weight:600;text-decoration:none">Jump back in &rarr;</a></p>
+      <p style="font-size:13px;color:#64748b;margin:0">Questions? Just reply to this email.</p>
+    </div>`;
+
+    const sendRes = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + RESEND_API_KEY,
+        'Content-Type': 'application/json',
+        'User-Agent': 'Forge-Intelligence-Server/1.0',
+      },
+      body: JSON.stringify({
+        from: 'Forge Intelligence <hello@forgeintelligence.ai>',
+        to: email,
+        subject,
+        html,
+      }),
+    });
+    if (!sendRes.ok) return; // don't mark sent if Resend rejected it
+
+    // Mark sent across the user's brands so we never double-send.
+    await pool.query(
+      `UPDATE brand_profiles SET welcome_email_sent_at = NOW() WHERE clerk_user_id = $1 AND welcome_email_sent_at IS NULL`,
+      [clerkUserId]
+    );
+  } catch (e) {
+    console.error('[sendTrialWelcomeEmail]', e.message);
+  }
+}
+
 // GET /api/auth/me — returns the authenticated user's brand profile
 // Optional ?brand_id=xxx — tethers an existing brand to this user on first sign-in
 app.get('/api/auth/me', requireAuth, async (req, res) => {
@@ -18310,7 +18282,7 @@ app.get('/api/geo/topic-briefs/:brandProfileId', requireAuth, async (req, res) =
          ORDER BY tb.created_at DESC`;
     const params = statusFilter ? [req.params.brandProfileId, statusFilter] : [req.params.brandProfileId];
     const r = await pool.query(sql, params);
-    console.log(`[CG-BRIEFS] Returning ${r.rows.length} rows for brand ${req.params.brandProfileId || brandProfileId}`);
+    console.log(`[CG-BRIEFS] Returning ${r.rows.length} rows for brand ${req.params.brandProfileId}`);
     res.json({
       success: true,
       briefs: r.rows.map(row => ({
