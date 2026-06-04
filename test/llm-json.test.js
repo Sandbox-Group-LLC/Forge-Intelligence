@@ -14,10 +14,14 @@ describe('extractJSON', () => {
     expect(extractJSON('no json here')).toBeNull();
   });
 
-  it('recovers truncated JSON by closing open structures', () => {
-    const out = extractJSON('{"a": {"b": 1');
+  it('recovers a truncated string value by closing open structures', () => {
+    const out = extractJSON('{"a": "hello wor');
     expect(out).not.toBeNull();
     expect(() => JSON.parse(out)).not.toThrow();
+  });
+
+  it('returns null for truncation it cannot repair (cut mid-structure, no value yet)', () => {
+    expect(extractJSON('{"a": {"b": 1')).toBeNull();
   });
 });
 
