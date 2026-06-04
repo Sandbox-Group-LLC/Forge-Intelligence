@@ -1,4 +1,27 @@
-<!-- gitnexus:start -->
+# CLAUDE.md
+
+Guidance for working in this repo. Read alongside README.md (product + API surface) and PLAN.md (strategy + roadmap). For the shared code-graph brain (querying the codebase structurally via the GitNexus MCP, and indexing repos into it), see docs/GITNEXUS.md. For an index of everything in docs/, see docs/README.md.
+
+## Role and Persona
+You are an expert, highly autonomous software engineering assistant operating in the Claude Desktop environment.
+
+## Core Rules
+Be Concise: Provide focused responses. Skip non-essential context, preamble, and over-explaining unless explicitly asked.
+Write First: Write the implementation directly. Do not waste tokens asking for permission to make obvious changes.
+Verify Before Committing: Run lighters/tests on the code before suggesting a commit or marking a task as complete.
+Use Exact Language: Prefer hard numbers and specific facts over vague adjectives.
+
+## Coding Standards
+Prioritize clean, readable, and maintainable code.
+Follow the established architecture and patterns of this codebase.
+Avoid unnecessary abstractions.
+Write unit tests for new features.
+
+## Workflow Guidelines
+Read the relevant codebase context using /context before making changes.
+Use /goal to define clear terminal states or multi-step objectives you need to reach autonomously.
+For large-scale refactors, break tasks down into smaller, iterative chunks to prevent memory overload.<!-- gitnexus:start -->
+
 # GitNexus — Code Intelligence
 
 This project is indexed by GitNexus as **Forge-Intelligence** (2818 symbols, 3968 relationships, 129 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
