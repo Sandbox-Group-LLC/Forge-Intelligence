@@ -12744,7 +12744,16 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
           // Pre-Zernio posts on Zernio-routed brands fall through to legacy fallback.
           if (isZernio && zernioPostId) {
             // ── Zernio Analytics path (uses Zernio _id, NOT platform URN) ──
-            const analyticsRes = await callZernio('GET', `/analytics?postId=${encodeURIComponent(zernioPostId)}`);
+            let analyticsRes = await callZernio('GET', `/analytics?postId=${encodeURIComponent(zernioPostId)}`);
+            // Zernio analytics are eventually-consistent — the first GET often returns
+            // 202 (accepted, still computing). Re-poll a couple times so a manual
+            // refresh resolves freshly-published posts on the spot instead of parking
+            // them pending until the user happens to refresh again.
+            for (let zAttempt = 0; analyticsRes.status === 202 && zAttempt < 2; zAttempt++) {
+              await new Promise(r => setTimeout(r, 1500));
+              analyticsRes = await callZernio('GET', `/analytics?postId=${encodeURIComponent(zernioPostId)}`);
+              console.log(`[Analytics/LinkedIn] 202 re-poll #${zAttempt + 1} for ${zernioPostId}: HTTP ${analyticsRes.status}`);
+            }
             console.log(`[Analytics/LinkedIn] Zernio analytics for ${zernioPostId} (URN ${postId}): HTTP ${analyticsRes.status}`);
 
             if (analyticsRes.status === 202) {
@@ -12857,7 +12866,7 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
                reactions        = GREATEST(COALESCE(content_analytics.reactions, 0), EXCLUDED.reactions),
                comments         = GREATEST(COALESCE(content_analytics.comments, 0),  EXCLUDED.comments),
                reposts          = GREATEST(COALESCE(content_analytics.reposts, 0),   EXCLUDED.reposts),
-               raw_data         = COALESCE(content_analytics.raw_data, '{}'::jsonb) || EXCLUDED.raw_data,
+               raw_data         = (COALESCE(content_analytics.raw_data, '{}'::jsonb) - 'pending') || EXCLUDED.raw_data,
                synced_at        = NOW(),
                campaign_id      = COALESCE(EXCLUDED.campaign_id, content_analytics.campaign_id)`,
             [brandProfileId, row.content_id, 'linkedin', postId,
@@ -13169,7 +13178,7 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
                reactions        = GREATEST(COALESCE(content_analytics.reactions, 0), EXCLUDED.reactions),
                comments         = GREATEST(COALESCE(content_analytics.comments, 0),  EXCLUDED.comments),
                reposts          = GREATEST(COALESCE(content_analytics.reposts, 0),   EXCLUDED.reposts),
-               raw_data         = COALESCE(content_analytics.raw_data, '{}'::jsonb) || EXCLUDED.raw_data,
+               raw_data         = (COALESCE(content_analytics.raw_data, '{}'::jsonb) - 'pending') || EXCLUDED.raw_data,
                synced_at        = NOW(),
                campaign_id      = COALESCE(EXCLUDED.campaign_id, content_analytics.campaign_id)`,
             [brandProfileId, row.content_id, 'facebook', postId,
@@ -13284,7 +13293,7 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
                reactions        = GREATEST(COALESCE(content_analytics.reactions, 0), EXCLUDED.reactions),
                comments         = GREATEST(COALESCE(content_analytics.comments, 0),  EXCLUDED.comments),
                reposts          = GREATEST(COALESCE(content_analytics.reposts, 0),   EXCLUDED.reposts),
-               raw_data         = COALESCE(content_analytics.raw_data, '{}'::jsonb) || EXCLUDED.raw_data,
+               raw_data         = (COALESCE(content_analytics.raw_data, '{}'::jsonb) - 'pending') || EXCLUDED.raw_data,
                synced_at        = NOW(),
                campaign_id      = COALESCE(EXCLUDED.campaign_id, content_analytics.campaign_id)`,
             [brandProfileId, row.content_id, 'reddit', postId,
@@ -18878,6 +18887,40 @@ app.post('/api/analytics/decay/:brandProfileId/resolve/:contentId', requireAuth,
   } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
+// Background re-sync for Zernio "pending" analytics. Zernio's /analytics is
+// eventually-consistent and returns 202 for freshly-published posts, which the
+// sync handler parks as pending:true placeholders. Without this job they'd only
+// resolve when a user manually refreshes the Performance dashboard. Every 30 min
+// we re-sync just the brands that still have pending rows — reusing the real
+// /api/analytics/sync endpoint via the adminPassword cron bypass so all
+// per-channel logic (and the 202 re-poll) is shared. Brands drop out of the set
+// as their posts resolve, so this self-limits.
+async function runAnalyticsResync() {
+  try {
+    const brandsRes = await pool.query(
+      `SELECT DISTINCT brand_profile_id FROM content_analytics WHERE raw_data->>'pending' = 'true' LIMIT 50`
+    );
+    if (!brandsRes.rows.length) return;
+    console.log(`[AnalyticsResync] ${brandsRes.rows.length} brand(s) with pending analytics — re-syncing`);
+    const baseUrl = process.env.BASE_URL || 'http://localhost:' + (process.env.PORT || 3000);
+    for (const { brand_profile_id } of brandsRes.rows) {
+      try {
+        const r = await fetch(`${baseUrl}/api/analytics/sync/${brand_profile_id}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channel: 'all', adminPassword: process.env.ADMIN_RELAY_PASSWORD })
+        });
+        const d = await r.json().catch(() => ({}));
+        console.log(`[AnalyticsResync] ${brand_profile_id}: HTTP ${r.status}, synced=${d.synced ?? '?'}`);
+      } catch (e) {
+        console.error(`[AnalyticsResync] ${brand_profile_id} failed:`, e.message);
+      }
+    }
+  } catch (e) {
+    console.error('[AnalyticsResync]', e.message);
+  }
+}
+
 // Start scheduler — runs 30s after boot then every 60s
 setTimeout(() => {
   runScheduledPublishes();
@@ -18885,10 +18928,14 @@ setTimeout(() => {
   // Decay monitoring runs every 6 hours
   runDecayMonitoring();
   setInterval(runDecayMonitoring, 6 * 60 * 60 * 1000);
+  // Pending-analytics re-sync runs every 30 minutes
+  runAnalyticsResync();
+  setInterval(runAnalyticsResync, 30 * 60 * 1000);
 }, 30 * 1000);
 
 console.log('[SCHEDULER] Scheduled publish runner active — polling every 60s');
 console.log('[SCHEDULER] Decay monitoring active — running every 6 hours');
+console.log('[SCHEDULER] Pending-analytics re-sync active — running every 30 minutes');
 
 // ── Performance Digest ─────────────────────────────────────────────────────
 // Scheduled: POST /api/digest/send-all (EasyCron, admin key)
