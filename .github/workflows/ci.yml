@@ -1,0 +1,47 @@
+name: CI
+
+# Merge gate for code quality. Mirrors the intent of CI-AND-PR-CHECKS.md.
+#
+# Trigger scope is load-bearing: pull_request on [main, development, features] is
+# the gate (one run per PR commit); push on [main] ONLY is the post-merge audit.
+# `features` is the production-maintenance lane (ships via features -> main while
+# development is tied up with the server.js decomposition). NEVER add a push
+# trigger for development, features, or feature branches — a "-> main" PR would
+# then fire both pull_request AND push for the same commit, producing two
+# check-runs with the same name. The branch ruleset matches required checks by
+# name, so a duplicated name is ambiguous and parks the check as "expected"
+# forever (the duplicate-check deadlock). See CI-AND-PR-CHECKS.md.
+on:
+  pull_request:
+    branches: [main, development, features]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # This job's `name` IS the required-status-check context. If you rename it,
+    # update the branch ruleset's required-check name to match or merges block.
+    name: Typecheck & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Backend syntax check (server.js monolith)
+        run: node --check server.js
+      - name: Typecheck (React app)
+        run: npm run typecheck
+      - name: Unit tests (route-inventory guard + future units)
+        run: npm test
+
+  # TODO (Tier 2): add a `DB Integration` job — postgres:16 service container +
+  # migrations/*.sql + integration tests — to reach parity with SYSOI's stack.
+  # Blocked on Forge having a schema source (no migrations/ dir today).
