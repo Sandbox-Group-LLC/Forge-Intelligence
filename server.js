@@ -10396,7 +10396,24 @@ app.get('/api/publishing/channels/:brandProfileId', requireAuth, async (req, res
        FROM publishing_channels WHERE brand_profile_id = $1 ORDER BY channel`,
       [brandProfileId]
     );
-    res.json({ success: true, channels: result.rows });
+    // The website channel's bearerToken is a shown-once secret — never echo it
+    // back to the browser. Replace it with a non-secret existence flag + last-4
+    // so the UI can render "configured" / a masked value without the raw token.
+    const channels = result.rows.map(row => {
+      if (row.channel === 'website' && row.credentials && typeof row.credentials === 'object') {
+        const { bearerToken, ...rest } = row.credentials;
+        return {
+          ...row,
+          credentials: {
+            ...rest,
+            bearerTokenSet: !!bearerToken,
+            ...(bearerToken ? { bearerTokenLast4: String(bearerToken).slice(-4) } : {}),
+          },
+        };
+      }
+      return row;
+    });
+    res.json({ success: true, channels });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
