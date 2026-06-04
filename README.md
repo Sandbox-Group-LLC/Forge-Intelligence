@@ -450,11 +450,11 @@ BEFORE generating:
 ## For AI Sessions — Start Here
 
 1. Read this README top to bottom
-2. Read PLAN.md for current session state and pending work
+2. Read WORKING-STATE.md for what's in flight and pending work (PLAN.md is the long-form retrospective archive)
 3. Fetch and read the specific file before editing — never write blind
 4. The Anthropic SDK is pinned at `^0.39.0` — do not change
 5. `NEON_DATABASE_URL` points to `ep-odd-waterfall-akyrdo6x-pooler` — this is correct and must not change
-6. All production commits go to the `production` branch
+6. All feature/fix work commits to `development` (auto-deploys to dev.forgeintelligence.ai for testing). Promotion to production is a `development → main` rollup PR that Brian merges once stable — never commit straight to `main`
 7. Render auto-deploys on every push — no manual step needed
 8. Brian is direct, works fast, expects commits not instructions. No narration. No confirmation requests.
 

@@ -108,7 +108,7 @@ Brian works direct, candid, with a sense of humor. The agent should:
 
 ## End of session
 
-Append the session's net changes to `WHITEBOARD.md` AND update `WORKING-STATE.md`. The first is archive; the second is the live pointer. Both have to be touched or the next session loses context.
+Append the session's net changes to `PLAN.md` AND update `WORKING-STATE.md`. The first is archive; the second is the live pointer. Both have to be touched or the next session loses context.
 
 If significant code work happened (a feature shipped, an architecture changed), also re-run `npx gitnexus@latest analyze` and commit the refreshed `CLAUDE.md` if the graph stats moved meaningfully.
 
