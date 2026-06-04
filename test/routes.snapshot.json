@@ -109,6 +109,7 @@
   "PATCH /api/topic-ideas/:id",
   "POST /api/admin/api-keys",
   "POST /api/admin/backfill-facebook-zernio-ids",
+  "POST /api/admin/backfill-linkedin-zernio-ids",
   "POST /api/admin/digest/send/:brandProfileId",
   "POST /api/admin/indexnow/backfill",
   "POST /api/admin/indexnow/submit",
