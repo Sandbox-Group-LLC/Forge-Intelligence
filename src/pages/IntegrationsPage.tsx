@@ -663,6 +663,22 @@ export default function IntegrationsPage() {
     if (!saved) return;
     setDisconnecting(channelId);
     try {
+      // Zernio-routed channels must be revoked on Zernio's side first. Deleting only
+      // Forge's local row leaves the account authorized on Zernio, so a later reconnect
+      // skips Zernio's account/page selection screen and silently reuses the old account
+      // (no picker). /api/zernio/disconnect calls Zernio's DELETE /accounts/{id}.
+      // Best-effort: if this channel isn't actually Zernio, the endpoint 400s and we
+      // still fall through to the local-row delete below.
+      const zernioPlatforms: Record<string, string> = { linkedin: 'linkedin', facebook: 'facebook', reddit: 'reddit' };
+      if (zernioPlatforms[channelId] && selectedBrand) {
+        try {
+          await fetch('/api/zernio/disconnect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ brandProfileId: selectedBrand, platform: zernioPlatforms[channelId] })
+          });
+        } catch { /* non-fatal — still remove the local row below */ }
+      }
       await fetch(`/api/publishing/channels/${saved.id}`, { method: 'DELETE' });
       setSavedChannels(prev => ({ ...prev, [channelId]: null }));
       setCredentials(prev => ({ ...prev, [channelId]: {} }));
