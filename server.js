@@ -4769,7 +4769,7 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
       }});
 
     }
-    await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms) VALUES ($1,$2,$3,$4,$5)', ['stage1_context_agent', brandProfileId||null, 'success', (usage?.input_tokens||0)+(usage?.output_tokens||0), Date.now()-startTime]).catch(()=>{});
+    await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms) VALUES ($1,$2,$3,$4,$5)', ['stage1_context_agent', null, 'success', (message?.usage?.input_tokens||0)+(message?.usage?.output_tokens||0), Date.now()-startTime]).catch(()=>{});
         res.json({ success: true, cached: false, data: {
       id: randomUUID(), brandUrl, brandName,
       version: 1, isActive: false, cacheStatus: 'fresh',
@@ -8348,8 +8348,7 @@ async function enrichAngleForCampaign({ angle, profileData, factualGround, brain
   const fgBlock = factualGround && Object.values(factualGround).some(v => v && (typeof v === 'string' ? v.trim() : (Array.isArray(v) && v.length)))
     ? `FACTUAL GROUND (verbatim, do not contradict):
 ${factualGround.whatWeDo ? `- What this company does: ${factualGround.whatWeDo}\n` : ''}${factualGround.whatWeDontDo ? `- What this company does NOT do: ${factualGround.whatWeDontDo}\n` : ''}${factualGround.companyFacts ? `- Company facts: ${factualGround.companyFacts}\n` : ''}${factualGround.foundingStory ? `- Founding: ${factualGround.foundingStory}\n` : ''}${factualGround.methodology ? `- Methodology: ${factualGround.methodology}\n` : ''}${(() => {
-  const assigned = enrichedBrief?.assignedAuthor;
-  const list = (assigned && assigned.name) ? [assigned] : (factualGround.authors || []);
+  const list = factualGround.authors || [];
   return list.length ? `- ${list.length > 1 ? 'Named authors/SMEs' : 'Assigned author'}: ${list.map(a => `${a.name} (${a.title || 'unspecified'})`).join('; ')}\n` : '';
 })()}`
     : '';
@@ -8410,10 +8409,8 @@ Return ONLY the JSON object.`;
   const parsed = safeParseLLM(match ? match[0] : raw, 'object', 'campaign-angle-enrichment');
 
   // Attach author schema from factualGround if the LLM didn't emit one
-  if ((!parsed.authorSchema || !parsed.authorSchema.name) && (enrichedBrief?.assignedAuthor || factualGround?.authors?.length)) {
-    const fallbackAuthor = enrichedBrief?.assignedAuthor && enrichedBrief.assignedAuthor.name
-      ? enrichedBrief.assignedAuthor
-      : factualGround.authors[0];
+  if ((!parsed.authorSchema || !parsed.authorSchema.name) && factualGround?.authors?.length) {
+    const fallbackAuthor = factualGround.authors[0];
     parsed.authorSchema = {
       name: fallbackAuthor.name || null,
       jobTitle: fallbackAuthor.title || null
@@ -8810,7 +8807,7 @@ app.get('/api/campaign/generate/:id', requireAuth, async (req, res) => {
     try {
       const gbRes = await pool.query(
         `SELECT brief_data FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
-        [brandProfileId]
+        [campaign.brand_profile_id]
       );
       const topicalMapRaw = gbRes.rows[0]?.brief_data?.topicalAuthorityMap || gbRes.rows[0]?.brief_data?.topicalMap?.gapsByCluster || [];
       topicalTerritories = topicalMapRaw
@@ -8833,7 +8830,7 @@ app.get('/api/campaign/generate/:id', requireAuth, async (req, res) => {
     try {
       const fgRes = await pool.query(
         `SELECT settings->'factualGround' as fg FROM brand_profiles WHERE id = $1`,
-        [brandProfileId]
+        [campaign.brand_profile_id]
       );
       if (fgRes.rows[0]?.fg) factualGround = fgRes.rows[0].fg;
     } catch(e) { console.log('[CONTENT-GEN] No factual ground:', e.message); }
@@ -18328,7 +18325,7 @@ app.get('/api/geo/topic-briefs/:brandProfileId', requireAuth, async (req, res) =
          ORDER BY tb.created_at DESC`;
     const params = statusFilter ? [req.params.brandProfileId, statusFilter] : [req.params.brandProfileId];
     const r = await pool.query(sql, params);
-    console.log(`[CG-BRIEFS] Returning ${r.rows.length} rows for brand ${req.params.brandProfileId || brandProfileId}`);
+    console.log(`[CG-BRIEFS] Returning ${r.rows.length} rows for brand ${req.params.brandProfileId}`);
     res.json({
       success: true,
       briefs: r.rows.map(row => ({
