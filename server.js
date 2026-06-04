@@ -14552,6 +14552,141 @@ app.post('/api/admin/backfill-facebook-zernio-ids', async (req, res) => {
   }
 });
 
+// POST /api/admin/backfill-linkedin-zernio-ids — one-shot backfill
+// LinkedIn analogue of /api/admin/backfill-facebook-zernio-ids. Repairs
+// publish_log rows for LinkedIn posts published via Zernio BEFORE the
+// zernioPostId capture landed — and, critically, posts whose pre-Zernio
+// LinkedIn access token was wiped when the brand was reconnected through
+// Zernio (the credential clobber fixed in the same branch). Those rows hold
+// the LinkedIn share URN (urn:li:share:<id>) in response_data.postId but no
+// zernioPostId, so the analytics sync skips them with "No credentials —
+// skipping": there's no Zernio _id to look up and no LinkedIn token for the
+// legacy fallback.
+//
+// Strategy: list the brand's Zernio posts, pull each LinkedIn post's platform
+// id (full URN or numeric share id), match against our stored URNs (full value
+// OR numeric tail), and merge the discovered Zernio _id into
+// response_data.zernioPostId so future syncs route them via the Zernio path.
+//
+// Defaults to dryRun:true — returns the proposed mapping plus a raw Zernio post
+// sample (zernioSampleShape) WITHOUT touching the DB. Run dryRun first as the
+// probe to verify Zernio's response shape; call with {dryRun:false} to write.
+//
+// Query: ?adminPassword=<...>
+// Body:  { brandProfileId: string, dryRun?: boolean (default true) }
+app.post('/api/admin/backfill-linkedin-zernio-ids', async (req, res) => {
+  if (req.query.adminPassword !== process.env.ADMIN_RELAY_PASSWORD) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const { brandProfileId, dryRun = true } = req.body || {};
+  if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
+  if (!process.env.ZERNIO_API_KEY) return res.status(500).json({ error: 'ZERNIO_API_KEY not configured' });
+
+  // Normalize a LinkedIn share id to its numeric tail so a stored full URN
+  // (urn:li:share:123) matches a Zernio-side numeric id (123) and vice versa.
+  const numericTail = (v) => (typeof v === 'string' ? (v.match(/(\d{6,})\s*$/)?.[1] || null) : null);
+
+  try {
+    // 1. LinkedIn publish_log rows missing zernioPostId.
+    const unmappedRes = await pool.query(
+      `SELECT id, content_id, response_data, attempted_at
+       FROM publish_log
+       WHERE brand_profile_id = $1
+         AND channel = 'linkedin'
+         AND status = 'published'
+         AND response_data IS NOT NULL
+         AND response_data ->> 'zernioPostId' IS NULL
+         AND response_data ->> 'postId' IS NOT NULL
+       ORDER BY attempted_at DESC`,
+      [brandProfileId]
+    );
+    const unmappedRows = unmappedRes.rows.map(r => ({
+      id: r.id,
+      postId: r.response_data?.postId,
+      attempted_at: r.attempted_at,
+    }));
+    if (!unmappedRows.length) {
+      return res.json({ unmappedRows: [], zernioPostsScanned: 0, matched: [], unmatched: [], updated: 0, message: 'no rows needing backfill' });
+    }
+
+    // 2. The brand's LinkedIn Zernio accountId.
+    const credRes = await pool.query(
+      `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'linkedin' AND is_active = true LIMIT 1`,
+      [brandProfileId]
+    );
+    const zernioAccountId = credRes.rows[0]?.credentials?.zernioAccountId;
+    if (!zernioAccountId) return res.status(400).json({ error: 'brand has no LinkedIn zernioAccountId — not a Zernio brand' });
+
+    // 3. Enumerate the brand's Zernio posts (same pagination convention as the
+    // Facebook backfill — unverified, capped at 10 pages).
+    const zernioPosts = [];
+    let zernioSampleShape = null;
+    let page = 1;
+    const PAGE_LIMIT = 10;
+    while (page <= PAGE_LIMIT) {
+      const listRes = await callZernio('GET', `/posts?accountId=${encodeURIComponent(zernioAccountId)}&page=${page}&limit=100`);
+      if (!listRes.ok) {
+        return res.json({ error: `Zernio GET /posts returned ${listRes.status}`, zernioRaw: listRes.raw?.slice(0, 500), unmappedRows });
+      }
+      const parsed = listRes.parsed;
+      const batch = Array.isArray(parsed) ? parsed : (parsed?.posts || parsed?.data || parsed?.items || []);
+      if (!zernioSampleShape && batch.length) zernioSampleShape = batch[0];
+      if (!batch.length) break;
+      zernioPosts.push(...batch);
+      if (batch.length < 100) break;
+      page++;
+    }
+
+    // 4. Map every LinkedIn platform id we can find (full value AND numeric tail) → Zernio _id.
+    const idToZernioId = new Map();
+    const addKey = (k, zid) => { if (typeof k === 'string' && k.length) idToZernioId.set(k, zid); };
+    for (const post of zernioPosts) {
+      const zid = post._id || post.id;
+      if (!zid) continue;
+      const platforms = post.platforms || post.platformAnalytics || post.platformPosts || [];
+      const candidates = [];
+      for (const p of platforms) {
+        if (p?.platform !== 'linkedin') continue;
+        for (const key of ['platformPostId', 'postId', 'id', 'urn']) if (p[key]) candidates.push(p[key]);
+      }
+      if (post.platformPostId) candidates.push(post.platformPostId);
+      for (const c of candidates) {
+        addKey(c, zid);
+        const tail = numericTail(c);
+        if (tail) addKey(tail, zid);
+      }
+    }
+
+    // 5. Match unmapped rows — try the full stored URN, then its numeric tail.
+    const matched = [];
+    const unmatched = [];
+    for (const row of unmappedRows) {
+      const tail = numericTail(row.postId);
+      const zid = idToZernioId.get(row.postId) || (tail ? idToZernioId.get(tail) : null);
+      if (zid) matched.push({ rowId: row.id, urn: row.postId, zernioPostId: zid });
+      else     unmatched.push({ rowId: row.id, urn: row.postId });
+    }
+
+    // 6. Write matches back into response_data unless this is a dry run.
+    let updated = 0;
+    if (!dryRun && matched.length) {
+      for (const m of matched) {
+        await pool.query(
+          `UPDATE publish_log
+           SET response_data = response_data || jsonb_build_object('zernioPostId', $1::text)
+           WHERE id = $2`,
+          [m.zernioPostId, m.rowId]
+        );
+        updated++;
+      }
+    }
+
+    res.json({ dryRun, unmappedRows, zernioPostsScanned: zernioPosts.length, matched, unmatched, updated, zernioSampleShape });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/admin/seed-brain', async (req, res) => {
   const { url, brandName } = req.body;
   if (!url) return res.status(400).json({ error: 'url required' });
