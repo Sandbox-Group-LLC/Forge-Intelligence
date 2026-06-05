@@ -24,7 +24,14 @@ const logSSEClients = new Set();
 const errorAggregates = [];
 
 function captureLog(level, args) {
-  const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+  // Stringify non-string args defensively: JSON.stringify throws on circular
+  // structures (and BigInt), and captureLog runs INSIDE the patched console.*,
+  // so an unguarded throw would propagate to whoever called console.log. Fall
+  // back to String(a) (then a literal marker) rather than break the caller.
+  const msg = args.map(a => {
+    if (typeof a === 'string') return a;
+    try { return JSON.stringify(a); } catch { try { return String(a); } catch { return '[unserializable]'; } }
+  }).join(' ');
   const entry = {
     ts: new Date().toISOString(),
     level,
