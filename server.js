@@ -13,6 +13,7 @@ import { clerkJWKS, SUPER_ADMIN_IDS, verifyBrandAccess, requireAuth, requireApiK
 import { callZernio, zernioPublish, getOrCreateZernioProfile, zernioGuard } from './src/server/zernio.js';
 import { forgeScrape, getBrandPageContent, discoverSubpages, _forgeScrapeRateLimited, FORGE_SCRAPE_RATE_PER_MIN } from './src/server/scrape.js';
 import { anthropic, dateContext } from './src/server/llm.js';
+import { installLogCapture, logBuffer, logSSEClients, errorAggregates } from './src/server/logging.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,44 +21,11 @@ const __dirname = path.dirname(__filename);
 const app = express();
 
 // ── Live Log Ring Buffer ──────────────────────────────────────────────────────
-const LOG_BUFFER_SIZE = 500;
-const logBuffer = [];
-const logSSEClients = new Set();
-const errorAggregates = [];
-
-function captureLog(level, args) {
-  const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
-  const entry = {
-    ts: new Date().toISOString(),
-    level,
-    msg: msg.slice(0, 2000),
-    isError: level === 'error' || /\b(error|fail|crash|ECONNREFUSED|FATAL|uncaught|unhandled)\b/i.test(msg),
-    isWarn: level === 'warn' || /\b(warn|deprecat|timeout|retry)\b/i.test(msg),
-  };
-  logBuffer.push(entry);
-  if (logBuffer.length > LOG_BUFFER_SIZE) logBuffer.shift();
-
-  // Aggregate errors
-  if (entry.isError) {
-    const errorKey = msg.slice(0, 120).replace(/[0-9a-f-]{36}/gi, '{id}').replace(/\d{4}-\d{2}-\d{2}T[\d:.Z]+/g, '{ts}');
-    const existing = errorAggregates.find(e => e.key === errorKey);
-    if (existing) { existing.count++; existing.lastSeen = entry.ts; existing.lastMsg = msg.slice(0, 300); }
-    else { errorAggregates.push({ key: errorKey, count: 1, firstSeen: entry.ts, lastSeen: entry.ts, lastMsg: msg.slice(0, 300), level }); }
-    if (errorAggregates.length > 100) errorAggregates.shift();
-  }
-
-  // Push to SSE clients
-  for (const client of logSSEClients) {
-    try { client.write(`data: ${JSON.stringify(entry)}\n\n`); } catch { logSSEClients.delete(client); }
-  }
-}
-
-const origLog = console.log.bind(console);
-const origError = console.error.bind(console);
-const origWarn = console.warn.bind(console);
-console.log = (...args) => { origLog(...args); captureLog('log', args); };
-console.error = (...args) => { origError(...args); captureLog('error', args); };
-console.warn = (...args) => { origWarn(...args); captureLog('warn', args); };
+// Ring buffer, error aggregation, and console capture now live in
+// src/server/logging.js. installLogCapture() patches console.{log,error,warn}
+// before anything that should be captured; the log-admin routes below read
+// logBuffer / logSSEClients / errorAggregates directly.
+installLogCapture();
 
 
 // ── X OAuth 1.0a helper (verified working) ───────────────────────────────────
