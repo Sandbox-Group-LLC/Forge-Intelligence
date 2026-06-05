@@ -1,3 +1,147 @@
+## 2026-06-05 — server.js decomposition (Stage 2): the dismemberment + two latent bug fixes
+
+The "doctor work." `server.js` had grown to ~19.8K lines and 214 routes — a
+single module holding the entire backend. This arc began breaking it into
+`src/server/*.js` modules, one cohesive unit at a time, with a hard rule:
+**every cut is a pure move with zero behavior change.** No logic edits ride
+along with a move; bug fixes go in their own separate, clearly-scoped PRs.
+
+### The safety net came first (and earned its keep)
+
+There is no integration test suite. The #1 risk of pulling code out of a
+monolith is a **missed re-import** — a function moves to a module, the old
+inline definition is deleted, and a caller that still references the bare
+name now throws `ReferenceError`... but only at runtime, on the code path
+that calls it, which means it sails through `node --check` and only crashes
+on deploy. So before moving a single line, we stood up a CI safety net:
+
+1. **ESLint flat config, `no-undef` only.** This is the belt. Every missed
+   re-import surfaces as a lint error at PR time instead of a 2am prod crash.
+   `document`/`window` are whitelisted because Puppeteer `page.evaluate()`
+   callbacks reference browser globals that ESLint can't see are
+   browser-scoped. Across the earlier cuts this gate caught **3 separate
+   real missed-symbol cases** (auth's `clerkJWKS`/`SUPER_ADMIN_IDS`, and
+   scrape's `SPA_SHELL_RE`/`_forgeScrapeHits`/`FORGE_SCRAPE_RATE_PER_MIN`).
+2. **Route-inventory guard.** A static scan (`test/route-inventory.mjs`) of
+   every `app`/`router.METHOD(...)` registration, producing a sorted
+   `"METHOD /path"` set compared against `test/routes.snapshot.json` (213
+   routes). A pure move must never add, drop, or rename a route — if the set
+   shifts, the test fails. This catches the failure mode lint can't:
+   accidentally dropping or duplicating a handler during a move.
+3. **vitest** per-module unit tests, added with each extraction (~56 tests
+   by end of this session).
+4. CI job "Typecheck & Test" runs `node --check → lint → typecheck → vitest`
+   on PRs to `[main, development, features]`.
+
+**Caveat logged:** `features`/`main` CI currently runs only `node --check` +
+`typecheck`. The full lint/vitest/route-guard gate is `development`-only so
+far — promote it to `features` so the production lane gets the same belt.
+
+### This session's cuts
+
+- **`llm.js` (#213)** — the shared `anthropic` Claude client (20-minute
+  timeout, used 52×) + `dateContext()` prompt-date helper (used 5×). The
+  bare `import Anthropic from '@anthropic-ai/sdk'` was deliberately KEPT in
+  `server.js`: 4 handlers construct their own short-timeout
+  `new Anthropic(...)` clients locally, so they still need the class.
+- **`logging.js` (#214)** — the live-log ring buffer, error aggregation, and
+  console capture. Exports `logBuffer` / `logSSEClients` / `errorAggregates`
+  as stable references (mutated in place, never reassigned, so the log-admin
+  routes observe the same live containers) + `installLogCapture()`, which
+  patches `console.{log,error,warn}` and is idempotent (a guard against
+  double-wrapping — the only intentional deviation from verbatim).
+  `captureLog` / `LOG_BUFFER_SIZE` stay module-private.
+- **`lovable.js` (#215)** — the entire Lovable prompt-pack integration
+  (Brand Intelligence Profile → deterministic URL-encoded Build-with-URL
+  prompt). ~324 lines, 17 helpers + 4 consts. The cleanest leaf yet: pure
+  templating, **zero external symbol references** (no `pool`, no `anthropic`,
+  no `fetch`). Internal-only helpers (`lovableTruncate`, `lovableSection`,
+  `lovableProductTypeLabel`) kept unexported.
+
+This brings the module count to **10**: `db`, `llm-json`, `utm`, `text`,
+`auth`, `zernio`, `scrape`, `llm`, `logging`, `lovable`.
+
+### Two latent bugs found during review — fixed on BOTH lanes
+
+Brian's standing "anything stupid in there?" review on each extracted module
+paid off twice this session. Both bugs predated the refactor (moved
+verbatim), so the fixes were split into their own PRs — never folded into a
+pure-move extraction.
+
+**1. Lovable directive prompt leaked scaffolding as brand intel.**
+`lovableBuildWithDirective` gated its two optional sections like:
+```js
+if (whitespaceBlock && whitespaceBlock !== 'No data available') biLines.push(...);
+if (thirdPartyBlock && thirdPartyBlock !== 'No data available') biLines.push(...);
+```
+But `lovableSection()`'s real empty-state fallback is *"No competitive
+whitespace data available yet. Design this section to be populated later."*
+— it is **never** the literal `'No data available'`. So both guards were
+always true. When a brand had no competitive-whitespace or third-party-voice
+data, the directive prompt injected the placeholder scaffolding text into the
+`## BRAND INTELLIGENCE` block, and Lovable read "Design this section to be
+populated later" as if it were brand intelligence. Quietly degraded every
+directive-built prompt for data-thin brands. **Fix:** gate each section on
+the raw source via `lovableHasData()` (`whitespace`/`thirdParty` are the
+formatter outputs — `null` when empty), so empty sections drop entirely,
+matching the function's own stated intent. The content-command-center
+builder was left untouched — its placeholders are by design.
+(#216 → `features`, #219 → `development`.)
+
+**2. `captureLog` could crash the caller via unguarded `JSON.stringify`.**
+`captureLog` mirrors every `console.*` call into the ring buffer and
+stringified non-string args with no guard. `JSON.stringify` throws on
+circular structures and BigInt — and because `captureLog` runs *inside* the
+patched `console.log/error/warn`, that throw would propagate to whatever code
+called `console.log`, turning a log line into a crash. No current call site
+logs a circular object, so it never fired — but it's a sharp edge in the
+single hottest path in the app. **Fix:** try `JSON.stringify` → fall back to
+`String(a)` → fall back to `'[unserializable]'`. Identical output for all
+serializable args. (#217 → `features`, #218 → `development`.)
+
+### Recurring patterns logged
+
+- **Build the verification harness before the risky change, not after.** The
+  `no-undef` gate caught 3 missed re-imports that would each have been a
+  deploy-time crash. A refactor with no test suite is only as safe as the
+  cheap static checks you put in front of it.
+- **Pure move ≠ pure code.** Moving a module verbatim is the moment you read
+  it most carefully — which is exactly when latent bugs surface. Keep the
+  move pure (so the diff is reviewable and revertable) and spin the fixes
+  into their own scoped PRs. Never mix a behavior change into an extraction.
+- **A string-equality guard against a fallback you don't control is a
+  time bomb.** The Lovable bug was a guard checking `!== 'No data available'`
+  against a fallback string that had since been reworded. Gate on the
+  *source* state (`lovableHasData(...)`), not on a magic rendered string.
+- **Stacked PRs need a manual base flip.** #219 was opened against the #215
+  branch (so its diff showed only the fix). GitHub did NOT auto-retarget it
+  to `development` on #215's merge (the branch wasn't deleted) — had to flip
+  the base manually via `update_pull_request`. Don't assume auto-retarget.
+
+### Net state
+
+All five PRs merged. `features` merged through to production (`main`) — both
+bug fixes are live in prod. `development` holds the full refactor (10
+modules) + both fixes, ready for the `development → main` rollup.
+
+**Endpoint count:** 213 routes (snapshot-locked in `test/routes.snapshot.json`).
+**Modules extracted:** 10. **server.js:** still the bulk of the backend, but
+~1,000+ lines lighter and shedding cohesive units cleanly.
+
+#### What's next
+
+- More clean leaves before route-group surgery: X OAuth/crypto cluster
+  (`buildXOAuthHeader`, `refreshXOAuth2Token`, `buildGhostJWT`,
+  `uploadXMedia`), then image helpers (`generateHeroImage`,
+  `buildImagePrompt`, `generateSocialImage`, `buildSocialImagePrompt`).
+- **Route GROUPS** — the big line-count win, and the first non-leaf step.
+  Requires teaching the route-inventory guard mount-prefix resolution
+  (`app.use('/prefix', router)`) BEFORE moving handlers behind a router, so
+  the guard still verifies full paths. Guard change first, then the move.
+- Promote the full CI gate (lint + vitest + route guard) to `features`/`main`.
+
+---
+
 ## 2026-05-13 (late PT) — Social Generator regenerate-arcs + X v2 media upload fix
 
 Two unrelated items shipped in one long session. Both are worth logging
