@@ -26,13 +26,13 @@ The token follows the format `forge_pub_<64 hex chars>`. Treat it like any other
 
 ## Payload schema
 
-On a successful publish, Forge sends:
+On a successful publish, Forge POSTs this JSON:
 
 ```json
 {
   "slug": "your-article-slug",
   "title": "Your Article Title",
-  "excerpt": "Short description — the article's meta description.",
+  "excerpt": "The article's meta description (falls back to the first ~200 chars of the body if there's no meta description).",
   "heroImageUrl": "https://cdn.example.com/image.png",
   "canonical": "https://forgeintelligence.ai/articles/your-brand/your-article-slug",
   "publishedAt": "2026-05-22T00:11:23.450Z",
@@ -41,12 +41,31 @@ On a successful publish, Forge sends:
     "ogImage": "https://cdn.example.com/image.png",
     "utm": { "utm_source": "website", "utm_medium": "blog", "utm_campaign": "..." }
   },
-  "html": "<article>...</article>",
-  "markdown": "# ...\n\n## ..."
+  "faqs": [{ "question": "A question?", "answer": "The answer." }],
+  "html": "<h2>First section</h2><p>...</p>\n<section class=\"article-faqs\">...</section>",
+  "markdown": "## First section\n\n...\n\n## Frequently asked questions\n\n### A question?\n\nThe answer."
 }
 ```
 
-`html` and `markdown` are included based on your format setting. Test payloads include `"test": true` so your receiver can drop them without polluting your live articles table.
+`html` and `markdown` are included based on your format setting (`html`, `markdown`, or `both`); `faqs`, `meta`, and the other fields are always present. Test payloads add `"test": true` so your receiver can drop them without polluting your live articles table.
+
+### What `html` / `markdown` actually contain (the part that trips people up)
+
+They are the article **body only** — not a full document, and **not the title**:
+
+- **No outer wrapper.** `html` is a flat sequence of `<h2>heading</h2><p>body</p>` blocks — no `<html>`, `<head>`, or `<article>` wrapper, and no JSON-LD/schema. `markdown` is a sequence of `## heading` + paragraphs. Your template owns the `<head>`, canonical tag, OG/meta, and structured data.
+- **The title is NOT embedded in the body.** No `<h1>` in `html`, no `# ` H1 in `markdown`. The title lives only in the top-level `title` field — render it yourself, then render the body beneath it. (Rendering `html`/`markdown` alone correctly shows no title; that's expected.)
+
+> Forge's in-app **Smart Export** is different on purpose: it produces a *full* copy-paste HTML document (with `<head>`, schema, and an `<h1>`) for pasting into a CMS. The **webhook** sends a body fragment for programmatic receivers. Same article, two delivery shapes.
+
+### FAQs (Q&A)
+
+FAQs arrive **two ways** — use whichever fits your receiver:
+
+1. **Structured `faqs` array** (recommended for programmatic use): `[{ "question", "answer" }]`, always present (empty `[]` when the article has none). Render or store it directly — no parsing needed.
+2. **Embedded in the body**: the same FAQs are also appended inside `html`/`markdown` as a "Frequently asked questions" section, so if you just store the body as-is, the Q&A comes with it.
+   - **html:** `<section class="article-faqs"><h2>Frequently asked questions</h2><h3>Question?</h3><p>Answer.</p>...</section>`
+   - **markdown:** `## Frequently asked questions` followed by `### Question?` / answer per item.
 
 ## Authentication
 
@@ -284,3 +303,5 @@ Click **Disconnect** in the Forge UI. Forge stops sending publishes to your endp
 | Publish log shows "Receiver returned HTTP N" | Your endpoint returned a non-2xx status. The response body (first 300 chars) is in the error message. |
 | Forge publishes succeed but the article doesn't appear on your site | Receiver isn't actually persisting (check DB), or your site's article route isn't reading from the right source. |
 | Article renders but the lead paragraph appears twice | Your template is rendering both `excerpt` and the first body paragraph. Either drop one in the template, or skip the body's first paragraph when `excerpt` is present. |
+| The article title is missing on your site | The title is **not** inside `html`/`markdown` — it's the top-level `title` field. Render it yourself (e.g. as your page `<h1>`) above the body. The body intentionally starts at the first `<h2>` / `##` section. |
+| FAQs / Q&A don't show up | Use the structured `faqs` array, or render the **full** `html`/`markdown` body (FAQs are appended as a "Frequently asked questions" section — `<section class="article-faqs">` in html, `## Frequently asked questions` in markdown — not just the first section). |
