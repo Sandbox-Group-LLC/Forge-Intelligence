@@ -45,6 +45,15 @@ describe('logging ring buffer', () => {
     expect(hits.length).toBe(1);
   });
 
+  it('does not throw when logging a circular object', () => {
+    const circular = { name: 'loop' };
+    circular.self = circular;
+    // Must not propagate JSON.stringify's "circular structure" TypeError to the
+    // caller — captureLog runs inside the patched console.log.
+    expect(() => console.log('circ-marker', circular)).not.toThrow();
+    expect(logBuffer.some(e => e.msg.includes('circ-marker'))).toBe(true);
+  });
+
   it('exposes logSSEClients as a Set', () => {
     expect(logSSEClients).toBeInstanceOf(Set);
   });
