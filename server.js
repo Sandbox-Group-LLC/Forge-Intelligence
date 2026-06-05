@@ -10510,11 +10510,17 @@ app.post('/api/integrations/website/:brandProfileId/test', requireAuth, async (r
       canonical: `${creds.endpointUrl}/articles/forge-test-publish`,
       publishedAt: new Date().toISOString(),
       meta: { description: 'Forge test publish', ogImage: 'https://forgeintelligence.ai/og-default.png' },
+      // Structured Q&A — always present (empty array on real publishes with no FAQs).
+      faqs: [{ question: 'Where do FAQs come from?', answer: 'When an article has FAQs, Forge sends them here as a structured array AND embeds them inside html/markdown.' }],
+      // NOTE: mirrors the REAL publish shape exactly — body-only fragment, no
+      // <article>/<h1> wrapper (the title is the separate `title` field above),
+      // sections start at <h2>/##, and FAQs ride inside as an article-faqs
+      // section. Keep in sync with the channel === 'website' publish handler.
       ...(creds.format !== 'markdown' && {
-        html: '<article><h1>Forge Test Publish</h1><h2>Quick sanity check</h2><p>This is the first section of the test article. If you can read this rendered on your site, your receiver is parsing the <code>html</code> field correctly.</p></article>'
+        html: '<h2>Quick sanity check</h2><p>This is the article body, sent exactly as a real publish: heading/paragraph blocks with no outer wrapper and no title baked in (the title is the separate "title" field above). If you can read this on your site, your receiver is parsing the <code>html</code> field correctly.</p>\n<section class="article-faqs">\n<h2>Frequently asked questions</h2>\n<h3>Where do FAQs come from?</h3>\n<p>When an article has FAQs, Forge appends them to html and markdown as this section.</p>\n</section>'
       }),
       ...(creds.format !== 'html' && {
-        markdown: '# Forge Test Publish\n\n## Quick sanity check\n\nThis is the first section of the test article. If you can read this rendered on your site, your receiver is parsing the `markdown` field correctly.'
+        markdown: '## Quick sanity check\n\nThis is the article body, sent exactly as a real publish: `##` sections with no `#` title (the title is the separate "title" field). If you can read this on your site, your receiver is parsing the `markdown` field correctly.\n\n## Frequently asked questions\n\n### Where do FAQs come from?\n\nWhen an article has FAQs, Forge appends them to html and markdown as this section.'
       }),
     };
 
@@ -12533,6 +12539,10 @@ ${canonicalNote}`,
               ogImage: article.hero_image_url || articleJson.hero_image_url || null,
               utm: utmParams,
             },
+            // Structured Q&A — always present (empty array if none). The same
+            // FAQs are also embedded in html/markdown above; this field is for
+            // receivers that want to render/store them without parsing markup.
+            faqs: faqs.map(f => ({ question: f.question, answer: f.answer })),
             ...(creds.format !== 'markdown' && { html: htmlContent }),
             ...(creds.format !== 'html' && { markdown: markdownContent }),
           };
