@@ -14,7 +14,7 @@ import { extractJSON, safeParseLLM } from './src/server/llm-json.js';
 import { resolveUtmParams, buildUtmString } from './src/server/utm.js';
 import { truncateStr, truncateAtSentence, stripSocialMarkdown } from './src/server/text.js';
 import { clerkJWKS, SUPER_ADMIN_IDS, verifyBrandAccess, requireAuth, requireApiKeyScope, softAuth, mcpAuth, hashApiKey, lookupApiKey } from './src/server/auth.js';
-import { callZernio, zernioPublish, getOrCreateZernioProfile, ensureZernioProfile, zernioGuard } from './src/server/zernio.js';
+import { callZernio, zernioPublish, getOrCreateZernioProfile, zernioGuard } from './src/server/zernio.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10800,7 +10800,7 @@ app.get('/api/zernio/connect/:platform', async (req, res) => {
     const brandRes = await pool.query('SELECT id FROM brand_profiles WHERE id = $1', [brandProfileId]);
     if (!brandRes.rows.length) return res.status(404).send('Brand not found');
 
-    const profileId = await ensureZernioProfile(brandProfileId);
+    const profileId = await getOrCreateZernioProfile(brandProfileId);
 
     // Where Zernio sends the user after they finish OAuth. Same host as the kickoff
     // request so dev/prod each return to themselves. Pass brandProfileId + platform

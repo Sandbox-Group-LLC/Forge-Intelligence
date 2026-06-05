@@ -4,27 +4,6 @@
 import { pool } from './db.js';
 import { verifyBrandAccess } from './auth.js';
 
-// Helper: ensure the brand has a Zernio profile, creating one if needed.
-export async function ensureZernioProfile(brandProfileId) {
-  const r = await pool.query('SELECT zernio_profile_id, brand_name, brand_url FROM brand_profiles WHERE id = $1', [brandProfileId]);
-  if (!r.rows.length) throw new Error('Brand not found');
-  const brand = r.rows[0];
-  if (brand.zernio_profile_id) return brand.zernio_profile_id;
-
-  // Create a new Zernio profile named after the brand
-  const name = brand.brand_name || brand.brand_url || `Forge brand ${brandProfileId.slice(0, 8)}`;
-  const createRes = await callZernio('POST', '/profiles', {
-    name: name.slice(0, 100),
-    description: `Forge Intelligence — ${brand.brand_url || brandProfileId}`
-  });
-  if (!createRes.ok) throw new Error(`Zernio profile create failed (${createRes.status}): ${createRes.raw?.slice(0, 200)}`);
-  const newProfileId = createRes.parsed?.profile?._id;
-  if (!newProfileId) throw new Error('Zernio profile create returned no _id');
-
-  await pool.query('UPDATE brand_profiles SET zernio_profile_id = $1, updated_at = NOW() WHERE id = $2', [newProfileId, brandProfileId]);
-  return newProfileId;
-}
-
 export const zernioGuard = (req, res) => {
   // Reject on production
   const host = req.headers.host || '';
@@ -55,7 +34,10 @@ export const callZernio = async (method, path, body) => {
     headers: {
       'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}`,
       'Content-Type': 'application/json'
-    }
+    },
+    // Cap every Zernio call so a hung connection can't block the publish /
+    // analytics path indefinitely (all 20+ Zernio calls route through here).
+    signal: AbortSignal.timeout(15000),
   };
   if (body) opts.body = JSON.stringify(body);
   const r = await fetch(url, opts);
