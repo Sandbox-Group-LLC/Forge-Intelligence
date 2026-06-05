@@ -15123,18 +15123,22 @@ async function discoverSubpages(baseUrl, max = 8, { seedMarkdown = null, seedHtm
 
   // Step 1: sitemap.xml (handles sitemapindex by following the first child)
   try {
-    const sm = await fetch(new URL('/sitemap.xml', baseUrl).href, { signal: AbortSignal.timeout(8000) });
-    if (sm.ok) {
-      let xml = await sm.text();
+    // SSRF-safe: fetch sitemaps through forgeScrape (Bright Data) like every
+    // other external fetch, rather than hitting the URL directly from this
+    // server. baseUrl and the child <loc> are attacker-controllable, so a direct
+    // fetch could reach internal/metadata endpoints. render:'never' = Unlocker
+    // only (sitemaps are static XML — no browser tier needed); it also gets the
+    // sitemap past Cloudflare/WAF on protected sites. Tight 12s budget — if it's
+    // slow we'd rather fall through to link extraction.
+    const sm = await forgeScrape(new URL('/sitemap.xml', baseUrl).href, { render: 'never', caller: 'context-hub-sitemap', timeout: 12000 });
+    if (sm.success && sm.html) {
+      let xml = sm.html;
       let urls = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m => m[1].trim());
       if (/<sitemapindex/i.test(xml) && urls.length) {
-        try {
-          const child = await fetch(urls[0], { signal: AbortSignal.timeout(8000) });
-          if (child.ok) {
-            const cx = await child.text();
-            urls = [...cx.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m => m[1].trim());
-          }
-        } catch { /* child fetch failed — fall through with index URLs */ }
+        const child = await forgeScrape(urls[0], { render: 'never', caller: 'context-hub-sitemap', timeout: 12000 });
+        if (child.success && child.html) {
+          urls = [...child.html.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m => m[1].trim());
+        }
       }
       const ranked = rankBrandPages(urls.filter(sameOrigin).filter(u => u !== baseUrl && u !== `${baseUrl}/`));
       if (ranked.length) return ranked.slice(0, max);
