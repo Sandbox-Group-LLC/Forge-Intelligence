@@ -10914,26 +10914,9 @@ app.post('/api/linkedin/select-target', requireAuth, async (req, res) => {
 // on brand_profiles.zernio_profile_id). Profile groups all of that brand's
 // connected accounts together inside Zernio.
 
-// Helper: ensure the brand has a Zernio profile, creating one if needed.
-async function ensureZernioProfile(brandProfileId) {
-  const r = await pool.query('SELECT zernio_profile_id, brand_name, brand_url FROM brand_profiles WHERE id = $1', [brandProfileId]);
-  if (!r.rows.length) throw new Error('Brand not found');
-  const brand = r.rows[0];
-  if (brand.zernio_profile_id) return brand.zernio_profile_id;
+// Zernio profile create-or-get lives in getOrCreateZernioProfile (below). The
+// former ensureZernioProfile duplicate was consolidated into it.
 
-  // Create a new Zernio profile named after the brand
-  const name = brand.brand_name || brand.brand_url || `Forge brand ${brandProfileId.slice(0, 8)}`;
-  const createRes = await callZernio('POST', '/profiles', {
-    name: name.slice(0, 100),
-    description: `Forge Intelligence — ${brand.brand_url || brandProfileId}`
-  });
-  if (!createRes.ok) throw new Error(`Zernio profile create failed (${createRes.status}): ${createRes.raw?.slice(0, 200)}`);
-  const newProfileId = createRes.parsed?.profile?._id;
-  if (!newProfileId) throw new Error('Zernio profile create returned no _id');
-
-  await pool.query('UPDATE brand_profiles SET zernio_profile_id = $1, updated_at = NOW() WHERE id = $2', [newProfileId, brandProfileId]);
-  return newProfileId;
-}
 
 // 1) Kickoff: customer clicks Connect, we get an authUrl from Zernio + redirect.
 app.get('/api/zernio/connect/:platform', async (req, res) => {
@@ -10947,7 +10930,7 @@ app.get('/api/zernio/connect/:platform', async (req, res) => {
     const brandRes = await pool.query('SELECT id FROM brand_profiles WHERE id = $1', [brandProfileId]);
     if (!brandRes.rows.length) return res.status(404).send('Brand not found');
 
-    const profileId = await ensureZernioProfile(brandProfileId);
+    const profileId = await getOrCreateZernioProfile(brandProfileId);
 
     // Where Zernio sends the user after they finish OAuth. Same host as the kickoff
     // request so dev/prod each return to themselves. Pass brandProfileId + platform
@@ -17040,7 +17023,10 @@ const callZernio = async (method, path, body) => {
     headers: {
       'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}`,
       'Content-Type': 'application/json'
-    }
+    },
+    // Cap every Zernio call so a hung connection can't block the publish /
+    // analytics path indefinitely (all 20+ Zernio calls route through here).
+    signal: AbortSignal.timeout(15000),
   };
   if (body) opts.body = JSON.stringify(body);
   const r = await fetch(url, opts);
