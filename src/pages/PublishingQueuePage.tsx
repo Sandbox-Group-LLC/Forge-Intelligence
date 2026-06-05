@@ -727,6 +727,17 @@ export default function PublishingQueuePage() {
       if (s.heading) lines.push(`## ${s.heading}`, '');
       if (s.body || s.content) lines.push(s.body || s.content, '');
     }
+    // FAQs — mirror the HTML export's "Frequently asked questions" block so the
+    // Q&A (and its GEO value) travels with the markdown too, not just the HTML.
+    const faqs = Array.isArray(article?.article_json?.faqs)
+      ? article.article_json.faqs.filter((f: any) => f?.question && f?.answer)
+      : [];
+    if (faqs.length) {
+      lines.push('## Frequently asked questions', '');
+      for (const f of faqs) {
+        lines.push(`### ${String(f.question).trim()}`, '', String(f.answer).trim(), '');
+      }
+    }
     return lines.join('\n');
   };
 

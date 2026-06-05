@@ -12501,12 +12501,17 @@ ${canonicalNote}`,
 
           const articleJson = article.article_json || {};
           const sections = articleJson.sections || [];
+          const faqs = Array.isArray(articleJson.faqs) ? articleJson.faqs.filter(f => f?.question && f?.answer) : [];
           const htmlContent = sections.map(s =>
             `${s.heading ? `<h2>${s.heading}</h2>` : ''}<p>${s.body || s.content || ''}</p>`
-          ).join('\n');
+          ).join('\n') + (faqs.length
+            ? `\n<section class="article-faqs">\n<h2>Frequently asked questions</h2>\n${faqs.map(f => `<h3>${f.question}</h3>\n<p>${f.answer}</p>`).join('\n')}\n</section>`
+            : '');
           const markdownContent = sections.map(s =>
             `${s.heading ? `## ${s.heading}\n\n` : ''}${s.body || s.content || ''}`
-          ).join('\n\n');
+          ).join('\n\n') + (faqs.length
+            ? `\n\n## Frequently asked questions\n\n${faqs.map(f => `### ${f.question}\n\n${f.answer}`).join('\n\n')}`
+            : '');
           // Prefer the article's own meta description for excerpt — it's the
           // hand-curated short summary. Falls back to a slice of the first
           // section body only when the description is missing. Without this
