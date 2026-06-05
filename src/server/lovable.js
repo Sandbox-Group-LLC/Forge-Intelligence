@@ -273,12 +273,12 @@ export function lovableBuildWithDirective(ctx, buildIntent) {
   if (fgWhatWeDoNot) biLines.push(`What it does NOT do (strategic moats — do not contradict): ${fgWhatWeDoNot}`);
   biLines.push(`Voice profile:\n${voiceBlock}`);
   biLines.push(`Target personas:\n${personasBlock}`);
-  if (whitespaceBlock && whitespaceBlock !== 'No data available') biLines.push(`Competitive whitespace:\n${whitespaceBlock}`);
+  if (lovableHasData(whitespace)) biLines.push(`Competitive whitespace:\n${whitespaceBlock}`);
   if (fgCompetitors) biLines.push(`Competitors: ${fgCompetitors}`);
   if (fgFoundingStory) biLines.push(`Founding story: ${fgFoundingStory}`);
   if (fgQuotablePositions) biLines.push(`Brand positions: ${fgQuotablePositions}`);
   if (fgNamedAuthors) biLines.push(`Attributed authors: ${fgNamedAuthors}`);
-  if (thirdPartyBlock && thirdPartyBlock !== 'No data available') biLines.push(`Third-party voice themes:\n${thirdPartyBlock}`);
+  if (lovableHasData(thirdParty)) biLines.push(`Third-party voice themes:\n${thirdPartyBlock}`);
   const brandIntelligence = biLines.join('\n\n');
 
   return `You are building ${productLabel} for ${brandName}.

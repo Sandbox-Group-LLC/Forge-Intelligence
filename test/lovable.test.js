@@ -72,6 +72,28 @@ describe('lovable helpers', () => {
     expect(directive).toContain('waitlist');
   });
 
+  it('directive omits empty whitespace/third-party sections (no placeholder leak)', () => {
+    // whitespace/thirdParty are formatter outputs: null when the brand has no
+    // data. The directive prompt must drop those sections entirely, not inject
+    // the "Design this section to be populated later" scaffolding placeholder.
+    const directive = lovableBuildWithDirective(
+      { brandName: 'Acme', brandColors: '#000', brandProfileId: 'abc', whitespace: null, thirdParty: null },
+      { description: 'a landing page', productType: 'landing-page' },
+    );
+    expect(directive).not.toContain('Competitive whitespace:');
+    expect(directive).not.toContain('Third-party voice themes:');
+
+    // Populated sections still render.
+    const withData = lovableBuildWithDirective(
+      { brandName: 'Acme', brandColors: '#000', brandProfileId: 'abc',
+        whitespace: '- unclaimed topic X', thirdParty: '- [G2] review: loved it' },
+      { description: 'a landing page', productType: 'landing-page' },
+    );
+    expect(withData).toContain('Competitive whitespace:');
+    expect(withData).toContain('unclaimed topic X');
+    expect(withData).toContain('Third-party voice themes:');
+  });
+
   it('stub + naming helpers map app types', () => {
     expect(lovableStubPrompt('geo-monitor', 'Acme', 'abc')).toContain('not yet shipped');
     expect(lovableRecommendedAppName('campaign-planner', 'Acme')).toBe('Acme Campaign Planner');
