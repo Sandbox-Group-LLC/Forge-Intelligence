@@ -45,21 +45,9 @@ export const zernioGuard = (req, res) => {
   return true;
 };
 
-// stripSocialMarkdown — Claude defaults to producing markdown structure
-// (# headings, **bold**) because it's been trained to. Social platforms
-// like Facebook, LinkedIn, X, and Reddit don't render markdown — they
-// show the raw characters. Result: posts that open with a literal '#'
-// and have '**word**' embedded inline.
-//
-// Apply this to any Haiku-generated post copy before sending to a
-// platform that renders plain text. Conservative by design — only
-// strips the two patterns that demonstrably leak (leading H1-H6 and
-// double-asterisk/underscore bold). Single asterisks, backticks, list
-// markers, and link syntax are left intact: they appear naturally in
-// URLs and prose, and stripping them risks corrupting real content.
-//
-// NOT applied to user-supplied postCopy overrides — if a human typed
-// asterisks they wanted them literal.
+// callZernio — the single Zernio HTTP primitive; every Zernio call routes
+// through here. Auth via the ZERNIO_API_KEY bearer. Returns
+// { status, ok, raw, parsed }, where `parsed` is null if the body isn't JSON.
 export const callZernio = async (method, path, body) => {
   const url = `https://zernio.com/api/v1${path}`;
   const opts = {
