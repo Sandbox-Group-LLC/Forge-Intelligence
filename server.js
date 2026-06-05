@@ -12,6 +12,7 @@ import { truncateStr, truncateAtSentence, stripSocialMarkdown } from './src/serv
 import { clerkJWKS, SUPER_ADMIN_IDS, verifyBrandAccess, requireAuth, requireApiKeyScope, softAuth, mcpAuth, hashApiKey, lookupApiKey } from './src/server/auth.js';
 import { callZernio, zernioPublish, getOrCreateZernioProfile, zernioGuard } from './src/server/zernio.js';
 import { forgeScrape, getBrandPageContent, discoverSubpages, _forgeScrapeRateLimited, FORGE_SCRAPE_RATE_PER_MIN } from './src/server/scrape.js';
+import { anthropic, dateContext } from './src/server/llm.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -89,7 +90,9 @@ const PORT = process.env.PORT || 3000;
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 1200000 }); // 20min
+// anthropic client + dateContext now live in src/server/llm.js (imported above).
+// The bare `Anthropic` class import is kept for the few handlers that spin up a
+// short-timeout client of their own.
 
 async function initDB() {
   // ── Idempotency check: skip the destructive id-column migration if it's already done ──
@@ -5291,19 +5294,7 @@ function stripScaffoldingArtifacts(article) {
 // Without it the model defaults to its training-data prior (heavily 2024-2025)
 // and will write 'in 2025' / '2024 trends' even when it's actually 2026.
 // Returns a multi-line string to splice into prompts: "TODAY IS Saturday, April 25, 2026..."
-function dateContext() {
-  const now = new Date();
-  const formatted = now.toLocaleDateString('en-US', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-    timeZone: 'America/Los_Angeles'
-  });
-  const isoDate = now.toISOString().slice(0, 10);
-  const year = now.getFullYear();
-  return `TODAY IS ${formatted} (ISO: ${isoDate}). The current year is ${year}. ` +
-    `When you reference dates, time periods, or 'recent' events, anchor them to this date — ` +
-    `do not assume an earlier year. If you write phrases like 'in ${year - 1}' or 'this year', ` +
-    `they must be accurate against ${year}, not your training cutoff.`;
-}
+// dateContext moved to src/server/llm.js
 
 app.get('/api/geo-strategist/briefs', requireAuth, async (req, res) => {
   try {
