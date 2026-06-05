@@ -10,6 +10,7 @@
     "start": "node server.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "lint": "eslint server.js \"test/**/*.{js,mjs}\"",
     "routes:snapshot": "node test/gen-snapshot.js"
   },
   "dependencies": {
@@ -37,6 +38,8 @@
     "@types/react-dom": "^18.2.15",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@vitejs/plugin-react": "^6.0.1",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
     "typescript": "^5.2.2",
     "vite": "^8.0.12",
     "vitest": "^2.1.9"
