@@ -198,9 +198,11 @@ function ComplianceGateContent() {
     const headers = { ...options.headers as Record<string,string>, 'Authorization': `Bearer ${token}` };
     const res = await fetch(url, { ...options, headers });
     if (res.status === 401) {
-      // Token was stale — wait 500ms for Clerk to refresh then retry once
+      // First token was rejected (typically already-expired at verify time).
+      // Force Clerk to mint a brand-new token — skipCache bypasses the cached
+      // (possibly near-expired) token the plain getToken would hand back.
       await new Promise(r => setTimeout(r, 500));
-      const retryToken = await getToken({ template: 'jwt-template-600' }) || '';
+      const retryToken = await getToken({ template: 'jwt-template-600', skipCache: true }) || '';
       const retryHeaders = { ...options.headers as Record<string,string>, 'Authorization': `Bearer ${retryToken}` };
       return fetch(url, { ...options, headers: retryHeaders });
     }
@@ -398,6 +400,7 @@ function ComplianceGateContent() {
 
   const submitApproval = async (article: Article) => {
     setSubmitLoading(true);
+    setError(''); // clear any stale 401 banner from a prior attempt — the retry may now succeed
     try {
       const edits = Object.entries(editedSections).map(([idx, content]) => ({
         sectionIndex: parseInt(idx),
