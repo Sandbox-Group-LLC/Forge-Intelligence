@@ -10,6 +10,28 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
+### 2026-06-06 (cont.) — route-group surgery begins (2 groups) + a mis-merge recovery
+
+The decomposition crossed from helpers into **route GROUPS**: handlers move into `src/server/routes/*.js` mounted via `app.use('/prefix', router)`, with the guard reconstructing full paths so the snapshot stays byte-identical.
+
+- **Guard mount-prefix (#242)** — taught `test/route-inventory.mjs` to resolve `app.use('/prefix', router)` mounts: reads the router module and prefixes its `router.METHOD('/sub')` as `/prefix/sub`. No-op until routers exist (snapshot stayed 213). Pure core `resolveRoutes()` + helpers, unit-tested.
+- **`/api/compliance/*` (#243 → recovered as #244)** — first router. 8 handlers + the compliance-only `ensureComplianceColumns` → `routes/compliance.js`, mounted `app.use('/api/compliance', requireAuth, complianceRouter)`. Every dep already extracted; zero new coupling.
+- **`/api/email-campaign/*` (#245)** — 9 handlers → `routes/email-campaign.js`. Surfaced + fixed a shared `globalThis` SSE registry → **`streams.js`** (`activeStreams`), shared with the still-inline social-generator handler. The **no-undef gate caught it** — a naive move would've left an undefined `activeStreams` (silent SSE break on deploy).
+
+**Mis-merge recovery (#243 → #244).** #243 was opened stacked on the #242 branch, then retargeted to `development`. The retarget didn't take before merge, so #243 merged back into the already-shipped #242 branch — **compliance never reached `development`.** Caught it (the `routes/` dir was missing on dev), re-landed via #244. **Lesson: after retargeting a stacked PR's base, RE-READ the PR to confirm the flip — `update_pull_request` returning success is not proof.**
+
+#### Router auth convention (set this phase)
+- **Router-level** `requireAuth` (`app.use('/prefix', requireAuth, router)`) when **all** routes in the group are authed — compliance, email-campaign.
+- **Per-route** auth when **mixed** — e.g. zernio's `GET /api/zernio/connect/:platform` (OAuth redirect, unauthed) and geo-strategist's `GET /briefs/:id` (unauthed). Those groups keep per-route middleware and mount without auth.
+
+#### What's next (route groups)
+- **`/api/social-generator/*`** (6) — uniform auth; now imports the landed `streams.js`. Natural next.
+- **`/api/publishing/*`** (22) — biggest single group.
+- **zernio subsystem pass** — ~15 routes across 4 prefixes (`/api/zernio`, `/auth/zernio`, `/integrations/zernio`, `/api/admin/zernio`) + mixed auth → one dedicated module, not piecemeal.
+- **`/api/geo-strategist/*`** (3) — small, mixed auth → per-route.
+
+---
+
 ### 2026-06-06 — decomposition continues (5 more cuts) + 3 production fixes
 
 Kept dismembering `server.js`, same pure-move discipline + CI safety net. **16 modules out now** (14 files; `text.js` grew):

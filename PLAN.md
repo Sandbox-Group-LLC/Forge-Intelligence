@@ -1,3 +1,96 @@
+## 2026-06-06 (cont.) — route-group phase: mount-aware guard, first 2 routers, a mis-merge caught
+
+The decomposition crossed a threshold: from extracting helpers to extracting
+**route groups** — moving whole families of handlers into `src/server/routes/*.js`
+mounted behind `app.use('/prefix', router)`. This is the first structural change
+to routing, and the one that needed the guard taught new tricks before any handler
+moved.
+
+### Step 1 — mount-prefix resolution in the route guard (#242)
+
+A router's `router.get('/sub')` reads as `GET /sub`, not `GET /prefix/sub`. Left
+alone, the route-inventory snapshot would break on what is supposed to be a pure
+move. So before touching a single handler, `collectRoutes()` learned to:
+1. emit top-level `app.<method>(...)` in server.js as before, then
+2. resolve each `app.use('<prefix>', <ident>)` whose `<ident>` is a local import,
+   read that module, and emit its `router.<method>('<sub>')` as `<prefix><sub>`.
+
+Refactored the pure core to `resolveRoutes(serverSrc, readModule)` + exported
+helpers (`joinPath`/`parseImports`/`parseMounts`) so mount-prefixing is unit-
+testable on synthetic strings without touching the repo. No-op until a router
+existed (snapshot stayed 213). 7 tests including the false-positive guards
+(express.static / non-import mounts ignored; non-default router var honored).
+
+### Step 2 — `/api/compliance/*` → routes/compliance.js (#243, recovered via #244)
+
+First router. 8 handlers + the compliance-only `ensureComplianceColumns` moved
+out; `callCritique` rode along as an inner closure. Every shared dep was already
+in a module (pool/anthropic/safeParseLLM/stripScaffoldingArtifacts/verifyBrandAccess/
+findCitationSources) — zero new coupling. Guard reconstructed all 8 paths;
+snapshot held 213 byte-identical.
+
+### Step 3 — `/api/email-campaign/*` → routes/email-campaign.js (#245)
+
+9 handlers. This one earned the safety net its keep on a route group: the
+`generate` handler uses `activeStreams`, a `globalThis`-backed SSE dedupe Map
+**shared** with the social-generator handler still inline in server.js. A naive
+move leaves the module referencing an undefined `activeStreams` — the SSE dedupe
+silently no-ops or crashes, and `node --check` wouldn't catch it. **The no-undef
+gate flagged it** (plus `fs`/`path`), so it got extracted properly to a shared
+`src/server/streams.js` that both server.js and the router import. Exactly the
+class of bug the gate was built to stop, first time it fired on a route move.
+
+### Router auth convention (established this phase)
+
+- **Router-level** `requireAuth` — `app.use('/prefix', requireAuth, router)` — when
+  EVERY route in the group is authed (compliance, email-campaign). Behavior-
+  identical to per-route for the current routes; the per-route `requireAuth` args
+  are dropped.
+- **Per-route** auth when the group is MIXED — zernio's `GET /connect/:platform`
+  (OAuth redirect, no bearer possible) and geo-strategist's `GET /briefs/:id` are
+  unauthed, so those groups will mount without auth and keep per-route middleware.
+
+### The mis-merge, and the lesson (#243 → #244)
+
+#243 was opened stacked on the #242 branch so its diff showed only the compliance
+move. After #242 merged, I retargeted #243's base to `development` via
+`update_pull_request` (got a success response) and reported it ready. But the base
+**didn't actually flip** — so when #243 merged, it merged back into the already-
+shipped #242 branch, and the compliance router **never reached `development`**.
+No breakage (development stayed self-consistent with inline compliance), but the
+extraction was stranded.
+
+Caught it at the start of the next extraction: `src/server/routes/` didn't exist
+on the branch I'd just cut from `development`. Diagnosed (origin/development HEAD
+was the #242 merge, no routes dir, inline `/api/compliance/approve` still present),
+located the stranded commit on the #242 branch, and re-landed it via a fresh PR
+(#244) — exactly 1 commit / 2 files, re-verified on the correct base.
+
+**Lessons logged:**
+- **After retargeting a stacked PR's base, RE-READ the PR to confirm the flip.**
+  `update_pull_request` returning a success object is not proof the base changed.
+  (Prefer: avoid deep stacks — once the parent merges, branch the child fresh off
+  `development` instead of relying on a retarget.)
+- **Verify a merge landed where you think.** The webhook says "merged"; it doesn't
+  say "merged into the branch you intended." A 10-second `git ls-tree origin/<base>`
+  check would have caught it immediately.
+
+### Net state
+
+`development` has the mount-aware guard + 2 route modules (`compliance`,
+`email-campaign`) + `streams.js`. Route count still 213 (snapshot-locked).
+~20 modules total now. No production-lane changes this stretch (refactor is
+development-only until the next `development → main` rollup).
+
+### What's next
+
+- `/api/social-generator/*` (6, uniform auth, now imports the landed `streams.js`).
+- `/api/publishing/*` (22 — the biggest group).
+- zernio as a dedicated subsystem pass (~15 routes / 4 prefixes / mixed auth).
+- `/api/geo-strategist/*` (3, mixed auth → per-route).
+
+---
+
 ## 2026-06-06 — decomposition Stage 2 continues: 5 more cuts + 3 production fixes
 
 Continuation of the `server.js` dismemberment (see the 2026-06-05 entry for the
