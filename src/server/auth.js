@@ -93,7 +93,7 @@ export async function requireAuth(req, res, next) {
     }
     const token = rawToken;
     if (!clerkJWKS) return res.status(500).json({ error: 'Auth not configured' });
-    const { payload } = await jwtVerify(token, clerkJWKS, { algorithms: ['RS256'] });
+    const { payload } = await jwtVerify(token, clerkJWKS, { algorithms: ['RS256'], clockTolerance: '30s' });
     req.userId = payload.sub;
     next();
   } catch(e) {
@@ -126,7 +126,7 @@ export async function softAuth(req, res, next) {
     if (authHeader?.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];
       if (clerkJWKS) {
-        const { payload } = await jwtVerify(token, clerkJWKS, { algorithms: ['RS256'] });
+        const { payload } = await jwtVerify(token, clerkJWKS, { algorithms: ['RS256'], clockTolerance: '30s' });
         req.userId = payload.sub;
       }
     }
