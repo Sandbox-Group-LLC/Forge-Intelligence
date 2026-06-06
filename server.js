@@ -9203,24 +9203,37 @@ Avoid: forums (Quora, Reddit, Stack Exchange), personal blogs, AI-generated cont
 
 If the claim is definitional (e.g. "X is defined as..."), return authoritative definitional sources. If statistical (e.g. "73% of..."), return the primary survey/study. If a trend (e.g. "X is growing"), return recent industry reports. If a company-specific claim, return that company's own statement or filing.`;
 
+  // A trend claim is the ONLY type that benefits from a recency restriction
+  // (it wants recent data). Definitional / historical / statistical (the
+  // primary study may be years old) / company-specific claims often need older
+  // authoritative sources — so recency is scoped to trends only on the API call.
+  const isTrendClaim = /\bincreasing|growing|declining|trending|shift toward\b/i.test(claimText);
   const claimTypeHints = [];
   if (/\b\d+\s*%|\b\d+x|\b\d+-fold/.test(claimText)) claimTypeHints.push('STATISTICAL — return the primary survey or study containing this exact data point.');
   if (/\bis defined as|means that|refers to\b/i.test(claimText)) claimTypeHints.push('DEFINITIONAL — return an authoritative industry or academic definition source.');
-  if (/\bincreasing|growing|declining|trending|shift toward\b/i.test(claimText)) claimTypeHints.push('TREND — return recent (past 24 months) industry reports with data.');
+  if (isTrendClaim) claimTypeHints.push('TREND — return recent (past 24 months) industry reports with data.');
   if (/\breport(ed)?|announced|stated\b/i.test(claimText) && /[A-Z][a-zA-Z]+\s+(Inc|LLC|Corp|Ltd)/.test(claimText)) claimTypeHints.push("COMPANY-SPECIFIC — return that company's own press release, earnings, or official blog.");
 
   const userMessage = `CLAIM TO SUPPORT:\n"${claimText}"\n\nCONTEXT (surrounding article text, for understanding — do NOT cite this):\n${sectionContext}\n${claimTypeHints.length ? '\nCLAIM TYPE: ' + claimTypeHints.join(' ') : ''}`;
 
   let sonarData = null;
   for (let attempt = 0; attempt < 3; attempt++) {
+    const sonarBody = {
+      model: 'sonar-pro',
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }],
+    };
+    // Only restrict recency for trend claims. The old code applied this to
+    // EVERY claim, which filtered out the older authoritative sources that
+    // definitional/historical/statistical claims require — contradicting the
+    // system prompt and starving those claims of citations.
+    if (isTrendClaim) sonarBody.search_recency_filter = 'year';
     const sonarRes = await fetch('https://api.perplexity.ai/chat/completions', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'sonar-pro',
-        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }],
-        search_recency_filter: 'year',
-      })
+      body: JSON.stringify(sonarBody),
+      // Sonar can be slow; cap a hung call so it can't block the compliance
+      // flow indefinitely. The 429 loop handles rate-limits, not hangs.
+      signal: AbortSignal.timeout(45000),
     });
     if (sonarRes.status === 429) { await new Promise(r => setTimeout(r, 1500 * (attempt + 1))); continue; }
     if (!sonarRes.ok) {
@@ -9231,7 +9244,7 @@ If the claim is definitional (e.g. "X is defined as..."), return authoritative d
     sonarData = await sonarRes.json();
     break;
   }
-  if (!sonarData) throw new Error('Source search timed out');
+  if (!sonarData) throw new Error('Source search rate-limited by Perplexity (429) after 3 attempts — try again shortly');
 
   const searchResults = sonarData.search_results || [];
   const getDomain = (url) => { try { return new URL(url).hostname.replace(/^www\./, '').toLowerCase(); } catch { return ''; } };
