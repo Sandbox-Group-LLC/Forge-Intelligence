@@ -38,6 +38,8 @@ import geoStrategistRouter from './src/server/routes/geo-strategist.js';
 import analyticsRouter from './src/server/routes/analytics.js';
 import contextHubRouter from './src/server/routes/context-hub.js';
 import contentRouter from './src/server/routes/content.js';
+import zernioRouter from './src/server/routes/zernio.js';
+import zernioAdminRouter from './src/server/routes/zernio-admin.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -5855,40 +5857,7 @@ app.post('/api/linkedin/select-target', requireAuth, async (req, res) => {
 
 
 // 1) Kickoff: customer clicks Connect, we get an authUrl from Zernio + redirect.
-app.get('/api/zernio/connect/:platform', async (req, res) => {
-  const { platform } = req.params;
-  const { brandProfileId } = req.query;
-  if (!brandProfileId) return res.status(400).send('brandProfileId required');
-  if (!process.env.ZERNIO_API_KEY) return res.status(500).send('ZERNIO_API_KEY not configured');
-
-  try {
-    // Verify brand exists; auth happens via Clerk session for the human-facing redirect
-    const brandRes = await pool.query('SELECT id FROM brand_profiles WHERE id = $1', [brandProfileId]);
-    if (!brandRes.rows.length) return res.status(404).send('Brand not found');
-
-    const profileId = await getOrCreateZernioProfile(brandProfileId);
-
-    // Where Zernio sends the user after they finish OAuth. Same host as the kickoff
-    // request so dev/prod each return to themselves. Pass brandProfileId + platform
-    // forward as query so the callback knows what to write.
-    const baseUrl = `${req.protocol}://${req.headers.host}`;
-    const redirectUrl = `${baseUrl}/auth/zernio/callback?brandProfileId=${encodeURIComponent(brandProfileId)}&platform=${encodeURIComponent(platform)}`;
-
-    const params = new URLSearchParams({ profileId, redirectUrl });
-    const cr = await callZernio('GET', `/connect/${platform}?${params.toString()}`);
-    if (!cr.ok) {
-      console.error(`[Zernio] /connect/${platform} failed:`, cr.status, cr.raw?.slice(0, 300));
-      return res.redirect(`/app/integrations?zernio_error=${encodeURIComponent('connect_failed')}`);
-    }
-    const authUrl = cr.parsed?.authUrl;
-    if (!authUrl) return res.redirect(`/app/integrations?zernio_error=${encodeURIComponent('no_auth_url')}`);
-
-    res.redirect(authUrl);
-  } catch (e) {
-    console.error('[Zernio connect]', e);
-    res.redirect(`/app/integrations?zernio_error=${encodeURIComponent(e.message)}`);
-  }
-});
+app.use('/api/zernio', zernioRouter); // 3 routes (mixed auth) -> src/server/routes/zernio.js
 
 // 2) Callback: Zernio redirects user here after platform OAuth completes.
 app.get('/auth/zernio/callback', async (req, res) => {
@@ -5954,44 +5923,7 @@ app.get('/auth/zernio/callback', async (req, res) => {
 });
 
 // 3) Disconnect: remove the Zernio-managed account.
-app.post('/api/zernio/disconnect', requireAuth, async (req, res) => {
-  const { brandProfileId, platform } = req.body;
-  if (!brandProfileId || !platform) return res.status(400).json({ error: 'brandProfileId and platform required' });
-  if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
-
-  try {
-    const r = await pool.query(
-      `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = $2`,
-      [brandProfileId, platform]
-    );
-    if (!r.rows.length) return res.status(404).json({ error: 'Channel not connected' });
-    const creds = r.rows[0].credentials || {};
-    const accountId = typeof creds === 'string' ? JSON.parse(creds).zernioAccountId : creds.zernioAccountId;
-    if (!accountId) return res.status(400).json({ error: 'No Zernio account on this channel' });
-
-    // Delete the account on Zernio
-    const dr = await callZernio('DELETE', `/accounts/${accountId}`);
-    if (!dr.ok && dr.status !== 404) {
-      console.error('[Zernio disconnect] DELETE failed:', dr.status, dr.raw?.slice(0, 300));
-      // Continue anyway — we still want to clean up Forge's row
-    }
-
-    // Strip Zernio-specific keys from creds (preserve everything else)
-    await pool.query(
-      `UPDATE publishing_channels
-         SET credentials = credentials - 'zernioAccountId' - 'zernioProfileId' - 'zernioPlatform' - 'zernioDisplayName' - 'zernioConnectedAt',
-             is_active = (credentials - 'zernioAccountId' - 'zernioProfileId') ? 'accessToken',
-             updated_at = NOW()
-       WHERE brand_profile_id = $1 AND channel = $2`,
-      [brandProfileId, platform]
-    );
-
-    res.json({ success: true });
-  } catch (e) {
-    console.error('[Zernio disconnect]', e);
-    res.status(500).json({ error: e.message });
-  }
-});
+// (zernio route moved to src/server/routes/zernio.js)
 
 
 // HubSpot integration removed 2026-05-09. The HubSpot public API gates
@@ -10126,93 +10058,25 @@ app.post('/api/admin/relay', express.json({ limit: '500kb' }), async (req, res) 
 
 
 // GET-style — list profiles. Lightest possible test: validates key + reachability.
-app.post('/api/admin/zernio/profiles', async (req, res) => {
-  if (!zernioGuard(req, res)) return;
-  try {
-    const result = await callZernio('GET', '/profiles');
-    res.json({ success: true, stage: 'list-profiles', ...result });
-  } catch (e) {
-    res.status(500).json({ success: false, stage: 'list-profiles', error: e.message });
-  }
-});
+app.use('/api/admin/zernio', zernioAdminRouter); // 7 routes -> src/server/routes/zernio-admin.js
 
 // List connected accounts — gives us the LinkedIn account_id for the post step.
-app.post('/api/admin/zernio/accounts', async (req, res) => {
-  if (!zernioGuard(req, res)) return;
-  try {
-    const result = await callZernio('GET', '/accounts');
-    res.json({ success: true, stage: 'list-accounts', ...result });
-  } catch (e) {
-    res.status(500).json({ success: false, stage: 'list-accounts', error: e.message });
-  }
-});
+// (zernio-admin route moved to src/server/routes/zernio-admin.js)
 
 // Create a post. Pass through full body (minus adminPassword) so we can test
 // publishNow vs scheduledFor vs draft from a single endpoint.
-app.post('/api/admin/zernio/post', async (req, res) => {
-  if (!zernioGuard(req, res)) return;
-  try {
-    const { adminPassword, ...postBody } = req.body;
-    const result = await callZernio('POST', '/posts', postBody);
-    res.json({ success: true, stage: 'create-post', ...result });
-  } catch (e) {
-    res.status(500).json({ success: false, stage: 'create-post', error: e.message });
-  }
-});
+// (zernio-admin route moved to src/server/routes/zernio-admin.js)
 
 // Test: probe Zernio's /connect/:platform to see what an OAuth-start response looks like.
-app.post('/api/admin/zernio/probe-connect', async (req, res) => {
-  if (!zernioGuard(req, res)) return;
-  try {
-    const { platform, profileId, returnUrl, ...extras } = req.body;
-    const params = new URLSearchParams();
-    if (profileId) params.set('profileId', profileId);
-    if (returnUrl) params.set('returnUrl', returnUrl);
-    // Forward any extra body keys as query params for probing
-    for (const [k, v] of Object.entries(extras)) {
-      if (k !== 'adminPassword' && typeof v === 'string') params.set(k, v);
-    }
-    const qs = params.toString() ? `?${params.toString()}` : '';
-    const result = await callZernio('GET', `/connect/${platform}${qs}`);
-    res.json({ success: true, stage: 'probe-connect', ...result });
-  } catch (e) {
-    res.status(500).json({ success: false, stage: 'probe-connect', error: e.message });
-  }
-});
+// (zernio-admin route moved to src/server/routes/zernio-admin.js)
 
 // Test the connect endpoint to see what shape Zernio's OAuth init looks like.
 // Body: { profileId, platform, redirectUrl?, state? }
-app.post('/api/admin/zernio/connect-test', async (req, res) => {
-  if (!zernioGuard(req, res)) return;
-  try {
-    const { profileId, platform, redirectUrl, state } = req.body;
-    if (!profileId || !platform) return res.status(400).json({ success: false, error: 'profileId + platform required' });
-
-    const params = new URLSearchParams({ profileId });
-    if (redirectUrl) params.set('redirectUrl', redirectUrl);
-    if (state) params.set('state', state);
-
-    const path = `/connect/${platform}?${params.toString()}`;
-    const result = await callZernio('GET', path);
-    res.json({ success: true, stage: 'connect-init', path, ...result });
-  } catch (e) {
-    res.status(500).json({ success: false, stage: 'connect-init', error: e.message });
-  }
-});
+// (zernio-admin route moved to src/server/routes/zernio-admin.js)
 
 // Create a Zernio profile (needed to associate accounts with a Forge brand).
 // Body: { name, description? }
-app.post('/api/admin/zernio/create-profile', async (req, res) => {
-  if (!zernioGuard(req, res)) return;
-  try {
-    const { name, description } = req.body;
-    if (!name) return res.status(400).json({ success: false, error: 'name required' });
-    const result = await callZernio('POST', '/profiles', { name, description });
-    res.json({ success: true, stage: 'create-profile', ...result });
-  } catch (e) {
-    res.status(500).json({ success: false, stage: 'create-profile', error: e.message });
-  }
-});
+// (zernio-admin route moved to src/server/routes/zernio-admin.js)
 
 // ── Production Zernio OAuth proxy ────────────────────────────────────────────
 // Three-step flow:
@@ -10225,45 +10089,9 @@ app.post('/api/admin/zernio/create-profile', async (req, res) => {
 // POST /api/admin/zernio/raw — Generic Zernio API probe for admin debugging.
 // Body: { adminPassword, method: 'GET'|'POST'|..., path: '/analytics?postId=...', body?: {...} }
 // Used to validate API behavior without redeploying. Live tool, not test-only.
-app.post('/api/admin/zernio/raw', async (req, res) => {
-  if (!zernioGuard(req, res)) return;
-  try {
-    const { method = 'GET', path, body } = req.body;
-    if (!path) return res.status(400).json({ success: false, error: 'path required' });
-    const result = await callZernio(method, path, body);
-    res.json({ success: true, request: { method, path, body }, ...result });
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
+// (zernio-admin route moved to src/server/routes/zernio-admin.js)
 
-app.post('/api/zernio/connect', requireAuth, async (req, res) => {
-  try {
-    const { brandProfileId, platform } = req.body;
-    if (!brandProfileId || !platform) return res.status(400).json({ success: false, error: 'brandProfileId + platform required' });
-    if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ success: false, error: 'Access denied' });
-    if (!process.env.ZERNIO_API_KEY) return res.status(500).json({ success: false, error: 'ZERNIO_API_KEY not configured' });
-
-    const zernioProfileId = await getOrCreateZernioProfile(brandProfileId);
-
-    // Encode brandProfileId + platform in redirectUrl. Zernio echoes redirectUrl as-is, so
-    // the query string round-trips through the OAuth flow back to us.
-    const reqHost = req.headers.host || 'forgeintelligence.ai';
-    const proto = reqHost.includes('localhost') ? 'http' : 'https';
-    const redirectUrl = `${proto}://${reqHost}/integrations/zernio/callback?brand=${encodeURIComponent(brandProfileId)}&platform=${encodeURIComponent(platform)}&zernio_profile_id=${encodeURIComponent(zernioProfileId)}`;
-
-    const params = new URLSearchParams({ profileId: zernioProfileId, redirectUrl });
-    const result = await callZernio('GET', `/connect/${platform}?${params.toString()}`);
-
-    if (!result.ok) return res.status(result.status).json({ success: false, error: `Zernio /connect failed: ${result.raw?.slice(0, 200)}` });
-    const authUrl = result.parsed?.authUrl;
-    if (!authUrl) return res.status(500).json({ success: false, error: 'Zernio /connect response missing authUrl' });
-
-    res.json({ success: true, authUrl, zernioProfileId });
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
+// (zernio route moved to src/server/routes/zernio.js)
 
 // Public callback. Zernio bounces here after the user authorizes.
 app.get('/integrations/zernio/callback', async (req, res) => {
