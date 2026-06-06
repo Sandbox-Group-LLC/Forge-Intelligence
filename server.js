@@ -930,10 +930,18 @@ async function generateHeroImage(prompt) {
       prompt,
       aspect_ratio: '16:9',
       style: 'realistic',
-      expand_prompt: true,            // Ideogram's MagicPrompt — expands our terse prompt into a richer one before generation
+      // expand_prompt OFF: our prompt is already a carefully brand-voice-tuned
+      // sentence (buildImagePrompt, with explicit anti-AI-stock + don't-take-
+      // brand-name-literally constraints). Ideogram's MagicPrompt rewrites the
+      // prompt and can re-inject the generic/stock aesthetic we deliberately
+      // excluded, so we hand it our prompt verbatim.
+      expand_prompt: false,
       negative_prompt: HERO_IMAGE_NEGATIVE_PROMPT,
       num_images: 1
-    })
+    }),
+    // Cap a hung fal.ai call. Image gen runs ~10-20s; 60s is generous headroom
+    // while still preventing an indefinite block on the generate/publish path.
+    signal: AbortSignal.timeout(60000)
   });
   if (!falRes.ok) throw new Error(`fal.ai ${falRes.status}: ${await falRes.text()}`);
   const falData = await falRes.json();
@@ -7489,10 +7497,14 @@ async function generateSocialImage(prompt) {
       prompt,
       aspect_ratio: '1:1',
       style: 'realistic',
-      expand_prompt: true,
+      // expand_prompt OFF — see generateHeroImage. Our buildSocialImagePrompt
+      // output is already tuned; MagicPrompt would rewrite it and can undo the
+      // anti-stock / single-focal-subject constraints.
+      expand_prompt: false,
       negative_prompt: HERO_IMAGE_NEGATIVE_PROMPT,
       num_images: 1
-    })
+    }),
+    signal: AbortSignal.timeout(60000) // cap a hung fal.ai call (see generateHeroImage)
   });
   if (!falRes.ok) throw new Error(`fal.ai social ${falRes.status}: ${await falRes.text()}`);
   const falData = await falRes.json();
