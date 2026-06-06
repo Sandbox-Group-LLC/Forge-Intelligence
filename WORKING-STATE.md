@@ -10,28 +10,28 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
-### 2026-06-06 (cont.) — route-group surgery: 11 groups extracted (publishing only remains)
+### 2026-06-06 (cont.) — route-group surgery COMPLETE: 12 groups extracted
 
-The decomposition crossed from helpers into **route GROUPS**: handlers move into `src/server/routes/*.js` mounted via `app.use('/prefix', router)`, the guard reconstructing full paths so the snapshot stays byte-identical (**213 throughout**). Pattern: collect each handler's span (next-statement boundaries), move verbatim, `xform` the registration line (`app.METHOD('/prefix/x', …)` → `router.METHOD('/x', …)`), re-import deps from already-extracted modules. Verify `node --check` + lint + boot-load (`import()`) + route guard + vitest.
+The decomposition crossed from helpers into **route GROUPS** and finished them: handlers moved into `src/server/routes/*.js` mounted via `app.use('/prefix', router)`, the guard reconstructing full paths so the snapshot stayed byte-identical the whole way (**213 → 211** only for one intentional dead-dupe cleanup). Pattern: collect each handler's span (next-statement boundaries), move verbatim, `xform` the registration line (`app.METHOD('/prefix/x', …)` → `router.METHOD('/x', …)`), re-import deps from already-extracted modules. Verify `node --check` + lint + boot-load (`import()`) + route guard + vitest.
 
-**11 route groups → `src/server/routes/` (13 files):**
-- `compliance.js` (#243→#244, 8) +`ensureComplianceColumns` · `email-campaign.js` (#245, 9) · `social-generator.js` (#247, 6) +`ensureSocialPostsTable` · `campaign.js` (#248, 9) +`enrichAngleForCampaign` · `topic-ideas.js` (#249, 5) · `precog.js` (#250, 5) · `geo-strategist.js` (#252, 3) · `analytics.js` (#253, **11**, +`refreshGSCToken`) · `context-hub.js` (#254, 5) +`handleQuickStartSynthesis` · `content.js` (#255, 6) · **zernio** (#256, 10 → `zernio.js` + `zernio-admin.js`)
+**12 route groups → `src/server/routes/` (15 files):**
+- `compliance.js` (#244, 8) · `email-campaign.js` (#245, 9) · `social-generator.js` (#247, 6) · `campaign.js` (#248, 9) · `topic-ideas.js` (#249, 5) · `precog.js` (#250, 5) · `geo-strategist.js` (#252, 3) · `analytics.js` (#253, 11) · `context-hub.js` (#254, 5) · `content.js` (#255, 6) · **zernio** (#256, 10 → `zernio.js`+`zernio-admin.js`) · **publishing** (#258/#259/#260, 20 → `publishing-queue.js`+`publishing-channels.js`+`publishing-publish.js`)
+- Several routers also absorbed a route-group-only helper (`ensureComplianceColumns`, `ensureSocialPostsTable`, `enrichAngleForCampaign`, `refreshGSCToken`, `handleQuickStartSynthesis`, `runScheduledPublishes`).
 
-**Shared modules the no-undef gate forced out:** `streams.js` (globalThis SSE registry), `content-table.js` (`ensureGeneratedContentTable`). Naive moves would've left undefined refs → silent deploy breaks; gate caught both (and `fs`/`path`/`randomUUID`/`jwtVerify`/`clerkJWKS`/etc. on the bigger handlers).
+**Shared modules the no-undef gate forced out:** `streams.js` (globalThis SSE registry), `content-table.js` (`ensureGeneratedContentTable`), `pipedream.js` (`pipedreamProxy` + token cache — shared by the publish dispatcher AND inline FB routes). Naive moves would've left undefined refs → silent deploy breaks; gate caught all (plus `fs`/`path`/`randomUUID`/`jwtVerify`/`clerkJWKS`/`PORT`/`RESEND_API_KEY`/the `_pd*` cache vars).
 
-#### Conventions + guard constraints (load-bearing)
-- **Auth:** router-level `requireAuth` when ALL routes authed; **per-route** when mixed (open OAuth/cron/public reads) — mount without auth, keep per-route middleware.
-- **Guard scans ONE `express.Router()` var per file** — two routers can't share a module (zernio → 2 files). Mounting one router at two prefixes double-counts. One router file, one mount.
-- **Mounts match on segment boundaries** — `app.use('/api/content', …)` does NOT capture `/api/content-library`/`-generator` (verified they stayed inline).
-- **Boundary detection:** next-statement, NOT "first `^}`" — prompt template literals have `}` at column 0 (would truncate a function mid-build).
+#### Publishing finale (the deferred beast) — split 3 ways
+- `publishing-queue.js` (#258, 14) — also **deleted 2 dead-duplicate `backfill-queue` registrations** (only the first reachable in Express) → 213→211, snapshot regenerated.
+- `publishing-channels.js` (#259, 4) · `publishing-publish.js` (#260, 2: `generate-post-copy` + the ~1,129-line dispatcher) — all three share the `/api/publishing` mount (separate files, one mount each = guard-safe).
 
-#### Lessons logged this phase
-- **Mis-merge (#243→#244):** a stacked PR's base retarget didn't take before merge → compliance never reached `development`. Re-read a retargeted PR to confirm the flip; prefer branching the child fresh over deep stacks.
-- **Boot-load test** (`import()` the new module) catches a missing **named** export — which `node --check` + lint can't (it crashes at startup). Standard for the bigger scattered modules now.
+#### Conventions + guard constraints (load-bearing — keep)
+- **Auth:** router-level `requireAuth` when ALL routes authed; **per-route** when mixed. On a SHARED-prefix mount (publishing's 3 routers) auth MUST be per-route — mount-level would leak onto the other routers' routes.
+- **Guard scans ONE `express.Router()` var per file** — two routers can't share a module (zernio, publishing → multiple files). One router file, one mount.
+- **Mounts match on segment boundaries** — `/api/content` does NOT capture `/api/content-library`/`-generator`.
+- **Boundary detection:** next-statement, not "first `^}`" (prompt template literals have `}` at col 0).
 
-#### What's next — only PUBLISHING remains
-- **`/api/publishing/*`** — the finale, deferred deliberately: ~22 routes scattered, mixed auth, a ~1,138-line `publish` dispatcher + `pipedreamProxy`. **Re-scope before cutting** (its neighborhood shifted as routes moved out); decide split (queue / channels / dispatcher) vs one PR.
-- Left inline on purpose: zernio's 2 OAuth callbacks (odd single-prefixes) + 2 `/api/admin/backfill-*-zernio-ids` (admin-lane); the `/api/admin/*` mass; `/api/content-library` + `/api/content-generator`.
+#### KNOWN GUARD GAP (open follow-up)
+The guard's `parseImports` does NOT handle the combined `import Default, { Named } from '…'` form — it silently drops the default router (#260 read 209 until I split the import into 2 lines). **Harden `parseImports` for combined imports** (next task) so a future combined-import mount can't under-count.
 
 ---
 
