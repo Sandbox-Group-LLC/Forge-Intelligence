@@ -1,3 +1,75 @@
+## 2026-06-06 (cont.) — route-group phase pt.2: groups 3–6 + 2 shared modules + publishing deferred
+
+Continued the route-group extractions (see the prior entry for the guard design,
+auth convention, and the #243→#244 mis-merge). Four more groups + two shared
+modules the gate forced out, all guard-verified at 213 byte-identical.
+
+### Groups extracted
+- **`social-generator.js` (#247)** — 6 handlers + moved `ensureSocialPostsTable`
+  (its boot-time table init moved with it; fires on import). Best cross-module
+  stress test so far: this router reaches into **seven** prior modules — `x`
+  (publish-x), `images` (social image gen), `streams`, `llm`, `db`, `auth`,
+  `llm-json`. The dependency graph between extracted modules held.
+- **`campaign.js` (#248)** — 9 handlers, **per-route auth** (mixed group: public
+  `GET /:id`). Moved `enrichAngleForCampaign`; `generateArticleImage` rode along
+  as an inner closure. Surfaced a shared table helper → `content-table.js`.
+- **`topic-ideas.js` (#249)** — 5 handlers, the cleanest extraction of the whole
+  effort: contiguous, uniform auth, `pool`-only, zero local-helper blockers,
+  clean on the first lint pass.
+- **`precog.js` (#250)** — 5 handlers (scorer + reads), `pool` + `verifyBrandAccess`.
+
+### Shared modules the no-undef gate surfaced
+- **`streams.js`** (#245) — the `globalThis`-backed `activeStreams` SSE registry,
+  shared between email-campaign and (still-inline-then) social-generator.
+- **`content-table.js`** (#248) — `ensureGeneratedContentTable`, the idempotent
+  per-brand `generated_content_<id>` schema helper, shared by the content-generator
+  route (still in server.js) and campaign generate.
+
+Both are the same pattern: a route move surfaces shared state/helpers that can't
+live in either router, so they become their own small module both import. In each
+case a naive move would've left an undefined reference — caught at lint, not on
+deploy. The gate has now justified itself repeatedly on route groups, not just
+helper cuts.
+
+### Lesson: prompt-template literals break naive boundary detection
+
+The campaign `generate` handler and `enrichAngleForCampaign` contain prompt
+template literals with `}` at **column 0** (JSON examples inside the prompt). My
+build script's "function ends at the first `^}`" detection cut one short
+mid-build, stranding the tail and producing a syntax error. `node --check` caught
+it immediately; restored from git, re-cut using **next-statement boundary
+detection** (a block ends right before the next top-level `app.`/`function`/etc.,
+not at a naive brace). This is now the default for route extractions. Twice this
+session a scripting slip was caught by `node --check` before anything shipped —
+the verify-before-commit discipline is doing real work.
+
+### Publishing: deferred to last (deliberate)
+
+Scoped `/api/publishing/*` and pushed back on doing it next: **22 routes scattered
+across the whole file (943→11570), mixed auth, and a 1,138-line `publish`
+dispatcher** (inline per-channel logic for LinkedIn/X/Reddit/Facebook/Ghost/Medium/
+My Website) + a `pipedreamProxy` helper. It's the single most entangled group and
+the one where a slip eventually means broken publishing in prod. Brian's call:
+defer it to last (do it — likely split into queue / channels / dispatcher
+sub-routers — when the surrounding dep web is smallest), and take cleaner groups
+first. Logged so the next session doesn't re-scope it from scratch.
+
+### Net state
+
+`development` has 6 route modules (compliance, email-campaign, social-generator,
+campaign, topic-ideas, precog) + 2 shared modules (streams, content-table) on top
+of the ~18 helper modules. Route count 213 (snapshot-locked). server.js is
+materially lighter. No production-lane changes this stretch.
+
+### What's next
+
+The clean contiguous groups are exhausted; the remainder lean scattered/mixed and
+need multi-span + per-route handling: `/api/analytics` (11), `/api/content` (6,
++`requireApiKeyScope`), `/api/context-hub` (5), `/api/geo-strategist` (3). Then the
+zernio subsystem (one module across 4 prefixes), and publishing last.
+
+---
+
 ## 2026-06-06 (cont.) — route-group phase: mount-aware guard, first 2 routers, a mis-merge caught
 
 The decomposition crossed a threshold: from extracting helpers to extracting

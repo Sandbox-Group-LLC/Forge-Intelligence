@@ -10,25 +10,34 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
-### 2026-06-06 (cont.) — route-group surgery begins (2 groups) + a mis-merge recovery
+### 2026-06-06 (cont.) — route-group surgery: 6 groups extracted + 2 shared modules
 
-The decomposition crossed from helpers into **route GROUPS**: handlers move into `src/server/routes/*.js` mounted via `app.use('/prefix', router)`, with the guard reconstructing full paths so the snapshot stays byte-identical.
+The decomposition crossed from helpers into **route GROUPS**: handlers move into `src/server/routes/*.js` mounted via `app.use('/prefix', router)`, with the guard reconstructing full paths so the snapshot stays byte-identical (213 throughout).
 
-- **Guard mount-prefix (#242)** — taught `test/route-inventory.mjs` to resolve `app.use('/prefix', router)` mounts: reads the router module and prefixes its `router.METHOD('/sub')` as `/prefix/sub`. No-op until routers exist (snapshot stayed 213). Pure core `resolveRoutes()` + helpers, unit-tested.
-- **`/api/compliance/*` (#243 → recovered as #244)** — first router. 8 handlers + the compliance-only `ensureComplianceColumns` → `routes/compliance.js`, mounted `app.use('/api/compliance', requireAuth, complianceRouter)`. Every dep already extracted; zero new coupling.
-- **`/api/email-campaign/*` (#245)** — 9 handlers → `routes/email-campaign.js`. Surfaced + fixed a shared `globalThis` SSE registry → **`streams.js`** (`activeStreams`), shared with the still-inline social-generator handler. The **no-undef gate caught it** — a naive move would've left an undefined `activeStreams` (silent SSE break on deploy).
+- **Guard mount-prefix (#242)** — taught `test/route-inventory.mjs` to resolve `app.use('/prefix', router)` mounts: reads the router module and prefixes its `router.METHOD('/sub')` as `/prefix/sub`. Pure core `resolveRoutes()` + helpers, unit-tested. (Bare `/api/x` route → `router.METHOD('/')`.)
 
-**Mis-merge recovery (#243 → #244).** #243 was opened stacked on the #242 branch, then retargeted to `development`. The retarget didn't take before merge, so #243 merged back into the already-shipped #242 branch — **compliance never reached `development`.** Caught it (the `routes/` dir was missing on dev), re-landed via #244. **Lesson: after retargeting a stacked PR's base, RE-READ the PR to confirm the flip — `update_pull_request` returning success is not proof.**
+**6 route groups extracted → `src/server/routes/`:**
+- `compliance.js` (#243→#244, 8 routes) + moved `ensureComplianceColumns`
+- `email-campaign.js` (#245, 9) — surfaced shared SSE registry → **`streams.js`** (`activeStreams`)
+- `social-generator.js` (#247, 6) + moved `ensureSocialPostsTable`; reaches into 7 prior modules (x/images/streams/llm/db/auth/llm-json)
+- `campaign.js` (#248, 9, **per-route** auth) + moved `enrichAngleForCampaign`; surfaced shared table helper → **`content-table.js`** (`ensureGeneratedContentTable`)
+- `topic-ideas.js` (#249, 5) — cleanest, pool-only
+- `precog.js` (#250, 5)
 
-#### Router auth convention (set this phase)
-- **Router-level** `requireAuth` (`app.use('/prefix', requireAuth, router)`) when **all** routes in the group are authed — compliance, email-campaign.
-- **Per-route** auth when **mixed** — e.g. zernio's `GET /api/zernio/connect/:platform` (OAuth redirect, unauthed) and geo-strategist's `GET /briefs/:id` (unauthed). Those groups keep per-route middleware and mount without auth.
+**2 shared modules** the no-undef gate forced into the open: `streams.js` (globalThis SSE Map shared with still-inline handlers), `content-table.js` (per-brand `generated_content_<id>` schema helper, shared by content-generator + campaign). Naive moves would've left undefined refs → silent deploy breaks. Gate caught both.
 
-#### What's next (route groups)
-- **`/api/social-generator/*`** (6) — uniform auth; now imports the landed `streams.js`. Natural next.
-- **`/api/publishing/*`** (22) — biggest single group.
+#### Router auth convention
+- **Router-level** `requireAuth` when **all** routes are authed (compliance, email-campaign, social-generator, topic-ideas, precog).
+- **Per-route** auth when **mixed** (campaign has a public `GET /:id`; mount without auth, keep per-route middleware).
+
+#### Lessons logged this phase
+- **Mis-merge (#243→#244):** a stacked PR's base retarget didn't take before merge → compliance landed on the wrong branch, never reached `development`. Caught (missing `routes/` dir), re-landed. **Re-read a retargeted PR to confirm the base flipped; prefer branching the child fresh off `development` over deep stacks.**
+- **Prompt-template boundary hazard:** the campaign/social handlers contain template literals with `}` at column 0, which broke naive "first `^}`" function-end detection mid-build (caught by `node --check`, restored from git, re-cut). **Default to next-statement boundary detection for route extractions, not brace-matching.**
+
+#### What's next (route groups) — the remaining are the hard ones
+- **Publishing DEFERRED to last** (Brian's call): 22 routes scattered 943→11570, mixed auth, a **1,138-line `publish` dispatcher** + `pipedreamProxy`. Do it (likely split) when the dep web is smallest.
+- Remaining lean scattered/mixed → multi-span + per-route care: `/api/analytics` (11, mixed), `/api/content` (6, scattered+mixed+`requireApiKeyScope`), `/api/context-hub` (5, scattered+mixed), `/api/geo-strategist` (3, mixed).
 - **zernio subsystem pass** — ~15 routes across 4 prefixes (`/api/zernio`, `/auth/zernio`, `/integrations/zernio`, `/api/admin/zernio`) + mixed auth → one dedicated module, not piecemeal.
-- **`/api/geo-strategist/*`** (3) — small, mixed auth → per-route.
 
 ---
 
