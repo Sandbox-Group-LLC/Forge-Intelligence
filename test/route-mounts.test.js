@@ -25,6 +25,25 @@ describe('parseImports / parseMounts', () => {
     expect(parseMounts(`app.use('/api/compliance', requireAuth, compliance);`))
       .toEqual([{ prefix: '/api/compliance', ident: 'compliance' }]);
   });
+
+  it('parses the combined `import Default, { Named } from` form (both sides)', () => {
+    const m = parseImports(`import pubRouter, { runScheduledPublishes } from './src/server/routes/publishing-publish.js';`);
+    expect(m.pubRouter).toBe('./src/server/routes/publishing-publish.js');         // default
+    expect(m.runScheduledPublishes).toBe('./src/server/routes/publishing-publish.js'); // named
+  });
+
+  it('a combined-import router still resolves through resolveRoutes (regression for #260)', () => {
+    const server = `
+      import publishRouter, { runScheduledPublishes } from './src/server/routes/publishing-publish.js';
+      app.use('/api/publishing', publishRouter);
+      runScheduledPublishes();
+    `;
+    const router = `const router = express.Router(); router.post('/publish', h); router.post('/generate-post-copy', h);`;
+    expect(resolveRoutes(server, () => router)).toEqual([
+      'POST /api/publishing/generate-post-copy',
+      'POST /api/publishing/publish',
+    ]);
+  });
 });
 
 describe('resolveRoutes — mount-prefix resolution', () => {
