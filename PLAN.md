@@ -1,3 +1,119 @@
+## 2026-06-06 — decomposition Stage 2 continues: 5 more cuts + 3 production fixes
+
+Continuation of the `server.js` dismemberment (see the 2026-06-05 entry for the
+method + safety net). Same discipline throughout: every extraction is a pure
+move verified by `node --check` + ESLint `no-undef` + the route-inventory guard
++ vitest before commit; bug fixes go in their own scoped PRs, never folded into
+a move. Brian merged fast and clean the whole way.
+
+### Extractions (→ `development`)
+
+- **`x.js` (#224)** — the three X/Twitter primitives `buildXOAuthHeader`,
+  `uploadXMedia`, `refreshXOAuth2Token`. Zero coupling to the rest of the
+  monolith (only `crypto` + Node globals). `buildGhostJWT` left for its own cut.
+- **`images.js` (#225)** — `buildImagePrompt`/`generateHeroImage` (16:9) +
+  `buildSocialImagePrompt`/`generateSocialImage` (1:1) + the shared, private
+  `HERO_IMAGE_NEGATIVE_PROMPT`. Only non-global dep is the `anthropic` client,
+  imported from the already-extracted `llm.js` — first module-to-module import,
+  proof the dependency graph between extracted modules holds.
+- **`text.js` grew (#232)** — added `quickStartTruncate` (18 refs) +
+  `stripScaffoldingArtifacts` (5 refs) rather than spawning a new module.
+  Consolidating the text/cleanup family beats module sprawl.
+- **`marketing.js` (#233)** — the public SSR cluster (FAQ_PAIRS, FAQ_BODY_HTML,
+  FAQ_JSON_LD, MARKETING_META, ORG/WEBSITE JSON-LD, DEFAULT_OG_IMAGE,
+  renderMarketingPage). ~159 lines, pure static templating. Only MARKETING_META
+  + renderMarketingPage exported; everything else was def + a single in-cluster
+  use, so it stayed private.
+- **`citations.js` (#234)** — `findCitationSources` (Perplexity Sonar
+  source-research) + private `LOW_QUALITY_CITATION_DOMAINS`. Imports `pool`.
+
+That's **16 modules out** (14 files; `text` grew): db, llm-json, utm, text,
+auth, zernio, scrape, llm, logging, lovable, x, images, marketing, citations.
+
+### Three production fixes, both lanes (`features` → prod + `development` mirror)
+
+**1. fal.ai image quality + timeout (#226/#227).** Two issues in the image
+generators. (a) `expand_prompt: true` handed our carefully brand-voice-tuned
+prompt (built by a dedicated Haiku call with explicit anti-AI-stock + don't-
+take-the-brand-name-literally constraints) to Ideogram's MagicPrompt, which
+**rewrites it before generation** and re-injects the exact generic aesthetic we
+excluded. Flipped to `false` — likely the root of the "weird image" complaints.
+(b) Bare `fetch()` with no ceiling → added `AbortSignal.timeout(60000)`. Left
+the hero/social generator duplication alone per Brian (social output's been
+excellent — don't fix what isn't broken).
+
+**2. JWT clock skew (#229/#230) — a good diagnosis story.** Compliance Gate
+showed "Invalid token" then approved the article anyway after a wait, error
+banner lingering next to the green checkmark. First hypothesis (a broken Clerk
+`jwt-template-600` template) was **wrong** — Brian checked, template healthy.
+The tell: the *same request path succeeded on retry*. A wrong signing key or
+JWKS URL fails every time and never self-heals; only **expiry** does. So the
+token was occasionally already-expired at verify time, made worse by (a) jose's
+zero default clock tolerance and (b) a frontend retry that replayed the
+*cached* near-expired token (its comment claimed "forced fresh token" but it
+wasn't). Fix: `clockTolerance: '30s'` on all 7 `jwtVerify` sites + retry now
+`getToken({ template, skipCache: true })` + clear the banner on submit start.
+**Lesson logged: self-healing-on-retry ⇒ expiry, not signature/JWKS. Don't
+chase the config; check the clock.**
+
+**3. Citation recency filter (#235/#236) — the citation bug Brian was hitting.**
+`findCitationSources` hardcoded `search_recency_filter: 'year'` on **every**
+Sonar query. But the function classifies claims and the system prompt says
+"older sources are acceptable for definitional or historical claims" — the
+unconditional 1-year filter stripped exactly those older authoritative sources
+before the domain logic saw them, so definitional/historical/statistical claims
+came back weak or empty ("No credible sources found"). Scoped the filter to
+**trend claims only** (reused `isTrendClaim`), added `AbortSignal.timeout(45000)`,
+and fixed a 429-exhaustion path that mislabeled itself "timed out." Held back a
+`search_results → citations[]` response-shape fallback (would be coding against
+an unverified format). **Lesson logged: an API parameter that silently
+contradicts your own prompt logic is worse than no parameter — gate
+time-window filters on claim type.**
+
+### CI gate promoted to the production lane (#222)
+
+The 2026-06-05 entry flagged that `features`/`main` CI only ran `node --check` +
+`typecheck`. Closed that: `features` now runs the ESLint `no-undef` gate too
+(route guard + vitest were already present). The gate's `lint` script there
+omits the `src/server/**` glob — those modules don't exist on the inline-
+monolith lane yet, and ESLint v9 errors on a zero-match glob. Restore the glob
+when the decomposition reaches `main`.
+
+### Recurring patterns logged
+
+- **Module-to-module imports are fine and expected.** `images.js` importing
+  `anthropic` from `llm.js` (and `citations.js`/`zernio.js` importing `pool`
+  from `db.js`) is the shape we want — extracted modules depend on extracted
+  modules, not back on the monolith.
+- **"Anything stupid in there?" reviews keep paying off.** Each of the three
+  prod fixes started as a Brian "did you see anything dumb?" on a freshly-
+  extracted module. Reading code closely enough to move it is reading it
+  closely enough to find the latent bug.
+- **Decode the artifact before trusting it.** The first "error" pasted for the
+  JWT bug was a LinkedIn Insight Tag click-beacon failing (`liFatId`/`hem`/
+  `WebsiteActions`), not the API call — a red herring. Gunzip-and-read saved a
+  wrong-direction chase. (Also surfaced: that marketing pixel is live *inside*
+  the authed app capturing click + hashed-email data — flagged to Brian.)
+- **Stacked-PR base flips are manual.** Dev-mirror PRs opened against an
+  extraction branch (so the diff is just the fix) do NOT auto-retarget to
+  `development` when the extraction merges if the branch isn't deleted —
+  `update_pull_request` the base by hand (did this for #219, #236).
+
+### Net state
+
+All PRs merged. Prod (`main` via `features`) has all three fixes live;
+`development` holds the full refactor (16 modules) + every fix, ready for the
+next `development → main` rollup. Route count still 213 (snapshot-locked).
+
+### What's next
+
+- Thin leaves remaining: `normalizeGeoData`, `buildGhostJWT`, `PROMO_CODES`.
+- Then **route GROUPS** — the structural payoff and first non-leaf step. Teach
+  the route-inventory guard mount-prefix resolution (`app.use('/prefix',
+  router)`) FIRST so full paths still verify, then move handlers behind routers.
+
+---
+
 ## 2026-06-05 — server.js decomposition (Stage 2): the dismemberment + two latent bug fixes
 
 The "doctor work." `server.js` had grown to ~19.8K lines and 214 routes — a
@@ -141,6 +257,50 @@ modules) + both fixes, ready for the `development → main` rollup.
 - Promote the full CI gate (lint + vitest + route guard) to `features`/`main`.
 
 ---
+
+## 2026-05-10 → 2026-05-23 — Stage 1 rebuild + My Website + /docs + X OAuth migration
+
+~14 days, ~222 commits across 30+ PRs. Multi-session arc; Brian + Claude (full-stack).
+
+#### Major shipments — themed, biggest first
+
+**Stage 1 (Context Hub crawl) rebuilt end-to-end.** Single biggest piece of work. Old Stage 1 was raw `fetch()` with UA rotation, no anti-bot, no JS render, 3 KB body cap per page — silently returned SPA shells on most modern customer sites and built brand profiles off meta tags + JSON-LD alone. New Stage 1 is **Jina Reader primary + `forgeScrape` (BD Tier 1 → Tier 2) fallback**, with parallel page fetches, sitemap.xml-aware discovery, anchor-only link extraction. Wall-clock cut from ~60 s sequential to ~15–20 s parallel; brand profiles now capture full pricing pages, blog catalogs, security whitepapers. Real-world validation on sandbox-gtm.com produced a richer v9 profile than v8 had any way to. PRs #103–#110.
+
+**`forgeScrape` primitive.** Single source of truth for any Bright Data scraping. Tier 1 = Web Unlocker, Tier 2 = Scraping Browser (puppeteer-core CDP, real Chromium, residential IPs) auto-fires when Tier 1 returns a SPA shell. Extracts content via Mozilla Readability + Turndown locally — no second API call. Used by Stage 1 + Site Template. Every call logs to `scrape_log` with `caller` set for audit. Honest extraction metric replaces "0/10 class names found" with "regions located via any signal" (class, data-testid, semantic landmark, content match).
+
+**My Website channel.** New self-hosted webhook publisher. Customers publish Forge articles to their own sites via authenticated webhook with Forge-issued `forge_pub_<32hex>` bearer token. Backend: 4 admin endpoints (config / generate-token / test / disconnect) + publish-handler branch. Frontend: `<MyWebsiteForm>` with URL input, format toggle (HTML/Markdown/both), show-once token reveal, test-publish button. Sandbox-GTM is the guinea pig (Render + Neon, same stack as Forge) — receiver wired and validated end-to-end. PRs #117–#122.
+
+**`/docs` page goes live.** Public route, syntax-highlighted markdown, sidebar grouped by category. First entry is My Website Integration with copy-paste receivers (Node/Express + Postgres, Next.js App Router, filesystem). **Share With AI** button on every doc downloads markdown + a framing preamble for Claude/ChatGPT/Cursor. PRs #120, #123–#125, #134.
+
+**`article_base_url` respected everywhere.** Five publish handlers (Facebook x3, Reddit, Medium) + My Website canonical were rebuilding URLs from `BASE_DOMAIN + brandSlug + articleSlug` instead of brand-aware `forgeArticleUrl`. PR #121 unified all six. PR #123 also adds an explicit "Where will my articles live?" Brand Settings callout.
+
+**Markdown leak fix on social copy.** Facebook + LinkedIn posts going out with literal `#` headings and `**bold**` markers — Haiku was writing markdown by default. PR #115 adds `stripSocialMarkdown()`, updates Facebook prompts to request plain text, applies the strip at 6 sites. Reddit left intact (renders MD natively).
+
+**X (Twitter) OAuth migrated to x.com.** Forge was sending to `twitter.com/i/oauth2/authorize`; domain-migration redirect chain broke the login cookie → infinite "to use this App you have to be logged in" loop in fresh browsers. PR #132 swaps authorize + both token-exchange URLs to `x.com` / `api.x.com`. Runtime API endpoints (tweets, users/me, media-upload) left on `api.twitter.com` — working today via compat redirects.
+
+**Auth-expired = Reconnect, not Reset & Retry.** PR #130 detects auth-expired patterns in `publish_log.error_message`, swaps the button for an amber "Reconnect [Channel] →" link, surfaces non-auth error messages directly.
+
+**Facebook analytics URN bug** + one-shot backfill admin endpoint (PRs #111–#113). 2 historical Sandbox-GTM posts cleanly mapped + backfilled.
+
+**Zernio dual-ID system landed** (5/10). LinkedIn analytics uses `zernioPostId` with legacy fallback; 14 historical LinkedIn posts backfilled via `/api/admin/zernio/raw`.
+
+**Other notable**: Lovable integration + Build button (5/12); Quick Start no-website onramp (5/12); X v2 media upload fix (5/13); Regenerate Arcs (5/13); Vite 5→8 + Clerk/postcss security patches (5/13); GFM table rendering (5/15); `/api/admin/mark-unpublished` (5/17); GitNexus context files committed — aspirational without live MCP runtime in cloud sessions (5/21); `SESSION-PROTOCOL.md` refreshed + moved to repo root (5/22); topbar alerts bell + Get Help form (5/23).
+
+#### State of key surfaces (end of period)
+
+- **Stage 1 (Context Hub crawl):** Jina-first, forgeScrape fallback, parallel discovery. Reads full sites including SPAs.
+- **Site Template:** Same `forgeScrape` primitive, same Tier 2 fallback. Grades by content + structural selectors.
+- **Publishing channels live:** LinkedIn (Zernio), X (OAuth2, x.com migrated), Facebook (Zernio + Pipedream), Reddit (Zernio), Medium, Ghost, WordPress, Webflow, **My Website (new)**. HubSpot stripped per 5/9.
+- **`/docs` surface:** Live at `forgeintelligence.ai/docs/my-website`. Share With AI on every entry.
+- **GitNexus index:** 2,818 nodes / 3,968 edges / 61 clusters / 129 flows.
+
+#### What's next (from that period — superseded items pruned)
+
+- **Watch X OAuth in the wild** — if runtime API calls start failing the same way, apply the domain swap to those endpoints too.
+- **My Website rollout copy** — landing page, email blast, in-app announcement. Feature exists + documented; awareness is the remaining gap.
+
+_(Archived from WORKING-STATE.md on 2026-06-06 to keep the live pointer under its line cap.)_
+
 
 ## 2026-05-13 (late PT) — Social Generator regenerate-arcs + X v2 media upload fix
 
