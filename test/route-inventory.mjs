@@ -49,8 +49,11 @@ export function joinPath(prefix, sub) {
 // Handles `import X from './a.js'` and `import { X, Y as Z } from './b.js'`.
 export function parseImports(src) {
   const map = {};
-  for (const m of src.matchAll(/import\s+(\w+)\s+from\s+['"](\.[^'"]+)['"]/g)) map[m[1]] = m[2];
-  for (const m of src.matchAll(/import\s*\{([^}]+)\}\s*from\s+['"](\.[^'"]+)['"]/g)) {
+  // Default import — also handles the combined `import X, { … } from '…'` form
+  // (the optional `, { … }` is consumed so X is still captured).
+  for (const m of src.matchAll(/import\s+(\w+)\s*(?:,\s*\{[^}]*\})?\s*from\s+['"](\.[^'"]+)['"]/g)) map[m[1]] = m[2];
+  // Named imports — optional leading `Default,` before the brace (combined form).
+  for (const m of src.matchAll(/import\s+(?:\w+\s*,\s*)?\{([^}]+)\}\s*from\s+['"](\.[^'"]+)['"]/g)) {
     for (const part of m[1].split(',')) {
       const name = part.trim().split(/\s+as\s+/).pop().trim();
       if (name) map[name] = m[2];
