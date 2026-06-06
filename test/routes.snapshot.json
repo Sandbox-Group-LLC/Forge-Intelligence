@@ -183,8 +183,6 @@
   "POST /api/precog/score",
   "POST /api/promo/validate",
   "POST /api/publishing/backfill-queue",
-  "POST /api/publishing/backfill-queue",
-  "POST /api/publishing/backfill-queue",
   "POST /api/publishing/channels",
   "POST /api/publishing/channels/reddit/allowed-subreddits",
   "POST /api/publishing/generate-post-copy",
