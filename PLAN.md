@@ -1,3 +1,67 @@
+## 2026-06-06 (cont.) — route-group phase pt.3: groups 7–11, the hard tier (publishing only remains)
+
+Finished the non-publishing route groups. After the clean contiguous ones (pt.2),
+the remainder were scattered + mixed-auth — handled with multi-span collection +
+per-route auth. All guard-verified at 213 byte-identical throughout.
+
+### Groups 7–11
+- **`geo-strategist.js` (#252)** — 3 routes, mixed auth (public `briefs/:id`). Warm-up
+  for the per-route pattern; `normalizeGeoData` was already in `geo.js`.
+- **`analytics.js` (#253)** — the biggest: **11 routes scattered across 2811→14106
+  (1,395 lines)** + the analytics-only `refreshGSCToken`. Mixed auth — 2 "open"
+  routes do the cron-bypass-OR-Clerk pattern inline (`jwtVerify`). Pulls analytics
+  from X / Ghost / Zernio, so it reaches into `zernio`/`x`/`ghost` + `auth`
+  (`clerkJWKS`) + `jose`. The gate caught FOUR missed imports here.
+- **`context-hub.js` (#254)** — 5 routes (Stage 1 crawl) + the 193-line
+  `handleQuickStartSynthesis`. Lighter than feared because the crawl already
+  delegates to the extracted `scrape.js`. `domainToName` turned out to be two
+  independent inner closures (no shared blocker).
+- **`content.js` (#255)** — 6 scattered routes, mixed + the dual-middleware
+  `import` route (`requireAuth` + `requireApiKeyScope`). Verified the segment-
+  boundary mount does NOT swallow `/api/content-library` / `/api/content-generator`
+  (different prefixes, left inline).
+- **zernio subsystem (#256)** — 10 of 14 routes across 2 files: `zernio.js`
+  (`/api/zernio`, 3, mixed) + `zernio-admin.js` (`/api/admin/zernio`, 7, all
+  `zernioGuard`-gated). The 2 OAuth callbacks (odd single-prefixes, different
+  logic) + 2 `/api/admin/backfill-*-zernio-ids` (admin-lane) left inline.
+
+### Practices that hardened this tier
+- **Guard scans one `express.Router()` per file.** `routerVar()` finds the first
+  `const x = express.Router()` and scans only it — so two routers can't share a
+  module (drove the zernio 2-file split), and one router can't mount at two
+  prefixes (double-counts). One router file, one mount. Flagged before cutting
+  zernio and chose the structure with Brian rather than fight the guard.
+- **Boot-load test.** Started `import()`-ing each new module in CI-of-one before
+  commit. `node --check` (syntax) and ESLint `no-undef` (static) both MISS a
+  missing *named* export (`import { x }` where `x` isn't exported) — that throws
+  only at module load. The bigger scattered modules (analytics, context-hub)
+  reach into many siblings, so a boot-load check is the only thing that catches a
+  typo'd or non-existent named import. Caught nothing bad (the gate had already
+  surfaced the imports) but it's the right backstop.
+- **Next-statement boundary detection** (not brace-matching) is now standard, after
+  the prompt-template `}`-at-col-0 hazard from pt.2. Held up across all 5 groups.
+- **Mixed-auth `xform`** keeps the middleware list intact (preserves `requireAuth`,
+  `requireApiKeyScope(...)`, `softAuth`, or none) and only rewrites
+  `app.METHOD('/prefix/x'` → `router.METHOD('/x'`.
+
+### Net state
+
+`development` now has **11 route groups (13 route files) + ~20 helper/shared
+modules**. Route count 213 (snapshot-locked the entire phase). server.js is down
+to: the publishing subsystem, the `/api/admin/*` mass, assorted singletons (the 2
+zernio callbacks, content-library/generator, etc.), boot/middleware wiring, and
+the inline-jwtVerify handlers. No production-lane changes this stretch.
+
+### What's next — PUBLISHING, the finale
+
+`/api/publishing/*` is all that's left of the planned groups. Deferred deliberately
+(most entangled: ~22 scattered routes, mixed auth, a ~1,138-line `publish`
+dispatcher with inline per-channel logic + `pipedreamProxy`). **Re-scope first** —
+its neighborhood shifted as everything else moved out — then decide split (queue /
+channels / dispatcher sub-routers) vs one PR before cutting.
+
+---
+
 ## 2026-06-06 (cont.) — route-group phase pt.2: groups 3–6 + 2 shared modules + publishing deferred
 
 Continued the route-group extractions (see the prior entry for the guard design,

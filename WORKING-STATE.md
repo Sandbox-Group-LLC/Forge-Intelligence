@@ -10,34 +10,28 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
-### 2026-06-06 (cont.) — route-group surgery: 6 groups extracted + 2 shared modules
+### 2026-06-06 (cont.) — route-group surgery: 11 groups extracted (publishing only remains)
 
-The decomposition crossed from helpers into **route GROUPS**: handlers move into `src/server/routes/*.js` mounted via `app.use('/prefix', router)`, with the guard reconstructing full paths so the snapshot stays byte-identical (213 throughout).
+The decomposition crossed from helpers into **route GROUPS**: handlers move into `src/server/routes/*.js` mounted via `app.use('/prefix', router)`, the guard reconstructing full paths so the snapshot stays byte-identical (**213 throughout**). Pattern: collect each handler's span (next-statement boundaries), move verbatim, `xform` the registration line (`app.METHOD('/prefix/x', …)` → `router.METHOD('/x', …)`), re-import deps from already-extracted modules. Verify `node --check` + lint + boot-load (`import()`) + route guard + vitest.
 
-- **Guard mount-prefix (#242)** — taught `test/route-inventory.mjs` to resolve `app.use('/prefix', router)` mounts: reads the router module and prefixes its `router.METHOD('/sub')` as `/prefix/sub`. Pure core `resolveRoutes()` + helpers, unit-tested. (Bare `/api/x` route → `router.METHOD('/')`.)
+**11 route groups → `src/server/routes/` (13 files):**
+- `compliance.js` (#243→#244, 8) +`ensureComplianceColumns` · `email-campaign.js` (#245, 9) · `social-generator.js` (#247, 6) +`ensureSocialPostsTable` · `campaign.js` (#248, 9) +`enrichAngleForCampaign` · `topic-ideas.js` (#249, 5) · `precog.js` (#250, 5) · `geo-strategist.js` (#252, 3) · `analytics.js` (#253, **11**, +`refreshGSCToken`) · `context-hub.js` (#254, 5) +`handleQuickStartSynthesis` · `content.js` (#255, 6) · **zernio** (#256, 10 → `zernio.js` + `zernio-admin.js`)
 
-**6 route groups extracted → `src/server/routes/`:**
-- `compliance.js` (#243→#244, 8 routes) + moved `ensureComplianceColumns`
-- `email-campaign.js` (#245, 9) — surfaced shared SSE registry → **`streams.js`** (`activeStreams`)
-- `social-generator.js` (#247, 6) + moved `ensureSocialPostsTable`; reaches into 7 prior modules (x/images/streams/llm/db/auth/llm-json)
-- `campaign.js` (#248, 9, **per-route** auth) + moved `enrichAngleForCampaign`; surfaced shared table helper → **`content-table.js`** (`ensureGeneratedContentTable`)
-- `topic-ideas.js` (#249, 5) — cleanest, pool-only
-- `precog.js` (#250, 5)
+**Shared modules the no-undef gate forced out:** `streams.js` (globalThis SSE registry), `content-table.js` (`ensureGeneratedContentTable`). Naive moves would've left undefined refs → silent deploy breaks; gate caught both (and `fs`/`path`/`randomUUID`/`jwtVerify`/`clerkJWKS`/etc. on the bigger handlers).
 
-**2 shared modules** the no-undef gate forced into the open: `streams.js` (globalThis SSE Map shared with still-inline handlers), `content-table.js` (per-brand `generated_content_<id>` schema helper, shared by content-generator + campaign). Naive moves would've left undefined refs → silent deploy breaks. Gate caught both.
-
-#### Router auth convention
-- **Router-level** `requireAuth` when **all** routes are authed (compliance, email-campaign, social-generator, topic-ideas, precog).
-- **Per-route** auth when **mixed** (campaign has a public `GET /:id`; mount without auth, keep per-route middleware).
+#### Conventions + guard constraints (load-bearing)
+- **Auth:** router-level `requireAuth` when ALL routes authed; **per-route** when mixed (open OAuth/cron/public reads) — mount without auth, keep per-route middleware.
+- **Guard scans ONE `express.Router()` var per file** — two routers can't share a module (zernio → 2 files). Mounting one router at two prefixes double-counts. One router file, one mount.
+- **Mounts match on segment boundaries** — `app.use('/api/content', …)` does NOT capture `/api/content-library`/`-generator` (verified they stayed inline).
+- **Boundary detection:** next-statement, NOT "first `^}`" — prompt template literals have `}` at column 0 (would truncate a function mid-build).
 
 #### Lessons logged this phase
-- **Mis-merge (#243→#244):** a stacked PR's base retarget didn't take before merge → compliance landed on the wrong branch, never reached `development`. Caught (missing `routes/` dir), re-landed. **Re-read a retargeted PR to confirm the base flipped; prefer branching the child fresh off `development` over deep stacks.**
-- **Prompt-template boundary hazard:** the campaign/social handlers contain template literals with `}` at column 0, which broke naive "first `^}`" function-end detection mid-build (caught by `node --check`, restored from git, re-cut). **Default to next-statement boundary detection for route extractions, not brace-matching.**
+- **Mis-merge (#243→#244):** a stacked PR's base retarget didn't take before merge → compliance never reached `development`. Re-read a retargeted PR to confirm the flip; prefer branching the child fresh over deep stacks.
+- **Boot-load test** (`import()` the new module) catches a missing **named** export — which `node --check` + lint can't (it crashes at startup). Standard for the bigger scattered modules now.
 
-#### What's next (route groups) — the remaining are the hard ones
-- **Publishing DEFERRED to last** (Brian's call): 22 routes scattered 943→11570, mixed auth, a **1,138-line `publish` dispatcher** + `pipedreamProxy`. Do it (likely split) when the dep web is smallest.
-- Remaining lean scattered/mixed → multi-span + per-route care: `/api/analytics` (11, mixed), `/api/content` (6, scattered+mixed+`requireApiKeyScope`), `/api/context-hub` (5, scattered+mixed), `/api/geo-strategist` (3, mixed).
-- **zernio subsystem pass** — ~15 routes across 4 prefixes (`/api/zernio`, `/auth/zernio`, `/integrations/zernio`, `/api/admin/zernio`) + mixed auth → one dedicated module, not piecemeal.
+#### What's next — only PUBLISHING remains
+- **`/api/publishing/*`** — the finale, deferred deliberately: ~22 routes scattered, mixed auth, a ~1,138-line `publish` dispatcher + `pipedreamProxy`. **Re-scope before cutting** (its neighborhood shifted as routes moved out); decide split (queue / channels / dispatcher) vs one PR.
+- Left inline on purpose: zernio's 2 OAuth callbacks (odd single-prefixes) + 2 `/api/admin/backfill-*-zernio-ids` (admin-lane); the `/api/admin/*` mass; `/api/content-library` + `/api/content-generator`.
 
 ---
 
