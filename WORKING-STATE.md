@@ -10,117 +10,60 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
-### 2026-05-10 → 2026-05-23 — Stage 1 rebuild + My Website + /docs + X OAuth migration
+### 2026-06-06 — decomposition continues (5 more cuts) + 3 production fixes
 
-~14 days, ~222 commits across 30+ PRs. Multi-session arc; Brian + Claude (full-stack).
+Kept dismembering `server.js`, same pure-move discipline + CI safety net. **16 modules out now** (14 files; `text.js` grew):
 
-#### Major shipments — themed, biggest first
+- **`x.js`** (#224) — X/Twitter primitives: `buildXOAuthHeader`, `uploadXMedia`, `refreshXOAuth2Token`.
+- **`images.js`** (#225) — `buildImagePrompt`/`generateHeroImage` + `buildSocialImagePrompt`/`generateSocialImage` + private `HERO_IMAGE_NEGATIVE_PROMPT`; imports `anthropic` from `llm.js`.
+- **`text.js` grew** (#232) — added `quickStartTruncate` + `stripScaffoldingArtifacts` (consolidate, don't sprawl).
+- **`marketing.js`** (#233) — public SSR cluster: FAQ content, JSON-LD, `MARKETING_META`, `renderMarketingPage`. Static templating, fully self-contained.
+- **`citations.js`** (#234) — `findCitationSources` (Perplexity Sonar) + private `LOW_QUALITY_CITATION_DOMAINS`; imports `pool`.
 
-**Stage 1 (Context Hub crawl) rebuilt end-to-end.** Single biggest piece of work. Old Stage 1 was raw `fetch()` with UA rotation, no anti-bot, no JS render, 3 KB body cap per page — silently returned SPA shells on most modern customer sites and built brand profiles off meta tags + JSON-LD alone. New Stage 1 is **Jina Reader primary + `forgeScrape` (BD Tier 1 → Tier 2) fallback**, with parallel page fetches, sitemap.xml-aware discovery, anchor-only link extraction. Wall-clock cut from ~60 s sequential to ~15–20 s parallel; brand profiles now capture full pricing pages, blog catalogs, security whitepapers. Real-world validation on sandbox-gtm.com produced a richer v9 profile than v8 had any way to. PRs #103–#110.
+**Three production fixes, shipped both lanes (`features` → prod + `development` mirror):**
+- **fal.ai image quality** (#226/#227) — `expand_prompt: true → false` (MagicPrompt was rewriting our carefully-tuned prompts and re-injecting the AI-stock look — likely the "weird images" complaints) + `AbortSignal.timeout(60000)`.
+- **JWT clock skew** (#229/#230) — Compliance Gate "Invalid token" that self-healed on retry = **token expiry**, not the Clerk template (Brian confirmed template healthy). Added `clockTolerance: '30s'` to all 7 `jwtVerify` sites + frontend retry forces a fresh token (`skipCache: true`) + clears the stale banner.
+- **Citation recency** (#235/#236) — `findCitationSources` applied `search_recency_filter: 'year'` to **every** query, starving definitional/historical/statistical claims of the older authoritative sources the prompt explicitly allows. Now scoped to **trend claims only** + Sonar `AbortSignal.timeout(45000)` + honest 429 message. (Likely root of Brian's citation issues.)
 
-**`forgeScrape` primitive.** Single source of truth for any Bright Data scraping. Tier 1 = Web Unlocker, Tier 2 = Scraping Browser (puppeteer-core CDP, real Chromium, residential IPs) auto-fires when Tier 1 returns a SPA shell. Extracts content via Mozilla Readability + Turndown locally — no second API call. Used by Stage 1 + Site Template. Every call logs to `scrape_log` with `caller` set for audit. Honest extraction metric replaces "0/10 class names found" with "regions located via any signal" (class, data-testid, semantic landmark, content match).
-
-**My Website channel.** New self-hosted webhook publisher. Customers publish Forge articles to their own sites via authenticated webhook with Forge-issued `forge_pub_<32hex>` bearer token. Backend: 4 admin endpoints (config / generate-token / test / disconnect) + publish-handler branch. Frontend: `<MyWebsiteForm>` with URL input, format toggle (HTML/Markdown/both), show-once token reveal, test-publish button. Sandbox-GTM is the guinea pig (Render + Neon, same stack as Forge) — receiver wired and validated end-to-end. PRs #117–#122.
-
-**`/docs` page goes live.** Public route, syntax-highlighted markdown, sidebar grouped by category. First entry is My Website Integration with copy-paste receivers (Node/Express + Postgres, Next.js App Router, filesystem). **Share With AI** button on every doc downloads markdown + a framing preamble for Claude/ChatGPT/Cursor. PRs #120, #123–#125, #134.
-
-**`article_base_url` respected everywhere.** Five publish handlers (Facebook x3, Reddit, Medium) + My Website canonical were rebuilding URLs from `BASE_DOMAIN + brandSlug + articleSlug` instead of brand-aware `forgeArticleUrl`. PR #121 unified all six. PR #123 also adds an explicit "Where will my articles live?" Brand Settings callout.
-
-**Markdown leak fix on social copy.** Facebook + LinkedIn posts going out with literal `#` headings and `**bold**` markers — Haiku was writing markdown by default. PR #115 adds `stripSocialMarkdown()`, updates Facebook prompts to request plain text, applies the strip at 6 sites. Reddit left intact (renders MD natively).
-
-**X (Twitter) OAuth migrated to x.com.** Forge was sending to `twitter.com/i/oauth2/authorize`; domain-migration redirect chain broke the login cookie → infinite "to use this App you have to be logged in" loop in fresh browsers. PR #132 swaps authorize + both token-exchange URLs to `x.com` / `api.x.com`. Runtime API endpoints (tweets, users/me, media-upload) left on `api.twitter.com` — working today via compat redirects.
-
-**Auth-expired = Reconnect, not Reset & Retry.** PR #130 detects auth-expired patterns in `publish_log.error_message`, swaps the button for an amber "Reconnect [Channel] →" link, surfaces non-auth error messages directly.
-
-**Facebook analytics URN bug** + one-shot backfill admin endpoint (PRs #111–#113). 2 historical Sandbox-GTM posts cleanly mapped + backfilled.
-
-**Zernio dual-ID system landed** (5/10). LinkedIn analytics uses `zernioPostId` with legacy fallback; 14 historical LinkedIn posts backfilled via `/api/admin/zernio/raw`.
-
-**Other notable**: Lovable integration + Build button (5/12); Quick Start no-website onramp (5/12); X v2 media upload fix (5/13); Regenerate Arcs (5/13); Vite 5→8 + Clerk/postcss security patches (5/13); GFM table rendering (5/15); `/api/admin/mark-unpublished` (5/17); GitNexus context files committed — aspirational without live MCP runtime in cloud sessions (5/21); `SESSION-PROTOCOL.md` refreshed + moved to repo root (5/22); topbar alerts bell + Get Help form (5/23).
-
-#### Recurring patterns logged
-
-- **Build the primitive once, share it everywhere.** `forgeScrape` replaced 3+ ad-hoc fetchers. The 6 channels that ignored `forgeArticleUrl` accumulated because each new channel re-derived from scratch instead of using the shared helper.
-- **Stdio MCP doesn't reach cloud sessions.** GitNexus is useful but its MCP transport is stdio-only — FleetView/cloud Claude Code can't connect to a remote install. Committed the context files as aspirational; the live graph tools are unavailable until either GitNexus ships HTTP/SSE MCP or FleetView gains custom-MCP support.
-- **Controlled test cases prevent wrong-direction guesses.** sandbox-gtm.com diagnostic loop (PRs #103–#110) was driven by one URL where Brian knew ground truth — saved several wrong-direction fixes.
-- **Error UIs must match the action that actually fixes the error.** "Reset & Retry" for auth-expired is dishonest; users need a Reconnect path with a real link.
-
-#### State of key surfaces (end of period)
-
-- **Stage 1 (Context Hub crawl):** Jina-first, forgeScrape fallback, parallel discovery. Reads full sites including SPAs.
-- **Site Template:** Same `forgeScrape` primitive, same Tier 2 fallback. Grades by content + structural selectors.
-- **Publishing channels live:** LinkedIn (Zernio), X (OAuth2, x.com migrated), Facebook (Zernio + Pipedream), Reddit (Zernio), Medium, Ghost, WordPress, Webflow, **My Website (new)**. HubSpot stripped per 5/9.
-- **`/docs` surface:** Live at `forgeintelligence.ai/docs/my-website`. Share With AI on every entry.
-- **Bootstrap files at repo root:** `CLAUDE.md`, `AGENTS.md`, `SESSION-PROTOCOL.md`, `WORKING-STATE.md`, `WHITEBOARD.md`, `.claude/skills/gitnexus/`. Skills aspirational without MCP runtime.
-- **GitNexus index:** 2,818 nodes / 3,968 edges / 61 clusters / 129 flows.
+**CI gate promoted to `features`** (#222) — the prior block's NOTE is resolved: the `features` lane now runs the ESLint `no-undef` gate too (route guard + vitest were already there). Gate is on both lanes.
 
 #### What's next
-
-- **Nurture email** framing the Stage 1 upgrade as a free product enhancement. Two before/after proof points ready: sandbox-gtm.com v8→v9 and forgeintelligence.ai v11→v12.
-- **Watch X OAuth in the wild** — if runtime API calls start failing the same way, apply the domain swap to those endpoints too.
-- **My Website rollout copy** — landing page, email blast, in-app announcement. Feature exists + documented; awareness is the remaining gap.
-- **GitNexus runtime** — register `gitnexus mcp` if FleetView adds custom MCP support, or if upstream ships HTTP/SSE MCP transport.
-
-**Endpoint count:** ~205 HTTP endpoints in server.js (up from ~191 baseline; added forgeScrape primitive + My Website's 4 admin endpoints + Facebook backfill + various smaller).
+- **Thin leaves left:** `normalizeGeoData` (GEO transform), `buildGhostJWT` (Ghost), `PROMO_CODES`. Quick cuts.
+- **Route GROUPS** — the structural payoff. Lead with teaching the route-inventory guard mount-prefix resolution (`app.use('/prefix', router)`) so full paths still verify, THEN move handlers behind routers.
+- Tracked but not approved: scrape `format:'markdown'` no-fallback gap; `scrape_log` 15KB `body_sample` bloat; citation `search_results → citations[]` fallback (needs a live Sonar response to confirm the shape).
+- Aside surfaced during the JWT dig: a **LinkedIn Insight Tag** is loaded inside the authed app (`/app/*`) capturing click + hashed-email data — worth a look at where it's injected.
 
 ---
 
-### 2026-05-09 — Email Campaign Generator polish, MCP for Viktor, HubSpot strip
+### 2026-06-05 — server.js decomposition (Stage 2) begins + two latent bug fixes
 
-**Ended:** 2026-05-09 ~04:15 PT (~13h continuous, single-session arc)
-**Operator:** Brian + Claude (full-stack)
+The monolith dismemberment is underway. `server.js` (~19.8K lines, 214 routes) is being broken into `src/server/*.js` modules, one cohesive unit at a time. **Every cut is a pure move with zero behavior change**, verified by a CI safety net built *before* the refactor started.
 
-#### Major shipments
+**Modules extracted to date (10):** `db`, `llm-json`, `utm`, `text`, `auth`, `zernio`, `scrape`, `llm`, `logging`, `lovable`. All on `development`.
 
-**MCP server live for Viktor (Slack assistant integration).** `POST /mcp` endpoint, JSON-RPC 2.0, dual-auth (Bearer + X-Api-Key). Three read-only tools exposed: `list_email_campaigns`, `list_emails_in_campaign`, `get_email_copy`. New scope namespace: `mcp:campaigns:read`, `mcp:emails:read`. Brian's API key minted: `fik_live_c2310c2c…b12f` scoped to the Forge brand only.
+This session's cuts:
+- **`llm.js`** (#213) — `anthropic` client (20-min timeout, used 52×) + `dateContext()`. Kept the bare `Anthropic` class import for 4 handlers that build their own short-timeout client.
+- **`logging.js`** (#214) — live-log ring buffer + console capture + error aggregation. Exports `logBuffer`/`logSSEClients`/`errorAggregates` + `installLogCapture()` (idempotent); `captureLog`/`LOG_BUFFER_SIZE` private.
+- **`lovable.js`** (#215) — the whole Lovable prompt-pack integration (~324 lines, 17 helpers + 4 consts). Fully self-contained leaf: pure templating, zero external deps.
 
-**Attio CSV export shipped on the Email Campaign Generator.** Per-email CSV download with subject-variant picker (benefit / curiosity / pattern_interrupt, default benefit). Two columns matching Attio's "Generated Emails" Object attributes exactly so the importer auto-maps. Filename: `attio-import-{campaignId8}-{variant}.csv`. RFC-compliant escaping + UTF-8 BOM. Brian's manual Attio Object setup made this a 30-line FE feature instead of a multi-day OAuth integration.
+**Two latent bugs found during review, fixed on BOTH lanes:**
+- **Lovable directive placeholder leak.** `lovableBuildWithDirective` guarded optional sections with `block !== 'No data available'` — a string that never matches `lovableSection()`'s real fallback, so the guard was always true. Brands with no whitespace/third-party data got scaffolding text ("Design this section to be populated later") injected into the `## BRAND INTELLIGENCE` block, which Lovable read as brand intel. Fixed: gate on the raw source via `lovableHasData()`. (#216 features, #219 development)
+- **`captureLog` unguarded stringify.** Ran `JSON.stringify` on console args with no try/catch; a circular object or BigInt would throw *inside* the patched `console.log` and crash the caller. Never fired in prod, but it's the hottest path in the app. Fixed: try `JSON.stringify` → `String(a)` → `'[unserializable]'`. (#217 features, #218 development)
 
-**Landing page polish.** "Read your brand to filth" subline replaced with strategist-framed brand voice. Footer split to two rows with **Published by Forge** linking to `/articles/forgeintelligence-ai` (brand-specific public article hub).
+All five PRs merged. **`features` merged to production (`main`)** — both bug fixes are live. `development` holds the full refactor + both fixes, ready for the `development → main` rollup.
 
-**HubSpot integration full strip + replace with clipboard copy.** Four rebuild rounds across ~6 hours ended in the right answer: HubSpot's public API gates email-template creation behind Marketing Hub Pro+ at every endpoint accessible to Sales Hub Starter (Brian's tier). Replaced with **"Copy for HubSpot" button** on each email card — formats email body as paste-ready HTML, writes to clipboard, user pastes into HubSpot Sales > Templates > New > Source view manually. Same UX shape as Attio CSV export. All `/api/hubspot/*` endpoints, the IntegrationsPage HubSpot card, and the `publishing_channels` row for hubspot are deleted.
+#### CI safety net (built before the refactor)
+- **`npm run lint`** — ESLint flat config, `no-undef` only. Catches a missed re-import (the #1 risk of moving code out of a monolith — otherwise only crashes on deploy). `document`/`window` whitelisted for Puppeteer page-eval callbacks.
+- **route-inventory guard** — static scan of `app`/`router.METHOD` registrations → sorted `"METHOD /path"` set vs `test/routes.snapshot.json` (213 routes). A pure move must not add/drop/rename a route.
+- **vitest** — per-module unit tests added with each extraction (~56 tests now).
+- CI job "Typecheck & Test" on PRs to `[main, development, features]`: `node --check` → lint → typecheck → vitest.
+- **NOTE:** `features`/`main` CI currently runs only `node --check` + `typecheck` — the lint/vitest/route-guard gate is `development`-only so far. Promote the full gate to `features` when convenient.
 
-**Email Campaign Generator polish (Phase 1 + 2 + 3):**
-
-1. **Render bugs fixed** — P.S. duplication, inline `{{cta_url}}`, `[NEEDS_PROOF]` token leakage. System prompt rewritten with explicit field-separation rules; render-side `sanitizeBody()` helper as defense in depth so existing campaigns clean up retroactively.
-2. **Inline edit + flag actions.** New endpoints: `PATCH /api/email-campaign/email/:id`, `POST /api/email-campaign/email/:id/resolve-flag`, `POST /api/email-campaign/email/:id/dismiss-flag-as-false-positive`. Edit mode on every EmailCard makes subject_lines + body + ps + cta_text + cta_url_placeholder all editable. Per-flag actions: Mark resolved / Add citation / Dismiss as false positive. Dismissals write to `brain_mistakes` so the Compliance Gate's brain learns to suppress false-positive patterns on future runs.
-3. **Sequence Assessment readability.** System prompt now asks LLM for three short paragraphs (arc / tone / brand-voice shaping) in plain English with no `[bracket_identifiers]`. Render-side cleanup strips legacy bracket tokens + orphan commas + tightens punctuation.
-
-**DB migration applied via SQL relay:**
-```sql
-ALTER TABLE email_campaign_emails ADD COLUMN flag_resolutions JSONB DEFAULT '{}'::jsonb;
-```
-
-**HubSpot OAuth app rotated:** Old app's scope state was unrecoverable in the dev portal. New app: App ID `39088507`, Client ID `78a09da5-3d3f-4c4b-b00e-74310739be3e`. Render `HUBSPOT_CLIENT_ID` updated via single-var PATCH. Brian rotated `HUBSPOT_CLIENT_SECRET` directly. Both prod + dev redeployed to refresh `process.env`. App is now obsolete since HubSpot integration was stripped, but the new credentials are in place if it ever comes back.
-
-#### Recurring patterns logged
-
-- **Half-applied state from intermediate-assertion crashes:** for multi-step edits to a single file, do everything in memory first, sanity-check before any commit, then ONE atomic PUT. Two scripts crashed mid-edit today, requiring fix-up commits.
-- **Propose simplest workable path FIRST before architecting OAuth flows.** Brian's CSV-via-Attio-Object outpaced my OAuth dive.
-- **When same paywall appears twice in different shapes = stop pivoting, call it.** I burned ~90 minutes on HubSpot endpoint pivots when the answer was visible after the second 403.
-- **Render-side defense-in-depth is only valuable where the default is broken.** Sentence-boundary split on sequence_notes was over-engineering that fragmented good content.
-
-#### State of key surfaces (end of session)
-
-- **Email Campaign Generator:** clean, editable, brain-feedback-loop wired. Most polished it has ever been.
-- **Integrations page:** HubSpot card removed. LinkedIn / Facebook / Reddit / Ghost / Medium / WordPress / Webflow / X all live.
-- **MCP server:** live at `/mcp`, 3 tools, ready for Viktor.
-- **Brain Memory:** Forge brain has 9 OWNED + 8 CONTESTED positioning patterns. `brain_mistakes` is now actively written to by user dismissals (closes the feedback loop on Compliance Gate flags).
+#### Extraction pattern
+Pure move: module imports its own deps (`pool` from `db.js`, etc.), `server.js` re-imports the public surface, internal-only helpers stay unexported. Verify `node --check` + lint + route guard + vitest before commit. The `no-undef` gate is the safety belt — it has caught 3 missed-symbol cases across earlier cuts.
 
 #### What's next
-
-**Validation pass on the new prompts:**
-- Generate a fresh test campaign to confirm sequence_notes produces 3 paragraphs (arc / tone / brand-voice) as designed
-- Generate a fresh test campaign to confirm body has no inline P.S. / `{{cta_url}}` / `[NEEDS_PROOF]` after the prompt rewrite
-
-**Zernio cleanup (deferred from May 8):**
-- Sandbox-XM, Sandbox-GTM, Attio LinkedIn migrations through Zernio (Forge done; others still on direct OAuth)
-- Cancel Pipedream Connect ($150/mo savings)
-- Remove `FACEBOOK_PIPEDREAM_WORKFLOW_URL` env var from Render (stale)
-- LinkedIn OAuth callback to MERGE credentials instead of overwriting (server.js ~L9262)
-
-**Reddit Phase 4:** per-publish subreddit picker in queue UI + flair selection.
-
-**Strategy branch update:** WHITEBOARD on main captures session technical detail, but `STRATEGY.md` on the `strategy` branch should get the Email Campaign Generator improvements + HubSpot-paywall lesson woven into the broader Voice of Market positioning thread.
-
-**Endpoint count:** ~191 HTTP endpoints in server.js + 3 logical MCP tools (down from 194 net after HubSpot strip + 3 email-campaign edit/flag endpoints added).
+- **More clean leaves** before route-group surgery: X OAuth/crypto cluster (`buildXOAuthHeader`, `refreshXOAuth2Token`, `buildGhostJWT`, `uploadXMedia`), then image helpers (`generateHeroImage`, `buildImagePrompt`, `generateSocialImage`, `buildSocialImagePrompt`).
+- **Route GROUPS** — the big line-count win. Requires teaching the route-inventory guard mount-prefix resolution (`app.use('/prefix', router)`) *before* moving handlers behind a router, so full paths still verify. Guard change first, then the move.
+- **Promote the full CI gate** (lint + vitest + route guard) to `features`/`main`.
+- Tracked but not approved: scrape `format:'markdown'` no-fallback gap; `scrape_log` 15KB `body_sample` bloat.
