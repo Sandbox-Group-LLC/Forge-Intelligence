@@ -1,3 +1,70 @@
+## 2026-06-06 (cont.) — route-group phase COMPLETE: publishing finale (12 groups, server.js dismembered)
+
+The publishing subsystem — deferred from the start as the most entangled group —
+shipped as 3 PRs, completing the route-group decomposition.
+
+### Publishing, split 3 ways (per the scoping decision)
+- **`publishing-queue.js` (#258, 14 routes)** — queue CRUD + lifecycle. Folded in
+  the agreed cleanup: `POST /api/publishing/backfill-queue` was registered **3×
+  identically** (only the first reachable in Express; 2 dead/shadowed). Deleted
+  the 2 dead dupes → route count **213→211**, snapshot regenerated. First
+  intentional route-count change of the whole decomposition.
+- **`publishing-channels.js` (#259, 4 routes)** — channels CRUD. Clean.
+- **`publishing-publish.js` (#260, 2 routes)** — `generate-post-copy` + the
+  ~1,129-line `publish` dispatcher (per-channel fan-out) + `runScheduledPublishes`
+  (the scheduled-publish runner, exported for the cron tick in server.js).
+
+All three share the `/api/publishing` mount (three separate router files, one
+mount each — guard-safe). On a shared-prefix mount, auth MUST be per-route: a
+mount-level `requireAuth` would fall through and apply to the *other* routers'
+routes.
+
+### `pipedream.js` — a shared client the split surfaced
+`pipedreamProxy` (Facebook Graph via Pipedream Connect) is used by the publish
+dispatcher AND two inline FB routes still in server.js (`/api/admin/facebook/diag`,
+`/api/facebook/pipedream/list-pages`). So it became its own module — `pipedreamProxy`
+exported, the token cache + `getPipedream*` internal. Same shared-module pattern as
+`streams.js` / `content-table.js`. Three shared modules total, all surfaced by the
+gate, none planned up front.
+
+### Two catches, both by the safety net
+- **Boundary over-reach:** the `runScheduledPublishes` span detection swallowed the
+  trailing `_pdAccessToken`/`_pdTokenExpiresAt` cache-var declarations, landing them
+  in the wrong module. ESLint `no-undef` flagged the undefined refs; moved them to
+  `pipedream.js`.
+- **Guard gap (open follow-up):** the route guard's `parseImports` doesn't parse the
+  combined `import Default, { Named } from '…'` form — so it didn't recognize
+  `publishingPublishRouter` as a mounted router and silently dropped its 2 routes
+  (guard read 209 vs 211). Worked around by splitting into two import lines.
+  **Next task: harden `parseImports`** so a future combined-import mount can't
+  silently under-count. (This is the one place the guard's static analysis was
+  incomplete — worth closing before it bites unseen.)
+
+### Milestone: server.js is dismembered
+
+The Stage-2 decomposition is functionally complete. From a ~19.8K-line monolith,
+server.js now delegates to:
+- **~18 helper/data modules** (db, auth, llm, llm-json, utm, text, zernio, scrape,
+  logging, lovable, x, images, marketing, citations, geo, ghost, promo, +
+  streams/content-table/pipedream shared).
+- **15 route files / 12 route groups** behind `app.use('/prefix', router)` mounts.
+
+What remains *intentionally* inline in server.js: the `/api/admin/*` mass (many
+small admin/relay/backfill endpoints, mixed admin-password auth), the 2 zernio
+OAuth callbacks + 2 zernio backfills, `/api/content-library` + `/api/content-generator`,
+the inline Facebook routes, the handful of inline-`jwtVerify` cron-bypass handlers,
+and boot/middleware/SSR wiring. Route count locked at **211** (was 213; −2 dead
+dupes). The CI safety net (lint no-undef + route-inventory guard + vitest + the
+boot-load check) held across all 12 groups — not one route silently changed.
+
+### What's next
+1. Harden the guard `parseImports` (combined imports) — the one open gap.
+2. Optional future passes: the `/api/admin/*` group (large, mixed-auth, would need
+   its own scoping), and promoting the full decomposition to `main` via the
+   `development → main` rollup when Brian's ready.
+
+---
+
 ## 2026-06-06 (cont.) — route-group phase pt.3: groups 7–11, the hard tier (publishing only remains)
 
 Finished the non-publishing route groups. After the clean contiguous ones (pt.2),
