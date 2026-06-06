@@ -8,7 +8,7 @@ import { jwtVerify } from 'jose';
 import { pool } from './src/server/db.js';
 import { extractJSON, safeParseLLM } from './src/server/llm-json.js';
 import { resolveUtmParams, buildUtmString } from './src/server/utm.js';
-import { truncateStr, truncateAtSentence, stripSocialMarkdown } from './src/server/text.js';
+import { truncateStr, truncateAtSentence, stripSocialMarkdown, quickStartTruncate, stripScaffoldingArtifacts } from './src/server/text.js';
 import { clerkJWKS, SUPER_ADMIN_IDS, verifyBrandAccess, requireAuth, requireApiKeyScope, softAuth, mcpAuth, hashApiKey, lookupApiKey } from './src/server/auth.js';
 import { callZernio, zernioPublish, getOrCreateZernioProfile, zernioGuard } from './src/server/zernio.js';
 import { forgeScrape, getBrandPageContent, discoverSubpages, _forgeScrapeRateLimited, FORGE_SCRAPE_RATE_PER_MIN } from './src/server/scrape.js';
@@ -4011,10 +4011,7 @@ app.post('/api/domain/check', async (req, res) => {
 // and so /app/context-hub re-analyze never tries to re-scrape a non-existent
 // site. Anonymous-session semantics (24h expiry, onboard_session_id) match the
 // URL-based flow exactly so Clerk signup can later claim these rows.
-function quickStartTruncate(value, maxLength) {
-  if (typeof value !== 'string') return '';
-  return value.length > maxLength ? value.slice(0, maxLength).trim() + '…' : value;
-}
+// quickStartTruncate moved to src/server/text.js (imported at top).
 
 async function handleQuickStartSynthesis(req, res) {
   const startTime = Date.now();
@@ -5128,38 +5125,7 @@ function normalizeGeoData(briefData, topicalMap, geoOpportunities, entitySchema,
 // ── GEO Strategist API (Stage 2) ──────────────────────────────────────────────
 
 // Extracts the first complete JSON object or array from a string — handles trailing text/markdown
-// ── Strip LLM scaffolding artifacts from article section bodies ──────────────
-// Enrichment briefs give the writer bracketed placeholders like "[SME Hook: ...]",
-// "[CTA: ...]", "[Author Quote: ...]" that the model is supposed to expand into
-// prose or drop. It sometimes copies them verbatim, and they leak past human
-// compliance review. This is the final safety net — called at every article
-// write path (content-gen, campaign, compliance approve, content-import).
-function stripScaffoldingArtifacts(article) {
-  if (!article || typeof article !== 'object' || !Array.isArray(article.sections)) return article;
-
-  // Inline: keyword-gated bracketed instructions (safe — won't nuke legit refs like [1] or [Appendix A])
-  const INLINE_RX = /\[(?:SME[\s-]?Hook|Author[\s-]?(?:Quote|Citation|Bio)|Writer[\s-]?Note|(?:Note|Editor[\s-]?Note)[\s-]?to[\s-]?(?:writer|editor|self)?|Insert|TODO|Placeholder|NEEDS[\s-]?CITATION|CITATION|SOURCE|CTA|Pull[\s-]?Quote|Hook|Quote|Link|Image|Tip|Callout|Stat|Fact[\s-]?Check)\s*[:\s][^\]]*\]/gi;
-  // Standalone paragraph: entire paragraph is just a bracketed instruction with a colon
-  // (e.g. "[Something: details]" alone on its own line — the scaffolding signature)
-  const STANDALONE_COLON_BRACKET_RX = /^\s*\[[^\]]*:[^\]]*\]\s*$/;
-
-  const cleanBody = (text) => {
-    if (!text || typeof text !== 'string') return text;
-    const parts = text.split(/\n\s*\n/);
-    const filtered = parts
-      .map(p => p.replace(INLINE_RX, '').replace(/[ \t]{2,}/g, ' ').trim())
-      .filter(p => p && !STANDALONE_COLON_BRACKET_RX.test(p));
-    return filtered.join('\n\n').trim();
-  };
-
-  article.sections = article.sections.map(s => {
-    const updated = { ...s };
-    if (typeof s.body === 'string') updated.body = cleanBody(s.body);
-    if (typeof s.content === 'string') updated.content = cleanBody(s.content);
-    return updated;
-  });
-  return article;
-}
+// stripScaffoldingArtifacts moved to src/server/text.js (imported at top).
 
 // ── Date-grounding for LLM prompts ─────────────────────────────────────
 // Every prompt that generates user-facing content MUST prepend this block.

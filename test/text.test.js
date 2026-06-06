@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { truncateStr, truncateAtSentence, stripSocialMarkdown } from '../src/server/text.js';
+import { truncateStr, truncateAtSentence, stripSocialMarkdown, quickStartTruncate, stripScaffoldingArtifacts } from '../src/server/text.js';
 
 describe('truncateStr', () => {
   it('returns null for null/undefined', () => {
@@ -43,5 +43,44 @@ describe('stripSocialMarkdown', () => {
   });
   it('passes non-strings through unchanged', () => {
     expect(stripSocialMarkdown(null)).toBeNull();
+  });
+});
+
+describe('quickStartTruncate', () => {
+  it('returns empty string for non-strings', () => {
+    expect(quickStartTruncate(123, 5)).toBe('');
+    expect(quickStartTruncate(null, 5)).toBe('');
+  });
+  it('leaves short strings unchanged (no ellipsis)', () => {
+    expect(quickStartTruncate('hi', 5)).toBe('hi');
+  });
+  it('slices and appends an ellipsis when over the limit', () => {
+    expect(quickStartTruncate('hello world', 5)).toBe('hello…');
+  });
+  it('trims trailing whitespace before the ellipsis', () => {
+    expect(quickStartTruncate('hello     world', 8)).toBe('hello…');
+  });
+});
+
+describe('stripScaffoldingArtifacts', () => {
+  it('returns non-article input untouched', () => {
+    expect(stripScaffoldingArtifacts(null)).toBeNull();
+    expect(stripScaffoldingArtifacts({ no: 'sections' })).toEqual({ no: 'sections' });
+  });
+  it('removes inline bracketed scaffolding but keeps legit refs like [1]', () => {
+    const article = { sections: [{ body: 'Real prose [CTA: sign up now] and a citation [1].' }] };
+    const out = stripScaffoldingArtifacts(article);
+    expect(out.sections[0].body).toContain('Real prose');
+    expect(out.sections[0].body).toContain('[1]');
+    expect(out.sections[0].body).not.toContain('CTA');
+  });
+  it('drops standalone bracketed-instruction paragraphs', () => {
+    const article = { sections: [{ body: 'Keep this.\n\n[SME Hook: add an anecdote here]\n\nKeep this too.' }] };
+    const out = stripScaffoldingArtifacts(article);
+    expect(out.sections[0].body).toBe('Keep this.\n\nKeep this too.');
+  });
+  it('cleans both body and content fields', () => {
+    const article = { sections: [{ content: 'Hello [TODO: finish] world' }] };
+    expect(stripScaffoldingArtifacts(article).sections[0].content).toBe('Hello world');
   });
 });
