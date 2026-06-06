@@ -3058,7 +3058,7 @@ app.post('/api/brain/distill/:brandProfileId', async (req, res) => {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
     try {
-      const { payload } = await jwtVerify(authHeader.split(' ')[1], clerkJWKS, { algorithms: ['RS256'] });
+      const { payload } = await jwtVerify(authHeader.split(' ')[1], clerkJWKS, { algorithms: ['RS256'], clockTolerance: '30s' });
       req.userId = payload.sub;
     } catch { return res.status(401).json({ error: 'Invalid token' }); }
     if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
@@ -3185,7 +3185,7 @@ app.post('/api/analytics/extract-patterns/:brandProfileId', async (req, res) => 
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
     try {
-      const { payload } = await jwtVerify(authHeader.split(' ')[1], clerkJWKS, { algorithms: ['RS256'] });
+      const { payload } = await jwtVerify(authHeader.split(' ')[1], clerkJWKS, { algorithms: ['RS256'], clockTolerance: '30s' });
       req.userId = payload.sub;
     } catch { return res.status(401).json({ error: 'Invalid token' }); }
   }
@@ -11101,7 +11101,7 @@ app.post('/api/publishing/publish', async (req, res) => {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
     try {
-      const { payload } = await jwtVerify(authHeader.split(' ')[1], clerkJWKS, { algorithms: ['RS256'] });
+      const { payload } = await jwtVerify(authHeader.split(' ')[1], clerkJWKS, { algorithms: ['RS256'], clockTolerance: '30s' });
       req.userId = payload.sub;
     } catch { return res.status(401).json({ error: 'Invalid token' }); }
   }
@@ -12249,7 +12249,7 @@ app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
     try {
-      const { payload } = await jwtVerify(authHeader.split(' ')[1], clerkJWKS, { algorithms: ['RS256'] });
+      const { payload } = await jwtVerify(authHeader.split(' ')[1], clerkJWKS, { algorithms: ['RS256'], clockTolerance: '30s' });
       req.userId = payload.sub;
     } catch { return res.status(401).json({ error: 'Invalid token' }); }
   }
@@ -17483,7 +17483,7 @@ app.post('/api/geo/track/:brandProfileId', async (req, res) => {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
     try {
-      const { payload } = await jwtVerify(authHeader.split(' ')[1], clerkJWKS, { algorithms: ['RS256'] });
+      const { payload } = await jwtVerify(authHeader.split(' ')[1], clerkJWKS, { algorithms: ['RS256'], clockTolerance: '30s' });
       req.userId = payload.sub;
     } catch { return res.status(401).json({ error: 'Invalid token' }); }
   }
