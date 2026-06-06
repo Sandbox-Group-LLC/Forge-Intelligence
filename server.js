@@ -24,6 +24,9 @@ import { buildXOAuthHeader, uploadXMedia, refreshXOAuth2Token } from './src/serv
 import { generateHeroImage, buildImagePrompt, buildSocialImagePrompt, generateSocialImage } from './src/server/images.js';
 import { MARKETING_META, renderMarketingPage } from './src/server/marketing.js';
 import { findCitationSources } from './src/server/citations.js';
+import { normalizeGeoData } from './src/server/geo.js';
+import { buildGhostJWT } from './src/server/ghost.js';
+import { PROMO_CODES } from './src/server/promo.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -4916,56 +4919,7 @@ app.get('/api/email-campaign/brief-templates/:brandProfileId', requireAuth, asyn
 });
 
 // ── GEO data normalizer — shared by fresh + cached responses ─────────────────
-function normalizeGeoData(briefData, topicalMap, geoOpportunities, entitySchema, profile) {
-  const gaps = (topicalMap && topicalMap.gapsByCluster) || [];
-  if (gaps.length > 0) console.log('[GEO] normalizer gaps[0] RAW:', JSON.stringify(gaps[0]));
-  const topicalAuthorityMap = gaps.map(g => {
-    const score = g.geoCitationScore || g.citationProbability || g.score || g.geoScore || g.probability || 0;
-    return {
-      topic: g.topic || g.cluster || g.name || g.title || 'Unknown',
-      coverage: g.rationale || g.description || g.reason || g.owner || g.gap || '',
-      citationProbability: score,
-      priority: score >= 70 ? 'high' : score >= 40 ? 'medium' : 'low'
-    };
-  });
-
-  const topicMap = {};
-  (geoOpportunities || []).forEach(o => {
-    const t = o.topic || 'Unknown';
-    if (!topicMap[t]) topicMap[t] = { topic: t, chatgpt: 0, perplexity: 0, aiOverviews: 0, gemini: 0, quickWin: o.quickWin || false };
-    const p = (o.platform || '').toLowerCase().replace(/\s/g, '');
-    if (p.includes('chatgpt') || p.includes('openai')) topicMap[t].chatgpt = o.score || 0;
-    else if (p.includes('perplexity')) topicMap[t].perplexity = o.score || 0;
-    else if (p.includes('overview') || p.includes('google')) topicMap[t].aiOverviews = o.score || 0;
-    else if (p.includes('gemini')) topicMap[t].gemini = o.score || 0;
-    if (o.quickWin) topicMap[t].quickWin = true;
-  });
-  const geoOpportunitiesNorm = Object.values(topicMap);
-
-  const entitySchemaMap = (entitySchema || []).map(e => ({
-    entity: e.entity || '',
-    schemaType: Array.isArray(e.schemaTypes) ? e.schemaTypes[0] : (e.schemaType || 'Article'),
-    competitorCited: e.competitorCiting || e.competitorCited || false,
-    recommendation: e.rationale || e.recommendation || ''
-  }));
-
-  const h2sRaw = briefData.h2s || [];
-  const geoBrief = {
-    title: briefData.titleTag || briefData.title || briefData.targetTopic || (profile && profile.brand_name) || '',
-    h1: briefData.h1 || briefData.targetTopic || '',
-    h2s: h2sRaw.map(h => typeof h === 'string' ? h : h.heading || h.h2 || ''),
-    faqItems: (briefData.faqStructure || briefData.faqItems || []).map(f => ({
-      q: f.question || f.q || '',
-      a: f.answerDirection || f.answer || f.a || ''
-    })),
-    geoAnchors: briefData.geoAnchors || [],
-    estimatedCitationLift: briefData.geoScorecard
-      ? `+${Math.round((briefData.geoScorecard.currentReadiness || 0) * 0.4)}% in 90 days`
-      : '+15–30% in 90 days'
-  };
-
-  return { topicalAuthorityMap, geoOpportunities: geoOpportunitiesNorm, entitySchemaMap, geoBrief };
-}
+// normalizeGeoData moved to src/server/geo.js (imported at top).
 
 // ── GEO Strategist API (Stage 2) ──────────────────────────────────────────────
 
@@ -11953,16 +11907,7 @@ ${canonicalNote}`,
 
 // POST /api/analytics/sync/:brandProfileId — pull stats from channels, upsert into content_analytics
 // Ghost Admin JWT builder
-function buildGhostJWT(apiKey) {
-  const [keyId, secret] = apiKey.split(':');
-  const secretBytes = Buffer.from(secret, 'hex');
-  const now = Math.floor(Date.now() / 1000);
-  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT', kid: keyId })).toString('base64url');
-  const payload = Buffer.from(JSON.stringify({ iat: now, exp: now + 300, aud: '/admin/' })).toString('base64url');
-  const sigInput = `${header}.${payload}`;
-  const sig = createHmac('sha256', secretBytes).update(sigInput).digest('base64url');
-  return `${sigInput}.${sig}`;
-}
+// buildGhostJWT moved to src/server/ghost.js (imported at top).
 
 app.post('/api/analytics/sync/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
@@ -14869,12 +14814,7 @@ pool.query(`CREATE TABLE IF NOT EXISTS promo_redemptions (
 )`).catch(() => {});
 
 // Promo codes stored server-side — never expose to client
-const PROMO_CODES = new Map([
-  ['FORGEFRIEND',   { discount: 100, description: 'Friend of Forge' }],
-  ['EARLYBIRD',     { discount: 100, description: 'Early Access' }],
-  ['SANDBOX100',    { discount: 100, description: 'Sandbox Group Internal' }],
-  ['NANGO',         { discount: 100, description: 'Nango Partnership' }],
-]);
+// PROMO_CODES moved to src/server/promo.js (imported at top).
 
 // POST /api/promo/validate — validate a promo code (unlimited use)
 app.post('/api/promo/validate', softAuth, async (req, res) => {
