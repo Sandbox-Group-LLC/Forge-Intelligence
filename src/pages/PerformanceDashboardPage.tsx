@@ -59,6 +59,11 @@ const CHANNEL_COLORS: Record<string, string> = {
   reddit: '#FF4500', wordpress: '#3858E9', webflow: '#4353FF',
 };
 
+// Friendly display names for the GEO citation engines (stored ids are terse).
+const ENGINE_LABELS: Record<string, string> = {
+  perplexity: 'Perplexity', chatgpt: 'ChatGPT', gemini: 'Gemini', aiOverviews: 'AI Overviews',
+};
+
 function fmt(n: number): string {
   if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
   if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
@@ -691,7 +696,7 @@ export default function PerformanceDashboardPage() {
                 <div className="perf-geo-header">
                   <div>
                     <h2 className="perf-section-title">GEO Citation Tracker</h2>
-                    <p className="perf-section-sub">Track when your content is cited by ChatGPT, Perplexity, and other AI engines. Results write to Brain patterns.</p>
+                    <p className="perf-section-sub">Track when your content is cited by ChatGPT, Perplexity, Gemini, and Google AI Overviews. Results write to Brain patterns.</p>
                   </div>
                   <div className="perf-btn-group">
                   <button className="perf-sync-btn perf-geo-track-btn" onClick={handleGeoTrack} disabled={geoTracking || !brandProfileId}>
@@ -701,7 +706,7 @@ export default function PerformanceDashboardPage() {
                     </svg>
                     {geoTracking ? 'Tracking...' : 'Run Citation Check'}
                   </button>
-                  <span className="perf-btn-hint">Checks if ChatGPT & Perplexity cite your articles — runs in background, takes ~30s</span>
+                  <span className="perf-btn-hint">Checks all four AI engines (ChatGPT, Perplexity, Gemini, Google AI Overviews) for citations of your articles — runs in background, takes ~30s</span>
                   </div>
                 </div>
 
@@ -716,7 +721,7 @@ export default function PerformanceDashboardPage() {
                   <div className="perf-geo-empty">
                     <div className="perf-geo-empty-icon">◈</div>
                     <p className="perf-geo-empty-title">No citation data yet</p>
-                    <p className="perf-geo-empty-sub">Hit Run Citation Check above — Forge will query Perplexity and ChatGPT with your article topics and tell you if your content is being cited by AI engines.</p>
+                    <p className="perf-geo-empty-sub">Hit Run Citation Check above — Forge queries ChatGPT, Perplexity, Gemini, and Google AI Overviews with your article topics and tells you which engines are citing your content.</p>
                   </div>
                 )}
 
@@ -740,7 +745,7 @@ export default function PerformanceDashboardPage() {
                       </div>
                       <div className="perf-kpi-card">
                         <div className="perf-kpi-top"><span className="perf-kpi-label">Engines Citing You</span></div>
-                        <div className="perf-kpi-value">{enginesWithCitations.length > 0 ? enginesWithCitations.join(', ') : '—'}</div>
+                        <div className="perf-kpi-value">{enginesWithCitations.length > 0 ? enginesWithCitations.map((e: string) => ENGINE_LABELS[e] || e).join(', ') : '—'}</div>
                         <div className="perf-kpi-sub">{enginesWithCitations.length === 0 ? 'Not yet cited' : 'Active citation sources'}</div>
                       </div>
                       <div className="perf-kpi-card">
@@ -770,7 +775,7 @@ export default function PerformanceDashboardPage() {
                             {geoCitations.map((c, i) => (
                               <tr key={i} className={c.citations > 0 ? 'perf-geo-cited-row' : ''}>
                                 <td className="perf-title-cell"><div className="perf-title-cell-inner"><span className="perf-post-title">{c.title}</span></div></td>
-                                <td>{(c.engines || []).map((e: string) => <span key={e} className={`perf-geo-engine perf-geo-engine-${e}`}>{e}</span>)}</td>
+                                <td>{(c.engines || []).map((e: string) => <span key={e} className={`perf-geo-engine perf-geo-engine-${e}`}>{ENGINE_LABELS[e] || e}</span>)}</td>
                                 <td className="num">{c.totalChecks}</td>
                                 <td className="num">
                                   {c.citations > 0
