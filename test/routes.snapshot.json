@@ -169,6 +169,7 @@
   "POST /api/geo/topic-brief/:id/backlog",
   "POST /api/geo/topic-brief/:id/resurface",
   "POST /api/geo/topic-brief/from-topic",
+  "POST /api/geo/track-all",
   "POST /api/geo/track/:brandProfileId",
   "POST /api/integrations/website/:brandProfileId/config",
   "POST /api/integrations/website/:brandProfileId/generate-token",
