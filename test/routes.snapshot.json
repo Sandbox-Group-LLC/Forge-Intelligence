@@ -163,6 +163,7 @@
   "POST /api/forge-scrape",
   "POST /api/forge/prompt-pack/lovable",
   "POST /api/geo-strategist/analyze",
+  "POST /api/geo/cold-scan",
   "POST /api/geo/opportunities/build-briefs",
   "POST /api/geo/opportunities/mark-ignored",
   "POST /api/geo/topic-brief/:id/backlog",

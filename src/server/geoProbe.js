@@ -95,6 +95,92 @@ export const CITATION_ENGINES = [
   { id: 'aiOverviews', enabled: () => !!process.env.SERPAPI_KEY,        probe: probeAIOverviews },
 ];
 
+// ── Cold-prospect scan ───────────────────────────────────────────────────────
+// Runs an AI Visibility scan for a brand we have NO content for (a sales lead).
+// Given the brand's domain + a set of natural buyer questions (brand-free), probe
+// every enabled engine and measure: how often the brand is cited, on which engines,
+// and which domains AI cites instead. This is what powers the shareable report.
+
+const COLD_SCAN_CONCURRENCY = 3;
+
+// Source domains that are scan plumbing, not real citations (Google grounding
+// redirects, asset hosts). Excluded from the "who AI cites instead" tally.
+const NOISE_DOMAINS = ['vertexaisearch.cloud.google.com', 'google.com', 'gstatic.com', 'googleusercontent.com'];
+
+export function extractDomain(value) {
+  if (!value || typeof value !== 'string') return '';
+  let v = value.trim().toLowerCase();
+  try { v = new URL(v.startsWith('http') ? v : `https://${v}`).hostname; } catch { return ''; }
+  return v.replace(/^www\./, '');
+}
+
+// Tally cited source domains, excluding the brand's own domain and scan noise.
+export function aggregateSources(urls, brandDomain, limit = 20) {
+  const bd = (brandDomain || '').toLowerCase().replace(/^www\./, '');
+  const counts = new Map();
+  for (const u of urls || []) {
+    const d = extractDomain(u);
+    if (!d) continue;
+    if (bd && d.includes(bd)) continue;
+    if (NOISE_DOMAINS.some(n => d.includes(n))) continue;
+    counts.set(d, (counts.get(d) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([domain, mentions]) => ({ domain, mentions }))
+    .sort((a, b) => b.mentions - a.mentions)
+    .slice(0, limit);
+}
+
+async function mapWithConcurrency(items, limit, fn) {
+  let i = 0;
+  async function worker() { while (i < items.length) { const idx = i++; await fn(items[idx]); } }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length || 1) }, worker));
+}
+
+// Probe a cold brand across buyer questions on every enabled engine.
+export async function coldScan({ brandName, brandDomain, questions }) {
+  const engines = CITATION_ENGINES.filter(e => e.enabled());
+  if (!engines.length) {
+    throw new Error('No GEO engines configured — set at least one of PERPLEXITY_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, SERPAPI_KEY. Refusing to emit modeled scores.');
+  }
+  const qs = (questions || []).filter(q => typeof q === 'string' && q.trim());
+  const byEngine = Object.fromEntries(engines.map(e => [e.id, { checks: 0, cited: 0 }]));
+  let totalChecks = 0, totalCited = 0;
+  const allUrls = [];
+  const citedQueries = [];
+  const perQuestion = [];
+
+  await mapWithConcurrency(qs, COLD_SCAN_CONCURRENCY, async (q) => {
+    const row = { question: q, engines: {} };
+    await Promise.all(engines.map(async (engine) => {
+      try {
+        const { text, urls } = await engine.probe(q);
+        const cited = isCited({ text, urls, brandDomain });
+        byEngine[engine.id].checks++; totalChecks++;
+        if (cited) { byEngine[engine.id].cited++; totalCited++; if (!citedQueries.includes(q)) citedQueries.push(q); }
+        allUrls.push(...(urls || []));
+        row.engines[engine.id] = cited ? 'cited' : 'absent';
+      } catch (e) {
+        console.error(`[COLD-SCAN] ${engine.id} "${q}":`, e.message);
+        row.engines[engine.id] = 'error';
+      }
+    }));
+    perQuestion.push(row);
+  });
+
+  const pct = (c, n) => (n ? Math.round((c / n) * 100) : 0);
+  return {
+    brandName, brandDomain,
+    visibility: pct(totalCited, totalChecks),
+    totalChecks, totalCited,
+    byEngine: Object.fromEntries(engines.map(e => [e.id, { ...byEngine[e.id], pct: pct(byEngine[e.id].cited, byEngine[e.id].checks) }])),
+    sources: aggregateSources(allUrls, brandDomain),
+    citedQueries,
+    perQuestion,
+    enginesProbed: engines.map(e => e.id),
+  };
+}
+
 // ── Citation-attribution helpers (pure, unit-tested) ─────────────────────────
 
 export function urlHasDomain(url, brandDomain) {

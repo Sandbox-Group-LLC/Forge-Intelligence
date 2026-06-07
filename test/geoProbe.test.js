@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { urlHasDomain, isCited, findCitedSection, CITATION_ENGINES } from '../src/server/geoProbe.js';
+import { urlHasDomain, isCited, findCitedSection, CITATION_ENGINES, extractDomain, aggregateSources } from '../src/server/geoProbe.js';
 
 describe('urlHasDomain', () => {
   it('matches a domain inside a URL (case-insensitive)', () => {
@@ -57,6 +57,43 @@ describe('findCitedSection', () => {
   it('falls back to "Brand mention" when cited by text only', () => {
     expect(findCitedSection({ text: 'unrelated text', urls: ['https://competitor.com'], brandDomain, sections, faqs }))
       .toBe('Brand mention');
+  });
+});
+
+describe('extractDomain', () => {
+  it('pulls the host and strips www', () => {
+    expect(extractDomain('https://www.Cvent.com/products/x?y=1')).toBe('cvent.com');
+  });
+  it('handles a bare domain', () => {
+    expect(extractDomain('jasper.ai')).toBe('jasper.ai');
+  });
+  it('is null-safe / returns empty for junk', () => {
+    expect(extractDomain(null)).toBe('');
+    expect(extractDomain('')).toBe('');
+  });
+});
+
+describe('aggregateSources', () => {
+  it('counts domains, excludes the brand and scan noise, sorts desc', () => {
+    const urls = [
+      'https://cvent.com/a', 'https://www.cvent.com/b',
+      'https://swoogo.com/x',
+      'https://brand.com/own',                      // brand — excluded
+      'https://vertexaisearch.cloud.google.com/r',  // noise — excluded
+      'https://google.com/search',                  // noise — excluded
+    ];
+    expect(aggregateSources(urls, 'brand.com')).toEqual([
+      { domain: 'cvent.com', mentions: 2 },
+      { domain: 'swoogo.com', mentions: 1 },
+    ]);
+  });
+  it('respects the limit', () => {
+    const urls = ['https://a.com', 'https://b.com', 'https://c.com'];
+    expect(aggregateSources(urls, 'brand.com', 2)).toHaveLength(2);
+  });
+  it('is empty-safe', () => {
+    expect(aggregateSources([], 'brand.com')).toEqual([]);
+    expect(aggregateSources(null, 'brand.com')).toEqual([]);
   });
 });
 
