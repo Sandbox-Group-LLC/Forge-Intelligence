@@ -37,6 +37,49 @@ export function stripSocialMarkdown(text) {
     .replace(/__([^_\n]+?)__/g, '$1');
 }
 
+// Deterministic em/en-dash remover. The em dash is the strongest AI-writing
+// tell; the content generator prompt forbids it outright, but models ignore
+// punctuation bans, so this is the backstop that GUARANTEES none ship. Null-safe.
+//
+// Numeric en-dash ranges (2024–2026) become hyphens. Every other em/en dash
+// becomes a COMMA — UNLESS the sentence it sits in already has 2+ commas, in
+// which case the dash becomes a SEMICOLON instead of piling on a third comma
+// (a semicolon reads cleaner and usually fits, since an em dash typically joins
+// two independent clauses). Decision is per-dash, scoped to the enclosing
+// sentence (text between the surrounding . ! ? boundaries). Comma/space
+// artifacts are tidied afterward.
+export function stripEmDashes(text) {
+  if (typeof text !== 'string') return text;
+  // 1. numeric en-dash ranges -> hyphen, before the general pass
+  let s = text.replace(/(\d)\s*–\s*(\d)/g, '$1-$2');
+  if (!/[—–]/.test(s)) return s;
+
+  // 2. replace each remaining em/en dash, choosing comma vs semicolon by the
+  //    comma count of its enclosing sentence.
+  const dashRe = /\s*[—–]\s*/g;
+  let out = '', last = 0, m;
+  while ((m = dashRe.exec(s)) !== null) {
+    const idx = m.index;
+    const sentStart = Math.max(
+      s.lastIndexOf('.', idx - 1), s.lastIndexOf('!', idx - 1), s.lastIndexOf('?', idx - 1)
+    ) + 1;
+    const after = idx + m[0].length;
+    const ends = ['.', '!', '?'].map(p => s.indexOf(p, after)).filter(i => i >= 0);
+    const sentEnd = ends.length ? Math.min(...ends) : s.length;
+    const commaCount = (s.slice(sentStart, sentEnd).match(/,/g) || []).length;
+    out += s.slice(last, idx) + (commaCount >= 2 ? '; ' : ', ');
+    last = after;
+  }
+  out += s.slice(last);
+
+  return out
+    .replace(/\s+([,;])/g, '$1')   // "word ," / "word ;" -> "word,"/"word;"
+    .replace(/,\s*,/g, ',')        // ", ," -> ","
+    .replace(/;\s*,|,\s*;/g, ';')  // mixed ";," / ",;" next to an existing comma -> ";"
+    .replace(/^\s*[,;]\s*/, '');   // strip a leading comma/semicolon artifact
+}
+
+
 // Hard-truncate to maxLength, appending an ellipsis when it cuts. Non-string
 // input returns ''. (Distinct from truncateStr — that one has no ellipsis —
 // and truncateAtSentence, which prefers a boundary.) Used across the Quick
