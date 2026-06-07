@@ -340,37 +340,6 @@ function ComplianceGateContent() {
   // Apply → manually verify the stitch, with a 90% rework rate. This collapses to one
   // human action (review the result), and falls back to soften behavior if Sonar found
   // no usable source.
-  const verifyAndCite = async (idx: number, sectionBody: string, claim: string, suggestion: string, sectionHeading?: string) => {
-    setRewritingIdx(idx);
-    setError('');
-    try {
-      const r = await authFetch('/api/compliance/verify-and-rewrite', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sectionBody, claim, suggestion, brandProfileId, sectionHeading }),
-      });
-      const d = await r.json();
-      if (d.success && d.rewritten) {
-        setEditedSections(p => ({ ...p, [idx]: d.rewritten }));
-        setRewrittenSections(p => new Set([...p, idx]));
-        // Persist outcome so the apply button label and footer reflect what actually happened.
-        setRewriteOutcomes(p => ({ ...p, [idx]: { mode: d.mode || 'softened', source: d.source || null } }));
-        // Clear any pending source-picker state — we just bypassed it.
-        setSourcesMap(p => { const n = {...p}; delete n[idx]; return n; });
-        // Surface mode so the user knows whether a citation was integrated or claim was softened
-        if (d.mode === 'softened') {
-          setError('No verified source found — claim has been softened instead of cited.');
-        }
-      } else {
-        setError('Verify & Cite failed: ' + (d.error || 'server error'));
-      }
-    } catch (e: any) {
-      setError('Verify & Cite failed: ' + (e?.message || 'unknown error'));
-    } finally {
-      setRewritingIdx(null);
-    }
-  };
-
   const acceptSuggestion = async (idx: number, sectionBody: string, _reason: string, suggestion: string) => {
     setRewritingIdx(idx);
     try {
@@ -722,30 +691,19 @@ function ComplianceGateContent() {
                           <div className="comp-flag-suggestion-wrap">
                             <div className="comp-flag-suggestion">{flag.suggestion}</div>
                             <div className="comp-flag-actions-row" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                              {/* Primary action for factual_claim/legal_risk: one-shot Verify & Cite.
-                                  Sonar lookup + citation integration in one click. Falls back to soften if no source found.
-                                  Hidden once a manual source list is open (sourcesMap) — user is in manual flow. */}
+                              {/* Single citation entry point — merged from the old "Verify & Cite"
+                                  (auto-pick) + "Choose Source" (manual-pick). Fetches candidate
+                                  sources, pre-selects the best, and lets the user confirm or swap
+                                  before citing. One door instead of two confusingly-similar ones. */}
                               {(flag.type === 'factual_claim' || flag.type === 'legal_risk') && !sourcesMap[idx] && !rewrittenSections.has(idx) && (
                                 <button
                                   className="comp-accept-suggestion-btn"
                                   style={{ background: 'var(--color-accent)', color: '#fff', borderColor: 'var(--color-accent)', fontWeight: 600 }}
-                                  onClick={() => verifyAndCite(idx, section.body || section.content || '', flag.reason || '', flag.suggestion || '', section.heading)}
-                                  disabled={rewritingIdx === idx}
-                                  title="Find a verified source and integrate it into the rewrite in one step. Falls back to softening the claim if no source is found."
-                                >
-                                  {rewritingIdx === idx ? 'Verifying & citing...' : 'Verify & Cite'}
-                                </button>
-                              )}
-                              {/* Secondary: manual Find Sources flow for users who want to choose between candidates */}
-                              {(flag.type === 'factual_claim' || flag.type === 'legal_risk') && !sourcesMap[idx] && !rewrittenSections.has(idx) && (
-                                <button
-                                  className="comp-accept-suggestion-btn"
-                                  style={{ background: 'rgba(139,92,246,0.12)', color: '#7C3AED', borderColor: 'rgba(139,92,246,0.3)' }}
                                   onClick={() => findSources(idx, section.body || section.content || '', flag.reason || '')}
                                   disabled={findingSourcesIdx === idx || rewritingIdx === idx}
-                                  title="Show 3 candidate sources to choose from before rewriting."
+                                  title="Find verified sources for this claim, pick one (the best is pre-selected), and cite it in the rewrite."
                                 >
-                                  {findingSourcesIdx === idx ? 'Searching...' : 'Choose Source'}
+                                  {findingSourcesIdx === idx ? 'Finding sources...' : 'Find & cite'}
                                 </button>
                               )}
                               <button
@@ -793,7 +751,7 @@ function ComplianceGateContent() {
                                     </a>
                                   </>
                                 ) : (
-                                  <><strong>Softened:</strong> No qualifying source found. The named-third-party assertion was hedged. <span style={{ opacity: 0.7 }}>Click 'Choose Source' to try sourcing manually.</span></>
+                                  <><strong>Softened:</strong> No qualifying source found. The named-third-party assertion was hedged. <span style={{ opacity: 0.7 }}>Use 'Find &amp; cite' to try sourcing it.</span></>
                                 )}
                               </div>
                             )}
@@ -801,7 +759,7 @@ function ComplianceGateContent() {
                             {/* Source candidates */}
                             {sourcesMap[idx] && (
                               <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 4 }}>Select a source — AI will cite it in the rewrite</div>
+                                <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 4 }}>Top result is pre-selected as the best match — cite it, pick another, or soften the claim instead.</div>
                                 {sourcesMap[idx].map((src, si) => (
                                   <div
                                     key={si}
@@ -829,13 +787,13 @@ function ComplianceGateContent() {
                                     disabled={rewritingIdx === idx}
                                     style={{ background: '#7C3AED', color: '#fff', borderColor: '#7C3AED' }}
                                   >
-                                    {rewritingIdx === idx ? 'Rewriting with source...' : `Rewrite with Source`}
+                                    {rewritingIdx === idx ? 'Citing source...' : `Cite this source`}
                                   </button>
                                   <button
                                     onClick={() => setSourcesMap(p => { const n = {...p}; delete n[idx]; return n; })}
                                     style={{ fontSize: 12, color: 'var(--color-text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}
                                   >
-                                    Skip sources
+                                    Cancel
                                   </button>
                                 </div>
                               </div>
