@@ -8132,6 +8132,8 @@ app.get('/api/geo/debug/:brandProfileId', async (req, res) => {
   // Check env vars
   out.env.hasOpenAI = !!process.env.OPENAI_API_KEY;
   out.env.hasPerplexity = !!process.env.PERPLEXITY_API_KEY;
+  out.env.hasGemini = !!process.env.GEMINI_API_KEY;
+  out.env.hasSerpAPI = !!process.env.SERPAPI_KEY;
 
   // Check geo_citations rows
   try {
