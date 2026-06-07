@@ -748,6 +748,20 @@ export default function IntegrationsPage() {
                         )}
                       </div>
                       <div className="int-card-desc">{ch.description}</div>
+                      {connected && (() => {
+                        // Surface WHICH account/page this channel posts to, from the
+                        // stored credentials. accountName: LinkedIn Page / Facebook Page
+                        // name; username: X handle; selectedTarget.name: legacy LinkedIn
+                        // company page. Pages render as-is, handles get an @.
+                        const c = (saved?.credentials || {}) as Record<string, any>;
+                        const page = c.accountName || c.pageName || c.selectedTarget?.name;
+                        const label = page || (c.username ? `@${c.username}` : null);
+                        return label ? (
+                          <div className="int-card-account" title="Connected account">
+                            Connected to <strong>{label}</strong>
+                          </div>
+                        ) : null;
+                      })()}
                     </div>
                   </div>
                   <div className="int-card-right">
