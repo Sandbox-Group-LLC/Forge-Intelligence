@@ -25,7 +25,7 @@ type ScanResult = {
   visibility?: number;
   totalChecks?: number;
   totalCited?: number;
-  byEngine?: Record<string, { checks: number; cited: number; pct: number }>;
+  byEngine?: Record<string, { checks: number; cited: number; pct: number; available?: boolean }>;
   questions?: string[];
   citedQueries?: string[];
   sources?: { domain: string; mentions: number }[];
@@ -161,7 +161,20 @@ export default function AiVisibilityScanPage() {
                   <h2>Visibility by engine</h2>
                   <div className="avs-bars">
                     {ENGINES.map(eng => {
-                      const pct = result.byEngine?.[eng.id]?.pct ?? 0;
+                      const stats = result.byEngine?.[eng.id];
+                      // available:false (or missing) => the engine couldn't be queried;
+                      // show "not measured" rather than a misleading 0%.
+                      const available = stats ? stats.available !== false && stats.checks > 0 : false;
+                      const pct = stats?.pct ?? 0;
+                      if (!available) {
+                        return (
+                          <div className="avs-bar" key={eng.id}>
+                            <span className="nm">{eng.label}</span>
+                            <div className="avs-track" />
+                            <span className="pc na">n/a</span>
+                          </div>
+                        );
+                      }
                       return (
                         <div className="avs-bar" key={eng.id}>
                           <span className="nm">{eng.label}</span>

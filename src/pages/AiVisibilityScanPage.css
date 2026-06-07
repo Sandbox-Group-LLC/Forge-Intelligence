@@ -78,6 +78,7 @@
 .avs-fill.zero{background:var(--color-error);}
 .avs-bar .pc{text-align:right;font-variant-numeric:tabular-nums;font-weight:700;font-size:14px;}
 .avs-bar .pc.zero{color:var(--color-error);}
+.avs-bar .pc.na{color:var(--color-text-muted);font-weight:600;font-size:13px;}
 
 .avs-cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
 @media(max-width:640px){.avs-cols{grid-template-columns:1fr;} .avs-form{flex-direction:column;} .avs-hero h1{font-size:30px;}}

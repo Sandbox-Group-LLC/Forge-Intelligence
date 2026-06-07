@@ -26,6 +26,7 @@ export async function probePerplexity(query, doFetch = defaultFetch) {
     body: JSON.stringify({ model: 'sonar', messages: [{ role: 'user', content: query }], max_tokens: 400 }),
   });
   const data = await res.json();
+  if (!res.ok || data.error) throw new Error(`perplexity ${res.status}: ${data.error?.message || res.statusText}`);
   return { text: data.choices?.[0]?.message?.content || '', urls: data.citations || [] };
 }
 
@@ -36,6 +37,7 @@ export async function probeOpenAI(query, doFetch = defaultFetch) {
     body: JSON.stringify({ model: 'gpt-4o-mini', tools: [{ type: 'web_search_preview' }], input: query }),
   });
   const data = await res.json();
+  if (!res.ok || data.error) throw new Error(`openai ${res.status}: ${data.error?.message || res.statusText}`);
   const msgItem = data.output?.find(o => o.type === 'message');
   const textContent = msgItem?.content?.find(c => c.type === 'output_text');
   const text = textContent?.text || data.output_text || '';
@@ -47,11 +49,11 @@ export async function probeOpenAI(query, doFetch = defaultFetch) {
 }
 
 export async function probeGemini(query, doFetch = defaultFetch) {
-  // Gemini 2.0 Flash with Google Search grounding. Grounding chunks carry a Google
-  // redirect URI plus the resolved source title — keep both so domain matching can
-  // hit either.
+  // Gemini 2.5 Flash with Google Search grounding. (gemini-2.0-flash was retired —
+  // the API now 404s it.) Grounding chunks carry a Google redirect URI plus the
+  // resolved source title — keep both so domain matching can hit either.
   const res = await doFetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -59,6 +61,10 @@ export async function probeGemini(query, doFetch = defaultFetch) {
     }
   );
   const data = await res.json();
+  // An expired/invalid key or quota error returns 4xx + {error}. Throw so the
+  // caller EXCLUDES this engine rather than scoring it a false 0% (an unanswered
+  // engine is "unavailable", not "brand absent").
+  if (!res.ok || data.error) throw new Error(`gemini ${res.status}: ${data.error?.message || res.statusText}`);
   const cand = data.candidates?.[0];
   const text = (cand?.content?.parts || []).map(p => p.text || '').join(' ');
   const chunks = cand?.groundingMetadata?.groundingChunks || [];
@@ -73,6 +79,7 @@ export async function probeAIOverviews(query, doFetch = defaultFetch) {
   const base = 'https://serpapi.com/search.json';
   const res = await doFetch(`${base}?engine=google&q=${encodeURIComponent(query)}&api_key=${process.env.SERPAPI_KEY}`);
   let data = await res.json();
+  if (!res.ok || data.error) throw new Error(`serpapi ${res.status}: ${data.error || res.statusText}`);
   let ov = data.ai_overview;
   if (ov?.page_token && !ov.text_blocks) {
     const res2 = await doFetch(`${base}?engine=google_ai_overview&page_token=${encodeURIComponent(ov.page_token)}&api_key=${process.env.SERPAPI_KEY}`);
@@ -179,7 +186,9 @@ export async function coldScan({ brandName, brandDomain, questions }) {
     // visibility = share of answers where the brand shows up at all (named or linked)
     visibility: pct(totalCited, totalChecks),
     totalChecks, totalCited, totalLinked,
-    byEngine: Object.fromEntries(engines.map(e => [e.id, { ...byEngine[e.id], pct: pct(byEngine[e.id].cited, byEngine[e.id].checks) }])),
+    // available:false means every call to that engine failed (e.g. expired key) —
+    // the UI must show "not measured", never a false 0%.
+    byEngine: Object.fromEntries(engines.map(e => [e.id, { ...byEngine[e.id], pct: pct(byEngine[e.id].cited, byEngine[e.id].checks), available: byEngine[e.id].checks > 0 }])),
     sources: aggregateSources(allUrls, brandDomain),
     citedQueries,
     perQuestion,
