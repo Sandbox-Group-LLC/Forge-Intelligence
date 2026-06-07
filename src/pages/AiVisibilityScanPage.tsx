@@ -135,7 +135,7 @@ export default function AiVisibilityScanPage() {
           <div className="avs-loading">
             <div className="avs-spinner" />
             <div className="step">{LOADING_STEPS[stepIdx]}</div>
-            <div className="sub">Running real queries against four AI engines — this takes up to a minute.</div>
+            <div className="sub">Running real queries against four AI engines. This takes up to a minute.</div>
           </div>
         )}
 
@@ -156,7 +156,7 @@ export default function AiVisibilityScanPage() {
                     <div className="s">
                       {vis === 0
                         ? 'Not once. Across every engine and every question your buyers ask, AI never named you.'
-                        : 'Across the questions your buyers ask AI about your category — measured live, not modeled.'}
+                        : 'Across the questions your buyers ask AI about your category, measured live, not modeled.'}
                     </div>
                   </div>
                 </div>
@@ -230,7 +230,7 @@ export default function AiVisibilityScanPage() {
                 <div className="avs-cta">
                   <div>
                     <div className="t">Turn these answers in your favor.</div>
-                    <div className="s">Forge maps every buyer question to the content that earns the AI citation — and tracks your score weekly across all four engines.</div>
+                    <div className="s">Forge maps every buyer question to the content that earns the AI citation, and tracks your score weekly across all four engines.</div>
                   </div>
                   <a href="/?utm_source=ai-visibility-scan">Get your GEO plan →</a>
                 </div>
