@@ -1,0 +1,93 @@
+name: Brain Refresh
+
+# Re-index this repo into the shared GitNexus "Sandbox Brain" whenever production
+# (main) changes, so the central code-graph stays current without a manual run.
+#
+# Safe-by-design:
+# - Separate workflow + unique job name → no collision with any required check.
+#   Triggers on push:main only, never on pull_request, so it does not touch a
+#   merge gate.
+# - Best-effort: if the brain is down / OOM / slow, we WARN and exit 0 (brain capacity
+#   is not this repo's problem). We only fail on a definitive analyze "failed".
+# - Self-healing: the brain keeps a persistent on-disk clone and refreshes via
+#   `git pull`. Because analysis writes into that clone (skills/embeddings), the tree
+#   goes dirty and a later pull can wedge ("git pull failed"). On that signature we
+#   DELETE the brain's clone and re-analyze fresh — same recovery as
+#   scripts/refreshbrain.sh in the sandbox-brain repo.
+#
+# Config:
+# - vars.BRAIN_URL        (optional) override the brain endpoint. Default below.
+# - secrets.BRAIN_API_KEY Bearer token for the brain's API_KEY gate. Sent only if
+#   set; add it to this repo's secrets so the refresh keeps working if the gate is on.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: brain-refresh-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    name: Reindex into Sandbox Brain
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger + poll brain analyze (self-healing)
+        env:
+          BRAIN: ${{ vars.BRAIN_URL || 'https://sandbox-brain.onrender.com' }}
+          API_KEY: ${{ secrets.BRAIN_API_KEY }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: |
+          set -uo pipefail
+          AUTH=()
+          [ -n "${API_KEY:-}" ] && AUTH=(-H "Authorization: Bearer ${API_KEY}")
+
+          # analyze: POST one job + poll to a terminal state.
+          # Sets RC (0 ok | 2 failed | 3 gateway/down | 4 timeout) and ERR (detail).
+          analyze() {
+            RC=0; ERR=""
+            local resp http body jid start el gw=0 s sh sb st ph
+            resp=$(curl -sS -m 60 -w $'\n%{http_code}' "${AUTH[@]}" \
+                   -X POST "$BRAIN/api/analyze" -H 'Content-Type: application/json' \
+                   -d "{\"url\":\"$REPO_URL\",\"embeddings\":true}" 2>&1) || { RC=3; ERR="POST unreachable"; return; }
+            http=$(printf '%s' "$resp" | tail -n1); body=$(printf '%s' "$resp" | sed '$d')
+            echo "POST $BRAIN/api/analyze ($REPO_URL) -> HTTP $http"
+            case "$http" in 5*|000|"") RC=3; ERR="POST HTTP $http"; return;; esac
+            jid=$(printf '%s' "$body" | grep -oE '"(jobId|id)"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed -E 's/.*:"([^"]*)"/\1/')
+            [ -z "$jid" ] && { RC=2; ERR="no jobId (HTTP $http): $body"; return; }
+            start=$(date +%s)
+            while :; do
+              el=$(( $(date +%s) - start ))
+              [ "$el" -ge 600 ] && { RC=4; ERR=">600s without finishing (likely OOM)"; return; }
+              s=$(curl -sS -m 30 -w $'\n%{http_code}' "${AUTH[@]}" "$BRAIN/api/analyze/$jid" 2>/dev/null)
+              sh=$(printf '%s' "$s" | tail -n1); sb=$(printf '%s' "$s" | sed '$d')
+              case "$sh" in 502|503|504|000|"") gw=$((gw+1)); [ "$gw" -ge 3 ] && { RC=3; ERR="gateway HTTP $sh"; return; }; sleep 5; continue;; esac
+              gw=0
+              st=$(printf '%s' "$sb" | grep -oE '"status"[^,}]*' | head -1 | sed -E 's/.*:[[:space:]]*"([^"]*)".*/\1/')
+              ph=$(printf '%s' "$sb" | grep -oE '"phase"[^,}]*'  | head -1 | sed -E 's/.*:[[:space:]]*"([^"]*)".*/\1/')
+              echo "[+${el}s] ${st:-?}/${ph:-?}"
+              case "$st" in
+                complete|completed) RC=0; ERR=""; return;;
+                failed|error) RC=2; ERR="$sb"; return;;
+              esac
+              sleep 5
+            done
+          }
+
+          analyze
+          # Self-heal the known wedge: a dirty persistent clone makes git
+          # pull/fetch/checkout fail. Delete the brain's clone and re-analyze fresh.
+          if [ "$RC" -eq 2 ] && printf '%s' "$ERR" | grep -qiE 'git (pull|fetch|checkout|merge)'; then
+            echo "::warning::clone wedged for $REPO_NAME — deleting brain clone and re-cloning"
+            curl -sS -m 30 "${AUTH[@]}" -X DELETE "$BRAIN/api/repo?repo=$REPO_NAME" >/dev/null 2>&1 || true
+            analyze
+          fi
+
+          case "$RC" in
+            0) echo "✅ reindexed into the brain";;
+            3|4) echo "::warning::brain unavailable/slow ($ERR) — skipping (best-effort)"; exit 0;;
+            *) echo "::error::brain analyze failed: $ERR"; exit 1;;
+          esac

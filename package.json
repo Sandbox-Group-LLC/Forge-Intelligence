@@ -10,7 +10,7 @@
     "start": "node server.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "lint": "eslint server.js \"test/**/*.{js,mjs}\"",
+    "lint": "eslint server.js \"src/server/**/*.js\" \"test/**/*.{js,mjs}\"",
     "routes:snapshot": "node test/gen-snapshot.js"
   },
   "dependencies": {
