@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { urlHasDomain, isCited, findCitedSection, CITATION_ENGINES, extractDomain, aggregateSources } from '../src/server/geoProbe.js';
+import { urlHasDomain, isCited, findCitedSection, CITATION_ENGINES, extractDomain, aggregateSources, brandTokens, scanVisibility } from '../src/server/geoProbe.js';
 
 describe('urlHasDomain', () => {
   it('matches a domain inside a URL (case-insensitive)', () => {
@@ -94,6 +94,41 @@ describe('aggregateSources', () => {
   it('is empty-safe', () => {
     expect(aggregateSources([], 'brand.com')).toEqual([]);
     expect(aggregateSources(null, 'brand.com')).toEqual([]);
+  });
+});
+
+describe('brandTokens', () => {
+  it('includes the brand name and the domain SLD', () => {
+    expect(brandTokens('Nova Intelligence', 'novaintelligenceai.com')).toEqual(['nova intelligence', 'novaintelligenceai']);
+  });
+  it('drops too-short tokens', () => {
+    // name "Hi" (<=2) dropped; SLD "ab" (<=3) dropped
+    expect(brandTokens('Hi', 'ab.com')).toEqual([]);
+  });
+  it('dedupes when name equals SLD', () => {
+    expect(brandTokens('nike', 'nike.com')).toEqual(['nike']);
+  });
+});
+
+describe('scanVisibility', () => {
+  it('cited when the brand domain is linked', () => {
+    expect(scanVisibility({ text: 'great shoes', urls: ['https://nike.com/x'], brandName: 'Nike', brandDomain: 'nike.com' }))
+      .toEqual({ visible: true, status: 'cited' });
+  });
+  it('mentioned when the brand NAME appears in text but no link (the Nike bug)', () => {
+    const r = scanVisibility({ text: 'Nike and Adidas dominate running.', urls: ['https://runrepeat.com'], brandName: 'Nike', brandDomain: 'nike.com' });
+    expect(r).toEqual({ visible: true, status: 'mentioned' });
+  });
+  it('matches a possessive ("Nike’s") via word boundary', () => {
+    expect(scanVisibility({ text: "Nike's Vaporfly is popular", urls: [], brandName: 'Nike', brandDomain: 'nike.com' }).visible).toBe(true);
+  });
+  it('absent when neither name nor domain appears', () => {
+    expect(scanVisibility({ text: 'Adidas and Puma lead here', urls: ['https://x.com'], brandName: 'Nike', brandDomain: 'nike.com' }))
+      .toEqual({ visible: false, status: 'absent' });
+  });
+  it('does not match the token as a substring of another word', () => {
+    // "nova" should not match "innovation"
+    expect(scanVisibility({ text: 'this drives innovation forward', urls: [], brandName: 'Nova', brandDomain: 'nova.io' }).visible).toBe(false);
   });
 });
 
