@@ -110,3 +110,18 @@ describe('stripEmDashes', () => {
     expect(stripEmDashes('a well-built, dash-free sentence')).toBe('a well-built, dash-free sentence');
   });
 });
+
+describe('stripEmDashes — semicolon when the sentence already has 2+ commas', () => {
+  it('uses a semicolon when 2+ commas precede in the sentence', () => {
+    expect(stripEmDashes('It reads voice, audience, and gaps — then it writes.'))
+      .toBe('It reads voice, audience, and gaps; then it writes.');
+  });
+  it('still uses a comma when only 1 comma is in the sentence', () => {
+    expect(stripEmDashes('Strategy, not tactics — that is the point.'))
+      .toBe('Strategy, not tactics, that is the point.');
+  });
+  it('decides per sentence (semicolon in one, comma in the next)', () => {
+    expect(stripEmDashes('A, B, C — done. Quick — go.'))
+      .toBe('A, B, C; done. Quick, go.');
+  });
+});
