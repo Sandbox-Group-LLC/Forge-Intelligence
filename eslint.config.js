@@ -14,7 +14,15 @@ export default [
       ecmaVersion: 2023,
       sourceType: 'module',
       globals: {
-        ...globals.node,
+        // nodeBuiltin (NOT node): the ESM-safe global set. It excludes the
+        // CommonJS-only globals __dirname/__filename/require/module/exports,
+        // which don't exist in ES modules (this codebase is "type":"module").
+        // With plain globals.node, no-undef treats a bare __dirname as valid and
+        // it blows up only at runtime — exactly the regression (#277) that shipped
+        // when route groups were extracted into ESM modules. nodeBuiltin makes
+        // no-undef flag it at the PR gate. Files that legitimately shim these
+        // (server.js: `const __dirname = …`) are declarations, so they pass.
+        ...globals.nodeBuiltin,
         // server.js runs browser code inside Puppeteer page.evaluate /
         // waitForFunction callbacks (forgeScrape). document/window are legit
         // there, so whitelist them rather than flag false positives.
