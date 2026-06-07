@@ -72,10 +72,38 @@ export async function probeGemini(query, doFetch = defaultFetch) {
   return { text, urls };
 }
 
+// Recursively collect every string in a JSON subtree (used to read AI-overview
+// blocks defensively, regardless of the exact provider schema).
+function collectStrings(node, out = []) {
+  if (typeof node === 'string') { if (node.trim()) out.push(node); }
+  else if (Array.isArray(node)) node.forEach(n => collectStrings(n, out));
+  else if (node && typeof node === 'object') Object.values(node).forEach(v => collectStrings(v, out));
+  return out;
+}
+const collectUrls = (node) => collectStrings(node).filter(s => /^https?:\/\//i.test(s));
+
 export async function probeAIOverviews(query, doFetch = defaultFetch) {
-  // Google AI Overviews has no first-party API — SerpAPI surfaces the AI Overview
-  // block. Sometimes it's inline; sometimes only a page_token comes back and the
-  // block must be fetched with a follow-up engine=google_ai_overview call.
+  // Google AI Overviews has no first-party API; we read it through a SERP
+  // provider. Prefer ValueSERP (much cheaper); fall back to SerpAPI if only
+  // that key is set, so switching providers is just an env-var change.
+  if (process.env.VALUESERP_API_KEY) {
+    const url = `https://api.valueserp.com/search?api_key=${process.env.VALUESERP_API_KEY}`
+      + `&q=${encodeURIComponent(query)}&include_ai_overview=true&google_domain=google.com&device=desktop`;
+    const res = await doFetch(url);
+    const data = await res.json();
+    if (!res.ok || data.request_info?.success === false) {
+      throw new Error(`valueserp ${res.status}: ${data.request_info?.message || res.statusText}`);
+    }
+    const ov = data.ai_overview;
+    if (!ov) return { text: '', urls: [] }; // no AI Overview shown for this query
+    // Schema-agnostic: pull all text + all source links from the block. Works
+    // whether contents are strings/text_blocks and sources are .link/.url.
+    return { text: collectStrings(ov).join(' '), urls: collectUrls(ov) };
+  }
+
+  // ── SerpAPI fallback (legacy) ──────────────────────────────────────────────
+  // Sometimes inline; sometimes only a page_token comes back and the block must
+  // be fetched with a follow-up engine=google_ai_overview call.
   const base = 'https://serpapi.com/search.json';
   const res = await doFetch(`${base}?engine=google&q=${encodeURIComponent(query)}&api_key=${process.env.SERPAPI_KEY}`);
   let data = await res.json();
@@ -85,7 +113,7 @@ export async function probeAIOverviews(query, doFetch = defaultFetch) {
     const res2 = await doFetch(`${base}?engine=google_ai_overview&page_token=${encodeURIComponent(ov.page_token)}&api_key=${process.env.SERPAPI_KEY}`);
     ov = (await res2.json()).ai_overview || ov;
   }
-  if (!ov) return { text: '', urls: [] }; // no AI Overview shown for this query
+  if (!ov) return { text: '', urls: [] };
   const text = (ov.text_blocks || [])
     .map(b => b.snippet || (b.list || []).map(li => li.snippet).join(' ') || '')
     .join(' ');
@@ -99,7 +127,7 @@ export const CITATION_ENGINES = [
   { id: 'perplexity',  enabled: () => !!process.env.PERPLEXITY_API_KEY, probe: probePerplexity },
   { id: 'chatgpt',     enabled: () => !!process.env.OPENAI_API_KEY,     probe: probeOpenAI },
   { id: 'gemini',      enabled: () => !!process.env.GEMINI_API_KEY,     probe: probeGemini },
-  { id: 'aiOverviews', enabled: () => !!process.env.SERPAPI_KEY,        probe: probeAIOverviews },
+  { id: 'aiOverviews', enabled: () => !!(process.env.VALUESERP_API_KEY || process.env.SERPAPI_KEY), probe: probeAIOverviews },
 ];
 
 // ── Cold-prospect scan ───────────────────────────────────────────────────────

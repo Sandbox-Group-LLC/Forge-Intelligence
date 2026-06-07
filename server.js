@@ -8214,8 +8214,26 @@ app.get('/api/geo/debug/:brandProfileId', async (req, res) => {
     } catch(e) { out.apiTest.gemini = { error: e.message }; }
   }
 
-  // Test one SerpAPI AI Overview call.
-  if (process.env.SERPAPI_KEY) {
+  // Test the AI-Overview SERP provider. Prefer ValueSERP (cheaper); dump the
+  // live ai_overview shape so we can confirm field paths after switching.
+  out.env.hasValueSerp = !!process.env.VALUESERP_API_KEY;
+  if (process.env.VALUESERP_API_KEY) {
+    try {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 15000);
+      const vRes = await fetch(`https://api.valueserp.com/search?api_key=${process.env.VALUESERP_API_KEY}&q=${encodeURIComponent('best running shoe brands')}&include_ai_overview=true&google_domain=google.com&device=desktop`, { signal: controller.signal });
+      const vData = await vRes.json();
+      const ov = vData.ai_overview;
+      out.apiTest.valueserp = {
+        status: vRes.status,
+        success: vData.request_info?.success ?? null,
+        error: vData.request_info?.success === false ? String(vData.request_info?.message || '').slice(0, 200) : null,
+        hasAiOverview: !!ov,
+        aiOverviewKeys: ov ? Object.keys(ov) : [],
+        sample: ov ? JSON.stringify(ov).slice(0, 500) : null,  // shape confirmation
+      };
+    } catch(e) { out.apiTest.valueserp = { error: e.message }; }
+  } else if (process.env.SERPAPI_KEY) {
     try {
       const controller = new AbortController();
       setTimeout(() => controller.abort(), 15000);

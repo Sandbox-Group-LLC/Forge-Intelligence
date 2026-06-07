@@ -1,5 +1,32 @@
 import { describe, it, expect } from 'vitest';
-import { urlHasDomain, isCited, findCitedSection, CITATION_ENGINES, extractDomain, aggregateSources, brandTokens, scanVisibility, probeGemini, probePerplexity } from '../src/server/geoProbe.js';
+import { urlHasDomain, isCited, findCitedSection, CITATION_ENGINES, extractDomain, aggregateSources, brandTokens, scanVisibility, probeGemini, probePerplexity, probeAIOverviews } from '../src/server/geoProbe.js';
+
+describe('probeAIOverviews — ValueSERP branch', () => {
+  const fakeRes = (status, body) => ({ ok: status >= 200 && status < 300, status, statusText: 'x', json: async () => body });
+  it('deep-collects AI-overview text + source links regardless of exact schema', async () => {
+    process.env.VALUESERP_API_KEY = 'test-key';
+    try {
+      const body = { ai_overview: { contents: [{ snippet: 'Nike and Adidas lead running.' }], sources: [{ link: 'https://nike.com/run' }, { url: 'https://adidas.com' }] } };
+      const out = await probeAIOverviews('best running shoes', async () => fakeRes(200, body));
+      expect(out.text).toContain('Nike');
+      expect(out.urls).toEqual(expect.arrayContaining(['https://nike.com/run', 'https://adidas.com']));
+    } finally { delete process.env.VALUESERP_API_KEY; }
+  });
+  it('throws on a ValueSERP failure response', async () => {
+    process.env.VALUESERP_API_KEY = 'test-key';
+    try {
+      await expect(probeAIOverviews('q', async () => fakeRes(401, { request_info: { success: false, message: 'invalid api key' } })))
+        .rejects.toThrow(/valueserp/);
+    } finally { delete process.env.VALUESERP_API_KEY; }
+  });
+  it('returns empty when no AI overview is shown', async () => {
+    process.env.VALUESERP_API_KEY = 'test-key';
+    try {
+      const out = await probeAIOverviews('q', async () => fakeRes(200, { request_info: { success: true } }));
+      expect(out).toEqual({ text: '', urls: [] });
+    } finally { delete process.env.VALUESERP_API_KEY; }
+  });
+});
 
 const fakeRes = (status, body) => ({ ok: status >= 200 && status < 300, status, statusText: 'x', json: async () => body });
 
