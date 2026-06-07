@@ -7,8 +7,12 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { pool } from '../db.js';
 import { anthropic } from '../llm.js';
+
+// ESM has no __dirname; resolve the repo root (this file lives at src/server/routes/).
+const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 import { extractJSON, safeParseLLM } from '../llm-json.js';
 import { requireAuth, verifyBrandAccess } from '../auth.js';
 import { stripScaffoldingArtifacts } from '../text.js';
@@ -256,7 +260,7 @@ router.post('/plan', requireAuth, async (req, res) => {
     };
 
     const systemPrompt = fs.readFileSync(
-      path.join(__dirname, 'src/agents/stage4_campaign_planner/system_prompt.md'), 'utf8'
+      path.join(REPO_ROOT, 'src/agents/stage4_campaign_planner/system_prompt.md'), 'utf8'
     );
 
     // Build the direction block — arc expansion is the strongest signal, custom prompt is medium, nothing is fallback.
@@ -490,7 +494,7 @@ router.get('/generate/:id', requireAuth, async (req, res) => {
     };
 
     const cgSystemPrompt = fs.readFileSync(
-      path.join(__dirname, 'src/agents/stage4_content_generator/system_prompt.md'), 'utf8'
+      path.join(REPO_ROOT, 'src/agents/stage4_content_generator/system_prompt.md'), 'utf8'
     );
 
     await pool.query(`UPDATE campaigns SET status = 'generating', updated_at = NOW() WHERE id = $1`, [req.params.id]);
