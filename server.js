@@ -8861,22 +8861,37 @@ app.get('/api/content-generator/enriched-briefs/:brandProfileId', requireAuth, a
 });
 
 
-// POST /api/geo/cold-scan — AI Visibility scan for a prospect we have NO content for.
-// Scrape their homepage, infer the buyer questions their category gets asked, then
-// probe all four engines to MEASURE how often AI cites them vs who it cites instead.
-// This powers the shareable lead-magnet report. Synchronous (30-90s): the four-engine
-// probe runs inline. adminPassword bypass for testing; otherwise requires a Clerk JWT.
-// NOTE: before going public as a lead magnet this needs rate-limiting + abuse controls
-// (it spends SerpAPI + LLM credits per call). Gated to auth/admin for now.
+// POST /api/geo/cold-scan — public AI Visibility scan (the lead magnet at /scan).
+// Scrape a prospect's homepage, infer the buyer questions their category gets asked,
+// then probe all four engines to MEASURE how often AI cites them vs who it cites
+// instead. Synchronous (30-90s): the four-engine probe runs inline.
+//
+// PUBLIC + rate-limited: each scan spends SerpAPI + LLM credits, so anonymous callers
+// are capped per-IP and globally per-day to bound spend. adminPassword bypasses the
+// cap (testing). The limiter is in-memory — approximate across Render instances; a
+// Redis/DB-backed limiter is the hardening follow-up before heavy traffic.
+const _coldScanIpHits = new Map();        // ip -> [timestamps within the hour]
+let _coldScanDay = { day: '', count: 0 }; // global daily counter
+const COLD_SCAN_PER_IP_PER_HOUR = 3;
+const COLD_SCAN_GLOBAL_PER_DAY = 250;
+function coldScanRateCheck(ip) {
+  const now = Date.now();
+  const today = new Date().toISOString().slice(0, 10);
+  if (_coldScanDay.day !== today) _coldScanDay = { day: today, count: 0 };
+  if (_coldScanDay.count >= COLD_SCAN_GLOBAL_PER_DAY) return 'global';
+  const recent = (_coldScanIpHits.get(ip) || []).filter(t => now - t < 3600000);
+  if (recent.length >= COLD_SCAN_PER_IP_PER_HOUR) return 'ip';
+  recent.push(now); _coldScanIpHits.set(ip, recent); _coldScanDay.count++;
+  return null;
+}
+
 app.post('/api/geo/cold-scan', async (req, res) => {
   const isAdmin = req.body?.adminPassword && req.body.adminPassword === process.env.ADMIN_RELAY_PASSWORD;
   if (!isAdmin) {
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ success: false, error: 'Unauthorized' });
-    try {
-      const { payload } = await jwtVerify(authHeader.split(' ')[1], clerkJWKS, { algorithms: ['RS256'], clockTolerance: '30s' });
-      req.userId = payload.sub;
-    } catch { return res.status(401).json({ success: false, error: 'Invalid token' }); }
+    const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
+    const limited = coldScanRateCheck(ip);
+    if (limited === 'ip') return res.status(429).json({ success: false, error: "You've run a few scans already — try again in an hour." });
+    if (limited === 'global') return res.status(429).json({ success: false, error: "We've hit today's free-scan limit. Check back tomorrow, or book a teardown." });
   }
 
   const { url } = req.body;
