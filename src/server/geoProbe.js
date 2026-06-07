@@ -1,0 +1,129 @@
+// Engine-probing primitives for the GEO Citation Tracker (Performance Dashboard →
+// "Run Citation Check"). Each probe queries ONE real AI engine and returns
+// { text, urls } — the engine's answer plus the source links it cited. The
+// /api/geo/track loop in server.js uses these to record measured citation results
+// into geo_citations across every configured engine.
+//
+// Perplexity Sonar and OpenAI web search were already wired inline in server.js;
+// this module unifies them with two new engines — Google Gemini (Search grounding)
+// and Google AI Overviews (via SerpAPI) — so all four are measured identically.
+// Each engine is gated by its own API key; a missing key disables that engine.
+
+const PROBE_TIMEOUT_MS = 30000;
+
+// Default fetch with an abort timeout. The dashboard route passes its own
+// fetchWithTimeout(url, opts, ms); both share this signature.
+function defaultFetch(url, opts = {}) {
+  return fetch(url, { ...opts, signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
+}
+
+// ── Per-engine probes — each returns { text, urls } ──────────────────────────
+
+export async function probePerplexity(query, doFetch = defaultFetch) {
+  const res = await doFetch('https://api.perplexity.ai/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'sonar', messages: [{ role: 'user', content: query }], max_tokens: 400 }),
+  });
+  const data = await res.json();
+  return { text: data.choices?.[0]?.message?.content || '', urls: data.citations || [] };
+}
+
+export async function probeOpenAI(query, doFetch = defaultFetch) {
+  const res = await doFetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'gpt-4o-mini', tools: [{ type: 'web_search_preview' }], input: query }),
+  });
+  const data = await res.json();
+  const msgItem = data.output?.find(o => o.type === 'message');
+  const textContent = msgItem?.content?.find(c => c.type === 'output_text');
+  const text = textContent?.text || data.output_text || '';
+  const urls = (textContent?.annotations || [])
+    .filter(a => a.type === 'url_citation')
+    .map(a => a.url || a.url_citation?.url || '')
+    .filter(Boolean);
+  return { text, urls };
+}
+
+export async function probeGemini(query, doFetch = defaultFetch) {
+  // Gemini 2.0 Flash with Google Search grounding. Grounding chunks carry a Google
+  // redirect URI plus the resolved source title — keep both so domain matching can
+  // hit either.
+  const res = await doFetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: query }] }], tools: [{ google_search: {} }] }),
+    }
+  );
+  const data = await res.json();
+  const cand = data.candidates?.[0];
+  const text = (cand?.content?.parts || []).map(p => p.text || '').join(' ');
+  const chunks = cand?.groundingMetadata?.groundingChunks || [];
+  const urls = chunks.flatMap(c => [c.web?.uri, c.web?.title].filter(Boolean));
+  return { text, urls };
+}
+
+export async function probeAIOverviews(query, doFetch = defaultFetch) {
+  // Google AI Overviews has no first-party API — SerpAPI surfaces the AI Overview
+  // block. Sometimes it's inline; sometimes only a page_token comes back and the
+  // block must be fetched with a follow-up engine=google_ai_overview call.
+  const base = 'https://serpapi.com/search.json';
+  const res = await doFetch(`${base}?engine=google&q=${encodeURIComponent(query)}&api_key=${process.env.SERPAPI_KEY}`);
+  let data = await res.json();
+  let ov = data.ai_overview;
+  if (ov?.page_token && !ov.text_blocks) {
+    const res2 = await doFetch(`${base}?engine=google_ai_overview&page_token=${encodeURIComponent(ov.page_token)}&api_key=${process.env.SERPAPI_KEY}`);
+    ov = (await res2.json()).ai_overview || ov;
+  }
+  if (!ov) return { text: '', urls: [] }; // no AI Overview shown for this query
+  const text = (ov.text_blocks || [])
+    .map(b => b.snippet || (b.list || []).map(li => li.snippet).join(' ') || '')
+    .join(' ');
+  const urls = (ov.references || []).map(r => r.link).filter(Boolean);
+  return { text, urls };
+}
+
+// Engine registry. `id` is the value stored in geo_citations.engine and rendered
+// as the engine badge in the dashboard. Order is the display order.
+export const CITATION_ENGINES = [
+  { id: 'perplexity',  enabled: () => !!process.env.PERPLEXITY_API_KEY, probe: probePerplexity },
+  { id: 'chatgpt',     enabled: () => !!process.env.OPENAI_API_KEY,     probe: probeOpenAI },
+  { id: 'gemini',      enabled: () => !!process.env.GEMINI_API_KEY,     probe: probeGemini },
+  { id: 'aiOverviews', enabled: () => !!process.env.SERPAPI_KEY,        probe: probeAIOverviews },
+];
+
+// ── Citation-attribution helpers (pure, unit-tested) ─────────────────────────
+
+export function urlHasDomain(url, brandDomain) {
+  if (!url || typeof url !== 'string' || !brandDomain) return false;
+  return url.toLowerCase().includes(brandDomain.toLowerCase());
+}
+
+// Was the brand cited? A linked source on the brand domain, or the domain spelled
+// out in the answer text.
+export function isCited({ text = '', urls = [], brandDomain = '' }) {
+  if (!brandDomain) return false;
+  return (urls || []).some(u => urlHasDomain(u, brandDomain)) || (text || '').toLowerCase().includes(brandDomain.toLowerCase());
+}
+
+// Which part of the article got cited: section bodies first, then FAQs, then a
+// URL-cited-vs-brand-mention fallback. Mirrors the original inline logic exactly.
+export function findCitedSection({ text = '', urls = [], brandDomain = '', sections = [], faqs = [] }) {
+  const respWords = (text || '').toLowerCase().split(' ');
+  const overlaps = (body) => respWords.filter(w => w.length > 6 && body.includes(w)).length > 3;
+  for (const s of sections) {
+    const body = (s.body || s.content || '').toLowerCase();
+    if (overlaps(body)) return s.heading;
+  }
+  for (const f of faqs) {
+    const body = `${f?.question || ''} ${f?.answer || ''}`.toLowerCase();
+    if (overlaps(body)) {
+      const q = (f?.question || '').trim();
+      return q.length > 60 ? `FAQ: ${q.slice(0, 60)}…` : `FAQ: ${q}`;
+    }
+  }
+  return (urls || []).some(u => urlHasDomain(u, brandDomain)) ? 'Article URL cited' : 'Brand mention';
+}

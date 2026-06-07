@@ -13,6 +13,7 @@ import { clerkJWKS, SUPER_ADMIN_IDS, verifyBrandAccess, requireAuth, requireApiK
 import { callZernio, zernioPublish, getOrCreateZernioProfile, zernioGuard } from './src/server/zernio.js';
 import { forgeScrape, getBrandPageContent, discoverSubpages, _forgeScrapeRateLimited, FORGE_SCRAPE_RATE_PER_MIN } from './src/server/scrape.js';
 import { anthropic, dateContext } from './src/server/llm.js';
+import { CITATION_ENGINES, isCited, findCitedSection, urlHasDomain } from './src/server/geoProbe.js';
 import { installLogCapture, logBuffer, logSSEClients, errorAggregates } from './src/server/logging.js';
 import {
   LOVABLE_UUID_RE, LOVABLE_URL_SAFE_LIMIT, LOVABLE_MAX_PROMPT_CHARS, LOVABLE_SUPPORTED_APP_TYPES,
@@ -8131,6 +8132,8 @@ app.get('/api/geo/debug/:brandProfileId', async (req, res) => {
   // Check env vars
   out.env.hasOpenAI = !!process.env.OPENAI_API_KEY;
   out.env.hasPerplexity = !!process.env.PERPLEXITY_API_KEY;
+  out.env.hasGemini = !!process.env.GEMINI_API_KEY;
+  out.env.hasSerpAPI = !!process.env.SERPAPI_KEY;
 
   // Check geo_citations rows
   try {
@@ -8936,112 +8939,25 @@ app.post('/api/geo/track/:brandProfileId', async (req, res) => {
         ].filter(Boolean).slice(0, 5);  // hard cap per article
 
         await Promise.allSettled(probeQuestions.map(async question => {
-
-          // ── Perplexity Sonar ──────────────────────────────────────────────
-          if (process.env.PERPLEXITY_API_KEY) {
+          // Probe every configured engine identically. Perplexity + ChatGPT were
+          // here before; Gemini + Google AI Overviews are now measured the same way
+          // (see src/server/geoProbe.js). A missing API key disables that engine.
+          await Promise.allSettled(CITATION_ENGINES.filter(e => e.enabled()).map(async engine => {
             try {
-              const pRes = await fetchWithTimeout('https://api.perplexity.ai/chat/completions', {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ model: 'sonar', messages: [{ role: 'user', content: question }], max_tokens: 400 })
-              });
-              const pData = await pRes.json();
-              const pText = pData.choices?.[0]?.message?.content || '';
-              const citations = pData.citations || [];
-              const isCited = citations.some(u => u.includes(brandDomain)) || pText.toLowerCase().includes(brandDomain.toLowerCase());
-              let citedSection = null;
-              if (isCited) {
-                const respWords = pText.toLowerCase().split(' ');
-                // 1) Section bodies — existing fuzzy match (3+ words >6 chars overlapping)
-                for (const s of sections) {
-                  const body = (s.body || s.content || '').toLowerCase();
-                  if (respWords.filter(w => w.length > 6 && body.includes(w)).length > 3) { citedSection = s.heading; break; }
-                }
-                // 2) FAQs — articles get cited for FAQ content too; same threshold
-                if (!citedSection) {
-                  for (const f of faqs) {
-                    const body = `${f?.question || ''} ${f?.answer || ''}`.toLowerCase();
-                    if (respWords.filter(w => w.length > 6 && body.includes(w)).length > 3) {
-                      const q = (f?.question || '').trim();
-                      citedSection = q.length > 60 ? `FAQ: ${q.slice(0, 60)}…` : `FAQ: ${q}`;
-                      break;
-                    }
-                  }
-                }
-                // 3) Fallback — cited but no content match. Distinguish URL citation from text mention.
-                if (!citedSection) {
-                  citedSection = citations.some(u => u.includes(brandDomain)) ? 'Article URL cited' : 'Brand mention';
-                }
-              }
+              const { text, urls } = await engine.probe(question, fetchWithTimeout);
+              const cited = isCited({ text, urls, brandDomain });
+              const citedSection = cited ? findCitedSection({ text, urls, brandDomain, sections, faqs }) : null;
               await pool.query(
                 `INSERT INTO geo_citations (brand_profile_id, content_id, engine, query, is_cited, cited_url, cited_section, response_snippet, raw_citations, checked_at)
-                 VALUES ($1,$2,'perplexity',$3,$4,$5,$6,$7,$8,NOW())
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
                  ON CONFLICT (brand_profile_id, content_id, engine, query)
-                 DO UPDATE SET is_cited=$4, cited_url=$5, cited_section=$6, response_snippet=$7, raw_citations=$8, checked_at=NOW()`,
-                [brandProfileId, article.id, question, isCited,
-                 citations.find(u => u.includes(brandDomain)) || null,
-                 citedSection, pText.slice(0, 300), JSON.stringify(citations)]
-              ).catch(() => {});
-            } catch(e) { console.error('[GEO-PERPLEXITY]', e.message); }
-          }
-
-          // ── OpenAI web search ─────────────────────────────────────────────
-          if (process.env.OPENAI_API_KEY) {
-            try {
-              const oRes = await fetchWithTimeout('https://api.openai.com/v1/responses', {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  model: 'gpt-4o-mini',
-                  tools: [{ type: 'web_search_preview' }],
-                  input: question
-                })
-              });
-              const oData = await oRes.json();
-              // Responses API: find message item in output array, extract text + annotations
-              const msgItem = oData.output?.find(o => o.type === 'message');
-              const textContent = msgItem?.content?.find(c => c.type === 'output_text');
-              const outputText = textContent?.text || oData.output_text || '';
-              const annotations = textContent?.annotations || [];
-              const urlCitations = annotations
-                .filter(a => a.type === 'url_citation')
-                .map(a => a.url || a.url_citation?.url || '');
-              const isCited = urlCitations.some(u => u.includes(brandDomain)) || outputText.toLowerCase().includes(brandDomain.toLowerCase());
-              let citedSection = null;
-              if (isCited) {
-                const respWords = outputText.toLowerCase().split(' ');
-                // 1) Section bodies — existing fuzzy match (3+ words >6 chars overlapping)
-                for (const s of sections) {
-                  const body = (s.body || s.content || '').toLowerCase();
-                  if (respWords.filter(w => w.length > 6 && body.includes(w)).length > 3) { citedSection = s.heading; break; }
-                }
-                // 2) FAQs — articles get cited for FAQ content too; same threshold
-                if (!citedSection) {
-                  for (const f of faqs) {
-                    const body = `${f?.question || ''} ${f?.answer || ''}`.toLowerCase();
-                    if (respWords.filter(w => w.length > 6 && body.includes(w)).length > 3) {
-                      const q = (f?.question || '').trim();
-                      citedSection = q.length > 60 ? `FAQ: ${q.slice(0, 60)}…` : `FAQ: ${q}`;
-                      break;
-                    }
-                  }
-                }
-                // 3) Fallback — cited but no content match. Distinguish URL citation from text mention.
-                if (!citedSection) {
-                  citedSection = urlCitations.some(u => u.includes(brandDomain)) ? 'Article URL cited' : 'Brand mention';
-                }
-              }
-              await pool.query(
-                `INSERT INTO geo_citations (brand_profile_id, content_id, engine, query, is_cited, cited_url, cited_section, response_snippet, raw_citations, checked_at)
-                 VALUES ($1,$2,'chatgpt',$3,$4,$5,$6,$7,$8,NOW())
-                 ON CONFLICT (brand_profile_id, content_id, engine, query)
-                 DO UPDATE SET is_cited=$4, cited_url=$5, cited_section=$6, response_snippet=$7, raw_citations=$8, checked_at=NOW()`,
-                [brandProfileId, article.id, question, isCited,
-                 urlCitations.find(u => u.includes(brandDomain)) || null,
-                 citedSection, outputText.slice(0, 300), JSON.stringify(urlCitations)]
+                 DO UPDATE SET is_cited=$5, cited_url=$6, cited_section=$7, response_snippet=$8, raw_citations=$9, checked_at=NOW()`,
+                [brandProfileId, article.id, engine.id, question, cited,
+                 (urls || []).find(u => urlHasDomain(u, brandDomain)) || null,
+                 citedSection, (text || '').slice(0, 300), JSON.stringify(urls || [])]
               ).catch(e => console.error('[GEO-DB]', e.message));
-            } catch(e) { console.error('[GEO-OPENAI]', e.message); }
-          }
+            } catch(e) { console.error(`[GEO-${engine.id.toUpperCase()}]`, e.message); }
+          }));
         }));
       }));
 

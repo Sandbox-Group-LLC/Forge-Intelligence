@@ -1318,6 +1318,7 @@
 .perf-geo-engine-perplexity { background: rgba(34,197,94,0.12); color: #22C55E; }
 .perf-geo-engine-chatgpt    { background: rgba(16,185,129,0.12); color: #10B981; }
 .perf-geo-engine-gemini     { background: rgba(251,191,36,0.12); color: #FBBF24; }
+.perf-geo-engine-aiOverviews { background: rgba(66,133,244,0.12); color: #4285F4; }
 
 .perf-geo-cited-row td { background: rgba(53,99,255,0.04); }
 
