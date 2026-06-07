@@ -13,7 +13,7 @@
 
 /* ── top brand bar ── */
 .avs-top{display:flex;align-items:center;gap:10px;margin-bottom:42px;}
-.avs-mark{width:22px;height:22px;border-radius:5px;display:block;}
+.avs-mark{display:flex;align-items:center;color:var(--color-accent);}
 .avs-logo{font-weight:700;letter-spacing:.2px;font-size:16px;}
 .avs-logo span{color:var(--color-text-muted);font-weight:500;}
 
