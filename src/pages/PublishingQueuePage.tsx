@@ -896,18 +896,30 @@ export default function PublishingQueuePage() {
   </section>` : '';
 
     // ── BreadcrumbList schema (Frank's #1 recurring ask — was absent on every
-    //    Smart Export, forcing a manual add each publish). Home → Articles → title.
-    //    NOTE: the middle node is a sensible default; a per-brand hierarchy
-    //    (e.g. Sandbox-XM's "The Sandbox" → /sandbox.html) is a brand-config follow-up. ──
+    //    Smart Export). Per-brand hierarchy from settings.breadcrumb (array of
+    //    {name, url} intermediate nodes); Home is derived from the brand root and
+    //    the article title is the leaf. Falls back to a generic "Articles" node.
+    //    e.g. Sandbox-XM = [{name:"The Sandbox", url:"https://sandbox-xm.com/sandbox.html"}]. ──
     const siteRoot = brandHomeUrl.replace(/\/+$/, '');
+    const bcConfig = exportModal?.brandSettingsData?.settings?.breadcrumb
+      ?? bs?.settings?.breadcrumb;
+    const bcMiddle: Array<{ name: string; item?: string }> = Array.isArray(bcConfig) && bcConfig.length
+      ? bcConfig.filter((n: any) => n && n.name).map((n: any) => ({ name: String(n.name), ...(n.url ? { item: String(n.url) } : {}) }))
+      : [{ name: "Articles", item: siteRoot + "/articles" }];
+    const breadcrumbNodes: Array<{ name: string; item?: string }> = [
+      { name: "Home", item: siteRoot + "/" },
+      ...bcMiddle,
+      { name: item.title }, // leaf — no URL per schema.org convention
+    ];
     const breadcrumbSchema = {
       "@context": "https://schema.org",
       "@type": "BreadcrumbList",
-      "itemListElement": [
-        { "@type": "ListItem", "position": 1, "name": "Home", "item": siteRoot + "/" },
-        { "@type": "ListItem", "position": 2, "name": "Articles", "item": siteRoot + "/articles" },
-        { "@type": "ListItem", "position": 3, "name": item.title },
-      ],
+      "itemListElement": breadcrumbNodes.map((n, idx) => ({
+        "@type": "ListItem",
+        "position": idx + 1,
+        "name": n.name,
+        ...(n.item ? { "item": n.item } : {}),
+      })),
     };
 
     // ── TL;DR / Key Takeaway block (Frank's other recurring ask — keyTakeaway was
