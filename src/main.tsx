@@ -34,6 +34,7 @@ import DocsPage from './pages/DocsPage';
 import AcceptableUsePage from './pages/AcceptableUsePage';
 import EmailCampaignPage from './pages/EmailCampaignPage';
 import QuickStartPage from './pages/QuickStartPage';
+import AiVisibilityScanPage from './pages/AiVisibilityScanPage';
 import './index.css';
 
 
@@ -117,6 +118,9 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/about" element={<About />} />
           <Route path="/faq" element={<Faq />} />
         <Route path="/welcome" element={<WelcomePage />} />
+
+        {/* Public AI Visibility scan — lead magnet, no auth, no AppProvider */}
+        <Route path="/scan" element={<AiVisibilityScanPage />} />
 
         {/* Public Quick Start onramp — no Clerk gate, no AppProvider. Founders
             without a marketing website fill the Founder Brief here; submission
