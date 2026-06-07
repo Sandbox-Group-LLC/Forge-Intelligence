@@ -6,8 +6,12 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { pool } from '../db.js';
 import { safeParseLLM } from '../llm-json.js';
+
+// ESM has no __dirname; resolve the repo root (this file lives at src/server/routes/).
+const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 import { stripScaffoldingArtifacts } from '../text.js';
 import { dateContext } from '../llm.js';
 import { activeStreams } from '../streams.js';
@@ -264,7 +268,7 @@ router.get('/generate/:id', async (req, res) => {
     ]);
 
     const systemPrompt = fs.readFileSync(
-      path.join(__dirname, 'src/agents/stage46_email_campaign/system_prompt.md'), 'utf8'
+      path.join(REPO_ROOT, 'src/agents/stage46_email_campaign/system_prompt.md'), 'utf8'
     );
 
     const trimTo = (obj, max = 3000) => {

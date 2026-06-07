@@ -8,9 +8,13 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import { pool } from '../db.js';
 import { anthropic, dateContext } from '../llm.js';
+
+// ESM has no __dirname; resolve the repo root (this file lives at src/server/routes/).
+const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 import { safeParseLLM } from '../llm-json.js';
 import { verifyBrandAccess } from '../auth.js';
 import { activeStreams } from '../streams.js';
@@ -144,7 +148,7 @@ router.get('/generate', async (req, res) => {
       : '';
 
     // Load system prompt
-    const systemPromptPath = path.join(__dirname, 'src/agents/stage4_social_generator/system_prompt.md');
+    const systemPromptPath = path.join(REPO_ROOT, 'src/agents/stage4_social_generator/system_prompt.md');
     const systemPrompt = fs.existsSync(systemPromptPath)
       ? fs.readFileSync(systemPromptPath, 'utf8')
       : 'You are a short-form social writer. Produce 4 platform-native posts.';
