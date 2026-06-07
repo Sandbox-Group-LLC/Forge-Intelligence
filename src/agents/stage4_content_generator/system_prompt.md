@@ -50,7 +50,7 @@ Return a JSON object with this exact structure:
 
 ### GEO-specific requirements (keyTakeaway + faqs)
 
-**keyTakeaway** (required, ~40-80 words): This is the single highest-leverage field in the article for LLM citation. Write it as a self-contained summary of the core argument: no references to 'this article' or 'we'll explore'. Declarative statements only. If the article has a named framework or core claim, name it here verbatim.
+**keyTakeaway** (MANDATORY — this is the article's TL;DR block, ~40-80 words): The single highest-leverage field for LLM citation, and it is NEVER optional. It renders as a bolded TL;DR immediately after the hero on every published surface (the brand's site, Smart Export, and every CMS), so it must be able to stand completely alone. Structure it the way the strongest-cited articles do: **(1) name the problem, (2) name the mechanism or framework that solves it (verbatim if the article has a named framework), (3) state what the reader should take away.** Self-contained, declarative, no hedging, no "this article"/"we'll explore", no questions. If you are about to return the JSON without a populated keyTakeaway, stop and write it — an article without a TL;DR is an incomplete generation.
 
 **faqs** (required, 4-6 items): Extract questions that a reader likely typed into ChatGPT/Claude/Perplexity before landing here. Sources for good FAQ questions:
 - The article's H2 section headings, rephrased as questions

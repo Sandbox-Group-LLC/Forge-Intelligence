@@ -4012,6 +4012,23 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
       }
     }
 
+    // Guarantee the TL;DR (keyTakeaway) is never missing. It's the article's
+    // required TL;DR block — rendered at the top of every publish path — and the
+    // prompt mandates it, but if the model still omits it, synthesize a publishable
+    // fallback from the meta description / opening so a TL;DR ALWAYS exists in the
+    // stored article_json. Logged so model misses are visible.
+    if (parsed && typeof parsed === 'object' && !String(parsed.keyTakeaway || '').trim()) {
+      const firstBody = Array.isArray(parsed.sections)
+        ? String(parsed.sections.find(s => (s.body || s.content || '').trim())?.body
+            || parsed.sections.find(s => (s.body || s.content || '').trim())?.content || '').trim()
+        : '';
+      const fallback = String(parsed.metaDescription || '').trim()
+        || (firstBody ? truncateAtSentence(firstBody, 300) : '')
+        || (parsed.title ? `${parsed.title}.` : '');
+      parsed.keyTakeaway = stripEmDashes(fallback);
+      console.warn('[CONTENT-GEN] keyTakeaway missing from model output — synthesized TL;DR fallback');
+    }
+
     const tableName = await ensureGeneratedContentTable(brandProfileId);
     const contentInsert = await pool.query(
       `INSERT INTO ${tableName} (brand_profile_id, enriched_brief_id, title, article_json, overall_confidence, brain_match_score, status)
