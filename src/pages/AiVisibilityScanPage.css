@@ -80,7 +80,20 @@
 .avs-bar .pc.na{color:var(--color-text-muted);font-weight:600;font-size:13px;}
 
 .avs-cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
-@media(max-width:640px){.avs-cols{grid-template-columns:1fr;} .avs-form{flex-direction:column;} .avs-hero h1{font-size:30px;}}
+@media(max-width:640px){
+  .avs-cols{grid-template-columns:1fr;}
+  .avs-form{flex-direction:column;}
+  .avs-hero h1{font-size:30px;}
+  /* CTA: stack text over button so the copy gets full width (was a flex row
+     that squeezed the text to one word per line on phones). */
+  .avs-cta{flex-direction:column;align-items:stretch;gap:14px;}
+  .avs-cta a{text-align:center;}
+  /* tighten report padding + shrink the hero score so it fits narrow screens */
+  .avs-rbody{padding:22px 18px;}
+  .avs-scorewrap{padding:22px 20px;gap:18px;}
+  .avs-score{font-size:60px;}
+  .avs-bar{grid-template-columns:120px 1fr 46px;}
+}
 .avs-card{background:var(--color-bg-card);border:1px solid var(--color-border);border-radius:12px;padding:18px 20px;}
 .avs-card h3{font-size:13.5px;margin-bottom:4px;color:var(--color-text-emphasis);}
 .avs-card .cap{color:var(--color-text-secondary);font-size:12px;margin-bottom:14px;line-height:1.45;}
