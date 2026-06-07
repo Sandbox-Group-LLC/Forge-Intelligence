@@ -8912,7 +8912,7 @@ app.post('/api/geo/cold-scan', async (req, res) => {
     const qRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 1200,
-      messages: [{ role: 'user', content: `From this company's homepage, identify the brand name and write 10 natural questions a B2B buyer would type into ChatGPT or Perplexity when researching this category — the questions where this company would WANT to be recommended. Do NOT mention the company's own name in any question (we are measuring unprompted visibility). Keep each question under 110 characters.
+      messages: [{ role: 'user', content: `From this company's homepage, identify the brand name and write 10 natural questions a buyer or customer (B2B or consumer, whichever fits) would type into ChatGPT or Perplexity when researching this category — the questions where this company would WANT to be recommended. Do NOT mention the company's own name in any question (we are measuring unprompted visibility). Keep each question under 110 characters.
 
 HOMEPAGE (${brandDomain}):
 ${pageText}

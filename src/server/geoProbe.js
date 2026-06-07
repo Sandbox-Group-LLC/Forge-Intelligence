@@ -144,8 +144,9 @@ export async function coldScan({ brandName, brandDomain, questions }) {
     throw new Error('No GEO engines configured — set at least one of PERPLEXITY_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, SERPAPI_KEY. Refusing to emit modeled scores.');
   }
   const qs = (questions || []).filter(q => typeof q === 'string' && q.trim());
-  const byEngine = Object.fromEntries(engines.map(e => [e.id, { checks: 0, cited: 0 }]));
-  let totalChecks = 0, totalCited = 0;
+  // per engine: checks, cited(=visible: linked or mentioned), linked(=domain cited)
+  const byEngine = Object.fromEntries(engines.map(e => [e.id, { checks: 0, cited: 0, linked: 0 }]));
+  let totalChecks = 0, totalCited = 0, totalLinked = 0;
   const allUrls = [];
   const citedQueries = [];
   const perQuestion = [];
@@ -155,11 +156,15 @@ export async function coldScan({ brandName, brandDomain, questions }) {
     await Promise.all(engines.map(async (engine) => {
       try {
         const { text, urls } = await engine.probe(q);
-        const cited = isCited({ text, urls, brandDomain });
+        const v = scanVisibility({ text, urls, brandName, brandDomain });
         byEngine[engine.id].checks++; totalChecks++;
-        if (cited) { byEngine[engine.id].cited++; totalCited++; if (!citedQueries.includes(q)) citedQueries.push(q); }
+        if (v.visible) {
+          byEngine[engine.id].cited++; totalCited++;
+          if (v.status === 'cited') { byEngine[engine.id].linked++; totalLinked++; }
+          if (!citedQueries.includes(q)) citedQueries.push(q);
+        }
         allUrls.push(...(urls || []));
-        row.engines[engine.id] = cited ? 'cited' : 'absent';
+        row.engines[engine.id] = v.status;
       } catch (e) {
         console.error(`[COLD-SCAN] ${engine.id} "${q}":`, e.message);
         row.engines[engine.id] = 'error';
@@ -171,8 +176,9 @@ export async function coldScan({ brandName, brandDomain, questions }) {
   const pct = (c, n) => (n ? Math.round((c / n) * 100) : 0);
   return {
     brandName, brandDomain,
+    // visibility = share of answers where the brand shows up at all (named or linked)
     visibility: pct(totalCited, totalChecks),
-    totalChecks, totalCited,
+    totalChecks, totalCited, totalLinked,
     byEngine: Object.fromEntries(engines.map(e => [e.id, { ...byEngine[e.id], pct: pct(byEngine[e.id].cited, byEngine[e.id].checks) }])),
     sources: aggregateSources(allUrls, brandDomain),
     citedQueries,
@@ -193,6 +199,34 @@ export function urlHasDomain(url, brandDomain) {
 export function isCited({ text = '', urls = [], brandDomain = '' }) {
   if (!brandDomain) return false;
   return (urls || []).some(u => urlHasDomain(u, brandDomain)) || (text || '').toLowerCase().includes(brandDomain.toLowerCase());
+}
+
+// Name tokens used to detect a brand MENTION (vs a domain citation): the brand
+// name and the domain's second-level label, length-guarded so short/common
+// fragments don't match. e.g. nike.com -> ["nike"]; novaintelligenceai.com +
+// "Nova Intelligence" -> ["nova intelligence", "novaintelligenceai"].
+export function brandTokens(brandName, brandDomain) {
+  const toks = new Set();
+  const n = (brandName || '').toLowerCase().trim();
+  if (n.length > 2) toks.add(n);
+  const sld = (brandDomain || '').toLowerCase().replace(/^www\./, '').split('.')[0];
+  if (sld && sld.length > 3) toks.add(sld);
+  return [...toks];
+}
+
+// Visibility for the cold scan: the brand is "visible" in an answer if its domain
+// is cited/linked (strong) OR its name appears in the answer text (a mention).
+// Domain-only badly undercounts well-known brands that engines name without
+// linking (e.g. an answer that recommends "Nike" but links a review site).
+// Returns { visible, status: 'cited' | 'mentioned' | 'absent' }.
+export function scanVisibility({ text = '', urls = [], brandName = '', brandDomain = '' }) {
+  if (isCited({ text, urls, brandDomain })) return { visible: true, status: 'cited' };
+  const t = (text || '').toLowerCase();
+  for (const tok of brandTokens(brandName, brandDomain)) {
+    const re = new RegExp(`(^|[^a-z0-9])${tok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9]|$)`);
+    if (re.test(t)) return { visible: true, status: 'mentioned' };
+  }
+  return { visible: false, status: 'absent' };
 }
 
 // Which part of the article got cited: section bodies first, then FAQs, then a
