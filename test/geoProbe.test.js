@@ -1,5 +1,24 @@
 import { describe, it, expect } from 'vitest';
-import { urlHasDomain, isCited, findCitedSection, CITATION_ENGINES, extractDomain, aggregateSources, brandTokens, scanVisibility } from '../src/server/geoProbe.js';
+import { urlHasDomain, isCited, findCitedSection, CITATION_ENGINES, extractDomain, aggregateSources, brandTokens, scanVisibility, probeGemini, probePerplexity } from '../src/server/geoProbe.js';
+
+const fakeRes = (status, body) => ({ ok: status >= 200 && status < 300, status, statusText: 'x', json: async () => body });
+
+describe('engine probes throw on API errors (so a dead engine is excluded, not scored a false 0%)', () => {
+  it('probeGemini throws on an expired-key 400', async () => {
+    await expect(probeGemini('q', async () => fakeRes(400, { error: { message: 'API key expired. Please renew the API key.' } })))
+      .rejects.toThrow(/gemini 400/);
+  });
+  it('probePerplexity throws on a non-OK response', async () => {
+    await expect(probePerplexity('q', async () => fakeRes(401, { error: { message: 'unauthorized' } })))
+      .rejects.toThrow(/perplexity 401/);
+  });
+  it('probeGemini returns text + grounding urls on success', async () => {
+    const body = { candidates: [{ content: { parts: [{ text: 'Nike leads.' }] }, groundingMetadata: { groundingChunks: [{ web: { uri: 'https://nike.com' } }] } }] };
+    const out = await probeGemini('q', async () => fakeRes(200, body));
+    expect(out.text).toContain('Nike');
+    expect(out.urls).toContain('https://nike.com');
+  });
+});
 
 describe('urlHasDomain', () => {
   it('matches a domain inside a URL (case-insensitive)', () => {
