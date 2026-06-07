@@ -98,7 +98,7 @@ export default function AiVisibilityScanPage() {
     <div className="avs-page">
       <div className="avs-wrap">
         <div className="avs-top">
-          <span className="avs-diamond" />
+          <img className="avs-mark" src="/favicon.svg" alt="Forge Intelligence" width={22} height={22} />
           <span className="avs-logo">Forge Intelligence <span>· AI Visibility Scan</span></span>
         </div>
 
