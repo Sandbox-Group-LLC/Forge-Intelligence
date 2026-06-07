@@ -8188,6 +8188,49 @@ app.get('/api/geo/debug/:brandProfileId', async (req, res) => {
     } catch(e) { out.apiTest.perplexity = { error: e.message }; }
   }
 
+  // Test one Gemini call (Search grounding) — diagnosing why Gemini returns 0% on every scan.
+  if (process.env.GEMINI_API_KEY) {
+    try {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 12000);
+      const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'What are the best running shoe brands?' }] }], tools: [{ google_search: {} }] }),
+        signal: controller.signal
+      });
+      const gData = await gRes.json();
+      const cand = gData.candidates?.[0];
+      const text = (cand?.content?.parts || []).map(p => p.text || '').join(' ');
+      out.apiTest.gemini = {
+        status: gRes.status,
+        error: gData.error ? { code: gData.error.code, message: String(gData.error.message || '').slice(0, 300), status: gData.error.status } : null,
+        textLen: text.length,
+        textSnippet: text.slice(0, 160),
+        groundingChunks: (cand?.groundingMetadata?.groundingChunks || []).length,
+        finishReason: cand?.finishReason || null,
+        rawKeys: Object.keys(gData),
+      };
+    } catch(e) { out.apiTest.gemini = { error: e.message }; }
+  }
+
+  // Test one SerpAPI AI Overview call.
+  if (process.env.SERPAPI_KEY) {
+    try {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 15000);
+      const sRes = await fetch(`https://serpapi.com/search.json?engine=google&q=${encodeURIComponent('best running shoe brands')}&api_key=${process.env.SERPAPI_KEY}`, { signal: controller.signal });
+      const sData = await sRes.json();
+      out.apiTest.serpapi = {
+        status: sRes.status,
+        error: sData.error || null,
+        hasAiOverview: !!sData.ai_overview,
+        aiOverviewKeys: sData.ai_overview ? Object.keys(sData.ai_overview) : [],
+        references: (sData.ai_overview?.references || []).length,
+      };
+    } catch(e) { out.apiTest.serpapi = { error: e.message }; }
+  }
+
   res.json(out);
 });
 
