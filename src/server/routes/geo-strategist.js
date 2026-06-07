@@ -10,6 +10,7 @@ import { anthropic } from '../llm.js';
 import { extractJSON } from '../llm-json.js';
 import { requireAuth } from '../auth.js';
 import { normalizeGeoData } from '../geo.js';
+import { probeBrandTopics, enabledEngines } from '../geoProbe.js';
 
 const router = express.Router();
 
@@ -106,7 +107,11 @@ BRAIN MISTAKES (DO NOT repeat for this brand): ${JSON.stringify(brainMistakes)}`
         const cachedTopical = bd.topicalAuthorityMap || [];
         const cachedGeo = bd.geoOpportunitiesNorm || [];
         const topicalIsReal = cachedTopical.length > 0 && cachedTopical.some(t => t.topic && t.topic !== 'Unknown' && t.citationProbability > 0);
-        const geoIsReal = cachedGeo.length > 0 && cachedGeo.some(g => g.topic && (g.chatgpt > 0 || g.perplexity > 0));
+        // A measured scan is real even if scores are 0 (an invisible brand is a valid
+        // result). Trust the explicit scoreBasis marker; fall back to the legacy
+        // "any engine > 0" heuristic for pre-probe briefs.
+        const geoIsReal = bd.geoScorecard?.scoreBasis === 'measured'
+          || (cachedGeo.length > 0 && cachedGeo.some(g => g.topic && (g.chatgpt > 0 || g.perplexity > 0 || g.gemini > 0 || g.aiOverviews > 0)));
         if (!topicalIsReal || !geoIsReal) {
           console.log('[GEO] Cache stale — topical or geo has bad data, forcing fresh run');
           // fall through to fresh analysis
@@ -182,35 +187,58 @@ Return ONLY the raw JSON array. No markdown. No backticks. No explanation. No ot
     console.log(`[GEO] Tool 1 gaps: ${topicalMap.gapsByCluster.length}`);
     if (topicalMap.gapsByCluster.length > 0) console.log("[GEO] Tool 1 sample:", JSON.stringify(topicalMap.gapsByCluster.slice(0,2)));
 
-    // ── Tool 2: GEO Opportunity Scorer ────────────────────────────────────────
-    console.log('[GEO] Tool 2: GEO Opportunity Scorer...');
-    const scorerRes = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 3000,
-      messages: [{ role: 'user', content: `You are the GEO Opportunity Scorer for Forge Intelligence.
+    // ── Tool 2: GEO Opportunity Scorer — REAL ENGINE PROBING ──────────────────
+    // Was: a single Claude call asked to *imagine* citation probability across the
+    // four engines. That produced fabricated, lockstep numbers and never queried
+    // anything. Now we MEASURE: ask natural buyer questions against each engine and
+    // score how strongly the brand is actually cited. See src/server/geoProbe.js.
+    const topTopics = (topicalMap.gapsByCluster || [])
+      .map(g => ({ ...g, _score: g.geoCitationScore || g.citationProbability || g.score || g.geoScore || g.probability || 0 }))
+      .sort((a, b) => b._score - a._score)
+      .slice(0, 10)
+      .map(g => g.topic)
+      .filter(Boolean);
 
-BRAND: ${profile.brand_name} (${profile.brand_url})
-TOPICAL GAPS: ${JSON.stringify(
-  (topicalMap.gapsByCluster || [])
-    .map(g => ({ ...g, _score: g.geoCitationScore || g.citationProbability || g.score || g.geoScore || g.probability || 0 }))
-    .sort((a, b) => b._score - a._score)
-    .slice(0, 10)
-    .map(({ _score, ...rest }) => rest)
-)}
-WHITESPACE: ${whitespace.slice(0, 300)}
+    // Tool 2a: write natural, brand-free buyer queries per topic (one batched call).
+    // Brand-free on purpose — we measure UNPROMPTED citation, not "does the engine
+    // echo a query that already names you." Falls back to deterministic templates.
+    let queryMap = {};
+    if (topTopics.length) {
+      try {
+        const qRes = await anthropic.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 1500,
+          messages: [{ role: 'user', content: `For each topic below, write 3 natural questions a B2B buyer would type into ChatGPT or Perplexity when researching this area. Do NOT mention any specific company or brand name. Keep each question under 110 characters.
 
-For each topic gap, score citation probability 0-100 across all 4 AI platforms. quickWin=true if score >= 70 and low brand presence.
+TOPICS: ${JSON.stringify(topTopics)}
 
-Return ONLY a raw JSON array (no markdown, no explanation):
-[{"platform":"ChatGPT","topic":"string","score":80,"quickWin":true},{"platform":"Perplexity","topic":"string","score":70,"quickWin":false},{"platform":"Google AI Overviews","topic":"string","score":65,"quickWin":false},{"platform":"Gemini","topic":"string","score":60,"quickWin":false}]` }]
-    });
+Return ONLY a raw JSON object mapping each topic string to an array of 3 question strings. No markdown, no explanation.
+Example: {"topic one":["q1","q2","q3"],"topic two":["q1","q2","q3"]}` }],
+        });
+        const qj = extractJSON(qRes.content[0].text, 'object');
+        if (qj) queryMap = JSON.parse(qj);
+      } catch (e) { console.log('[GEO] Tool 2a query-writer warn (using templates):', e.message); }
+    }
+
+    console.log(`[GEO] Tool 2: probing ${topTopics.length} topics across [${enabledEngines().join(', ') || 'NONE'}]...`);
+    const brandDomain = (profile.brand_url || '').replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].toLowerCase();
     let geoOpportunities = [];
+    let probeEvidence = [];
     try {
-      const go = extractJSON(scorerRes.content[0].text, 'array');
-      if (!go) throw new Error('No JSON array found in Tool 2 response');
-      geoOpportunities = JSON.parse(go);
-    } catch(e) { console.log('[GEO] Tool 2 parse warn:', e.message, '| raw:', scorerRes.content[0].text.slice(0,200)); }
-    console.log(`[GEO] Tool 2 opportunities: ${(geoOpportunities||[]).length}`);
+      const probed = await probeBrandTopics({
+        brandName: profile.brand_name,
+        brandDomain,
+        topics: topTopics,
+        queryMap,
+      });
+      geoOpportunities = probed.opportunities;
+      probeEvidence = probed.evidence;
+      console.log(`[GEO] Tool 2 MEASURED ${geoOpportunities.length} engine-topic scores across ${probed.engines.length} engine(s), ${probeEvidence.length} probes`);
+    } catch (e) {
+      // Never fall back to fabricated numbers — fail loudly instead.
+      console.error('[GEO] Tool 2 probe failed:', e.message);
+      return res.status(503).json({ success: false, error: `GEO engine probing unavailable: ${e.message}` });
+    }
 
     // ── Tool 3: Entity & Schema Mapper ────────────────────────────────────────
     console.log('[GEO] Tool 3: Entity & Schema Mapper...');
@@ -351,6 +379,10 @@ Return ONLY valid JSON array:
     }
     console.log(`[GEO] Persisted ${persistedOpportunities.length} opportunities in session ${discoverySessionId}`);
 
+    // Honest headline: mean measured citation strength across probed topics (0 if none).
+    const _scored = persistedOpportunities.map(o => o.avgScore || 0);
+    const meanReadiness = _scored.length ? Math.round(_scored.reduce((a, b) => a + b, 0) / _scored.length) : 0;
+
     // Build legacy brief shape for response compatibility — stub values, no real brief yet
     // The actual per-topic brief building happens in Stage 2.1 when user selects topics
     const briefData = {
@@ -362,15 +394,21 @@ Return ONLY valid JSON array:
       faqStructure: [],
       geoAnchors: [],
       schemaRequirements: [],
-      overallOpportunityScore: persistedOpportunities.length ? Math.round(Math.max(...persistedOpportunities.map(o => o.avgScore || 0))) : 0,
-      targetPlatforms: [],
+      // Headline = MEAN measured citation strength across all probed topics, not the
+      // single best topic (MAX). MAX let one strong niche overstate overall visibility;
+      // the mean is the honest "how cited is this brand across its opportunity set."
+      overallOpportunityScore: meanReadiness,
+      targetPlatforms: enabledEngines(),
       contentCalendar: { month1: [], month2: [], month3: [] },
       quickWins: quickWins.map(q => ({ topic: q.topic, rationale: '', geoTarget: '' })),
       geoScorecard: {
-        currentReadiness: persistedOpportunities.length ? Math.round(Math.max(...persistedOpportunities.map(o => o.avgScore || 0))) : 0,
+        currentReadiness: meanReadiness,
+        scoreBasis: 'measured',           // measured engine citations, not modeled
+        enginesProbed: enabledEngines(),
         primaryGap: 'User selection pending',
         topOpportunity: quickWins[0]?.topic || persistedOpportunities[0]?.topic || ''
       },
+      probeEvidence: probeEvidence.slice(0, 200),
       briefRationale: `${persistedOpportunities.length} opportunities discovered. Cherry-pick topics to build briefs.`,
       discoverySessionId,
       pendingUserSelection: true
