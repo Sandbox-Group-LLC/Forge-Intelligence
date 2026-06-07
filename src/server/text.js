@@ -37,6 +37,23 @@ export function stripSocialMarkdown(text) {
     .replace(/__([^_\n]+?)__/g, '$1');
 }
 
+// Deterministic em/en-dash remover. The em dash is the strongest AI-writing
+// tell; the content generator prompt forbids it outright, but models ignore
+// punctuation bans, so this is the backstop that GUARANTEES none ship. Null-safe.
+// Numeric en-dash ranges (2024–2026) become hyphens; every other em/en dash
+// (with its surrounding spaces) becomes a comma, then comma/space artifacts are
+// tidied. Apply per string field of a generated article.
+export function stripEmDashes(text) {
+  if (typeof text !== 'string') return text;
+  return text
+    .replace(/(\d)\s*–\s*(\d)/g, '$1-$2')   // 2024–2026 -> 2024-2026
+    .replace(/\s*[—–]\s*/g, ', ')        // em/en dash (+ spaces) -> ", "
+    .replace(/\s+,/g, ',')                          // "word ," -> "word,"
+    .replace(/,\s*,/g, ',')                         // ", ," -> ","
+    .replace(/^\s*,\s*/, '');                       // strip a leading comma artifact
+}
+
+
 // Hard-truncate to maxLength, appending an ellipsis when it cuts. Non-string
 // input returns ''. (Distinct from truncateStr — that one has no ellipsis —
 // and truncateAtSentence, which prefers a boundary.) Used across the Quick

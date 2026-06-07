@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { truncateStr, truncateAtSentence, stripSocialMarkdown, quickStartTruncate, stripScaffoldingArtifacts } from '../src/server/text.js';
+import { truncateStr, truncateAtSentence, stripSocialMarkdown, quickStartTruncate, stripScaffoldingArtifacts, stripEmDashes } from '../src/server/text.js';
 
 describe('truncateStr', () => {
   it('returns null for null/undefined', () => {
@@ -82,5 +82,31 @@ describe('stripScaffoldingArtifacts', () => {
   it('cleans both body and content fields', () => {
     const article = { sections: [{ content: 'Hello [TODO: finish] world' }] };
     expect(stripScaffoldingArtifacts(article).sections[0].content).toBe('Hello world');
+  });
+});
+
+describe('stripEmDashes', () => {
+  it('replaces a spaced em dash with a comma', () => {
+    expect(stripEmDashes('Intelligence compounds — the content proves it.'))
+      .toBe('Intelligence compounds, the content proves it.');
+  });
+  it('replaces an unspaced em dash with a comma', () => {
+    expect(stripEmDashes('one—two')).toBe('one, two');
+  });
+  it('keeps numeric en-dash ranges as hyphens', () => {
+    expect(stripEmDashes('the 2024–2026 window')).toBe('the 2024-2026 window');
+  });
+  it('turns a non-numeric en dash into a comma', () => {
+    expect(stripEmDashes('strategy – not tactics')).toBe('strategy, not tactics');
+  });
+  it('does not double up when a comma already follows', () => {
+    expect(stripEmDashes('X —, Y')).toBe('X, Y');
+  });
+  it('is null-safe / passes non-strings through', () => {
+    expect(stripEmDashes(null)).toBeNull();
+    expect(stripEmDashes(42)).toBe(42);
+  });
+  it('leaves clean prose (no dashes, hyphens intact) untouched', () => {
+    expect(stripEmDashes('a well-built, dash-free sentence')).toBe('a well-built, dash-free sentence');
   });
 });
