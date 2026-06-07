@@ -895,6 +895,43 @@ export default function PublishingQueuePage() {
     </div>`).join('')}
   </section>` : '';
 
+    // ── BreadcrumbList schema (Frank's #1 recurring ask — was absent on every
+    //    Smart Export). Per-brand hierarchy from settings.breadcrumb (array of
+    //    {name, url} intermediate nodes); Home is derived from the brand root and
+    //    the article title is the leaf. Falls back to a generic "Articles" node.
+    //    e.g. Sandbox-XM = [{name:"The Sandbox", url:"https://sandbox-xm.com/sandbox.html"}]. ──
+    const siteRoot = brandHomeUrl.replace(/\/+$/, '');
+    const bcConfig = exportModal?.brandSettingsData?.settings?.breadcrumb
+      ?? bs?.settings?.breadcrumb;
+    const bcMiddle: Array<{ name: string; item?: string }> = Array.isArray(bcConfig) && bcConfig.length
+      ? bcConfig.filter((n: any) => n && n.name).map((n: any) => ({ name: String(n.name), ...(n.url ? { item: String(n.url) } : {}) }))
+      : [{ name: "Articles", item: siteRoot + "/articles" }];
+    const breadcrumbNodes: Array<{ name: string; item?: string }> = [
+      { name: "Home", item: siteRoot + "/" },
+      ...bcMiddle,
+      { name: item.title }, // leaf — no URL per schema.org convention
+    ];
+    const breadcrumbSchema = {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": breadcrumbNodes.map((n, idx) => ({
+        "@type": "ListItem",
+        "position": idx + 1,
+        "name": n.name,
+        ...(n.item ? { "item": n.item } : {}),
+      })),
+    };
+
+    // ── TL;DR / Key Takeaway block (Frank's other recurring ask — keyTakeaway was
+    //    generated but never rendered into the export). Sits right after the
+    //    back-link, before the body. Inline-styled so it renders standalone. ──
+    const tldr = String(aj.keyTakeaway || '').trim();
+    const tldrHtml = tldr ? `
+      <aside class="article-tldr" style="margin:1.5em 0;padding:1.25em 1.5em;border-left:4px solid #4F46E5;background:#f5f6ff;border-radius:8px">
+        <p style="margin:0 0 .4em;font-weight:700;text-transform:uppercase;letter-spacing:.08em;font-size:.78em;color:#4F46E5">TL;DR</p>
+        <p style="margin:0;line-height:1.6">${tldr.replace(/</g, '&lt;')}</p>
+      </aside>` : '';
+
     return `<!-- Forge Intelligence content_id: ${item.content_id} | brand_id: ${item.brand_profile_id} | exported: ${new Date().toISOString()} -->
 <!DOCTYPE html>
 <html lang="en">
@@ -928,6 +965,7 @@ export default function PublishingQueuePage() {
   ${hero ? `<meta name="twitter:image" content="${hero}" />` : ''}
   <script type="application/ld+json">${JSON.stringify(articleSchema, null, 2)}</script>${faqSchema ? `
   <script type="application/ld+json">${JSON.stringify(faqSchema, null, 2)}</script>` : ''}
+  <script type="application/ld+json">${JSON.stringify(breadcrumbSchema, null, 2)}</script>
 </head>
 <body>
 
@@ -945,6 +983,7 @@ export default function PublishingQueuePage() {
   <section class="${C.bodySection}">
     <div class="${C.body}">
       <a href="${C.backHref}" class="${C.backClass}">${C.backText}</a>
+${tldrHtml}
 ${bodyHtml}
 ${faqDomHtml}
 ${authorFooterHtml}
