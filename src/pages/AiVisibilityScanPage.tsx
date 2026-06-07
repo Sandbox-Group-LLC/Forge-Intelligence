@@ -112,7 +112,7 @@ export default function AiVisibilityScanPage() {
             <h1>How often does AI recommend you?</h1>
             <p className="lede">
               ChatGPT, Perplexity, Gemini, and Google AI Overviews answer your buyers’ questions every day.
-              Drop your domain and we’ll measure — live — whether they name you, and who they name instead.
+              Drop your domain and we’ll measure <strong>live</strong> whether they name you, and who they name instead.
             </p>
             <form className="avs-form" onSubmit={runScan}>
               <input
