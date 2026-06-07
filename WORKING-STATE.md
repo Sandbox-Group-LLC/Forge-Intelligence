@@ -10,6 +10,35 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
+### 2026-06-07 — GEO scan made REAL (4 engines) + public `/scan` lead magnet + dev→main rollup shipped
+
+Big arc, all live in prod. **`development` and `main` are now equal** (rollup PR #276 merged + deployed green; all four engines verified healthy on prod).
+
+**1. The GEO "we measure AI citations" claim was half-true — fixed.** Two separate surfaces, easily conflated:
+- **GEO Strategist scan** (Stage 2, `/api/geo-strategist/analyze`): per-engine 0–100 "citation probability" numbers were **Claude-imagined, never measured** (one Sonnet call estimating all four engines → the tell was lockstep, near-constant per-engine offsets). **Left as-is on purpose** — it's a *modeled estimate* by design (Brian confirmed). Not a bug.
+- **Performance Dashboard "Run Citation Check"** (`/api/geo/track` → `geo_citations`): the *real* measured analytics. Was probing only **2 engines** (Perplexity + OpenAI) while we marketed four. **Extended to all 4** (#266): added Gemini (Search grounding) + Google AI Overviews (SerpAPI). Unified the two duplicated inline blocks into one engine-agnostic loop over `CITATION_ENGINES` in `src/server/geoProbe.js`.
+
+**2. New: public AI Visibility lead magnet at `/scan`** (#269, light theme + real DiamondIcon logo #273). Drop a domain → `POST /api/geo/cold-scan` scrapes the homepage, Claude writes 10 brand-free buyer questions, probes all 4 engines, returns measured visibility % + per-engine + "who AI cites instead" (competitors/namesakes). `coldScan` + `scanVisibility`/`brandTokens`/`aggregateSources` in `geoProbe.js`. Public + rate-limited (3/IP/hr + 250/day global cap; `adminPassword` bypass).
+
+**3. Gemini saga (the diagnostic paid off):** every scan showed Gemini 0%. `/api/geo/debug` (extended with live Gemini+SerpAPI tests, #271) revealed **two stacked bugs**: expired `GEMINI_API_KEY` (rotated) + retired model `gemini-2.0-flash` → bumped to **`gemini-2.5-flash`** (#272). Also made all 4 probes **throw on API errors** so a dead engine renders **"n/a"**, never a false 0% (#272). Nike now reads a realistic 75% (was a fake 0).
+
+**4. Content em-dash sanitizer** (#264): `stripEmDashes` deterministic backstop in `text.js` (comma, or semicolon when the sentence already has 2+ commas) + strict prompt rule — applied at content-gen write path.
+
+**5. LinkedIn Insight Tag scoped to marketing pages** (#267): gated `!location.pathname.startsWith('/app')` so it never loads in the authed app. GTM/GA4/Google Ads stay site-wide (confirmed firing on `/scan`).
+
+**6. The dev→main rollup (the "scary" one), reconciled clean.** dev was 111 ahead, main 23 ahead (prod hotfixes + feature-lane merges never folded back into the decomposed branch). Verified **development is a true superset** before resolving: **0 route gaps** (all 210 main routes present), all 6 main hotfixes present — except the **fal.ai `expand_prompt:false` + 60s timeout** fix, which was **missing from development** (would've silently regressed "weird images" in prod). Ported it (#275), merged `main`→`development` resolving the 4 collisions (`server.js`/`package.json`/`PLAN.md`/`WORKING-STATE.md`) to development, then promoted #276.
+
+Also: fixed CLAUDE.md's stale relay doc (`ADMIN_PASSWORD` → `ADMIN_RELAY_PASSWORD`, the pinned item).
+
+#### What's next
+- **`/scan` lead capture** — CTA links out for now; wire domain/email to a CRM/DB (the actual lead loop). Deliberate fast-follow.
+- **Rate-limiter hardening** — `/api/geo/cold-scan` limiter is in-memory (approximate across Render instances). Redis/DB-backed before promoting `/scan` hard.
+- **Auto-generate the branded report** from the scan JSON (currently the shareable artifact is hand-assembled).
+- Optional: GTM **History Change** trigger / SPA `dataLayer.push` so client-side nav to `/scan` registers a pageview.
+- **Open guard gap (still):** route-inventory `parseImports` doesn't handle combined `import Default, { Named }` — harden it.
+
+---
+
 ### 2026-06-06 (cont.) — route-group surgery COMPLETE: 12 groups extracted
 
 The decomposition crossed from helpers into **route GROUPS** and finished them: handlers moved into `src/server/routes/*.js` mounted via `app.use('/prefix', router)`, the guard reconstructing full paths so the snapshot stayed byte-identical the whole way (**213 → 211** only for one intentional dead-dupe cleanup). Pattern: collect each handler's span (next-statement boundaries), move verbatim, `xform` the registration line (`app.METHOD('/prefix/x', …)` → `router.METHOD('/x', …)`), re-import deps from already-extracted modules. Verify `node --check` + lint + boot-load (`import()`) + route guard + vitest.
@@ -58,37 +87,5 @@ Kept dismembering `server.js`, same pure-move discipline + CI safety net. **16 m
 - Tracked but not approved: scrape `format:'markdown'` no-fallback gap; `scrape_log` 15KB `body_sample` bloat; citation `search_results → citations[]` fallback (needs a live Sonar response to confirm the shape).
 - Aside surfaced during the JWT dig: a **LinkedIn Insight Tag** is loaded inside the authed app (`/app/*`) capturing click + hashed-email data — worth a look at where it's injected.
 
----
 
-### 2026-06-05 — server.js decomposition (Stage 2) begins + two latent bug fixes
-
-The monolith dismemberment is underway. `server.js` (~19.8K lines, 214 routes) is being broken into `src/server/*.js` modules, one cohesive unit at a time. **Every cut is a pure move with zero behavior change**, verified by a CI safety net built *before* the refactor started.
-
-**Modules extracted to date (10):** `db`, `llm-json`, `utm`, `text`, `auth`, `zernio`, `scrape`, `llm`, `logging`, `lovable`. All on `development`.
-
-This session's cuts:
-- **`llm.js`** (#213) — `anthropic` client (20-min timeout, used 52×) + `dateContext()`. Kept the bare `Anthropic` class import for 4 handlers that build their own short-timeout client.
-- **`logging.js`** (#214) — live-log ring buffer + console capture + error aggregation. Exports `logBuffer`/`logSSEClients`/`errorAggregates` + `installLogCapture()` (idempotent); `captureLog`/`LOG_BUFFER_SIZE` private.
-- **`lovable.js`** (#215) — the whole Lovable prompt-pack integration (~324 lines, 17 helpers + 4 consts). Fully self-contained leaf: pure templating, zero external deps.
-
-**Two latent bugs found during review, fixed on BOTH lanes:**
-- **Lovable directive placeholder leak.** `lovableBuildWithDirective` guarded optional sections with `block !== 'No data available'` — a string that never matches `lovableSection()`'s real fallback, so the guard was always true. Brands with no whitespace/third-party data got scaffolding text ("Design this section to be populated later") injected into the `## BRAND INTELLIGENCE` block, which Lovable read as brand intel. Fixed: gate on the raw source via `lovableHasData()`. (#216 features, #219 development)
-- **`captureLog` unguarded stringify.** Ran `JSON.stringify` on console args with no try/catch; a circular object or BigInt would throw *inside* the patched `console.log` and crash the caller. Never fired in prod, but it's the hottest path in the app. Fixed: try `JSON.stringify` → `String(a)` → `'[unserializable]'`. (#217 features, #218 development)
-
-All five PRs merged. **`features` merged to production (`main`)** — both bug fixes are live. `development` holds the full refactor + both fixes, ready for the `development → main` rollup.
-
-#### CI safety net (built before the refactor)
-- **`npm run lint`** — ESLint flat config, `no-undef` only. Catches a missed re-import (the #1 risk of moving code out of a monolith — otherwise only crashes on deploy). `document`/`window` whitelisted for Puppeteer page-eval callbacks.
-- **route-inventory guard** — static scan of `app`/`router.METHOD` registrations → sorted `"METHOD /path"` set vs `test/routes.snapshot.json` (213 routes). A pure move must not add/drop/rename a route.
-- **vitest** — per-module unit tests added with each extraction (~56 tests now).
-- CI job "Typecheck & Test" on PRs to `[main, development, features]`: `node --check` → lint → typecheck → vitest.
-- **NOTE:** `features`/`main` CI currently runs only `node --check` + `typecheck` — the lint/vitest/route-guard gate is `development`-only so far. Promote the full gate to `features` when convenient.
-
-#### Extraction pattern
-Pure move: module imports its own deps (`pool` from `db.js`, etc.), `server.js` re-imports the public surface, internal-only helpers stay unexported. Verify `node --check` + lint + route guard + vitest before commit. The `no-undef` gate is the safety belt — it has caught 3 missed-symbol cases across earlier cuts.
-
-#### What's next
-- **More clean leaves** before route-group surgery: X OAuth/crypto cluster (`buildXOAuthHeader`, `refreshXOAuth2Token`, `buildGhostJWT`, `uploadXMedia`), then image helpers (`generateHeroImage`, `buildImagePrompt`, `generateSocialImage`, `buildSocialImagePrompt`).
-- **Route GROUPS** — the big line-count win. Requires teaching the route-inventory guard mount-prefix resolution (`app.use('/prefix', router)`) *before* moving handlers behind a router, so full paths still verify. Guard change first, then the move.
-- **Promote the full CI gate** (lint + vitest + route guard) to `features`/`main`.
-- Tracked but not approved: scrape `format:'markdown'` no-fallback gap; `scrape_log` 15KB `body_sample` bloat.
+_Older sessions (2026-06-05 and earlier) archived in `PLAN.md`._

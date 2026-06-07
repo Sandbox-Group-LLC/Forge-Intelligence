@@ -1,3 +1,33 @@
+## 2026-06-07 — GEO scan made REAL (4 engines) + public `/scan` lead magnet + dev→main rollup to prod
+
+Single session, large arc, all shipped to production. `development` and `main` ended equal (rollup #276 merged + deployed green; all four engines verified healthy on prod via `/api/geo/debug`).
+
+### The core finding: "we measure AI citations" was half-true
+Two GEO surfaces were being conflated:
+- **GEO Strategist scan** (`/api/geo-strategist/analyze`, Stage 2): the per-engine 0–100 "citation probability" table was **Claude-imagined, never measured** — one `claude-sonnet-4-6` call asked to *estimate* citation probability across all four engines. The tell: scores marched in lockstep (each engine a near-constant offset). Pressure-tested across 4 brands (Forge MAX79/MEAN59, SYSOI 72/69, Sandbox-XM 68/48, Sandbox-GTM 76/71); the modeled MAX overstated by 7–51 pts and wasn't brand-comparable. **Decision: leave it as-is — it's a modeled estimate by design** (Brian confirmed), not the measured analytics.
+- **Performance Dashboard "Run Citation Check"** (`/api/geo/track` → `geo_citations`): the *real* probe. Live data showed it had only ever logged **perplexity (344) + chatgpt (342)** — 2 engines, while we marketed four (and decks/articles implied real probing). ChatGPT real cite-rate was ~1.7% vs the scan's modeled 70s — an order-of-magnitude gap.
+
+### What shipped
+1. **4-engine Citation Check (#266).** New `src/server/geoProbe.js`: one probe primitive per engine (`probePerplexity`/`probeOpenAI`/`probeGemini`/`probeAIOverviews`) returning `{text, urls}`, a `CITATION_ENGINES` registry (key-gated `enabled()`), and shared attribution helpers (`isCited`, `findCitedSection`, `urlHasDomain`) extracted verbatim from the two duplicated inline blocks in `server.js`. The `/api/geo/track` loop collapsed to one engine-agnostic loop (−106 lines). Added **Gemini** (Search grounding) + **Google AI Overviews** (SerpAPI, with `page_token` follow-up). Engine is now a bound INSERT param. Dashboard UI: AI Overviews badge + `ENGINE_LABELS`; copy names all four.
+2. **Public `/scan` AI Visibility lead magnet (#269, logo #273).** `POST /api/geo/cold-scan { url }`: scrape homepage → Claude writes 10 brand-free buyer questions → probe all 4 engines → measured visibility % + per-engine + "who AI cites instead" (`coldScan`/`extractDomain`/`aggregateSources` in geoProbe). New public React route `/scan` (no auth, light theme via `--color-*` tokens, marketing-topbar `DiamondIcon`). Endpoint flipped from auth-gated to **public + rate-limited** (3/IP/hr + 250/day global; `adminPassword` bypass). Proved on Nova Intelligence (cold prospect): **0% across all 4 engines**, AI naming smartShift/LeverX/KTern/Panaya/Kyndryl instead.
+3. **Nike read 0% → fixed to 75% (#270).** cold-scan inherited the dashboard's *domain-only* citation check; it never counted brand-NAME mentions, so AI saying "Nike" while linking review sites scored absent. Added `scanVisibility()` (domain-cited OR name-mentioned via `brandTokens`, word-boundary matched so "nova" ≠ "innovation"). Generalized the question prompt to B2B-or-consumer.
+4. **Gemini 0% on every scan — two stacked bugs (#271 diag, #272 fix).** Extended `/api/geo/debug` with live Gemini+SerpAPI tests; revealed an **expired `GEMINI_API_KEY`** (rotated by Brian) AND a **retired model `gemini-2.0-flash`** → bumped to **`gemini-2.5-flash`**. Also hardened: all 4 probes **throw on non-OK/`{error}`** responses so a dead engine is excluded and renders **"n/a"**, never a false 0% (the denominator drops unqueryable engines). Verified clean on prod (Gemini 200, ~2.7K chars grounded).
+5. **Em-dash sanitizer (#264).** `stripEmDashes` in `text.js` — numeric en-dash ranges → hyphen; other em/en dashes → comma, or **semicolon when the sentence already has ≥2 commas**. Strict prompt rule (absolute zero) + deterministic backstop at the content-gen write path.
+6. **LinkedIn Insight Tag scoped (#267).** Gated `!location.pathname.startsWith('/app')` in index.html so it never loads in the authed app (matches the privacy policy). GTM/GA4/Google Ads remain site-wide (unconditional in `<head>`), confirmed firing on `/scan`.
+
+### The dev→main rollup (the "scary" PR), reconciled clean (#275 + #276)
+Brian's first rollup attempt (#274) was full of conflicts and abandoned. Root cause: `development` was 111 ahead, `main` 23 ahead — main accumulated prod hotfixes + feature-lane merges that were never folded back into the decomposed dev branch. Reviewed all conflicts:
+- 4 conflicting files: `server.js` (11 hunks, **all decomposition collisions** — monolith block vs extracted module), `package.json` (lint glob), `PLAN.md`, `WORKING-STATE.md`.
+- **Verified development is a true superset before resolving:** route-parity sweep showed **0 of main's 210 routes missing** from development; 5 of 6 main hotfixes already present (JWT clock-skew, citation recency+timeout, captureLog guard, lovable `lovableHasData`, scrape SSRF).
+- **Caught the one real regression:** the **fal.ai `expand_prompt:false` + `AbortSignal.timeout(60000)`** fix (#226, live on main) was **missing from development's extracted `images.js`** (still `true`, no timeout) — a "take development" merge would have silently reverted the "weird images" fix in prod. Ported it to dev (#275).
+- Then merged `main` → `development` resolving all 4 collisions to development (now a verified superset), pushed dev, and promoted via #276. Merged tree passed routes (10) + vitest (136) + lint + `tsc`+vite build + clean `server.js` boot-import locally; CI green; prod deploy green; all 4 engine keys + Gemini/SerpAPI live on prod.
+
+### Docs / housekeeping
+- Fixed CLAUDE.md's stale relay code-map: `ADMIN_PASSWORD` → `ADMIN_RELAY_PASSWORD` (the pinned item; code has 23 refs to the new name, 0 to the old).
+- **Open follow-ups:** `/scan` lead capture to CRM/DB; rate-limiter hardening (in-memory → Redis/DB) before promoting `/scan` hard; auto-generate the branded report HTML from scan JSON; optional GTM History-Change SPA pageview; the route-guard `parseImports` combined-import gap (still open from the decomposition).
+
+---
+
 ## 2026-06-06 (cont.) — route-group phase COMPLETE: publishing finale (12 groups, server.js dismembered)
 
 The publishing subsystem — deferred from the start as the most entangled group —
