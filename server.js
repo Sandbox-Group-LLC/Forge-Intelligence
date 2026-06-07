@@ -13,7 +13,7 @@ import { clerkJWKS, SUPER_ADMIN_IDS, verifyBrandAccess, requireAuth, requireApiK
 import { callZernio, zernioPublish, getOrCreateZernioProfile, zernioGuard } from './src/server/zernio.js';
 import { forgeScrape, getBrandPageContent, discoverSubpages, _forgeScrapeRateLimited, FORGE_SCRAPE_RATE_PER_MIN } from './src/server/scrape.js';
 import { anthropic, dateContext } from './src/server/llm.js';
-import { CITATION_ENGINES, isCited, findCitedSection, urlHasDomain } from './src/server/geoProbe.js';
+import { CITATION_ENGINES, isCited, findCitedSection, urlHasDomain, coldScan, extractDomain } from './src/server/geoProbe.js';
 import { installLogCapture, logBuffer, logSSEClients, errorAggregates } from './src/server/logging.js';
 import {
   LOVABLE_UUID_RE, LOVABLE_URL_SAFE_LIMIT, LOVABLE_MAX_PROMPT_CHARS, LOVABLE_SUPPORTED_APP_TYPES,
@@ -8860,6 +8860,66 @@ app.get('/api/content-generator/enriched-briefs/:brandProfileId', requireAuth, a
   }
 });
 
+
+// POST /api/geo/cold-scan — AI Visibility scan for a prospect we have NO content for.
+// Scrape their homepage, infer the buyer questions their category gets asked, then
+// probe all four engines to MEASURE how often AI cites them vs who it cites instead.
+// This powers the shareable lead-magnet report. Synchronous (30-90s): the four-engine
+// probe runs inline. adminPassword bypass for testing; otherwise requires a Clerk JWT.
+// NOTE: before going public as a lead magnet this needs rate-limiting + abuse controls
+// (it spends SerpAPI + LLM credits per call). Gated to auth/admin for now.
+app.post('/api/geo/cold-scan', async (req, res) => {
+  const isAdmin = req.body?.adminPassword && req.body.adminPassword === process.env.ADMIN_RELAY_PASSWORD;
+  if (!isAdmin) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ success: false, error: 'Unauthorized' });
+    try {
+      const { payload } = await jwtVerify(authHeader.split(' ')[1], clerkJWKS, { algorithms: ['RS256'], clockTolerance: '30s' });
+      req.userId = payload.sub;
+    } catch { return res.status(401).json({ success: false, error: 'Invalid token' }); }
+  }
+
+  const { url } = req.body;
+  if (!url || typeof url !== 'string') return res.status(400).json({ success: false, error: 'url is required' });
+  const brandDomain = extractDomain(url);
+  if (!brandDomain) return res.status(400).json({ success: false, error: 'Could not parse a domain from url' });
+
+  const startTime = Date.now();
+  try {
+    // 1. Scrape the homepage to understand what they do.
+    const page = await getBrandPageContent(url.startsWith('http') ? url : `https://${url}`, { caller: 'cold-scan' });
+    if (!page.success || !page.markdown) {
+      return res.status(422).json({ success: false, error: `Could not read ${brandDomain}: ${page.error || 'no content'}` });
+    }
+    const pageText = page.markdown.slice(0, 6000);
+
+    // 2. Infer the brand name + the brand-free buyer questions their category gets asked.
+    const qRes = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1200,
+      messages: [{ role: 'user', content: `From this company's homepage, identify the brand name and write 10 natural questions a B2B buyer would type into ChatGPT or Perplexity when researching this category — the questions where this company would WANT to be recommended. Do NOT mention the company's own name in any question (we are measuring unprompted visibility). Keep each question under 110 characters.
+
+HOMEPAGE (${brandDomain}):
+${pageText}
+
+Return ONLY a raw JSON object: {"brandName":"string","questions":["q1",...]}. No markdown, no explanation.` }],
+    });
+    let parsed = {};
+    try { parsed = JSON.parse(extractJSON(qRes.content[0].text, 'object') || '{}'); } catch { parsed = {}; }
+    const brandName = (req.body.brandName || parsed.brandName || brandDomain).trim();
+    const questions = Array.isArray(parsed.questions) ? parsed.questions.slice(0, 10) : [];
+    if (!questions.length) return res.status(502).json({ success: false, error: 'Could not generate buyer questions for this site' });
+
+    // 3. Probe all enabled engines and measure.
+    const result = await coldScan({ brandName, brandDomain, questions });
+    const latencyMs = Date.now() - startTime;
+    console.log(`[COLD-SCAN] ${brandDomain} — visibility ${result.visibility}% across ${result.enginesProbed.join(',')} | ${latencyMs}ms`);
+    res.json({ success: true, latencyMs, questions, ...result });
+  } catch (e) {
+    console.error('[COLD-SCAN] error:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
 
 app.post('/api/geo/track/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
