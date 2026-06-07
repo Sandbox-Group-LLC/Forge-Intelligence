@@ -14,6 +14,20 @@ import { stripSocialMarkdown } from '../text.js';
 import { callZernio, zernioPublish, getOrCreateZernioProfile } from '../zernio.js';
 import { buildXOAuthHeader, uploadXMedia, refreshXOAuth2Token } from '../x.js';
 import { buildGhostJWT } from '../ghost.js';
+
+// Visible TL;DR / Key Takeaway block, prepended to every published article body
+// across ALL channels (the AI-citation anchor + skim aid that earns the traction
+// Frank's Sandbox-XM articles see). keyTakeaway is generated for every article;
+// this surfaces it everywhere — not just Forge's own page + Smart Export.
+function tldrHtmlBlock(aj) {
+  const t = String(aj?.keyTakeaway || '').trim();
+  if (!t) return '';
+  return `<aside class="article-tldr" style="margin:1.5em 0;padding:1.25em 1.5em;border-left:4px solid #4F46E5;background:#f5f6ff;border-radius:8px"><p style="margin:0 0 .4em;font-weight:700;text-transform:uppercase;letter-spacing:.08em;font-size:.78em;color:#4F46E5">TL;DR</p><p style="margin:0;line-height:1.6">${t.replace(/</g, '&lt;')}</p></aside>\n`;
+}
+function tldrMarkdownBlock(aj) {
+  const t = String(aj?.keyTakeaway || '').trim();
+  return t ? `> **TL;DR** — ${t}\n\n` : '';
+}
 import { generateHeroImage } from '../images.js';
 import { pipedreamProxy } from '../pipedream.js';
 
@@ -220,7 +234,7 @@ router.post('/publish', async (req, res) => {
 
           const articleJson = article.article_json || {};
           const sections = articleJson.sections || [];
-          const htmlContent = sections.map(s =>
+          const htmlContent = tldrHtmlBlock(articleJson) + sections.map(s =>
             `${s.heading ? `<h2>${s.heading}</h2>` : ''}<p>${s.body || s.content || ''}</p>`
           ).join('\n');
 
@@ -251,7 +265,7 @@ router.post('/publish', async (req, res) => {
 
           const articleJson = article.article_json || {};
           const sections = articleJson.sections || [];
-          const bodyHtml = sections.map(s =>
+          const bodyHtml = tldrHtmlBlock(articleJson) + sections.map(s =>
             `${s.heading ? `<h2>${s.heading}</h2>` : ''}<p>${s.body || s.content || ''}</p>`
           ).join('\n');
           const excerpt = (sections[0]?.body || sections[0]?.content || '').slice(0, 160);
@@ -908,7 +922,7 @@ Output only the post text.` }]
           // Build HTML content from article sections
           const articleJson = article.article_json || {};
           const sections = articleJson.sections || [];
-          const htmlBody = sections.map(s =>
+          const htmlBody = tldrHtmlBlock(articleJson) + sections.map(s =>
             `<h2>${s.heading || ''}</h2><p>${(s.body || '').split('\n').join('</p><p>')}</p>`
           ).join('\n');
 
@@ -962,7 +976,7 @@ ${canonicalNote}`,
           // Build HTML from article sections — Ghost v5 accepts HTML via ?source=html
           const articleJson = article.article_json || {};
           const sections = articleJson.sections || [];
-          const htmlBody = sections.map(s =>
+          const htmlBody = tldrHtmlBlock(articleJson) + sections.map(s =>
             `<h2>${s.heading || ''}</h2>\n${(s.body || '').split('\n').filter(Boolean).map(p => `<p>${p}</p>`).join('\n')}`
           ).join('\n\n');
           const canonicalNote = `<p><em>Originally published at <a href="${utmUrl}">${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}</a></em></p>`;
@@ -1013,12 +1027,12 @@ ${canonicalNote}`,
           const articleJson = article.article_json || {};
           const sections = articleJson.sections || [];
           const faqs = Array.isArray(articleJson.faqs) ? articleJson.faqs.filter(f => f?.question && f?.answer) : [];
-          const htmlContent = sections.map(s =>
+          const htmlContent = tldrHtmlBlock(articleJson) + sections.map(s =>
             `${s.heading ? `<h2>${s.heading}</h2>` : ''}<p>${s.body || s.content || ''}</p>`
           ).join('\n') + (faqs.length
             ? `\n<section class="article-faqs">\n<h2>Frequently asked questions</h2>\n${faqs.map(f => `<h3>${f.question}</h3>\n<p>${f.answer}</p>`).join('\n')}\n</section>`
             : '');
-          const markdownContent = sections.map(s =>
+          const markdownContent = tldrMarkdownBlock(articleJson) + sections.map(s =>
             `${s.heading ? `## ${s.heading}\n\n` : ''}${s.body || s.content || ''}`
           ).join('\n\n') + (faqs.length
             ? `\n\n## Frequently asked questions\n\n${faqs.map(f => `### ${f.question}\n\n${f.answer}`).join('\n\n')}`
