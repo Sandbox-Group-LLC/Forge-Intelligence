@@ -8997,6 +8997,45 @@ Return ONLY a raw JSON object: {"brandName":"string","questions":["q1",...]}. No
   }
 });
 
+// POST /api/geo/track-all — WEEKLY citation-tracking entrypoint for an external
+// cron (EasyCron). adminPassword-gated. Loops active brands and kicks the
+// per-brand /api/geo/track (fire-and-forget) with a stagger so the four-engine
+// probes don't thunder. Brands with no published content no-op cheaply (no
+// engine calls). Deliberately NOT an in-process setInterval: with autoscale
+// (2-4 instances) a timer fires on every instance — multiplying engine cost —
+// and resets on every deploy. A single weekly external trigger is the right,
+// idempotent cadence.
+app.post('/api/geo/track-all', async (req, res) => {
+  if (req.body?.adminPassword !== process.env.ADMIN_RELAY_PASSWORD) {
+    return res.status(403).json({ success: false, error: 'Forbidden' });
+  }
+  res.json({ success: true, status: 'started' }); // ack fast; process in background
+  (async () => {
+    try {
+      const brandsRes = await pool.query('SELECT id FROM brand_profiles WHERE is_active = true');
+      const baseUrl = process.env.BASE_URL || 'http://localhost:' + (process.env.PORT || 3000);
+      console.log(`[CitationTracking] weekly run — ${brandsRes.rows.length} active brand(s)`);
+      let kicked = 0;
+      for (const { id } of brandsRes.rows) {
+        try {
+          await fetch(`${baseUrl}/api/geo/track/${id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ adminPassword: process.env.ADMIN_RELAY_PASSWORD })
+          });
+          kicked++;
+        } catch (e) {
+          console.error(`[CitationTracking] ${id} failed:`, e.message);
+        }
+        await new Promise(r => setTimeout(r, 8000)); // stagger background probe jobs
+      }
+      console.log(`[CitationTracking] weekly run complete — kicked ${kicked}/${brandsRes.rows.length} brand(s)`);
+    } catch (e) {
+      console.error('[CitationTracking]', e.message);
+    }
+  })();
+});
+
 app.post('/api/geo/track/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
   // Allow cron/admin bypass with adminPassword, otherwise require Clerk JWT
