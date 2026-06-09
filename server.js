@@ -3013,10 +3013,10 @@ Respond with this exact JSON structure:
 
     let scorerData = {};
     try {
-      const sd = extractJSON(scorerRes.content[0].text, 'object');
+      const sd = extractJSON(scorerRes?.content?.[0]?.text || '', 'object');
       if (!sd) throw new Error('No JSON in Tool 2');
       scorerData = JSON.parse(sd);
-    } catch(e) { console.log('[ENRICH] Tool 2 parse warn:', e.message, '| raw:', scorerRes.content[0].text.slice(0,200)); scorerData = { scores: {}, gaps: [], smeSignals: [], overallEEATScore: 0 }; }
+    } catch(e) { console.log('[ENRICH] Tool 2 parse warn:', e.message, '| stop:', scorerRes?.stop_reason, '| raw:', (scorerRes?.content?.[0]?.text || '').slice(0,200)); scorerData = { scores: {}, gaps: [], smeSignals: [], overallEEATScore: 0 }; }
 
     const gaps = scorerData.gaps || [];
     const needsManualInput = gaps.some(g => g.severity === 'high') && !Object.keys(manualInputs).length;
@@ -3048,10 +3048,10 @@ Respond with this exact JSON structure:
 
     let injectionData = {};
     try {
-      const id2 = extractJSON(injectionRes.content[0].text, 'object');
+      const id2 = extractJSON(injectionRes?.content?.[0]?.text || '', 'object');
       if (!id2) throw new Error('No JSON in Tool 3');
       injectionData = JSON.parse(id2);
-    } catch(e) { console.log('[ENRICH] Tool 3 parse warn:', e.message, '| raw:', injectionRes.content[0].text.slice(0,200)); injectionData = { injectionMap: [], powerPhrases: [], authorSchema: {}, contentHooks: [] }; }
+    } catch(e) { console.log('[ENRICH] Tool 3 parse warn:', e.message, '| stop:', injectionRes?.stop_reason, '| raw:', (injectionRes?.content?.[0]?.text || '').slice(0,200)); injectionData = { injectionMap: [], powerPhrases: [], authorSchema: {}, contentHooks: [] }; }
 
     // ── Tool 4: Enriched Brief Assembler ─────────────────────────────────────
     send('progress', { stage: 4, label: 'Enriched Brief Assembler', detail: 'Compiling enriched H1, sections, FAQs, schema markup...' });
@@ -3082,10 +3082,10 @@ Respond with this exact JSON structure:
 
     let assembledBrief = {};
     try {
-      const ab = extractJSON(assemblerRes.content[0].text, 'object');
+      const ab = extractJSON(assemblerRes?.content?.[0]?.text || '', 'object');
       if (!ab) throw new Error('No JSON in Tool 4');
       assembledBrief = JSON.parse(ab);
-    } catch(e) { console.log('[ENRICH] Tool 4 parse warn:', e.message, '| raw:', assemblerRes.content[0].text.slice(0,200)); assembledBrief = { enrichedSections: [], overallConfidence: 0, readyForStage4: false }; }
+    } catch(e) { console.log('[ENRICH] Tool 4 parse warn:', e.message, '| stop:', assemblerRes?.stop_reason, '| raw:', (assemblerRes?.content?.[0]?.text || '').slice(0,200)); assembledBrief = { enrichedSections: [], overallConfidence: 0, readyForStage4: false }; }
 
     // ── Sanitize eeatInjections: catch any raw-JSON leakage ─────────────────────
     // Defensive: even with a tightened prompt, Sonnet occasionally returns injectionMap objects
