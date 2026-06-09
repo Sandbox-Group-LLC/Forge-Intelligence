@@ -64,11 +64,25 @@ function lighten(hex, amt) {
   return '#' + [mix(r), mix(g), mix(b)].map(c => c.toString(16).padStart(2, '0')).join('');
 }
 
+// Perceived lightness 0..1 (rec601 luma) — guards the bg override.
+function lightness(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return ((n >> 16 & 255) * 0.299 + (n >> 8 & 255) * 0.587 + (n & 255) * 0.114) / 255;
+}
+
 export function buildBrand(brandName, profileData, logoUrl) {
   const brand = { name: brandName };
   const v = profileData?.brandVisual || {};
   const accent = normHex(v.accentColor) || normHex(profileData?.voiceProfile?.accentColor);
   if (accent) brand.colors = { accent, accent2: lighten(accent, 0.45) };
+  // Canvas takes the brand's measured page background ONLY when it's clearly
+  // light — the reel's text/cards are designed for a light canvas, so a dark
+  // site bg (or a mid-tone) would break contrast. Dark-mode reels are a
+  // template variant, not a color swap.
+  const bg = normHex(v.bgColor);
+  if (bg && lightness(bg) >= 0.88) {
+    brand.colors = { ...(brand.colors || {}), bg };
+  }
   const logo = v.logoUrl || logoUrl;
   if (typeof logo === 'string' && /^https?:\/\//.test(logo)) brand.logo = logo;
   return brand;
