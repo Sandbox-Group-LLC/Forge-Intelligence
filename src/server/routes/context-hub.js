@@ -10,7 +10,7 @@ import { pool } from '../db.js';
 import { anthropic, dateContext } from '../llm.js';
 import { safeParseLLM } from '../llm-json.js';
 import { requireAuth, softAuth, verifyBrandAccess, SUPER_ADMIN_IDS } from '../auth.js';
-import { forgeScrape, getBrandPageContent, discoverSubpages } from '../scrape.js';
+import { forgeScrape, getBrandPageContent, discoverSubpages, captureBrandVisual } from '../scrape.js';
 import { quickStartTruncate } from '../text.js';
 
 const router = express.Router();
@@ -471,6 +471,20 @@ router.post('/analyze', softAuth, async (req, res) => {
       : '';
     if (!scraperSuccess) console.warn(`[Context Hub] ⚠️ SCRAPER FAILED for ${brandUrl} — Claude will guess from domain name + Sonar context only`);
 
+    // ── Visual capture — measure the brand's REAL accent color + logo ─────────
+    // The text scrape strips all color, so accentColor used to be hallucinated
+    // (anchored to Forge). Load the homepage in the headless browser and read
+    // computed CSS. Best-effort: failure never blocks the profile.
+    let brandVisual = null;
+    if (workingBaseUrl) {
+      brandVisual = await captureBrandVisual(workingBaseUrl, { caller: 'context-hub', metadata: { brandUrl } }).catch(() => null);
+      if (brandVisual?.success) {
+        console.log(`[Context Hub] Visual capture: accent=${brandVisual.accentColor || 'none'} logo=${brandVisual.logoUrl ? 'yes' : 'no'}`);
+      } else {
+        console.warn(`[Context Hub] Visual capture failed: ${brandVisual?.error || 'unknown'}`);
+      }
+    }
+
     // ── Tool 1.5: Perplexity Sonar — competitor + ICP discovery ───────────────
     // Grounded in the SCRAPED site content, not the domain. The domain is a
     // terrible primary signal: brands like "Sommers House" on a *.forge-os.ai /
@@ -581,7 +595,7 @@ Return ONLY valid JSON (no markdown, no explanation, no newlines inside string v
     "positioning": "string — one tight sentence: what they do, for whom, and why they win",
     "targetPersona": "string — primary buyer in plain language, e.g. \'VP of Marketing at mid-market SaaS\'",
     "visualStyle": "string — inferred from site aesthetic, e.g. \'dark editorial minimal\', \'bright human photography\', \'technical precision grids\', \'warm organic textures\'",
-    "accentColor": "string — dominant brand color as hex if detectable, otherwise descriptor e.g. \'#3563FF\' or \'deep indigo\'"
+    "accentColor": "string — a plain-language descriptor only (e.g. \'deep indigo\', \'warm terracotta\'). Do NOT output a hex code: the real brand hex is measured from the live site and injected separately. Never guess a hex from text."
   },
   "personas": [{
     "id": "string", "name": "string", "role": "string",
@@ -654,6 +668,23 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
     console.log(`[Context Hub] Complete — ${brandName} | Latency: ${latencyMs}ms | Competitors found: ${sonarCompetitors.length}`);
 
     profileData.scraperSuccess = scraperSuccess;
+
+    // ── Inject measured visuals — overrides Claude's guessed accentColor ──────
+    // accentColor/logo are now MEASURED from the live site, not inferred from
+    // text. Store the raw capture under brandVisual and overwrite the (guessed)
+    // voiceProfile.accentColor with the real hex so every downstream consumer
+    // (Video Generator brand injector, hero-image gen) gets the true color.
+    if (brandVisual?.success && (brandVisual.accentColor || brandVisual.logoUrl)) {
+      profileData.brandVisual = {
+        accentColor: brandVisual.accentColor || null,
+        bgColor: brandVisual.bgColor || null,
+        logoUrl: brandVisual.logoUrl || null,
+        capturedAt: new Date().toISOString(),
+      };
+      if (brandVisual.accentColor) {
+        profileData.voiceProfile = { ...(profileData.voiceProfile || {}), accentColor: brandVisual.accentColor };
+      }
+    }
 
     // ── Stamp server-side time on every signal ────────────────────────────
     // The schema asks the LLM for a 'lastChecked' ISO8601 date per signal, but

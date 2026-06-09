@@ -41,6 +41,39 @@ export function videoConfigured() {
   );
 }
 
+// ── Visual brand injector ──────────────────────────────────────────────────
+// Build the reel's brand object from the Context Hub profile so it renders in
+// the brand's REAL colors/logo, not Forge's. Source: profileData.brandVisual
+// (measured from the live site by captureBrandVisual) with voiceProfile.accentColor
+// + logo_url as fallbacks. Only accent colors and logo are overridden; the reel
+// keeps its light background + dark body text so contrast is always safe.
+const HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+function normHex(s) {
+  if (typeof s !== 'string') return null;
+  const v = s.trim();
+  if (!HEX.test(v)) return null; // descriptors ("deep indigo") are not usable as a hex
+  return v.length === 4 ? '#' + [...v.slice(1)].map(c => c + c).join('') : v.toLowerCase();
+}
+
+// Mix a hex toward white (amt 0..1) for the lighter companion shade (orbit gradient).
+function lighten(hex, amt) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const mix = (c) => Math.round(c + (255 - c) * amt);
+  return '#' + [mix(r), mix(g), mix(b)].map(c => c.toString(16).padStart(2, '0')).join('');
+}
+
+export function buildBrand(brandName, profileData, logoUrl) {
+  const brand = { name: brandName };
+  const v = profileData?.brandVisual || {};
+  const accent = normHex(v.accentColor) || normHex(profileData?.voiceProfile?.accentColor);
+  if (accent) brand.colors = { accent, accent2: lighten(accent, 0.45) };
+  const logo = v.logoUrl || logoUrl;
+  if (typeof logo === 'string' && /^https?:\/\//.test(logo)) brand.logo = logo;
+  return brand;
+}
+
 // Lazy-load the heavy SDKs so they only resolve when video is actually used.
 async function lambdaClient() {
   return import('@remotion/lambda/client');
