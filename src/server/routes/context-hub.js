@@ -389,60 +389,14 @@ router.post('/analyze', softAuth, async (req, res) => {
       }
     }
 
-    // ── Tool 1: Perplexity Sonar — competitor + ICP discovery ────────────────
-    console.log(`[Context Hub] Tool 1: Perplexity Sonar research for ${brandUrl}...`);
+    // Sonar competitor/ICP discovery runs AFTER the scrape (Tool 1.5) so it can
+    // be grounded in the brand's ACTUAL site content rather than its domain name.
+    // Declared here so the vars are in scope for the Claude prompt below.
     let sonarCompetitors = [];
     let sonarICP = '';
     let sonarContext = '';
 
-    try {
-      const sonarRes = await fetch('https://api.perplexity.ai/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'sonar',
-          messages: [{
-            role: 'user',
-            content: `Research the brand at ${brandUrl} and return ONLY valid JSON (no markdown):
-{
-  "brandDescription": "1-2 sentence description of what this company does",
-  "competitors": ["url1", "url2", "url3"],
-  "targetICP": "specific description of their ideal customer profile — job title, company size, pain points",
-  "marketCategory": "the specific market category this brand competes in",
-  "keyDifferentiators": ["string"],
-  "contentThemes": ["main topics this brand and competitors publish content about"]
-}
-Return exactly 3 competitor URLs. Be specific and accurate.`
-          }],
-          max_tokens: 800
-        })
-      });
-
-      if (sonarRes.ok) {
-        const sonarData = await sonarRes.json();
-        const sonarText = sonarData.choices[0].message.content;
-        const sonarMatch = sonarText.match(/\{[\s\S]*\}/);
-        if (sonarMatch) {
-          const sonarJson = JSON.parse(sonarMatch[0]);
-          // Merge Sonar competitors with any manual overrides passed by user
-          sonarCompetitors = competitorUrls.length > 0 ? competitorUrls : (sonarJson.competitors || []);
-          sonarICP = sonarJson.targetICP || '';
-          sonarContext = `Brand description: ${sonarJson.brandDescription}
-Market category: ${sonarJson.marketCategory}
-Key differentiators: ${(sonarJson.keyDifferentiators || []).join(', ')}
-Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
-          console.log(`[Context Hub] Sonar found ${sonarCompetitors.length} competitors, ICP: ${sonarICP.slice(0, 80)}...`);
-        }
-      }
-    } catch(e) {
-      console.log('[Context Hub] Sonar research failed, proceeding without:', e.message);
-    }
-
-
-    // ── Tool 1.5: Website Scraper — actual content extraction ─────────────────
+    // ── Tool 1: Website Scraper — actual content extraction ───────────────────
     // Two-tier fetch per page via getBrandPageContent:
     //   Tier A: Jina Reader (semantic markdown — fast, free, the common case)
     //   Tier B: forgeScrape (BD Tier 1 → Tier 2 cascade) + local Readability+Turndown
@@ -516,6 +470,66 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
       ? `\n\nACTUAL WEBSITE CONTENT (scraped — use this as primary source, do NOT guess from domain name):\n${scrapedContent.slice(0, 100000)}`
       : '';
     if (!scraperSuccess) console.warn(`[Context Hub] ⚠️ SCRAPER FAILED for ${brandUrl} — Claude will guess from domain name + Sonar context only`);
+
+    // ── Tool 1.5: Perplexity Sonar — competitor + ICP discovery ───────────────
+    // Grounded in the SCRAPED site content, not the domain. The domain is a
+    // terrible primary signal: brands like "Sommers House" on a *.forge-os.ai /
+    // forgeos-*.onrender.com URL made Sonar match software "forges" (GitHub,
+    // GitLab) and the defence "The Forge" instead of their real market. We feed
+    // Sonar what the brand ACTUALLY does and tell it to ignore the domain name.
+    console.log(`[Context Hub] Tool 1.5: Perplexity Sonar research for ${brandUrl} (grounded: ${scraperSuccess})...`);
+    const brandEvidenceForSonar = scraperSuccess
+      ? `What this brand actually does (from their own website — treat this as the source of truth):\n${scrapedContent.slice(0, 3000)}`
+      : `Brand website: ${brandUrl} (site could not be scraped — infer carefully, do not over-index on keywords in the domain name).`;
+    try {
+      const sonarRes = await fetch('https://api.perplexity.ai/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'sonar',
+          messages: [{
+            role: 'user',
+            content: `You are identifying the TRUE market competitors for a brand. Base your answer on what the brand actually does — NOT on coincidental keywords in its domain name (e.g. a domain containing "forge" does NOT make a software-repository tool a competitor).
+
+${brandEvidenceForSonar}
+
+Return ONLY valid JSON (no markdown):
+{
+  "brandDescription": "1-2 sentence description of what this company does",
+  "competitors": ["url1", "url2", "url3"],
+  "targetICP": "specific description of their ideal customer profile — job title, company size, pain points",
+  "marketCategory": "the specific market category this brand competes in",
+  "keyDifferentiators": ["string"],
+  "contentThemes": ["main topics this brand and competitors publish content about"]
+}
+Return exactly 3 competitor URLs that serve the same buyers in the same market. Be specific and accurate.`
+          }],
+          max_tokens: 800
+        })
+      });
+
+      if (sonarRes.ok) {
+        const sonarData = await sonarRes.json();
+        const sonarText = sonarData.choices[0].message.content;
+        const sonarMatch = sonarText.match(/\{[\s\S]*\}/);
+        if (sonarMatch) {
+          const sonarJson = JSON.parse(sonarMatch[0]);
+          // Founder-provided competitors win verbatim; Sonar only fills the gap.
+          sonarCompetitors = competitorUrls.length > 0 ? competitorUrls : (sonarJson.competitors || []);
+          sonarICP = sonarJson.targetICP || '';
+          sonarContext = `Brand description: ${sonarJson.brandDescription}
+Market category: ${sonarJson.marketCategory}
+Key differentiators: ${(sonarJson.keyDifferentiators || []).join(', ')}
+Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
+          console.log(`[Context Hub] Sonar found ${sonarCompetitors.length} competitors, ICP: ${sonarICP.slice(0, 80)}...`);
+        }
+      }
+    } catch(e) {
+      console.log('[Context Hub] Sonar research failed, proceeding without:', e.message);
+    }
 
     // ── Tool 2: Claude — Brand Intelligence Profile ───────────────────────────
     console.log(`[Context Hub] Tool 2: Claude brand analysis...`);
@@ -626,8 +640,15 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
       }
     }
 
-    // Inject discovered competitors into profile
-    profileData.discoveredCompetitors = sonarCompetitors;
+    // Competitor precedence: a founder-provided list wins verbatim; otherwise use
+    // the (now content-grounded) Sonar list. Never wipe a non-empty list with an
+    // empty one — if Sonar returned nothing, keep whatever Claude derived from the
+    // scraped content rather than blanking it.
+    if (competitorUrls.length > 0) {
+      profileData.discoveredCompetitors = competitorUrls;
+    } else if (Array.isArray(sonarCompetitors) && sonarCompetitors.length > 0) {
+      profileData.discoveredCompetitors = sonarCompetitors;
+    } // else: keep profileData.discoveredCompetitors as Claude derived it
 
     const latencyMs = Date.now() - startTime;
     console.log(`[Context Hub] Complete — ${brandName} | Latency: ${latencyMs}ms | Competitors found: ${sonarCompetitors.length}`);
