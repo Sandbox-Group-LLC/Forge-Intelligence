@@ -14,6 +14,7 @@ import AuthenticityEnricherPage from './pages/AuthenticityEnricherPage';
 import ContentGeneratorPage from './pages/ContentGeneratorPage';
 import CampaignGeneratorPage from './pages/CampaignGeneratorPage';
 import SocialGeneratorPage from './pages/SocialGeneratorPage';
+import VideoGeneratorPage from './pages/VideoGeneratorPage';
 import AdsGeneratorPage from './pages/AdsGeneratorPage';
 import ComplianceGatePage from './pages/ComplianceGatePage';
 import IntegrationsPage from './pages/IntegrationsPage';
@@ -138,6 +139,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/app/content-generator" element={<AppProvider><ContentGeneratorPage /></AppProvider>} />
         <Route path="/app/campaign-generator" element={<AppProvider><CampaignGeneratorPage /></AppProvider>} />
         <Route path="/app/social-generator" element={<AppProvider><SocialGeneratorPage /></AppProvider>} />
+        <Route path="/app/video-generator" element={<AppProvider><VideoGeneratorPage /></AppProvider>} />
         <Route path="/app/ads-generator" element={<AppProvider><AdsGeneratorPage /></AppProvider>} />
         <Route path="/app/email-campaign" element={<AppProvider><EmailCampaignPage /></AppProvider>} />
         <Route path="/app/compliance-gate" element={<AppProvider><ComplianceGatePage /></AppProvider>} />
