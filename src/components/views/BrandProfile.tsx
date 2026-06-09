@@ -3,6 +3,7 @@ import { useAuth } from '@clerk/clerk-react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { BuildWithPartnerButton } from '../BuildWithPartnerButton';
+import { baselineVersionFor, withDeadline, isConnectionDeath, recoverAnalyze } from '../../lib/analyzeRecovery';
 import './BrandProfile.css';
 
 // Lucide-style icons
@@ -83,22 +84,31 @@ export function BrandProfile() {
   const handleReanalyze = useCallback(async () => {
     if (!brandProfile?.brandUrl || reanalyzing) return;
     setReanalyzing(true);
+    // The scan holds one connection open 3-4 min; if it drops, the server still
+    // finishes — recover via version-bump polling instead of spinning forever
+    // (see src/lib/analyzeRecovery.ts).
+    const baselineVersion = await baselineVersionFor(brandProfile.brandUrl);
     try {
       const token = await getToken();
-      const r = await fetch('/api/context-hub/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
-        body: JSON.stringify({
-          brandUrl: brandProfile.brandUrl,
-          competitorUrls: [],
-          audienceNotes: '',
-          strategicNotes: '',
-          checkBrainFirst: false,
-          saveToBrain: true,
-        }),
-      });
-      const d = await r.json();
-      if (d.success && d.data) {
+      let d: any;
+      try {
+        d = await withDeadline(fetch('/api/context-hub/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+          body: JSON.stringify({
+            brandUrl: brandProfile.brandUrl,
+            competitorUrls: [],
+            audienceNotes: '',
+            strategicNotes: '',
+            checkBrainFirst: false,
+            saveToBrain: true,
+          }),
+        }).then(r => r.json()));
+      } catch (err) {
+        if (!isConnectionDeath(err)) throw err;
+        d = await recoverAnalyze(brandProfile.brandUrl, baselineVersion);
+      }
+      if (d?.success && d.data) {
         setBrandProfile(d.data);
       }
     } catch (e) { console.error('Re-analyze failed:', e); }

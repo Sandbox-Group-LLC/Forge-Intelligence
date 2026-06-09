@@ -8,6 +8,7 @@ import { Strategy } from '../components/views/Strategy';
 import { BrainHistory } from '../components/views/BrainHistory';
 import { initialProcessingStages } from '../data/mockData';
 import { ProcessingStage } from '../types';
+import { baselineVersionFor, withDeadline, isConnectionDeath, recoverAnalyze } from '../lib/analyzeRecovery';
 
 function ContextAgentPage() {
   const { currentView, setCurrentView, setIsProcessing, setProcessingStages, setBrandProfile, setAnalysisInput, activeBrand } = useApp();
@@ -46,20 +47,30 @@ function ContextAgentPage() {
 
     driveStages();
 
-    // Domain is the session key — no session ID needed
-    fetch('/api/context-hub/analyze', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        brandUrl: onboardUrl,
-        competitorUrls: [],
-        audienceNotes: '',
-        strategicNotes: '',
-        checkBrainFirst: true,
-        saveToBrain: true,
-      }),
-    })
-      .then(r => r.json())
+    // Domain is the session key — no session ID needed.
+    // withDeadline + recoverAnalyze: if the 3-4 min connection drops, the server
+    // still finishes — recover via version-bump polling instead of spinning
+    // forever (see src/lib/analyzeRecovery.ts).
+    baselineVersionFor(onboardUrl)
+      .then(baselineVersion =>
+        withDeadline(fetch('/api/context-hub/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            brandUrl: onboardUrl,
+            competitorUrls: [],
+            audienceNotes: '',
+            strategicNotes: '',
+            checkBrainFirst: true,
+            saveToBrain: true,
+          }),
+        }).then(r => r.json())).catch(async (err) => {
+          if (!isConnectionDeath(err)) throw err;
+          const recovered = await recoverAnalyze(onboardUrl, baselineVersion);
+          if (!recovered) throw new Error('Analysis connection lost and recovery timed out — refresh to check Brain History');
+          return recovered;
+        })
+      )
       .then(d => {
         cancelled = true;
         if (d.success && d.data) {
