@@ -5,7 +5,7 @@ import {
 } from "remotion";
 import type {
   Brand, Scene, HookScene, TagsScene, OrbitScene,
-  PipelineScene, BarsScene, CurveScene, CtaScene, VideoProps,
+  PipelineScene, BarsScene, CurveScene, CtaScene, VideoProps, ThemeId,
 } from "./types";
 
 // Forge defaults — any brand.colors key overrides these.
@@ -18,16 +18,61 @@ type Palette = typeof DEFAULT_COLORS;
 
 const DEFAULT_FONT = '-apple-system, "Helvetica Neue", "Segoe UI", Roboto, Arial, sans-serif';
 
+// ── Visual themes ───────────────────────────────────────────────────────────
+// Template-level styles. `colors` are applied AFTER the brand's colors, so a
+// dark theme's canvas wins over a measured light brand bg (the brand's ACCENT
+// still applies — themes don't define accents). `scale` folds into the global
+// k unit; `springCfg` drives every entrance; `headlineFont` restyles the big
+// type only.
+type Theme = {
+  colors?: Partial<Palette>;
+  headlineFont?: string;
+  headlineWeight?: number;
+  scale: number;
+  springCfg: { damping: number; stiffness?: number; mass?: number };
+};
+const THEMES: Record<ThemeId, Theme> = {
+  // The original light product look.
+  clean: { scale: 1, springCfg: { damping: 200 } },
+  // Luxury magazine: serif headlines, lighter weight, slower glide.
+  editorial: {
+    headlineFont: 'Georgia, "Times New Roman", "Palatino Linotype", serif',
+    headlineWeight: 600,
+    scale: 0.96,
+    springCfg: { damping: 200, stiffness: 45, mass: 1.2 },
+  },
+  // Dark canvas, huge type, high contrast. Theme canvas beats brand bg; brand
+  // accent survives.
+  bold: {
+    colors: {
+      bg: "#0B1220", card: "#141D2E", emphasis: "#F8FAFC",
+      secondary: "#A6B3C8", muted: "#64748B", border: "#1F2A3D",
+    },
+    headlineWeight: 800,
+    scale: 1.1,
+    springCfg: { damping: 200 },
+  },
+  // Springy, fast, punchy entrances.
+  kinetic: { scale: 1.04, springCfg: { damping: 14, stiffness: 160, mass: 0.7 } },
+};
+
 // Sizes below are authored against a landscape design width. `k` rescales every
 // dimension to the actual canvas so the SAME layout works at 1920x1080 and
 // 1080x1920 — portrait just gets a tighter unit and the flex rows wrap.
 type Layout = { k: number; portrait: boolean };
-const Ctx = React.createContext<{ C: Palette; font: string; brand: Brand; L: Layout }>({
+const Ctx = React.createContext<{ C: Palette; font: string; brand: Brand; L: Layout; T: Theme }>({
   C: DEFAULT_COLORS, font: DEFAULT_FONT, brand: { name: "Forge Intelligence" },
-  L: { k: 1, portrait: false },
+  L: { k: 1, portrait: false }, T: THEMES.clean,
 });
 
 const useL = () => React.useContext(Ctx).L;
+const useT = () => React.useContext(Ctx).T;
+
+// Headline style fragment shared by every big-type element.
+const useHeadline = () => {
+  const T = useT();
+  return { fontFamily: T.headlineFont, fontWeight: T.headlineWeight ?? 800 } as const;
+};
 
 // audio: full URL (S3) used as-is, bare filename resolved locally.
 const audioSrc = (a?: string) =>
@@ -58,8 +103,9 @@ const useRise = (delay = 0, dist = 50) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const { k } = useL();
-  const s = spring({ frame: frame - delay, fps, config: { damping: 200 } });
-  return { opacity: s, transform: `translateY(${interpolate(s, [0, 1], [dist * k, 0])}px)` };
+  const T = useT();
+  const s = spring({ frame: frame - delay, fps, config: T.springCfg });
+  return { opacity: Math.min(1, s), transform: `translateY(${interpolate(s, [0, 1], [dist * k, 0])}px)` };
 };
 
 const Stage: React.FC<{ children: React.ReactNode; audio?: string }> = ({ children, audio }) => {
@@ -80,6 +126,7 @@ const Stage: React.FC<{ children: React.ReactNode; audio?: string }> = ({ childr
 const HookView: React.FC<{ s: HookScene }> = ({ s }) => {
   const { C } = React.useContext(Ctx);
   const { k } = useL();
+  const hl = useHeadline();
   const a = useRise(0), b = useRise(14);
   return (
     <Stage audio={s.audio}>
@@ -87,7 +134,7 @@ const HookView: React.FC<{ s: HookScene }> = ({ s }) => {
         {s.eyebrow && (
           <div style={{ ...a, fontSize: 28 * k, letterSpacing: 6 * k, color: C.accent, fontWeight: 700, marginBottom: 28 * k }}>{s.eyebrow}</div>
         )}
-        <div style={{ ...a, fontSize: 110 * k, fontWeight: 800, color: C.emphasis, lineHeight: 1.05 }}>
+        <div style={{ ...a, ...hl, fontSize: 110 * k, color: C.emphasis, lineHeight: 1.05 }}>
           {s.headline}
           {s.emphasis && <><br /><span style={{ color: C.error }}>{s.emphasis}</span></>}
         </div>
@@ -100,11 +147,12 @@ const HookView: React.FC<{ s: HookScene }> = ({ s }) => {
 const TagsView: React.FC<{ s: TagsScene }> = ({ s }) => {
   const { C } = React.useContext(Ctx);
   const { k } = useL();
+  const hl = useHeadline();
   const head = useRise(0);
   return (
     <Stage audio={s.audio}>
       <div style={{ textAlign: "center", maxWidth: 1500 * k }}>
-        <div style={{ ...head, fontSize: 80 * k, fontWeight: 800, color: C.emphasis, lineHeight: 1.1 }}>{s.headline}</div>
+        <div style={{ ...head, ...hl, fontSize: 80 * k, color: C.emphasis, lineHeight: 1.1 }}>{s.headline}</div>
         <div style={{ display: "flex", gap: 22 * k, justifyContent: "center", flexWrap: "wrap", marginTop: 56 * k }}>
           {s.tags.map((t, i) => {
             const r = useRise(30 + i * 14);
@@ -121,9 +169,10 @@ const TagsView: React.FC<{ s: TagsScene }> = ({ s }) => {
 const OrbitView: React.FC<{ s: OrbitScene }> = ({ s }) => {
   const { C } = React.useContext(Ctx);
   const { k, portrait } = useL();
+  const T = useT();
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const core = spring({ frame, fps, config: { damping: 200 } });
+  const core = spring({ frame, fps, config: T.springCfg });
   const sub = useRise(70);
   const radius = (portrait ? 300 : 330) * k; // tighter ring in portrait so chips don't clip
   return (
@@ -140,12 +189,12 @@ const OrbitView: React.FC<{ s: OrbitScene }> = ({ s }) => {
         </div>
         {s.facets.map((f, i) => {
           const ang = (i / s.facets.length) * Math.PI * 2 - Math.PI / 2;
-          const appear = spring({ frame: frame - 24 - i * 10, fps, config: { damping: 200 } });
+          const appear = spring({ frame: frame - 24 - i * 10, fps, config: T.springCfg });
           const x = Math.cos(ang) * radius, y = Math.sin(ang) * radius * 0.62;
           return (
             <div key={f} style={{
               position: "absolute", left: `calc(50% + ${x}px)`, top: `calc(50% + ${y}px)`,
-              transform: `translate(-50%,-50%) scale(${appear})`, opacity: appear,
+              transform: `translate(-50%,-50%) scale(${appear})`, opacity: Math.min(1, appear),
               background: C.card, border: `2px solid ${C.accent}`, color: C.accent, fontWeight: 700,
               fontSize: 34 * k, padding: `${16 * k}px ${30 * k}px`, borderRadius: 999, whiteSpace: "nowrap",
               boxShadow: `0 ${8 * k}px ${30 * k}px rgba(53,99,255,0.15)`,
@@ -165,6 +214,8 @@ const OrbitView: React.FC<{ s: OrbitScene }> = ({ s }) => {
 const PipelineView: React.FC<{ s: PipelineScene }> = ({ s }) => {
   const { C } = React.useContext(Ctx);
   const { k, portrait } = useL();
+  const T = useT();
+  const hl = useHeadline();
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const head = useRise(0);
@@ -172,17 +223,17 @@ const PipelineView: React.FC<{ s: PipelineScene }> = ({ s }) => {
   return (
     <Stage audio={s.audio}>
       <div style={{ width: (portrait ? 920 : 1640) * k, textAlign: "center" }}>
-        <div style={{ ...head, fontSize: 70 * k, fontWeight: 800, color: C.emphasis, marginBottom: 70 * k }}>
+        <div style={{ ...head, ...hl, fontSize: 70 * k, color: C.emphasis, marginBottom: 70 * k }}>
           {s.headline} {s.headlineEmphasis && <span style={{ color: C.accent }}>{s.headlineEmphasis}</span>}
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "wrap", gap: portrait ? 14 * k : 0, rowGap: 18 * k }}>
           {s.stages.map((st, i) => {
-            const lit = spring({ frame: frame - 20 - i * 16, fps, config: { damping: 200 } });
+            const lit = spring({ frame: frame - 20 - i * 16, fps, config: T.springCfg });
             const isLast = s.highlightLast !== false && i === s.stages.length - 1;
             return (
               <React.Fragment key={st}>
                 <div style={{
-                  transform: `scale(${interpolate(lit, [0, 1], [0.7, 1])})`, opacity: lit,
+                  transform: `scale(${interpolate(lit, [0, 1], [0.7, 1])})`, opacity: Math.min(1, lit),
                   width: node, height: node, borderRadius: 24 * k, flexShrink: 0,
                   background: isLast ? C.accent : C.card, color: isLast ? "#fff" : C.emphasis,
                   border: `2px solid ${isLast ? C.accent : C.border}`,
@@ -191,7 +242,7 @@ const PipelineView: React.FC<{ s: PipelineScene }> = ({ s }) => {
                   boxShadow: isLast ? `0 0 ${50 * k}px rgba(53,99,255,0.4)` : `0 ${6 * k}px ${20 * k}px rgba(15,23,42,0.06)`,
                 }}>{st}</div>
                 {!portrait && i < s.stages.length - 1 && (
-                  <div style={{ width: 44 * k, height: 4 * k, background: C.border, flexShrink: 0, opacity: lit, borderRadius: 2 }} />
+                  <div style={{ width: 44 * k, height: 4 * k, background: C.border, flexShrink: 0, opacity: Math.min(1, lit), borderRadius: 2 }} />
                 )}
               </React.Fragment>
             );
@@ -211,7 +262,7 @@ const BarRow: React.FC<{ label: string; pct: number; delay: number }> = ({ label
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 28 * k, marginBottom: 22 * k }}>
       <span style={{ width: 380 * k, fontSize: 38 * k, fontWeight: 600, color: C.emphasis }}>{label}</span>
-      <div style={{ flex: 1, height: 30 * k, background: "#dfe5f5", borderRadius: 15 * k, overflow: "hidden" }}>
+      <div style={{ flex: 1, height: 30 * k, background: C.border, borderRadius: 15 * k, overflow: "hidden" }}>
         <div style={{ width: `${Math.max(w, zero ? 1.2 : w)}%`, height: "100%", background: zero ? C.error : C.accent, borderRadius: 15 * k }} />
       </div>
       <span style={{ width: 100 * k, textAlign: "right", fontSize: 38 * k, fontWeight: 700, color: zero ? C.error : C.emphasis }}>{Math.round(w)}%</span>
@@ -222,11 +273,12 @@ const BarRow: React.FC<{ label: string; pct: number; delay: number }> = ({ label
 const BarsView: React.FC<{ s: BarsScene }> = ({ s }) => {
   const { C } = React.useContext(Ctx);
   const { k } = useL();
+  const hl = useHeadline();
   const head = useRise(0);
   return (
     <Stage audio={s.audio}>
       <div style={{ width: 1500 * k }}>
-        <div style={{ ...head, fontSize: 64 * k, fontWeight: 800, color: C.emphasis, marginBottom: 48 * k, textAlign: "center" }}>
+        <div style={{ ...head, ...hl, fontSize: 64 * k, color: C.emphasis, marginBottom: 48 * k, textAlign: "center" }}>
           {s.headline} {s.headlineEmphasis && <span style={{ color: C.accent }}>{s.headlineEmphasis}</span>}
         </div>
         {s.bars.map((b, i) => <BarRow key={b.label} label={b.label} pct={b.pct} delay={40 + i * 12} />)}
@@ -249,6 +301,7 @@ const BarsView: React.FC<{ s: BarsScene }> = ({ s }) => {
 const CurveView: React.FC<{ s: CurveScene }> = ({ s }) => {
   const { C } = React.useContext(Ctx);
   const { k } = useL();
+  const hl = useHeadline();
   const frame = useCurrentFrame();
   const head = useRise(0);
   const progress = interpolate(frame, [20, 130], [0, 1], { extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) });
@@ -258,7 +311,7 @@ const CurveView: React.FC<{ s: CurveScene }> = ({ s }) => {
   return (
     <Stage audio={s.audio}>
       <div style={{ width: W, textAlign: "center" }}>
-        <div style={{ ...head, fontSize: 76 * k, fontWeight: 800, color: C.emphasis, marginBottom: 50 * k }}>
+        <div style={{ ...head, ...hl, fontSize: 76 * k, color: C.emphasis, marginBottom: 50 * k }}>
           {s.headline} {s.headlineEmphasis && <span style={{ color: C.accent }}>{s.headlineEmphasis}</span>}
         </div>
         <svg width={W} height={H} style={{ overflow: "visible" }}>
@@ -275,12 +328,13 @@ const CurveView: React.FC<{ s: CurveScene }> = ({ s }) => {
 const CtaView: React.FC<{ s: CtaScene }> = ({ s }) => {
   const { C } = React.useContext(Ctx);
   const { k } = useL();
+  const hl = useHeadline();
   const a = useRise(0), b = useRise(14), c = useRise(30);
   return (
     <Stage audio={s.audio}>
       <div style={{ textAlign: "center", maxWidth: 1500 * k }}>
         <div style={a}><BrandMark size={96} /></div>
-        <div style={{ ...b, fontSize: 96 * k, fontWeight: 800, color: C.emphasis, margin: `${34 * k}px 0 ${26 * k}px` }}>{s.title}</div>
+        <div style={{ ...b, ...hl, fontSize: 96 * k, color: C.emphasis, margin: `${34 * k}px 0 ${26 * k}px` }}>{s.title}</div>
         {s.sub && <div style={{ ...b, fontSize: 50 * k, color: C.secondary, fontWeight: 500, marginBottom: 44 * k }}>{s.sub}</div>}
         <div style={{ ...c, fontSize: 46 * k, fontWeight: 700, color: "#fff", background: C.accent, borderRadius: 18 * k, padding: `${24 * k}px ${52 * k}px`, display: "inline-block" }}>{s.cta}</div>
       </div>
@@ -308,19 +362,57 @@ export const totalDuration = (scenes: Scene[]) =>
 export const dimsFor = (orientation?: string) =>
   orientation === "portrait" ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 };
 
-export const DataReel: React.FC<VideoProps> = ({ brand, scenes, fontFamily }) => {
-  const C: Palette = { ...DEFAULT_COLORS, ...(brand.colors || {}) };
+// Music ducking. VO clips start at each scene's start and run to roughly the
+// scene's end minus a ~0.8s tail (frame math mirrors the backend's
+// framesForVoiceover). Duck the bed while VO is speaking, lift it in the
+// tails/sceneless gaps, and fade the reel in/out. Pure — exported for tests.
+const BED_DUCKED = 0.12;
+const BED_OPEN = 0.26;
+const VO_TAIL_FRAMES = 24;  // ~0.8s @30fps, matches the backend's VO padding
+const EDGE_FADE_FRAMES = 30;
+export const musicVolumeAt = (frame: number, scenes: Scene[]) => {
+  const total = scenes.reduce((a, s) => a + s.durationInFrames, 0);
+  let level = BED_OPEN;
+  let offset = 0;
+  for (const s of scenes) {
+    const end = offset + s.durationInFrames;
+    if (frame >= offset && frame < end) {
+      const voActive = s.audio ? frame < end - VO_TAIL_FRAMES : false;
+      level = voActive ? BED_DUCKED : BED_OPEN;
+      break;
+    }
+    offset = end;
+  }
+  const fadeIn = Math.min(1, frame / EDGE_FADE_FRAMES);
+  const fadeOut = Math.min(1, Math.max(0, (total - frame) / EDGE_FADE_FRAMES));
+  return level * fadeIn * fadeOut;
+};
+
+export const DataReel: React.FC<VideoProps> = ({ brand, scenes, fontFamily, music, theme }) => {
+  const T = THEMES[theme ?? "clean"] ?? THEMES.clean;
+  // Precedence: defaults -> brand colors -> theme colors. The theme's canvas
+  // (e.g. bold's dark bg) must beat a measured light brand bg, but the brand's
+  // ACCENT survives because themes don't define accents.
+  const C: Palette = { ...DEFAULT_COLORS, ...(brand.colors || {}), ...(T.colors || {}) };
   const font = fontFamily || DEFAULT_FONT;
   const { width, height } = useVideoConfig();
   const portrait = height > width;
   // Author against ~1740 wide in portrait (so 1080 content fits with margin) and
   // 1920 in landscape; k rescales every dimension to the real canvas width.
-  const k = width / (portrait ? 1740 : 1920);
+  // Theme scale folds into the unit so the whole layout breathes with it.
+  const k = (width / (portrait ? 1740 : 1920)) * T.scale;
   const L: Layout = { k, portrait };
   let offset = 0;
   return (
-    <Ctx.Provider value={{ C, font, brand, L }}>
+    <Ctx.Provider value={{ C, font, brand, L, T }}>
       <AbsoluteFill style={{ background: C.bg }}>
+        {music?.src && (
+          <Audio
+            src={music.src}
+            loop
+            volume={(f) => musicVolumeAt(f, scenes)}
+          />
+        )}
         {scenes.map((s) => {
           const from = offset;
           offset += s.durationInFrames;

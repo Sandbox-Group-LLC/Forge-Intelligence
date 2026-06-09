@@ -85,6 +85,7 @@
   "GET /api/topic-ideas/:brandProfileId",
   "GET /api/video",
   "GET /api/video/:id",
+  "GET /api/video/options",
   "GET /api/webflow/auth",
   "GET /api/x/auth",
   "GET /api/zernio/connect/:platform",
