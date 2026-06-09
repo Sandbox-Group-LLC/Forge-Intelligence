@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef, Re
 import { ViewType, BrandProfile, AnalysisInput, ProcessingStage, HistoryEntry } from '../types';
 import { initialProcessingStages, sampleAnalysisInput } from '../data/mockData';
 import { humanize, AlertSeverity } from '../lib/humanizeError';
+import { baselineVersionFor, withDeadline, isConnectionDeath, recoverAnalyze } from '../lib/analyzeRecovery';
 
 export interface Alert {
   id: string;
@@ -301,6 +302,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const stages = initialProcessingStages.map(s => ({ ...s, status: 'pending' as const }));
     setProcessingStages(stages);
 
+    // Connection-drop resilience (see src/lib/analyzeRecovery.ts): snapshot the
+    // brand's current version; if the analyze fetch dies or zombies, recover the
+    // completed brain by polling for the version bump instead of hanging.
+    const baselineVersion = await baselineVersionFor(effectiveUrl);
+
     // Fire API call immediately — runs concurrently with the stage animation
     const analyzePromise = fetch('/api/context-hub/analyze', {
       method: 'POST',
@@ -357,7 +363,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     driveStages();
 
     try {
-      const data = await analyzePromise;
+      let data: any;
+      try {
+        data = await withDeadline(analyzePromise);
+      } catch (err) {
+        // Recover ONLY from network-level death — the server is most likely
+        // still working and will save the brain. Real server errors (409
+        // domain-claimed, !success payloads) re-throw below.
+        if (!isConnectionDeath(err)) throw err;
+        const recovered = await recoverAnalyze(effectiveUrl, baselineVersion);
+        if (!recovered) throw new Error('Analysis connection lost and recovery timed out — refresh to check Brain History');
+        data = recovered;
+      }
       cancelled = true;
       if (!data.success) throw new Error(data.error);
 
