@@ -1,0 +1,22 @@
+{
+  "name": "forge-remotion",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Forge video templates. Deployed to the Remotion Lambda site 'forge-reels'.",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "deploy-site": "remotion lambda sites create src/index.ts --site-name=forge-reels"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.474",
+    "@remotion/lambda": "4.0.474",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "remotion": "4.0.474"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.0",
+    "typescript": "5.7.3"
+  }
+}

@@ -46,6 +46,7 @@ import { runScheduledPublishes } from './src/server/routes/publishing-publish.js
 import { pipedreamProxy } from './src/server/pipedream.js';
 import zernioRouter from './src/server/routes/zernio.js';
 import zernioAdminRouter from './src/server/routes/zernio-admin.js';
+import videoRouter from './src/server/routes/video.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -4409,6 +4410,8 @@ app.delete('/api/ads-generator/pack/:packId', requireAuth, async (req, res) => {
 // buildSocialImagePrompt + generateSocialImage moved to src/server/images.js (imported at top).
 
 app.use('/api/social-generator', requireAuth, socialGeneratorRouter); // 6 routes -> src/server/routes/social-generator.js
+
+app.use('/api/video', requireAuth, videoRouter); // 3 routes (video generation: storyboard -> TTS -> Lambda render) -> src/server/routes/video.js
 
 // ── Campaign Generator ────────────────────────────────────────────────────────
 
