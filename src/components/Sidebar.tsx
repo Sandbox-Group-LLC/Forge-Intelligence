@@ -12,6 +12,11 @@ const icons = {
       <path d="M2.7 10.3a2.41 2.41 0 0 0 0 3.41l7.59 7.59a2.41 2.41 0 0 0 3.41 0l7.59-7.59a2.41 2.41 0 0 0 0-3.41l-7.59-7.59a2.41 2.41 0 0 0-3.41 0Z"/>
     </svg>
   ),
+  film: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="2" width="20" height="20" rx="2.18"/><path d="M7 2v20M17 2v20M2 12h20M2 7h5M2 17h5M17 17h5M17 7h5"/>
+    </svg>
+  ),
   calendar: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
@@ -193,6 +198,7 @@ const NAV_ROUTES: Partial<Record<ViewType, string>> = {
   'content-generator':    '/app/content-generator',
   'campaign-generator':   '/app/campaign-generator',
   'social-generator':     '/app/social-generator',
+  'video-generator':      '/app/video-generator',
   'ads-generator':        '/app/ads-generator',
   'compliance-gate':      '/app/compliance-gate',
   'integrations':         '/app/integrations',
@@ -231,6 +237,7 @@ const topNavItems: TopNavItem[] = [
   { id: 'content-generator',     label: 'Content Generator',     icon: 'fileText',   href: '/app/content-generator' },
   { id: 'campaign-generator',    label: 'Campaign Generator',    icon: 'layers',     href: '/app/campaign-generator' },
   { id: 'social-generator',      label: 'Social Generator',      icon: 'share2',     href: '/app/social-generator' },
+  { id: 'video-generator',       label: 'Video Generator',       icon: 'film',       href: '/app/video-generator' },
   { id: 'ads-generator',         label: 'Ads Generator',          icon: 'target',     href: '/app/ads-generator' },
   { id: 'email-campaign',        label: 'Email Campaign',         icon: 'mail',       href: '/app/email-campaign' },
   { id: 'compliance-gate',       label: 'Compliance Gate',       icon: 'shieldCheck',href: '/app/compliance-gate' },
