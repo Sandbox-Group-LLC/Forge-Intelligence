@@ -144,6 +144,89 @@ async function _tryScrapingBrowser(url, { timeout, caller, metadata }) {
   }
 }
 
+// ── captureBrandVisual — measure a brand's REAL visual identity ─────────────
+// The markdown scrape strips all color/imagery, so accentColor was being
+// hallucinated. This loads the homepage in the headless browser WITH stylesheets
+// (unlike _tryScrapingBrowser, which blocks them) and reads computed CSS to pull
+// the true accent color + logo. Heuristic but measured, not guessed:
+//   accent = most-weighted saturated color across CTAs/buttons (x3), header/nav
+//            backgrounds (x2), link text (x1); neutrals/near-black/white dropped.
+//   logo   = og:image -> rel=icon/apple-touch-icon -> header/nav/logo <img>.
+// Returns { success, accentColor, bgColor, logoUrl }.
+export async function captureBrandVisual(url, { caller = 'context-hub', timeout = 30000, metadata = {} } = {}) {
+  const browserAuth = process.env.BRIGHTDATA_BROWSER_AUTH;
+  const startTime = Date.now();
+  if (!browserAuth) return { success: false, error: 'BRIGHTDATA_BROWSER_AUTH missing' };
+  let browser = null;
+  try {
+    browser = await puppeteer.connect({ browserWSEndpoint: `wss://${browserAuth}@brd.superproxy.io:9222` });
+    const page = await browser.newPage();
+    page.setDefaultNavigationTimeout(timeout);
+    // Keep stylesheets (computed colors need them); drop only fonts/media for bandwidth.
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      const t = req.resourceType();
+      if (['font', 'media'].includes(t)) req.abort();
+      else req.continue();
+    });
+    await page.goto(url, { waitUntil: 'networkidle2', timeout });
+    const visual = await page.evaluate(() => {
+      const toRGB = (s) => {
+        const m = s && s.match(/rgba?\(([^)]+)\)/);
+        if (!m) return null;
+        const p = m[1].split(',').map(x => parseFloat(x));
+        if (p[3] !== undefined && p[3] < 0.5) return null; // transparent
+        return { r: p[0], g: p[1], b: p[2] };
+      };
+      const sl = ({ r, g, b }) => {
+        const mx = Math.max(r, g, b) / 255, mn = Math.min(r, g, b) / 255;
+        const l = (mx + mn) / 2;
+        const s = mx === mn ? 0 : (l > 0.5 ? (mx - mn) / (2 - mx - mn) : (mx - mn) / (mx + mn));
+        return { s, l };
+      };
+      const hex = ({ r, g, b }) => '#' + [r, g, b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+      const cand = {};
+      const add = (rgb, w) => {
+        if (!rgb) return;
+        const { s, l } = sl(rgb);
+        if (s < 0.18 || l < 0.08 || l > 0.92) return; // neutral / near-black / near-white
+        const h = hex(rgb);
+        cand[h] = (cand[h] || 0) + w;
+      };
+      document.querySelectorAll('button,[class*="btn"],[class*="Button"],[class*="cta"],[class*="Cta"]')
+        .forEach(el => add(toRGB(getComputedStyle(el).backgroundColor), 3));
+      document.querySelectorAll('header,nav,[class*="header"],[class*="nav"]')
+        .forEach(el => add(toRGB(getComputedStyle(el).backgroundColor), 2));
+      document.querySelectorAll('a').forEach(el => add(toRGB(getComputedStyle(el).color), 1));
+      let accent = null, best = 0;
+      for (const [h, w] of Object.entries(cand)) if (w > best) { best = w; accent = h; }
+      const bodyRgb = toRGB(getComputedStyle(document.body).backgroundColor);
+      const abs = (u) => { try { return new URL(u, location.href).href; } catch { return null; } };
+      let logo = null;
+      const og = document.querySelector('meta[property="og:image"]');
+      if (og && og.getAttribute('content')) logo = abs(og.getAttribute('content'));
+      if (!logo) {
+        const ico = [...document.querySelectorAll('link[rel~="icon"],link[rel="apple-touch-icon"]')].pop();
+        if (ico) logo = abs(ico.getAttribute('href'));
+      }
+      if (!logo) {
+        const img = document.querySelector('header img,nav img,[class*="logo"] img,img[class*="logo"],img[alt*="logo" i]');
+        if (img) logo = abs(img.getAttribute('src'));
+      }
+      return { accent, bg: bodyRgb ? hex(bodyRgb) : null, logo };
+    });
+    await browser.close();
+    browser = null;
+    const latencyMs = Date.now() - startTime;
+    await _logScrape({ url, source: 'brightdata_browser', status_code: 200, body_size: 0, latency_ms: latencyMs, success: true, caller, metadata: { ...(metadata ?? {}), kind: 'visual', visual } });
+    return { success: true, accentColor: visual.accent, bgColor: visual.bg, logoUrl: visual.logo, latencyMs };
+  } catch (e) {
+    if (browser) { try { await browser.close(); } catch {} }
+    await _logScrape({ url, source: 'brightdata_browser', success: false, latency_ms: Date.now() - startTime, caller, error: e.message, metadata: { ...(metadata ?? {}), kind: 'visual' } });
+    return { success: false, error: e.message };
+  }
+}
+
 export async function forgeScrape(url, opts = {}) {
   const {
     format = 'raw',           // 'raw' = HTML, 'markdown' = cleaned content

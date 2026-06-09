@@ -7,7 +7,7 @@ import express from 'express';
 import { pool } from '../db.js';
 import { verifyBrandAccess } from '../auth.js';
 import {
-  videoConfigured, storyboardFromBrief, synthesizeScenes,
+  videoConfigured, buildBrand, storyboardFromBrief, synthesizeScenes,
   renderReel, getReelProgress,
 } from '../video.js';
 
@@ -41,16 +41,16 @@ async function setStatus(id, fields) {
 }
 
 // Background pipeline — not awaited by the request.
-async function runJob(id, brief, brandName, orientation) {
+async function runJob(id, brief, brand, orientation) {
   try {
     await setStatus(id, { status: 'storyboarding' });
-    const draft = await storyboardFromBrief({ brief, brandName });
+    const draft = await storyboardFromBrief({ brief, brandName: brand.name });
 
     await setStatus(id, { status: 'voicing', scenes: JSON.stringify(draft) });
     const scenes = await synthesizeScenes(draft, id);
 
     await setStatus(id, { status: 'rendering', scenes: JSON.stringify(scenes) });
-    const { renderId, bucketName } = await renderReel({ brand: { name: brandName }, scenes, orientation });
+    const { renderId, bucketName } = await renderReel({ brand, scenes, orientation });
     await setStatus(id, { render_id: renderId, bucket_name: bucketName });
   } catch (e) {
     console.error('[VIDEO] job failed:', id, e.message);
@@ -70,16 +70,17 @@ router.post('/generate', async (req, res) => {
     if (!videoConfigured()) return res.status(503).json({ error: 'Video rendering is not configured (REMOTION_* env vars missing)' });
 
     const r = await pool.query(
-      `SELECT brand_name FROM brand_profiles WHERE id = $1`, [brandProfileId]
+      `SELECT brand_name, profile_data, logo_url FROM brand_profiles WHERE id = $1`, [brandProfileId]
     );
-    const brandName = r.rows[0]?.brand_name || 'Forge Intelligence';
+    const row = r.rows[0] || {};
+    const brand = buildBrand(row.brand_name || 'Forge Intelligence', row.profile_data, row.logo_url);
 
     const ins = await pool.query(
       `INSERT INTO generated_videos (brand_profile_id, brief, status, orientation) VALUES ($1, $2, 'queued', $3) RETURNING id`,
       [brandProfileId, brief, orientation]
     );
     const id = ins.rows[0].id;
-    runJob(id, brief, brandName, orientation); // fire-and-forget
+    runJob(id, brief, brand, orientation); // fire-and-forget
     res.status(202).json({ id, status: 'queued' });
   } catch (e) {
     console.error('[VIDEO] generate error:', e.message);

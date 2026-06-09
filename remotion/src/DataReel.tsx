@@ -1,6 +1,6 @@
 import React from "react";
 import {
-  AbsoluteFill, Sequence, Audio, staticFile,
+  AbsoluteFill, Sequence, Audio, Img, staticFile,
   useCurrentFrame, useVideoConfig, interpolate, spring, Easing,
 } from "remotion";
 import type {
@@ -43,6 +43,17 @@ const Diamond: React.FC<{ size?: number }> = ({ size = 40 }) => {
   );
 };
 
+// Brand mark: the brand's real logo if we measured one; the Forge diamond only
+// for Forge itself; nothing for a third-party brand without a logo (better than
+// stamping Forge's diamond on someone else's reel).
+const BrandMark: React.FC<{ size?: number }> = ({ size = 36 }) => {
+  const { brand, L } = React.useContext(Ctx);
+  const { k } = L;
+  if (brand.logo) return <Img src={brand.logo} style={{ height: size * k, width: "auto", objectFit: "contain" }} />;
+  if (/forge/i.test(brand.name)) return <Diamond size={size} />;
+  return null;
+};
+
 const useRise = (delay = 0, dist = 50) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -59,7 +70,7 @@ const Stage: React.FC<{ children: React.ReactNode; audio?: string }> = ({ childr
     <AbsoluteFill style={{ background: C.bg, fontFamily: font, justifyContent: "center", alignItems: "center", padding: 120 * k }}>
       {src && <Audio src={src} />}
       <div style={{ position: "absolute", top: 64 * k, left: 90 * k, display: "flex", alignItems: "center", gap: 14 * k }}>
-        <Diamond size={36} /><span style={{ fontWeight: 700, fontSize: 32 * k, color: C.emphasis }}>{brand.name}</span>
+        <BrandMark size={36} /><span style={{ fontWeight: 700, fontSize: 32 * k, color: C.emphasis }}>{brand.name}</span>
       </div>
       {children}
     </AbsoluteFill>
@@ -268,7 +279,7 @@ const CtaView: React.FC<{ s: CtaScene }> = ({ s }) => {
   return (
     <Stage audio={s.audio}>
       <div style={{ textAlign: "center", maxWidth: 1500 * k }}>
-        <div style={a}><Diamond size={96} /></div>
+        <div style={a}><BrandMark size={96} /></div>
         <div style={{ ...b, fontSize: 96 * k, fontWeight: 800, color: C.emphasis, margin: `${34 * k}px 0 ${26 * k}px` }}>{s.title}</div>
         {s.sub && <div style={{ ...b, fontSize: 50 * k, color: C.secondary, fontWeight: 500, marginBottom: 44 * k }}>{s.sub}</div>}
         <div style={{ ...c, fontSize: 46 * k, fontWeight: 700, color: "#fff", background: C.accent, borderRadius: 18 * k, padding: `${24 * k}px ${52 * k}px`, display: "inline-block" }}>{s.cta}</div>
