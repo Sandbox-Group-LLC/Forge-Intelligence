@@ -41,6 +41,7 @@ function VideoGeneratorContent() {
   const { historyEntries, activeBrand, authToken } = useApp();
   const [selectedBrainId, setSelectedBrainId] = useState('');
   const [brief, setBrief] = useState('');
+  const [orientation, setOrientation] = useState<'landscape' | 'portrait'>('landscape');
   const [job, setJob] = useState<VideoJob | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,7 +90,7 @@ function VideoGeneratorContent() {
       const r = await fetch('/api/video/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({ brandProfileId: selectedBrainId, brief: brief.trim() }),
+        body: JSON.stringify({ brandProfileId: selectedBrainId, brief: brief.trim(), orientation }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || `Request failed (${r.status})`);
@@ -128,6 +129,26 @@ function VideoGeneratorContent() {
           onChange={e => setBrief(e.target.value)}
           rows={5}
         />
+
+        <label className="vg-label">Format</label>
+        <div className="vg-toggle">
+          <button
+            type="button"
+            className={`vg-toggle-opt ${orientation === 'landscape' ? 'active' : ''}`}
+            onClick={() => setOrientation('landscape')}
+          >
+            <span className="vg-toggle-icon vg-toggle-landscape" />
+            Landscape · 16:9
+          </button>
+          <button
+            type="button"
+            className={`vg-toggle-opt ${orientation === 'portrait' ? 'active' : ''}`}
+            onClick={() => setOrientation('portrait')}
+          >
+            <span className="vg-toggle-icon vg-toggle-portrait" />
+            Reel · 9:16
+          </button>
+        </div>
 
         <button className="vg-btn" onClick={generate} disabled={busy || !selectedBrainId || !brief.trim()}>
           {busy ? 'Generating…' : 'Generate video'}

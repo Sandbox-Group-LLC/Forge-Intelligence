@@ -1,5 +1,5 @@
 import { Composition } from "remotion";
-import { DataReel, totalDuration } from "./DataReel";
+import { DataReel, totalDuration, dimsFor } from "./DataReel";
 import type { VideoProps } from "./types";
 
 // The single productized composition. renderMediaOnLambda passes
@@ -29,8 +29,9 @@ export const RemotionRoot: React.FC = () => (
     fps={30}
     width={1920}
     height={1080}
-    calculateMetadata={({ props }: { props: VideoProps }) => ({
-      durationInFrames: totalDuration(props.scenes),
-    })}
+    calculateMetadata={({ props }: { props: VideoProps }) => {
+      const { width, height } = dimsFor(props.orientation);
+      return { durationInFrames: totalDuration(props.scenes), width, height };
+    }}
   />
 );

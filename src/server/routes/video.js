@@ -22,9 +22,12 @@ async function ensureVideosTable() {
     bucket_name TEXT,
     output_url TEXT,
     error TEXT,
+    orientation TEXT DEFAULT 'landscape',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
   )`);
+  // CREATE IF NOT EXISTS won't add columns to a pre-existing table — backfill.
+  await pool.query(`ALTER TABLE generated_videos ADD COLUMN IF NOT EXISTS orientation TEXT DEFAULT 'landscape'`);
 }
 ensureVideosTable().catch(e => console.error('[VIDEO] table init failed:', e.message));
 
@@ -38,7 +41,7 @@ async function setStatus(id, fields) {
 }
 
 // Background pipeline — not awaited by the request.
-async function runJob(id, brief, brandName) {
+async function runJob(id, brief, brandName, orientation) {
   try {
     await setStatus(id, { status: 'storyboarding' });
     const draft = await storyboardFromBrief({ brief, brandName });
@@ -47,7 +50,7 @@ async function runJob(id, brief, brandName) {
     const scenes = await synthesizeScenes(draft, id);
 
     await setStatus(id, { status: 'rendering', scenes: JSON.stringify(scenes) });
-    const { renderId, bucketName } = await renderReel({ brand: { name: brandName }, scenes });
+    const { renderId, bucketName } = await renderReel({ brand: { name: brandName }, scenes, orientation });
     await setStatus(id, { render_id: renderId, bucket_name: bucketName });
   } catch (e) {
     console.error('[VIDEO] job failed:', id, e.message);
@@ -61,21 +64,22 @@ const router = express.Router();
 router.post('/generate', async (req, res) => {
   try {
     const { brandProfileId, brief } = req.body || {};
+    const orientation = req.body?.orientation === 'portrait' ? 'portrait' : 'landscape';
     if (!brandProfileId || !brief) return res.status(400).json({ error: 'brandProfileId and brief are required' });
     if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
     if (!videoConfigured()) return res.status(503).json({ error: 'Video rendering is not configured (REMOTION_* env vars missing)' });
 
     const r = await pool.query(
-      `SELECT name FROM brand_profiles WHERE id = $1`, [brandProfileId]
+      `SELECT brand_name FROM brand_profiles WHERE id = $1`, [brandProfileId]
     );
-    const brandName = r.rows[0]?.name || 'Forge Intelligence';
+    const brandName = r.rows[0]?.brand_name || 'Forge Intelligence';
 
     const ins = await pool.query(
-      `INSERT INTO generated_videos (brand_profile_id, brief, status) VALUES ($1, $2, 'queued') RETURNING id`,
-      [brandProfileId, brief]
+      `INSERT INTO generated_videos (brand_profile_id, brief, status, orientation) VALUES ($1, $2, 'queued', $3) RETURNING id`,
+      [brandProfileId, brief, orientation]
     );
     const id = ins.rows[0].id;
-    runJob(id, brief, brandName); // fire-and-forget
+    runJob(id, brief, brandName, orientation); // fire-and-forget
     res.status(202).json({ id, status: 'queued' });
   } catch (e) {
     console.error('[VIDEO] generate error:', e.message);

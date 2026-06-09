@@ -17,6 +17,20 @@ import { safeParseLLM } from './llm-json.js';
 const FRAMES_PER_LAMBDA = 400;
 const FPS = 30;
 
+// Remotion's programmatic Lambda client + the AWS SDK (S3 upload/presign,
+// renderMediaOnLambda) resolve credentials via the SDK default chain — i.e. the
+// AWS_* env names, not the REMOTION_AWS_* ones the Remotion CLI reads. Render
+// only carries REMOTION_AWS_*, so mirror them to AWS_* (without clobbering any
+// real AWS_* already present) or every render dies with "Could not load
+// credentials from any providers."
+if (process.env.REMOTION_AWS_ACCESS_KEY_ID && !process.env.AWS_ACCESS_KEY_ID) {
+  process.env.AWS_ACCESS_KEY_ID = process.env.REMOTION_AWS_ACCESS_KEY_ID;
+  process.env.AWS_SECRET_ACCESS_KEY = process.env.REMOTION_AWS_SECRET_ACCESS_KEY;
+  if (process.env.REMOTION_AWS_REGION && !process.env.AWS_REGION) {
+    process.env.AWS_REGION = process.env.REMOTION_AWS_REGION;
+  }
+}
+
 export function videoConfigured() {
   return !!(
     process.env.REMOTION_LAMBDA_FUNCTION_NAME &&
@@ -129,14 +143,17 @@ export async function synthesizeScenes(scenes, jobId) {
 }
 
 // ── Lambda render ─────────────────────────────────────────────────────────
-export async function renderReel({ brand, scenes }) {
+export async function renderReel({ brand, scenes, orientation }) {
   const { renderMediaOnLambda } = await lambdaClient();
+  // orientation flows into inputProps; the site's calculateMetadata maps it to
+  // 1080x1920 (portrait) or 1920x1080 (landscape).
+  const o = orientation === 'portrait' ? 'portrait' : 'landscape';
   const { renderId, bucketName } = await renderMediaOnLambda({
     region: process.env.REMOTION_AWS_REGION,
     functionName: process.env.REMOTION_LAMBDA_FUNCTION_NAME,
     serveUrl: process.env.REMOTION_LAMBDA_SERVE_URL,
     composition: 'DataReel',
-    inputProps: { brand, scenes },
+    inputProps: { brand, scenes, orientation: o },
     codec: 'h264',
     framesPerLambda: FRAMES_PER_LAMBDA,
     privacy: 'public',

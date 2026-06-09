@@ -69,6 +69,43 @@
 .vg-btn:hover:not(:disabled) { background: #2c52e0; }
 .vg-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* ── Format toggle ── */
+.vg-toggle {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.vg-toggle-opt {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid #E2E8F0;
+  border-radius: 10px;
+  background: #F8FAFC;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.vg-toggle-opt:hover { border-color: #94A3B8; }
+.vg-toggle-opt.active {
+  border-color: #3563FF;
+  background: rgba(53, 99, 255, 0.06);
+  color: #3563FF;
+  box-shadow: 0 0 0 3px rgba(53, 99, 255, 0.10);
+}
+.vg-toggle-icon {
+  display: inline-block;
+  border: 2px solid currentColor;
+  border-radius: 3px;
+}
+.vg-toggle-landscape { width: 24px; height: 15px; }
+.vg-toggle-portrait { width: 15px; height: 24px; }
+
 .vg-error {
   margin-top: 14px;
   color: #B91C1C;
@@ -105,6 +142,7 @@
 .vg-video {
   width: 100%;
   max-width: 720px;
+  max-height: 70vh; /* keep a portrait 9:16 reel from running off-screen */
   border-radius: 12px;
   background: #000;
   box-shadow: 0 8px 30px rgba(15, 23, 42, 0.12);
