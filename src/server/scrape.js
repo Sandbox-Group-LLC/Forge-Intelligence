@@ -151,7 +151,7 @@ async function _tryScrapingBrowser(url, { timeout, caller, metadata }) {
 // the true accent color + logo. Heuristic but measured, not guessed:
 //   accent = most-weighted saturated color across CTAs/buttons (x3), header/nav
 //            backgrounds (x2), link text (x1); neutrals/near-black/white dropped.
-//   logo   = og:image -> rel=icon/apple-touch-icon -> header/nav/logo <img>.
+//   logo   = header/nav/logo <img> -> apple-touch-icon -> largest rel=icon -> og:image.
 // Returns { success, accentColor, bgColor, logoUrl }.
 export async function captureBrandVisual(url, { caller = 'context-hub', timeout = 30000, metadata = {} } = {}) {
   const browserAuth = process.env.BRIGHTDATA_BROWSER_AUTH;
@@ -208,16 +208,27 @@ export async function captureBrandVisual(url, { caller = 'context-hub', timeout 
       for (const [h, w] of Object.entries(cand)) if (w > best) { best = w; accent = h; }
       const bodyRgb = toRGB(getComputedStyle(document.body).backgroundColor);
       const abs = (u) => { try { return new URL(u, location.href).href; } catch { return null; } };
+      // Logo priority: an actual logo mark first. og:image LAST — it's usually a
+      // 1200x630 social share banner, not a logo (Duolingo's came back as the
+      // share card), and it looks squished in the reel lockup.
       let logo = null;
-      const og = document.querySelector('meta[property="og:image"]');
-      if (og && og.getAttribute('content')) logo = abs(og.getAttribute('content'));
+      const img = document.querySelector('header img,nav img,[class*="logo"] img,img[class*="logo"],img[alt*="logo" i]');
+      if (img) logo = abs(img.getAttribute('src') || img.getAttribute('data-src'));
       if (!logo) {
-        const ico = [...document.querySelectorAll('link[rel~="icon"],link[rel="apple-touch-icon"]')].pop();
-        if (ico) logo = abs(ico.getAttribute('href'));
+        const touch = document.querySelector('link[rel="apple-touch-icon"],link[rel="apple-touch-icon-precomposed"]');
+        if (touch) logo = abs(touch.getAttribute('href'));
       }
       if (!logo) {
-        const img = document.querySelector('header img,nav img,[class*="logo"] img,img[class*="logo"],img[alt*="logo" i]');
-        if (img) logo = abs(img.getAttribute('src'));
+        // Prefer the largest declared favicon (sizes attr), skip tiny .ico defaults.
+        const icons = [...document.querySelectorAll('link[rel~="icon"]')]
+          .map(l => ({ href: l.getAttribute('href'), size: parseInt((l.getAttribute('sizes') || '0').split('x')[0], 10) || 0 }))
+          .filter(i => i.href)
+          .sort((a, b) => b.size - a.size);
+        if (icons[0]) logo = abs(icons[0].href);
+      }
+      if (!logo) {
+        const og = document.querySelector('meta[property="og:image"]');
+        if (og && og.getAttribute('content')) logo = abs(og.getAttribute('content'));
       }
       return { accent, bg: bodyRgb ? hex(bodyRgb) : null, logo };
     });
