@@ -66,9 +66,9 @@ router.post('/generate', async (req, res) => {
     if (!videoConfigured()) return res.status(503).json({ error: 'Video rendering is not configured (REMOTION_* env vars missing)' });
 
     const r = await pool.query(
-      `SELECT name FROM brand_profiles WHERE id = $1`, [brandProfileId]
+      `SELECT brand_name FROM brand_profiles WHERE id = $1`, [brandProfileId]
     );
-    const brandName = r.rows[0]?.name || 'Forge Intelligence';
+    const brandName = r.rows[0]?.brand_name || 'Forge Intelligence';
 
     const ins = await pool.query(
       `INSERT INTO generated_videos (brand_profile_id, brief, status) VALUES ($1, $2, 'queued') RETURNING id`,
