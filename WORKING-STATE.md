@@ -10,6 +10,30 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
+### 2026-06-09 — AI Video Generation live end-to-end (Remotion Lambda + S3) + visual brand system
+
+PRs #296→#314, all in prod same-day. Full retrospective in `PLAN.md` (2026-06-09).
+
+**1. Video generation is a production feature.** Brief → storyboard agent (Sonnet) → per-scene TTS (`gpt-4o-mini-tts`/`ash` → S3 presigned) → H.264 render on **AWS Lambda** (never the web dyno). `remotion/` at repo root is the versioned template (`DataReel`: data-driven, 7 scene archetypes, `calculateMetadata` derives duration+canvas from props; redeploy via `npx remotion lambda sites create src/index.ts --site-name=forge-reels`). Backend `src/server/video.js` + async `routes/video.js` (`POST /api/video/generate` 202+poll, `generated_videos`). UI at `/app/video-generator` (#298) with **16:9 / 9:16 toggle** (#304 — template rescales by `k=width/designWidth`). Cost: ~$0.011/70s landscape, ~$0.002/15s portrait.
+- **Env (Forge group):** `REMOTION_AWS_*` ×3, `REMOTION_LAMBDA_FUNCTION_NAME` (`remotion-render-4-0-474-mem3008mb-disk2048mb-240sec`), `REMOTION_LAMBDA_SERVE_URL` (`forge-reels` site).
+- **Gotchas baked into code:** AWS SDK reads `AWS_*` not `REMOTION_AWS_*` → mirrored at `video.js` load (#302). New-AWS-account concurrency cap 10 → `framesPerLambda: 400` pinned; **drop it when the requested 5,000 increase approves** (still pending).
+
+**2. Visual brand system — reels render in the BRAND's identity, not Forge's** (#306/#308/#310/#312). Context Hub now MEASURES visuals during scan: `captureBrandVisual` loads the homepage in the headless browser *with CSS* and reads computed styles (weighted accent from CTAs/nav/links; logo = header img → touch-icon → biggest favicon → og:image last). Stored as `profileData.brandVisual`; the guessed `voiceProfile.accentColor` is overwritten with the measured hex (prompt now forbids hex-guessing). `buildBrand()` injects accent/accent2/bg(luma≥0.88 only)/logo into the reel; `BrandMark` shows the real logo, Forge diamond only for Forge. **Populating visuals requires a re-scan per brand.** Validated in prod (duolingo `#a5ed6e`; deterministic on Sommers).
+
+**3. Sommers House (demo customer) fully seeded.** Competitors were domain-keyword garbage ("forge" → GitHub/defence) → #300 grounds Sonar in scraped content (runs AFTER the scrape now) + founder list wins; data pinned via `manual_overrides` (`moremas.com`/`experiencenve.com`/`atypikal.co`). Visuals measured: accent `#2e5c3b`, bg `#fbf8f1`, SVG logo — both active profiles seeded. **The branded reel re-generation has NOT been run yet** — next Video Generator run on Sommers comes out cream/green/their mark.
+
+**4. Stuck-scan UI fixed (#314).** `/analyze` holds one connection 3–4 min; a drop left the UI spinning while the server finished. `src/lib/analyzeRecovery.ts` (deadline + version-bump polling recovery) wired into all 3 scan paths. **Real fix backlogged: convert `/analyze` to async ack+poll like video gen.**
+
+**5. autoDeploy mystery (unresolved).** Production's toggle flips off around deploys. Ruled out: Blueprints (none; fossil `render.yaml` deleted), our code (read-only Render API), visible event log. Suspect: another holder of the shared `RENDER_API_KEY`. If it recurs → dashboard Activity feed names the actor; rotating the key isolates it.
+
+#### What's next
+- **Run the branded Sommers reel** (seeded, one click in the UI).
+- **Video generator round 2** (Brian queued the conversation): music bed + ducking, local Inter font, real app footage (Playwright), richer storyboards/archetypes, publish-to-channels wiring.
+- Drop `framesPerLambda` after the AWS concurrency increase approves.
+- Async `/analyze` refactor; BrandSettings UI for `settings.breadcrumb`; `/scan` lead capture.
+
+---
+
 ### 2026-06-07 — GEO scan made REAL (4 engines) + public `/scan` lead magnet + dev→main rollup shipped
 
 Big arc, all live in prod. **`development` and `main` are now equal** (rollup PR #276 merged + deployed green; all four engines verified healthy on prod).
@@ -30,62 +54,12 @@ Big arc, all live in prod. **`development` and `main` are now equal** (rollup PR
 
 Also: fixed CLAUDE.md's stale relay doc (`ADMIN_PASSWORD` → `ADMIN_RELAY_PASSWORD`, the pinned item).
 
-#### What's next
+#### What's next (carried forward)
 - **`/scan` lead capture** — CTA links out for now; wire domain/email to a CRM/DB (the actual lead loop). Deliberate fast-follow.
 - **Rate-limiter hardening** — `/api/geo/cold-scan` limiter is in-memory (approximate across Render instances). Redis/DB-backed before promoting `/scan` hard.
 - **Auto-generate the branded report** from the scan JSON (currently the shareable artifact is hand-assembled).
-- Optional: GTM **History Change** trigger / SPA `dataLayer.push` so client-side nav to `/scan` registers a pageview.
 - **Open guard gap (still):** route-inventory `parseImports` doesn't handle combined `import Default, { Named }` — harden it.
 
 ---
 
-### 2026-06-06 (cont.) — route-group surgery COMPLETE: 12 groups extracted
-
-The decomposition crossed from helpers into **route GROUPS** and finished them: handlers moved into `src/server/routes/*.js` mounted via `app.use('/prefix', router)`, the guard reconstructing full paths so the snapshot stayed byte-identical the whole way (**213 → 211** only for one intentional dead-dupe cleanup). Pattern: collect each handler's span (next-statement boundaries), move verbatim, `xform` the registration line (`app.METHOD('/prefix/x', …)` → `router.METHOD('/x', …)`), re-import deps from already-extracted modules. Verify `node --check` + lint + boot-load (`import()`) + route guard + vitest.
-
-**12 route groups → `src/server/routes/` (15 files):**
-- `compliance.js` (#244, 8) · `email-campaign.js` (#245, 9) · `social-generator.js` (#247, 6) · `campaign.js` (#248, 9) · `topic-ideas.js` (#249, 5) · `precog.js` (#250, 5) · `geo-strategist.js` (#252, 3) · `analytics.js` (#253, 11) · `context-hub.js` (#254, 5) · `content.js` (#255, 6) · **zernio** (#256, 10 → `zernio.js`+`zernio-admin.js`) · **publishing** (#258/#259/#260, 20 → `publishing-queue.js`+`publishing-channels.js`+`publishing-publish.js`)
-- Several routers also absorbed a route-group-only helper (`ensureComplianceColumns`, `ensureSocialPostsTable`, `enrichAngleForCampaign`, `refreshGSCToken`, `handleQuickStartSynthesis`, `runScheduledPublishes`).
-
-**Shared modules the no-undef gate forced out:** `streams.js` (globalThis SSE registry), `content-table.js` (`ensureGeneratedContentTable`), `pipedream.js` (`pipedreamProxy` + token cache — shared by the publish dispatcher AND inline FB routes). Naive moves would've left undefined refs → silent deploy breaks; gate caught all (plus `fs`/`path`/`randomUUID`/`jwtVerify`/`clerkJWKS`/`PORT`/`RESEND_API_KEY`/the `_pd*` cache vars).
-
-#### Publishing finale (the deferred beast) — split 3 ways
-- `publishing-queue.js` (#258, 14) — also **deleted 2 dead-duplicate `backfill-queue` registrations** (only the first reachable in Express) → 213→211, snapshot regenerated.
-- `publishing-channels.js` (#259, 4) · `publishing-publish.js` (#260, 2: `generate-post-copy` + the ~1,129-line dispatcher) — all three share the `/api/publishing` mount (separate files, one mount each = guard-safe).
-
-#### Conventions + guard constraints (load-bearing — keep)
-- **Auth:** router-level `requireAuth` when ALL routes authed; **per-route** when mixed. On a SHARED-prefix mount (publishing's 3 routers) auth MUST be per-route — mount-level would leak onto the other routers' routes.
-- **Guard scans ONE `express.Router()` var per file** — two routers can't share a module (zernio, publishing → multiple files). One router file, one mount.
-- **Mounts match on segment boundaries** — `/api/content` does NOT capture `/api/content-library`/`-generator`.
-- **Boundary detection:** next-statement, not "first `^}`" (prompt template literals have `}` at col 0).
-
-#### KNOWN GUARD GAP (open follow-up)
-The guard's `parseImports` does NOT handle the combined `import Default, { Named } from '…'` form — it silently drops the default router (#260 read 209 until I split the import into 2 lines). **Harden `parseImports` for combined imports** (next task) so a future combined-import mount can't under-count.
-
----
-
-### 2026-06-06 — decomposition continues (5 more cuts) + 3 production fixes
-
-Kept dismembering `server.js`, same pure-move discipline + CI safety net. **16 modules out now** (14 files; `text.js` grew):
-
-- **`x.js`** (#224) — X/Twitter primitives: `buildXOAuthHeader`, `uploadXMedia`, `refreshXOAuth2Token`.
-- **`images.js`** (#225) — `buildImagePrompt`/`generateHeroImage` + `buildSocialImagePrompt`/`generateSocialImage` + private `HERO_IMAGE_NEGATIVE_PROMPT`; imports `anthropic` from `llm.js`.
-- **`text.js` grew** (#232) — added `quickStartTruncate` + `stripScaffoldingArtifacts` (consolidate, don't sprawl).
-- **`marketing.js`** (#233) — public SSR cluster: FAQ content, JSON-LD, `MARKETING_META`, `renderMarketingPage`. Static templating, fully self-contained.
-- **`citations.js`** (#234) — `findCitationSources` (Perplexity Sonar) + private `LOW_QUALITY_CITATION_DOMAINS`; imports `pool`.
-
-**Three production fixes, shipped both lanes (`features` → prod + `development` mirror):**
-- **fal.ai image quality** (#226/#227) — `expand_prompt: true → false` (MagicPrompt was rewriting our carefully-tuned prompts and re-injecting the AI-stock look — likely the "weird images" complaints) + `AbortSignal.timeout(60000)`.
-- **JWT clock skew** (#229/#230) — Compliance Gate "Invalid token" that self-healed on retry = **token expiry**, not the Clerk template (Brian confirmed template healthy). Added `clockTolerance: '30s'` to all 7 `jwtVerify` sites + frontend retry forces a fresh token (`skipCache: true`) + clears the stale banner.
-- **Citation recency** (#235/#236) — `findCitationSources` applied `search_recency_filter: 'year'` to **every** query, starving definitional/historical/statistical claims of the older authoritative sources the prompt explicitly allows. Now scoped to **trend claims only** + Sonar `AbortSignal.timeout(45000)` + honest 429 message. (Likely root of Brian's citation issues.)
-
-**CI gate promoted to `features`** (#222) — the prior block's NOTE is resolved: the `features` lane now runs the ESLint `no-undef` gate too (route guard + vitest were already there). Gate is on both lanes.
-
-#### What's next
-- **Thin leaves left:** `normalizeGeoData` (GEO transform), `buildGhostJWT` (Ghost), `PROMO_CODES`. Quick cuts.
-- **Route GROUPS** — the structural payoff. Lead with teaching the route-inventory guard mount-prefix resolution (`app.use('/prefix', router)`) so full paths still verify, THEN move handlers behind routers.
-- Tracked but not approved: scrape `format:'markdown'` no-fallback gap; `scrape_log` 15KB `body_sample` bloat; citation `search_results → citations[]` fallback (needs a live Sonar response to confirm the shape).
-- Aside surfaced during the JWT dig: a **LinkedIn Insight Tag** is loaded inside the authed app (`/app/*`) capturing click + hashed-email data — worth a look at where it's injected.
-
-
-_Older sessions (2026-06-05 and earlier) archived in `PLAN.md`._
+_Older sessions (2026-06-06 and earlier) archived in `PLAN.md`._
