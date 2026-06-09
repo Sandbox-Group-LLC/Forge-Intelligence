@@ -7,8 +7,9 @@ import express from 'express';
 import { pool } from '../db.js';
 import { verifyBrandAccess } from '../auth.js';
 import {
-  videoConfigured, buildBrand, storyboardFromBrief, synthesizeScenes,
-  renderReel, getReelProgress,
+  videoConfigured, buildBrand, brandContextFor, storyboardFromBrief,
+  resolveDirection, presignMusicBed, synthesizeScenes,
+  renderReel, getReelProgress, VOICES, MUSIC_BEDS,
 } from '../video.js';
 
 async function ensureVideosTable() {
@@ -28,6 +29,7 @@ async function ensureVideosTable() {
   )`);
   // CREATE IF NOT EXISTS won't add columns to a pre-existing table — backfill.
   await pool.query(`ALTER TABLE generated_videos ADD COLUMN IF NOT EXISTS orientation TEXT DEFAULT 'landscape'`);
+  await pool.query(`ALTER TABLE generated_videos ADD COLUMN IF NOT EXISTS direction JSONB`);
 }
 ensureVideosTable().catch(e => console.error('[VIDEO] table init failed:', e.message));
 
@@ -41,16 +43,23 @@ async function setStatus(id, fields) {
 }
 
 // Background pipeline — not awaited by the request.
-async function runJob(id, brief, brand, orientation) {
+async function runJob(id, brief, brand, orientation, brandContext, directionOverrides) {
   try {
     await setStatus(id, { status: 'storyboarding' });
-    const draft = await storyboardFromBrief({ brief, brandName: brand.name });
+    const { scenes: draft, direction: agentPick } = await storyboardFromBrief({ brief, brandName: brand.name, brandContext });
 
-    await setStatus(id, { status: 'voicing', scenes: JSON.stringify(draft) });
-    const scenes = await synthesizeScenes(draft, id);
+    // Agent proposes the creative direction from the brand brain; user
+    // overrides win; unknown ids fall back to safe defaults.
+    const direction = resolveDirection(agentPick, directionOverrides);
+    await setStatus(id, { status: 'voicing', scenes: JSON.stringify(draft), direction: JSON.stringify(direction) });
+    const scenes = await synthesizeScenes(draft, id, direction);
 
+    const musicSrc = direction.musicBed === 'none' ? null : await presignMusicBed(direction.musicBed);
     await setStatus(id, { status: 'rendering', scenes: JSON.stringify(scenes) });
-    const { renderId, bucketName } = await renderReel({ brand, scenes, orientation });
+    const { renderId, bucketName } = await renderReel({
+      brand, scenes, orientation,
+      music: musicSrc ? { src: musicSrc } : null,
+    });
     await setStatus(id, { render_id: renderId, bucket_name: bucketName });
   } catch (e) {
     console.error('[VIDEO] job failed:', id, e.message);
@@ -74,18 +83,33 @@ router.post('/generate', async (req, res) => {
     );
     const row = r.rows[0] || {};
     const brand = buildBrand(row.brand_name || 'Forge Intelligence', row.profile_data, row.logo_url);
+    const brandContext = brandContextFor(row.profile_data);
+    // UI pickers: { voice, musicBed } with 'auto' (or absence) = brain decides.
+    const directionOverrides = {
+      voice: typeof req.body?.voice === 'string' ? req.body.voice : 'auto',
+      musicBed: typeof req.body?.musicBed === 'string' ? req.body.musicBed : 'auto',
+    };
 
     const ins = await pool.query(
       `INSERT INTO generated_videos (brand_profile_id, brief, status, orientation) VALUES ($1, $2, 'queued', $3) RETURNING id`,
       [brandProfileId, brief, orientation]
     );
     const id = ins.rows[0].id;
-    runJob(id, brief, brand, orientation); // fire-and-forget
+    runJob(id, brief, brand, orientation, brandContext, directionOverrides); // fire-and-forget
     res.status(202).json({ id, status: 'queued' });
   } catch (e) {
     console.error('[VIDEO] generate error:', e.message);
     res.status(500).json({ error: e.message });
   }
+});
+
+// GET /api/video/options — the curated creative-direction vocabulary for the
+// UI pickers. MUST be registered before /:id or the param route captures it.
+router.get('/options', (_req, res) => {
+  res.json({
+    voices: Object.entries(VOICES).map(([id, v]) => ({ id, desc: v.desc })),
+    musicBeds: Object.entries(MUSIC_BEDS).map(([id, b]) => ({ id, desc: b.desc })),
+  });
 });
 
 // GET /api/video/:id — poll. Advances a 'rendering' job via getRenderProgress.
@@ -116,7 +140,8 @@ router.get('/:id', async (req, res) => {
     res.json({
       id: row.id, status: row.status, progress,
       outputUrl: row.output_url || null, error: row.error || null,
-      scenes: row.scenes || null, createdAt: row.created_at,
+      scenes: row.scenes || null, direction: row.direction || null,
+      createdAt: row.created_at,
     });
   } catch (e) {
     res.status(500).json({ error: e.message });

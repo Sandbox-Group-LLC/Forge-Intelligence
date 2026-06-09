@@ -85,9 +85,16 @@ export type Scene =
 // landscape = 1920x1080 (16:9), portrait = 1080x1920 (9:16, IG reel).
 export type Orientation = "landscape" | "portrait";
 
+// Background music bed. src is a presigned S3 URL to a curated instrumental
+// (~47s, looped). The template ducks it under the per-scene voiceover.
+export type Music = {
+  src: string;
+};
+
 export type VideoProps = {
   brand: Brand;
   scenes: Scene[];
   fontFamily?: string;
   orientation?: Orientation;
+  music?: Music | null;
 };

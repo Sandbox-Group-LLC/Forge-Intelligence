@@ -183,3 +183,35 @@
 .vg-recent-date { color: #64748b; }
 .vg-recent-link { margin-left: auto; color: #3563FF; font-weight: 700; text-decoration: none; }
 .vg-recent-err { color: #B91C1C; font-size: 13px; }
+
+/* ── Creative direction pickers ── */
+.vg-direction {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.vg-direction-field {
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.vg-direction-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.vg-select-sm {
+  margin-bottom: 0;
+  font-size: 14px;
+  padding: 10px 12px;
+}
+.vg-direction-note {
+  margin-top: 12px;
+  font-size: 13px;
+  color: #64748b;
+}
