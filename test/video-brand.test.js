@@ -42,3 +42,27 @@ describe('buildBrand (visual injector)', () => {
     expect(buildBrand('Forge Intelligence', null, null)).toEqual({ name: 'Forge Intelligence' });
   });
 });
+
+describe('buildBrand bg override', () => {
+  it('applies a clearly light measured bg (Sommers cream)', () => {
+    const b = buildBrand('Sommers House', { brandVisual: { accentColor: '#2e5c3b', bgColor: '#fbf8f1' } });
+    expect(b.colors.bg).toBe('#fbf8f1');
+    expect(b.colors.accent).toBe('#2e5c3b');
+  });
+
+  it('rejects a dark site bg (contrast guard)', () => {
+    const b = buildBrand('DarkCo', { brandVisual: { accentColor: '#ff4400', bgColor: '#111122' } });
+    expect(b.colors.bg).toBeUndefined();
+    expect(b.colors.accent).toBe('#ff4400'); // accent still applies
+  });
+
+  it('rejects a mid-tone bg', () => {
+    const b = buildBrand('MidCo', { brandVisual: { bgColor: '#888888' } });
+    expect(b.colors).toBeUndefined();
+  });
+
+  it('applies bg even when no accent was measured', () => {
+    const b = buildBrand('PaleCo', { brandVisual: { bgColor: '#ffffff' } });
+    expect(b.colors.bg).toBe('#ffffff');
+  });
+});
