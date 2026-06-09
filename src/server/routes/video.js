@@ -8,8 +8,8 @@ import { pool } from '../db.js';
 import { verifyBrandAccess } from '../auth.js';
 import {
   videoConfigured, buildBrand, brandContextFor, storyboardFromBrief,
-  resolveDirection, presignMusicBed, synthesizeScenes,
-  renderReel, getReelProgress, VOICES, MUSIC_BEDS,
+  resolveDirection, presignMusicBed, synthesizeScenes, normalizeTargetSeconds,
+  renderReel, getReelProgress, VOICES, MUSIC_BEDS, THEMES, LENGTH_BUDGETS,
 } from '../video.js';
 
 async function ensureVideosTable() {
@@ -43,10 +43,10 @@ async function setStatus(id, fields) {
 }
 
 // Background pipeline — not awaited by the request.
-async function runJob(id, brief, brand, orientation, brandContext, directionOverrides) {
+async function runJob(id, brief, brand, orientation, brandContext, directionOverrides, targetSeconds) {
   try {
     await setStatus(id, { status: 'storyboarding' });
-    const { scenes: draft, direction: agentPick } = await storyboardFromBrief({ brief, brandName: brand.name, brandContext });
+    const { scenes: draft, direction: agentPick } = await storyboardFromBrief({ brief, brandName: brand.name, brandContext, targetSeconds });
 
     // Agent proposes the creative direction from the brand brain; user
     // overrides win; unknown ids fall back to safe defaults.
@@ -59,6 +59,7 @@ async function runJob(id, brief, brand, orientation, brandContext, directionOver
     const { renderId, bucketName } = await renderReel({
       brand, scenes, orientation,
       music: musicSrc ? { src: musicSrc } : null,
+      theme: direction.theme,
     });
     await setStatus(id, { render_id: renderId, bucket_name: bucketName });
   } catch (e) {
@@ -88,14 +89,16 @@ router.post('/generate', async (req, res) => {
     const directionOverrides = {
       voice: typeof req.body?.voice === 'string' ? req.body.voice : 'auto',
       musicBed: typeof req.body?.musicBed === 'string' ? req.body.musicBed : 'auto',
+      theme: typeof req.body?.theme === 'string' ? req.body.theme : 'auto',
     };
+    const targetSeconds = normalizeTargetSeconds(req.body?.targetSeconds);
 
     const ins = await pool.query(
       `INSERT INTO generated_videos (brand_profile_id, brief, status, orientation) VALUES ($1, $2, 'queued', $3) RETURNING id`,
       [brandProfileId, brief, orientation]
     );
     const id = ins.rows[0].id;
-    runJob(id, brief, brand, orientation, brandContext, directionOverrides); // fire-and-forget
+    runJob(id, brief, brand, orientation, brandContext, directionOverrides, targetSeconds); // fire-and-forget
     res.status(202).json({ id, status: 'queued' });
   } catch (e) {
     console.error('[VIDEO] generate error:', e.message);
@@ -109,6 +112,8 @@ router.get('/options', (_req, res) => {
   res.json({
     voices: Object.entries(VOICES).map(([id, v]) => ({ id, desc: v.desc })),
     musicBeds: Object.entries(MUSIC_BEDS).map(([id, b]) => ({ id, desc: b.desc })),
+    themes: Object.entries(THEMES).map(([id, t]) => ({ id, desc: t.desc })),
+    lengths: Object.keys(LENGTH_BUDGETS).map(Number),
   });
 });
 

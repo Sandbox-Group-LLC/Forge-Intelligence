@@ -56,3 +56,45 @@ describe('brandContextFor', () => {
     expect(brandContextFor({})).toBe('');
   });
 });
+
+import { enforceDuration, estimateSeconds, normalizeTargetSeconds, THEMES } from '../src/server/video.js';
+
+describe('theme resolution', () => {
+  it('agent theme survives; override wins; hallucination falls back', () => {
+    expect(resolveDirection({ theme: 'editorial' }, {}).theme).toBe('editorial');
+    expect(resolveDirection({ theme: 'editorial' }, { theme: 'bold' }).theme).toBe('bold');
+    expect(THEMES[resolveDirection({ theme: 'vaporwave' }, {}).theme]).toBeTruthy();
+  });
+});
+
+describe('duration enforcement', () => {
+  const scene = (id, words) => ({ id, type: 'tags', headline: 'x', tags: ['a'], voiceover: Array(words).fill('word').join(' ') });
+
+  it('normalizeTargetSeconds only allows known budgets', () => {
+    expect(normalizeTargetSeconds(15)).toBe(15);
+    expect(normalizeTargetSeconds('60')).toBe(60);
+    expect(normalizeTargetSeconds(45)).toBe(30);
+    expect(normalizeTargetSeconds(undefined)).toBe(30);
+  });
+
+  it('trims an over-budget storyboard down to target (drops middles, keeps hook+cta)', () => {
+    // 7 scenes x 20 words ≈ 7 x 9.5s ≈ 66s — way over a 15s target
+    const scenes = [scene('hook', 20), scene('a', 20), scene('b', 20), scene('c', 20), scene('d', 20), scene('e', 20), scene('cta', 20)];
+    const out = enforceDuration(scenes, 15);
+    expect(out[0].id).toBe('hook');
+    expect(out[out.length - 1].id).toBe('cta');
+    expect(out.length).toBe(3); // floor — never trims below hook + 1 + cta
+  });
+
+  it('leaves a within-budget storyboard untouched', () => {
+    const scenes = [scene('hook', 8), scene('mid', 8), scene('cta', 8)];
+    expect(enforceDuration(scenes, 15)).toHaveLength(3);
+    expect(estimateSeconds(scenes)).toBeLessThan(15 * 1.15);
+  });
+
+  it('a 30s storyboard lands near 30s after trim', () => {
+    const scenes = [scene('hook', 13), scene('a', 13), scene('b', 13), scene('c', 13), scene('d', 13), scene('cta', 13)];
+    const out = enforceDuration(scenes, 30);
+    expect(estimateSeconds(out)).toBeLessThanOrEqual(30 * 1.15);
+  });
+});

@@ -23,7 +23,7 @@ interface VideoJob {
   progress: number | null;
   outputUrl: string | null;
   error: string | null;
-  direction?: { voice?: string; musicBed?: string; mood?: string } | null;
+  direction?: { voice?: string; musicBed?: string; theme?: string; mood?: string } | null;
 }
 interface RecentVideo { id: string; status: Status; output_url: string | null; error: string | null; created_at: string; }
 interface DirectionOption { id: string; desc: string; }
@@ -46,8 +46,12 @@ function VideoGeneratorContent() {
   const [orientation, setOrientation] = useState<'landscape' | 'portrait'>('landscape');
   const [voice, setVoice] = useState('auto');
   const [musicBed, setMusicBed] = useState('auto');
+  const [theme, setTheme] = useState('auto');
+  const [targetSeconds, setTargetSeconds] = useState(30);
   const [voiceOptions, setVoiceOptions] = useState<DirectionOption[]>([]);
   const [bedOptions, setBedOptions] = useState<DirectionOption[]>([]);
+  const [themeOptions, setThemeOptions] = useState<DirectionOption[]>([]);
+  const [lengthOptions, setLengthOptions] = useState<number[]>([15, 30, 60]);
   const [job, setJob] = useState<VideoJob | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +72,11 @@ function VideoGeneratorContent() {
     if (!authToken) return;
     fetch('/api/video/options', { headers: { Authorization: `Bearer ${authToken}` } })
       .then(r => r.json())
-      .then(d => { setVoiceOptions(d.voices || []); setBedOptions(d.musicBeds || []); })
+      .then(d => {
+        setVoiceOptions(d.voices || []); setBedOptions(d.musicBeds || []);
+        setThemeOptions(d.themes || []);
+        if (Array.isArray(d.lengths) && d.lengths.length) setLengthOptions(d.lengths);
+      })
       .catch(() => {});
   }, [authToken]);
 
@@ -105,7 +113,7 @@ function VideoGeneratorContent() {
       const r = await fetch('/api/video/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({ brandProfileId: selectedBrainId, brief: brief.trim(), orientation, voice, musicBed }),
+        body: JSON.stringify({ brandProfileId: selectedBrainId, brief: brief.trim(), orientation, voice, musicBed, theme, targetSeconds }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || `Request failed (${r.status})`);
@@ -165,8 +173,29 @@ function VideoGeneratorContent() {
           </button>
         </div>
 
+        <label className="vg-label">Length</label>
+        <div className="vg-toggle">
+          {lengthOptions.map(l => (
+            <button
+              key={l}
+              type="button"
+              className={`vg-toggle-opt ${targetSeconds === l ? 'active' : ''}`}
+              onClick={() => setTargetSeconds(l)}
+            >
+              {l}s
+            </button>
+          ))}
+        </div>
+
         <label className="vg-label">Creative direction</label>
         <div className="vg-direction">
+          <div className="vg-direction-field">
+            <span className="vg-direction-name">Style</span>
+            <select className="vg-select vg-select-sm" value={theme} onChange={e => setTheme(e.target.value)}>
+              <option value="auto">Auto — brand brain decides</option>
+              {themeOptions.map(t => <option key={t.id} value={t.id}>{t.id} — {t.desc}</option>)}
+            </select>
+          </div>
           <div className="vg-direction-field">
             <span className="vg-direction-name">Voice</span>
             <select className="vg-select vg-select-sm" value={voice} onChange={e => setVoice(e.target.value)}>
@@ -201,7 +230,7 @@ function VideoGeneratorContent() {
           )}
           {job.direction && (job.direction.voice || job.direction.musicBed) && (
             <div className="vg-direction-note">
-              Direction: {[job.direction.mood, job.direction.voice && `voice ${job.direction.voice}`, job.direction.musicBed && `music ${job.direction.musicBed}`].filter(Boolean).join(' · ')}
+              Direction: {[job.direction.mood, job.direction.theme && `style ${job.direction.theme}`, job.direction.voice && `voice ${job.direction.voice}`, job.direction.musicBed && `music ${job.direction.musicBed}`].filter(Boolean).join(' · ')}
             </div>
           )}
           {job.status === 'error' && <div className="vg-error">Render failed: {job.error}</div>}
