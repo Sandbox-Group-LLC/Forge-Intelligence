@@ -128,10 +128,20 @@ export const VOICES = {
   shimmer: { desc: 'energetic, crisp, lively — launch-day excitement' },
 };
 
+// Visual themes — implemented in the Remotion template (remotion/src/DataReel.tsx
+// THEMES map: palette, typography, motion physics).
+export const THEMES = {
+  clean:     { desc: 'light, modern product look — crisp sans, smooth motion (the default)' },
+  editorial: { desc: 'luxury magazine — serif headlines, lighter weight, slow elegant glide' },
+  bold:      { desc: 'dark canvas, huge type, high contrast — confident and dramatic' },
+  kinetic:   { desc: 'springy, fast, punchy entrances — launch-day energy' },
+};
+
 const DEFAULT_DIRECTION = {
   voice: 'ash',
   voiceInstructions: 'Brisk, confident, modern brand voice. Natural energy, not robotic.',
   musicBed: 'uplift-tech',
+  theme: 'clean',
   mood: 'modern tech optimism',
 };
 
@@ -143,12 +153,46 @@ export function resolveDirection(agentPick, overrides) {
   const o = overrides || {};
   if (o.voice && o.voice !== 'auto') d.voice = o.voice;
   if (o.musicBed && o.musicBed !== 'auto') d.musicBed = o.musicBed;
+  if (o.theme && o.theme !== 'auto') d.theme = o.theme;
   if (!VOICES[d.voice]) d.voice = DEFAULT_DIRECTION.voice;
   if (d.musicBed !== 'none' && !MUSIC_BEDS[d.musicBed]) d.musicBed = DEFAULT_DIRECTION.musicBed;
+  if (!THEMES[d.theme]) d.theme = DEFAULT_DIRECTION.theme;
   if (typeof d.voiceInstructions !== 'string' || !d.voiceInstructions.trim()) {
     d.voiceInstructions = DEFAULT_DIRECTION.voiceInstructions;
   }
   return d;
+}
+
+// ── Duration budget ─────────────────────────────────────────────────────────
+// Scene durations derive from VO word counts (framesForVoiceover), so "make it
+// 15 seconds" in a brief was decorative — the agent wrote 5-7 scenes and blew
+// the budget every time. Two layers:
+//   1) the prompt gets a hard scene-count + VO word budget for the target
+//   2) enforceDuration() deterministically trims AFTER storyboarding (and
+//      before paying for TTS): drop middle scenes (never the hook or CTA)
+//      until the estimate fits target + 15% slack.
+export const LENGTH_BUDGETS = {
+  15: { scenes: '3 (hook, ONE middle beat, cta)', maxVoWords: 9 },
+  30: { scenes: '4', maxVoWords: 13 },
+  60: { scenes: '5-6', maxVoWords: 18 },
+};
+
+export function normalizeTargetSeconds(v) {
+  const n = Number(v);
+  return LENGTH_BUDGETS[n] ? n : 30;
+}
+
+export function estimateSeconds(scenes) {
+  return scenes.reduce((a, s) => a + (s.durationInFrames || framesForVoiceover(s.voiceover)), 0) / FPS;
+}
+
+export function enforceDuration(scenes, targetSeconds) {
+  const cap = targetSeconds * 1.15;
+  const out = [...scenes];
+  while (out.length > 3 && estimateSeconds(out) > cap) {
+    out.splice(Math.floor(out.length / 2), 1); // drop a middle beat, keep hook + cta
+  }
+  return out;
 }
 
 // ── Storyboard agent ──────────────────────────────────────────────────────
@@ -175,8 +219,9 @@ Rules:
 function directionGuide() {
   const beds = Object.entries(MUSIC_BEDS).map(([id, b]) => `  - "${id}": ${b.desc}`).join('\n');
   const voices = Object.entries(VOICES).map(([id, v]) => `  - "${id}": ${v.desc}`).join('\n');
+  const themes = Object.entries(THEMES).map(([id, t]) => `  - "${id}": ${t.desc}`).join('\n');
   return `
-Creative direction — pick ONE music bed and ONE voice that match this brand's personality (use the BRAND PROFILE below; e.g. a luxury editorial brand wants ballad/onyx + warm-editorial or night-luxe, not the default tech treatment):
+Creative direction — pick ONE music bed, ONE voice, and ONE visual theme that match this brand's personality (use the BRAND PROFILE below; e.g. a luxury editorial brand wants ballad/onyx + warm-editorial/night-luxe + the editorial theme, not the default tech treatment):
 
 Music beds:
 ${beds}
@@ -184,31 +229,46 @@ ${beds}
 Voices:
 ${voices}
 
+Visual themes:
+${themes}
+
 Include in the output JSON:
 "direction": {
   "musicBed": "<bed id>",
   "voice": "<voice id>",
+  "theme": "<theme id>",
   "voiceInstructions": "one sentence directing the voice actor's delivery for THIS brand (pace, warmth, attitude)",
   "mood": "2-4 word creative mood"
 }`;
 }
 
-export async function storyboardFromBrief({ brief, brandName, brandContext = '' }) {
+function lengthGuide(targetSeconds) {
+  const b = LENGTH_BUDGETS[targetSeconds];
+  return `
+HARD LENGTH BUDGET — the video must run ~${targetSeconds} seconds. Scene durations are computed from voiceover length, so the ONLY way to hit the budget is:
+- Use exactly ${b.scenes} scenes. No more.
+- Every voiceover is AT MOST ${b.maxVoWords} words. Count them.
+Scenes beyond the budget get cut in post (middle scenes dropped), so do not write extra scenes hoping they survive.`;
+}
+
+export async function storyboardFromBrief({ brief, brandName, brandContext = '', targetSeconds = 30 }) {
   const contextBlock = brandContext ? `\n\nBRAND PROFILE (ground the creative direction in this):\n${brandContext}` : '';
   const msg = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 2500,
     messages: [{
       role: 'user',
-      content: `You are a brand video director for "${brandName}". Turn this brief into a short product reel storyboard.\n\nBRIEF:\n${brief}${contextBlock}\n\n${SCENE_GUIDE}\n${directionGuide()}`,
+      content: `You are a brand video director for "${brandName}". Turn this brief into a short product reel storyboard.\n\nBRIEF:\n${brief}${contextBlock}\n${lengthGuide(targetSeconds)}\n\n${SCENE_GUIDE}\n${directionGuide()}`,
     }],
   });
   const text = msg?.content?.[0]?.text || '';
   const parsed = safeParseLLM(text);
-  const scenes = parsed?.scenes;
+  let scenes = parsed?.scenes;
   if (!Array.isArray(scenes) || scenes.length === 0) {
     throw new Error('Storyboard agent returned no scenes');
   }
+  // Deterministic backstop — the model's word counting is advisory; this isn't.
+  scenes = enforceDuration(scenes, targetSeconds);
   return { scenes, direction: parsed?.direction || null };
 }
 
@@ -287,7 +347,7 @@ export async function presignMusicBed(bedId) {
 }
 
 // ── Lambda render ─────────────────────────────────────────────────────────
-export async function renderReel({ brand, scenes, orientation, music }) {
+export async function renderReel({ brand, scenes, orientation, music, theme }) {
   const { renderMediaOnLambda } = await lambdaClient();
   // orientation flows into inputProps; the site's calculateMetadata maps it to
   // 1080x1920 (portrait) or 1920x1080 (landscape).
@@ -297,7 +357,7 @@ export async function renderReel({ brand, scenes, orientation, music }) {
     functionName: process.env.REMOTION_LAMBDA_FUNCTION_NAME,
     serveUrl: process.env.REMOTION_LAMBDA_SERVE_URL,
     composition: 'DataReel',
-    inputProps: { brand, scenes, orientation: o, ...(music ? { music } : {}) },
+    inputProps: { brand, scenes, orientation: o, ...(music ? { music } : {}), ...(theme ? { theme } : {}) },
     codec: 'h264',
     framesPerLambda: FRAMES_PER_LAMBDA,
     privacy: 'public',
