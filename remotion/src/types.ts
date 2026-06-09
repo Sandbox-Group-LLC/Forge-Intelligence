@@ -10,6 +10,9 @@ export type Brand = {
     emphasis: string; secondary: string; muted: string;
     error: string; success: string; border: string;
   }>;
+  // Measured logo URL (S3/og:image/favicon). When present it replaces the
+  // Forge diamond in the lockup + closing card.
+  logo?: string;
 };
 
 type SceneBase = {

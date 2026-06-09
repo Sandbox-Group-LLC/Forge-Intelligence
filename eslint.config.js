@@ -28,6 +28,8 @@ export default [
         // there, so whitelist them rather than flag false positives.
         document: 'readonly',
         window: 'readonly',
+        getComputedStyle: 'readonly',
+        location: 'readonly',
       },
     },
     rules: {
