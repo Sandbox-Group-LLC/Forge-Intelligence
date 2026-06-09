@@ -1,3 +1,42 @@
+## 2026-06-09 (cont.) — Video creative direction: sound, visual themes, hard length control
+
+Same session continued. The video generator was structurally solid but creatively flat ("the creative is meh"). Fixed with one repeating pattern — **a curated, finite vocabulary the storyboard agent picks from (grounded in the brand brain), with UI pickers as the human veto** — applied to sound, then visuals, plus deterministic length control. PRs #318 (music + voice) and #319 (themes + length); the #318→#319 sequencing snafu noted below.
+
+### Sound (#318)
+- **6 music beds** generated via **fal.ai Stable Audio** (`fal-ai/stable-audio`, ~47s instrumentals, mood-tagged: uplift-tech / warm-editorial / bold-energy / calm-minimal / corporate-rise / night-luxe), transcoded to mp3, stored in the render bucket `forge-music/`, **presigned per render** like the VO clips.
+- Template loops the bed and **ducks it under the voiceover** — `musicVolumeAt(frame, scenes)` (pure, exported): 0.12 while VO speaks, 0.26 in tails/VO-less beats, 1s edge fades. Verified on a Lambda render via RMS on extracted segments: music-only opening −32.4 dBFS, VO scene +6.2 dB over it.
+- **6 cast TTS voices** (gpt-4o-mini-tts: ash/onyx/ballad/sage/nova/shimmer) with delivery characters; agent also writes a per-brand `voiceInstructions` line.
+
+### Visual themes (#319)
+- **4 template styles** in `DataReel`: `clean` (original light), `editorial` (serif headlines, lighter weight, slow elegant springs), `bold` (dark canvas, huge type — theme palette beats the brand bg, brand ACCENT survives), `kinetic` (springy fast entrances). A theme = palette + headline typography + motion physics + a global `scale` folded into the `k` unit. `useHeadline()` restyles big type only; `springCfg` drives every entrance; `opacity` clamped to [0,1] so kinetic's overshoot doesn't flash.
+- Color precedence locked: **defaults → brand colors → theme colors**, so `bold`'s dark canvas wins over a measured light brand bg while the brand's accent still threads through.
+- Verified via local stills on the Sommers palette: bold-dark vs editorial-serif-on-cream are genuinely different videos from the same scene JSON.
+
+### Hard length control (#319) — the 15s→45s bug
+- Root cause: scene durations derive from VO word counts (`framesForVoiceover`) and **nothing enforced a budget**, so "15 seconds" in a brief was decorative. Two layers:
+  1. **Prompt:** `LENGTH_BUDGETS` gives hard scene-count + VO word caps per target (15s: 3 scenes/≤9 words · 30s: 4/≤13 · 60s: 5-6/≤18).
+  2. **Deterministic:** `enforceDuration(scenes, target)` trims AFTER storyboarding and BEFORE paying for TTS — drops middle scenes (never hook/CTA) until the estimate fits target +15%. The model's counting is advisory; this is the backstop.
+- `normalizeTargetSeconds` validates the picker server-side (unknown → 30).
+
+### Direction architecture (both PRs)
+- `storyboardFromBrief` now takes `brandContext` (`brandContextFor(profileData)` — voiceProfile summary/visualStyle/positioning/tone) + `targetSeconds`, and returns `{ scenes, direction }` where direction = `{ musicBed, voice, theme, voiceInstructions, mood }`.
+- `resolveDirection(agentPick, overrides)` — user picks win, `'auto'` keeps the agent's choice, **unknown ids fall back to safe defaults** (a hallucinated bed/voice/theme can never break TTS or the render). `musicBed:'none'` = VO-only.
+- API: `POST /generate` accepts `{ voice, musicBed, theme, targetSeconds }`; `GET /api/video/options` serves the full vocabulary (registered before `/:id`); `direction` persisted on `generated_videos` (JSONB), returned by the poll, shown in the UI ("Direction: mood · style · voice · music").
+- UI: Length toggle (15/30/60s) + Style/Voice/Music pickers, all Auto-default.
+- `forge-reels` Lambda site redeployed twice (music-aware, then theme-aware); both backward-compatible (no props → silent + clean = prior behavior), so safe ahead of the merges.
+
+### Process notes
+- **#318 merged with only its first commit.** Brian merged #318 at 21:44 when it held just the music+voice commit; the themes+length commit was pushed to the branch ~18 min later and rode along to a closed PR → stranded. Caught when Brian asked "did you submit that PR?"; verified with `git merge-base --is-ancestor`; opened **#319** from the same branch (clean diff = just the round-2 commit since round 1 was already in development). Lesson: push all commits before a PR can be merged, or flag that more is landing.
+- Tests: `resolveDirection`/`brandContextFor`/theme-fallback/duration-enforcement → `test/video-direction.test.js`; suite 169 green; route snapshot +1 (`/api/video/options`).
+- AWS Lambda concurrency increase (5,000) still pending; `framesPerLambda: 400` still pinned.
+
+### What's next
+- **Per-brand direction locking** — persist a brand's chosen voice/bed/theme (`manual_overrides`-style) so it sticks across reels.
+- **Real app footage** — Playwright-captured product screens as a new scene archetype (the last big authenticity lever; everything's still code-drawn).
+- Pacing profiles + more scene archetypes (stat punch, quote/testimonial, before/after).
+- Wire "Publish" from the video page into the existing channel integrations.
+- Drop `framesPerLambda` after the AWS concurrency bump; async `/analyze` refactor (still backlogged).
+
 ## 2026-06-09 — AI Video Generation shipped end-to-end (Remotion Lambda + S3) + visual brand system + Sommers House arc
 
 The session that took video generation from "can Claude even make a video?" (yesterday's sandbox experiment) to a **production feature with real brand identity**. PRs #296→#314, all merged to prod same-day.
