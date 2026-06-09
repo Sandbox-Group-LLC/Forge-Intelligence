@@ -79,8 +79,12 @@ export type Scene =
   | HookScene | TagsScene | OrbitScene | PipelineScene
   | BarsScene | CurveScene | CtaScene;
 
+// landscape = 1920x1080 (16:9), portrait = 1080x1920 (9:16, IG reel).
+export type Orientation = "landscape" | "portrait";
+
 export type VideoProps = {
   brand: Brand;
   scenes: Scene[];
   fontFamily?: string;
+  orientation?: Orientation;
 };

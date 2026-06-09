@@ -18,9 +18,16 @@ type Palette = typeof DEFAULT_COLORS;
 
 const DEFAULT_FONT = '-apple-system, "Helvetica Neue", "Segoe UI", Roboto, Arial, sans-serif';
 
-const Ctx = React.createContext<{ C: Palette; font: string; brand: Brand }>({
+// Sizes below are authored against a landscape design width. `k` rescales every
+// dimension to the actual canvas so the SAME layout works at 1920x1080 and
+// 1080x1920 — portrait just gets a tighter unit and the flex rows wrap.
+type Layout = { k: number; portrait: boolean };
+const Ctx = React.createContext<{ C: Palette; font: string; brand: Brand; L: Layout }>({
   C: DEFAULT_COLORS, font: DEFAULT_FONT, brand: { name: "Forge Intelligence" },
+  L: { k: 1, portrait: false },
 });
+
+const useL = () => React.useContext(Ctx).L;
 
 // audio: full URL (S3) used as-is, bare filename resolved locally.
 const audioSrc = (a?: string) =>
@@ -28,8 +35,9 @@ const audioSrc = (a?: string) =>
 
 const Diamond: React.FC<{ size?: number }> = ({ size = 40 }) => {
   const { C } = React.useContext(Ctx);
+  const { k } = useL();
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={C.accent} strokeWidth={1.6} strokeLinejoin="round">
+    <svg width={size * k} height={size * k} viewBox="0 0 24 24" fill="none" stroke={C.accent} strokeWidth={1.6} strokeLinejoin="round">
       <polygon points="12 2 22 12 12 22 2 12" />
     </svg>
   );
@@ -38,41 +46,41 @@ const Diamond: React.FC<{ size?: number }> = ({ size = 40 }) => {
 const useRise = (delay = 0, dist = 50) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const { k } = useL();
   const s = spring({ frame: frame - delay, fps, config: { damping: 200 } });
-  return { opacity: s, transform: `translateY(${interpolate(s, [0, 1], [dist, 0])}px)` };
+  return { opacity: s, transform: `translateY(${interpolate(s, [0, 1], [dist * k, 0])}px)` };
 };
 
 const Stage: React.FC<{ children: React.ReactNode; audio?: string }> = ({ children, audio }) => {
-  const { C, font, brand } = React.useContext(Ctx);
+  const { C, font, brand, L } = React.useContext(Ctx);
+  const { k } = L;
   const src = audioSrc(audio);
   return (
-    <AbsoluteFill style={{ background: C.bg, fontFamily: font, justifyContent: "center", alignItems: "center", padding: 120 }}>
+    <AbsoluteFill style={{ background: C.bg, fontFamily: font, justifyContent: "center", alignItems: "center", padding: 120 * k }}>
       {src && <Audio src={src} />}
-      <div style={{ position: "absolute", top: 64, left: 90, display: "flex", alignItems: "center", gap: 14 }}>
-        <Diamond size={36} /><span style={{ fontWeight: 700, fontSize: 32, color: C.emphasis }}>{brand.name}</span>
+      <div style={{ position: "absolute", top: 64 * k, left: 90 * k, display: "flex", alignItems: "center", gap: 14 * k }}>
+        <Diamond size={36} /><span style={{ fontWeight: 700, fontSize: 32 * k, color: C.emphasis }}>{brand.name}</span>
       </div>
       {children}
     </AbsoluteFill>
   );
 };
 
-// ── scene renderers ──
-
 const HookView: React.FC<{ s: HookScene }> = ({ s }) => {
   const { C } = React.useContext(Ctx);
-  const a = useRise(0), b = useRise(14), c = useRise(24);
+  const { k } = useL();
+  const a = useRise(0), b = useRise(14);
   return (
     <Stage audio={s.audio}>
-      <div style={{ textAlign: "center", maxWidth: 1500 }}>
+      <div style={{ textAlign: "center", maxWidth: 1500 * k }}>
         {s.eyebrow && (
-          <div style={{ ...a, fontSize: 28, letterSpacing: 6, color: C.accent, fontWeight: 700, marginBottom: 28 }}>{s.eyebrow}</div>
+          <div style={{ ...a, fontSize: 28 * k, letterSpacing: 6 * k, color: C.accent, fontWeight: 700, marginBottom: 28 * k }}>{s.eyebrow}</div>
         )}
-        <div style={{ ...a, fontSize: 110, fontWeight: 800, color: C.emphasis, lineHeight: 1.05 }}>
+        <div style={{ ...a, fontSize: 110 * k, fontWeight: 800, color: C.emphasis, lineHeight: 1.05 }}>
           {s.headline}
           {s.emphasis && <><br /><span style={{ color: C.error }}>{s.emphasis}</span></>}
         </div>
-        {s.sub && <div style={{ ...b, fontSize: 46, color: C.secondary, marginTop: 40, fontWeight: 500 }}>{s.sub}</div>}
-        <div style={c} />
+        {s.sub && <div style={{ ...b, fontSize: 46 * k, color: C.secondary, marginTop: 40 * k, fontWeight: 500 }}>{s.sub}</div>}
       </div>
     </Stage>
   );
@@ -80,16 +88,17 @@ const HookView: React.FC<{ s: HookScene }> = ({ s }) => {
 
 const TagsView: React.FC<{ s: TagsScene }> = ({ s }) => {
   const { C } = React.useContext(Ctx);
+  const { k } = useL();
   const head = useRise(0);
   return (
     <Stage audio={s.audio}>
-      <div style={{ textAlign: "center", maxWidth: 1500 }}>
-        <div style={{ ...head, fontSize: 80, fontWeight: 800, color: C.emphasis, lineHeight: 1.1 }}>{s.headline}</div>
-        <div style={{ display: "flex", gap: 22, justifyContent: "center", flexWrap: "wrap", marginTop: 56 }}>
+      <div style={{ textAlign: "center", maxWidth: 1500 * k }}>
+        <div style={{ ...head, fontSize: 80 * k, fontWeight: 800, color: C.emphasis, lineHeight: 1.1 }}>{s.headline}</div>
+        <div style={{ display: "flex", gap: 22 * k, justifyContent: "center", flexWrap: "wrap", marginTop: 56 * k }}>
           {s.tags.map((t, i) => {
             const r = useRise(30 + i * 14);
             return (
-              <span key={t} style={{ ...r, fontSize: 44, fontWeight: 700, color: C.secondary, background: C.card, border: `2px solid ${C.border}`, borderRadius: 16, padding: "20px 40px" }}>{t}</span>
+              <span key={t} style={{ ...r, fontSize: 44 * k, fontWeight: 700, color: C.secondary, background: C.card, border: `2px solid ${C.border}`, borderRadius: 16 * k, padding: `${20 * k}px ${40 * k}px` }}>{t}</span>
             );
           })}
         </div>
@@ -100,40 +109,41 @@ const TagsView: React.FC<{ s: TagsScene }> = ({ s }) => {
 
 const OrbitView: React.FC<{ s: OrbitScene }> = ({ s }) => {
   const { C } = React.useContext(Ctx);
+  const { k, portrait } = useL();
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const core = spring({ frame, fps, config: { damping: 200 } });
   const sub = useRise(70);
+  const radius = (portrait ? 300 : 330) * k; // tighter ring in portrait so chips don't clip
   return (
     <Stage audio={s.audio}>
-      <div style={{ position: "relative", width: 900, height: 620, display: "flex", justifyContent: "center", alignItems: "center" }}>
+      <div style={{ position: "relative", width: 900 * k, height: 620 * k, display: "flex", justifyContent: "center", alignItems: "center" }}>
         <div style={{
-          transform: `scale(${core})`, width: 280, height: 280, borderRadius: "50%",
+          transform: `scale(${core})`, width: 280 * k, height: 280 * k, borderRadius: "50%",
           background: `radial-gradient(circle at 35% 30%, ${C.accent2}, ${C.accent})`,
-          boxShadow: `0 0 90px rgba(53,99,255,0.45)`, display: "flex", alignItems: "center", justifyContent: "center",
+          boxShadow: `0 0 ${90 * k}px rgba(53,99,255,0.45)`, display: "flex", alignItems: "center", justifyContent: "center",
         }}>
-          <span style={{ color: "#fff", fontSize: 38, fontWeight: 800, textAlign: "center", lineHeight: 1.1 }}>
+          <span style={{ color: "#fff", fontSize: 38 * k, fontWeight: 800, textAlign: "center", lineHeight: 1.1 }}>
             {s.centerLabel.split("\n").map((l, i) => <React.Fragment key={i}>{i > 0 && <br />}{l}</React.Fragment>)}
           </span>
         </div>
         {s.facets.map((f, i) => {
           const ang = (i / s.facets.length) * Math.PI * 2 - Math.PI / 2;
-          const r = 330;
           const appear = spring({ frame: frame - 24 - i * 10, fps, config: { damping: 200 } });
-          const x = Math.cos(ang) * r, y = Math.sin(ang) * r * 0.62;
+          const x = Math.cos(ang) * radius, y = Math.sin(ang) * radius * 0.62;
           return (
             <div key={f} style={{
               position: "absolute", left: `calc(50% + ${x}px)`, top: `calc(50% + ${y}px)`,
               transform: `translate(-50%,-50%) scale(${appear})`, opacity: appear,
               background: C.card, border: `2px solid ${C.accent}`, color: C.accent, fontWeight: 700,
-              fontSize: 34, padding: "16px 30px", borderRadius: 999, whiteSpace: "nowrap",
-              boxShadow: "0 8px 30px rgba(53,99,255,0.15)",
+              fontSize: 34 * k, padding: `${16 * k}px ${30 * k}px`, borderRadius: 999, whiteSpace: "nowrap",
+              boxShadow: `0 ${8 * k}px ${30 * k}px rgba(53,99,255,0.15)`,
             }}>{f}</div>
           );
         })}
       </div>
       {s.caption && (
-        <div style={{ ...sub, fontSize: 50, color: C.emphasis, fontWeight: 700, marginTop: 30, textAlign: "center" }}>
+        <div style={{ ...sub, fontSize: 50 * k, color: C.emphasis, fontWeight: 700, marginTop: 30 * k, textAlign: "center", maxWidth: 1400 * k }}>
           {s.caption} {s.captionEmphasis && <span style={{ color: C.accent }}>{s.captionEmphasis}</span>}
         </div>
       )}
@@ -143,16 +153,18 @@ const OrbitView: React.FC<{ s: OrbitScene }> = ({ s }) => {
 
 const PipelineView: React.FC<{ s: PipelineScene }> = ({ s }) => {
   const { C } = React.useContext(Ctx);
+  const { k, portrait } = useL();
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const head = useRise(0);
+  const node = 150 * k;
   return (
     <Stage audio={s.audio}>
-      <div style={{ width: 1640, textAlign: "center" }}>
-        <div style={{ ...head, fontSize: 70, fontWeight: 800, color: C.emphasis, marginBottom: 70 }}>
+      <div style={{ width: (portrait ? 920 : 1640) * k, textAlign: "center" }}>
+        <div style={{ ...head, fontSize: 70 * k, fontWeight: 800, color: C.emphasis, marginBottom: 70 * k }}>
           {s.headline} {s.headlineEmphasis && <span style={{ color: C.accent }}>{s.headlineEmphasis}</span>}
         </div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "wrap", gap: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "wrap", gap: portrait ? 14 * k : 0, rowGap: 18 * k }}>
           {s.stages.map((st, i) => {
             const lit = spring({ frame: frame - 20 - i * 16, fps, config: { damping: 200 } });
             const isLast = s.highlightLast !== false && i === s.stages.length - 1;
@@ -160,15 +172,15 @@ const PipelineView: React.FC<{ s: PipelineScene }> = ({ s }) => {
               <React.Fragment key={st}>
                 <div style={{
                   transform: `scale(${interpolate(lit, [0, 1], [0.7, 1])})`, opacity: lit,
-                  width: 150, height: 150, borderRadius: 24, flexShrink: 0,
+                  width: node, height: node, borderRadius: 24 * k, flexShrink: 0,
                   background: isLast ? C.accent : C.card, color: isLast ? "#fff" : C.emphasis,
                   border: `2px solid ${isLast ? C.accent : C.border}`,
                   display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center",
-                  fontSize: 26, fontWeight: 700, padding: 8,
-                  boxShadow: isLast ? "0 0 50px rgba(53,99,255,0.4)" : "0 6px 20px rgba(15,23,42,0.06)",
+                  fontSize: 26 * k, fontWeight: 700, padding: 8 * k,
+                  boxShadow: isLast ? `0 0 ${50 * k}px rgba(53,99,255,0.4)` : `0 ${6 * k}px ${20 * k}px rgba(15,23,42,0.06)`,
                 }}>{st}</div>
-                {i < s.stages.length - 1 && (
-                  <div style={{ width: 44, height: 4, background: C.border, flexShrink: 0, opacity: lit, borderRadius: 2 }} />
+                {!portrait && i < s.stages.length - 1 && (
+                  <div style={{ width: 44 * k, height: 4 * k, background: C.border, flexShrink: 0, opacity: lit, borderRadius: 2 }} />
                 )}
               </React.Fragment>
             );
@@ -181,37 +193,39 @@ const PipelineView: React.FC<{ s: PipelineScene }> = ({ s }) => {
 
 const BarRow: React.FC<{ label: string; pct: number; delay: number }> = ({ label, pct, delay }) => {
   const { C } = React.useContext(Ctx);
+  const { k } = useL();
   const frame = useCurrentFrame();
   const w = interpolate(frame - delay, [0, 30], [0, pct], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) });
   const zero = pct === 0;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 28, marginBottom: 22 }}>
-      <span style={{ width: 380, fontSize: 38, fontWeight: 600, color: C.emphasis }}>{label}</span>
-      <div style={{ flex: 1, height: 30, background: "#dfe5f5", borderRadius: 15, overflow: "hidden" }}>
-        <div style={{ width: `${Math.max(w, zero ? 1.2 : w)}%`, height: "100%", background: zero ? C.error : C.accent, borderRadius: 15 }} />
+    <div style={{ display: "flex", alignItems: "center", gap: 28 * k, marginBottom: 22 * k }}>
+      <span style={{ width: 380 * k, fontSize: 38 * k, fontWeight: 600, color: C.emphasis }}>{label}</span>
+      <div style={{ flex: 1, height: 30 * k, background: "#dfe5f5", borderRadius: 15 * k, overflow: "hidden" }}>
+        <div style={{ width: `${Math.max(w, zero ? 1.2 : w)}%`, height: "100%", background: zero ? C.error : C.accent, borderRadius: 15 * k }} />
       </div>
-      <span style={{ width: 100, textAlign: "right", fontSize: 38, fontWeight: 700, color: zero ? C.error : C.emphasis }}>{Math.round(w)}%</span>
+      <span style={{ width: 100 * k, textAlign: "right", fontSize: 38 * k, fontWeight: 700, color: zero ? C.error : C.emphasis }}>{Math.round(w)}%</span>
     </div>
   );
 };
 
 const BarsView: React.FC<{ s: BarsScene }> = ({ s }) => {
   const { C } = React.useContext(Ctx);
+  const { k } = useL();
   const head = useRise(0);
   return (
     <Stage audio={s.audio}>
-      <div style={{ width: 1500 }}>
-        <div style={{ ...head, fontSize: 64, fontWeight: 800, color: C.emphasis, marginBottom: 48, textAlign: "center" }}>
+      <div style={{ width: 1500 * k }}>
+        <div style={{ ...head, fontSize: 64 * k, fontWeight: 800, color: C.emphasis, marginBottom: 48 * k, textAlign: "center" }}>
           {s.headline} {s.headlineEmphasis && <span style={{ color: C.accent }}>{s.headlineEmphasis}</span>}
         </div>
         {s.bars.map((b, i) => <BarRow key={b.label} label={b.label} pct={b.pct} delay={40 + i * 12} />)}
         {s.footnoteChips && s.footnoteChips.length > 0 && (
-          <div style={{ marginTop: 40 }}>
-            {s.footnoteLabel && <div style={{ fontSize: 28, letterSpacing: 3, color: C.muted, fontWeight: 700, marginBottom: 18 }}>{s.footnoteLabel}</div>}
-            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+          <div style={{ marginTop: 40 * k }}>
+            {s.footnoteLabel && <div style={{ fontSize: 28 * k, letterSpacing: 3 * k, color: C.muted, fontWeight: 700, marginBottom: 18 * k }}>{s.footnoteLabel}</div>}
+            <div style={{ display: "flex", gap: 16 * k, flexWrap: "wrap" }}>
               {s.footnoteChips.map((c, i) => {
                 const r = useRise(150 + i * 12, 26);
-                return <span key={c} style={{ ...r, fontSize: 36, fontWeight: 600, color: C.accent, background: "rgba(53,99,255,0.10)", border: "2px solid rgba(53,99,255,0.28)", borderRadius: 999, padding: "14px 30px" }}>{c}</span>;
+                return <span key={c} style={{ ...r, fontSize: 36 * k, fontWeight: 600, color: C.accent, background: "rgba(53,99,255,0.10)", border: "2px solid rgba(53,99,255,0.28)", borderRadius: 999, padding: `${14 * k}px ${30 * k}px` }}>{c}</span>;
               })}
             </div>
           </div>
@@ -223,23 +237,24 @@ const BarsView: React.FC<{ s: BarsScene }> = ({ s }) => {
 
 const CurveView: React.FC<{ s: CurveScene }> = ({ s }) => {
   const { C } = React.useContext(Ctx);
+  const { k } = useL();
   const frame = useCurrentFrame();
   const head = useRise(0);
   const progress = interpolate(frame, [20, 130], [0, 1], { extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) });
-  const W = 1300, H = 360;
-  const curveX = 60 + progress * (W - 120);
-  const curveY = (H - 40) - progress * progress * (H - 90);
+  const W = 1300 * k, H = 360 * k;
+  const curveX = 60 * k + progress * (W - 120 * k);
+  const curveY = (H - 40 * k) - progress * progress * (H - 90 * k);
   return (
     <Stage audio={s.audio}>
       <div style={{ width: W, textAlign: "center" }}>
-        <div style={{ ...head, fontSize: 76, fontWeight: 800, color: C.emphasis, marginBottom: 50 }}>
+        <div style={{ ...head, fontSize: 76 * k, fontWeight: 800, color: C.emphasis, marginBottom: 50 * k }}>
           {s.headline} {s.headlineEmphasis && <span style={{ color: C.accent }}>{s.headlineEmphasis}</span>}
         </div>
         <svg width={W} height={H} style={{ overflow: "visible" }}>
-          <line x1={60} y1={H - 60} x2={W - 60} y2={H - 60} stroke={C.muted} strokeWidth={5} strokeDasharray="10 10" />
-          {s.flatLabel && <text x={W - 60} y={H - 30} fill={C.muted} fontSize={28} textAnchor="end" fontWeight={600}>{s.flatLabel}</text>}
-          <path d={`M 60 ${H - 40} Q ${60 + (W - 120) * 0.6} ${H - 40}, ${curveX} ${curveY}`} stroke={C.accent} strokeWidth={8} fill="none" strokeLinecap="round" />
-          <circle cx={curveX} cy={curveY} r={14} fill={C.accent} />
+          <line x1={60 * k} y1={H - 60 * k} x2={W - 60 * k} y2={H - 60 * k} stroke={C.muted} strokeWidth={5 * k} strokeDasharray={`${10 * k} ${10 * k}`} />
+          {s.flatLabel && <text x={W - 60 * k} y={H - 30 * k} fill={C.muted} fontSize={28 * k} textAnchor="end" fontWeight={600}>{s.flatLabel}</text>}
+          <path d={`M ${60 * k} ${H - 40 * k} Q ${60 * k + (W - 120 * k) * 0.6} ${H - 40 * k}, ${curveX} ${curveY}`} stroke={C.accent} strokeWidth={8 * k} fill="none" strokeLinecap="round" />
+          <circle cx={curveX} cy={curveY} r={14 * k} fill={C.accent} />
         </svg>
       </div>
     </Stage>
@@ -248,14 +263,15 @@ const CurveView: React.FC<{ s: CurveScene }> = ({ s }) => {
 
 const CtaView: React.FC<{ s: CtaScene }> = ({ s }) => {
   const { C } = React.useContext(Ctx);
+  const { k } = useL();
   const a = useRise(0), b = useRise(14), c = useRise(30);
   return (
     <Stage audio={s.audio}>
-      <div style={{ textAlign: "center" }}>
+      <div style={{ textAlign: "center", maxWidth: 1500 * k }}>
         <div style={a}><Diamond size={96} /></div>
-        <div style={{ ...b, fontSize: 96, fontWeight: 800, color: C.emphasis, margin: "34px 0 26px" }}>{s.title}</div>
-        {s.sub && <div style={{ ...b, fontSize: 50, color: C.secondary, fontWeight: 500, marginBottom: 44 }}>{s.sub}</div>}
-        <div style={{ ...c, fontSize: 46, fontWeight: 700, color: "#fff", background: C.accent, borderRadius: 18, padding: "24px 52px", display: "inline-block" }}>{s.cta}</div>
+        <div style={{ ...b, fontSize: 96 * k, fontWeight: 800, color: C.emphasis, margin: `${34 * k}px 0 ${26 * k}px` }}>{s.title}</div>
+        {s.sub && <div style={{ ...b, fontSize: 50 * k, color: C.secondary, fontWeight: 500, marginBottom: 44 * k }}>{s.sub}</div>}
+        <div style={{ ...c, fontSize: 46 * k, fontWeight: 700, color: "#fff", background: C.accent, borderRadius: 18 * k, padding: `${24 * k}px ${52 * k}px`, display: "inline-block" }}>{s.cta}</div>
       </div>
     </Stage>
   );
@@ -277,12 +293,22 @@ const renderScene = (s: Scene) => {
 export const totalDuration = (scenes: Scene[]) =>
   scenes.reduce((acc, s) => acc + s.durationInFrames, 0);
 
+// Canvas dimensions for an orientation. Exposed for Root's calculateMetadata.
+export const dimsFor = (orientation?: string) =>
+  orientation === "portrait" ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 };
+
 export const DataReel: React.FC<VideoProps> = ({ brand, scenes, fontFamily }) => {
   const C: Palette = { ...DEFAULT_COLORS, ...(brand.colors || {}) };
   const font = fontFamily || DEFAULT_FONT;
+  const { width, height } = useVideoConfig();
+  const portrait = height > width;
+  // Author against ~1740 wide in portrait (so 1080 content fits with margin) and
+  // 1920 in landscape; k rescales every dimension to the real canvas width.
+  const k = width / (portrait ? 1740 : 1920);
+  const L: Layout = { k, portrait };
   let offset = 0;
   return (
-    <Ctx.Provider value={{ C, font, brand }}>
+    <Ctx.Provider value={{ C, font, brand, L }}>
       <AbsoluteFill style={{ background: C.bg }}>
         {scenes.map((s) => {
           const from = offset;
