@@ -169,7 +169,13 @@ export async function captureBrandVisual(url, { caller = 'context-hub', timeout 
       if (['font', 'media'].includes(t)) req.abort();
       else req.continue();
     });
-    await page.goto(url, { waitUntil: 'networkidle2', timeout });
+    // domcontentloaded + a settle delay, NOT networkidle2: heavy sites (analytics,
+    // animations — e.g. duolingo.com) never go network-idle and time out the whole
+    // capture. Computed styles only need stylesheets applied, which happens well
+    // before idle. If even DCL times out, proceed anyway — whatever rendered is
+    // usually measurable; a hard failure surfaces at evaluate().
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout }).catch(() => {});
+    await new Promise((r) => setTimeout(r, 2500));
     const visual = await page.evaluate(() => {
       const toRGB = (s) => {
         const m = s && s.match(/rgba?\(([^)]+)\)/);
