@@ -308,7 +308,33 @@ export const totalDuration = (scenes: Scene[]) =>
 export const dimsFor = (orientation?: string) =>
   orientation === "portrait" ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 };
 
-export const DataReel: React.FC<VideoProps> = ({ brand, scenes, fontFamily }) => {
+// Music ducking. VO clips start at each scene's start and run to roughly the
+// scene's end minus a ~0.8s tail (frame math mirrors the backend's
+// framesForVoiceover). Duck the bed while VO is speaking, lift it in the
+// tails/sceneless gaps, and fade the reel in/out. Pure — exported for tests.
+const BED_DUCKED = 0.12;
+const BED_OPEN = 0.26;
+const VO_TAIL_FRAMES = 24;  // ~0.8s @30fps, matches the backend's VO padding
+const EDGE_FADE_FRAMES = 30;
+export const musicVolumeAt = (frame: number, scenes: Scene[]) => {
+  const total = scenes.reduce((a, s) => a + s.durationInFrames, 0);
+  let level = BED_OPEN;
+  let offset = 0;
+  for (const s of scenes) {
+    const end = offset + s.durationInFrames;
+    if (frame >= offset && frame < end) {
+      const voActive = s.audio ? frame < end - VO_TAIL_FRAMES : false;
+      level = voActive ? BED_DUCKED : BED_OPEN;
+      break;
+    }
+    offset = end;
+  }
+  const fadeIn = Math.min(1, frame / EDGE_FADE_FRAMES);
+  const fadeOut = Math.min(1, Math.max(0, (total - frame) / EDGE_FADE_FRAMES));
+  return level * fadeIn * fadeOut;
+};
+
+export const DataReel: React.FC<VideoProps> = ({ brand, scenes, fontFamily, music }) => {
   const C: Palette = { ...DEFAULT_COLORS, ...(brand.colors || {}) };
   const font = fontFamily || DEFAULT_FONT;
   const { width, height } = useVideoConfig();
@@ -321,6 +347,13 @@ export const DataReel: React.FC<VideoProps> = ({ brand, scenes, fontFamily }) =>
   return (
     <Ctx.Provider value={{ C, font, brand, L }}>
       <AbsoluteFill style={{ background: C.bg }}>
+        {music?.src && (
+          <Audio
+            src={music.src}
+            loop
+            volume={(f) => musicVolumeAt(f, scenes)}
+          />
+        )}
         {scenes.map((s) => {
           const from = offset;
           offset += s.durationInFrames;
