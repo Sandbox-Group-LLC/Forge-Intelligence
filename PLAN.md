@@ -1,3 +1,51 @@
+## 2026-06-09 — AI Video Generation shipped end-to-end (Remotion Lambda + S3) + visual brand system + Sommers House arc
+
+The session that took video generation from "can Claude even make a video?" (yesterday's sandbox experiment) to a **production feature with real brand identity**. PRs #296→#314, all merged to prod same-day.
+
+### 1. Remotion Lambda + S3 infrastructure (AWS)
+Walked Brian through the whole AWS setup live, debugging each layer:
+- **Remotion license keys are not API keys** — they're commercial-license paperwork; nothing plugs into deploys.
+- **Root account keys rejected** by Remotion (`Unsupported AWS Caller Identity ARN`) → created IAM user `remotion` (+ `remotion-policy` from `npx remotion lambda policies user`).
+- Function deploy needed the **role** `remotion-lambda-role` (trust: Lambda) — a stray IAM *user* with the role's name got created on the way and its (permissionless) keys landed in Render → `lambda:ListFunctions denied`; then a mismatched key/secret pair → `SignatureDoesNotMatch` (fix: copy both halves from the same CSV).
+- Live: function `remotion-render-4-0-474-mem3008mb-disk2048mb-240sec`, site `forge-reels` (serve URL on the `remotionlambda-useast1-rccmn55lmf` bucket), region `us-east-1`. First Lambda render: 2,079 frames, 58s, 6 chunks, **$0.011**.
+- New-account **Lambda concurrency cap = 10** → `framesPerLambda: 400` pinned in the backend; **increase to 5,000 requested** (console-only — sub-account of an AWS Org). Drop the pin when approved.
+- Env (Forge group): `REMOTION_AWS_ACCESS_KEY_ID/SECRET/REGION`, `REMOTION_LAMBDA_FUNCTION_NAME`, `REMOTION_LAMBDA_SERVE_URL`.
+
+### 2. The feature (#296 backend, #298 UI, #302/#304 fixes)
+- **`remotion/`** (repo root) — versioned template source deployed to the Lambda site. `DataReel`: one fully data-driven composition, 7 scene archetypes (`hook|tags|orbit|pipeline|bars|curve|cta`), `calculateMetadata` derives duration + canvas from props. Redeploy: `npx remotion lambda sites create src/index.ts --site-name=forge-reels`.
+- **`src/server/video.js`** — storyboard agent (Sonnet: brief → scenes JSON w/ per-scene voiceover), per-scene TTS (`gpt-4o-mini-tts`, voice `ash`) → S3 **presigned URLs**, `renderReel` (`renderMediaOnLambda`) + `getReelProgress`. VO length → frame math (`framesForVoiceover`, ~2.3 wps).
+- **`routes/video.js`** — async ack+poll: `POST /api/video/generate` (202 + job id), `GET /:id` (advances via `getRenderProgress`), `GET /` list; `generated_videos` table.
+- **`/app/video-generator`** (#298) — brand picker, brief, staged progress bar, inline player + download, Recent list. Sidebar `film` icon.
+- **Prod hotfixes (#302):** `SELECT name` → `brand_name` (blocked all generation); **AWS SDK reads `AWS_*`, not `REMOTION_AWS_*`** → mirror at module load ("Could not load credentials from any providers").
+- **9:16 portrait (#304):** template rescales every dimension by `k = width/designWidth` (portrait reflows tags/pipeline rows, tightens orbit); `orientation` flows UI toggle → API → inputProps → `dimsFor()`. Verified 1080×1920 on Lambda (~$0.002/15s reel).
+
+### 3. Visual brand system (#306, #308, #310, #312) — "it was completely branded Forge lol"
+First real render came out in Forge's palette. Root cause: **Context Hub never captured visuals** — the scrape is text-only markdown, so `voiceProfile.accentColor` was a Claude hallucination *anchored to Forge* (the prompt's example hex was Forge blue `#3563FF`; `#1A1A2E` is literally a Forge UI color). Fixed end-to-end, "do it right" per Brian:
+- **`captureBrandVisual(url)`** (`scrape.js`) — headless browser **with stylesheets** (content scrape blocks them), reads **computed CSS**: accent = weighted saturated color (CTAs/buttons ×3, header/nav ×2, links ×1; neutrals dropped); logo = header/nav logo `<img>` → `apple-touch-icon` → largest `rel=icon` → `og:image` **last** (#310 — og:image is a share banner, not a logo). Logged to `scrape_log` with `kind:'visual'`.
+- **Context Hub** stores `profileData.brandVisual` + overwrites the guessed `accentColor` with the measured hex; prompt now forbids hex-guessing (descriptor only).
+- **`buildBrand()`** (`video.js`) injects `{ colors:{accent, accent2(lightened), bg}, logo }` into the reel. **bg only when luma ≥ 0.88** (#312 — dark canvases are a template variant, not a color swap). `BrandMark` in the template: real logo if measured, Forge diamond **only for Forge**, nothing otherwise.
+- **#308:** `networkidle2` → `domcontentloaded` + 2.5s settle (duolingo.com never goes idle; first prod capture timed out).
+- **Validated in prod** via anonymous scans (24h-expiring temp profiles): duolingo → measured `#a5ed6e` + real mark. Deterministic on Sommers (two scans, identical values).
+
+### 4. Sommers House arc (the demo customer)
+- **Competitors were garbage** (GitHub/GitLab/Jira; defence articles) → root cause: Perplexity Sonar ran **before** the scrape, so its only context was the domain — and "forge-os.ai"/"forgeos-*" collided with software forges + defence "The Forge". **#300:** Sonar now runs *after* the scrape, grounded in actual page content with an explicit "ignore domain keywords" instruction; founder-provided competitors win verbatim; an empty Sonar result never blanks a derived list. Data hand-fixed + **pinned via `manual_overrides`** (`moremas.com`, `experiencenve.com`, `atypikal.co`) — survives every re-scan (verified through v5).
+- **Visuals measured from their live site:** accent `#2e5c3b` (forest green), bg `#fbf8f1` (warm cream), logo = their favicon SVG. Both active profiles seeded (paid one via relay JSONB merge). **Branded reel re-generation still pending** — next video run comes out cream/green/their mark.
+
+### 5. UI resilience (#314) — the stuck-scan fix
+Brian's v5 re-scan: UI spun forever while Render logs showed completion. `/analyze` holds one connection open 3–4 min; if it drops, the server finishes but the fetch never settles. New `src/lib/analyzeRecovery.ts` (baseline version snapshot → 8-min deadline → on network-death, poll `/history/:url` for the version bump → load `/brand/:id`), wired into all three scan paths (`startAnalysis`, `BrandProfile.handleReanalyze` — the one that bit, `ContextAgentPage` onboard). **Proper fix (async ack+poll like video gen) backlogged.**
+
+### 6. Misc
+- **autoDeploy mystery:** Production's toggle flips off around deploys. Ruled out: Blueprints (none exist — the fossil `render.yaml` from PR #99 was inert; Brian deleted it), our code (read-only Render API use), visible event-log actors. Remaining suspect: another holder of the shared `RENDER_API_KEY` (other agent sessions/tools). If it recurs: check the dashboard Activity feed for the actor; rotating the key isolates it.
+- Earlier-merged from prior session's queue: #292 (compliance cite-button merge), #294 (enricher guard).
+- AWS concurrency increase (5,000) still pending approval at session end.
+
+### What's next
+- **Generate the branded Sommers reel** (everything seeded; just run it).
+- **Video generator round 2** (Brian: "then we will talk more about the video generator") — candidates: music bed + ducking, bundle Inter locally, real app footage via Playwright, storyboard richness, scene-archetype expansion, publish-to-channels wiring.
+- Drop `framesPerLambda: 400` once AWS approves the 5,000 concurrency increase.
+- Async `/analyze` (ack+poll) — the real fix behind #314.
+- BrandSettings UI for `settings.breadcrumb`; `/scan` lead capture (older backlog).
+
 ## 2026-06-07 — GEO scan made REAL (4 engines) + public `/scan` lead magnet + dev→main rollup to prod
 
 Single session, large arc, all shipped to production. `development` and `main` ended equal (rollup #276 merged + deployed green; all four engines verified healthy on prod via `/api/geo/debug`).
