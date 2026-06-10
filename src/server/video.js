@@ -305,14 +305,20 @@ HARD LENGTH BUDGET — the video must run ~${targetSeconds} seconds. Scene durat
 Scenes beyond the budget get cut in post (middle scenes dropped), so do not write extra scenes hoping they survive.`;
 }
 
-export async function storyboardFromBrief({ brief, brandName, brandContext = '', targetSeconds = 30 }) {
+export async function storyboardFromBrief({ brief, brandName, brandContext = '', targetSeconds = 30, forceScreens = false }) {
   const contextBlock = brandContext ? `\n\nBRAND PROFILE (ground the creative direction in this):\n${brandContext}` : '';
+  // The user uploaded their own product screenshots → the screens archetype is
+  // available regardless of the auto-capture flag, and the agent is told to use
+  // exactly one screens beat (ensureScreensScene guarantees it if it doesn't).
+  const uploadNote = forceScreens
+    ? `\n\nThe user UPLOADED real product screenshots for this video. You MUST include exactly one "screens" beat (the backend fills in their images); write the copy for it.`
+    : '';
   const msg = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 2500,
     messages: [{
       role: 'user',
-      content: `You are a brand video director for "${brandName}". Turn this brief into a short product reel storyboard.\n\nBRIEF:\n${brief}${contextBlock}\n${lengthGuide(targetSeconds)}\n\n${buildSceneGuide(screensEnabled())}\n${directionGuide()}`,
+      content: `You are a brand video director for "${brandName}". Turn this brief into a short product reel storyboard.\n\nBRIEF:\n${brief}${contextBlock}${uploadNote}\n${lengthGuide(targetSeconds)}\n\n${buildSceneGuide(screensEnabled() || forceScreens)}\n${directionGuide()}`,
     }],
   });
   const text = msg?.content?.[0]?.text || '';
@@ -495,6 +501,34 @@ async function ttsToBuffer(text, voice, instructions) {
   return ttsOpenAI(text, voice, instructions);
 }
 
+// Diagnostic: probe the SELECTED provider with one real call and report the raw
+// result, so a server-side ElevenLabs failure (datacenter-IP block, quota, bad
+// model) is visible instead of silently swallowed by the OpenAI fallback.
+// Exposed via GET /api/video/tts-check.
+export async function ttsHealth() {
+  const out = {
+    provider: ttsProvider(),
+    elevenlabsKey: !!process.env.ELEVENLABS_API_KEY,
+    openaiKey: !!process.env.OPENAI_API_KEY,
+    model: process.env.ELEVENLABS_MODEL || 'eleven_multilingual_v2',
+  };
+  if (process.env.ELEVENLABS_API_KEY) {
+    try {
+      const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICES.ash}?output_format=mp3_44100_128`, {
+        method: 'POST',
+        headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: 'Provider health check.', model_id: out.model, voice_settings: { stability: 0.4, style: 0.5, use_speaker_boost: true } }),
+      });
+      out.elevenlabs = r.ok
+        ? { ok: true, status: 200, detail: `audio ${(await r.arrayBuffer()).byteLength} bytes` }
+        : { ok: false, status: r.status, detail: (await r.text()).slice(0, 300) };
+    } catch (e) {
+      out.elevenlabs = { ok: false, error: e.message };
+    }
+  }
+  return out;
+}
+
 async function uploadAndPresign(buf, key, contentType = 'audio/mpeg') {
   const { S3Client, PutObjectCommand, GetObjectCommand } = await import('@aws-sdk/client-s3');
   const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
@@ -503,6 +537,46 @@ async function uploadAndPresign(buf, key, contentType = 'audio/mpeg') {
   await s3.send(new PutObjectCommand({ Bucket, Key: key, Body: buf, ContentType: contentType }));
   // Presigned GET avoids bucket-ACL/Object-Ownership headaches; 6h is well past any render.
   return getSignedUrl(s3, new GetObjectCommand({ Bucket, Key: key }), { expiresIn: 6 * 3600 });
+}
+
+// ── User-uploaded product screenshots ───────────────────────────────────────
+// Auth-gated apps can't be auto-captured, so users upload their own shots. They
+// land in S3 under forge-uploads/<brand>/<uuid> (a DURABLE key); the client
+// holds the key and we re-presign it fresh at render time (presigned URLs
+// expire). Upload-priority: a job's uploaded shots beat auto-capture entirely.
+export const MAX_USER_SHOTS = 6;
+const SHOT_EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
+
+export async function uploadUserShot(buf, brandProfileId, contentType) {
+  const ext = SHOT_EXT[contentType];
+  if (!ext) throw new Error('unsupported image type (png/jpeg/webp only)');
+  const { randomUUID } = await import('crypto');
+  const key = `forge-uploads/${brandProfileId}/${randomUUID()}.${ext}`;
+  const { S3Client, PutObjectCommand, GetObjectCommand } = await import('@aws-sdk/client-s3');
+  const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
+  const s3 = new S3Client({ region: process.env.REMOTION_AWS_REGION });
+  const Bucket = renderBucket();
+  await s3.send(new PutObjectCommand({ Bucket, Key: key, Body: buf, ContentType: contentType }));
+  const url = await getSignedUrl(s3, new GetObjectCommand({ Bucket, Key: key }), { expiresIn: 6 * 3600 });
+  return { key, url };
+}
+
+// Re-presign uploaded shot keys for a render. Only presigns keys under this
+// brand's own forge-uploads/ prefix — a client can't hand us an arbitrary S3
+// key (another brand's upload, or a VO/music object) to get a signed URL.
+export async function presignShotKeys(keys, brandProfileId) {
+  if (!Array.isArray(keys) || !keys.length) return [];
+  const prefix = `forge-uploads/${brandProfileId}/`;
+  const { S3Client, GetObjectCommand } = await import('@aws-sdk/client-s3');
+  const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
+  const s3 = new S3Client({ region: process.env.REMOTION_AWS_REGION });
+  const Bucket = renderBucket();
+  const out = [];
+  for (const k of keys.slice(0, MAX_USER_SHOTS)) {
+    if (typeof k !== 'string' || !k.startsWith(prefix)) continue;
+    out.push(await getSignedUrl(s3, new GetObjectCommand({ Bucket, Key: k }), { expiresIn: 6 * 3600 }));
+  }
+  return out;
 }
 
 // ── Product screenshots → S3 ────────────────────────────────────────────────
@@ -523,6 +597,27 @@ async function captureAndUploadShots(url, jobId, orientation, max = 3) {
 
 export function hostLabel(url) {
   try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return null; }
+}
+
+// When the user uploaded shots but the storyboard has no "screens" scene,
+// deterministically convert a middle beat (never the hook or cta) into one so
+// the uploads always make the cut — preserving its voiceover, duration, and a
+// headline. Pure — unit-tested.
+export function ensureScreensScene(scenes) {
+  if (!Array.isArray(scenes) || scenes.some((s) => s && s.type === 'screens')) return scenes;
+  let t = scenes.findIndex((s, i) => i > 0 && i < scenes.length - 1 && s && s.type !== 'hook' && s.type !== 'cta');
+  if (t < 0) t = scenes.findIndex((s) => s && s.type !== 'hook' && s.type !== 'cta');
+  if (t < 0) return scenes;
+  const s = scenes[t];
+  const screens = {
+    id: s.id || 'screens', type: 'screens',
+    headline: s.headline || s.title || 'See it in action.',
+    headlineEmphasis: s.headlineEmphasis,
+    voiceover: s.voiceover,
+    durationInFrames: s.durationInFrames,
+    shots: [],
+  };
+  return scenes.map((x, i) => (i === t ? screens : x));
 }
 
 // Assign captured shot URLs to "screens" scenes, and DOWNGRADE any "screens"
@@ -555,9 +650,14 @@ export function assignShotsToScreens(scenes, shotUrls, urlLabel) {
 export async function synthesizeScenes(scenes, jobId, direction, opts = {}) {
   const d = direction || {};
   let work = scenes;
+  // User uploads are the PRIMARY source (auth-gated apps can't be auto-captured)
+  // — guarantee a screens beat exists to carry them.
+  const uploaded = Array.isArray(opts.uploadedShots) ? opts.uploadedShots.filter(Boolean) : [];
+  if (uploaded.length) work = ensureScreensScene(work);
   if (work.some((s) => s && s.type === 'screens')) {
-    let shotUrls = [];
-    if (screensEnabled() && opts.siteUrl) {
+    // Priority: user-uploaded shots > auto-capture (fallback when no uploads).
+    let shotUrls = uploaded;
+    if (!shotUrls.length && screensEnabled() && opts.siteUrl) {
       shotUrls = await captureAndUploadShots(opts.siteUrl, jobId, opts.orientation, 3).catch(() => []);
     }
     // Always run assignment: fills shots when we have them, otherwise downgrades

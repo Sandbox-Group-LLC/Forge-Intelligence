@@ -9,7 +9,8 @@ import { verifyBrandAccess } from '../auth.js';
 import {
   videoConfigured, buildBrand, brandContextFor, storyboardFromBrief,
   resolveDirection, presignMusicBed, synthesizeScenes, normalizeTargetSeconds,
-  renderReel, getReelProgress, videoArcs, VOICES, MUSIC_BEDS, THEMES, LENGTH_BUDGETS,
+  renderReel, getReelProgress, videoArcs, presignShotKeys, MAX_USER_SHOTS,
+  ttsHealth, VOICES, MUSIC_BEDS, THEMES, LENGTH_BUDGETS,
 } from '../video.js';
 
 async function ensureVideosTable() {
@@ -43,18 +44,20 @@ async function setStatus(id, fields) {
 }
 
 // Background pipeline — not awaited by the request.
-async function runJob(id, brief, brand, orientation, brandContext, directionOverrides, targetSeconds, siteUrl) {
+async function runJob(id, brief, brand, orientation, brandContext, directionOverrides, targetSeconds, siteUrl, uploadedShots) {
   try {
+    const hasUploads = Array.isArray(uploadedShots) && uploadedShots.length > 0;
     await setStatus(id, { status: 'storyboarding' });
-    const { scenes: draft, direction: agentPick } = await storyboardFromBrief({ brief, brandName: brand.name, brandContext, targetSeconds });
+    const { scenes: draft, direction: agentPick } = await storyboardFromBrief({ brief, brandName: brand.name, brandContext, targetSeconds, forceScreens: hasUploads });
 
     // Agent proposes the creative direction from the brand brain; user
     // overrides win; unknown ids fall back to safe defaults.
     const direction = resolveDirection(agentPick, directionOverrides);
     await setStatus(id, { status: 'voicing', scenes: JSON.stringify(draft), direction: JSON.stringify(direction) });
-    // siteUrl lets synthesizeScenes capture real product screenshots for any
-    // "screens" scenes (gated by VIDEO_SCREENS_ENABLED).
-    const scenes = await synthesizeScenes(draft, id, direction, { siteUrl, orientation });
+    // uploadedShots (user's product screenshots) are the primary source for
+    // "screens" beats; siteUrl auto-capture is the fallback (gated by
+    // VIDEO_SCREENS_ENABLED).
+    const scenes = await synthesizeScenes(draft, id, direction, { siteUrl, orientation, uploadedShots });
 
     const musicSrc = direction.musicBed === 'none' ? null : await presignMusicBed(direction.musicBed);
     await setStatus(id, { status: 'rendering', scenes: JSON.stringify(scenes) });
@@ -94,16 +97,31 @@ router.post('/generate', async (req, res) => {
       theme: typeof req.body?.theme === 'string' ? req.body.theme : 'auto',
     };
     const targetSeconds = normalizeTargetSeconds(req.body?.targetSeconds);
+    // User-uploaded product screenshots: client passes durable S3 keys from
+    // /upload-shot; re-presign them fresh (scoped to this brand's prefix).
+    const screenshotKeys = Array.isArray(req.body?.screenshotKeys) ? req.body.screenshotKeys.slice(0, MAX_USER_SHOTS) : [];
+    const uploadedShots = await presignShotKeys(screenshotKeys, brandProfileId);
 
     const ins = await pool.query(
       `INSERT INTO generated_videos (brand_profile_id, brief, status, orientation) VALUES ($1, $2, 'queued', $3) RETURNING id`,
       [brandProfileId, brief, orientation]
     );
     const id = ins.rows[0].id;
-    runJob(id, brief, brand, orientation, brandContext, directionOverrides, targetSeconds, row.brand_url); // fire-and-forget
+    runJob(id, brief, brand, orientation, brandContext, directionOverrides, targetSeconds, row.brand_url, uploadedShots); // fire-and-forget
     res.status(202).json({ id, status: 'queued' });
   } catch (e) {
     console.error('[VIDEO] generate error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/video/tts-check — probe the selected TTS provider server-side and
+// return the raw result (so an ElevenLabs failure on Render is visible, not
+// silently swallowed by the OpenAI fallback). Before /:id.
+router.get('/tts-check', async (_req, res) => {
+  try {
+    res.json(await ttsHealth());
+  } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
