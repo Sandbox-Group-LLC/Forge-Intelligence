@@ -380,17 +380,25 @@ function arcBrainContext(pd) {
 
 export async function videoArcs(brandName, profileData, count = 8) {
   const ctx = arcBrainContext(profileData);
-  const prompt = `You are a brand video strategist for "${brandName}". Propose ${count} DISTINCT short-form video concepts — a video content slate. Each is a self-contained reel with a DIFFERENT strategic angle (e.g. problem/solution, hard proof, founder POV, how-it-works, us-vs-them, customer story, a bold contrarian claim, behind-the-scenes, a single killer stat, a myth-bust). Do not repeat angles.
+  const prompt = `You are a brand video strategist for "${brandName}". Propose ${count} DISTINCT short-form video concepts — a video content slate. Each is a self-contained reel with a DIFFERENT strategic angle (e.g. problem/solution, hard proof, how-it-works, us-vs-them, a single killer stat, a myth-bust, a bold contrarian claim, an on-screen customer quote). Do not repeat angles.
 
 BRAND:
 ${ctx}
+
+PRODUCTION ENVELOPE — this is an automated motion-graphics generator. Every concept MUST be fully achievable with ONLY these elements:
+- Animated typographic + data scenes: bold headlines, stat callouts, bar/curve charts, process/timeline flows, comparison tables, feature grids, on-screen pull-quotes, logo rows, full-bleed statements.
+- A synthetic AI voiceover (text-to-speech) reading the script. There is NO human voice actor, NO recorded narration talent.
+- Optional product screenshots the user uploads (shown in browser chrome).
+- A music bed.
+
+There is NO live-action footage, NO real video, NO camera, NO people on screen, NO interviews, NO b-roll, NO drone/stock clips, NO screen-recorded demos, NO hands/product photography. If an angle would normally need filmed material, RECAST it as motion graphics: a "customer testimonial" becomes an on-screen pull-quote with the name/role as text; a "founder story" becomes animated statements + data, not a person talking; a "product demo" becomes uploaded screenshots + animated callouts. Do NOT propose "behind-the-scenes," "day in the life," "talking head," or anything that implies a shoot. Do NOT mention a human narrator, voice actor, or any visual the list above can't produce.
 
 For each concept return:
 - "title": a short internal name for the idea
 - "angle": one phrase naming the strategic angle
 - "length": 15, 30, or 60 (seconds) — whatever fits the idea
 - "orientation": "portrait" (social/IG/TikTok) or "landscape" (web/YouTube)
-- "brief": 1-2 sentences a video director can run with — what it says and its arc (hook -> body -> CTA). Concrete and on-brand. NO em dashes.
+- "brief": 1-2 sentences a video director can run with — what it says and its arc (hook -> body -> CTA), described in terms of animated text/data/screenshots only. Concrete and on-brand. NO em dashes.
 
 Output ONLY JSON: { "arcs": [ { "id":"kebab-name", "title", "angle", "length", "orientation", "brief" } ] }`;
   const msg = await anthropic.messages.create({
