@@ -884,6 +884,30 @@ async function initDB() {
 
 initDB().catch(err => console.error('DB init error:', err));
 
+// Video Generator — user-uploaded product screenshots. Registered BEFORE the
+// global express.json() so its larger body limit applies (base64 images are a
+// few MB; the global parser is 100kb). Auth + brand-scoped; uploads land in S3
+// under forge-uploads/<brand>/ and the client gets back a durable key it passes
+// to /api/video/generate. See src/server/video.js (uploadUserShot).
+app.post('/api/video/upload-shot', express.json({ limit: '12mb' }), requireAuth, async (req, res) => {
+  try {
+    const { brandProfileId, imageBase64, contentType } = req.body || {};
+    if (!brandProfileId || typeof imageBase64 !== 'string') return res.status(400).json({ error: 'brandProfileId and imageBase64 are required' });
+    if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+    const ct = String(contentType || 'image/png');
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(ct)) return res.status(400).json({ error: 'unsupported image type (png/jpeg/webp)' });
+    const buf = Buffer.from(imageBase64.replace(/^data:[^;]+;base64,/, ''), 'base64');
+    if (!buf.length) return res.status(400).json({ error: 'empty image' });
+    if (buf.length > 8 * 1024 * 1024) return res.status(413).json({ error: 'image too large (max 8MB)' });
+    const { uploadUserShot } = await import('./src/server/video.js');
+    const { key, url } = await uploadUserShot(buf, brandProfileId, ct);
+    res.json({ key, url });
+  } catch (e) {
+    console.error('[VIDEO] upload-shot error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.use(express.json());
 
 // ── Hero image generation — Ideogram v2 via fal.ai ───────────────────────────
