@@ -10,6 +10,19 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
+### 2026-06-10 — Video: real timing, fit-to-frame, per-brand pronunciation
+
+All merged to `development`. Three voice/render-quality fixes from Brian's QA pass:
+- **#334 timing + fit** — scene length now tracks the REAL audio (ElevenLabs returns exact seconds; OpenAI falls back to word-count estimate) + a ~0.85s tail, so VO no longer overlaps into the next scene. "No repeated copy" prompt rule. New `Fit` component in `DataReel.tsx` measures content and scales down to the safe area → kills out-of-frame text.
+- **#336 pronunciation** — `applyPronunciations(text, dict)` rewrites tricky brand names in the **spoken VO only** (on-screen text keeps real spelling); whole-word, case-insensitive, substring-safe. Sources merge: per-brand `profile_data.pronunciations` → optional per-render override (new "Pronounce names like" UI field). **SYSOI's 3 profiles seeded** `{ "SYSOI": "Sis-Oy" }`.
+
+#### What's next (video) — DEPLOY PENDING
+- **⚠️ Run `cd remotion && npm run deploy-site` (needs `REMOTION_AWS_*` env — Render side, not the sandbox).** #334 changed the `DataReel.tsx` template (Fit component); the live `forge-reels` Lambda site won't have it until this redeploy. Pronunciation (#336) is server-side only and needs no deploy.
+- Then verify ElevenLabs on Render: hit `dev.forgeintelligence.ai/api/video/tts-check` signed in, confirm the `elevenlabs` block (EL works vs. datacenter-IP blocked → silent OpenAI fallback).
+- Drop `framesPerLambda: 400` once the AWS **5,000 concurrency** increase approves.
+
+---
+
 ### 2026-06-09 (cont. 2) — Video generator → production-grade
 
 The video generator went from "it renders" to a real product. One pattern throughout: **curated finite vocabulary the storyboard agent picks from (grounded in the brand brain), human veto via UI pickers.** Full detail in `PLAN.md` (2026-06-09 cont. 2). Architecture: brief → `storyboardFromBrief` (Claude) → `synthesizeScenes` (TTS → S3 presigned) → `renderReel` on **AWS Lambda** (`forge-reels` site). Backend `src/server/video.js` + `routes/video.js`; template `remotion/src/DataReel.tsx` (redeploy: `cd remotion && npm run deploy-site`).
