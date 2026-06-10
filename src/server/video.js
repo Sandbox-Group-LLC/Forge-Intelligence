@@ -141,13 +141,15 @@ export const THEMES = {
   kinetic:   { desc: 'springy, fast, punchy entrances — launch-day energy' },
 };
 
-// Rich, structured default delivery (openai.fm style) — multi-dimensional
-// direction is what makes gpt-4o-mini-tts sound human instead of robotic.
-const DEFAULT_VOICE_INSTRUCTIONS = `Voice Affect: Confident, modern, and genuinely engaged — like a smart founder who believes what they're saying.
-Tone: Warm and conversational, never an announcer or a robot.
-Pacing: Natural and varied — quicker through setup, slowing to land the key phrase. Avoid a flat, even cadence.
-Emotion: Real conviction and a little energy.
-Pauses: Brief, natural breaths between sentences; a beat before the payoff line.`;
+// Rich, structured default delivery (openai.fm style). gpt-4o-mini-tts reads
+// flat unless the instructions DEMAND dynamics — so this is performance
+// direction (a punchy ad read), not tasteful narration.
+const DEFAULT_VOICE_INSTRUCTIONS = `Voice Affect: A charismatic brand storyteller delivering a punchy ad read — full of personality and momentum, NOT a corporate narrator.
+Delivery: HIGHLY DYNAMIC. Wide pitch range — rise with momentum, then drop low for gravity on the key line. Vary loudness. NEVER monotone, never an even cadence.
+Pacing: Constantly varied — quicken through the setup, then SLOW down and land the payoff.
+Emphasis: PUNCH the important words hard, with a clear lift in pitch and volume — product names, numbers, and power words. Let the small connecting words fall back.
+Emotion: Genuine conviction with a little swagger.
+Pauses: A real beat before the payoff line; let big claims breathe.`;
 
 const DEFAULT_DIRECTION = {
   voice: 'ash',
@@ -273,12 +275,13 @@ Include in the output JSON:
 
 voiceInstructions is the single biggest lever on whether the voiceover sounds human or robotic. Do NOT write one flat sentence. Write a SHORT, MULTI-LINE delivery direction for a real voice actor, tuned to THIS brand, using these labeled lines (omit any that don't apply):
 Voice Affect: <the persona behind the mic — e.g. "a calm luxury creative director", "a sharp, excited founder">
+Delivery: ALWAYS demand wide dynamic range — vary pitch and volume, rise with momentum then drop to land a line. Explicitly say "never monotone / never an even cadence." This is the most important line.
 Tone: <warm/commanding/playful/intimate — and what to AVOID, e.g. "never an announcer">
 Pacing: <fast/slow/varied; tell it where to speed up and where to slow down and land a line>
 Emotion: <the feeling to convey>
-Emphasis: <which words/phrases to stress>
+Emphasis: <which words/phrases to punch hard>
 Pauses: <where to breathe or hold a beat>
-Keep it punchy (5-7 short lines). Match it to the brand: a luxury brand = unhurried, intimate, composed; a launch = fast, bright, energetic.`;
+Keep it punchy (5-7 short lines). Even a calm luxury brand should still have inflection and dynamics — composed is not the same as flat. Match the energy to the brand: luxury = unhurried but rich and expressive; a launch = fast, bright, high-energy.`;
 }
 
 function lengthGuide(targetSeconds) {
@@ -333,7 +336,61 @@ export function framesForVoiceover(vo) {
   return Math.round(seconds * FPS);
 }
 
-async function ttsToBuffer(text, voice, instructions) {
+// The on-screen emphasis words ARE the buzzwords to punch. Pull them per scene
+// (the colored headline span, tag chips, the stat value) and append an explicit
+// "punch these, with a pitch+volume lift" line to the brand's base direction.
+// This is what gives each line its inflection arc instead of a flat read.
+export function punchWordsFor(scene) {
+  if (!scene) return [];
+  const w = [
+    scene.emphasis, scene.headlineEmphasis, scene.captionEmphasis,
+    scene.stat && scene.stat.value, scene.cta,
+    ...(Array.isArray(scene.tags) ? scene.tags.slice(0, 3) : []),
+  ].filter((x) => typeof x === 'string' && x.trim());
+  return [...new Set(w.map((x) => x.trim()))];
+}
+
+export function voiceInstructionsForScene(base, scene) {
+  const instr = base || DEFAULT_VOICE_INSTRUCTIONS;
+  const punch = punchWordsFor(scene);
+  const punchLine = punch.length
+    ? `\nPunch these words/phrases HARD — a clear lift in pitch and volume on each: ${punch.map((p) => `"${p}"`).join(', ')}.`
+    : '';
+  // One line of a punchy reel: always demand a strong inflection arc, even when
+  // the base direction is a brand's own (possibly tame) voiceInstructions.
+  return `${instr}\nThis is ONE line of a high-energy brand reel — perform it with a strong inflection arc (rise, then land), not a flat read.${punchLine}`;
+}
+
+// ── Voiceover providers ─────────────────────────────────────────────────────
+// ElevenLabs has more theatrical range than gpt-4o-mini-tts. Both are wired;
+// ttsToBuffer dispatches by provider with automatic fallback to OpenAI, so the
+// pipeline never fails on an ElevenLabs error (e.g. free-tier datacenter block,
+// quota). Provider: VIDEO_TTS_PROVIDER = 'elevenlabs' | 'openai' | 'auto'
+// (default: ElevenLabs when ELEVENLABS_API_KEY is set, else OpenAI).
+//
+// Our curated picker ids map to premade ElevenLabs voice IDs (verified on the
+// account via GET /v1/voices). On ElevenLabs, expressiveness comes from
+// voice_settings (low stability + high style = dynamic range), NOT a free-text
+// instruction — so the per-scene punch direction applies to the OpenAI path.
+const ELEVENLABS_VOICES = {
+  ash:     'cjVigY5qzO86Huf0OWal', // Eric — smooth, trustworthy
+  onyx:    'pqHfZKP75CvOlQylNhV4', // Bill — wise, mature (advertisement)
+  ballad:  'JBFqnCBsd6RMkjVDRZzb', // George — warm storyteller
+  sage:    'bIHbv24MWmeRgasZH58o', // Will — relaxed optimist
+  nova:    'cgSgspJ2msm6clMCkdW9', // Jessica — playful, bright
+  shimmer: 'TX3LPaxmHKxFdv7VOQHJ', // Liam — energetic
+  coral:   'iP95p4xoKVk53GoZ742B', // Chris — charming
+  verse:   'IKne3meq5aSn9XLyUdCD', // Charlie — deep, confident, energetic
+};
+
+export function ttsProvider() {
+  const pref = String(process.env.VIDEO_TTS_PROVIDER || 'auto').toLowerCase();
+  if (pref === 'openai') return 'openai';
+  if (pref === 'elevenlabs') return 'elevenlabs';
+  return process.env.ELEVENLABS_API_KEY ? 'elevenlabs' : 'openai'; // auto
+}
+
+async function ttsOpenAI(text, voice, instructions) {
   const res = await fetch('https://api.openai.com/v1/audio/speech', {
     method: 'POST',
     headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
@@ -346,6 +403,34 @@ async function ttsToBuffer(text, voice, instructions) {
   });
   if (!res.ok) throw new Error(`OpenAI TTS ${res.status}: ${(await res.text()).slice(0, 200)}`);
   return Buffer.from(await res.arrayBuffer());
+}
+
+async function ttsElevenLabs(text, voice) {
+  const voiceId = ELEVENLABS_VOICES[voice] || ELEVENLABS_VOICES.ash;
+  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`, {
+    method: 'POST',
+    headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      text,
+      model_id: process.env.ELEVENLABS_MODEL || 'eleven_multilingual_v2',
+      // Low stability + high style = the dynamic, expressive read (the "ups and
+      // downs"); speaker boost firms up the voice identity.
+      voice_settings: { stability: 0.35, similarity_boost: 0.75, style: 0.6, use_speaker_boost: true },
+    }),
+  });
+  if (!res.ok) throw new Error(`ElevenLabs ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
+async function ttsToBuffer(text, voice, instructions) {
+  if (ttsProvider() === 'elevenlabs' && process.env.ELEVENLABS_API_KEY) {
+    try {
+      return await ttsElevenLabs(text, voice);
+    } catch (e) {
+      console.warn('[VIDEO] ElevenLabs TTS failed, falling back to OpenAI:', e.message);
+    }
+  }
+  return ttsOpenAI(text, voice, instructions);
 }
 
 async function uploadAndPresign(buf, key, contentType = 'audio/mpeg') {
@@ -422,7 +507,8 @@ export async function synthesizeScenes(scenes, jobId, direction, opts = {}) {
     const { voiceover, ...scene } = work[i];
     scene.durationInFrames = scene.durationInFrames || framesForVoiceover(voiceover);
     if (voiceover && process.env.OPENAI_API_KEY) {
-      const buf = await ttsToBuffer(voiceover, d.voice, d.voiceInstructions);
+      // Per-scene direction: brand voice + this scene's on-screen punch words.
+      const buf = await ttsToBuffer(voiceover, d.voice, voiceInstructionsForScene(d.voiceInstructions, work[i]));
       scene.audio = await uploadAndPresign(buf, `forge-audio/${jobId}/${scene.id || i}.mp3`);
     }
     out.push(scene);

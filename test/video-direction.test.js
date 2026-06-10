@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { resolveDirection, MUSIC_BEDS, VOICES, brandContextFor } from '../src/server/video.js';
 
 describe('resolveDirection', () => {
@@ -112,5 +112,55 @@ describe('expressive voice instructions', () => {
   it('a blank agent voiceInstruction falls back to the rich default', () => {
     const d = resolveDirection({ voiceInstructions: '   ' }, {});
     expect(d.voiceInstructions).toMatch(/Voice Affect:/);
+  });
+});
+
+import { punchWordsFor, voiceInstructionsForScene } from '../src/server/video.js';
+
+describe('per-scene voice dynamics', () => {
+  it('pulls on-screen emphasis words as punch targets per scene type', () => {
+    expect(punchWordsFor({ type: 'hook', emphasis: 'memory problem.' })).toContain('memory problem.');
+    expect(punchWordsFor({ type: 'bars', headlineEmphasis: 'actually cites you.' })).toContain('actually cites you.');
+    expect(punchWordsFor({ type: 'tags', tags: ['fast', 'generic', 'forgettable', 'extra'] })).toEqual(['fast', 'generic', 'forgettable']); // capped at 3
+    expect(punchWordsFor({ type: 'screens', stat: { value: '4', label: 'engines' } })).toContain('4');
+    expect(punchWordsFor(null)).toEqual([]);
+  });
+
+  it('builds per-scene instructions that demand an inflection arc + name the punch words', () => {
+    const instr = voiceInstructionsForScene('Base voice.', { type: 'hook', emphasis: 'compounds.' });
+    expect(instr).toContain('Base voice.');
+    expect(instr).toMatch(/inflection arc/i);
+    expect(instr).toContain('"compounds."');
+  });
+
+  it('still demands dynamics even with no punch words', () => {
+    const instr = voiceInstructionsForScene('Base.', { type: 'curve' });
+    expect(instr).toMatch(/inflection arc/i);
+    expect(instr).not.toMatch(/Punch these/);
+  });
+
+  it('falls back to the default direction when base is empty', () => {
+    expect(voiceInstructionsForScene('', { type: 'hook' })).toMatch(/inflection arc/i);
+  });
+});
+
+import { ttsProvider } from '../src/server/video.js';
+
+describe('ttsProvider selection', () => {
+  const K = 'ELEVENLABS_API_KEY', P = 'VIDEO_TTS_PROVIDER';
+  const sK = process.env[K], sP = process.env[P];
+  afterEach(() => {
+    sK === undefined ? delete process.env[K] : (process.env[K] = sK);
+    sP === undefined ? delete process.env[P] : (process.env[P] = sP);
+  });
+  it('auto → elevenlabs when key present, openai when absent', () => {
+    delete process.env[P];
+    process.env[K] = 'x'; expect(ttsProvider()).toBe('elevenlabs');
+    delete process.env[K]; expect(ttsProvider()).toBe('openai');
+  });
+  it('explicit override wins over the key heuristic', () => {
+    process.env[K] = 'x';
+    process.env[P] = 'openai'; expect(ttsProvider()).toBe('openai');
+    delete process.env[K]; process.env[P] = 'elevenlabs'; expect(ttsProvider()).toBe('elevenlabs');
   });
 });
