@@ -93,9 +93,76 @@ export type ScreensScene = SceneBase & {
   urlLabel?: string;    // address-bar text, e.g. "acme.com"
 };
 
+// ── Expanded scene deck (more variety, less recycling) ──────────────────────
+export type BigStatScene = SceneBase & {
+  type: "bigstat";
+  stat: { value: string; label: string };
+  sub?: string;
+};
+export type StatTrioScene = SceneBase & {
+  type: "stattrio";
+  headline?: string;
+  stats: { value: string; label: string }[]; // 2-3
+};
+export type QuoteScene = SceneBase & {
+  type: "quote";
+  quote: string;
+  attribution?: { name: string; role?: string };
+};
+export type ComparisonScene = SceneBase & {
+  type: "comparison";
+  headline?: string;
+  headlineEmphasis?: string;
+  left: { label: string; items: string[] };   // the old/their way (✕)
+  right: { label: string; items: string[] };   // your way (✓, accent)
+};
+export type StepsScene = SceneBase & {
+  type: "steps";
+  headline?: string;
+  headlineEmphasis?: string;
+  steps: { title: string; detail?: string }[]; // numbered 1..n
+};
+export type GridScene = SceneBase & {
+  type: "grid";
+  headline?: string;
+  headlineEmphasis?: string;
+  items: { title: string; detail?: string }[]; // 2-4 feature cells
+};
+export type TimelineScene = SceneBase & {
+  type: "timeline";
+  headline?: string;
+  headlineEmphasis?: string;
+  milestones: { label: string; when?: string }[];
+};
+export type StatementScene = SceneBase & {
+  type: "statement";
+  headline: string;     // full-bleed accent gradient, white type — one bold beat
+  emphasis?: string;
+};
+export type LogosScene = SceneBase & {
+  type: "logos";
+  label?: string;       // e.g. "Trusted by"
+  names: string[];      // client/brand names rendered as a wordmark row
+};
+export type ChecklistScene = SceneBase & {
+  type: "checklist";
+  headline?: string;
+  headlineEmphasis?: string;
+  items: string[];      // accent-checked list (deliverables / what you get)
+};
+export type SplitScene = SceneBase & {
+  type: "split";
+  headline: string;     // asymmetric: big headline left, supporting points right
+  headlineEmphasis?: string;
+  points: string[];
+};
+
 export type Scene =
   | HookScene | TagsScene | OrbitScene | PipelineScene
-  | BarsScene | CurveScene | CtaScene | ScreensScene;
+  | BarsScene | CurveScene | CtaScene | ScreensScene
+  | BigStatScene | StatTrioScene | QuoteScene | ComparisonScene
+  | StepsScene | GridScene | TimelineScene | StatementScene
+  | LogosScene | ChecklistScene | SplitScene;
 
 // landscape = 1920x1080 (16:9), portrait = 1080x1920 (9:16, IG reel).
 export type Orientation = "landscape" | "portrait";

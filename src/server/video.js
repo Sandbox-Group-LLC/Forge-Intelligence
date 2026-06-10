@@ -224,17 +224,29 @@ function buildSceneGuide(allowScreens) {
     ? `\n- When the brief is about a real product WITH a website, PREFER one "screens" beat over an abstract scene (orbit/bars/curve) for the "here's the product" moment — real UI sells harder than a diagram. Use at most 2 "screens" scenes.`
     : '';
   return `
-Scene archetypes (pick the right one per beat, 5-7 scenes total):
-- hook:     { type:"hook", eyebrow?, headline, emphasis?, sub? }  — opening punch. emphasis renders as a colored 2nd line.
-- tags:     { type:"tags", headline, tags:[3-4 short words] }     — a claim + chips.
-- orbit:    { type:"orbit", centerLabel (use \\n for 2 lines), facets:[3-4], caption?, captionEmphasis? } — a hub concept with orbiting ideas.
-- pipeline: { type:"pipeline", headline, headlineEmphasis?, stages:[5-8 short labels] } — a process/flow.
-- bars:     { type:"bars", headline, headlineEmphasis?, bars:[{label,pct}], footnoteLabel?, footnoteChips?:[] } — a metric/comparison. pct 0-100.
-- curve:    { type:"curve", headline, headlineEmphasis?, flatLabel? } — a "compounds over time" idea.${screensLine}
-- cta:      { type:"cta", title, sub?, cta } — the closing call to action.
+Scene archetypes — a deck of distinct layouts. PICK THE BEST FIT PER BEAT and VARY them: do NOT reuse the same archetype twice in one video unless truly necessary. Match the layout to what the line is doing (a number wants bigstat, a process wants steps/pipeline/timeline, a contrast wants comparison, social proof wants quote/logos).
+- hook:       { type:"hook", eyebrow?, headline, emphasis?, sub? }  — opening punch. emphasis renders as a colored 2nd line.
+- tags:       { type:"tags", headline, tags:[3-4 short words] }     — a claim + chips.
+- orbit:      { type:"orbit", centerLabel (use \\n for 2 lines), facets:[3-4], caption?, captionEmphasis? } — a hub concept with orbiting ideas.
+- pipeline:   { type:"pipeline", headline, headlineEmphasis?, stages:[5-8 short labels] } — a horizontal process/flow.
+- bars:       { type:"bars", headline, headlineEmphasis?, bars:[{label,pct}], footnoteLabel?, footnoteChips?:[] } — metric comparison. pct 0-100.
+- curve:      { type:"curve", headline, headlineEmphasis?, flatLabel? } — a "compounds over time" idea.
+- bigstat:    { type:"bigstat", stat:{value,label}, sub? } — ONE giant hero number (e.g. value:"92%").
+- stattrio:   { type:"stattrio", headline?, stats:[{value,label}] (2-3) } — three proof numbers in a row.
+- quote:      { type:"quote", quote, attribution?:{name,role} } — a testimonial / pull-quote.
+- comparison: { type:"comparison", headline?, headlineEmphasis?, left:{label,items:[]}, right:{label,items:[]} } — old way (✕) vs your way (✓).
+- steps:      { type:"steps", headline?, headlineEmphasis?, steps:[{title,detail?}] } — numbered how-it-works (1..n).
+- grid:       { type:"grid", headline?, headlineEmphasis?, items:[{title,detail?}] (2-4) } — a feature grid.
+- timeline:   { type:"timeline", headline?, headlineEmphasis?, milestones:[{label,when?}] } — milestones over time.
+- statement:  { type:"statement", headline, emphasis? } — a full-bleed bold statement on the brand color (one dramatic beat).
+- logos:      { type:"logos", label?, names:[] } — social proof: a row of client/customer names.
+- checklist:  { type:"checklist", headline?, headlineEmphasis?, items:[] } — what you get / deliverables, accent checks.
+- split:      { type:"split", headline, headlineEmphasis?, points:[] } — big headline + supporting points beside it.${screensLine}
+- cta:        { type:"cta", title, sub?, cta } — the closing call to action.
 
 Rules:
 - Always open with exactly one "hook" and close with exactly one "cta".
+- VARY the middle beats — reach for the deck above, not just tags/bars/orbit every time.
 - Copy is punchy and concrete. Headlines <= 8 words. NO em dashes.${screensRule}
 - Every scene MUST include a "voiceover" string: one spoken sentence (8-22 words) that matches the on-screen beat.
 - Output ONLY JSON: { "direction": {...}, "scenes": [ { "id":"kebab-name", "type":..., ...fields, "voiceover":"..." } ] }`;
