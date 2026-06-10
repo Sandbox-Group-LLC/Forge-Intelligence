@@ -1,3 +1,24 @@
+## 2026-06-10 — Video QA pass: real audio timing, fit-to-frame, per-brand pronunciation
+
+Three fixes off Brian's QA of generated reels, all merged to `development`.
+
+### Timing + fit-to-frame (#334)
+- **VO no longer overlaps the next scene.** `synthesizeScenes` now sets `scene.durationInFrames = max(existing, voFrames + TAIL_FRAMES)` where `voFrames` comes from the REAL audio length: ElevenLabs returns exact seconds (`buf.length/16000`), OpenAI falls back to `framesForVoiceover` (word-count). `TAIL_FRAMES = 26` (~0.85s) gives a clean beat before the cut and aligns with the music duck tail.
+- **No duplicate copy** — added a "NO REPEATED COPY across scenes" rule to the storyboard prompt (Brian saw two scenes with identical lines).
+- **Out-of-frame text fixed** — new `Fit` component in `DataReel.tsx` measures `scrollWidth/Height` via `delayRender`/`continueRender` and scales content down to the safe area; `overflow:hidden` on the Stage. Verified with a 6-item portrait checklist render.
+
+### Per-brand pronunciation (#336)
+- Root cause: prompt edits to fix "SYSOI" were ignored because the brief is *interpreted* by the storyboard model, but the voiceover string is read near-literally by TTS — so the fix has to live at the spoken-text layer.
+- `applyPronunciations(text, dict)` — whole-word, case-insensitive substitution, bounded on word chars (won't touch substrings; survives punctuation/string edges). Applied to `voiceover` **right before `ttsToBuffer`** so **on-screen text keeps the real spelling**.
+- Sources merge in order: per-brand `profile_data.pronunciations` (via `pronunciationsFor()`, sanitized, capped 30) → optional per-render request override, surfaced as the **"Pronounce names like"** UI field (`SYSOI=Sis-Oy, GEO=jee-oh`).
+- **Seeded SYSOI's 3 brand profiles** `{ "SYSOI": "Sis-Oy" }` via relay (`||` merge; Brian picked spelling "Sis-Oy" from a 6-variant ElevenLabs A/B).
+- Tests: `applyPronunciations` (whole-word/punctuation/substring/empty) + `pronunciationsFor`. Full suite 197 pass.
+
+### Deploy pending
+- `DataReel.tsx` changed (Fit) → the live `forge-reels` Lambda site needs `cd remotion && npm run deploy-site` (requires `REMOTION_AWS_*`, Render-side — not available in the sandbox). Pronunciation is server-side only, no deploy needed.
+
+---
+
 ## 2026-06-09 (cont. 2) — Video generator → production-grade (creative, voice, screens, deck, arcs)
 
 The long arc that turned the video generator from "it renders" into a real product. Same governing pattern throughout: **a curated, finite vocabulary the storyboard agent picks from (grounded in the brand brain), with the human holding a veto via UI pickers.** Merge state at session end below — a stack of PRs, some merged, four still open.
