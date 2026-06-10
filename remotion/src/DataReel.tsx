@@ -136,7 +136,7 @@ const HookView: React.FC<{ s: HookScene }> = ({ s }) => {
         )}
         <div style={{ ...a, ...hl, fontSize: 110 * k, color: C.emphasis, lineHeight: 1.05 }}>
           {s.headline}
-          {s.emphasis && <><br /><span style={{ color: C.emphasis }}>{s.emphasis}</span></>}
+          {s.emphasis && <><br /><span style={{ color: C.accent }}>{s.emphasis}</span></>}
         </div>
         {s.sub && <div style={{ ...b, fontSize: 46 * k, color: C.secondary, marginTop: 40 * k, fontWeight: 500 }}>{s.sub}</div>}
       </div>
