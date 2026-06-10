@@ -1,3 +1,27 @@
+## 2026-06-09 (cont. 2) — Video generator → production-grade (creative, voice, screens, deck, arcs)
+
+The long arc that turned the video generator from "it renders" into a real product. Same governing pattern throughout: **a curated, finite vocabulary the storyboard agent picks from (grounded in the brand brain), with the human holding a veto via UI pickers.** Merge state at session end below — a stack of PRs, some merged, four still open.
+
+### Merged to development
+- **Expressive voice (#322):** voiceover was robotic because `gpt-4o-mini-tts` got one thin instruction. Switched to openai.fm-style STRUCTURED delivery direction (Voice Affect / Tone / Pacing / Emotion / Pauses); added `coral` + `verse`. Same model — the lever is the `instructions`.
+- **"screens" scene + user upload (#324):** ground reels in the REAL product, not just motion-graphics. `captureProductShots()` (scrape.js) screenshots the live site via the Bright Data browser at render orientation; `ScreensView` frames shots in browser chrome + Ken Burns + crossfade. BUT auth gates block auto-capture ~9/10, so **user upload is the primary path**: `POST /api/video/upload-shot` (registered before the global `express.json` for a 12mb limit; auth + brand-scoped) → S3 `forge-uploads/<brand>/<uuid>`; `presignShotKeys()` re-signs ONLY the brand's own prefix at render; `ensureScreensScene()` guarantees uploads land even if the agent skipped a screens beat. `assignShotsToScreens` stripes shots + downgrades to `hook` if none. Flag `VIDEO_SCREENS_ENABLED` gates AUTO-capture only (uploads always work). Brian's offline `port/` build was ported as a verified clean superset.
+
+### Open PRs at session end (all green, in flight)
+- **#326 — ElevenLabs + voice dynamics.** Per-scene punch: each line is TTS'd with ITS on-screen emphasis words named as the words to hit, plus a "demand dynamics, never monotone" directive. Added **ElevenLabs** as a provider behind `ttsToBuffer` (`VIDEO_TTS_PROVIDER` = elevenlabs|openai|auto; auto = EL when `ELEVENLABS_API_KEY` set) with **automatic OpenAI fallback**. `ELEVENLABS_VOICES` maps our 8 picker ids → premade EL voice IDs; expressive `voice_settings` (stability 0.35 / style 0.6 / speaker boost); `ELEVENLABS_MODEL` (default eleven_multilingual_v2). GOTCHA: EL **free tier blocks datacenter IPs** (401 detected_unusual_activity) → fails from sandbox AND Render; **needs Starter tier** (Brian upgraded — validated, "night and day").
+- **#327 — remove hardcoded red.** The reel's red was `C.error` left over from the original Forge reel (hook emphasis + 0% bars). Hook emphasis → brand **accent** (green/blue, consistent with other scenes); 0% bars → muted grey. No `C.error` in the template now.
+- **#328 — scene deck 7 → 18.** Reels felt recycled because the agent had only 7 layouts. Added 11: `bigstat`, `stattrio`, `quote`, `comparison`, `steps`, `grid`, `timeline`, `statement` (full-bleed accent beat), `logos`, `checklist`, `split` — all theme/brand/`k`-scale aware. `buildSceneGuide` teaches the full deck + a "VARY the beats" rule.
+- **#329 — video arcs.** Like the Social Generator's campaign arcs, for video: `POST /api/video/arcs` → `videoArcs()` (Claude, grounded in the whole brain via `arcBrainContext`) returns **8 distinct video concepts**, each `{title, angle, length, orientation, brief}`. UI: "Suggest video ideas" → 8 cards → click fills brief + length + orientation. Validated live on Sommers (8 on-strategy, non-repeating angles).
+
+### Infra / env (Forge group)
+- Render runs on **AWS Lambda** (`forge-reels` site, function `remotion-render-4-0-474-mem3008mb-disk2048mb-240sec`, us-east-1). `framesPerLambda: 400` still PINNED under the new-account concurrency cap (10); **AWS 5000 increase still pending** — drop the pin when it lands.
+- Env: `REMOTION_AWS_*` ×3, `REMOTION_LAMBDA_FUNCTION_NAME`, `REMOTION_LAMBDA_SERVE_URL`, `ELEVENLABS_API_KEY` (Starter), optional `VIDEO_TTS_PROVIDER` / `ELEVENLABS_MODEL` / `VIDEO_SCREENS_ENABLED`.
+- **Lambda site is shared state.** #327 and #328 both redeploy `forge-reels`; last deploy wins. After merging the open stack, run ONE final `cd remotion && npm run deploy-site` so the live template == development. The backend reads `REMOTION_LAMBDA_SERVE_URL`, so no code change needed on redeploy.
+
+### What's next
+- **Reconcile the stack:** merge #326/#327/#328/#329 → one final `sites create` to sync the live template.
+- Drop `framesPerLambda` after the AWS concurrency bump approves.
+- Bigger swings (not built): generative B-roll (Veo/Sora/Kling) as a premium "cinematic" mode; per-brand direction locking (persist voice/bed/theme via `manual_overrides`); music bed + ducking polish; bundle Inter locally.
+
 ## 2026-06-09 (cont.) — Video creative direction: sound, visual themes, hard length control
 
 Same session continued. The video generator was structurally solid but creatively flat ("the creative is meh"). Fixed with one repeating pattern — **a curated, finite vocabulary the storyboard agent picks from (grounded in the brand brain), with UI pickers as the human veto** — applied to sound, then visuals, plus deterministic length control. PRs #318 (music + voice) and #319 (themes + length); the #318→#319 sequencing snafu noted below.

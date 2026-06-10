@@ -27,6 +27,7 @@ interface VideoJob {
 }
 interface RecentVideo { id: string; status: Status; output_url: string | null; error: string | null; created_at: string; }
 interface DirectionOption { id: string; desc: string; }
+interface VideoArc { id: string; title: string; angle: string; brief: string; length: number; orientation: 'landscape' | 'portrait'; }
 
 // Human-readable label + rough completion weight for the progress bar. The
 // Lambda render reports its own 0..1 progress; the earlier stages are coarse.
@@ -43,6 +44,8 @@ function VideoGeneratorContent() {
   const { historyEntries, activeBrand, authToken } = useApp();
   const [selectedBrainId, setSelectedBrainId] = useState('');
   const [brief, setBrief] = useState('');
+  const [arcs, setArcs] = useState<VideoArc[]>([]);
+  const [arcsLoading, setArcsLoading] = useState(false);
   const [orientation, setOrientation] = useState<'landscape' | 'portrait'>('landscape');
   const [voice, setVoice] = useState('auto');
   const [musicBed, setMusicBed] = useState('auto');
@@ -106,6 +109,31 @@ function VideoGeneratorContent() {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [job?.id, job?.status, authToken, loadRecent]);
 
+  async function suggestArcs() {
+    if (!selectedBrainId || !authToken) return;
+    setArcsLoading(true); setError(null);
+    try {
+      const r = await fetch('/api/video/arcs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ brandProfileId: selectedBrainId }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Could not generate ideas');
+      setArcs(d.arcs || []);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setArcsLoading(false);
+    }
+  }
+
+  function useArc(a: VideoArc) {
+    setBrief(a.brief);
+    setTargetSeconds(a.length);
+    setOrientation(a.orientation);
+  }
+
   async function generate() {
     if (!selectedBrainId || !brief.trim() || !authToken) return;
     setBusy(true); setError(null); setJob(null);
@@ -143,6 +171,27 @@ function VideoGeneratorContent() {
           <option value="">Select a Brain…</option>
           {brains.map(b => <option key={b.id} value={b.id}>{b.brandName} — {b.brandUrl}</option>)}
         </select>
+
+        <div className="vg-arcs-head">
+          <label className="vg-label" style={{ marginBottom: 0 }}>Need ideas? <span className="vg-optional">8 video concepts from the brand brain</span></label>
+          <button type="button" className="vg-arcs-btn" onClick={suggestArcs} disabled={arcsLoading || !selectedBrainId}>
+            {arcsLoading ? 'Thinking…' : arcs.length ? 'Regenerate ideas' : 'Suggest video ideas'}
+          </button>
+        </div>
+        {arcs.length > 0 && (
+          <div className="vg-arcs">
+            {arcs.map(a => (
+              <button type="button" key={a.id} className="vg-arc" onClick={() => useArc(a)} title="Use this idea">
+                <div className="vg-arc-top">
+                  <span className="vg-arc-title">{a.title}</span>
+                  <span className="vg-arc-meta">{a.length}s · {a.orientation === 'portrait' ? '9:16' : '16:9'}</span>
+                </div>
+                {a.angle && <div className="vg-arc-angle">{a.angle}</div>}
+                <div className="vg-arc-brief">{a.brief}</div>
+              </button>
+            ))}
+          </div>
+        )}
 
         <label className="vg-label">Brief</label>
         <textarea

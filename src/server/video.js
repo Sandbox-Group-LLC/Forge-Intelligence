@@ -141,13 +141,15 @@ export const THEMES = {
   kinetic:   { desc: 'springy, fast, punchy entrances — launch-day energy' },
 };
 
-// Rich, structured default delivery (openai.fm style) — multi-dimensional
-// direction is what makes gpt-4o-mini-tts sound human instead of robotic.
-const DEFAULT_VOICE_INSTRUCTIONS = `Voice Affect: Confident, modern, and genuinely engaged — like a smart founder who believes what they're saying.
-Tone: Warm and conversational, never an announcer or a robot.
-Pacing: Natural and varied — quicker through setup, slowing to land the key phrase. Avoid a flat, even cadence.
-Emotion: Real conviction and a little energy.
-Pauses: Brief, natural breaths between sentences; a beat before the payoff line.`;
+// Rich, structured default delivery (openai.fm style). gpt-4o-mini-tts reads
+// flat unless the instructions DEMAND dynamics — so this is performance
+// direction (a punchy ad read), not tasteful narration.
+const DEFAULT_VOICE_INSTRUCTIONS = `Voice Affect: A charismatic brand storyteller delivering a punchy ad read — full of personality and momentum, NOT a corporate narrator.
+Delivery: HIGHLY DYNAMIC. Wide pitch range — rise with momentum, then drop low for gravity on the key line. Vary loudness. NEVER monotone, never an even cadence.
+Pacing: Constantly varied — quicken through the setup, then SLOW down and land the payoff.
+Emphasis: PUNCH the important words hard, with a clear lift in pitch and volume — product names, numbers, and power words. Let the small connecting words fall back.
+Emotion: Genuine conviction with a little swagger.
+Pauses: A real beat before the payoff line; let big claims breathe.`;
 
 const DEFAULT_DIRECTION = {
   voice: 'ash',
@@ -224,17 +226,29 @@ function buildSceneGuide(allowScreens) {
     ? `\n- When the brief is about a real product WITH a website, PREFER one "screens" beat over an abstract scene (orbit/bars/curve) for the "here's the product" moment — real UI sells harder than a diagram. Use at most 2 "screens" scenes.`
     : '';
   return `
-Scene archetypes (pick the right one per beat, 5-7 scenes total):
-- hook:     { type:"hook", eyebrow?, headline, emphasis?, sub? }  — opening punch. emphasis renders as a colored 2nd line.
-- tags:     { type:"tags", headline, tags:[3-4 short words] }     — a claim + chips.
-- orbit:    { type:"orbit", centerLabel (use \\n for 2 lines), facets:[3-4], caption?, captionEmphasis? } — a hub concept with orbiting ideas.
-- pipeline: { type:"pipeline", headline, headlineEmphasis?, stages:[5-8 short labels] } — a process/flow.
-- bars:     { type:"bars", headline, headlineEmphasis?, bars:[{label,pct}], footnoteLabel?, footnoteChips?:[] } — a metric/comparison. pct 0-100.
-- curve:    { type:"curve", headline, headlineEmphasis?, flatLabel? } — a "compounds over time" idea.${screensLine}
-- cta:      { type:"cta", title, sub?, cta } — the closing call to action.
+Scene archetypes — a deck of distinct layouts. PICK THE BEST FIT PER BEAT and VARY them: do NOT reuse the same archetype twice in one video unless truly necessary. Match the layout to what the line is doing (a number wants bigstat, a process wants steps/pipeline/timeline, a contrast wants comparison, social proof wants quote/logos).
+- hook:       { type:"hook", eyebrow?, headline, emphasis?, sub? }  — opening punch. emphasis renders as a colored 2nd line.
+- tags:       { type:"tags", headline, tags:[3-4 short words] }     — a claim + chips.
+- orbit:      { type:"orbit", centerLabel (use \\n for 2 lines), facets:[3-4], caption?, captionEmphasis? } — a hub concept with orbiting ideas.
+- pipeline:   { type:"pipeline", headline, headlineEmphasis?, stages:[5-8 short labels] } — a horizontal process/flow.
+- bars:       { type:"bars", headline, headlineEmphasis?, bars:[{label,pct}], footnoteLabel?, footnoteChips?:[] } — metric comparison. pct 0-100.
+- curve:      { type:"curve", headline, headlineEmphasis?, flatLabel? } — a "compounds over time" idea.
+- bigstat:    { type:"bigstat", stat:{value,label}, sub? } — ONE giant hero number (e.g. value:"92%").
+- stattrio:   { type:"stattrio", headline?, stats:[{value,label}] (2-3) } — three proof numbers in a row.
+- quote:      { type:"quote", quote, attribution?:{name,role} } — a testimonial / pull-quote.
+- comparison: { type:"comparison", headline?, headlineEmphasis?, left:{label,items:[]}, right:{label,items:[]} } — old way (✕) vs your way (✓).
+- steps:      { type:"steps", headline?, headlineEmphasis?, steps:[{title,detail?}] } — numbered how-it-works (1..n).
+- grid:       { type:"grid", headline?, headlineEmphasis?, items:[{title,detail?}] (2-4) } — a feature grid.
+- timeline:   { type:"timeline", headline?, headlineEmphasis?, milestones:[{label,when?}] } — milestones over time.
+- statement:  { type:"statement", headline, emphasis? } — a full-bleed bold statement on the brand color (one dramatic beat).
+- logos:      { type:"logos", label?, names:[] } — social proof: a row of client/customer names.
+- checklist:  { type:"checklist", headline?, headlineEmphasis?, items:[] } — what you get / deliverables, accent checks.
+- split:      { type:"split", headline, headlineEmphasis?, points:[] } — big headline + supporting points beside it.${screensLine}
+- cta:        { type:"cta", title, sub?, cta } — the closing call to action.
 
 Rules:
 - Always open with exactly one "hook" and close with exactly one "cta".
+- VARY the middle beats — reach for the deck above, not just tags/bars/orbit every time.
 - Copy is punchy and concrete. Headlines <= 8 words. NO em dashes.${screensRule}
 - Every scene MUST include a "voiceover" string: one spoken sentence (8-22 words) that matches the on-screen beat.
 - Output ONLY JSON: { "direction": {...}, "scenes": [ { "id":"kebab-name", "type":..., ...fields, "voiceover":"..." } ] }`;
@@ -273,12 +287,13 @@ Include in the output JSON:
 
 voiceInstructions is the single biggest lever on whether the voiceover sounds human or robotic. Do NOT write one flat sentence. Write a SHORT, MULTI-LINE delivery direction for a real voice actor, tuned to THIS brand, using these labeled lines (omit any that don't apply):
 Voice Affect: <the persona behind the mic — e.g. "a calm luxury creative director", "a sharp, excited founder">
+Delivery: ALWAYS demand wide dynamic range — vary pitch and volume, rise with momentum then drop to land a line. Explicitly say "never monotone / never an even cadence." This is the most important line.
 Tone: <warm/commanding/playful/intimate — and what to AVOID, e.g. "never an announcer">
 Pacing: <fast/slow/varied; tell it where to speed up and where to slow down and land a line>
 Emotion: <the feeling to convey>
-Emphasis: <which words/phrases to stress>
+Emphasis: <which words/phrases to punch hard>
 Pauses: <where to breathe or hold a beat>
-Keep it punchy (5-7 short lines). Match it to the brand: a luxury brand = unhurried, intimate, composed; a launch = fast, bright, energetic.`;
+Keep it punchy (5-7 short lines). Even a calm luxury brand should still have inflection and dynamics — composed is not the same as flat. Match the energy to the brand: luxury = unhurried but rich and expressive; a launch = fast, bright, high-energy.`;
 }
 
 function lengthGuide(targetSeconds) {
@@ -324,6 +339,56 @@ export function brandContextFor(profileData) {
   return parts.join('\n').slice(0, 2000);
 }
 
+// ── Video arcs (a slate of video concepts) ──────────────────────────────────
+// Like the Social Generator's campaign arcs, but for video: one click yields N
+// distinct reel ideas, each a ready-to-run brief the user can generate in a tap.
+// Grounded in the whole brain (positioning, buyer, personas, whitespace, the
+// existing campaignArcs as seeds), not just the voice.
+function arcBrainContext(pd) {
+  const bp = pd?.businessProfile || {};
+  const parts = [brandContextFor(pd)];
+  if (bp.whatTheyDo) parts.push(`What they do: ${bp.whatTheyDo}`);
+  if (bp.targetBuyer) parts.push(`Buyer: ${bp.targetBuyer}`);
+  if (Array.isArray(pd?.personas) && pd.personas.length) parts.push(`Personas: ${pd.personas.map(p => p.name).filter(Boolean).join(', ')}`);
+  if (Array.isArray(pd?.competitiveGaps) && pd.competitiveGaps.length) parts.push(`Whitespace topics: ${pd.competitiveGaps.map(g => g.topic).filter(Boolean).slice(0, 5).join('; ')}`);
+  if (Array.isArray(pd?.strategicMoats) && pd.strategicMoats.length) parts.push(`Moats (what they deliberately don't do): ${pd.strategicMoats.map(m => m.capability).filter(Boolean).join('; ')}`);
+  if (Array.isArray(pd?.campaignArcs) && pd.campaignArcs.length) parts.push(`Existing campaign arcs (seed thinking, do not just copy): ${pd.campaignArcs.map(a => a.title).filter(Boolean).join('; ')}`);
+  return parts.filter(Boolean).join('\n').slice(0, 3000);
+}
+
+export async function videoArcs(brandName, profileData, count = 8) {
+  const ctx = arcBrainContext(profileData);
+  const prompt = `You are a brand video strategist for "${brandName}". Propose ${count} DISTINCT short-form video concepts — a video content slate. Each is a self-contained reel with a DIFFERENT strategic angle (e.g. problem/solution, hard proof, founder POV, how-it-works, us-vs-them, customer story, a bold contrarian claim, behind-the-scenes, a single killer stat, a myth-bust). Do not repeat angles.
+
+BRAND:
+${ctx}
+
+For each concept return:
+- "title": a short internal name for the idea
+- "angle": one phrase naming the strategic angle
+- "length": 15, 30, or 60 (seconds) — whatever fits the idea
+- "orientation": "portrait" (social/IG/TikTok) or "landscape" (web/YouTube)
+- "brief": 1-2 sentences a video director can run with — what it says and its arc (hook -> body -> CTA). Concrete and on-brand. NO em dashes.
+
+Output ONLY JSON: { "arcs": [ { "id":"kebab-name", "title", "angle", "length", "orientation", "brief" } ] }`;
+  const msg = await anthropic.messages.create({
+    model: 'claude-sonnet-4-6', max_tokens: 3000,
+    messages: [{ role: 'user', content: prompt }],
+  });
+  const parsed = safeParseLLM(msg?.content?.[0]?.text || '');
+  const raw = Array.isArray(parsed?.arcs) ? parsed.arcs : [];
+  const arcs = raw.slice(0, count).map((a, i) => ({
+    id: typeof a.id === 'string' && a.id ? a.id : `arc-${i + 1}`,
+    title: String(a.title || `Idea ${i + 1}`).slice(0, 90),
+    angle: String(a.angle || '').slice(0, 140),
+    brief: String(a.brief || '').slice(0, 700),
+    length: [15, 30, 60].includes(Number(a.length)) ? Number(a.length) : 30,
+    orientation: a.orientation === 'portrait' ? 'portrait' : 'landscape',
+  })).filter((a) => a.brief);
+  if (!arcs.length) throw new Error('Video arc generator returned no usable arcs');
+  return arcs;
+}
+
 // ── Per-scene TTS -> S3 (presigned URL) ───────────────────────────────────
 // Estimate spoken length from word count (~2.3 words/sec) so the scene is never
 // shorter than its audio; add a short tail. Avoids needing ffprobe on the dyno.
@@ -333,7 +398,61 @@ export function framesForVoiceover(vo) {
   return Math.round(seconds * FPS);
 }
 
-async function ttsToBuffer(text, voice, instructions) {
+// The on-screen emphasis words ARE the buzzwords to punch. Pull them per scene
+// (the colored headline span, tag chips, the stat value) and append an explicit
+// "punch these, with a pitch+volume lift" line to the brand's base direction.
+// This is what gives each line its inflection arc instead of a flat read.
+export function punchWordsFor(scene) {
+  if (!scene) return [];
+  const w = [
+    scene.emphasis, scene.headlineEmphasis, scene.captionEmphasis,
+    scene.stat && scene.stat.value, scene.cta,
+    ...(Array.isArray(scene.tags) ? scene.tags.slice(0, 3) : []),
+  ].filter((x) => typeof x === 'string' && x.trim());
+  return [...new Set(w.map((x) => x.trim()))];
+}
+
+export function voiceInstructionsForScene(base, scene) {
+  const instr = base || DEFAULT_VOICE_INSTRUCTIONS;
+  const punch = punchWordsFor(scene);
+  const punchLine = punch.length
+    ? `\nPunch these words/phrases HARD — a clear lift in pitch and volume on each: ${punch.map((p) => `"${p}"`).join(', ')}.`
+    : '';
+  // One line of a punchy reel: always demand a strong inflection arc, even when
+  // the base direction is a brand's own (possibly tame) voiceInstructions.
+  return `${instr}\nThis is ONE line of a high-energy brand reel — perform it with a strong inflection arc (rise, then land), not a flat read.${punchLine}`;
+}
+
+// ── Voiceover providers ─────────────────────────────────────────────────────
+// ElevenLabs has more theatrical range than gpt-4o-mini-tts. Both are wired;
+// ttsToBuffer dispatches by provider with automatic fallback to OpenAI, so the
+// pipeline never fails on an ElevenLabs error (e.g. free-tier datacenter block,
+// quota). Provider: VIDEO_TTS_PROVIDER = 'elevenlabs' | 'openai' | 'auto'
+// (default: ElevenLabs when ELEVENLABS_API_KEY is set, else OpenAI).
+//
+// Our curated picker ids map to premade ElevenLabs voice IDs (verified on the
+// account via GET /v1/voices). On ElevenLabs, expressiveness comes from
+// voice_settings (low stability + high style = dynamic range), NOT a free-text
+// instruction — so the per-scene punch direction applies to the OpenAI path.
+const ELEVENLABS_VOICES = {
+  ash:     'cjVigY5qzO86Huf0OWal', // Eric — smooth, trustworthy
+  onyx:    'pqHfZKP75CvOlQylNhV4', // Bill — wise, mature (advertisement)
+  ballad:  'JBFqnCBsd6RMkjVDRZzb', // George — warm storyteller
+  sage:    'bIHbv24MWmeRgasZH58o', // Will — relaxed optimist
+  nova:    'cgSgspJ2msm6clMCkdW9', // Jessica — playful, bright
+  shimmer: 'TX3LPaxmHKxFdv7VOQHJ', // Liam — energetic
+  coral:   'iP95p4xoKVk53GoZ742B', // Chris — charming
+  verse:   'IKne3meq5aSn9XLyUdCD', // Charlie — deep, confident, energetic
+};
+
+export function ttsProvider() {
+  const pref = String(process.env.VIDEO_TTS_PROVIDER || 'auto').toLowerCase();
+  if (pref === 'openai') return 'openai';
+  if (pref === 'elevenlabs') return 'elevenlabs';
+  return process.env.ELEVENLABS_API_KEY ? 'elevenlabs' : 'openai'; // auto
+}
+
+async function ttsOpenAI(text, voice, instructions) {
   const res = await fetch('https://api.openai.com/v1/audio/speech', {
     method: 'POST',
     headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
@@ -346,6 +465,34 @@ async function ttsToBuffer(text, voice, instructions) {
   });
   if (!res.ok) throw new Error(`OpenAI TTS ${res.status}: ${(await res.text()).slice(0, 200)}`);
   return Buffer.from(await res.arrayBuffer());
+}
+
+async function ttsElevenLabs(text, voice) {
+  const voiceId = ELEVENLABS_VOICES[voice] || ELEVENLABS_VOICES.ash;
+  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`, {
+    method: 'POST',
+    headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      text,
+      model_id: process.env.ELEVENLABS_MODEL || 'eleven_multilingual_v2',
+      // Low stability + high style = the dynamic, expressive read (the "ups and
+      // downs"); speaker boost firms up the voice identity.
+      voice_settings: { stability: 0.35, similarity_boost: 0.75, style: 0.6, use_speaker_boost: true },
+    }),
+  });
+  if (!res.ok) throw new Error(`ElevenLabs ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
+async function ttsToBuffer(text, voice, instructions) {
+  if (ttsProvider() === 'elevenlabs' && process.env.ELEVENLABS_API_KEY) {
+    try {
+      return await ttsElevenLabs(text, voice);
+    } catch (e) {
+      console.warn('[VIDEO] ElevenLabs TTS failed, falling back to OpenAI:', e.message);
+    }
+  }
+  return ttsOpenAI(text, voice, instructions);
 }
 
 async function uploadAndPresign(buf, key, contentType = 'audio/mpeg') {
@@ -422,7 +569,8 @@ export async function synthesizeScenes(scenes, jobId, direction, opts = {}) {
     const { voiceover, ...scene } = work[i];
     scene.durationInFrames = scene.durationInFrames || framesForVoiceover(voiceover);
     if (voiceover && process.env.OPENAI_API_KEY) {
-      const buf = await ttsToBuffer(voiceover, d.voice, d.voiceInstructions);
+      // Per-scene direction: brand voice + this scene's on-screen punch words.
+      const buf = await ttsToBuffer(voiceover, d.voice, voiceInstructionsForScene(d.voiceInstructions, work[i]));
       scene.audio = await uploadAndPresign(buf, `forge-audio/${jobId}/${scene.id || i}.mp3`);
     }
     out.push(scene);

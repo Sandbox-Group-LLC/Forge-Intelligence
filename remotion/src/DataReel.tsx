@@ -6,6 +6,8 @@ import {
 import type {
   Brand, Scene, HookScene, TagsScene, OrbitScene,
   PipelineScene, BarsScene, CurveScene, CtaScene, ScreensScene, VideoProps, ThemeId,
+  BigStatScene, StatTrioScene, QuoteScene, ComparisonScene, StepsScene,
+  GridScene, TimelineScene, StatementScene, LogosScene, ChecklistScene, SplitScene,
 } from "./types";
 
 // Forge defaults — any brand.colors key overrides these.
@@ -136,7 +138,7 @@ const HookView: React.FC<{ s: HookScene }> = ({ s }) => {
         )}
         <div style={{ ...a, ...hl, fontSize: 110 * k, color: C.emphasis, lineHeight: 1.05 }}>
           {s.headline}
-          {s.emphasis && <><br /><span style={{ color: C.error }}>{s.emphasis}</span></>}
+          {s.emphasis && <><br /><span style={{ color: C.accent }}>{s.emphasis}</span></>}
         </div>
         {s.sub && <div style={{ ...b, fontSize: 46 * k, color: C.secondary, marginTop: 40 * k, fontWeight: 500 }}>{s.sub}</div>}
       </div>
@@ -263,9 +265,9 @@ const BarRow: React.FC<{ label: string; pct: number; delay: number }> = ({ label
     <div style={{ display: "flex", alignItems: "center", gap: 28 * k, marginBottom: 22 * k }}>
       <span style={{ width: 380 * k, fontSize: 38 * k, fontWeight: 600, color: C.emphasis }}>{label}</span>
       <div style={{ flex: 1, height: 30 * k, background: C.border, borderRadius: 15 * k, overflow: "hidden" }}>
-        <div style={{ width: `${Math.max(w, zero ? 1.2 : w)}%`, height: "100%", background: zero ? C.error : C.accent, borderRadius: 15 * k }} />
+        <div style={{ width: `${Math.max(w, zero ? 1.2 : w)}%`, height: "100%", background: zero ? C.muted : C.accent, borderRadius: 15 * k }} />
       </div>
-      <span style={{ width: 100 * k, textAlign: "right", fontSize: 38 * k, fontWeight: 700, color: zero ? C.error : C.emphasis }}>{Math.round(w)}%</span>
+      <span style={{ width: 100 * k, textAlign: "right", fontSize: 38 * k, fontWeight: 700, color: zero ? C.muted : C.emphasis }}>{Math.round(w)}%</span>
     </div>
   );
 };
@@ -423,6 +425,243 @@ const CtaView: React.FC<{ s: CtaScene }> = ({ s }) => {
   );
 };
 
+// ── Expanded deck ───────────────────────────────────────────────────────────
+const BigStatView: React.FC<{ s: BigStatScene }> = ({ s }) => {
+  const { C } = React.useContext(Ctx); const { k } = useL(); const hl = useHeadline();
+  const a = useRise(0), b = useRise(14);
+  return (
+    <Stage audio={s.audio}>
+      <div style={{ textAlign: "center", maxWidth: 1500 * k }}>
+        <div style={{ ...a, ...hl, fontSize: 300 * k, lineHeight: 1, color: C.accent }}>{s.stat.value}</div>
+        <div style={{ ...b, fontSize: 54 * k, fontWeight: 700, color: C.emphasis, marginTop: 18 * k }}>{s.stat.label}</div>
+        {s.sub && <div style={{ ...b, fontSize: 38 * k, color: C.secondary, marginTop: 16 * k, fontWeight: 500 }}>{s.sub}</div>}
+      </div>
+    </Stage>
+  );
+};
+
+const StatTrioView: React.FC<{ s: StatTrioScene }> = ({ s }) => {
+  const { C } = React.useContext(Ctx); const { k } = useL(); const hl = useHeadline();
+  const head = useRise(0);
+  return (
+    <Stage audio={s.audio}>
+      <div style={{ textAlign: "center", maxWidth: 1640 * k }}>
+        {s.headline && <div style={{ ...head, ...hl, fontSize: 60 * k, color: C.emphasis, marginBottom: 64 * k }}>{s.headline}</div>}
+        <div style={{ display: "flex", gap: 64 * k, justifyContent: "center", flexWrap: "wrap" }}>
+          {s.stats.map((st, i) => {
+            const r = useRise(20 + i * 16);
+            return (
+              <div key={i} style={{ ...r, textAlign: "center" }}>
+                <div style={{ ...hl, fontSize: 130 * k, lineHeight: 1, color: C.accent }}>{st.value}</div>
+                <div style={{ fontSize: 30 * k, fontWeight: 600, color: C.secondary, marginTop: 14 * k }}>{st.label}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </Stage>
+  );
+};
+
+const QuoteView: React.FC<{ s: QuoteScene }> = ({ s }) => {
+  const { C } = React.useContext(Ctx); const { k } = useL(); const hl = useHeadline();
+  const a = useRise(0), b = useRise(16);
+  return (
+    <Stage audio={s.audio}>
+      <div style={{ textAlign: "center", maxWidth: 1500 * k }}>
+        <div style={{ ...a, fontSize: 180 * k, lineHeight: 0.6, color: C.accent, fontWeight: 800, fontFamily: 'Georgia, "Times New Roman", serif' }}>&ldquo;</div>
+        <div style={{ ...a, ...hl, fontSize: 60 * k, color: C.emphasis, lineHeight: 1.28, fontWeight: 600, marginTop: 12 * k }}>{s.quote}</div>
+        {s.attribution && (
+          <div style={{ ...b, marginTop: 40 * k }}>
+            <div style={{ fontSize: 34 * k, fontWeight: 700, color: C.emphasis }}>{s.attribution.name}</div>
+            {s.attribution.role && <div style={{ fontSize: 28 * k, color: C.secondary, marginTop: 6 * k }}>{s.attribution.role}</div>}
+          </div>
+        )}
+      </div>
+    </Stage>
+  );
+};
+
+const ComparisonView: React.FC<{ s: ComparisonScene }> = ({ s }) => {
+  const { C } = React.useContext(Ctx); const { k, portrait } = useL(); const hl = useHeadline();
+  const head = useRise(0);
+  const Col: React.FC<{ data: { label: string; items: string[] }; on: boolean; mark: string; delay: number }> = ({ data, on, mark, delay }) => (
+    <div style={{ flex: 1, background: C.card, border: `2px solid ${on ? C.accent : C.border}`, borderRadius: 20 * k, padding: `${34 * k}px ${38 * k}px` }}>
+      <div style={{ fontSize: 34 * k, fontWeight: 800, color: on ? C.accent : C.muted, marginBottom: 26 * k }}>{data.label}</div>
+      {data.items.map((it, i) => {
+        const r = useRise(delay + i * 10);
+        return (
+          <div key={i} style={{ ...r, display: "flex", gap: 14 * k, alignItems: "flex-start", marginBottom: 16 * k, fontSize: 30 * k, color: C.emphasis, fontWeight: 500 }}>
+            <span style={{ color: on ? C.accent : C.muted, fontWeight: 800, flexShrink: 0 }}>{mark}</span>{it}
+          </div>
+        );
+      })}
+    </div>
+  );
+  return (
+    <Stage audio={s.audio}>
+      <div style={{ width: 1500 * k }}>
+        {s.headline && <div style={{ ...head, ...hl, fontSize: 64 * k, color: C.emphasis, textAlign: "center", marginBottom: 48 * k }}>{s.headline} {s.headlineEmphasis && <span style={{ color: C.accent }}>{s.headlineEmphasis}</span>}</div>}
+        <div style={{ display: "flex", flexDirection: portrait ? "column" : "row", gap: 32 * k, alignItems: "stretch" }}>
+          <Col data={s.left} on={false} mark="✕" delay={30} />
+          <Col data={s.right} on mark="✓" delay={45} />
+        </div>
+      </div>
+    </Stage>
+  );
+};
+
+const StepsView: React.FC<{ s: StepsScene }> = ({ s }) => {
+  const { C } = React.useContext(Ctx); const { k } = useL(); const hl = useHeadline();
+  const head = useRise(0);
+  return (
+    <Stage audio={s.audio}>
+      <div style={{ width: 1300 * k }}>
+        {s.headline && <div style={{ ...head, ...hl, fontSize: 64 * k, color: C.emphasis, textAlign: "center", marginBottom: 54 * k }}>{s.headline} {s.headlineEmphasis && <span style={{ color: C.accent }}>{s.headlineEmphasis}</span>}</div>}
+        {s.steps.map((st, i) => {
+          const r = useRise(20 + i * 16);
+          return (
+            <div key={i} style={{ ...r, display: "flex", gap: 28 * k, alignItems: "center", marginBottom: 30 * k }}>
+              <div style={{ flexShrink: 0, width: 72 * k, height: 72 * k, borderRadius: "50%", background: C.accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36 * k, fontWeight: 800 }}>{i + 1}</div>
+              <div>
+                <div style={{ fontSize: 40 * k, fontWeight: 700, color: C.emphasis }}>{st.title}</div>
+                {st.detail && <div style={{ fontSize: 30 * k, color: C.secondary, marginTop: 6 * k }}>{st.detail}</div>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Stage>
+  );
+};
+
+const GridView: React.FC<{ s: GridScene }> = ({ s }) => {
+  const { C } = React.useContext(Ctx); const { k } = useL(); const hl = useHeadline();
+  const head = useRise(0);
+  return (
+    <Stage audio={s.audio}>
+      <div style={{ width: 1500 * k }}>
+        {s.headline && <div style={{ ...head, ...hl, fontSize: 60 * k, color: C.emphasis, textAlign: "center", marginBottom: 50 * k }}>{s.headline} {s.headlineEmphasis && <span style={{ color: C.accent }}>{s.headlineEmphasis}</span>}</div>}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 28 * k, justifyContent: "center" }}>
+          {s.items.map((it, i) => {
+            const r = useRise(20 + i * 12);
+            return (
+              <div key={i} style={{ ...r, flex: "1 1 44%", minWidth: 0, background: C.card, border: `2px solid ${C.border}`, borderRadius: 18 * k, padding: `${30 * k}px ${34 * k}px` }}>
+                <div style={{ width: 18 * k, height: 18 * k, borderRadius: 6 * k, background: C.accent, marginBottom: 20 * k }} />
+                <div style={{ fontSize: 36 * k, fontWeight: 700, color: C.emphasis }}>{it.title}</div>
+                {it.detail && <div style={{ fontSize: 28 * k, color: C.secondary, marginTop: 10 * k, lineHeight: 1.35 }}>{it.detail}</div>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </Stage>
+  );
+};
+
+const TimelineView: React.FC<{ s: TimelineScene }> = ({ s }) => {
+  const { C } = React.useContext(Ctx); const { k, portrait } = useL(); const hl = useHeadline();
+  const head = useRise(0);
+  return (
+    <Stage audio={s.audio}>
+      <div style={{ width: (portrait ? 920 : 1640) * k, textAlign: "center" }}>
+        {s.headline && <div style={{ ...head, ...hl, fontSize: 62 * k, color: C.emphasis, marginBottom: 70 * k }}>{s.headline} {s.headlineEmphasis && <span style={{ color: C.accent }}>{s.headlineEmphasis}</span>}</div>}
+        <div style={{ display: "flex", flexWrap: portrait ? "wrap" : "nowrap", alignItems: "flex-start", justifyContent: "center", gap: portrait ? 24 * k : 0 }}>
+          {s.milestones.map((m, i) => {
+            const r = useRise(20 + i * 14); const last = i === s.milestones.length - 1;
+            return (
+              <React.Fragment key={i}>
+                <div style={{ ...r, display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0, width: portrait ? "auto" : 220 * k }}>
+                  <div style={{ width: 28 * k, height: 28 * k, borderRadius: "50%", background: C.accent }} />
+                  {m.when && <div style={{ fontSize: 26 * k, fontWeight: 700, color: C.accent, marginTop: 16 * k }}>{m.when}</div>}
+                  <div style={{ fontSize: 30 * k, fontWeight: 600, color: C.emphasis, marginTop: 8 * k, maxWidth: 200 * k }}>{m.label}</div>
+                </div>
+                {!portrait && !last && <div style={{ height: 4 * k, background: C.border, flex: 1, marginTop: 12 * k, minWidth: 40 * k }} />}
+              </React.Fragment>
+            );
+          })}
+        </div>
+      </div>
+    </Stage>
+  );
+};
+
+const StatementView: React.FC<{ s: StatementScene }> = ({ s }) => {
+  const { C, font } = React.useContext(Ctx); const { k } = useL(); const hl = useHeadline();
+  const src = audioSrc(s.audio); const a = useRise(0);
+  // Full-bleed accent gradient, white type — a single dramatic beat that breaks
+  // the light-canvas rhythm. Ignores theme bg on purpose.
+  return (
+    <AbsoluteFill style={{ background: `linear-gradient(135deg, ${C.accent}, ${C.accent2})`, fontFamily: font, justifyContent: "center", alignItems: "center", padding: 120 * k }}>
+      {src && <Audio src={src} />}
+      <div style={{ ...a, ...hl, fontSize: 120 * k, color: "#fff", textAlign: "center", lineHeight: 1.05, maxWidth: 1500 * k }}>
+        {s.headline}{s.emphasis && <><br /><span style={{ opacity: 0.82 }}>{s.emphasis}</span></>}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+const LogosView: React.FC<{ s: LogosScene }> = ({ s }) => {
+  const { C } = React.useContext(Ctx); const { k } = useL();
+  const head = useRise(0);
+  return (
+    <Stage audio={s.audio}>
+      <div style={{ textAlign: "center", maxWidth: 1640 * k }}>
+        <div style={{ ...head, fontSize: 28 * k, letterSpacing: 4 * k, color: C.muted, fontWeight: 700, textTransform: "uppercase", marginBottom: 46 * k }}>{s.label || "Trusted by"}</div>
+        <div style={{ display: "flex", gap: 56 * k, justifyContent: "center", flexWrap: "wrap", alignItems: "center" }}>
+          {s.names.map((n, i) => {
+            const r = useRise(20 + i * 10);
+            return <span key={i} style={{ ...r, fontSize: 50 * k, fontWeight: 800, color: C.secondary }}>{n}</span>;
+          })}
+        </div>
+      </div>
+    </Stage>
+  );
+};
+
+const ChecklistView: React.FC<{ s: ChecklistScene }> = ({ s }) => {
+  const { C } = React.useContext(Ctx); const { k } = useL(); const hl = useHeadline();
+  const head = useRise(0);
+  return (
+    <Stage audio={s.audio}>
+      <div style={{ maxWidth: 1200 * k }}>
+        {s.headline && <div style={{ ...head, ...hl, fontSize: 64 * k, color: C.emphasis, textAlign: "center", marginBottom: 50 * k }}>{s.headline} {s.headlineEmphasis && <span style={{ color: C.accent }}>{s.headlineEmphasis}</span>}</div>}
+        {s.items.map((it, i) => {
+          const r = useRise(20 + i * 12);
+          return (
+            <div key={i} style={{ ...r, display: "flex", gap: 22 * k, alignItems: "center", marginBottom: 26 * k, fontSize: 42 * k, color: C.emphasis, fontWeight: 600 }}>
+              <span style={{ flexShrink: 0, width: 52 * k, height: 52 * k, borderRadius: "50%", background: C.accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 * k, fontWeight: 800 }}>✓</span>
+              {it}
+            </div>
+          );
+        })}
+      </div>
+    </Stage>
+  );
+};
+
+const SplitView: React.FC<{ s: SplitScene }> = ({ s }) => {
+  const { C } = React.useContext(Ctx); const { k, portrait } = useL(); const hl = useHeadline();
+  const a = useRise(0);
+  return (
+    <Stage audio={s.audio}>
+      <div style={{ display: "flex", flexDirection: portrait ? "column" : "row", gap: 60 * k, alignItems: portrait ? "flex-start" : "center", width: 1640 * k }}>
+        <div style={{ ...a, ...hl, flex: 1, fontSize: 84 * k, color: C.emphasis, lineHeight: 1.08 }}>{s.headline} {s.headlineEmphasis && <span style={{ color: C.accent }}>{s.headlineEmphasis}</span>}</div>
+        <div style={{ flex: 1 }}>
+          {s.points.map((p, i) => {
+            const r = useRise(20 + i * 14);
+            return (
+              <div key={i} style={{ ...r, display: "flex", gap: 18 * k, alignItems: "flex-start", marginBottom: 24 * k, fontSize: 36 * k, color: C.secondary, fontWeight: 500 }}>
+                <span style={{ color: C.accent, fontWeight: 800, flexShrink: 0 }}>—</span>{p}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </Stage>
+  );
+};
+
 const renderScene = (s: Scene) => {
   switch (s.type) {
     case "hook": return <HookView s={s} />;
@@ -433,6 +672,17 @@ const renderScene = (s: Scene) => {
     case "curve": return <CurveView s={s} />;
     case "screens": return <ScreensView s={s} />;
     case "cta": return <CtaView s={s} />;
+    case "bigstat": return <BigStatView s={s} />;
+    case "stattrio": return <StatTrioView s={s} />;
+    case "quote": return <QuoteView s={s} />;
+    case "comparison": return <ComparisonView s={s} />;
+    case "steps": return <StepsView s={s} />;
+    case "grid": return <GridView s={s} />;
+    case "timeline": return <TimelineView s={s} />;
+    case "statement": return <StatementView s={s} />;
+    case "logos": return <LogosView s={s} />;
+    case "checklist": return <ChecklistView s={s} />;
+    case "split": return <SplitView s={s} />;
   }
 };
 
