@@ -43,7 +43,7 @@ async function setStatus(id, fields) {
 }
 
 // Background pipeline — not awaited by the request.
-async function runJob(id, brief, brand, orientation, brandContext, directionOverrides, targetSeconds) {
+async function runJob(id, brief, brand, orientation, brandContext, directionOverrides, targetSeconds, siteUrl) {
   try {
     await setStatus(id, { status: 'storyboarding' });
     const { scenes: draft, direction: agentPick } = await storyboardFromBrief({ brief, brandName: brand.name, brandContext, targetSeconds });
@@ -52,7 +52,9 @@ async function runJob(id, brief, brand, orientation, brandContext, directionOver
     // overrides win; unknown ids fall back to safe defaults.
     const direction = resolveDirection(agentPick, directionOverrides);
     await setStatus(id, { status: 'voicing', scenes: JSON.stringify(draft), direction: JSON.stringify(direction) });
-    const scenes = await synthesizeScenes(draft, id, direction);
+    // siteUrl lets synthesizeScenes capture real product screenshots for any
+    // "screens" scenes (gated by VIDEO_SCREENS_ENABLED).
+    const scenes = await synthesizeScenes(draft, id, direction, { siteUrl, orientation });
 
     const musicSrc = direction.musicBed === 'none' ? null : await presignMusicBed(direction.musicBed);
     await setStatus(id, { status: 'rendering', scenes: JSON.stringify(scenes) });
@@ -80,7 +82,7 @@ router.post('/generate', async (req, res) => {
     if (!videoConfigured()) return res.status(503).json({ error: 'Video rendering is not configured (REMOTION_* env vars missing)' });
 
     const r = await pool.query(
-      `SELECT brand_name, profile_data, logo_url FROM brand_profiles WHERE id = $1`, [brandProfileId]
+      `SELECT brand_name, profile_data, logo_url, brand_url FROM brand_profiles WHERE id = $1`, [brandProfileId]
     );
     const row = r.rows[0] || {};
     const brand = buildBrand(row.brand_name || 'Forge Intelligence', row.profile_data, row.logo_url);
@@ -98,7 +100,7 @@ router.post('/generate', async (req, res) => {
       [brandProfileId, brief, orientation]
     );
     const id = ins.rows[0].id;
-    runJob(id, brief, brand, orientation, brandContext, directionOverrides, targetSeconds); // fire-and-forget
+    runJob(id, brief, brand, orientation, brandContext, directionOverrides, targetSeconds, row.brand_url); // fire-and-forget
     res.status(202).json({ id, status: 'queued' });
   } catch (e) {
     console.error('[VIDEO] generate error:', e.message);
