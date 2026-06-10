@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { resolveDirection, MUSIC_BEDS, VOICES, brandContextFor } from '../src/server/video.js';
 
 describe('resolveDirection', () => {
@@ -141,5 +141,26 @@ describe('per-scene voice dynamics', () => {
 
   it('falls back to the default direction when base is empty', () => {
     expect(voiceInstructionsForScene('', { type: 'hook' })).toMatch(/inflection arc/i);
+  });
+});
+
+import { ttsProvider } from '../src/server/video.js';
+
+describe('ttsProvider selection', () => {
+  const K = 'ELEVENLABS_API_KEY', P = 'VIDEO_TTS_PROVIDER';
+  const sK = process.env[K], sP = process.env[P];
+  afterEach(() => {
+    sK === undefined ? delete process.env[K] : (process.env[K] = sK);
+    sP === undefined ? delete process.env[P] : (process.env[P] = sP);
+  });
+  it('auto → elevenlabs when key present, openai when absent', () => {
+    delete process.env[P];
+    process.env[K] = 'x'; expect(ttsProvider()).toBe('elevenlabs');
+    delete process.env[K]; expect(ttsProvider()).toBe('openai');
+  });
+  it('explicit override wins over the key heuristic', () => {
+    process.env[K] = 'x';
+    process.env[P] = 'openai'; expect(ttsProvider()).toBe('openai');
+    delete process.env[K]; process.env[P] = 'elevenlabs'; expect(ttsProvider()).toBe('elevenlabs');
   });
 });

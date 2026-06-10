@@ -361,7 +361,36 @@ export function voiceInstructionsForScene(base, scene) {
   return `${instr}\nThis is ONE line of a high-energy brand reel — perform it with a strong inflection arc (rise, then land), not a flat read.${punchLine}`;
 }
 
-async function ttsToBuffer(text, voice, instructions) {
+// ── Voiceover providers ─────────────────────────────────────────────────────
+// ElevenLabs has more theatrical range than gpt-4o-mini-tts. Both are wired;
+// ttsToBuffer dispatches by provider with automatic fallback to OpenAI, so the
+// pipeline never fails on an ElevenLabs error (e.g. free-tier datacenter block,
+// quota). Provider: VIDEO_TTS_PROVIDER = 'elevenlabs' | 'openai' | 'auto'
+// (default: ElevenLabs when ELEVENLABS_API_KEY is set, else OpenAI).
+//
+// Our curated picker ids map to premade ElevenLabs voice IDs (verified on the
+// account via GET /v1/voices). On ElevenLabs, expressiveness comes from
+// voice_settings (low stability + high style = dynamic range), NOT a free-text
+// instruction — so the per-scene punch direction applies to the OpenAI path.
+const ELEVENLABS_VOICES = {
+  ash:     'cjVigY5qzO86Huf0OWal', // Eric — smooth, trustworthy
+  onyx:    'pqHfZKP75CvOlQylNhV4', // Bill — wise, mature (advertisement)
+  ballad:  'JBFqnCBsd6RMkjVDRZzb', // George — warm storyteller
+  sage:    'bIHbv24MWmeRgasZH58o', // Will — relaxed optimist
+  nova:    'cgSgspJ2msm6clMCkdW9', // Jessica — playful, bright
+  shimmer: 'TX3LPaxmHKxFdv7VOQHJ', // Liam — energetic
+  coral:   'iP95p4xoKVk53GoZ742B', // Chris — charming
+  verse:   'IKne3meq5aSn9XLyUdCD', // Charlie — deep, confident, energetic
+};
+
+export function ttsProvider() {
+  const pref = String(process.env.VIDEO_TTS_PROVIDER || 'auto').toLowerCase();
+  if (pref === 'openai') return 'openai';
+  if (pref === 'elevenlabs') return 'elevenlabs';
+  return process.env.ELEVENLABS_API_KEY ? 'elevenlabs' : 'openai'; // auto
+}
+
+async function ttsOpenAI(text, voice, instructions) {
   const res = await fetch('https://api.openai.com/v1/audio/speech', {
     method: 'POST',
     headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
@@ -374,6 +403,34 @@ async function ttsToBuffer(text, voice, instructions) {
   });
   if (!res.ok) throw new Error(`OpenAI TTS ${res.status}: ${(await res.text()).slice(0, 200)}`);
   return Buffer.from(await res.arrayBuffer());
+}
+
+async function ttsElevenLabs(text, voice) {
+  const voiceId = ELEVENLABS_VOICES[voice] || ELEVENLABS_VOICES.ash;
+  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`, {
+    method: 'POST',
+    headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      text,
+      model_id: process.env.ELEVENLABS_MODEL || 'eleven_multilingual_v2',
+      // Low stability + high style = the dynamic, expressive read (the "ups and
+      // downs"); speaker boost firms up the voice identity.
+      voice_settings: { stability: 0.35, similarity_boost: 0.75, style: 0.6, use_speaker_boost: true },
+    }),
+  });
+  if (!res.ok) throw new Error(`ElevenLabs ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
+async function ttsToBuffer(text, voice, instructions) {
+  if (ttsProvider() === 'elevenlabs' && process.env.ELEVENLABS_API_KEY) {
+    try {
+      return await ttsElevenLabs(text, voice);
+    } catch (e) {
+      console.warn('[VIDEO] ElevenLabs TTS failed, falling back to OpenAI:', e.message);
+    }
+  }
+  return ttsOpenAI(text, voice, instructions);
 }
 
 async function uploadAndPresign(buf, key, contentType = 'audio/mpeg') {
