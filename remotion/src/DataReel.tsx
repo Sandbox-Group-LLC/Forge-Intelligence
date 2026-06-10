@@ -136,7 +136,7 @@ const HookView: React.FC<{ s: HookScene }> = ({ s }) => {
         )}
         <div style={{ ...a, ...hl, fontSize: 110 * k, color: C.emphasis, lineHeight: 1.05 }}>
           {s.headline}
-          {s.emphasis && <><br /><span style={{ color: C.error }}>{s.emphasis}</span></>}
+          {s.emphasis && <><br /><span style={{ color: C.accent }}>{s.emphasis}</span></>}
         </div>
         {s.sub && <div style={{ ...b, fontSize: 46 * k, color: C.secondary, marginTop: 40 * k, fontWeight: 500 }}>{s.sub}</div>}
       </div>
@@ -263,9 +263,9 @@ const BarRow: React.FC<{ label: string; pct: number; delay: number }> = ({ label
     <div style={{ display: "flex", alignItems: "center", gap: 28 * k, marginBottom: 22 * k }}>
       <span style={{ width: 380 * k, fontSize: 38 * k, fontWeight: 600, color: C.emphasis }}>{label}</span>
       <div style={{ flex: 1, height: 30 * k, background: C.border, borderRadius: 15 * k, overflow: "hidden" }}>
-        <div style={{ width: `${Math.max(w, zero ? 1.2 : w)}%`, height: "100%", background: zero ? C.error : C.accent, borderRadius: 15 * k }} />
+        <div style={{ width: `${Math.max(w, zero ? 1.2 : w)}%`, height: "100%", background: zero ? C.muted : C.accent, borderRadius: 15 * k }} />
       </div>
-      <span style={{ width: 100 * k, textAlign: "right", fontSize: 38 * k, fontWeight: 700, color: zero ? C.error : C.emphasis }}>{Math.round(w)}%</span>
+      <span style={{ width: 100 * k, textAlign: "right", fontSize: 38 * k, fontWeight: 700, color: zero ? C.muted : C.emphasis }}>{Math.round(w)}%</span>
     </div>
   );
 };
