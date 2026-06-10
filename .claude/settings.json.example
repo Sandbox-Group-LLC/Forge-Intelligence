@@ -1,0 +1,15 @@
+{
+  "_comment": "Copy to .claude/settings.json to ACTIVATE the bootstrap hooks: `cp .claude/settings.json.example .claude/settings.json` then commit. A human does this step — the harness blocks the agent from writing its own hook-registration file. Once committed + active, every future Claude Code web session inherits the brief + preflight gate + live status line. Add `\"async\": true` to a hook to trade guaranteed-ready for faster startup.",
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh\"" }] }
+    ],
+    "PreToolUse": [
+      { "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "hooks": [{ "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/pre-tool-gate.sh\"" }] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/user-prompt-status.sh\"" }] }
+    ]
+  }
+}
