@@ -244,6 +244,68 @@ export async function captureBrandVisual(url, { caller = 'context-hub', timeout 
   }
 }
 
+// ── captureProductShots — REAL screenshots of the brand's live site ─────────
+// Powers the video generator's "screens" scene (the single biggest lever on
+// looking like the actual product vs an abstract reel). Reuses the same Bright
+// Data browser as captureBrandVisual, but at the render's viewport and WITH
+// images/styles (we're taking pictures, not reading computed CSS). Grabs up to
+// `max` evenly-spaced sections by scrolling. Best-effort: any failure returns
+// { success:false, shots:[] } and the reel falls back to non-screenshot scenes.
+export async function captureProductShots(url, { orientation = 'landscape', max = 3, caller = 'video', timeout = 30000, metadata = {} } = {}) {
+  const browserAuth = process.env.BRIGHTDATA_BROWSER_AUTH;
+  const startTime = Date.now();
+  if (!browserAuth) return { success: false, error: 'BRIGHTDATA_BROWSER_AUTH missing', shots: [] };
+  if (!/^https?:\/\//.test(String(url || ''))) return { success: false, error: 'invalid url', shots: [] };
+  const portrait = orientation === 'portrait';
+  const width = portrait ? 1080 : 1920;
+  const height = portrait ? 1920 : 1080;
+  let browser = null;
+  try {
+    browser = await puppeteer.connect({ browserWSEndpoint: `wss://${browserAuth}@brd.superproxy.io:9222` });
+    const page = await browser.newPage();
+    page.setDefaultNavigationTimeout(timeout);
+    await page.setViewport({ width, height, deviceScaleFactor: 1 });
+    // Keep images + stylesheets (we want a real picture); drop only fonts/media for bandwidth.
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      const t = req.resourceType();
+      if (['font', 'media'].includes(t)) req.abort();
+      else req.continue();
+    });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout }).catch(() => {});
+    await new Promise((r) => setTimeout(r, 2500)); // settle layout + lazy hero imagery
+    // Remove the usual cookie/consent overlays and top sticky bars so they don't ruin the shot.
+    await page.evaluate(() => {
+      const kill = (el) => { try { el && el.remove(); } catch { /* noop */ } };
+      document.querySelectorAll('[id*="cookie" i],[class*="cookie" i],[id*="consent" i],[class*="consent" i],[aria-label*="cookie" i]').forEach(kill);
+      document.querySelectorAll('body *').forEach((el) => {
+        const cs = getComputedStyle(el);
+        if ((cs.position === 'fixed' || cs.position === 'sticky') && el.getBoundingClientRect().top < 4) kill(el);
+      });
+    }).catch(() => { /* overlays are best-effort */ });
+    const pageHeight = await page.evaluate(() => Math.min(document.body.scrollHeight, 12000)).catch(() => height);
+    const span = Math.max(0, pageHeight - height);
+    // Only take multiple shots if there's real page below the fold.
+    const n = Math.max(1, Math.min(max, span > height * 0.6 ? max : 1));
+    const shots = [];
+    for (let i = 0; i < n; i++) {
+      const y = n === 1 ? 0 : Math.round((span / (n - 1)) * i);
+      await page.evaluate((yy) => window.scrollTo(0, yy), y).catch(() => {});
+      await new Promise((r) => setTimeout(r, 600)); // let scroll-triggered content paint
+      const buf = await page.screenshot({ type: 'png' });
+      shots.push(Buffer.from(buf));
+    }
+    await browser.close();
+    browser = null;
+    await _logScrape({ url, source: 'brightdata_browser', status_code: 200, body_size: 0, latency_ms: Date.now() - startTime, success: true, caller, metadata: { ...(metadata ?? {}), kind: 'product_shots', count: shots.length, orientation } });
+    return { success: true, shots };
+  } catch (e) {
+    if (browser) { try { await browser.close(); } catch { /* noop */ } }
+    await _logScrape({ url, source: 'brightdata_browser', success: false, latency_ms: Date.now() - startTime, caller, error: e.message, metadata: { ...(metadata ?? {}), kind: 'product_shots' } });
+    return { success: false, error: e.message, shots: [] };
+  }
+}
+
 export async function forgeScrape(url, opts = {}) {
   const {
     format = 'raw',           // 'raw' = HTML, 'markdown' = cleaned content

@@ -78,9 +78,24 @@ export type CtaScene = SceneBase & {
   cta: string;
 };
 
+// Product showcase: real screenshots of the brand's live site/app, captured by
+// the backend (captureProductShots) and uploaded to S3. `shots` are full https
+// URLs; the view frames them in browser chrome with a slow Ken Burns push and
+// crossfades if more than one. Copy (eyebrow/headline/stat) is written by the
+// storyboard agent; `shots` + `urlLabel` are filled server-side.
+export type ScreensScene = SceneBase & {
+  type: "screens";
+  eyebrow?: string;
+  headline: string;
+  headlineEmphasis?: string;
+  stat?: { value: string; label: string };
+  shots: string[];      // S3 URLs (filled by the backend)
+  urlLabel?: string;    // address-bar text, e.g. "acme.com"
+};
+
 export type Scene =
   | HookScene | TagsScene | OrbitScene | PipelineScene
-  | BarsScene | CurveScene | CtaScene;
+  | BarsScene | CurveScene | CtaScene | ScreensScene;
 
 // landscape = 1920x1080 (16:9), portrait = 1080x1920 (9:16, IG reel).
 export type Orientation = "landscape" | "portrait";
