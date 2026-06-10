@@ -4,3 +4,6 @@ dist/
 .env.*
 *.log
 .DS_Store
+
+# Claude Code web bootstrap — per-session ephemeral state
+.claude/.state/

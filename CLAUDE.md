@@ -32,6 +32,16 @@ The agent should orient itself in this order:
 4. **`STRATEGY.md` on the `strategy` branch** — current strategic narrative and positioning history.
 5. **Confirm active brand context.** Most operations involve the Forge brand (`brand_profile_id = cde5feeb-b3d7-4990-adee-a54977ab9c52`). When working on customer brands, confirm the ID before any destructive operation.
 
+## Session bootstrap (Claude Code on the web)
+
+A hook system boots web sessions warm and self-aware. Full detail in `docs/SESSION-BOOTSTRAP.md`; `capabilities.json` is the source of truth for what a session needs.
+
+- **Read the SessionStart brief** it prints (branch · behind `origin/development` · recent commits · newest WORKING-STATE block), then `WORKING-STATE.md`.
+- **Watch the status line** injected on every message: `branch · behind · preflight-gate · now · missing-env`. If `missing-env` lists a provider secret (e.g. `ELEVENLABS_API_KEY`), surface it **immediately** — a container reset wiped it and the feature will silently misbehave. Don't burn tokens before checking.
+- **The edit/commit gate** (PreToolUse) blocks mutations until the capability preflight passes this session. If blocked, run `bash .claude/hooks/preflight.sh` and resolve/announce any `‼️`.
+- **Capability honesty:** if a required CLI/secret/MCP is missing, say so at boot — never discover it deep into the work.
+- **Activation is a human step:** `cp .claude/settings.json.example .claude/settings.json` then restart (the agent can't write the hook-registration file). Keep `capabilities.json` (`baseBranch`, `env.watched`, `knownBlockers`) current — a cold session only knows what's written there.
+
 ## Branch and PR workflow (non-negotiable)
 
 The repo uses a **trunk → integration → production** model:

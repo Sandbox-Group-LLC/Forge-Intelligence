@@ -1,0 +1,37 @@
+{
+  "_comment": "Capability manifest — the single source of truth for what a Forge-Intelligence dev session NEEDS to function. The preflight hook checks the shell-verifiable items (cli/env) and the gate blocks edits until the REQUIRED ones pass; the model verifies the MCP list against its own tool list at boot (a shell can't see MCP connections). Provider secrets live in `env.watched` (NOT required) so a wipe is surfaced loudly on every message without blocking unrelated code edits — that is the exact failure we keep hitting (container reset drops ELEVENLABS_API_KEY etc).",
+  "baseBranch": "development",
+  "cli": {
+    "required": ["node", "npm", "git"],
+    "optional": []
+  },
+  "env": {
+    "_note": "required = block the edit gate when missing (keep this list tiny — most edits don't need a secret). watched = never block, but surface on every message via the status hook so a wiped key is caught at the next prompt, not 900k tokens in.",
+    "required": [],
+    "watched": [
+      { "name": "ANTHROPIC_API_KEY",          "why": "LLM calls — storyboard agent, video arcs, all generation." },
+      { "name": "OPENAI_API_KEY",              "why": "gpt-4o-mini-tts voiceover (fallback path) + embeddings." },
+      { "name": "ELEVENLABS_API_KEY",          "why": "Primary video voiceover. Wiped on container resets — generation silently falls back to OpenAI when gone." },
+      { "name": "ADMIN_RELAY_PASSWORD",        "why": "SQL relay auth for ad-hoc DB inspection (/api/admin/relay)." },
+      { "name": "NEON_DATABASE_URL",           "why": "Postgres (Neon) connection for the app + relay." },
+      { "name": "REMOTION_LAMBDA_SERVE_URL",   "why": "Deployed forge-reels site — without it videoConfigured() is false and renders 503." },
+      { "name": "REMOTION_AWS_ACCESS_KEY_ID",  "why": "Lambda render + S3 presign (mirrored to AWS_* at video.js load)." }
+    ]
+  },
+  "mcp": {
+    "_note": "Verified by the MODEL against its tool list at boot (START-HERE step). A shell hook cannot see MCP connections. These are harness-provided in Claude Code on the web — this repo does NOT use Composio; connectors come in directly.",
+    "required": ["github"],
+    "directMcps": [
+      { "name": "github", "why": "All PR/issue/CI operations (mcp__github__*). Scope is set per session; use list_repos/add_repo to widen." },
+      { "name": "gitnexus", "why": "Code-graph intelligence (gitnexus_*). Optional — CLAUDE.md still orients without it." }
+    ],
+    "alsoSeenInSessions": ["Attio", "Slack", "Gmail", "Google_Drive", "Google_Calendar", "Canva", "Figma", "G2", "PayPal", "Postman", "Clerk"]
+  },
+  "knownBlockers": [
+    "Container idle-reset drops the checkout onto a STALE branch (seen: feat/video-screens) and leaves local behind origin, AND wipes env secrets (ELEVENLABS_API_KEY/OPENAI_API_KEY). ALWAYS `git fetch origin development` + verify base before branching/pushing, and re-check watched env at boot.",
+    "Allowlisted egress: the sandbox may not reach the live deploy (forgeintelligence.ai relay is reachable; provider APIs vary). ElevenLabs free-tier blocks datacenter IPs (401 detected_unusual_activity) — needs a paid plan to call from the sandbox/Render.",
+    "A just-wired MCP cannot be used in the SAME session that added it (tools bind at session start) — restart ONCE, deliberately.",
+    "AWS SDK reads AWS_* not REMOTION_AWS_* — video.js mirrors them at load; don't 'fix' that.",
+    "Render deploys from development (dev service) / main (prod). Never bulk-PUT Render env-vars (wipes all). The forge-reels Lambda site is shared state — last `npm run deploy-site` wins."
+  ]
+}
