@@ -5,7 +5,7 @@ import {
 } from "remotion";
 import type {
   Brand, Scene, HookScene, TagsScene, OrbitScene,
-  PipelineScene, BarsScene, CurveScene, CtaScene, VideoProps, ThemeId,
+  PipelineScene, BarsScene, CurveScene, CtaScene, ScreensScene, VideoProps, ThemeId,
 } from "./types";
 
 // Forge defaults — any brand.colors key overrides these.
@@ -325,6 +325,87 @@ const CurveView: React.FC<{ s: CurveScene }> = ({ s }) => {
   );
 };
 
+// Product showcase — REAL screenshots in browser chrome with a slow Ken Burns
+// push. The single biggest lever on "this is a brand reel" vs "that's the actual
+// product". `shots` are S3 URLs filled by the backend; crossfades if >1. Browser
+// chrome + image area use the palette so it sits in any theme (clean/bold/…).
+const ScreensView: React.FC<{ s: ScreensScene }> = ({ s }) => {
+  const { C } = React.useContext(Ctx);
+  const { k, portrait } = useL();
+  const hl = useHeadline();
+  const frame = useCurrentFrame();
+  const head = useRise(0);
+  const rise = useRise(8, 40);
+  const shots = Array.isArray(s.shots) ? s.shots.filter(Boolean) : [];
+  const dur = s.durationInFrames || 1;
+
+  // Ken Burns over the whole scene (slow zoom + slight rise).
+  const p = interpolate(frame, [0, dur], [0, 1], { extrapolateRight: "clamp" });
+  const scale = interpolate(p, [0, 1], [1.05, 1.13]);
+  const ty = interpolate(p, [0, 1], [0, -3]); // %
+
+  // Crossfade across multiple shots: equal slices, ~14f dissolve.
+  const seg = shots.length > 1 ? dur / shots.length : dur;
+  const shotOpacity = (i: number) => {
+    if (shots.length <= 1) return 1;
+    const start = i * seg;
+    const fade = 14;
+    const inOp = interpolate(frame, [start - fade, start], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+    const outOp = i < shots.length - 1
+      ? interpolate(frame, [start + seg - fade, start + seg], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })
+      : 1;
+    return Math.min(inOp, outOp);
+  };
+
+  const frameW = (portrait ? 1500 : 1480) * k;
+  const dot = (c: string) => <span style={{ width: 14 * k, height: 14 * k, borderRadius: 999, background: c, display: "inline-block" }} />;
+
+  return (
+    <Stage audio={s.audio}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", maxWidth: 1640 * k }}>
+        {s.eyebrow && (
+          <div style={{ ...head, fontSize: 26 * k, letterSpacing: 5 * k, color: C.accent, fontWeight: 700, marginBottom: 18 * k, textTransform: "uppercase" }}>{s.eyebrow}</div>
+        )}
+        <div style={{ ...head, ...hl, fontSize: 60 * k, color: C.emphasis, lineHeight: 1.08, marginBottom: s.stat ? 14 * k : 34 * k }}>
+          {s.headline} {s.headlineEmphasis && <span style={{ color: C.accent }}>{s.headlineEmphasis}</span>}
+        </div>
+        {s.stat && (
+          <div style={{ ...head, display: "flex", alignItems: "baseline", gap: 12 * k, marginBottom: 34 * k }}>
+            <span style={{ ...hl, fontSize: 56 * k, fontWeight: 800, color: C.accent }}>{s.stat.value}</span>
+            <span style={{ fontSize: 26 * k, fontWeight: 600, color: C.secondary, letterSpacing: 1 * k }}>{s.stat.label}</span>
+          </div>
+        )}
+        {shots.length > 0 && (
+          <div style={{
+            ...rise, width: frameW, borderRadius: 20 * k, overflow: "hidden",
+            background: C.card, border: `2px solid ${C.border}`,
+            boxShadow: `0 ${36 * k}px ${90 * k}px rgba(15,23,42,0.30)`,
+          }}>
+            {/* browser chrome */}
+            <div style={{ height: 50 * k, display: "flex", alignItems: "center", gap: 10 * k, padding: `0 ${22 * k}px`, background: C.bg, borderBottom: `2px solid ${C.border}` }}>
+              {dot(C.muted)}{dot(C.muted)}{dot(C.muted)}
+              {s.urlLabel && (
+                <div style={{ marginLeft: 16 * k, flex: 1, maxWidth: 520 * k, height: 30 * k, borderRadius: 999, background: C.card, border: `2px solid ${C.border}`, display: "flex", alignItems: "center", padding: `0 ${18 * k}px`, fontSize: 22 * k, color: C.muted, fontWeight: 600, overflow: "hidden", whiteSpace: "nowrap" }}>{s.urlLabel}</div>
+              )}
+            </div>
+            {/* viewport with Ken Burns; cover-crop a constant 16:9 window so the page top reads */}
+            <div style={{ position: "relative", width: "100%", aspectRatio: "16 / 9", overflow: "hidden", background: C.card }}>
+              {shots.map((src, i) => (
+                <Img key={i} src={src} style={{
+                  position: "absolute", inset: 0, width: "100%", height: "100%",
+                  objectFit: "cover", objectPosition: "center top",
+                  transform: `scale(${scale}) translateY(${ty}%)`, transformOrigin: "center top",
+                  opacity: shotOpacity(i),
+                }} />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </Stage>
+  );
+};
+
 const CtaView: React.FC<{ s: CtaScene }> = ({ s }) => {
   const { C } = React.useContext(Ctx);
   const { k } = useL();
@@ -350,6 +431,7 @@ const renderScene = (s: Scene) => {
     case "pipeline": return <PipelineView s={s} />;
     case "bars": return <BarsView s={s} />;
     case "curve": return <CurveView s={s} />;
+    case "screens": return <ScreensView s={s} />;
     case "cta": return <CtaView s={s} />;
   }
 };

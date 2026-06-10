@@ -212,21 +212,39 @@ export function enforceDuration(scenes, targetSeconds) {
 // archetypes and copy + writes a short voiceover line per scene. Frame
 // durations are computed here from the VO word count (see synthesizeScenes),
 // not by the model.
-const SCENE_GUIDE = `
+// `allowScreens` gates the product-screenshot archetype. It must stay OFF until
+// the Remotion Lambda site is redeployed with the "screens" view (otherwise the
+// deployed site renders an unknown scene as blank). Flip VIDEO_SCREENS_ENABLED
+// once `npm run deploy-site` has shipped the new template.
+function buildSceneGuide(allowScreens) {
+  const screensLine = allowScreens
+    ? `\n- screens:  { type:"screens", eyebrow?, headline, headlineEmphasis?, stat?:{value,label} } — show the REAL product: actual screenshots of the brand's live site/app, framed in browser chrome with a slow zoom. The backend captures + fills the screenshots; you only write the copy. The stat is one proof number (e.g. {value:"35", label:"sources analyzed"}).`
+    : '';
+  const screensRule = allowScreens
+    ? `\n- When the brief is about a real product WITH a website, PREFER one "screens" beat over an abstract scene (orbit/bars/curve) for the "here's the product" moment — real UI sells harder than a diagram. Use at most 2 "screens" scenes.`
+    : '';
+  return `
 Scene archetypes (pick the right one per beat, 5-7 scenes total):
 - hook:     { type:"hook", eyebrow?, headline, emphasis?, sub? }  — opening punch. emphasis renders as a colored 2nd line.
 - tags:     { type:"tags", headline, tags:[3-4 short words] }     — a claim + chips.
 - orbit:    { type:"orbit", centerLabel (use \\n for 2 lines), facets:[3-4], caption?, captionEmphasis? } — a hub concept with orbiting ideas.
 - pipeline: { type:"pipeline", headline, headlineEmphasis?, stages:[5-8 short labels] } — a process/flow.
 - bars:     { type:"bars", headline, headlineEmphasis?, bars:[{label,pct}], footnoteLabel?, footnoteChips?:[] } — a metric/comparison. pct 0-100.
-- curve:    { type:"curve", headline, headlineEmphasis?, flatLabel? } — a "compounds over time" idea.
+- curve:    { type:"curve", headline, headlineEmphasis?, flatLabel? } — a "compounds over time" idea.${screensLine}
 - cta:      { type:"cta", title, sub?, cta } — the closing call to action.
 
 Rules:
 - Always open with exactly one "hook" and close with exactly one "cta".
-- Copy is punchy and concrete. Headlines <= 8 words. NO em dashes.
+- Copy is punchy and concrete. Headlines <= 8 words. NO em dashes.${screensRule}
 - Every scene MUST include a "voiceover" string: one spoken sentence (8-22 words) that matches the on-screen beat.
 - Output ONLY JSON: { "direction": {...}, "scenes": [ { "id":"kebab-name", "type":..., ...fields, "voiceover":"..." } ] }`;
+}
+
+// Product-screenshot scenes ship behind a flag so the backend + Lambda site can
+// roll out in sync (see buildSceneGuide).
+export function screensEnabled() {
+  return process.env.VIDEO_SCREENS_ENABLED === '1' || process.env.VIDEO_SCREENS_ENABLED === 'true';
+}
 
 function directionGuide() {
   const beds = Object.entries(MUSIC_BEDS).map(([id, b]) => `  - "${id}": ${b.desc}`).join('\n');
@@ -279,7 +297,7 @@ export async function storyboardFromBrief({ brief, brandName, brandContext = '',
     max_tokens: 2500,
     messages: [{
       role: 'user',
-      content: `You are a brand video director for "${brandName}". Turn this brief into a short product reel storyboard.\n\nBRIEF:\n${brief}${contextBlock}\n${lengthGuide(targetSeconds)}\n\n${SCENE_GUIDE}\n${directionGuide()}`,
+      content: `You are a brand video director for "${brandName}". Turn this brief into a short product reel storyboard.\n\nBRIEF:\n${brief}${contextBlock}\n${lengthGuide(targetSeconds)}\n\n${buildSceneGuide(screensEnabled())}\n${directionGuide()}`,
     }],
   });
   const text = msg?.content?.[0]?.text || '';
@@ -330,23 +348,78 @@ async function ttsToBuffer(text, voice, instructions) {
   return Buffer.from(await res.arrayBuffer());
 }
 
-async function uploadAndPresign(buf, key) {
+async function uploadAndPresign(buf, key, contentType = 'audio/mpeg') {
   const { S3Client, PutObjectCommand, GetObjectCommand } = await import('@aws-sdk/client-s3');
   const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
   const s3 = new S3Client({ region: process.env.REMOTION_AWS_REGION });
   const Bucket = renderBucket();
-  await s3.send(new PutObjectCommand({ Bucket, Key: key, Body: buf, ContentType: 'audio/mpeg' }));
+  await s3.send(new PutObjectCommand({ Bucket, Key: key, Body: buf, ContentType: contentType }));
   // Presigned GET avoids bucket-ACL/Object-Ownership headaches; 6h is well past any render.
   return getSignedUrl(s3, new GetObjectCommand({ Bucket, Key: key }), { expiresIn: 6 * 3600 });
 }
 
+// ── Product screenshots → S3 ────────────────────────────────────────────────
+// Capture the brand's live site at the render orientation and upload each shot
+// as a presigned PNG URL. Best-effort: returns [] on any failure (the scenes
+// then downgrade gracefully). puppeteer is dynamic-imported so it only loads
+// when a render actually has "screens" scenes.
+async function captureAndUploadShots(url, jobId, orientation, max = 3) {
+  const { captureProductShots } = await import('./scrape.js');
+  const res = await captureProductShots(url, { orientation, max, caller: 'video', metadata: { jobId } });
+  if (!res.success || !Array.isArray(res.shots) || res.shots.length === 0) return [];
+  const urls = [];
+  for (let i = 0; i < res.shots.length; i++) {
+    urls.push(await uploadAndPresign(res.shots[i], `forge-shots/${jobId}/${i}.png`, 'image/png'));
+  }
+  return urls;
+}
+
+export function hostLabel(url) {
+  try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return null; }
+}
+
+// Assign captured shot URLs to "screens" scenes, and DOWNGRADE any "screens"
+// scene with no shot to a "hook" so the deployed template never references a
+// missing image (or an unknown scene type, pre-redeploy). Pure — unit-tested.
+export function assignShotsToScreens(scenes, shotUrls, urlLabel) {
+  const shots = Array.isArray(shotUrls) ? shotUrls.filter(Boolean) : [];
+  const screenIdxs = scenes.map((s, i) => (s && s.type === 'screens' ? i : -1)).filter((i) => i >= 0);
+  return scenes.map((s, i) => {
+    if (!s || s.type !== 'screens') return s;
+    if (shots.length === 0) {
+      // graceful downgrade — keep the copy + VO, drop the (missing) frame
+      const { shots: _drop, stat, headlineEmphasis: _e, urlLabel: _u, ...rest } = s;
+      return { ...rest, type: 'hook', sub: stat ? `${stat.value} ${stat.label}` : rest.sub };
+    }
+    // Stripe shots across the screens scenes so each gets a DISTINCT subset
+    // (one screens beat -> all shots, crossfading; two beats over three shots ->
+    // [0,2] and [1]). Never empty: fall back to a rotating single shot.
+    const pos = screenIdxs.indexOf(i);
+    let assigned = shots.filter((_, k) => k % screenIdxs.length === pos);
+    if (assigned.length === 0) assigned = [shots[pos % shots.length]];
+    return { ...s, shots: assigned, urlLabel: urlLabel || s.urlLabel };
+  });
+}
+
 // Synthesize VO for each scene, attach audio URL + computed duration, and strip
-// the voiceover field (the template doesn't read it). Returns render-ready scenes.
-export async function synthesizeScenes(scenes, jobId, direction) {
+// the voiceover field (the template doesn't read it). When the storyboard used
+// "screens" scenes, capture the brand's site first and assign the shots (or
+// downgrade if capture is off/unavailable). Returns render-ready scenes.
+export async function synthesizeScenes(scenes, jobId, direction, opts = {}) {
   const d = direction || {};
+  let work = scenes;
+  if (work.some((s) => s && s.type === 'screens')) {
+    let shotUrls = [];
+    if (screensEnabled() && opts.siteUrl) {
+      shotUrls = await captureAndUploadShots(opts.siteUrl, jobId, opts.orientation, 3).catch(() => []);
+    }
+    // Always run assignment: fills shots when we have them, otherwise downgrades
+    // the "screens" scenes so the render never references a missing image.
+    work = assignShotsToScreens(work, shotUrls, hostLabel(opts.siteUrl || ''));
+  }
   const out = [];
-  for (let i = 0; i < scenes.length; i++) {
-    const { voiceover, ...scene } = scenes[i];
+  for (let i = 0; i < work.length; i++) {
+    const { voiceover, ...scene } = work[i];
     scene.durationInFrames = scene.durationInFrames || framesForVoiceover(voiceover);
     if (voiceover && process.env.OPENAI_API_KEY) {
       const buf = await ttsToBuffer(voiceover, d.voice, d.voiceInstructions);
