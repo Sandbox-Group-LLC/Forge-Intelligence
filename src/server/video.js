@@ -346,6 +346,21 @@ export function brandContextFor(profileData) {
   return parts.join('\n').slice(0, 2000);
 }
 
+// Brand pronunciation dictionary stored on the profile. Returns a clean
+// { word: respelling } map (or null) for applyPronunciations. Caps entries so
+// a malformed/huge map can't blow up the VO loop.
+export function pronunciationsFor(profileData) {
+  const raw = profileData?.pronunciations;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out = {};
+  for (const [k, v] of Object.entries(raw).slice(0, 30)) {
+    const word = String(k || '').trim().slice(0, 60);
+    const say = String(v || '').trim().slice(0, 120);
+    if (word && say) out[word] = say;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 // ── Video arcs (a slate of video concepts) ──────────────────────────────────
 // Like the Social Generator's campaign arcs, but for video: one click yields N
 // distinct reel ideas, each a ready-to-run brief the user can generate in a tap.
@@ -403,6 +418,27 @@ export function framesForVoiceover(vo) {
   const words = String(vo || '').trim().split(/\s+/).filter(Boolean).length;
   const seconds = Math.max(2.2, words / 2.3 + 0.8);
   return Math.round(seconds * FPS);
+}
+
+// Per-brand pronunciation dictionary. The storyboard/brief model and the TTS
+// engine read the voiceover text near-literally, so a brand name with an
+// unobvious pronunciation (e.g. "SYSOI" = "Sis-Oy") gets spelled out or
+// mangled. Fix: rewrite the word ONLY in the spoken text (the on-screen text
+// keeps the real spelling) using a brand-supplied phonetic respelling.
+// dict: { "SYSOI": "Sis-Oy", ... }. Match is whole-word, case-insensitive.
+export function applyPronunciations(text, dict) {
+  if (!text || !dict || typeof dict !== 'object') return text;
+  let out = String(text);
+  for (const [word, say] of Object.entries(dict)) {
+    const key = String(word || '').trim();
+    const repl = String(say || '').trim();
+    if (!key || !repl) continue;
+    // \b is unreliable next to non-ASCII / punctuation; bound on word chars.
+    const esc = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(^|[^A-Za-z0-9])(${esc})(?![A-Za-z0-9])`, 'gi');
+    out = out.replace(re, (_m, pre) => `${pre}${repl}`);
+  }
+  return out;
 }
 
 // The on-screen emphasis words ARE the buzzwords to punch. Pull them per scene
@@ -671,12 +707,15 @@ export async function synthesizeScenes(scenes, jobId, direction, opts = {}) {
     work = assignShotsToScreens(work, shotUrls, hostLabel(opts.siteUrl || ''));
   }
   const out = [];
+  const pron = opts.pronunciations && typeof opts.pronunciations === 'object' ? opts.pronunciations : null;
   const TAIL_FRAMES = 26; // ~0.85s breath after VO ends (aligns with music duck tail)
   for (let i = 0; i < work.length; i++) {
     const { voiceover, ...scene } = work[i];
     if (voiceover && (process.env.OPENAI_API_KEY || process.env.ELEVENLABS_API_KEY)) {
+      // Respell tricky brand names in the SPOKEN text only (on-screen unchanged).
+      const spoken = applyPronunciations(voiceover, pron);
       // Per-scene direction: brand voice + this scene's on-screen punch words.
-      const { buf, seconds } = await ttsToBuffer(voiceover, d.voice, voiceInstructionsForScene(d.voiceInstructions, work[i]));
+      const { buf, seconds } = await ttsToBuffer(spoken, d.voice, voiceInstructionsForScene(d.voiceInstructions, work[i]));
       // Scene length tracks the REAL audio (EL gives exact seconds; OpenAI falls
       // back to the word-count estimate). +tail so the VO never bleeds into the
       // next scene and there's a clean beat before the cut.

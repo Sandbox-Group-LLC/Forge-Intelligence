@@ -10,7 +10,7 @@ import {
   videoConfigured, buildBrand, brandContextFor, storyboardFromBrief,
   resolveDirection, presignMusicBed, synthesizeScenes, normalizeTargetSeconds,
   renderReel, getReelProgress, videoArcs, presignShotKeys, MAX_USER_SHOTS,
-  ttsHealth, VOICES, MUSIC_BEDS, THEMES, LENGTH_BUDGETS,
+  ttsHealth, pronunciationsFor, VOICES, MUSIC_BEDS, THEMES, LENGTH_BUDGETS,
 } from '../video.js';
 
 async function ensureVideosTable() {
@@ -44,7 +44,7 @@ async function setStatus(id, fields) {
 }
 
 // Background pipeline — not awaited by the request.
-async function runJob(id, brief, brand, orientation, brandContext, directionOverrides, targetSeconds, siteUrl, uploadedShots) {
+async function runJob(id, brief, brand, orientation, brandContext, directionOverrides, targetSeconds, siteUrl, uploadedShots, pronunciations) {
   try {
     const hasUploads = Array.isArray(uploadedShots) && uploadedShots.length > 0;
     await setStatus(id, { status: 'storyboarding' });
@@ -57,7 +57,7 @@ async function runJob(id, brief, brand, orientation, brandContext, directionOver
     // uploadedShots (user's product screenshots) are the primary source for
     // "screens" beats; siteUrl auto-capture is the fallback (gated by
     // VIDEO_SCREENS_ENABLED).
-    const scenes = await synthesizeScenes(draft, id, direction, { siteUrl, orientation, uploadedShots });
+    const scenes = await synthesizeScenes(draft, id, direction, { siteUrl, orientation, uploadedShots, pronunciations });
 
     const musicSrc = direction.musicBed === 'none' ? null : await presignMusicBed(direction.musicBed);
     await setStatus(id, { status: 'rendering', scenes: JSON.stringify(scenes) });
@@ -90,6 +90,12 @@ router.post('/generate', async (req, res) => {
     const row = r.rows[0] || {};
     const brand = buildBrand(row.brand_name || 'Forge Intelligence', row.profile_data, row.logo_url);
     const brandContext = brandContextFor(row.profile_data);
+    // Per-brand "say-it-like" dictionary (e.g. SYSOI -> Sis-Oy), merged with any
+    // one-off overrides from the request. Rewrites the spoken VO only.
+    const pronunciations = {
+      ...(pronunciationsFor(row.profile_data) || {}),
+      ...(req.body?.pronunciations && typeof req.body.pronunciations === 'object' ? req.body.pronunciations : {}),
+    };
     // UI pickers: { voice, musicBed } with 'auto' (or absence) = brain decides.
     const directionOverrides = {
       voice: typeof req.body?.voice === 'string' ? req.body.voice : 'auto',
@@ -107,7 +113,7 @@ router.post('/generate', async (req, res) => {
       [brandProfileId, brief, orientation]
     );
     const id = ins.rows[0].id;
-    runJob(id, brief, brand, orientation, brandContext, directionOverrides, targetSeconds, row.brand_url, uploadedShots); // fire-and-forget
+    runJob(id, brief, brand, orientation, brandContext, directionOverrides, targetSeconds, row.brand_url, uploadedShots, pronunciations); // fire-and-forget
     res.status(202).json({ id, status: 'queued' });
   } catch (e) {
     console.error('[VIDEO] generate error:', e.message);

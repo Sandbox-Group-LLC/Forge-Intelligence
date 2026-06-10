@@ -51,6 +51,7 @@ function VideoGeneratorContent() {
   const [musicBed, setMusicBed] = useState('auto');
   const [theme, setTheme] = useState('auto');
   const [targetSeconds, setTargetSeconds] = useState(30);
+  const [sayItLike, setSayItLike] = useState('');
   const [voiceOptions, setVoiceOptions] = useState<DirectionOption[]>([]);
   const [bedOptions, setBedOptions] = useState<DirectionOption[]>([]);
   const [themeOptions, setThemeOptions] = useState<DirectionOption[]>([]);
@@ -136,14 +137,26 @@ function VideoGeneratorContent() {
     setOrientation(a.orientation);
   }
 
+  // Parse "Word=Say it, Other=Say it" into a { word: respelling } override map.
+  function parseSayItLike(s: string): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const pair of s.split(',')) {
+      const [word, ...rest] = pair.split('=');
+      const w = (word || '').trim(), say = rest.join('=').trim();
+      if (w && say) out[w] = say;
+    }
+    return out;
+  }
+
   async function generate() {
     if (!selectedBrainId || !brief.trim() || !authToken) return;
     setBusy(true); setError(null); setJob(null);
     try {
+      const pronunciations = parseSayItLike(sayItLike);
       const r = await fetch('/api/video/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({ brandProfileId: selectedBrainId, brief: brief.trim(), orientation, voice, musicBed, theme, targetSeconds, screenshotKeys: shots.map(s => s.key) }),
+        body: JSON.stringify({ brandProfileId: selectedBrainId, brief: brief.trim(), orientation, voice, musicBed, theme, targetSeconds, screenshotKeys: shots.map(s => s.key), ...(Object.keys(pronunciations).length ? { pronunciations } : {}) }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || `Request failed (${r.status})`);
@@ -309,6 +322,14 @@ function VideoGeneratorContent() {
           )}
         </div>
         {shots.length > 0 && <div className="vg-shots-note">A "product" scene will showcase these in browser chrome.</div>}
+
+        <label className="vg-label">Pronounce names like <span className="vg-optional">optional — fixes how the voice says tricky names, e.g. SYSOI=Sis-Oy</span></label>
+        <input
+          className="vg-select"
+          placeholder="SYSOI=Sis-Oy, GEO=jee-oh"
+          value={sayItLike}
+          onChange={e => setSayItLike(e.target.value)}
+        />
 
         <button className="vg-btn" onClick={generate} disabled={busy || !selectedBrainId || !brief.trim()}>
           {busy ? 'Generating…' : 'Generate video'}
