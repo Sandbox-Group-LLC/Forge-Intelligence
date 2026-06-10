@@ -10,72 +10,40 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
-### 2026-06-09 (cont.) — Video creative direction: sound + visual themes + length control
+### 2026-06-09 (cont. 2) — Video generator → production-grade
 
-PRs #318 (music + voice) + #319 (visual themes + length). Full detail in `PLAN.md` (2026-06-09 cont.). The "meh creative" fix, one pattern: **curated finite vocabulary the agent picks from (grounded in the brand brain), UI pickers as the veto.**
+The video generator went from "it renders" to a real product. One pattern throughout: **curated finite vocabulary the storyboard agent picks from (grounded in the brand brain), human veto via UI pickers.** Full detail in `PLAN.md` (2026-06-09 cont. 2). Architecture: brief → `storyboardFromBrief` (Claude) → `synthesizeScenes` (TTS → S3 presigned) → `renderReel` on **AWS Lambda** (`forge-reels` site). Backend `src/server/video.js` + `routes/video.js`; template `remotion/src/DataReel.tsx` (redeploy: `cd remotion && npm run deploy-site`).
 
-- **Sound (#318):** 6 fal.ai-generated music beds (`forge-music/` in the render bucket), looped + **ducked under VO** (`musicVolumeAt`); 6 cast `gpt-4o-mini-tts` voices with per-brand delivery instructions.
-- **Visual themes (#319):** 4 `DataReel` styles — `clean`/`editorial`/`bold`/`kinetic` (palette + headline type + motion physics + scale). Color precedence: defaults → brand → theme (so `bold`'s dark canvas wins, brand accent survives).
-- **Hard length (#319):** the 15s→45s bug — `LENGTH_BUDGETS` in the prompt + **`enforceDuration()` deterministic trim** (drops middle scenes, keeps hook/CTA, before TTS). UI Length toggle 15/30/60s.
-- **Direction plumbing:** `storyboardFromBrief` returns `{scenes, direction}` from `brandContextFor(profile)`; `resolveDirection` merges agent pick + UI overrides (`auto`/`none`, unknown→default); `GET /api/video/options` serves the vocabulary; `direction` persisted on `generated_videos`. UI Style/Voice/Music pickers, all Auto-default.
-- **`forge-reels` site redeployed** (theme + music aware; backward-compatible). **Process snag:** #318 merged with only its first commit; round 2 was stranded on the branch → reopened as #319. Push all commits before a PR can merge.
+**Merged to development**
+- **#322 expressive voice** — structured openai.fm-style delivery instructions (not one flat sentence); voices incl. `coral`/`verse`.
+- **#324 screens + upload** — `ScreensView` (browser-chrome + Ken Burns). Auto-capture (`captureProductShots`, gated by `VIDEO_SCREENS_ENABLED`) is the FALLBACK; **user upload is primary** (`POST /api/video/upload-shot` → S3 `forge-uploads/<brand>/`, brand-scoped re-presign, `ensureScreensScene` guarantees uploads appear).
 
-#### What's next
-- **Per-brand direction locking** — persist chosen voice/bed/theme (`manual_overrides`-style) so it sticks across reels.
-- **Real app footage** (Playwright screens → screenshot scene archetype) — the last authenticity lever; everything's still code-drawn.
-- Pacing profiles + more archetypes; wire "Publish" → channel integrations.
-- Drop `framesPerLambda` after the AWS 5,000 concurrency bump; async `/analyze` refactor.
+**Open PRs at session end (all green) — needs your merge + a site reconcile**
+- **#326** ElevenLabs provider (`VIDEO_TTS_PROVIDER` auto, OpenAI fallback) + per-scene buzzword-punch dynamics. *EL free tier blocks datacenter IPs → needs Starter (Brian upgraded; validated).*
+- **#327** removed hardcoded red — hook emphasis → brand accent, 0% bars → grey.
+- **#328** scene deck **7 → 18 archetypes** (bigstat/stattrio/quote/comparison/steps/grid/timeline/statement/logos/checklist/split) + "vary the beats" rule.
+- **#329** **video arcs** — `POST /api/video/arcs` → 8 brand-grounded video concepts (one-click brief+length+format), like the Social Generator's campaign arcs.
 
----
-
-### 2026-06-09 — AI Video Generation live end-to-end (Remotion Lambda + S3) + visual brand system
-
-PRs #296→#314, all in prod same-day. Full retrospective in `PLAN.md` (2026-06-09).
-
-**1. Video generation is a production feature.** Brief → storyboard agent (Sonnet) → per-scene TTS (`gpt-4o-mini-tts` → S3 presigned) → H.264 render on **AWS Lambda** (never the web dyno). `remotion/` at repo root is the versioned template (`DataReel`: data-driven, 7 scene archetypes, `calculateMetadata` derives duration+canvas from props; redeploy via `npx remotion lambda sites create src/index.ts --site-name=forge-reels`). Backend `src/server/video.js` + async `routes/video.js` (`POST /api/video/generate` 202+poll, `generated_videos`). UI at `/app/video-generator` (#298) with **16:9 / 9:16 toggle** (#304 — template rescales by `k=width/designWidth`). Cost: ~$0.011/70s landscape, ~$0.002/15s portrait.
-- **Env (Forge group):** `REMOTION_AWS_*` ×3, `REMOTION_LAMBDA_FUNCTION_NAME` (`remotion-render-4-0-474-mem3008mb-disk2048mb-240sec`), `REMOTION_LAMBDA_SERVE_URL` (`forge-reels` site).
-- **Gotchas baked into code:** AWS SDK reads `AWS_*` not `REMOTION_AWS_*` → mirrored at `video.js` load (#302). New-AWS-account concurrency cap 10 → `framesPerLambda: 400` pinned; **drop it when the requested 5,000 increase approves** (still pending).
-
-**2. Visual brand system — reels render in the BRAND's identity, not Forge's** (#306/#308/#310/#312). Context Hub now MEASURES visuals during scan: `captureBrandVisual` loads the homepage in the headless browser *with CSS* and reads computed styles (weighted accent from CTAs/nav/links; logo = header img → touch-icon → biggest favicon → og:image last). Stored as `profileData.brandVisual`; the guessed `voiceProfile.accentColor` is overwritten with the measured hex (prompt now forbids hex-guessing). `buildBrand()` injects accent/accent2/bg(luma≥0.88 only)/logo into the reel; `BrandMark` shows the real logo, Forge diamond only for Forge. **Populating visuals requires a re-scan per brand.** Validated in prod (duolingo `#a5ed6e`; deterministic on Sommers).
-
-**3. Sommers House (demo customer) fully seeded.** Competitors were domain-keyword garbage ("forge" → GitHub/defence) → #300 grounds Sonar in scraped content (runs AFTER the scrape now) + founder list wins; data pinned via `manual_overrides` (`moremas.com`/`experiencenve.com`/`atypikal.co`). Visuals measured: accent `#2e5c3b`, bg `#fbf8f1`, SVG logo — both active profiles seeded. **The branded reel re-generation has NOT been run yet** — next Video Generator run on Sommers comes out cream/green/their mark.
-
-**4. Stuck-scan UI fixed (#314).** `/analyze` holds one connection 3–4 min; a drop left the UI spinning while the server finished. `src/lib/analyzeRecovery.ts` (deadline + version-bump polling recovery) wired into all 3 scan paths. **Real fix backlogged: convert `/analyze` to async ack+poll like video gen.**
-
-**5. autoDeploy mystery (unresolved).** Production's toggle flips off around deploys. Ruled out: Blueprints (none; fossil `render.yaml` deleted), our code (read-only Render API), visible event log. Suspect: another holder of the shared `RENDER_API_KEY`. If it recurs → dashboard Activity feed names the actor; rotating the key isolates it.
-
-#### What's next
-- **Run the branded Sommers reel** (seeded, one click in the UI). _(Round 2 — music/voice/themes/length — shipped; see the cont. block above.)_
-- Async `/analyze` refactor; BrandSettings UI for `settings.breadcrumb`; `/scan` lead capture.
+#### What's next (video)
+- **Reconcile the stack:** merge #326→#327→#328→#329 (trivial, different regions), then ONE final `cd remotion && npm run deploy-site` so the live Lambda template == development (it's shared state; last deploy wins).
+- Drop `framesPerLambda: 400` once the AWS **5,000 concurrency increase** approves (still pending).
+- Bigger swings (not built): generative B-roll (Veo/Sora/Kling) premium mode; per-brand direction locking via `manual_overrides`; bundle Inter locally.
 
 ---
 
-### 2026-06-07 — GEO scan made REAL (4 engines) + public `/scan` lead magnet + dev→main rollup shipped
+### 2026-06-09 (earlier) — Video gen foundation + visual brand system + Sommers seeding
 
-Big arc, all live in prod. **`development` and `main` are now equal** (rollup PR #276 merged + deployed green; all four engines verified healthy on prod).
+Full detail in `PLAN.md` (2026-06-09 and cont.). The base everything above builds on:
+- **Lambda+S3 video pipeline** stood up (IAM/role/function/`forge-reels` site); `/app/video-generator` UI; 16:9↔9:16; music beds + ducking; visual themes; hard length control. **Env (Forge group):** `REMOTION_AWS_*` ×3, `REMOTION_LAMBDA_FUNCTION_NAME`, `REMOTION_LAMBDA_SERVE_URL`, `ELEVENLABS_API_KEY`. Gotcha baked in: AWS SDK reads `AWS_*` not `REMOTION_AWS_*` → mirrored at `video.js` load.
+- **Visual brand capture** — Context Hub MEASURES the live site (`captureBrandVisual`: computed-CSS accent + logo), stores `profileData.brandVisual`; `buildBrand()` injects accent/bg(luma≥0.88)/logo so reels render in the brand's identity.
+- **Context Hub competitor grounding (#300)** — Sonar now runs AFTER the scrape, grounded in content (killed the "forge"→GitHub/defence garbage); founder list wins; `manual_overrides` pins survive re-scans.
+- **`/analyze` stuck-UI fix (#314)** — `analyzeRecovery.ts` deadline + version-bump polling. _Real fix backlogged: make `/analyze` async ack+poll._
+- **Sommers House** seeded: accent `#2e5c3b`, cream bg, SVG logo, pinned competitors.
+- **autoDeploy mystery (unresolved):** Production's toggle flips off around deploys; suspect another `RENDER_API_KEY` holder. Dashboard Activity feed names the actor if it recurs.
 
-**1. The GEO "we measure AI citations" claim was half-true — fixed.** Two separate surfaces, easily conflated:
-- **GEO Strategist scan** (Stage 2, `/api/geo-strategist/analyze`): per-engine 0–100 "citation probability" numbers were **Claude-imagined, never measured** (one Sonnet call estimating all four engines → the tell was lockstep, near-constant per-engine offsets). **Left as-is on purpose** — it's a *modeled estimate* by design (Brian confirmed). Not a bug.
-- **Performance Dashboard "Run Citation Check"** (`/api/geo/track` → `geo_citations`): the *real* measured analytics. Was probing only **2 engines** (Perplexity + OpenAI) while we marketed four. **Extended to all 4** (#266): added Gemini (Search grounding) + Google AI Overviews (SerpAPI). Unified the two duplicated inline blocks into one engine-agnostic loop over `CITATION_ENGINES` in `src/server/geoProbe.js`.
-
-**2. New: public AI Visibility lead magnet at `/scan`** (#269, light theme + real DiamondIcon logo #273). Drop a domain → `POST /api/geo/cold-scan` scrapes the homepage, Claude writes 10 brand-free buyer questions, probes all 4 engines, returns measured visibility % + per-engine + "who AI cites instead" (competitors/namesakes). `coldScan` + `scanVisibility`/`brandTokens`/`aggregateSources` in `geoProbe.js`. Public + rate-limited (3/IP/hr + 250/day global cap; `adminPassword` bypass).
-
-**3. Gemini saga (the diagnostic paid off):** every scan showed Gemini 0%. `/api/geo/debug` (extended with live Gemini+SerpAPI tests, #271) revealed **two stacked bugs**: expired `GEMINI_API_KEY` (rotated) + retired model `gemini-2.0-flash` → bumped to **`gemini-2.5-flash`** (#272). Also made all 4 probes **throw on API errors** so a dead engine renders **"n/a"**, never a false 0% (#272). Nike now reads a realistic 75% (was a fake 0).
-
-**4. Content em-dash sanitizer** (#264): `stripEmDashes` deterministic backstop in `text.js` (comma, or semicolon when the sentence already has 2+ commas) + strict prompt rule — applied at content-gen write path.
-
-**5. LinkedIn Insight Tag scoped to marketing pages** (#267): gated `!location.pathname.startsWith('/app')` so it never loads in the authed app. GTM/GA4/Google Ads stay site-wide (confirmed firing on `/scan`).
-
-**6. The dev→main rollup (the "scary" one), reconciled clean.** dev was 111 ahead, main 23 ahead (prod hotfixes + feature-lane merges never folded back into the decomposed branch). Verified **development is a true superset** before resolving: **0 route gaps** (all 210 main routes present), all 6 main hotfixes present — except the **fal.ai `expand_prompt:false` + 60s timeout** fix, which was **missing from development** (would've silently regressed "weird images" in prod). Ported it (#275), merged `main`→`development` resolving the 4 collisions (`server.js`/`package.json`/`PLAN.md`/`WORKING-STATE.md`) to development, then promoted #276.
-
-Also: fixed CLAUDE.md's stale relay doc (`ADMIN_PASSWORD` → `ADMIN_RELAY_PASSWORD`, the pinned item).
-
-#### What's next (carried forward)
-- **`/scan` lead capture** — CTA links out for now; wire domain/email to a CRM/DB (the actual lead loop). Deliberate fast-follow.
-- **Rate-limiter hardening** — `/api/geo/cold-scan` limiter is in-memory (approximate across Render instances). Redis/DB-backed before promoting `/scan` hard.
-- **Auto-generate the branded report** from the scan JSON (currently the shareable artifact is hand-assembled).
-- **Open guard gap (still):** route-inventory `parseImports` doesn't handle combined `import Default, { Named }` — harden it.
+#### Carried-forward backlog (non-video)
+- `/scan` lead capture (wire domain/email to CRM/DB); cold-scan rate-limiter → Redis/DB-backed; auto-generate the branded scan report; BrandSettings UI for `settings.breadcrumb`; route-inventory `parseImports` combined-import gap.
 
 ---
 
-_Older sessions (2026-06-06 and earlier) archived in `PLAN.md`._
+_Older sessions (2026-06-07 GEO arc, 2026-06-06 and earlier) archived in `PLAN.md`._
