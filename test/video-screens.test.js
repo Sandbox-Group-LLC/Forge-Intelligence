@@ -69,3 +69,35 @@ describe('screensEnabled', () => {
     if (prev !== undefined) process.env.VIDEO_SCREENS_ENABLED = prev;
   });
 });
+
+import { ensureScreensScene } from '../src/server/video.js';
+
+describe('ensureScreensScene (uploads always make the cut)', () => {
+  const sc = (id, type, extra = {}) => ({ id, type, voiceover: `vo ${id}`, durationInFrames: 90, headline: `H ${id}`, ...extra });
+
+  it('converts a middle beat to screens when none exists, keeping hook + cta', () => {
+    const out = ensureScreensScene([sc('a', 'hook'), sc('b', 'bars'), sc('c', 'orbit'), sc('d', 'cta')]);
+    expect(out[0].type).toBe('hook');
+    expect(out[out.length - 1].type).toBe('cta');
+    expect(out.filter(s => s.type === 'screens')).toHaveLength(1);
+  });
+
+  it('preserves the converted scene voiceover + duration + a headline', () => {
+    const out = ensureScreensScene([sc('a', 'hook'), sc('b', 'bars', { voiceover: 'keep me', durationInFrames: 123 }), sc('c', 'cta')]);
+    const screens = out.find(s => s.type === 'screens');
+    expect(screens.voiceover).toBe('keep me');
+    expect(screens.durationInFrames).toBe(123);
+    expect(screens.headline).toBeTruthy();
+    expect(screens.shots).toEqual([]);
+  });
+
+  it('leaves a storyboard that already has a screens scene untouched', () => {
+    const input = [sc('a', 'hook'), sc('b', 'screens', { shots: ['x'] }), sc('c', 'cta')];
+    expect(ensureScreensScene(input)).toBe(input);
+  });
+
+  it('does not crash on a hook+cta-only reel (no room to inject)', () => {
+    const out = ensureScreensScene([sc('a', 'hook'), sc('b', 'cta')]);
+    expect(out.some(s => s.type === 'screens')).toBe(false);
+  });
+});

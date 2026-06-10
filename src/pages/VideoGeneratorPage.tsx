@@ -55,6 +55,8 @@ function VideoGeneratorContent() {
   const [bedOptions, setBedOptions] = useState<DirectionOption[]>([]);
   const [themeOptions, setThemeOptions] = useState<DirectionOption[]>([]);
   const [lengthOptions, setLengthOptions] = useState<number[]>([15, 30, 60]);
+  const [shots, setShots] = useState<{ key: string; url: string }[]>([]);
+  const [uploadingShots, setUploadingShots] = useState(false);
   const [job, setJob] = useState<VideoJob | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -141,13 +143,41 @@ function VideoGeneratorContent() {
       const r = await fetch('/api/video/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({ brandProfileId: selectedBrainId, brief: brief.trim(), orientation, voice, musicBed, theme, targetSeconds }),
+        body: JSON.stringify({ brandProfileId: selectedBrainId, brief: brief.trim(), orientation, voice, musicBed, theme, targetSeconds, screenshotKeys: shots.map(s => s.key) }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || `Request failed (${r.status})`);
       setJob({ id: d.id, status: d.status, progress: null, outputUrl: null, error: null });
     } catch (e: any) {
       setError(e.message); setBusy(false);
+    }
+  }
+
+  async function uploadShots(files: FileList | null) {
+    if (!files || !files.length || !selectedBrainId || !authToken) return;
+    setUploadingShots(true); setError(null);
+    try {
+      const room = Math.max(0, 6 - shots.length);
+      for (const file of Array.from(files).slice(0, room)) {
+        if (!file.type.startsWith('image/')) continue;
+        const dataUrl: string = await new Promise((res, rej) => {
+          const fr = new FileReader();
+          fr.onload = () => res(String(fr.result)); fr.onerror = rej;
+          fr.readAsDataURL(file);
+        });
+        const r = await fetch('/api/video/upload-shot', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+          body: JSON.stringify({ brandProfileId: selectedBrainId, imageBase64: dataUrl, contentType: file.type === 'image/jpg' ? 'image/jpeg' : file.type }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || 'upload failed');
+        setShots(prev => [...prev, { key: d.key, url: d.url }]);
+      }
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setUploadingShots(false);
     }
   }
 
@@ -261,6 +291,24 @@ function VideoGeneratorContent() {
             </select>
           </div>
         </div>
+
+        <label className="vg-label">Product screenshots <span className="vg-optional">optional — most apps are behind a login, so upload your own</span></label>
+        <div className="vg-shots">
+          {shots.map((s, i) => (
+            <div key={s.key} className="vg-shot">
+              <img src={s.url} alt={`screenshot ${i + 1}`} />
+              <button type="button" className="vg-shot-x" onClick={() => setShots(prev => prev.filter(x => x.key !== s.key))} aria-label="remove">×</button>
+            </div>
+          ))}
+          {shots.length < 6 && (
+            <label className={`vg-shot-add ${uploadingShots ? 'busy' : ''}`}>
+              <input type="file" accept="image/png,image/jpeg,image/webp" multiple disabled={uploadingShots || !selectedBrainId}
+                onChange={e => { uploadShots(e.target.files); e.target.value = ''; }} />
+              {uploadingShots ? 'Uploading…' : '+ Add'}
+            </label>
+          )}
+        </div>
+        {shots.length > 0 && <div className="vg-shots-note">A "product" scene will showcase these in browser chrome.</div>}
 
         <button className="vg-btn" onClick={generate} disabled={busy || !selectedBrainId || !brief.trim()}>
           {busy ? 'Generating…' : 'Generate video'}
