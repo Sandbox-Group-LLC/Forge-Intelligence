@@ -9,7 +9,7 @@ import { verifyBrandAccess } from '../auth.js';
 import {
   videoConfigured, buildBrand, brandContextFor, storyboardFromBrief,
   resolveDirection, presignMusicBed, synthesizeScenes, normalizeTargetSeconds,
-  renderReel, getReelProgress, VOICES, MUSIC_BEDS, THEMES, LENGTH_BUDGETS,
+  renderReel, getReelProgress, videoArcs, VOICES, MUSIC_BEDS, THEMES, LENGTH_BUDGETS,
 } from '../video.js';
 
 async function ensureVideosTable() {
@@ -104,6 +104,24 @@ router.post('/generate', async (req, res) => {
     res.status(202).json({ id, status: 'queued' });
   } catch (e) {
     console.error('[VIDEO] generate error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/video/arcs — a slate of 8 video concepts for the brand (the "knock
+// out 8 arcs" feature). Each arc is a ready-to-run brief + length + orientation.
+// Registered before /:id so the param route doesn't capture it.
+router.post('/arcs', async (req, res) => {
+  try {
+    const { brandProfileId } = req.body || {};
+    if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
+    if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+    const r = await pool.query(`SELECT brand_name, profile_data FROM brand_profiles WHERE id = $1`, [brandProfileId]);
+    const row = r.rows[0] || {};
+    const arcs = await videoArcs(row.brand_name || 'this brand', row.profile_data, 8);
+    res.json({ arcs });
+  } catch (e) {
+    console.error('[VIDEO] arcs error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
