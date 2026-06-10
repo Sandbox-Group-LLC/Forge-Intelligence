@@ -141,13 +141,15 @@ export const THEMES = {
   kinetic:   { desc: 'springy, fast, punchy entrances — launch-day energy' },
 };
 
-// Rich, structured default delivery (openai.fm style) — multi-dimensional
-// direction is what makes gpt-4o-mini-tts sound human instead of robotic.
-const DEFAULT_VOICE_INSTRUCTIONS = `Voice Affect: Confident, modern, and genuinely engaged — like a smart founder who believes what they're saying.
-Tone: Warm and conversational, never an announcer or a robot.
-Pacing: Natural and varied — quicker through setup, slowing to land the key phrase. Avoid a flat, even cadence.
-Emotion: Real conviction and a little energy.
-Pauses: Brief, natural breaths between sentences; a beat before the payoff line.`;
+// Rich, structured default delivery (openai.fm style). gpt-4o-mini-tts reads
+// flat unless the instructions DEMAND dynamics — so this is performance
+// direction (a punchy ad read), not tasteful narration.
+const DEFAULT_VOICE_INSTRUCTIONS = `Voice Affect: A charismatic brand storyteller delivering a punchy ad read — full of personality and momentum, NOT a corporate narrator.
+Delivery: HIGHLY DYNAMIC. Wide pitch range — rise with momentum, then drop low for gravity on the key line. Vary loudness. NEVER monotone, never an even cadence.
+Pacing: Constantly varied — quicken through the setup, then SLOW down and land the payoff.
+Emphasis: PUNCH the important words hard, with a clear lift in pitch and volume — product names, numbers, and power words. Let the small connecting words fall back.
+Emotion: Genuine conviction with a little swagger.
+Pauses: A real beat before the payoff line; let big claims breathe.`;
 
 const DEFAULT_DIRECTION = {
   voice: 'ash',
@@ -273,12 +275,13 @@ Include in the output JSON:
 
 voiceInstructions is the single biggest lever on whether the voiceover sounds human or robotic. Do NOT write one flat sentence. Write a SHORT, MULTI-LINE delivery direction for a real voice actor, tuned to THIS brand, using these labeled lines (omit any that don't apply):
 Voice Affect: <the persona behind the mic — e.g. "a calm luxury creative director", "a sharp, excited founder">
+Delivery: ALWAYS demand wide dynamic range — vary pitch and volume, rise with momentum then drop to land a line. Explicitly say "never monotone / never an even cadence." This is the most important line.
 Tone: <warm/commanding/playful/intimate — and what to AVOID, e.g. "never an announcer">
 Pacing: <fast/slow/varied; tell it where to speed up and where to slow down and land a line>
 Emotion: <the feeling to convey>
-Emphasis: <which words/phrases to stress>
+Emphasis: <which words/phrases to punch hard>
 Pauses: <where to breathe or hold a beat>
-Keep it punchy (5-7 short lines). Match it to the brand: a luxury brand = unhurried, intimate, composed; a launch = fast, bright, energetic.`;
+Keep it punchy (5-7 short lines). Even a calm luxury brand should still have inflection and dynamics — composed is not the same as flat. Match the energy to the brand: luxury = unhurried but rich and expressive; a launch = fast, bright, high-energy.`;
 }
 
 function lengthGuide(targetSeconds) {
@@ -331,6 +334,31 @@ export function framesForVoiceover(vo) {
   const words = String(vo || '').trim().split(/\s+/).filter(Boolean).length;
   const seconds = Math.max(2.2, words / 2.3 + 0.8);
   return Math.round(seconds * FPS);
+}
+
+// The on-screen emphasis words ARE the buzzwords to punch. Pull them per scene
+// (the colored headline span, tag chips, the stat value) and append an explicit
+// "punch these, with a pitch+volume lift" line to the brand's base direction.
+// This is what gives each line its inflection arc instead of a flat read.
+export function punchWordsFor(scene) {
+  if (!scene) return [];
+  const w = [
+    scene.emphasis, scene.headlineEmphasis, scene.captionEmphasis,
+    scene.stat && scene.stat.value, scene.cta,
+    ...(Array.isArray(scene.tags) ? scene.tags.slice(0, 3) : []),
+  ].filter((x) => typeof x === 'string' && x.trim());
+  return [...new Set(w.map((x) => x.trim()))];
+}
+
+export function voiceInstructionsForScene(base, scene) {
+  const instr = base || DEFAULT_VOICE_INSTRUCTIONS;
+  const punch = punchWordsFor(scene);
+  const punchLine = punch.length
+    ? `\nPunch these words/phrases HARD — a clear lift in pitch and volume on each: ${punch.map((p) => `"${p}"`).join(', ')}.`
+    : '';
+  // One line of a punchy reel: always demand a strong inflection arc, even when
+  // the base direction is a brand's own (possibly tame) voiceInstructions.
+  return `${instr}\nThis is ONE line of a high-energy brand reel — perform it with a strong inflection arc (rise, then land), not a flat read.${punchLine}`;
 }
 
 async function ttsToBuffer(text, voice, instructions) {
@@ -422,7 +450,8 @@ export async function synthesizeScenes(scenes, jobId, direction, opts = {}) {
     const { voiceover, ...scene } = work[i];
     scene.durationInFrames = scene.durationInFrames || framesForVoiceover(voiceover);
     if (voiceover && process.env.OPENAI_API_KEY) {
-      const buf = await ttsToBuffer(voiceover, d.voice, d.voiceInstructions);
+      // Per-scene direction: brand voice + this scene's on-screen punch words.
+      const buf = await ttsToBuffer(voiceover, d.voice, voiceInstructionsForScene(d.voiceInstructions, work[i]));
       scene.audio = await uploadAndPresign(buf, `forge-audio/${jobId}/${scene.id || i}.mp3`);
     }
     out.push(scene);
