@@ -249,6 +249,7 @@ Scene archetypes — a deck of distinct layouts. PICK THE BEST FIT PER BEAT and 
 Rules:
 - Always open with exactly one "hook" and close with exactly one "cta".
 - VARY the middle beats — reach for the deck above, not just tags/bars/orbit every time.
+- NO REPEATED COPY: every scene's headline/text must be DISTINCT. Never reuse the same phrase, sentence, or key line in two scenes. Each beat advances the story with new words; do not restate the hook later.
 - Copy is punchy and concrete. Headlines <= 8 words. NO em dashes.${screensRule}
 - Every scene MUST include a "voiceover" string: one spoken sentence (8-22 words) that matches the on-screen beat.
 - Output ONLY JSON: { "direction": {...}, "scenes": [ { "id":"kebab-name", "type":..., ...fields, "voiceover":"..." } ] }`;
@@ -470,7 +471,9 @@ async function ttsOpenAI(text, voice, instructions) {
     }),
   });
   if (!res.ok) throw new Error(`OpenAI TTS ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  return Buffer.from(await res.arrayBuffer());
+  // seconds:null — OpenAI's mp3 isn't guaranteed CBR, so duration is estimated
+  // downstream from word count.
+  return { buf: Buffer.from(await res.arrayBuffer()), seconds: null };
 }
 
 async function ttsElevenLabs(text, voice) {
@@ -487,7 +490,10 @@ async function ttsElevenLabs(text, voice) {
     }),
   });
   if (!res.ok) throw new Error(`ElevenLabs ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  return Buffer.from(await res.arrayBuffer());
+  const buf = Buffer.from(await res.arrayBuffer());
+  // mp3_44100_128 is constant 128 kbps → 16000 bytes/sec. Exact duration with
+  // no decoder, so scene timing matches the real read (no overlap/cutoff).
+  return { buf, seconds: buf.length / 16000 };
 }
 
 async function ttsToBuffer(text, voice, instructions) {
@@ -665,13 +671,20 @@ export async function synthesizeScenes(scenes, jobId, direction, opts = {}) {
     work = assignShotsToScreens(work, shotUrls, hostLabel(opts.siteUrl || ''));
   }
   const out = [];
+  const TAIL_FRAMES = 26; // ~0.85s breath after VO ends (aligns with music duck tail)
   for (let i = 0; i < work.length; i++) {
     const { voiceover, ...scene } = work[i];
-    scene.durationInFrames = scene.durationInFrames || framesForVoiceover(voiceover);
-    if (voiceover && process.env.OPENAI_API_KEY) {
+    if (voiceover && (process.env.OPENAI_API_KEY || process.env.ELEVENLABS_API_KEY)) {
       // Per-scene direction: brand voice + this scene's on-screen punch words.
-      const buf = await ttsToBuffer(voiceover, d.voice, voiceInstructionsForScene(d.voiceInstructions, work[i]));
+      const { buf, seconds } = await ttsToBuffer(voiceover, d.voice, voiceInstructionsForScene(d.voiceInstructions, work[i]));
+      // Scene length tracks the REAL audio (EL gives exact seconds; OpenAI falls
+      // back to the word-count estimate). +tail so the VO never bleeds into the
+      // next scene and there's a clean beat before the cut.
+      const voFrames = seconds ? Math.ceil(seconds * FPS) : framesForVoiceover(voiceover);
+      scene.durationInFrames = Math.max(scene.durationInFrames || 0, voFrames + TAIL_FRAMES);
       scene.audio = await uploadAndPresign(buf, `forge-audio/${jobId}/${scene.id || i}.mp3`);
+    } else {
+      scene.durationInFrames = scene.durationInFrames || framesForVoiceover(voiceover);
     }
     out.push(scene);
   }

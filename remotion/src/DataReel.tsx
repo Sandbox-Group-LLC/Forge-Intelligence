@@ -2,6 +2,7 @@ import React from "react";
 import {
   AbsoluteFill, Sequence, Audio, Img, staticFile,
   useCurrentFrame, useVideoConfig, interpolate, spring, Easing,
+  delayRender, continueRender,
 } from "remotion";
 import type {
   Brand, Scene, HookScene, TagsScene, OrbitScene,
@@ -110,17 +111,41 @@ const useRise = (delay = 0, dist = 50) => {
   return { opacity: Math.min(1, s), transform: `translateY(${interpolate(s, [0, 1], [dist * k, 0])}px)` };
 };
 
+// Scale scene content DOWN to fit the safe area, so a long headline or a deck
+// scene with many items can never render out of frame. Measures natural size
+// (scrollWidth/Height, unaffected by the transform) once and shrinks if needed;
+// delayRender holds the frame until the measurement lands on Lambda.
+const Fit: React.FC<{ children: React.ReactNode; pad: number }> = ({ children, pad }) => {
+  const { width, height } = useVideoConfig();
+  const ref = React.useRef<HTMLDivElement>(null);
+  const [scale, setScale] = React.useState(1);
+  const [handle] = React.useState(() => delayRender("fit-measure"));
+  React.useEffect(() => {
+    const el = ref.current;
+    if (el) {
+      const s = Math.min(1, (width - pad * 2) / el.scrollWidth, (height - pad * 2) / el.scrollHeight);
+      if (s > 0 && s < 0.999) setScale(s);
+    }
+    continueRender(handle);
+  }, [handle, width, height, pad]);
+  return (
+    <div style={{ transform: `scale(${scale})`, transformOrigin: "center center", display: "flex", justifyContent: "center", alignItems: "center" }}>
+      <div ref={ref}>{children}</div>
+    </div>
+  );
+};
+
 const Stage: React.FC<{ children: React.ReactNode; audio?: string }> = ({ children, audio }) => {
   const { C, font, brand, L } = React.useContext(Ctx);
   const { k } = L;
   const src = audioSrc(audio);
   return (
-    <AbsoluteFill style={{ background: C.bg, fontFamily: font, justifyContent: "center", alignItems: "center", padding: 120 * k }}>
+    <AbsoluteFill style={{ background: C.bg, fontFamily: font, justifyContent: "center", alignItems: "center", padding: 120 * k, overflow: "hidden" }}>
       {src && <Audio src={src} />}
       <div style={{ position: "absolute", top: 64 * k, left: 90 * k, display: "flex", alignItems: "center", gap: 14 * k }}>
         <BrandMark size={36} /><span style={{ fontWeight: 700, fontSize: 32 * k, color: C.emphasis }}>{brand.name}</span>
       </div>
-      {children}
+      <Fit pad={120 * k}>{children}</Fit>
     </AbsoluteFill>
   );
 };
