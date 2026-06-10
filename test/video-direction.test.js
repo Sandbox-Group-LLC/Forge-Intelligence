@@ -1,5 +1,40 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { resolveDirection, MUSIC_BEDS, VOICES, brandContextFor } from '../src/server/video.js';
+import { resolveDirection, MUSIC_BEDS, VOICES, brandContextFor, applyPronunciations, pronunciationsFor } from '../src/server/video.js';
+
+describe('applyPronunciations', () => {
+  const dict = { SYSOI: 'Sis-Oy' };
+
+  it('respells a whole-word match, case-insensitively', () => {
+    expect(applyPronunciations('Welcome to SYSOI today', dict)).toBe('Welcome to Sis-Oy today');
+    expect(applyPronunciations('welcome to sysoi.', dict)).toBe('welcome to Sis-Oy.');
+  });
+
+  it('does not touch substrings inside other words', () => {
+    expect(applyPronunciations('SYSOImania is not a word', dict)).toBe('SYSOImania is not a word');
+  });
+
+  it('handles punctuation and start/end of string', () => {
+    expect(applyPronunciations('SYSOI!', dict)).toBe('Sis-Oy!');
+    expect(applyPronunciations('It is "SYSOI", yes', dict)).toBe('It is "Sis-Oy", yes');
+  });
+
+  it('passes text through untouched with no/empty dict', () => {
+    expect(applyPronunciations('SYSOI', null)).toBe('SYSOI');
+    expect(applyPronunciations('SYSOI', {})).toBe('SYSOI');
+    expect(applyPronunciations('', dict)).toBe('');
+  });
+});
+
+describe('pronunciationsFor', () => {
+  it('reads + sanitizes the profile map', () => {
+    expect(pronunciationsFor({ pronunciations: { SYSOI: 'Sis-Oy', '': 'x', y: '' } })).toEqual({ SYSOI: 'Sis-Oy' });
+  });
+  it('returns null for missing/invalid', () => {
+    expect(pronunciationsFor(null)).toBe(null);
+    expect(pronunciationsFor({})).toBe(null);
+    expect(pronunciationsFor({ pronunciations: [] })).toBe(null);
+  });
+});
 
 describe('resolveDirection', () => {
   it('keeps the agent pick when no overrides', () => {
