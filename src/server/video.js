@@ -339,6 +339,56 @@ export function brandContextFor(profileData) {
   return parts.join('\n').slice(0, 2000);
 }
 
+// ── Video arcs (a slate of video concepts) ──────────────────────────────────
+// Like the Social Generator's campaign arcs, but for video: one click yields N
+// distinct reel ideas, each a ready-to-run brief the user can generate in a tap.
+// Grounded in the whole brain (positioning, buyer, personas, whitespace, the
+// existing campaignArcs as seeds), not just the voice.
+function arcBrainContext(pd) {
+  const bp = pd?.businessProfile || {};
+  const parts = [brandContextFor(pd)];
+  if (bp.whatTheyDo) parts.push(`What they do: ${bp.whatTheyDo}`);
+  if (bp.targetBuyer) parts.push(`Buyer: ${bp.targetBuyer}`);
+  if (Array.isArray(pd?.personas) && pd.personas.length) parts.push(`Personas: ${pd.personas.map(p => p.name).filter(Boolean).join(', ')}`);
+  if (Array.isArray(pd?.competitiveGaps) && pd.competitiveGaps.length) parts.push(`Whitespace topics: ${pd.competitiveGaps.map(g => g.topic).filter(Boolean).slice(0, 5).join('; ')}`);
+  if (Array.isArray(pd?.strategicMoats) && pd.strategicMoats.length) parts.push(`Moats (what they deliberately don't do): ${pd.strategicMoats.map(m => m.capability).filter(Boolean).join('; ')}`);
+  if (Array.isArray(pd?.campaignArcs) && pd.campaignArcs.length) parts.push(`Existing campaign arcs (seed thinking, do not just copy): ${pd.campaignArcs.map(a => a.title).filter(Boolean).join('; ')}`);
+  return parts.filter(Boolean).join('\n').slice(0, 3000);
+}
+
+export async function videoArcs(brandName, profileData, count = 8) {
+  const ctx = arcBrainContext(profileData);
+  const prompt = `You are a brand video strategist for "${brandName}". Propose ${count} DISTINCT short-form video concepts — a video content slate. Each is a self-contained reel with a DIFFERENT strategic angle (e.g. problem/solution, hard proof, founder POV, how-it-works, us-vs-them, customer story, a bold contrarian claim, behind-the-scenes, a single killer stat, a myth-bust). Do not repeat angles.
+
+BRAND:
+${ctx}
+
+For each concept return:
+- "title": a short internal name for the idea
+- "angle": one phrase naming the strategic angle
+- "length": 15, 30, or 60 (seconds) — whatever fits the idea
+- "orientation": "portrait" (social/IG/TikTok) or "landscape" (web/YouTube)
+- "brief": 1-2 sentences a video director can run with — what it says and its arc (hook -> body -> CTA). Concrete and on-brand. NO em dashes.
+
+Output ONLY JSON: { "arcs": [ { "id":"kebab-name", "title", "angle", "length", "orientation", "brief" } ] }`;
+  const msg = await anthropic.messages.create({
+    model: 'claude-sonnet-4-6', max_tokens: 3000,
+    messages: [{ role: 'user', content: prompt }],
+  });
+  const parsed = safeParseLLM(msg?.content?.[0]?.text || '');
+  const raw = Array.isArray(parsed?.arcs) ? parsed.arcs : [];
+  const arcs = raw.slice(0, count).map((a, i) => ({
+    id: typeof a.id === 'string' && a.id ? a.id : `arc-${i + 1}`,
+    title: String(a.title || `Idea ${i + 1}`).slice(0, 90),
+    angle: String(a.angle || '').slice(0, 140),
+    brief: String(a.brief || '').slice(0, 700),
+    length: [15, 30, 60].includes(Number(a.length)) ? Number(a.length) : 30,
+    orientation: a.orientation === 'portrait' ? 'portrait' : 'landscape',
+  })).filter((a) => a.brief);
+  if (!arcs.length) throw new Error('Video arc generator returned no usable arcs');
+  return arcs;
+}
+
 // ── Per-scene TTS -> S3 (presigned URL) ───────────────────────────────────
 // Estimate spoken length from word count (~2.3 words/sec) so the scene is never
 // shorter than its audio; add a short tail. Avoids needing ffprobe on the dyno.

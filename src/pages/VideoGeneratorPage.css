@@ -215,3 +215,25 @@
   font-size: 13px;
   color: #64748b;
 }
+
+/* ── Video idea arcs ── */
+.vg-arcs-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.vg-arcs-btn {
+  border: 1px solid #3563FF; background: rgba(53,99,255,0.06); color: #3563FF;
+  font-size: 13px; font-weight: 700; padding: 8px 14px; border-radius: 8px; cursor: pointer;
+  white-space: nowrap; transition: background 0.15s;
+}
+.vg-arcs-btn:hover:not(:disabled) { background: rgba(53,99,255,0.12); }
+.vg-arcs-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.vg-arcs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 22px; }
+@media (max-width: 640px) { .vg-arcs { grid-template-columns: 1fr; } }
+.vg-arc {
+  text-align: left; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px;
+  padding: 14px 16px; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; font: inherit;
+}
+.vg-arc:hover { border-color: #3563FF; box-shadow: 0 0 0 3px rgba(53,99,255,0.10); }
+.vg-arc-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.vg-arc-title { font-size: 14px; font-weight: 700; color: #0F172A; }
+.vg-arc-meta { font-size: 11px; font-weight: 700; color: #94A3B8; white-space: nowrap; }
+.vg-arc-angle { font-size: 11px; font-weight: 700; color: #3563FF; text-transform: uppercase; letter-spacing: 0.4px; margin-top: 4px; }
+.vg-arc-brief { font-size: 13px; color: #475569; line-height: 1.45; margin-top: 8px; }

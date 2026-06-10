@@ -208,6 +208,7 @@
   "POST /api/topic-ideas",
   "POST /api/topic-ideas/bulk",
   "POST /api/utils/shorten-url",
+  "POST /api/video/arcs",
   "POST /api/video/generate",
   "POST /api/waitlist",
   "POST /api/webflow/select-target",
