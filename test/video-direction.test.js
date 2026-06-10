@@ -98,3 +98,19 @@ describe('duration enforcement', () => {
     expect(estimateSeconds(out)).toBeLessThanOrEqual(30 * 1.15);
   });
 });
+
+describe('expressive voice instructions', () => {
+  it('default voiceInstructions are structured/multi-line (openai.fm style), not a thin sentence', () => {
+    const d = resolveDirection(null, null);
+    expect(d.voiceInstructions).toMatch(/Voice Affect:/);
+    expect(d.voiceInstructions.split('\n').length).toBeGreaterThanOrEqual(4);
+  });
+  it('expressive voices are in the roster', () => {
+    expect(VOICES.coral).toBeTruthy();
+    expect(VOICES.verse).toBeTruthy();
+  });
+  it('a blank agent voiceInstruction falls back to the rich default', () => {
+    const d = resolveDirection({ voiceInstructions: '   ' }, {});
+    expect(d.voiceInstructions).toMatch(/Voice Affect:/);
+  });
+});

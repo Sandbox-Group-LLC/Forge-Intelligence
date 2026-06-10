@@ -118,7 +118,9 @@ export const MUSIC_BEDS = {
 };
 
 // OpenAI gpt-4o-mini-tts voices, curated with delivery characters the agent
-// can match to the brand's tone.
+// can match to the brand's tone. Expressiveness comes from the `instructions`
+// (see voiceInstructions / the directionGuide spec), not the voice id alone —
+// this is the same steerable model openai.fm demos.
 export const VOICES = {
   ash:     { desc: 'confident, brisk, modern — default tech/product energy' },
   onyx:    { desc: 'deep, measured, authoritative — premium and serious' },
@@ -126,6 +128,8 @@ export const VOICES = {
   sage:    { desc: 'warm, calm, reassuring — human and trustworthy' },
   nova:    { desc: 'bright, friendly, upbeat — consumer warmth' },
   shimmer: { desc: 'energetic, crisp, lively — launch-day excitement' },
+  coral:   { desc: 'warm, expressive, characterful — conversational and human' },
+  verse:   { desc: 'dynamic, narrative, emotive — storytelling range' },
 };
 
 // Visual themes — implemented in the Remotion template (remotion/src/DataReel.tsx
@@ -137,9 +141,17 @@ export const THEMES = {
   kinetic:   { desc: 'springy, fast, punchy entrances — launch-day energy' },
 };
 
+// Rich, structured default delivery (openai.fm style) — multi-dimensional
+// direction is what makes gpt-4o-mini-tts sound human instead of robotic.
+const DEFAULT_VOICE_INSTRUCTIONS = `Voice Affect: Confident, modern, and genuinely engaged — like a smart founder who believes what they're saying.
+Tone: Warm and conversational, never an announcer or a robot.
+Pacing: Natural and varied — quicker through setup, slowing to land the key phrase. Avoid a flat, even cadence.
+Emotion: Real conviction and a little energy.
+Pauses: Brief, natural breaths between sentences; a beat before the payoff line.`;
+
 const DEFAULT_DIRECTION = {
   voice: 'ash',
-  voiceInstructions: 'Brisk, confident, modern brand voice. Natural energy, not robotic.',
+  voiceInstructions: DEFAULT_VOICE_INSTRUCTIONS,
   musicBed: 'uplift-tech',
   theme: 'clean',
   mood: 'modern tech optimism',
@@ -237,9 +249,18 @@ Include in the output JSON:
   "musicBed": "<bed id>",
   "voice": "<voice id>",
   "theme": "<theme id>",
-  "voiceInstructions": "one sentence directing the voice actor's delivery for THIS brand (pace, warmth, attitude)",
+  "voiceInstructions": "<see spec below>",
   "mood": "2-4 word creative mood"
-}`;
+}
+
+voiceInstructions is the single biggest lever on whether the voiceover sounds human or robotic. Do NOT write one flat sentence. Write a SHORT, MULTI-LINE delivery direction for a real voice actor, tuned to THIS brand, using these labeled lines (omit any that don't apply):
+Voice Affect: <the persona behind the mic — e.g. "a calm luxury creative director", "a sharp, excited founder">
+Tone: <warm/commanding/playful/intimate — and what to AVOID, e.g. "never an announcer">
+Pacing: <fast/slow/varied; tell it where to speed up and where to slow down and land a line>
+Emotion: <the feeling to convey>
+Emphasis: <which words/phrases to stress>
+Pauses: <where to breathe or hold a beat>
+Keep it punchy (5-7 short lines). Match it to the brand: a luxury brand = unhurried, intimate, composed; a launch = fast, bright, energetic.`;
 }
 
 function lengthGuide(targetSeconds) {

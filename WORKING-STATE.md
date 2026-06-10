@@ -10,11 +10,29 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
+### 2026-06-09 (cont.) — Video creative direction: sound + visual themes + length control
+
+PRs #318 (music + voice) + #319 (visual themes + length). Full detail in `PLAN.md` (2026-06-09 cont.). The "meh creative" fix, one pattern: **curated finite vocabulary the agent picks from (grounded in the brand brain), UI pickers as the veto.**
+
+- **Sound (#318):** 6 fal.ai-generated music beds (`forge-music/` in the render bucket), looped + **ducked under VO** (`musicVolumeAt`); 6 cast `gpt-4o-mini-tts` voices with per-brand delivery instructions.
+- **Visual themes (#319):** 4 `DataReel` styles — `clean`/`editorial`/`bold`/`kinetic` (palette + headline type + motion physics + scale). Color precedence: defaults → brand → theme (so `bold`'s dark canvas wins, brand accent survives).
+- **Hard length (#319):** the 15s→45s bug — `LENGTH_BUDGETS` in the prompt + **`enforceDuration()` deterministic trim** (drops middle scenes, keeps hook/CTA, before TTS). UI Length toggle 15/30/60s.
+- **Direction plumbing:** `storyboardFromBrief` returns `{scenes, direction}` from `brandContextFor(profile)`; `resolveDirection` merges agent pick + UI overrides (`auto`/`none`, unknown→default); `GET /api/video/options` serves the vocabulary; `direction` persisted on `generated_videos`. UI Style/Voice/Music pickers, all Auto-default.
+- **`forge-reels` site redeployed** (theme + music aware; backward-compatible). **Process snag:** #318 merged with only its first commit; round 2 was stranded on the branch → reopened as #319. Push all commits before a PR can merge.
+
+#### What's next
+- **Per-brand direction locking** — persist chosen voice/bed/theme (`manual_overrides`-style) so it sticks across reels.
+- **Real app footage** (Playwright screens → screenshot scene archetype) — the last authenticity lever; everything's still code-drawn.
+- Pacing profiles + more archetypes; wire "Publish" → channel integrations.
+- Drop `framesPerLambda` after the AWS 5,000 concurrency bump; async `/analyze` refactor.
+
+---
+
 ### 2026-06-09 — AI Video Generation live end-to-end (Remotion Lambda + S3) + visual brand system
 
 PRs #296→#314, all in prod same-day. Full retrospective in `PLAN.md` (2026-06-09).
 
-**1. Video generation is a production feature.** Brief → storyboard agent (Sonnet) → per-scene TTS (`gpt-4o-mini-tts`/`ash` → S3 presigned) → H.264 render on **AWS Lambda** (never the web dyno). `remotion/` at repo root is the versioned template (`DataReel`: data-driven, 7 scene archetypes, `calculateMetadata` derives duration+canvas from props; redeploy via `npx remotion lambda sites create src/index.ts --site-name=forge-reels`). Backend `src/server/video.js` + async `routes/video.js` (`POST /api/video/generate` 202+poll, `generated_videos`). UI at `/app/video-generator` (#298) with **16:9 / 9:16 toggle** (#304 — template rescales by `k=width/designWidth`). Cost: ~$0.011/70s landscape, ~$0.002/15s portrait.
+**1. Video generation is a production feature.** Brief → storyboard agent (Sonnet) → per-scene TTS (`gpt-4o-mini-tts` → S3 presigned) → H.264 render on **AWS Lambda** (never the web dyno). `remotion/` at repo root is the versioned template (`DataReel`: data-driven, 7 scene archetypes, `calculateMetadata` derives duration+canvas from props; redeploy via `npx remotion lambda sites create src/index.ts --site-name=forge-reels`). Backend `src/server/video.js` + async `routes/video.js` (`POST /api/video/generate` 202+poll, `generated_videos`). UI at `/app/video-generator` (#298) with **16:9 / 9:16 toggle** (#304 — template rescales by `k=width/designWidth`). Cost: ~$0.011/70s landscape, ~$0.002/15s portrait.
 - **Env (Forge group):** `REMOTION_AWS_*` ×3, `REMOTION_LAMBDA_FUNCTION_NAME` (`remotion-render-4-0-474-mem3008mb-disk2048mb-240sec`), `REMOTION_LAMBDA_SERVE_URL` (`forge-reels` site).
 - **Gotchas baked into code:** AWS SDK reads `AWS_*` not `REMOTION_AWS_*` → mirrored at `video.js` load (#302). New-AWS-account concurrency cap 10 → `framesPerLambda: 400` pinned; **drop it when the requested 5,000 increase approves** (still pending).
 
@@ -27,9 +45,7 @@ PRs #296→#314, all in prod same-day. Full retrospective in `PLAN.md` (2026-06-
 **5. autoDeploy mystery (unresolved).** Production's toggle flips off around deploys. Ruled out: Blueprints (none; fossil `render.yaml` deleted), our code (read-only Render API), visible event log. Suspect: another holder of the shared `RENDER_API_KEY`. If it recurs → dashboard Activity feed names the actor; rotating the key isolates it.
 
 #### What's next
-- **Run the branded Sommers reel** (seeded, one click in the UI).
-- **Video generator round 2** (Brian queued the conversation): music bed + ducking, local Inter font, real app footage (Playwright), richer storyboards/archetypes, publish-to-channels wiring.
-- Drop `framesPerLambda` after the AWS concurrency increase approves.
+- **Run the branded Sommers reel** (seeded, one click in the UI). _(Round 2 — music/voice/themes/length — shipped; see the cont. block above.)_
 - Async `/analyze` refactor; BrandSettings UI for `settings.breadcrumb`; `/scan` lead capture.
 
 ---
