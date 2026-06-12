@@ -1,3 +1,24 @@
+## 2026-06-11 — Arc production envelope, Claude-web bootstrap, forge-reels deploy + key incident
+
+All merged to `development`.
+
+### Arc production envelope (#339)
+`videoArcs` (the "suggest 8 video ideas" slate) had no notion of what the renderer can build, so it pitched human voice actors, live footage, talking-head/behind-the-scenes shoots. The storyboard stage was always safe (bounded by the 18 scene archetypes) — the over-promise was upstream at the idea prompt. Added a PRODUCTION ENVELOPE block constraining every concept to: animated typographic/data scenes + synthetic AI voiceover (no human narrator) + optional uploaded product screenshots + a music bed; filmed angles get recast (testimonial → on-screen pull-quote, founder story → animated statements, demo → screenshots + callouts).
+
+### Claude Code web bootstrap (#340)
+Incorporated Brian's `claude-web-bootstrap-template`, adapted to this repo. Three hooks: SessionStart (npm install + brief: branch/behind `origin/development`/commits/newest WORKING-STATE block + capability preflight), UserPromptSubmit (one-line live status: `branch · behind · preflight-gate · now · missing-env`), PreToolUse (blocks edits/commits until preflight passes this session). `capabilities.json` is the source of truth — required CLIs + **watched** env (provider secrets surface loudly on every message but never block unrelated edits, so a wiped `ELEVENLABS_API_KEY` is caught at the first prompt) + MCP list + knownBlockers. Adaptations from the template: base branch `development`; reuses WORKING-STATE.md/PLAN.md as live-pointer + archive (no new STATE/WORKLOG); **no Composio** (this session's connectors are harness-provided directly). Docs in `docs/SESSION-BOOTSTRAP.md` + a CLAUDE.md "Session bootstrap" section. Activation is a deliberate human step (`cp .claude/settings.json.example .claude/settings.json` + commit, then restart) — not auto-enabled, since a blocking gate shouldn't govern sessions without a conscious flip.
+
+### ElevenLabs narration + the pronunciation gotcha
+Confirmed EL is a plain REST integration (`POST /v1/text-to-speech/{voiceId}`, `xi-api-key`), no MCP. Generated the SYSOI product-video VO (7 scenes from `narration.json`, voice Bill `pqHfZKP75CvOlQylNhV4`, stability 0.5 / style 0.35 for the calm ad read). Lesson: the per-scene `instructions` field in the JSON is an OpenAI `gpt-4o-mini-tts` concept — EL ignores it (delivery comes from `voice_settings`). And **all-caps "SIS-oy" triggers EL's acronym detection → spells S-I-S**; mixed-case "Sis-Oy" in the spoken text reads it as one word.
+
+### forge-reels deploy + AWS key incident
+Ran `npm run deploy-site` to push the #334 Fit/timing template to the shared Lambda site. First attempt failed with an explicit deny from `AWSCompromisedKeyQuarantineV3` — AWS's auto-attached quarantine for a **leaked/compromised access key** on IAM user `remotion`. Surfaced as a security event; Brian had already rotated the keys (Render + web env) and talked to AWS that morning, then detached the quarantine policy. Redeploy succeeded — serve URL unchanged (`remotionlambda-useast1-rccmn55lmf` bucket), so no env change. **The deploy was genuinely manual** (only the Remotion *template* needs `deploy-site` → Lambda/S3; the app code auto-deploys via Render) — historically run by hand in-session when creds were present. Proposed but not built: a GitHub Action on `remotion/**` push to auto-deploy the site with `REMOTION_AWS_*` as repo secrets.
+
+### Environment lesson
+This web container's env vars are **intermittent across its lifecycle** — `ELEVENLABS_API_KEY` and `REMOTION_AWS_*` read empty at points (prompting a key paste + a "can't deploy from here" misread) and were fully present later. Always check live env state before declaring a secret missing; the watched-env status line (#340) exists to make this loud.
+
+---
+
 ## 2026-06-10 — Video QA pass: real audio timing, fit-to-frame, per-brand pronunciation
 
 Three fixes off Brian's QA of generated reels, all merged to `development`.
