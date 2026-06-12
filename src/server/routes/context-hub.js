@@ -545,10 +545,58 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
       console.log('[Context Hub] Sonar research failed, proceeding without:', e.message);
     }
 
+    // ── Tool 1.6: Competitor site crawl (best-effort) ─────────────────────────
+    // Until now competitor URLs were passed to Claude as a bare list — the
+    // competitiveGaps/whitespace inference never saw what competitors ACTUALLY
+    // publish, only Claude's prior knowledge of them. Crawl each competitor's
+    // homepage through the same Jina→Bright Data primitive the brand crawl uses,
+    // extract their measured topic coverage with one Haiku call, and ground the
+    // profile (and downstream GEO Strategist) in observed competitor content.
+    // Best-effort: any failure degrades to the previous list-of-URLs behavior.
+    let competitorAnalysis = [];
+    try {
+      const crawlTargets = (competitorUrls.length > 0 ? competitorUrls : sonarCompetitors)
+        .filter(u => typeof u === 'string' && u.trim()).slice(0, 4);
+      if (crawlTargets.length) {
+        console.log(`[Context Hub] Tool 1.6: crawling ${crawlTargets.length} competitor site(s)...`);
+        const pages = await Promise.all(crawlTargets.map(u =>
+          getBrandPageContent(u.startsWith('http') ? u : `https://${u}`, { caller: 'context-hub-competitor' })
+            .catch(err => ({ success: false, markdown: null, error: err?.message }))
+        ));
+        const crawled = crawlTargets
+          .map((url, i) => ({ url, markdown: pages[i]?.success ? (pages[i].markdown || '') : '' }))
+          .filter(c => c.markdown.length > 300);
+        if (crawled.length) {
+          const compRes = await anthropic.messages.create({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 2000,
+            messages: [{ role: 'user', content: `For each competitor website below, extract what they actually publish and how they position themselves. Base your answer ONLY on the provided content — do not use prior knowledge of these companies.
+
+${crawled.map(c => `=== ${c.url} ===\n${c.markdown.slice(0, 5000)}`).join('\n\n')}
+
+Return ONLY a raw JSON array (no markdown), one object per site:
+[{"url":"string","positioning":"one sentence — what they sell and to whom, from their own copy","topicsCovered":["the content/messaging topics this site demonstrably covers — max 12"],"signatureClaims":["up to 3 specific claims or differentiators stated on the site"]}]` }]
+          });
+          const parsed = safeParseLLM(compRes.content[0].text, 'array', 'context-hub-competitors');
+          if (Array.isArray(parsed) && parsed.length) {
+            competitorAnalysis = parsed;
+            console.log(`[Context Hub] Tool 1.6: analyzed ${competitorAnalysis.length}/${crawlTargets.length} competitor site(s)`);
+          }
+        } else {
+          console.log('[Context Hub] Tool 1.6: no competitor page yielded usable content');
+        }
+      }
+    } catch(e) {
+      console.log('[Context Hub] Competitor crawl skipped:', e.message);
+    }
+
     // ── Tool 2: Claude — Brand Intelligence Profile ───────────────────────────
     console.log(`[Context Hub] Tool 2: Claude brand analysis...`);
 
     const competitorSection = sonarCompetitors.length ? `\nCompetitor URLs (auto-discovered): ${sonarCompetitors.join(', ')}` : '';
+    const competitorContentSection = competitorAnalysis.length
+      ? `\nCOMPETITOR SITE CONTENT (measured — crawled from their actual websites; ground competitiveGaps and whitespaceOpportunity in what they DEMONSTRABLY publish, not assumptions):\n${competitorAnalysis.map(c => `- ${c.url}\n  Positioning: ${c.positioning || 'n/a'}\n  Topics covered: ${(c.topicsCovered || []).join(', ') || 'n/a'}\n  Signature claims: ${(c.signatureClaims || []).join(' | ') || 'n/a'}`).join('\n')}`
+      : '';
     const icpSection = sonarICP ? `\nICP context (auto-discovered): ${sonarICP}` : '';
     const marketSection = sonarContext ? `\nMarket context: ${sonarContext}` : '';
     const audienceSection = audienceNotes ? `\nAdditional audience context: ${audienceNotes}` : '';
@@ -581,7 +629,7 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
 
     const prompt = `You are the Forge Intelligence Context Agent — Stage 1 of an 8-stage Brand Intelligence platform.
 
-Analyze the brand at: ${brandUrl}${siteContentSection}${competitorSection}${icpSection}${marketSection}${audienceSection}${strategicSection}${patternSection}${mistakeSection}
+Analyze the brand at: ${brandUrl}${siteContentSection}${competitorSection}${competitorContentSection}${icpSection}${marketSection}${audienceSection}${strategicSection}${patternSection}${mistakeSection}
 
 Return ONLY valid JSON (no markdown, no explanation, no newlines inside string values — use spaces instead):
 {
@@ -663,6 +711,11 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
     } else if (Array.isArray(sonarCompetitors) && sonarCompetitors.length > 0) {
       profileData.discoveredCompetitors = sonarCompetitors;
     } // else: keep profileData.discoveredCompetitors as Claude derived it
+
+    // Persist the measured competitor crawl so downstream stages (GEO Strategist
+    // Tool 1, social/video arc context) can read observed coverage instead of
+    // re-deriving it from priors. Empty crawl = key absent (old shape preserved).
+    if (competitorAnalysis.length) profileData.competitorAnalysis = competitorAnalysis;
 
     const latencyMs = Date.now() - startTime;
     console.log(`[Context Hub] Complete — ${brandName} | Latency: ${latencyMs}ms | Competitors found: ${sonarCompetitors.length}`);

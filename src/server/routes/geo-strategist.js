@@ -184,6 +184,14 @@ Return ONLY a raw JSON array of strings. No markdown, no explanation.` }]
     } catch (e) {
       console.log('[GEO] Citation probe skipped:', e.message);
     }
+    // Measured competitor coverage from Stage 1's competitor crawl (Tool 1.6) —
+    // what competitors DEMONSTRABLY publish, vs the inferred competitorTopics.
+    const competitorAnalysis = Array.isArray(pd.competitorAnalysis) ? pd.competitorAnalysis : [];
+    const competitorCoverageBlock = competitorAnalysis.length ? `
+
+COMPETITOR SITE COVERAGE (measured — crawled from competitors' actual websites at the last brand scan; prefer this over inferred competitor knowledge):
+${competitorAnalysis.map(c => `- ${c.url}: ${c.positioning || ''}\n  Publishes on: ${(c.topicsCovered || []).slice(0, 12).join(', ') || 'n/a'}${(c.signatureClaims || []).length ? `\n  Claims: ${c.signatureClaims.join(' | ')}` : ''}`).join('\n')}` : '';
+
     // A question is "invisible" only when at least one engine answered AND none
     // cited or mentioned the brand — engine errors are not evidence of absence.
     const invisibleQuestions = citationProbe
@@ -211,9 +219,9 @@ BRAND: ${profile.brand_name} (${profile.brand_url})
 PERSONAS: ${JSON.stringify(personas).slice(0, 1500)}
 COMPETITOR TOPICS: ${JSON.stringify(competitorTopics).slice(0, 4000)}
 WHITESPACE: ${whitespace.slice(0, 2000)}
-${topicFocus ? 'FOCUS: ' + topicFocus : ''}${factualGroundBlock}${strategicMoatsBlock}${citationProbeBlock}
+${topicFocus ? 'FOCUS: ' + topicFocus : ''}${factualGroundBlock}${strategicMoatsBlock}${competitorCoverageBlock}${citationProbeBlock}
 
-Identify 8-12 topical gaps where this brand has low AI citation probability vs competitors. Topics must be consistent with the USER-VERIFIED FACTS above and must NOT fall inside the STRATEGIC MOATS (those are intentional exclusions, not opportunities).
+Identify 8-12 topical gaps where this brand has low AI citation probability vs competitors. Topics must be consistent with the USER-VERIFIED FACTS above and must NOT fall inside the STRATEGIC MOATS (those are intentional exclusions, not opportunities). When COMPETITOR SITE COVERAGE is present, ground every "owner" and gap claim in what competitors measurably publish — a topic a competitor demonstrably covers and the brand does not is a stronger gap than anything inferred.
 
 When MEASURED AI VISIBILITY is present, it outranks every inferred signal: the invisible buyer questions are the strongest gap evidence (derive topics directly from them where they fit the brand), and the "who AI cites instead" domains are the real topic owners — use the actual cited domain as the owner when you have no stronger candidate.
 
