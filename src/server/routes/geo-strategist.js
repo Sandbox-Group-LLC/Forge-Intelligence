@@ -199,7 +199,12 @@ TOPICAL GAPS: ${JSON.stringify(
 )}
 WHITESPACE: ${whitespace.slice(0, 300)}
 
-For each topic gap, score citation probability 0-100 across all 4 AI platforms. quickWin=true if score >= 70 and low brand presence.
+For each topic gap, score citation probability 0-100 across all 4 AI platforms. Score each platform against what that engine actually rewards, not a uniform rubric:
+- ChatGPT: favors established authority and entity recognition (Wikipedia-grade sources dominate its citations). Score high when the topic lets the brand make authoritative, fact-dense claims in a space without an entrenched encyclopedic authority; score low where a Wikipedia-tier source already owns the answer.
+- Perplexity: favors freshness and community signal (Reddit/forum-heavy citation mix, strong recency bias). Score high for topics with recent developments, dated data, or active practitioner discussion the brand can speak to; evergreen topics dominated by old authoritative pages score low.
+- Google AI Overviews: favors E-E-A-T plus structured, schema-marked content surfaced through Google's index. Score high where the brand can demonstrate first-hand expertise on a long-tail question; score low for head terms where established domains already hold the SERP.
+- Gemini: favors brand-owned domains (over half its citations resolve to brand sites) and consistent entity presence. Score high when the topic sits squarely in the brand's own naming/products/methodology; score low for generic category topics with no brand-entity tie.
+quickWin=true if score >= 70 and low brand presence.
 
 Return ONLY a raw JSON array (no markdown, no explanation):
 [{"platform":"ChatGPT","topic":"string","score":80,"quickWin":true},{"platform":"Perplexity","topic":"string","score":70,"quickWin":false},{"platform":"Google AI Overviews","topic":"string","score":65,"quickWin":false},{"platform":"Gemini","topic":"string","score":60,"quickWin":false}]` }]
