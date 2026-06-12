@@ -17,6 +17,10 @@ export type Brand = {
   // Measured logo URL (S3/og:image/favicon). When present it replaces the
   // Forge diamond in the lockup + closing card.
   logo?: string;
+  // Full lockup (mark + wordmark) image. When present it REPLACES the
+  // typed brand name in the corner slot and the CTA title — for brands whose
+  // wordmark is custom-drawn type that a system font would butcher.
+  wordmark?: string;
 };
 
 type SceneBase = {
@@ -101,6 +105,9 @@ export type ScreensScene = SceneBase & {
   // "dynamic" = 3D fly-in entrance, a hard punch-in zoom per shot (a cut, not
   // a drift — explicitly NOT Ken Burns), slide-over transitions between shots.
   motion?: "static" | "dynamic";
+  // Viewport aspect ratio (CSS aspect-ratio syntax). Default "16 / 9". Set to
+  // the capture's native ratio (e.g. "2940 / 1414") so nothing crops.
+  shotAspect?: string;
 };
 
 // ── Expanded scene deck (more variety, less recycling) ──────────────────────

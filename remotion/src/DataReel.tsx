@@ -148,7 +148,11 @@ const Stage: React.FC<{ children: React.ReactNode; audio?: string }> = ({ childr
     <AbsoluteFill style={{ background: C.bg, fontFamily: font, justifyContent: "center", alignItems: "center", padding: 120 * k, overflow: "hidden" }}>
       {src && <Audio src={src} />}
       <div style={{ position: "absolute", top: 64 * k, left: 90 * k, display: "flex", alignItems: "center", gap: 14 * k }}>
-        <BrandMark size={36} /><span style={{ fontWeight: 700, fontSize: 32 * k, color: C.emphasis }}>{brand.name}</span>
+        {brand.wordmark ? (
+          <Img src={assetSrc(brand.wordmark)} style={{ height: 44 * k, width: "auto", objectFit: "contain" }} />
+        ) : (
+          <><BrandMark size={36} /><span style={{ fontWeight: 700, fontSize: 32 * k, color: C.emphasis }}>{brand.name}</span></>
+        )}
       </div>
       <Fit pad={120 * k}>{children}</Fit>
     </AbsoluteFill>
@@ -251,10 +255,9 @@ const PipelineView: React.FC<{ s: PipelineScene }> = ({ s }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const head = useRise(0);
-  const node = 150 * k;
   return (
     <Stage audio={s.audio}>
-      <div style={{ width: (portrait ? 920 : 1640) * k, textAlign: "center" }}>
+      <div style={{ width: (portrait ? 920 : 1700) * k, textAlign: "center" }}>
         <div style={{ ...head, ...hl, fontSize: 70 * k, color: C.emphasis, marginBottom: 70 * k }}>
           {s.headline} {s.headlineEmphasis && <span style={{ color: C.accent }}>{s.headlineEmphasis}</span>}
         </div>
@@ -266,12 +269,13 @@ const PipelineView: React.FC<{ s: PipelineScene }> = ({ s }) => {
               <React.Fragment key={st}>
                 <div style={{
                   transform: `scale(${interpolate(lit, [0, 1], [0.7, 1])})`, opacity: Math.min(1, lit),
-                  width: node, height: node, borderRadius: 24 * k, flexShrink: 0,
+                  borderRadius: 999, flexShrink: 0, whiteSpace: "nowrap",
                   background: isLast ? C.accent : C.card, color: isLast ? C.onAccent : C.emphasis,
-                  border: `2px solid ${isLast ? C.accent : C.border}`,
-                  display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center",
-                  fontSize: 26 * k, fontWeight: 700, padding: 8 * k,
-                  boxShadow: isLast ? `0 0 ${50 * k}px rgba(53,99,255,0.4)` : `0 ${6 * k}px ${20 * k}px rgba(15,23,42,0.06)`,
+                  border: `2px solid ${isLast ? C.accent : `${C.accent}66`}`,
+                  fontSize: 30 * k, fontWeight: 700, padding: `${20 * k}px ${40 * k}px`,
+                  boxShadow: isLast
+                    ? `0 0 ${56 * k}px ${C.accent}73, 0 0 ${16 * k}px ${C.accent}59`
+                    : `0 0 ${28 * k}px ${C.accent}33`,
                 }}>{st}</div>
                 {!portrait && i < s.stages.length - 1 && (
                   <div style={{ width: 44 * k, height: 4 * k, background: C.border, flexShrink: 0, opacity: Math.min(1, lit), borderRadius: 2 }} />
@@ -413,10 +417,12 @@ const ScreensView: React.FC<{ s: ScreensScene }> = ({ s }) => {
       }
     : rise;
 
-  // one sheen sweep across the card right after the fly-in lands (dynamic only)
-  const sheenX = interpolate(frame, [16, 46], [-60, 160], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-
-  const frameW = (portrait ? 1500 : 1480) * k;
+  // dynamic gets a wider card (the punch-in earns the real estate) and a
+  // brand-accent glow so the product frame reads as the hero of the scene.
+  const frameW = (portrait ? 1500 : dynamic ? 1640 : 1480) * k;
+  const cardShadow = dynamic
+    ? `0 ${24 * k}px ${70 * k}px rgba(0,0,0,0.55), 0 0 ${64 * k}px ${C.accent}59, 0 0 ${18 * k}px ${C.accent}40`
+    : `0 ${36 * k}px ${90 * k}px rgba(15,23,42,0.30)`;
   const dot = (c: string) => <span style={{ width: 14 * k, height: 14 * k, borderRadius: 999, background: c, display: "inline-block" }} />;
 
   return (
@@ -437,8 +443,8 @@ const ScreensView: React.FC<{ s: ScreensScene }> = ({ s }) => {
         {shots.length > 0 && (
           <div style={{
             ...fly, width: frameW, borderRadius: 20 * k, overflow: "hidden",
-            background: C.card, border: `2px solid ${C.border}`,
-            boxShadow: `0 ${36 * k}px ${90 * k}px rgba(15,23,42,0.30)`,
+            background: C.card, border: `2px solid ${dynamic ? `${C.accent}55` : C.border}`,
+            boxShadow: cardShadow,
           }}>
             {/* browser chrome */}
             <div style={{ height: 50 * k, display: "flex", alignItems: "center", gap: 10 * k, padding: `0 ${22 * k}px`, background: C.bg, borderBottom: `2px solid ${C.border}` }}>
@@ -447,9 +453,10 @@ const ScreensView: React.FC<{ s: ScreensScene }> = ({ s }) => {
                 <div style={{ marginLeft: 16 * k, flex: 1, maxWidth: 520 * k, height: 30 * k, borderRadius: 999, background: C.card, border: `2px solid ${C.border}`, display: "flex", alignItems: "center", padding: `0 ${18 * k}px`, fontSize: 22 * k, color: C.muted, fontWeight: 600, overflow: "hidden", whiteSpace: "nowrap" }}>{s.urlLabel}</div>
               )}
             </div>
-            {/* viewport; cover-crop a constant 16:9 window so the page top reads.
+            {/* viewport; default 16:9 cover-crop, or the capture's native ratio
+                via shotAspect so nothing clips left/right.
                 static = held still + crossfade · dynamic = slide-over + punch-in */}
-            <div style={{ position: "relative", width: "100%", aspectRatio: "16 / 9", overflow: "hidden", background: C.card }}>
+            <div style={{ position: "relative", width: "100%", aspectRatio: s.shotAspect ?? "16 / 9", overflow: "hidden", background: C.card }}>
               {shots.map((src, i) => {
                 if (!dynamic) {
                   return (
@@ -472,14 +479,6 @@ const ScreensView: React.FC<{ s: ScreensScene }> = ({ s }) => {
                   }} />
                 );
               })}
-              {dynamic && (
-                <div style={{
-                  position: "absolute", top: 0, bottom: 0, left: 0, width: "34%",
-                  transform: `translateX(${sheenX * 3}%) skewX(-18deg)`,
-                  background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.09), transparent)",
-                  pointerEvents: "none",
-                }} />
-              )}
             </div>
           </div>
         )}
@@ -489,15 +488,23 @@ const ScreensView: React.FC<{ s: ScreensScene }> = ({ s }) => {
 };
 
 const CtaView: React.FC<{ s: CtaScene }> = ({ s }) => {
-  const { C } = React.useContext(Ctx);
+  const { C, brand } = React.useContext(Ctx);
   const { k } = useL();
   const hl = useHeadline();
   const a = useRise(0), b = useRise(14), c = useRise(30);
   return (
     <Stage audio={s.audio}>
       <div style={{ textAlign: "center", maxWidth: 1500 * k }}>
-        <div style={a}><BrandMark size={96} /></div>
-        <div style={{ ...b, ...hl, fontSize: 96 * k, color: C.emphasis, margin: `${34 * k}px 0 ${26 * k}px` }}>{s.title}</div>
+        {brand.wordmark ? (
+          <div style={{ ...b, margin: `0 0 ${40 * k}px`, display: "flex", justifyContent: "center" }}>
+            <Img src={assetSrc(brand.wordmark)} style={{ width: 560 * k, height: "auto", objectFit: "contain" }} />
+          </div>
+        ) : (
+          <>
+            <div style={a}><BrandMark size={96} /></div>
+            <div style={{ ...b, ...hl, fontSize: 96 * k, color: C.emphasis, margin: `${34 * k}px 0 ${26 * k}px` }}>{s.title}</div>
+          </>
+        )}
         {s.sub && <div style={{ ...b, fontSize: 50 * k, color: C.secondary, fontWeight: 500, marginBottom: 44 * k }}>{s.sub}</div>}
         <div style={{ ...c, fontSize: 46 * k, fontWeight: 700, color: C.onAccent, background: C.accent, borderRadius: 18 * k, padding: `${24 * k}px ${52 * k}px`, display: "inline-block" }}>{s.cta}</div>
       </div>
