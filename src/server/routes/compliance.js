@@ -284,6 +284,21 @@ router.post('/critique', async (req, res) => {
     const mistakesRes = await pool.query(`SELECT * FROM brain_mistakes WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 20`, [brandProfileId]).catch(() => ({ rows: [] }));
     const mistakes = mistakesRes.rows;
 
+    // Factual Ground — the user-verified facts. Without this the critique judged
+    // factual claims in total isolation: it could neither clear a claim the brand
+    // owner already verified (false-positive factual_claim flags on true facts)
+    // nor catch a claim that CONTRADICTS what the owner stated. Both directions
+    // matter; contradiction is the severe one.
+    const fg = brand?.settings?.factualGround || null;
+    const fgBlock = fg && Object.values(fg).some(v => v && (typeof v === 'string' ? v.trim() : (Array.isArray(v) && v.length)))
+      ? `\nUSER-VERIFIED FACTS (stated by the brand owner — authoritative ground truth):
+${fg.whatWeDo ? `- What this brand does: ${String(fg.whatWeDo).slice(0, 500)}\n` : ''}${fg.whatWeDontDo ? `- What this brand does NOT do: ${String(fg.whatWeDontDo).slice(0, 500)}\n` : ''}${fg.companyFacts ? `- Company facts: ${String(fg.companyFacts).slice(0, 500)}\n` : ''}${fg.foundingStory ? `- Founding story: ${String(fg.foundingStory).slice(0, 400)}\n` : ''}${fg.methodology ? `- Methodology/frameworks: ${String(fg.methodology).slice(0, 400)}\n` : ''}${Array.isArray(fg.authors) && fg.authors.length ? `- Named team: ${fg.authors.map(a => `${a.name || ''}${a.title ? ` (${a.title})` : ''}`).filter(Boolean).join(', ')}\n` : ''}
+How to use these facts:
+- A claim in the article that MATCHES or is directly supported by these facts is VERIFIED — do not flag it as an unverifiable factual_claim.
+- A claim that CONTRADICTS these facts (wrong founder, wrong methodology, claims the brand does something listed under "does NOT do") is a RED factual_claim flag — quote the contradicting excerpt and name the verified fact it violates.
+- These facts are context for judging claims, NOT article content — the flaggedExcerpt rule is unchanged: every excerpt must still be a verbatim quote from the article section being flagged.`
+      : '';
+
     const systemPrompt = `You are a compliance and brand voice auditor for the brand "${brand?.brand_name || 'Unknown'}". Analyze this article against the brand profile and known mistakes. Return a JSON compliance report.
 
 The article was written for the brand "${brand?.brand_name || 'Unknown'}" (${brand?.brand_url || 'no URL'}). Do NOT flag brand name usage that correctly references this brand.
@@ -298,7 +313,7 @@ CRITICAL RULES:
 
 Brand Voice Profile:
 ${JSON.stringify(brand?.profile_data?.voice_profile || {}, null, 2)}
-
+${fgBlock}
 Known Mistakes to Avoid:
 ${mistakes.map(m => `- ${m.mistake_type}: ${m.human_feedback}`).join('\n') || 'None recorded yet'}
 

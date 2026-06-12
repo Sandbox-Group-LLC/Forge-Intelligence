@@ -3849,19 +3849,29 @@ app.get('/api/content-generator/generate', requireAuth, async (req, res) => {
       const s = JSON.stringify(obj, null, 2);
       return s.length > maxChars ? s.substring(0, maxChars) + '\n...[truncated for token budget]' : s;
     };
-    // Load Topical Authority Map — strategic context for where this content lives
+    // Load Topical Authority Map — strategic context for where this content lives.
+    // Also extract the MEASURED layer off the same row (citationProbe lives on the
+    // brand-level geo_briefs brief_data) — previously it sat inside the JSONB the
+    // 4000-char trimTo could randomly truncate away, so the writer never reliably
+    // saw who AI actually cites or where the brand is invisible.
     let topicalTerritories = [];
+    let cgCitationProbe = null;
     try {
       const gbRes = await pool.query(
         `SELECT brief_data FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
         [brandProfileId]
       );
-      const topicalMapRaw = gbRes.rows[0]?.brief_data?.topicalAuthorityMap || gbRes.rows[0]?.brief_data?.topicalMap?.gapsByCluster || [];
+      cgCitationProbe = gbRes.rows[0]?.brief_data?.citationProbe || null;
+      // Prefer the RAW gaps (they carry cluster + informationGainAngle); the
+      // normalized topicalAuthorityMap drops both.
+      const topicalMapRaw = gbRes.rows[0]?.brief_data?.topicalMap?.gapsByCluster || gbRes.rows[0]?.brief_data?.topicalAuthorityMap || [];
       topicalTerritories = topicalMapRaw
         .map(t => ({
           topic: t.topic || t.cluster || t.name,
           coverage: (t.coverage || t.rationale || t.description || '').slice(0, 140),
-          priority: t.priority || (t.citationProbability >= 70 ? 'high' : t.citationProbability >= 40 ? 'medium' : 'low')
+          cluster: t.cluster || null,
+          angle: (t.informationGainAngle || '').slice(0, 160),
+          priority: t.priority || (t.geoCitationScore >= 70 || t.citationProbability >= 70 ? 'high' : t.geoCitationScore >= 40 || t.citationProbability >= 40 ? 'medium' : 'low')
         }))
         .filter(t => t.topic)
         .sort((a, b) => (a.priority === 'high' ? -1 : b.priority === 'high' ? 1 : 0))
@@ -3869,7 +3879,19 @@ app.get('/api/content-generator/generate', requireAuth, async (req, res) => {
     } catch(e) { /* silent — non-fatal */ }
 
     const territoriesBlock = topicalTerritories.length
-      ? `\nSTRATEGIC TERRITORIES THIS BRAND OPERATES IN (write as an authority in these territories — never drift outside them):\n${topicalTerritories.map(t => `  • [${t.priority}] ${t.topic}${t.coverage ? ' — ' + t.coverage : ''}`).join('\n')}\n`
+      ? `\nSTRATEGIC TERRITORIES THIS BRAND OPERATES IN (write as an authority in these territories — never drift outside them):\n${topicalTerritories.map(t => `  • [${t.priority}]${t.cluster ? ` (${t.cluster})` : ''} ${t.topic}${t.coverage ? ' — ' + t.coverage : ''}${t.angle ? `\n    Information-gain angle (the unique claim THIS brand makes here — the article must deliver it): ${t.angle}` : ''}`).join('\n')}\n`
+      : '';
+
+    const cgMeasuredBlock = cgCitationProbe
+      ? `\nMEASURED AI VISIBILITY (live engine probe — this is the gap the article exists to close): the brand appeared in ${cgCitationProbe.visibility}% of ${cgCitationProbe.totalChecks} AI answers (${Object.entries(cgCitationProbe.byEngine || {}).map(([id, v]) => `${id} ${v.available ? v.pct + '%' : 'n/a'}`).join(' · ')}). WHO AI CITES INSTEAD: ${(cgCitationProbe.sources || []).slice(0, 8).map(s => s.domain).join(', ') || 'none captured'}. Write the piece those incumbent sources would have to cite — more specific, better evidenced, more extractable than what they publish.\n`
+      : '';
+    const cgCompetitors = Array.isArray(profileData?.competitorAnalysis) ? profileData.competitorAnalysis : [];
+    const cgCompetitorBlock = cgCompetitors.length
+      ? `\nCOMPETITOR SITE COVERAGE (measured — crawled from their actual websites): ${cgCompetitors.map(c => `${c.url}: ${c.positioning || ''}${(c.signatureClaims || []).length ? ` — claims: ${c.signatureClaims.join(' | ')}` : ''}`).join('\n')}\nDo not echo their claims; write what they demonstrably cannot say.\n`
+      : '';
+    const cgMoats = Array.isArray(profileData?.strategicMoats) ? profileData.strategicMoats : [];
+    const cgMoatsBlock = cgMoats.length
+      ? `\nSTRATEGIC MOATS (deliberate non-actions — reference as trust signals where natural, never as weaknesses): ${cgMoats.map(m => m.capability).join('; ')}\n`
       : '';
 
     // Load Factual Ground — user-verified facts the writer MUST use verbatim
@@ -3933,7 +3955,7 @@ ${(() => {
       : '';
 
         const userPrompt = `Generate a long-form article using the following Brand Intelligence context.
-${topicPrompt ? `\nUSER TOPIC DIRECTION (write the article around this specific topic/angle — this overrides the enriched brief's default topic selection):\n"${topicPrompt}"\n` : ''}${(mandatories || constraints || audience || ctaTarget || desiredAction || wordCountTarget) ? `\nUSER MANDATORIES & CONSTRAINTS (the user-supplied non-negotiables for this article — every section must respect these. Treat as harder than brand patterns):\n${mandatories ? `- MANDATORIES (must include): ${mandatories}\n` : ''}${constraints ? `- CONSTRAINTS (must NOT do): ${constraints}\n` : ''}${audience ? `- TARGET AUDIENCE: ${audience}\n` : ''}${ctaTarget ? `- CTA TARGET URL/PATH: ${ctaTarget} — every CTA in the article should reference this destination.\n` : ''}${desiredAction ? `- DESIRED READER ACTION: ${desiredAction} — shape the article and conclusion to drive toward this specific next step.\n` : ''}${wordCountTarget ? `- TARGET LENGTH: approximately ${wordCountTarget} words. Do not pad — depth over filler.\n` : ''}` : ''}${selfAsCaseStudyBlock}${factualGroundBlock}${territoriesBlock}
+${topicPrompt ? `\nUSER TOPIC DIRECTION (write the article around this specific topic/angle — this overrides the enriched brief's default topic selection):\n"${topicPrompt}"\n` : ''}${(mandatories || constraints || audience || ctaTarget || desiredAction || wordCountTarget) ? `\nUSER MANDATORIES & CONSTRAINTS (the user-supplied non-negotiables for this article — every section must respect these. Treat as harder than brand patterns):\n${mandatories ? `- MANDATORIES (must include): ${mandatories}\n` : ''}${constraints ? `- CONSTRAINTS (must NOT do): ${constraints}\n` : ''}${audience ? `- TARGET AUDIENCE: ${audience}\n` : ''}${ctaTarget ? `- CTA TARGET URL/PATH: ${ctaTarget} — every CTA in the article should reference this destination.\n` : ''}${desiredAction ? `- DESIRED READER ACTION: ${desiredAction} — shape the article and conclusion to drive toward this specific next step.\n` : ''}${wordCountTarget ? `- TARGET LENGTH: approximately ${wordCountTarget} words. Do not pad — depth over filler.\n` : ''}` : ''}${selfAsCaseStudyBlock}${factualGroundBlock}${territoriesBlock}${cgMeasuredBlock}${cgCompetitorBlock}${cgMoatsBlock}
 BRAND PROFILE:
 ${trimTo(profileData, 6000)}
 
