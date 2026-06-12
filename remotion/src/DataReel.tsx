@@ -352,9 +352,10 @@ const CurveView: React.FC<{ s: CurveScene }> = ({ s }) => {
   );
 };
 
-// Product showcase — REAL screenshots in browser chrome with a slow Ken Burns
-// push. The single biggest lever on "this is a brand reel" vs "that's the actual
-// product". `shots` are S3 URLs filled by the backend; crossfades if >1. Browser
+// Product showcase — REAL screenshots in browser chrome, held static (no Ken
+// Burns push — the zoom read as filler and blurred the product). The single
+// biggest lever on "this is a brand reel" vs "that's the actual product".
+// `shots` are S3 URLs filled by the backend; crossfades if >1. Browser
 // chrome + image area use the palette so it sits in any theme (clean/bold/…).
 const ScreensView: React.FC<{ s: ScreensScene }> = ({ s }) => {
   const { C } = React.useContext(Ctx);
@@ -365,11 +366,6 @@ const ScreensView: React.FC<{ s: ScreensScene }> = ({ s }) => {
   const rise = useRise(8, 40);
   const shots = Array.isArray(s.shots) ? s.shots.filter(Boolean) : [];
   const dur = s.durationInFrames || 1;
-
-  // Ken Burns over the whole scene (slow zoom + slight rise).
-  const p = interpolate(frame, [0, dur], [0, 1], { extrapolateRight: "clamp" });
-  const scale = interpolate(p, [0, 1], [1.05, 1.13]);
-  const ty = interpolate(p, [0, 1], [0, -3]); // %
 
   // Crossfade across multiple shots: equal slices, ~14f dissolve.
   const seg = shots.length > 1 ? dur / shots.length : dur;
@@ -415,13 +411,12 @@ const ScreensView: React.FC<{ s: ScreensScene }> = ({ s }) => {
                 <div style={{ marginLeft: 16 * k, flex: 1, maxWidth: 520 * k, height: 30 * k, borderRadius: 999, background: C.card, border: `2px solid ${C.border}`, display: "flex", alignItems: "center", padding: `0 ${18 * k}px`, fontSize: 22 * k, color: C.muted, fontWeight: 600, overflow: "hidden", whiteSpace: "nowrap" }}>{s.urlLabel}</div>
               )}
             </div>
-            {/* viewport with Ken Burns; cover-crop a constant 16:9 window so the page top reads */}
+            {/* static viewport; cover-crop a constant 16:9 window so the page top reads */}
             <div style={{ position: "relative", width: "100%", aspectRatio: "16 / 9", overflow: "hidden", background: C.card }}>
               {shots.map((src, i) => (
                 <Img key={i} src={src} style={{
                   position: "absolute", inset: 0, width: "100%", height: "100%",
                   objectFit: "cover", objectPosition: "center top",
-                  transform: `scale(${scale}) translateY(${ty}%)`, transformOrigin: "center top",
                   opacity: shotOpacity(i),
                 }} />
               ))}
