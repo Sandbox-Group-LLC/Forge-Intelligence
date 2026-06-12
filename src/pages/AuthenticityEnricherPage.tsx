@@ -349,7 +349,7 @@ function AuthenticityEnricherContent() {
           <div className="geo-eyebrow">Stage 3</div>
           <h1 className="geo-title">Authenticity Enricher</h1>
           <p className="geo-description">
-            Injects E-E-A-T signals, SME credentials, and voice-matched hooks to make content AI-citation ready.
+            Injects E-E-A-T signals, SME credentials, and voice-matched hooks — grounded in measured AI visibility, crawled competitor claims, and your Brain's learned patterns — to make content AI-citation ready.
           </p>
         </div>
         {result && (
