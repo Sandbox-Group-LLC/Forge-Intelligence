@@ -20,8 +20,8 @@ const CheckIcon = () => (
 );
 
 const stages = [
-  { num: 1, name: 'Context Hub', desc: 'Brand voice, personas, competitive gaps — extracted in minutes, not months' },
-  { num: 2, name: 'GEO Strategy', desc: 'AI citation opportunities across ChatGPT, Perplexity, Gemini' },
+  { num: 1, name: 'Context Hub', desc: 'Brand voice, personas, competitive gaps — extracted from your site and your competitors\' sites in minutes, not months' },
+  { num: 2, name: 'GEO Strategy', desc: 'Citation gaps measured live against ChatGPT, Perplexity, Gemini, and Google AI Overviews — who AI cites today, and where you\'re invisible' },
   { num: 3, name: 'Authenticity', desc: 'E-E-A-T signals, SME hooks, first-person experience injection' },
   { num: 4, name: 'Generation', desc: 'Brain-informed content with confidence scoring per section' },
   { num: 5, name: 'Compliance', desc: 'Human gate with auto-learning from every edit' },
@@ -65,7 +65,12 @@ const gaps = [
   {
     title: 'Competitive Intelligence Integration',
     claim: 'CI tools and content tools exist separately.',
-    ours: 'Real-time competitive signals integrated directly into content generation. A significant white space.',
+    ours: 'Competitor sites crawled, AI engines probed live — measured signals feed topic discovery and content generation directly. A significant white space.',
+  },
+  {
+    title: 'Measured, Not Modeled',
+    claim: 'Most GEO tools estimate your AI visibility from proxies.',
+    ours: 'Forge asks the actual engines. Real buyer questions, probed against ChatGPT, Perplexity, Gemini, and AI Overviews — your whitespace is observed, not imagined.',
   },
 ];
 
@@ -237,6 +242,8 @@ export default function Product() {
             {[
               'Brand Intelligence Profile',
               'Persona Pain Point Mapping',
+              'Competitor Site Crawl',
+              'Live AI Citation Probe (4 engines)',
               'Competitive Gap Analysis',
               'GEO Strategy Brief',
               'E-E-A-T Enrichment',
