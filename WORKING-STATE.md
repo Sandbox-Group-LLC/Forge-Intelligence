@@ -10,16 +10,29 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
+### 2026-06-11 — Arc production envelope · web bootstrap · forge-reels deploy
+
+- **#339 arc production envelope** — `videoArcs` pitched concepts the renderer can't make (human VO, live footage, talking-head/behind-the-scenes shoots). Storyboard was always safe (bounded by the 18 archetypes); the leak was the arc-idea prompt. Added a PRODUCTION ENVELOPE block: every concept must be achievable with animated text/data scenes + synthetic AI voiceover + optional uploaded screenshots + music. Filmed angles get recast (testimonial → on-screen pull-quote, demo → screenshots+callouts).
+- **#340 Claude Code web bootstrap** — adapted Brian's `claude-web-bootstrap-template`. SessionStart brief (branch · behind `development` · commits · newest WORKING-STATE block) + UserPromptSubmit live status line (`branch · behind · gate · now · missing-env`) + PreToolUse capability gate. `capabilities.json` is source of truth; provider secrets are **watched** (surface loudly, never block). Adaptations: base `development`; reuses WORKING-STATE/PLAN (no STATE/WORKLOG); no Composio (harness MCPs direct). **Activation is a human step (NOT yet done): `cp .claude/settings.json.example .claude/settings.json` + commit, then fresh session.**
+- **ElevenLabs VO**: confirmed it's a plain REST API (no MCP). Generated SYSOI product-video narration (7 scenes, Bill voice, stability 0.5/style 0.35) from `narration.json`. Gotcha: all-caps "SIS-oy" makes EL spell it (acronym detection) → use mixed-case "Sis-Oy" in the spoken text.
+- **`forge-reels` redeployed** ✅ — the #334 Fit/timing template is now live on the shared Lambda site (serve URL unchanged). Surfaced + Brian fixed a real security event mid-deploy: the `remotion` IAM key was quarantined by AWS (`AWSCompromisedKeyQuarantineV3` = leaked-key auto-deny). Keys already rotated + updated in Render and the web env; quarantine policy detached; deploy then succeeded.
+
+#### What's next
+- **Activate the bootstrap hooks** (human step above) — the files are merged but inert until `.claude/settings.json` exists.
+- **Automate the site deploy (proposed, not built):** a GitHub Action on `remotion/**` push to `development`/`main` running `deploy-site` with `REMOTION_AWS_*` as repo secrets — kills the "forgot to redeploy → stale template" footgun. The deploy is genuinely manual today (only `deploy-site` is, not the app — Render auto-deploys the dyno).
+- Drop `framesPerLambda: 400` once the AWS **5,000 concurrency** increase approves.
+- Verify ElevenLabs on Render: `dev.forgeintelligence.ai/api/video/tts-check` (signed in) → confirm `elevenlabs.ok` (vs. silent OpenAI fallback).
+
+---
+
 ### 2026-06-10 — Video: real timing, fit-to-frame, per-brand pronunciation
 
 All merged to `development`. Three voice/render-quality fixes from Brian's QA pass:
 - **#334 timing + fit** — scene length now tracks the REAL audio (ElevenLabs returns exact seconds; OpenAI falls back to word-count estimate) + a ~0.85s tail, so VO no longer overlaps into the next scene. "No repeated copy" prompt rule. New `Fit` component in `DataReel.tsx` measures content and scales down to the safe area → kills out-of-frame text.
 - **#336 pronunciation** — `applyPronunciations(text, dict)` rewrites tricky brand names in the **spoken VO only** (on-screen text keeps real spelling); whole-word, case-insensitive, substring-safe. Sources merge: per-brand `profile_data.pronunciations` → optional per-render override (new "Pronounce names like" UI field). **SYSOI's 3 profiles seeded** `{ "SYSOI": "Sis-Oy" }`.
 
-#### What's next (video) — DEPLOY PENDING
-- **⚠️ Run `cd remotion && npm run deploy-site` (needs `REMOTION_AWS_*` env — Render side, not the sandbox).** #334 changed the `DataReel.tsx` template (Fit component); the live `forge-reels` Lambda site won't have it until this redeploy. Pronunciation (#336) is server-side only and needs no deploy.
-- Then verify ElevenLabs on Render: hit `dev.forgeintelligence.ai/api/video/tts-check` signed in, confirm the `elevenlabs` block (EL works vs. datacenter-IP blocked → silent OpenAI fallback).
-- Drop `framesPerLambda: 400` once the AWS **5,000 concurrency** increase approves.
+#### Deploy status
+- ✅ **`forge-reels` redeployed 2026-06-11** — the Fit/timing template is live (see the 2026-06-11 block above). Pronunciation (#336) was server-side only, no deploy needed.
 
 ---
 
