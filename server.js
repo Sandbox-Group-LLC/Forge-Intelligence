@@ -3805,7 +3805,7 @@ app.get('/api/content-generator/generate', requireAuth, async (req, res) => {
   req.on('close', () => clearInterval(keepalive));
 
   try {
-    // ── Brain-First: load all context ────────────────────────────────────────
+    // ── Brain-First: load all context ──────────────���───��─────────────────────
     const [profileRes, patternsRes, mistakesRes] = await Promise.all([
       pool.query('SELECT * FROM brand_profiles WHERE id = $1', [brandProfileId]),
       pool.query('SELECT pattern_type, description, confidence_score, tags FROM brain_patterns WHERE brand_profile_id = $1 ORDER BY confidence_score DESC LIMIT 8', [brandProfileId]).catch(() => ({ rows: [] })),
@@ -6369,7 +6369,7 @@ app.delete('/api/reviewers/:id', async (req, res) => {
 
 
 
-// ── forgeScrape — the one scrape primitive ─────────────────────────────────
+// ── forgeScrape — the one scrape primitive ─────────���───────────────────────
 // Every URL Forge fetches for content/intelligence purposes goes through
 // here. Two-tier under the hood:
 //
@@ -7067,15 +7067,21 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
 
     // Super admin: return ALL brands + auto-tether orphans
     if (isSuperAdmin) {
-      // Auto-tether orphan brain ONLY if brand_id explicitly passed (from onboard/gate flow)
-      if (brandId) {
+      // Auto-tether orphan brain ONLY on an EXPLICIT claim (?claim=true). A bare
+      // brand_id rides in on passive page loads (preview links, deep links, brand
+      // picker) and must NOT trigger a tether — doing so vacuumed every anonymous
+      // scan into the super-admin account and permanently blocked the real founder
+      // from reclaiming it (their claim no-ops on the clerk_user_id IS NULL guard).
+      // brand_id alone now only SELECTS which brand to view (handled below).
+      const explicitClaim = req.query.claim === 'true' || req.query.claim === '1';
+      if (brandId && explicitClaim) {
         const tethered = await pool.query(
           `UPDATE brand_profiles SET clerk_user_id = $1, trial_started_at = COALESCE(trial_started_at, NOW()), updated_at = NOW()
            WHERE id = $2 AND clerk_user_id IS NULL RETURNING id, brand_name`,
           [req.userId, brandId]
         );
         if (tethered.rows.length > 0) {
-          console.log(`[AUTH] Tethered brand ${tethered.rows[0].brand_name} (${brandId}) to super admin ${req.userId}`);
+          console.log(`[AUTH] Super admin ${req.userId} explicitly claimed orphan brand ${tethered.rows[0].brand_name} (${brandId})`);
         }
       }
 
