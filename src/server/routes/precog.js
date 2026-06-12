@@ -358,6 +358,54 @@ router.post('/score', async (req, res) => {
     };
     score += whitespaceScore;
 
+    // ───── L. SHADOW: Measured Visibility (0-10, NOT added to score) ─────
+    // Phase 1 of the measured-visibility rollout. Computes a candidate dimension
+    // from the GEO citation probe (live engine ground truth) and stores it in
+    // the breakdown WITHOUT touching the 0-100 score — so the headline number
+    // and the precog_outcomes accuracy history stay on the v2 model while every
+    // scored article accumulates the shadow signal. Promotion to a live
+    // dimension is a deliberate v3.0 re-base once outcomes prove it predictive.
+    let shadowVisibility = null;
+    try {
+      const probeRes = await pool.query(
+        `SELECT brief_data->'citationProbe' as probe FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY version DESC LIMIT 1`,
+        [brandProfileId]
+      );
+      const probe = probeRes.rows[0]?.probe || null;
+      if (probe && typeof probe.visibility === 'number') {
+        // Invisible questions: at least one engine answered, none cited/mentioned.
+        const invisibleQuestions = (probe.perQuestion || []).filter(r => {
+          const checked = Object.values(r.engines || {}).filter(s => s !== 'error');
+          return checked.length > 0 && !checked.some(s => s === 'cited' || s === 'mentioned');
+        }).map(r => (r.question || '').toLowerCase());
+
+        // Does this article target a question the brand is measurably invisible on?
+        const articleText = `${titleLower} ${bodyText}`;
+        let bestOverlap = 0;
+        for (const q of invisibleQuestions) {
+          const qKeywords = q.split(/\W+/).filter(w => w.length > 4 && !STOPWORDS.has(w));
+          if (!qKeywords.length) continue;
+          const matches = qKeywords.filter(k => articleText.includes(k)).length;
+          if (matches > bestOverlap) bestOverlap = matches;
+        }
+        const invisibleQuestionOverlap = bestOverlap >= 3 ? 5 : bestOverlap >= 2 ? 3 : 0;
+        const brandVisibilityGap = probe.visibility < 20 ? 3 : probe.visibility < 40 ? 2 : probe.visibility < 60 ? 1 : 0;
+        const validatedWhitespaceWithProbe = matchedOpportunity ? 2 : 0;
+        shadowVisibility = {
+          score: invisibleQuestionOverlap + brandVisibilityGap + validatedWhitespaceWithProbe,
+          max: 10,
+          shadow: true,
+          includedInScore: false,
+          model: 'measured-visibility-v1',
+          components: { invisibleQuestionOverlap, brandVisibilityGap, validatedWhitespaceWithProbe },
+          probeVisibility: probe.visibility,
+          invisibleQuestionCount: invisibleQuestions.length,
+          enginesProbed: probe.enginesProbed || []
+        };
+      }
+    } catch(e) { /* best-effort — shadow dimension never blocks scoring */ }
+    if (shadowVisibility) breakdown.measuredVisibilityShadow = shadowVisibility;
+
     // Normalize to 0-100
     score = Math.max(0, Math.min(100, score));
 

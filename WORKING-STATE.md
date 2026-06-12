@@ -10,9 +10,25 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
-### 2026-06-12 — SYSOI product reel · DataReel round-trip hardening (PR #347, draft)
+### 2026-06-12 (cont. 2) — Full-pipeline audit: every stage reads the measured layer
 
-Built the 60s SYSOI product video **with DataReel rendered locally** (no Lambda), which forced template gaps closed — all on `feat/datareel-dynamic-screens`, **PR #347 (draft) awaiting Brian's review**:
+All merged to `development` same day. Continued the stage-by-stage "is it fetching AND applying?" audit through the whole pipeline; every stage failed it; every stage fixed. (Shipped via the Composio GitHub connection for part of the arc — this session's native GitHub MCP auth broke mid-day, served a Google Drive turndown page from its OAuth flow [reported to Anthropic], then self-healed.)
+
+- **#359 Tool 3 (Entity & Schema Mapper)** — was blind to all of #351/#353: 400-char truncation, no probe (despite `competitorCiting` being literally what the probe measures), no crawl, ~2 topics of context. Now gets full gaps (w/ cluster + info-gain), both measured blocks, grounding rules (observed cited domains drive `competitorCiting`).
+- **#361 Stage 3 (Authenticity Enricher)** — the leakiest stage: brain tables loaded but reached ZERO prompts; E-E-A-T scorer judged authenticity from 1,200 chars total; probe/crawl/moats invisible. Five context blocks injected across Tools 2-4 (brain finally applied; injections target who-AI-cites-instead + the topic's info-gain angle; authoritativeness scored vs crawled competitor claims); caps lifted ~3-4×; `from-topic` route gained `assignedAuthorId` parity (batch path was verified NOT broken).
+- **#363 Stage 4 + Compliance + Precog** — writer: `citationProbe` was inside the char-level `trimTo(geoBrief,4000)` (random truncation), crawl/moats never extracted → three explicit blocks ("write the piece the incumbents would have to cite" / "write what they demonstrably cannot say"); territories now carry cluster + info-gain angle from the RAW gaps (the normalized map drops both). Compliance: Factual Ground as two-way ground truth (verified claims un-flagged; contradictions = RED naming the violated fact). Precog: geo-match dimension only saw `strategic_injection%` rows — **cherry-picked Strategist topics scored 0 by construction**; now includes `selected`/`briefed` (same 0-7 scale, no re-base).
+- **#365 Precog shadow dimension (phase 1)** — `measuredVisibilityShadow` (0-10, `includedInScore:false`): invisible-question overlap + brand visibility gap + validated-whitespace-with-probe, from the brand-level citationProbe. Score byte-identical to v2; signal accumulates per scored article. **Phase 2 = issue #368** (correlate shadow vs `precog_outcomes` + `geo_citations`; analysis-only, target **week of 2026-07-13**, prerequisite ~15+ outcome-bearing articles). **Phase 3 = issue #369** (promote as explicit v3.0 model with `model_version` stamp + segmented accuracy tracking; target **week of 2026-07-27**, hard-gated on #368's verdict — not-predictive closes it as not-planned).
+
+#### What's next
+- **Dev validation across the arc:** re-scan a brand → force GEO analyze → build brief → enrich → generate → compliance → precog-score; check each stage's new blocks/log lines land (validation steps per PR body).
+- **Phase 2 precog correlation** once enough scored articles have outcomes (relay analysis, no deploy).
+- Unaudited remainder: Stage 6 Publishing · Stage 7→8 (does Brain pattern extraction see the citation tracker's measured results? "what got cited" should feed "what we learned").
+
+---
+
+### 2026-06-12 — SYSOI product reel · DataReel round-trip hardening (#347, #370 — merged)
+
+Built the 60s SYSOI product video **with DataReel rendered locally** (no Lambda), which forced template gaps closed — shipped via **#347 + #370 (both merged 2026-06-12; #370 went directly to `main`, reconciled back into `development` the same day)**:
 
 - **`ScreensScene.motion: "static" | "dynamic"`** — default unchanged (static, per #344's no-Ken-Burns rule). `dynamic` = 3D fly-in, one hard 6-frame punch-in per shot that holds, slide-over spring transitions. Brian's review killed an earlier sheen-sweep ("diminishes the product").
 - **`ScreensScene.shotAspect`** — viewport matches the capture's native ratio (SYSOI captures are 2940×1414 ≈ 2.08:1; the hardcoded 16:9 cropped both edges). Dynamic card: wider (1640) + brand-accent outer glow.
@@ -25,9 +41,12 @@ Built the 60s SYSOI product video **with DataReel rendered locally** (no Lambda)
 - **Audio-silent false alarm**: the mp4's AAC track was healthy (max −6.8 dB via `@ffmpeg-installer/ffmpeg` volumedetect — npm-packaged binary, no system ffmpeg); chat inline preview plays muted.
 
 #### What's next
-- Brian reviews/merges **PR #347**, then **redeploy `forge-reels`** so Lambda picks up the template changes.
+- **Redeploy `forge-reels`** (`cd remotion && npm run deploy-site`) so Lambda picks up the merged template changes (#344 static screens + #347/#370 dynamic mode) — ONE redeploy covers all of today's template work.
 - Decide where the rendered mp4s live (SYSOI repo `marketing/`?) — currently container-only.
 - Backend storyboard agent doesn't emit `motion`/`shotAspect`/`wordmark` yet — wire when a productized reel should use them.
+
+---
+
 ### 2026-06-12 (cont.) — GEO overhaul: measured whitespace, not priors
 
 All merged to `development`. Sprung from a gap analysis against an external GEO skill (Princeton KDD 2024) + a depth trace of the competitive-intel pipeline (verdict: whitespace was pure LLM inference over 700 chars of cached Stage 1 data; competitor sites never crawled; geoProbe unused by the Strategist).
