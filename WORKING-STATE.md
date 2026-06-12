@@ -10,6 +10,22 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
+### 2026-06-12 (cont. 3) — Evening: docs race fixed, Opus truncation, UI copy, generation-surface sweep
+
+All merged to `development` same evening.
+
+- **#371 docs-race reconcile** — a parallel session double-wrapped its docs (into `development` via #366 AND directly onto `main` via 764aa6a) and #367's update-branch merge clobbered the SYSOI-reel block out of WORKING-STATE. Merged main back into development, restored block ordering, made development a strict superset. Lessons: never commit docs directly to main; eyeball WORKING-STATE when two sessions wrap the same day (GitHub's auto-merge picks a side silently).
+- **#372 Context Hub truncation** — triple `[safeParseLLM] TOTAL FAILURE` on SYSOI re-scan = Opus hitting `max_tokens: 8192` mid-profile (richer post-#353 input → longer output). Fixed: 8192→16384, `stop_reason` logging, `closeTruncatedJson` salvage. Verified first-pass on SYSOI v8 (~262s scan — the +2min vs last month is the competitor crawl + bigger Opus profile, accepted).
+- **#374 stage 1-3 UI copy** — descriptions caught up to the measured pipeline; GEO progress display gained a "Live Citation Probe" stage with the longest slot (it was parking on "Generating GEO Brief" through the entire probe).
+- **#375/#376/#377 generation-surface sweep** (Campaign/Social/Ads) — every surface audited fetched-vs-applied; every surface upgraded with measured blocks (probe/crawl/cluster+info-gain territories). Real bugs found: Campaign's `territoriesBlock`+`factualGroundBlock` were **dead variables** (articles shipped without writer-level Factual Ground); Ads' VOICE block rendered empty since shipping (wrong key `voice_profile` + nonexistent schema fields) and persona pain read `pain_points` vs the schema's `painPoints`. Social was cleanest; its arc regen gained Factual Ground ("never stake a thesis the brand contradicts") + brain + probe. Ads gained MEASURED SEARCH INTENT (invisible probe questions = literal buyer queries → keywords/headlines).
+- **product-video-creation skill v3** (external package, delivered as zip) — rewritten from the generic scaffold-your-own-Remotion flow (which sent a session rogue) to the real DataReel architecture: one composition, closed 19-archetype scene vocabulary, buildBrand identity, EL-primary TTS, audio-driven timing; infra endpoints/env names deliberately omitted.
+
+#### What's next
+- **Generation validation on dev:** one campaign article + one social batch + one ad pack on a probed brand — confirm the new blocks land (ads: voice/persona populated for the first time; keywords mining invisible questions).
+- (Carried) dev validation of the pipeline arc · phase 2 precog (#368, wk of 07-13) · `remotion deploy-site` · `ADMIN_RELAY_PASSWORD` rotation · `development → main` promotion (now carrying 20+ PRs).
+
+---
+
 ### 2026-06-12 (cont. 2) — Full-pipeline audit: every stage reads the measured layer
 
 All merged to `development` same day. Continued the stage-by-stage "is it fetching AND applying?" audit through the whole pipeline; every stage failed it; every stage fixed. (Shipped via the Composio GitHub connection for part of the arc — this session's native GitHub MCP auth broke mid-day, served a Google Drive turndown page from its OAuth flow [reported to Anthropic], then self-healed.)

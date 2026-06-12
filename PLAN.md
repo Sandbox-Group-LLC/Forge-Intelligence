@@ -1,3 +1,28 @@
+## 2026-06-12 (cont. 3) — Evening: docs race, truncation fix, UI copy, generation-surface sweep (#371-#377)
+
+### #371 — The docs race (Brian called it)
+"GitHub being a little stupid" was actually two parallel sessions: the DataReel session wrapped its docs into `development` (#366) AND directly onto `main` (764aa6a), and merged #370 straight to main; meanwhile #367's GitHub "update branch" auto-merge resolved the WORKING-STATE collision by silently deleting the SYSOI-reel session block from development. Reconcile merge of main→development restored the block (status updated: #347/#370 merged, one `forge-reels` redeploy covers all of 06-12's template work) and made development a strict superset. Lessons recorded: never commit docs directly to main; eyeball WORKING-STATE whenever two sessions wrap the same day.
+
+### #372 — Context Hub Opus truncation
+Three back-to-back `[safeParseLLM] TOTAL FAILURE (context-hub)` on a SYSOI re-scan; the logged head was perfect JSON = truncation. Root cause: the Stage 1 Opus profile call capped at `max_tokens: 8192`; #353's richer input (competitor crawl) pushed typical output past it, and the retry re-ran the identical call. Self-healed on a 4th pass once (probabilistic near the ceiling). Fixed: 16384 tokens, `stop_reason` logging, `closeTruncatedJson` salvage (string-state + bracket-depth walk, trims to last complete member). Verified first-pass: SYSOI v8, 262s. Scan latency grew ~2min vs last month — that's the competitor crawl + a denser Opus profile; accepted trade.
+
+### #374 — Stage 1-3 UI copy
+Descriptions caught up to the measured pipeline; the GEO progress display (timer-paced) gained a "Live Citation Probe" stage with the longest display slot — it had been parking on "Generating GEO Brief" through the entire probe stretch since #351.
+
+### #375/#376/#377 — Generation-surface sweep (Campaign / Social / Ads)
+Same fetched-vs-applied audit as the pipeline stages; every surface gained the measured layer (probe, crawled competitor coverage, cluster + informationGainAngle territories from the RAW gaps), and every surface but Social had at least one outright bug:
+- **Campaign (#375):** `territoriesBlock` + `factualGroundBlock` were built and never interpolated — dead variables; campaign articles shipped without writer-level Factual Ground enforcement. Planner saw no brain and no measured data when picking the 8 angles; now both. GEO cap 3000→4000; enrichment pattern caps 5→10.
+- **Social (#376):** cleanest surface (voice/personas/brain/FG incl. quotablePositions + its own em-dash/length rules already wired). Territories were topic-names-only reading the normalized map first; now raw gaps with cluster + angle. Arc regeneration previously ran with NO Factual Ground (arcs could stake theses the brand contradicts), no brain, no probe — now all three.
+- **Ads (#377):** two silent schema bugs since the route shipped — VOICE block read `voice_profile` (canonical: `voiceProfile`) AND picked nonexistent fields (`tone`/`formality_score`/`signature_phrases` vs real `summary`/`toneAttributes`/`writingStyle`/`keyPhrases`) → undefined-soup in every ads prompt; persona pain read `pain_points` vs the schema's `painPoints` → empty. Fixed both; plus MEASURED SEARCH INTENT (the probe's brand-free buyer questions are literal search queries; invisible ones feed keywords/headlines) and crawled competitor claims ("differentiate, never echo").
+
+### product-video-creation skill v3 (external)
+Rewrote Brian's skill package from the generic scaffold-your-own-Remotion flow (which sent a parallel session rogue) to the real DataReel architecture: one composition, closed 19-archetype scene vocabulary, buildBrand identity, EL-primary/OpenAI-fallback TTS with the no-instructions-on-EL gotcha, audio-driven durations, no-Ken-Burns screens rule. Infra endpoints/env names deliberately omitted so the skill can't drift from the repo. Delivered as zip; not committed to this repo.
+
+### Generation validation pending (dev)
+One campaign article + one social batch + one ad pack on a probed brand: confirm new context blocks land; ads voice/persona populated for the first time; keywords visibly mining invisible questions.
+
+---
+
 ## 2026-06-12 (cont. 2) — Full-pipeline audit: fetched ≠ applied (#359, #361, #363, #365)
 
 The afternoon extended the morning's "measured, not modeled" arc into a stage-by-stage audit of the whole pipeline with one question per stage: it loads the upstream research, but does it APPLY it? Every audited consumer failed, each with the same three failure shapes: data loaded-but-never-prompted, data truncated to uselessness (the 400-char-slice idiom copied everywhere), and data never loaded at all.
