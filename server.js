@@ -4217,12 +4217,31 @@ app.post('/api/ads-generator/rsa', requireAuth, async (req, res) => {
     const profileData = profile.profile_data || {};
     const factualGround = profile.settings?.factualGround || null;
 
-    const territories = (gbRes.rows[0]?.brief_data?.topicalAuthorityMap || [])
+    // Prefer the RAW gaps (they carry cluster + informationGainAngle — the
+    // brand-coined claims that make the strongest ad anchors); the normalized
+    // map drops both. Also pull the measured probe off the same row: its
+    // brand-free buyer questions ARE search queries, and the invisible ones
+    // are exactly the intent the keywords should capture.
+    const adsBrief = gbRes.rows[0]?.brief_data || {};
+    const territories = (adsBrief.topicalMap?.gapsByCluster || adsBrief.topicalAuthorityMap || [])
       .slice(0, 6)
-      .map(t => t.topic || t.cluster || t.name)
-      .filter(Boolean);
+      .map(t => ({ topic: t.topic || t.cluster || t.name, angle: (t.informationGainAngle || '').slice(0, 120) }))
+      .filter(t => t.topic);
+    const adsProbe = adsBrief.citationProbe || null;
+    const adsInvisibleQs = adsProbe
+      ? (adsProbe.perQuestion || []).filter(r => {
+          const checked = Object.values(r.engines || {}).filter(s => s !== 'error');
+          return checked.length > 0 && !checked.some(s => s === 'cited' || s === 'mentioned');
+        }).map(r => r.question).slice(0, 6)
+      : [];
+    const adsCompetitors = Array.isArray(profileData.competitorAnalysis) ? profileData.competitorAnalysis : [];
 
-    const voice = profileData.voice_profile || {};
+    // voiceProfile is the canonical key (voice_profile is a legacy alias), and
+    // the profile schema's fields are summary/toneAttributes/writingStyle/
+    // keyPhrases — the old picked subset (tone/formality_score/
+    // signature_phrases) doesn't exist on the schema, so the VOICE block had
+    // been rendering empty.
+    const voice = profileData.voiceProfile || profileData.voice_profile || {};
     const personas = (profileData.personas || []).slice(0, 2);
 
     const systemPrompt = `You are the Ads Generator for Forge Intelligence. You produce complete Google Search campaign asset packs — the full set Google now requires for a Search ad to run: headlines, descriptions, display paths, sitelinks, callouts, and keywords. Every asset is anchored to a brand's intelligence layer (brain patterns, GEO territories, voice profile, Factual Ground).
@@ -4310,13 +4329,14 @@ BRAIN-FIRST: weave the strongest brain patterns into headlines/descriptions. Ref
 TOPIC / AD GROUP THEME: "${String(topic).trim()}"
 ${finalUrl ? `FINAL URL: ${finalUrl}\n` : ''}
 VOICE PROFILE:
-${JSON.stringify({ tone: voice.tone, formality_score: voice.formality_score, confidence_score: voice.confidence_score, signature_phrases: voice.signature_phrases }, null, 2)}
+${JSON.stringify({ summary: voice.summary, toneAttributes: (voice.toneAttributes || []).map(a => a.attribute || a).slice(0, 5), writingStyle: voice.writingStyle, keyPhrases: (voice.keyPhrases || []).slice(0, 8), positioning: voice.positioning }, null, 2)}
 
 PRIMARY PERSONAS (write to their pain):
-${personas.map(p => `  • ${p.persona_name || p.name || 'unnamed'} — ${p.pain_points || p.painPoint || p.pain || ''}`).join('\n') || '(none)'}
+${personas.map(p => `  • ${p.persona_name || p.name || 'unnamed'} — ${Array.isArray(p.painPoints) ? p.painPoints.slice(0, 3).join('; ') : (p.painPoints || p.pain_points || p.painPoint || p.pain || '')}`).join('\n') || '(none)'}
 
 STRATEGIC TERRITORIES (these are your authority anchors — use the language):
-${territories.length ? territories.map(t => `  • ${t}`).join('\n') : '(none)'}
+${territories.length ? territories.map(t => `  • ${t.topic}${t.angle ? ` — unique angle: ${t.angle}` : ''}`).join('\n') : '(none)'}
+${adsInvisibleQs.length ? `\nMEASURED SEARCH INTENT (live engine probe — buyer questions where the brand is INVISIBLE in AI answers today; these are real queries, mine them for keywords and headline angles):\n${adsInvisibleQs.map(q => `  • "${q}"`).join('\n')}\n` : ''}${adsCompetitors.length ? `\nCOMPETITOR SITE COVERAGE (measured — crawled from their actual websites; differentiate, never echo):\n${adsCompetitors.map(c => `  • ${c.url}: ${c.positioning || ''}${(c.signatureClaims || []).length ? ` — claims: ${c.signatureClaims.slice(0, 2).join(' | ')}` : ''}`).join('\n')}\n` : ''}
 
 BRAIN PATTERNS — WHAT WORKS (use these to anchor headlines/descriptions):
 ${patternsRes.rows.length ? JSON.stringify(patternsRes.rows.slice(0, 8), null, 2) : '(no patterns extracted yet)'}
