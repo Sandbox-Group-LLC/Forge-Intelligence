@@ -28,6 +28,32 @@ Built the 60s SYSOI product video **with DataReel rendered locally** (no Lambda)
 - Brian reviews/merges **PR #347**, then **redeploy `forge-reels`** so Lambda picks up the template changes.
 - Decide where the rendered mp4s live (SYSOI repo `marketing/`?) — currently container-only.
 - Backend storyboard agent doesn't emit `motion`/`shotAspect`/`wordmark` yet — wire when a productized reel should use them.
+### 2026-06-12 (cont.) — GEO overhaul: measured whitespace, not priors
+
+All merged to `development`. Sprung from a gap analysis against an external GEO skill (Princeton KDD 2024) + a depth trace of the competitive-intel pipeline (verdict: whitespace was pure LLM inference over 700 chars of cached Stage 1 data; competitor sites never crawled; geoProbe unused by the Strategist).
+
+- **#348 citability mechanics + engine-aware scoring** — Stage 4 system prompt gained a "Citability mechanics (GEO)" section (statistical/factual anchors, real-people-only expert quotes via Factual Ground authors, definition blocks, 40-55 word direct answers under question H2s, numbered steps); Tool 2 scores each platform per-engine (ChatGPT authority · Perplexity freshness/community · AI Overviews E-E-A-T long-tail · Gemini brand-domain) instead of a uniform rubric.
+- **#349 pipeline description refreshed** — canonical 8-stage copy now lives as a standing "do not archive" section at the bottom of this file.
+- **#351 Tool 1 measured citations** — `/analyze` Step 1.5 probes the 4 real engines (`coldScan`) with 8 generated brand-free buyer questions; Tool 1 receives visibility %, per-engine rates, who-AI-cites-instead, and the invisible questions as ground truth. Truncation killed (400/300 → 4000/2000/1500 chars). Gaps now carry `cluster` (pillar grouping) + `informationGainAngle` (no original angle = scored down) — both additive. Tool 2 anchors on the measured baseline; probe persists on `brief_data.citationProbe`. Best-effort: no engine keys → old inference-only path.
+- **#353 competitor crawl (Stage 1 Tool 1.6)** — up to 4 competitor homepages crawled via `getBrandPageContent`, Haiku extracts measured positioning/topics/claims, Opus grounds `competitiveGaps` in it, persists `profile_data.competitorAnalysis`; GEO Tool 1 reads it as COMPETITOR SITE COVERAGE (measured outranks inferred).
+
+#### What's next (GEO)
+- **Validate on dev:** re-scan a brand (fills `competitorAnalysis`), then `force: true` analyze — expect `[GEO] Probe: visibility N% …` + `[Context Hub] Tool 1.6: analyzed N/M…` log lines, `cluster`/`informationGainAngle` on gaps, `citationProbe` on the brief row. Existing brands need a re-scan before competitor coverage appears.
+- Cost note: uncached analyze +1 Sonnet call + ≤8×4 engine probes (~one public cold-scan); Stage 1 re-scan +15-25s.
+- Tier-2 backlog from the review: per-article JSON-LD at publish · internal-link/cluster awareness in Stage 2.1 briefs · sameAs entity strategy · site crawlability (llms.txt / AI-bot access) probe · freshness re-audit loop · off-site mention strategy (Ahrefs: brand mentions ~3× backlinks for AI visibility).
+
+---
+
+### 2026-06-12 — Env-group incident root-caused · Ken Burns killed
+
+- **"Lost super admin" root-caused — it was the env group, not Clerk.** Brian's leaked-key rotation (2026-06-10 18:55) replaced the Render env group with "Forge Intelligence Environment Group Updated" but left it **linked to zero services**; the 18:56 redeploys booted Production/Development without `NEON_DATABASE_URL` or the Clerk keys. `/api/auth/me` computed `isSuperAdmin: true` from the JWT, then 500'd on the DB query → the FE's `useActiveBrand` defaulted `isSuperAdmin` to false. Brian relinked the group; live `SELECT 1` via the relay confirmed recovery. Lesson: **Render service-level env vars override group vars** — both services carried stale pre-rotation copies (old `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, X/LinkedIn/HubSpot secrets) that were silently shadowing the rotated group. Brian deleted them; post-check is clean (service level now holds only the intentional per-env keys: `BASE_URL`, `BASE_DOMAIN`, `DATA_DIR`, dev's `GSC_REDIRECT_URI`).
+- **#344 Ken Burns killed** — `ScreensView` in `remotion/src/DataReel.tsx` pushed every product screenshot scale 1.05→1.13 with an upward drift; it read as filler and kept the UI soft. Screenshots now hold static in the browser chrome; multi-shot crossfade unchanged. Merged to `development`.
+- Side observation: the **SYSOI brand profile** was re-tethered 2026-06-10 from Brian's sandbox-xm Clerk user to `user_3Ebb…` = brian@sysoi.ai (separate account, created 2026-06-03). Not a bug — just know it moved.
+
+#### What's next
+- **⚠️ Run `cd remotion && npm run deploy-site`** (needs `REMOTION_AWS_*`) — #344 changed the template; the live `forge-reels` Lambda site keeps the zoom until this redeploy. Same footgun as #334.
+- **Rotate `ADMIN_RELAY_PASSWORD`** — it was NOT part of the rotation (group value == old value) and it surfaced in session tool logs. Single-key update in the env group.
+- (Carried) Activate the bootstrap hooks · automate `deploy-site` via GH Action on `remotion/**` · drop `framesPerLambda: 400` after the AWS concurrency increase · verify ElevenLabs via `/api/video/tts-check`.
 
 ---
 
@@ -94,3 +120,29 @@ Full detail in `PLAN.md` (2026-06-09 and cont.). The base everything above build
 ---
 
 _Older sessions (2026-06-07 GEO arc, 2026-06-06 and earlier) archived in `PLAN.md`._
+
+---
+
+## Pipeline description (standing section — canonical copy, do not archive)
+
+Forge runs an 8-stage Context Agent Architecture where every stage conditions the next. By stage four, the writer isn't writing from a prompt, it's writing from a fully constructed competitive worldview.
+
+1. **Context Hub** — crawls the brand site, extracts voice profile, personas, competitive set, strategic moats, and topical territories. Jina Reader first, falls back to Bright Data Web Unlocker, then Bright Data Scraping Browser for SPAs; sitemap-aware parallel crawl. Captures the brand's visual identity (accent color, logo) straight from the live site's computed CSS. Competitor discovery is Sonar-grounded in the actual scraped content, and the human stays in command: Factual Ground (user-verified facts about what the brand does, doesn't do, and who it actually competes with) and pinned manual overrides survive every re-scan and bind every downstream stage. Outputs the Brand Profile.
+
+2. **GEO Strategist** — maps topical authority gaps competitors haven't claimed, constrained by Factual Ground and strategic moats so it never pitches topics the brand has deliberately walked away from. Scores every opportunity per engine against what that engine actually rewards: ChatGPT (authority and entity recognition), Perplexity (freshness and community signal), Google AI Overviews (E-E-A-T on long-tail questions), Gemini (brand-owned domains). No auto-brief: opportunities land in a table, the user cherry-picks, and Stage 2.1 builds a full per-topic brief for each selection — H1/H2 structure with citation anchors per section, FAQ structure, entities, schema requirements, target platforms, and an assigned SME author snapshotted into the brief. Unpicked topics stay behind as brain food, and dismissed topics propagate: a near-duplicate of something the user already ignored arrives pre-ignored.
+
+3. **Authenticity Enricher** — injects E-E-A-T signals (experience, expertise, authoritativeness, trustworthiness) into the brief: SME credentials from the brand's named author roster, first-party evidence, author schema, FAQ structure, power phrases. Pulls from Brain patterns, Factual Ground, and live competitor signal.
+
+4. **Content Generator** — writes long-form articles voice-matched to the brand, GEO-optimized, with per-section confidence scoring (green/yellow/red). Built citable by construction: a mandatory TL;DR block shaped for LLM extraction, standalone FAQs, statistical and factual anchors (exact tools, dates, versions — never invented), definition blocks for core terms, direct 40-55-word answers under question-form headings, and expert quotes gated to real people from the author roster — a quote it can't source becomes an SME placeholder, never a fabrication. Human-cadence rules strip the AI tells. When the brand's own documented outcomes are the evidence, it says so plainly instead of hedging. Streams via Claude Sonnet 4.6; hero image generated via Flux in parallel.
+
+5. **Compliance Gate** — critiques every draft before it ships. Flags fabrications, unsupported claims, brand-voice drift, and missing citations — then goes further: a citation agent (Perplexity Sonar) finds real supporting sources for flagged claims using a source-quality hierarchy (peer-reviewed and primary sources first, content farms blocked), and a verify-and-rewrite flow integrates the citation or softens the claim when no source exists. Every human edit, rewrite, and dismissed false positive is captured. Reviews are approve-to-ship by default.
+
+6. **Publishing Queue** — schedules and distributes across channels: My Website (self-hosted webhook with FAQ schema on the receiving end), LinkedIn, Facebook, X, Reddit, HubSpot CMS, Webflow CMS, the brand's own custom domain, email. Logs IndexNow pings, UTM tracking, per-channel metadata.
+
+7. **Performance Dashboard** — pulls real engagement data back from each surface (analytics, social, indexation). Sourced from the platforms' own APIs, not estimated. Now includes a live Citation Tracker that probes four real AI engines — ChatGPT, Perplexity, Gemini, and Google AI Overviews — and records whether the brand was actually cited, per question, per engine. Precog predicts each article's citation probability across eleven scoring dimensions before publish, then checks its own predictions against measured outcomes.
+
+8. **Brain Memory** — extracts patterns from what performed and mistakes from what underperformed, plus everything the humans taught it along the way: compliance edits, dismissed flags, rejected topics, verified facts. Writes it all back to `brain_patterns` and `brain_mistakes`. The brain is versioned — when it learns, stale briefs built on the old version are flagged and rebuilt. Every future brief is conditioned by everything that came before.
+
+The same intelligence layer now feeds more than articles: campaign arcs, social posts, Google Ads asset packs, and brand-grounded video reels all generate from the same brain.
+
+The result: each cycle gets smarter than the last. Forge does not generate content from a prompt and a topic. Forge generates content from the brand's own intelligence layer — and that layer compounds with every published article, every human correction, and every measured citation.

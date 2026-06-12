@@ -95,11 +95,17 @@ router.post('/score', async (req, res) => {
       positioningPatterns = pcRes.rows;
     } catch(e) { /* best-effort */ }
     try {
-      // Match on topic OR derived keywords from intent_signals.
+      // Match on topic OR derived keywords from intent_signals. Two candidate
+      // classes: strategic_injection rows (the original signal) AND GEO
+      // Strategist opportunities the user actually selected/briefed — those are
+      // human-validated whitespace bets and previously never matched this
+      // dimension at all (their intent_signals.source is unset), so articles
+      // written off the cherry-pick flow scored 0 here by construction.
       const goRes = await pool.query(`
-        SELECT topic, intent_signals->>'source' as source, intent_signals->>'deliverable' as deliverable, avg_score
+        SELECT topic, intent_signals->>'source' as source, intent_signals->>'deliverable' as deliverable, avg_score, status
         FROM geo_opportunities
-        WHERE brand_profile_id = $1 AND intent_signals->>'source' LIKE 'strategic_injection%'
+        WHERE brand_profile_id = $1
+          AND (intent_signals->>'source' LIKE 'strategic_injection%' OR status IN ('selected', 'briefed'))
       `, [brandProfileId]);
       strategicInjectionTopics = goRes.rows;
     } catch(e) { /* best-effort */ }
@@ -318,7 +324,7 @@ router.post('/score', async (req, res) => {
         bestMatch = { count: matches.length, density };
         const isPillar = (opp.deliverable || '').includes('pillar');
         geoOppScore = isPillar ? 7 : 5;
-        matchedOpportunity = { topic: opp.topic, deliverable: opp.deliverable, source: opp.source, matchCount: matches.length, density: density.toFixed(2) };
+        matchedOpportunity = { topic: opp.topic, deliverable: opp.deliverable, source: opp.source || (opp.status ? `strategist_${opp.status}` : null), matchCount: matches.length, density: density.toFixed(2) };
       }
     }
     breakdown.geoOpportunityMatch = {

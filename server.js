@@ -2935,6 +2935,47 @@ app.post('/api/authenticity-enricher/analyze', requireAuth, async (req, res) => 
       ? `\nMANUAL INPUTS PROVIDED BY USER (treat as verified, high-confidence):\n${JSON.stringify(otherInputs, null, 2)}${correctionsCtx}`
       : correctionsCtx || '';
 
+    // ── Measured + brain context blocks ──────────────────────────────────────
+    // The enricher historically loaded the brain tables and the full geo brief
+    // and then used almost none of it: brain patterns/mistakes reached zero
+    // prompts, and citationProbe / topical gaps / competitorAnalysis /
+    // strategicMoats were invisible to every tool. Build the blocks once here;
+    // Tools 2-4 inject them below. citationProbe + the raw topical gaps live on
+    // the brand-level geo_briefs row (the per-topic brief doesn't carry them),
+    // so load that row regardless of which brief path ran above. All
+    // best-effort — absent data renders as an empty block.
+    let geoMeasured = null;
+    try {
+      const gmRes = await pool.query(
+        `SELECT brief_data FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY version DESC LIMIT 1`,
+        [brandProfileId]
+      );
+      geoMeasured = gmRes.rows[0]?.brief_data || null;
+    } catch(e) { /* enrichment proceeds without measured context */ }
+    const citationProbe = geoMeasured?.citationProbe || null;
+    const rawTopicalGaps = Array.isArray(geoMeasured?.topicalMap?.gapsByCluster) ? geoMeasured.topicalMap.gapsByCluster : [];
+    const briefTopicLc = String(geoBrief?.topic || geoBrief?.h1 || '').toLowerCase();
+    const matchedGap = briefTopicLc ? rawTopicalGaps.find(g => {
+      const t = String(g.topic || '').toLowerCase();
+      return t && (briefTopicLc.includes(t) || t.includes(briefTopicLc));
+    }) : null;
+
+    const probeBlock = citationProbe ? `
+MEASURED AI VISIBILITY (live engine probe — ground truth): the brand appeared in ${citationProbe.visibility}% of ${citationProbe.totalChecks} AI answers (${Object.entries(citationProbe.byEngine || {}).map(([id, v]) => `${id} ${v.available ? v.pct + '%' : 'n/a'}`).join(' · ')}). WHO AI CITES INSTEAD: ${(citationProbe.sources || []).slice(0, 8).map(s => s.domain).join(', ') || 'none captured'}. E-E-A-T injections must give this brand the citable authority those incumbent sources currently hold.` : '';
+    const topicAngleBlock = matchedGap ? `
+TOPIC ANGLE (from the topical authority map): pillar cluster "${matchedGap.cluster || 'n/a'}" — information-gain angle: ${String(matchedGap.informationGainAngle || matchedGap.rationale || '').slice(0, 300)}. Every injection should reinforce THIS unique angle, not generic authority.` : '';
+
+    const competitorAnalysisArr = Array.isArray(pd.competitorAnalysis) ? pd.competitorAnalysis : [];
+    const strategicMoatsArr = Array.isArray(pd.strategicMoats) ? pd.strategicMoats : [];
+    const competitorBlock = competitorAnalysisArr.length ? `
+COMPETITOR SITE COVERAGE (measured — crawled from their actual websites): ${competitorAnalysisArr.map(c => `${c.url}: ${c.positioning || ''}${(c.signatureClaims || []).length ? ` — claims: ${c.signatureClaims.join(' | ')}` : ''}`).join('\n')}
+Score authoritativeness and trust RELATIVE to these measured competitor claims; a gap should name the evidence that would beat them.` : '';
+    const moatsBlock = strategicMoatsArr.length ? `
+STRATEGIC MOATS (deliberate non-actions — treat as trust signals to amplify, never as gaps): ${strategicMoatsArr.map(m => m.capability).join('; ')}` : '';
+    const brainBlock = (brainPatterns.length || brainMistakes.length) ? `
+BRAIN PATTERNS (proven for this brand — reuse these angles and structures): ${JSON.stringify(brainPatterns).slice(0, 1200)}
+BRAIN MISTAKES (do NOT repeat for this brand): ${JSON.stringify(brainMistakes).slice(0, 800)}` : '';
+
     // ── Tool 1: SME Signal Scraper ────────────────────────────────────────────
     send('progress', { stage: 1, label: 'SME Signal Scraper', detail: 'Scanning for named experts, awards, certifications...' });
     console.log('[ENRICH] Tool 1: SME Signal Scraper...');
@@ -3026,8 +3067,8 @@ Return empty arrays if not found. Be factual and accurate. When in doubt, return
 
 E-E-A-T scoring task for ${brandName} (${brandUrl}).
 
-SCRAPED SIGNALS: ${JSON.stringify(sonarSignals).slice(0, 800)}
-STAGE 1 SIGNALS: ${JSON.stringify(thirdPartySignals).slice(0, 400)}${manualCtx}
+SCRAPED SIGNALS: ${JSON.stringify(sonarSignals).slice(0, 2400)}
+STAGE 1 SIGNALS: ${JSON.stringify(thirdPartySignals).slice(0, 1200)}${competitorBlock}${moatsBlock}${brainBlock}${manualCtx}
 
 Score Experience, Expertise, Authoritativeness, Trustworthiness 0-100. List gaps where score < 60. List smeSignals found.
 
@@ -3059,12 +3100,12 @@ Respond with this exact JSON structure:
       messages: [
         { role: 'user', content: `Voice & persona injection mapping task for ${brandName}. Be concise — max 4 injectionMap items, 2 hooks, 3 powerPhrases.
 
-VOICE: ${JSON.stringify(voiceProfile).slice(0, 400)}
-PERSONAS: ${JSON.stringify(personas).slice(0, 400)}
-SME SIGNALS: ${JSON.stringify(scorerData.smeSignals || []).slice(0, 400)}
-GEO TOPICS: ${geoBrief ? JSON.stringify((geoBrief.h2s || []).slice(0,4)) : '[]'}${manualCtx}
+VOICE: ${JSON.stringify(voiceProfile).slice(0, 1200)}
+PERSONAS: ${JSON.stringify(personas).slice(0, 1500)}
+SME SIGNALS: ${JSON.stringify(scorerData.smeSignals || []).slice(0, 1200)}
+GEO TOPICS: ${geoBrief ? JSON.stringify((geoBrief.h2s || []).slice(0,8)) : '[]'}${probeBlock}${topicAngleBlock}${brainBlock}${manualCtx}
 
-Map E-E-A-T signals to content sections. Generate hooks. Build author schema.
+Map E-E-A-T signals to content sections. Generate hooks. Build author schema. When MEASURED AI VISIBILITY is present, target the injections at what would make THIS brand citable where the incumbent sources are today; when a TOPIC ANGLE is present, the injections and hooks must reinforce that information-gain angle.
 
 Respond with this exact JSON structure:
 {"voiceConsistencyScore":0,"injectionMap":[{"section":"","injectionType":"sme_quote|stat|case_study|first_person_hook|customer_voice|founding_story|award_mention|certification_reference","suggestedContent":"","persona":"","eeatDimension":"experience|expertise|authoritativeness|trustworthiness","confidence":0}],"powerPhrases":[],"authorSchema":{"name":null,"title":null,"expertise":[],"credentials":[],"sameAs":[]},"contentHooks":[{"hook":"","persona":"","type":"curiosity|pain_point|stat|story|contrarian"}]}` },
@@ -3089,12 +3130,12 @@ Respond with this exact JSON structure:
       messages: [
         { role: 'user', content: `Enriched brief assembly task for ${brandName}.
 
-EEAT SCORES: ${JSON.stringify(scorerData.scores || {}).slice(0, 400)}
-INJECTIONS: ${JSON.stringify(injectionData.injectionMap || []).slice(0, 600)}
-POWER PHRASES: ${JSON.stringify(injectionData.powerPhrases || []).slice(0, 200)}
-AUTHOR SCHEMA: ${JSON.stringify(injectionData.authorSchema || {}).slice(0, 200)}
-GEO H2S: ${geoBrief ? JSON.stringify((geoBrief.h2s || []).slice(0,6)) : '[]'}
-HIGH GAPS: ${JSON.stringify(gaps.filter(g => g.severity === 'high').map(g => g.gapType))}
+EEAT SCORES: ${JSON.stringify(scorerData.scores || {}).slice(0, 1200)}
+INJECTIONS: ${JSON.stringify(injectionData.injectionMap || []).slice(0, 1600)}
+POWER PHRASES: ${JSON.stringify(injectionData.powerPhrases || []).slice(0, 400)}
+AUTHOR SCHEMA: ${JSON.stringify(injectionData.authorSchema || {}).slice(0, 400)}
+GEO H2S: ${geoBrief ? JSON.stringify((geoBrief.h2s || []).slice(0,10)) : '[]'}
+HIGH GAPS: ${JSON.stringify(gaps.filter(g => g.severity === 'high').map(g => g.gapType))}${topicAngleBlock}${brainBlock}
 
 Assemble enriched brief. Flag sections green/yellow/red by confidence. Mark smeRequired where needed.
 
@@ -3764,7 +3805,7 @@ app.get('/api/content-generator/generate', requireAuth, async (req, res) => {
   req.on('close', () => clearInterval(keepalive));
 
   try {
-    // ── Brain-First: load all context ────────────────────────────────────────
+    // ── Brain-First: load all context ──────────────���───��─────────────────────
     const [profileRes, patternsRes, mistakesRes] = await Promise.all([
       pool.query('SELECT * FROM brand_profiles WHERE id = $1', [brandProfileId]),
       pool.query('SELECT pattern_type, description, confidence_score, tags FROM brain_patterns WHERE brand_profile_id = $1 ORDER BY confidence_score DESC LIMIT 8', [brandProfileId]).catch(() => ({ rows: [] })),
@@ -3808,19 +3849,29 @@ app.get('/api/content-generator/generate', requireAuth, async (req, res) => {
       const s = JSON.stringify(obj, null, 2);
       return s.length > maxChars ? s.substring(0, maxChars) + '\n...[truncated for token budget]' : s;
     };
-    // Load Topical Authority Map — strategic context for where this content lives
+    // Load Topical Authority Map — strategic context for where this content lives.
+    // Also extract the MEASURED layer off the same row (citationProbe lives on the
+    // brand-level geo_briefs brief_data) — previously it sat inside the JSONB the
+    // 4000-char trimTo could randomly truncate away, so the writer never reliably
+    // saw who AI actually cites or where the brand is invisible.
     let topicalTerritories = [];
+    let cgCitationProbe = null;
     try {
       const gbRes = await pool.query(
         `SELECT brief_data FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
         [brandProfileId]
       );
-      const topicalMapRaw = gbRes.rows[0]?.brief_data?.topicalAuthorityMap || gbRes.rows[0]?.brief_data?.topicalMap?.gapsByCluster || [];
+      cgCitationProbe = gbRes.rows[0]?.brief_data?.citationProbe || null;
+      // Prefer the RAW gaps (they carry cluster + informationGainAngle); the
+      // normalized topicalAuthorityMap drops both.
+      const topicalMapRaw = gbRes.rows[0]?.brief_data?.topicalMap?.gapsByCluster || gbRes.rows[0]?.brief_data?.topicalAuthorityMap || [];
       topicalTerritories = topicalMapRaw
         .map(t => ({
           topic: t.topic || t.cluster || t.name,
           coverage: (t.coverage || t.rationale || t.description || '').slice(0, 140),
-          priority: t.priority || (t.citationProbability >= 70 ? 'high' : t.citationProbability >= 40 ? 'medium' : 'low')
+          cluster: t.cluster || null,
+          angle: (t.informationGainAngle || '').slice(0, 160),
+          priority: t.priority || (t.geoCitationScore >= 70 || t.citationProbability >= 70 ? 'high' : t.geoCitationScore >= 40 || t.citationProbability >= 40 ? 'medium' : 'low')
         }))
         .filter(t => t.topic)
         .sort((a, b) => (a.priority === 'high' ? -1 : b.priority === 'high' ? 1 : 0))
@@ -3828,7 +3879,19 @@ app.get('/api/content-generator/generate', requireAuth, async (req, res) => {
     } catch(e) { /* silent — non-fatal */ }
 
     const territoriesBlock = topicalTerritories.length
-      ? `\nSTRATEGIC TERRITORIES THIS BRAND OPERATES IN (write as an authority in these territories — never drift outside them):\n${topicalTerritories.map(t => `  • [${t.priority}] ${t.topic}${t.coverage ? ' — ' + t.coverage : ''}`).join('\n')}\n`
+      ? `\nSTRATEGIC TERRITORIES THIS BRAND OPERATES IN (write as an authority in these territories — never drift outside them):\n${topicalTerritories.map(t => `  • [${t.priority}]${t.cluster ? ` (${t.cluster})` : ''} ${t.topic}${t.coverage ? ' — ' + t.coverage : ''}${t.angle ? `\n    Information-gain angle (the unique claim THIS brand makes here — the article must deliver it): ${t.angle}` : ''}`).join('\n')}\n`
+      : '';
+
+    const cgMeasuredBlock = cgCitationProbe
+      ? `\nMEASURED AI VISIBILITY (live engine probe — this is the gap the article exists to close): the brand appeared in ${cgCitationProbe.visibility}% of ${cgCitationProbe.totalChecks} AI answers (${Object.entries(cgCitationProbe.byEngine || {}).map(([id, v]) => `${id} ${v.available ? v.pct + '%' : 'n/a'}`).join(' · ')}). WHO AI CITES INSTEAD: ${(cgCitationProbe.sources || []).slice(0, 8).map(s => s.domain).join(', ') || 'none captured'}. Write the piece those incumbent sources would have to cite — more specific, better evidenced, more extractable than what they publish.\n`
+      : '';
+    const cgCompetitors = Array.isArray(profileData?.competitorAnalysis) ? profileData.competitorAnalysis : [];
+    const cgCompetitorBlock = cgCompetitors.length
+      ? `\nCOMPETITOR SITE COVERAGE (measured — crawled from their actual websites): ${cgCompetitors.map(c => `${c.url}: ${c.positioning || ''}${(c.signatureClaims || []).length ? ` — claims: ${c.signatureClaims.join(' | ')}` : ''}`).join('\n')}\nDo not echo their claims; write what they demonstrably cannot say.\n`
+      : '';
+    const cgMoats = Array.isArray(profileData?.strategicMoats) ? profileData.strategicMoats : [];
+    const cgMoatsBlock = cgMoats.length
+      ? `\nSTRATEGIC MOATS (deliberate non-actions — reference as trust signals where natural, never as weaknesses): ${cgMoats.map(m => m.capability).join('; ')}\n`
       : '';
 
     // Load Factual Ground — user-verified facts the writer MUST use verbatim
@@ -3892,7 +3955,7 @@ ${(() => {
       : '';
 
         const userPrompt = `Generate a long-form article using the following Brand Intelligence context.
-${topicPrompt ? `\nUSER TOPIC DIRECTION (write the article around this specific topic/angle — this overrides the enriched brief's default topic selection):\n"${topicPrompt}"\n` : ''}${(mandatories || constraints || audience || ctaTarget || desiredAction || wordCountTarget) ? `\nUSER MANDATORIES & CONSTRAINTS (the user-supplied non-negotiables for this article — every section must respect these. Treat as harder than brand patterns):\n${mandatories ? `- MANDATORIES (must include): ${mandatories}\n` : ''}${constraints ? `- CONSTRAINTS (must NOT do): ${constraints}\n` : ''}${audience ? `- TARGET AUDIENCE: ${audience}\n` : ''}${ctaTarget ? `- CTA TARGET URL/PATH: ${ctaTarget} — every CTA in the article should reference this destination.\n` : ''}${desiredAction ? `- DESIRED READER ACTION: ${desiredAction} — shape the article and conclusion to drive toward this specific next step.\n` : ''}${wordCountTarget ? `- TARGET LENGTH: approximately ${wordCountTarget} words. Do not pad — depth over filler.\n` : ''}` : ''}${selfAsCaseStudyBlock}${factualGroundBlock}${territoriesBlock}
+${topicPrompt ? `\nUSER TOPIC DIRECTION (write the article around this specific topic/angle — this overrides the enriched brief's default topic selection):\n"${topicPrompt}"\n` : ''}${(mandatories || constraints || audience || ctaTarget || desiredAction || wordCountTarget) ? `\nUSER MANDATORIES & CONSTRAINTS (the user-supplied non-negotiables for this article — every section must respect these. Treat as harder than brand patterns):\n${mandatories ? `- MANDATORIES (must include): ${mandatories}\n` : ''}${constraints ? `- CONSTRAINTS (must NOT do): ${constraints}\n` : ''}${audience ? `- TARGET AUDIENCE: ${audience}\n` : ''}${ctaTarget ? `- CTA TARGET URL/PATH: ${ctaTarget} — every CTA in the article should reference this destination.\n` : ''}${desiredAction ? `- DESIRED READER ACTION: ${desiredAction} — shape the article and conclusion to drive toward this specific next step.\n` : ''}${wordCountTarget ? `- TARGET LENGTH: approximately ${wordCountTarget} words. Do not pad — depth over filler.\n` : ''}` : ''}${selfAsCaseStudyBlock}${factualGroundBlock}${territoriesBlock}${cgMeasuredBlock}${cgCompetitorBlock}${cgMoatsBlock}
 BRAND PROFILE:
 ${trimTo(profileData, 6000)}
 
@@ -6306,7 +6369,7 @@ app.delete('/api/reviewers/:id', async (req, res) => {
 
 
 
-// ── forgeScrape — the one scrape primitive ─────────────────────────────────
+// ── forgeScrape — the one scrape primitive ─────────���───────────────────────
 // Every URL Forge fetches for content/intelligence purposes goes through
 // here. Two-tier under the hood:
 //
@@ -7004,15 +7067,21 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
 
     // Super admin: return ALL brands + auto-tether orphans
     if (isSuperAdmin) {
-      // Auto-tether orphan brain ONLY if brand_id explicitly passed (from onboard/gate flow)
-      if (brandId) {
+      // Auto-tether orphan brain ONLY on an EXPLICIT claim (?claim=true). A bare
+      // brand_id rides in on passive page loads (preview links, deep links, brand
+      // picker) and must NOT trigger a tether — doing so vacuumed every anonymous
+      // scan into the super-admin account and permanently blocked the real founder
+      // from reclaiming it (their claim no-ops on the clerk_user_id IS NULL guard).
+      // brand_id alone now only SELECTS which brand to view (handled below).
+      const explicitClaim = req.query.claim === 'true' || req.query.claim === '1';
+      if (brandId && explicitClaim) {
         const tethered = await pool.query(
           `UPDATE brand_profiles SET clerk_user_id = $1, trial_started_at = COALESCE(trial_started_at, NOW()), updated_at = NOW()
            WHERE id = $2 AND clerk_user_id IS NULL RETURNING id, brand_name`,
           [req.userId, brandId]
         );
         if (tethered.rows.length > 0) {
-          console.log(`[AUTH] Tethered brand ${tethered.rows[0].brand_name} (${brandId}) to super admin ${req.userId}`);
+          console.log(`[AUTH] Super admin ${req.userId} explicitly claimed orphan brand ${tethered.rows[0].brand_name} (${brandId})`);
         }
       }
 
@@ -8652,7 +8721,7 @@ Generate 5-7 H2s that build a coherent argument. Align entities with schema requ
 // holding. Downstream code that joins topic briefs to opportunities by ID
 // continues to work unchanged.
 app.post('/api/geo/topic-brief/from-topic', requireAuth, express.json(), async (req, res) => {
-  const { brandProfileId, topic, refinement } = req.body || {};
+  const { brandProfileId, topic, refinement, assignedAuthorId } = req.body || {};
   if (!brandProfileId) return res.status(400).json({ success: false, error: 'brandProfileId required' });
   if (!topic || !topic.trim()) return res.status(400).json({ success: false, error: 'topic required' });
 
@@ -8682,6 +8751,23 @@ app.post('/api/geo/topic-brief/from-topic', requireAuth, express.json(), async (
       fg.methodology && `Methodology: ${fg.methodology.slice(0, 400)}`
     ].filter(Boolean).join('\n\n');
 
+    // Author assignment — same contract as the batch build-briefs path: resolve
+    // assignedAuthorId from factualGround.authors and embed the snapshot in
+    // brief_data so downstream stages (enricher author override, content-gen
+    // byline) read it from one place. Lookup miss = no author, never an error.
+    const ftAuthors = Array.isArray(fg.authors) ? fg.authors : [];
+    const ftAssignedAuthor = (assignedAuthorId && typeof assignedAuthorId === 'string')
+      ? (ftAuthors.find(a => a && a.id === assignedAuthorId) || null)
+      : null;
+    const ftAuthorContext = ftAssignedAuthor
+      ? `ASSIGNED SME AUTHOR (build the brief from this person's vantage; their expertise should shape the angle):\n` +
+        `  Name: ${ftAssignedAuthor.name || ''}\n` +
+        `  Title: ${ftAssignedAuthor.title || ''}\n` +
+        `  Expertise: ${ftAssignedAuthor.expertise || ''}\n` +
+        `  Credentials: ${ftAssignedAuthor.credentials || ''}\n` +
+        (ftAssignedAuthor.bio ? `  Background: ${String(ftAssignedAuthor.bio).slice(0, 600)}\n` : '') + '\n'
+      : '';
+
     // 1) Materialize a synthetic opportunity row so the FK on geo_topic_briefs
     //    holds. Source is implicit (no quick_win, no platform_scores, no TAC)
     //    — downstream readers treat it as a hand-entered topic.
@@ -8706,7 +8792,7 @@ BRAND: ${profile.brand_name}
 VOICE: ${JSON.stringify(voiceProfile).slice(0, 400)}
 PERSONAS: ${JSON.stringify(personas).slice(0, 400)}
 
-${factualContext ? 'FACTUAL GROUND (use verbatim):\n' + factualContext + '\n\n' : ''}${brainContext}
+${factualContext ? 'FACTUAL GROUND (use verbatim):\n' + factualContext + '\n\n' : ''}${ftAuthorContext}${brainContext}
 
 TOPIC THE USER ENTERED: "${topic.trim()}"
 ${refinement && refinement.trim() ? `USER REFINEMENT / ANGLE NOTES: "${refinement.trim()}"\n` : ''}
@@ -8745,11 +8831,13 @@ Generate 5-7 H2s that build a coherent argument. Align entities with schema requ
       };
     }
 
-    // 3) Persist the brief
+    // 3) Persist the brief (author snapshot embedded when one was assigned —
+    //    same shape as the batch build-briefs path)
+    const briefDataToPersist = ftAssignedAuthor ? { ...briefData, assignedAuthor: { ...ftAssignedAuthor } } : briefData;
     const briefInsert = await pool.query(
       `INSERT INTO geo_topic_briefs (opportunity_id, brand_profile_id, brief_data, brain_version, status)
        VALUES ($1, $2, $3, $4, 'briefed') RETURNING id, created_at`,
-      [opportunityId, brandProfileId, JSON.stringify(briefData), profile.version || 1]
+      [opportunityId, brandProfileId, JSON.stringify(briefDataToPersist), profile.version || 1]
     );
 
     res.json({
