@@ -80,7 +80,7 @@ export type CtaScene = SceneBase & {
 
 // Product showcase: real screenshots of the brand's live site/app, captured by
 // the backend (captureProductShots) and uploaded to S3. `shots` are full https
-// URLs; the view frames them in browser chrome with a slow Ken Burns push and
+// URLs; the view frames them in browser chrome, held static (no zoom), and
 // crossfades if more than one. Copy (eyebrow/headline/stat) is written by the
 // storyboard agent; `shots` + `urlLabel` are filled server-side.
 export type ScreensScene = SceneBase & {
