@@ -128,18 +128,38 @@ router.get('/generate', async (req, res) => {
       } catch(e) { console.log('[SOCIAL-GEN] brief load skipped:', e.message); }
     }
 
-    // Strategic territories — same source as content generator
+    // Strategic territories — same source as content generator. Prefer the RAW
+    // gaps (they carry cluster + informationGainAngle; the normalized map drops
+    // both), and pull the measured layer off the same row: citationProbe is the
+    // live-engine ground truth and competitorAnalysis the crawled coverage —
+    // short-form posts are exactly where "attack the question the brand is
+    // invisible on" and "say what competitors can't" earn their keep.
     let topicalTerritories = [];
+    let sgCitationProbe = null;
     try {
       const gbRes = await pool.query(
         `SELECT brief_data FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
         [brandProfileId]
       );
-      const topicalMapRaw = gbRes.rows[0]?.brief_data?.topicalAuthorityMap || gbRes.rows[0]?.brief_data?.topicalMap?.gapsByCluster || [];
+      sgCitationProbe = gbRes.rows[0]?.brief_data?.citationProbe || null;
+      const topicalMapRaw = gbRes.rows[0]?.brief_data?.topicalMap?.gapsByCluster || gbRes.rows[0]?.brief_data?.topicalAuthorityMap || [];
       topicalTerritories = topicalMapRaw
-        .map(t => ({ topic: t.topic || t.cluster || t.name, priority: t.priority || (t.citationProbability >= 70 ? 'high' : 'medium') }))
+        .map(t => ({
+          topic: t.topic || t.cluster || t.name,
+          cluster: t.cluster || null,
+          angle: (t.informationGainAngle || '').slice(0, 120),
+          priority: t.priority || (t.geoCitationScore >= 70 || t.citationProbability >= 70 ? 'high' : 'medium')
+        }))
         .filter(t => t.topic).slice(0, 6);
     } catch(e) { /* silent */ }
+
+    const sgMeasuredBlock = sgCitationProbe
+      ? `\nMEASURED AI VISIBILITY (live engine probe): the brand appears in ${sgCitationProbe.visibility}% of AI answers today. WHO AI CITES INSTEAD: ${(sgCitationProbe.sources || []).slice(0, 6).map(s => s.domain).join(', ') || 'none captured'}. The sharpest posts stake claims on the questions and territories where the brand is measurably invisible.\n`
+      : '';
+    const sgCompetitors = Array.isArray(profileData.competitorAnalysis) ? profileData.competitorAnalysis : [];
+    const sgCompetitorBlock = sgCompetitors.length
+      ? `\nCOMPETITOR SITE COVERAGE (measured — crawled from their actual websites): ${sgCompetitors.map(c => `${c.url}: ${c.positioning || ''}${(c.signatureClaims || []).length ? ` — claims: ${c.signatureClaims.slice(0, 2).join(' | ')}` : ''}`).join('\n')}\nDo not echo their claims; post what they demonstrably cannot say.\n`
+      : '';
 
     // Factual ground — same source as content generator
     const factualGround = profile.settings?.factualGround || null;
@@ -176,7 +196,7 @@ router.get('/generate', async (req, res) => {
       } catch(e) { console.log('[SOCIAL-GEN] arc inject skipped:', e.message); }
     }
 
-    const userPrompt = `${dateContext()}\n\nGenerate exactly 4 ${platform.toUpperCase()} posts using the following brand intelligence.\n\nPLATFORM: ${platform}\n${platform === 'x' ? 'HARD CONSTRAINT: every X post body must be at or below 280 characters INCLUDING any inline characters. Count before you emit. If you find yourself at 270+ chars, cut it down. The X API rejects over-limit posts outright.\n' : 'HARD CONSTRAINT: every Instagram caption must be at or below 300 characters total. Stay below 150 when possible — audience disengages past that.\n'}BRAND: ${brandName}\n${topicPrompt ? `\nTOPIC / ANGLE THE USER WANTS COVERED:\n"${topicPrompt}"\n` : ''}${arcBlock}${(mandatories || constraints || audience || ctaTarget || desiredAction) ? `\nUSER MANDATORIES & CONSTRAINTS:\n${mandatories ? `- MUST INCLUDE: ${mandatories}\n` : ''}${constraints ? `- MUST NOT: ${constraints}\n` : ''}${audience ? `- AUDIENCE: ${audience}\n` : ''}${ctaTarget ? `- CTA TARGET: ${ctaTarget}\n` : ''}${desiredAction ? `- DESIRED ACTION: ${desiredAction}\n` : ''}` : ''}${fgBlock}\n\nBRAND VOICE PROFILE:\n${trimTo(voiceProfile, 1500)}\n\nPERSONAS:\n${trimTo(personas.slice(0, 2), 1000)}\n${topicalTerritories.length ? `\nSTRATEGIC TERRITORIES (stay inside these):\n${topicalTerritories.map(t => `- [${t.priority}] ${t.topic}`).join('\n')}\n` : ''}\nBRAIN PATTERNS — what works for this brand:\n${patternsRes.rows.length ? trimTo(patternsRes.rows, 1500) : 'No patterns yet.'}\n\nBRAIN MISTAKES — what to avoid:\n${mistakesRes.rows.length ? trimTo(mistakesRes.rows, 1000) : 'No mistakes logged yet.'}\n${enrichedBrief ? `\nENRICHED BRIEF CONTEXT:\n${trimTo({ title: enrichedBrief.enrichedTitle, hooks: enrichedBrief.contentHooks, powerPhrases: enrichedBrief.powerPhrases }, 1500)}\n` : ''}\nReturn ONLY valid JSON matching the {posts: [...]} schema in the system prompt. No markdown, no commentary.`;
+    const userPrompt = `${dateContext()}\n\nGenerate exactly 4 ${platform.toUpperCase()} posts using the following brand intelligence.\n\nPLATFORM: ${platform}\n${platform === 'x' ? 'HARD CONSTRAINT: every X post body must be at or below 280 characters INCLUDING any inline characters. Count before you emit. If you find yourself at 270+ chars, cut it down. The X API rejects over-limit posts outright.\n' : 'HARD CONSTRAINT: every Instagram caption must be at or below 300 characters total. Stay below 150 when possible — audience disengages past that.\n'}BRAND: ${brandName}\n${topicPrompt ? `\nTOPIC / ANGLE THE USER WANTS COVERED:\n"${topicPrompt}"\n` : ''}${arcBlock}${(mandatories || constraints || audience || ctaTarget || desiredAction) ? `\nUSER MANDATORIES & CONSTRAINTS:\n${mandatories ? `- MUST INCLUDE: ${mandatories}\n` : ''}${constraints ? `- MUST NOT: ${constraints}\n` : ''}${audience ? `- AUDIENCE: ${audience}\n` : ''}${ctaTarget ? `- CTA TARGET: ${ctaTarget}\n` : ''}${desiredAction ? `- DESIRED ACTION: ${desiredAction}\n` : ''}` : ''}${fgBlock}${sgMeasuredBlock}${sgCompetitorBlock}\n\nBRAND VOICE PROFILE:\n${trimTo(voiceProfile, 1500)}\n\nPERSONAS:\n${trimTo(personas.slice(0, 2), 1000)}\n${topicalTerritories.length ? `\nSTRATEGIC TERRITORIES (stay inside these):\n${topicalTerritories.map(t => `- [${t.priority}]${t.cluster ? ` (${t.cluster})` : ''} ${t.topic}${t.angle ? ` — unique angle: ${t.angle}` : ''}`).join('\n')}\n` : ''}\nBRAIN PATTERNS — what works for this brand:\n${patternsRes.rows.length ? trimTo(patternsRes.rows, 1500) : 'No patterns yet.'}\n\nBRAIN MISTAKES — what to avoid:\n${mistakesRes.rows.length ? trimTo(mistakesRes.rows, 1000) : 'No mistakes logged yet.'}\n${enrichedBrief ? `\nENRICHED BRIEF CONTEXT:\n${trimTo({ title: enrichedBrief.enrichedTitle, hooks: enrichedBrief.contentHooks, powerPhrases: enrichedBrief.powerPhrases }, 1500)}\n` : ''}\nReturn ONLY valid JSON matching the {posts: [...]} schema in the system prompt. No markdown, no commentary.`;
 
     send('chunk', 'Brain loaded. Drafting 4 posts...');
     await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms) VALUES ($1, $2, $3, $4, $5)', ['stage4_5_social_generator_start', brandProfileId, 'started', 0, 0]).catch(() => {});
@@ -331,8 +351,8 @@ router.post('/regenerate-arcs/:brandProfileId', async (req, res) => {
   const cleanGuidance = String(guidance || '').slice(0, 500).trim();
 
   try {
-    // Load brand profile
-    const pr = await pool.query('SELECT brand_name, profile_data FROM brand_profiles WHERE id = $1', [brandProfileId]);
+    // Load brand profile (+ settings: factualGround gates what arcs may claim)
+    const pr = await pool.query('SELECT brand_name, profile_data, settings FROM brand_profiles WHERE id = $1', [brandProfileId]);
     if (!pr.rows.length) return res.status(404).json({ error: 'Brand not found' });
     const profile = pr.rows[0];
     const pd = profile.profile_data || {};
@@ -342,6 +362,29 @@ router.post('/regenerate-arcs/:brandProfileId', async (req, res) => {
     const gaps = pd.competitiveGaps || [];
     const voiceProfile = pd.voiceProfile || pd.voice_profile || {};
     const existingArcs = pd.campaignArcs || [];
+
+    // Arc regen previously saw no Factual Ground (arcs could stake theses the
+    // brand contradicts), no brain, and no measured visibility. All best-effort.
+    const arcFg = profile.settings?.factualGround || null;
+    const arcFgBlock = arcFg && (arcFg.whatWeDo || arcFg.whatWeDontDo || arcFg.quotablePositions)
+      ? `\nFACTUAL GROUND (arcs must never stake a thesis that contradicts these):\n${arcFg.whatWeDo ? `- What we do: ${String(arcFg.whatWeDo).slice(0, 400)}\n` : ''}${arcFg.whatWeDontDo ? `- What we DON'T do: ${String(arcFg.whatWeDontDo).slice(0, 400)}\n` : ''}${arcFg.quotablePositions ? `- Quotable positions (theses the brand already stands behind): ${String(arcFg.quotablePositions).slice(0, 400)}\n` : ''}`
+      : '';
+    let arcBrainBlock = '';
+    let arcProbeBlock = '';
+    try {
+      const [apRes, amRes, agRes] = await Promise.all([
+        pool.query(`SELECT pattern_type, description FROM brain_patterns WHERE brand_profile_id = $1 ORDER BY success_rate DESC NULLS LAST LIMIT 8`, [brandProfileId]),
+        pool.query(`SELECT mistake_type, description FROM brain_mistakes WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 8`, [brandProfileId]),
+        pool.query(`SELECT brief_data->'citationProbe' as probe FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY version DESC LIMIT 1`, [brandProfileId]),
+      ]);
+      if (apRes.rows.length || amRes.rows.length) {
+        arcBrainBlock = `\nBRAIN PATTERNS (proven for this brand — arcs should ride these): ${JSON.stringify(apRes.rows).slice(0, 1200)}\nBRAIN MISTAKES (do NOT repeat): ${JSON.stringify(amRes.rows).slice(0, 800)}\n`;
+      }
+      const arcProbe = agRes.rows[0]?.probe || null;
+      if (arcProbe && typeof arcProbe.visibility === 'number') {
+        arcProbeBlock = `\nMEASURED AI VISIBILITY (live engine probe): the brand appears in ${arcProbe.visibility}% of AI answers today; AI cites ${(arcProbe.sources || []).slice(0, 6).map(s => s.domain).join(', ') || 'other sources'} instead. The strongest arcs argue theses on territory where the brand is measurably invisible.\n`;
+      }
+    } catch(e) { /* best-effort */ }
 
     // Build emphasis blocks. If user selected specific moats/personas/gaps,
     // surface them first and most prominently. Otherwise pass the whole list
@@ -385,7 +428,7 @@ ${JSON.stringify(moatsForPrompt, null, 2).slice(0, 1500)}
 
 COMPETITIVE GAPS (topics where peers own the conversation and the brand could plausibly win):
 ${JSON.stringify(gapsForPrompt, null, 2).slice(0, 2000)}
-${emphasisBlock}${guidanceBlock}${avoidBlock}
+${arcFgBlock}${arcBrainBlock}${arcProbeBlock}${emphasisBlock}${guidanceBlock}${avoidBlock}
 TASK: Write 3-5 fresh campaign arcs. Each arc must be:
 - A narrative spine the brand can argue for weeks/months
 - Ownable — something the brand specifically can claim, not generic

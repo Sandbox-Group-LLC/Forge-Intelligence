@@ -42,6 +42,7 @@ const stageMessages: Record<string, string[]> = {
   ],
   scrape: [
     'Crawling primary site content...',
+    'Crawling competitor websites...',
     'Analyzing competitor positioning...',
     'Extracting voice patterns...'
   ],
