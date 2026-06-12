@@ -86,3 +86,29 @@ Full detail in `PLAN.md` (2026-06-09 and cont.). The base everything above build
 ---
 
 _Older sessions (2026-06-07 GEO arc, 2026-06-06 and earlier) archived in `PLAN.md`._
+
+---
+
+## Pipeline description (standing section — canonical copy, do not archive)
+
+Forge runs an 8-stage Context Agent Architecture where every stage conditions the next. By stage four, the writer isn't writing from a prompt, it's writing from a fully constructed competitive worldview.
+
+1. **Context Hub** — crawls the brand site, extracts voice profile, personas, competitive set, strategic moats, and topical territories. Jina Reader first, falls back to Bright Data Web Unlocker, then Bright Data Scraping Browser for SPAs; sitemap-aware parallel crawl. Captures the brand's visual identity (accent color, logo) straight from the live site's computed CSS. Competitor discovery is Sonar-grounded in the actual scraped content, and the human stays in command: Factual Ground (user-verified facts about what the brand does, doesn't do, and who it actually competes with) and pinned manual overrides survive every re-scan and bind every downstream stage. Outputs the Brand Profile.
+
+2. **GEO Strategist** — maps topical authority gaps competitors haven't claimed, constrained by Factual Ground and strategic moats so it never pitches topics the brand has deliberately walked away from. Scores every opportunity per engine against what that engine actually rewards: ChatGPT (authority and entity recognition), Perplexity (freshness and community signal), Google AI Overviews (E-E-A-T on long-tail questions), Gemini (brand-owned domains). No auto-brief: opportunities land in a table, the user cherry-picks, and Stage 2.1 builds a full per-topic brief for each selection — H1/H2 structure with citation anchors per section, FAQ structure, entities, schema requirements, target platforms, and an assigned SME author snapshotted into the brief. Unpicked topics stay behind as brain food, and dismissed topics propagate: a near-duplicate of something the user already ignored arrives pre-ignored.
+
+3. **Authenticity Enricher** — injects E-E-A-T signals (experience, expertise, authoritativeness, trustworthiness) into the brief: SME credentials from the brand's named author roster, first-party evidence, author schema, FAQ structure, power phrases. Pulls from Brain patterns, Factual Ground, and live competitor signal.
+
+4. **Content Generator** — writes long-form articles voice-matched to the brand, GEO-optimized, with per-section confidence scoring (green/yellow/red). Built citable by construction: a mandatory TL;DR block shaped for LLM extraction, standalone FAQs, statistical and factual anchors (exact tools, dates, versions — never invented), definition blocks for core terms, direct 40-55-word answers under question-form headings, and expert quotes gated to real people from the author roster — a quote it can't source becomes an SME placeholder, never a fabrication. Human-cadence rules strip the AI tells. When the brand's own documented outcomes are the evidence, it says so plainly instead of hedging. Streams via Claude Sonnet 4.6; hero image generated via Flux in parallel.
+
+5. **Compliance Gate** — critiques every draft before it ships. Flags fabrications, unsupported claims, brand-voice drift, and missing citations — then goes further: a citation agent (Perplexity Sonar) finds real supporting sources for flagged claims using a source-quality hierarchy (peer-reviewed and primary sources first, content farms blocked), and a verify-and-rewrite flow integrates the citation or softens the claim when no source exists. Every human edit, rewrite, and dismissed false positive is captured. Reviews are approve-to-ship by default.
+
+6. **Publishing Queue** — schedules and distributes across channels: My Website (self-hosted webhook with FAQ schema on the receiving end), LinkedIn, Facebook, X, Reddit, HubSpot CMS, Webflow CMS, the brand's own custom domain, email. Logs IndexNow pings, UTM tracking, per-channel metadata.
+
+7. **Performance Dashboard** — pulls real engagement data back from each surface (analytics, social, indexation). Sourced from the platforms' own APIs, not estimated. Now includes a live Citation Tracker that probes four real AI engines — ChatGPT, Perplexity, Gemini, and Google AI Overviews — and records whether the brand was actually cited, per question, per engine. Precog predicts each article's citation probability across eleven scoring dimensions before publish, then checks its own predictions against measured outcomes.
+
+8. **Brain Memory** — extracts patterns from what performed and mistakes from what underperformed, plus everything the humans taught it along the way: compliance edits, dismissed flags, rejected topics, verified facts. Writes it all back to `brain_patterns` and `brain_mistakes`. The brain is versioned — when it learns, stale briefs built on the old version are flagged and rebuilt. Every future brief is conditioned by everything that came before.
+
+The same intelligence layer now feeds more than articles: campaign arcs, social posts, Google Ads asset packs, and brand-grounded video reels all generate from the same brain.
+
+The result: each cycle gets smarter than the last. Forge does not generate content from a prompt and a topic. Forge generates content from the brand's own intelligence layer — and that layer compounds with every published article, every human correction, and every measured citation.
