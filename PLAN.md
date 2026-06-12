@@ -1,3 +1,22 @@
+## 2026-06-12 (cont.) — GEO overhaul: measured whitespace (#348, #349, #351, #353)
+
+All merged to `development` the same day. Two reviews drove four PRs.
+
+### Review 1: external GEO skill vs the pipeline
+Compared the pipeline against a GEO skill document grounded in Princeton KDD 2024 (10,000 Perplexity queries). The pipeline's discovery/measurement loop was AHEAD of the skill (automated 4-engine Citation Tracker vs its manual monthly audit; compliance citation agent operationalizes "cite sources", the #1 measured lever; Precog scores + tracks its own accuracy). The real gaps were in what the prompts ASK FOR: the two highest-measured citation levers (statistics +40%, expert quotes +30-40%) were advised nowhere, Tool 2 scored all platforms with one rubric, and articles lacked the extraction shapes (definition blocks, 40-55 word direct answers). **#348** added a "Citability mechanics (GEO)" section to the Stage 4 system prompt — statistical anchors, factual anchors, expert quotes adapted to the zero-em-dash rule (comma attribution) and hard-gated to real people (Factual Ground authors / SME hooks; a fabricated quote is a failed generation), definition blocks, direct answers, numbered steps — and gave Tool 2 per-engine heuristics. **#349** refreshed the canonical 8-stage pipeline description (standing section in WORKING-STATE).
+
+### Review 2: how hard does Tool 1 actually search competitors?
+Trace verdict: not hard. Competitor discovery was one Sonar call at Stage 1 (real, grounded); competitor SITES were never fetched; `competitiveGaps`/whitespace were Claude priors; Tool 1 saw 700 chars total of competitive context (`.slice(0,400)` + `.slice(0,300)`); zero live research at analyze time; Tool 2's citation probabilities modeled, never measured — while `geoProbe.coldScan` (the real instrument, incl. "who AI cites instead") sat unused by the Strategist.
+
+**#351 (Tool 1 measured citations):** `/analyze` Step 1.5 generates 8 brand-free buyer questions (Sonnet, from personas + competitor topics) and probes all enabled engines via `coldScan`. Tool 1 receives MEASURED AI VISIBILITY (visibility %, per-engine rates, who-AI-cites-instead domains, invisible questions = strongest whitespace evidence) with instructions that measured outranks inferred and observed cited domains are the real owners. Engine `error` ≠ absence. Truncations lifted (personas 1500, competitor topics 4000, whitespace 2000; Tool 2 1000). Gaps gained additive `cluster` (2-4 pillar groupings — clustered depth earns multiples of isolated posts) and `informationGainAngle` (unique data/POV the brand can add; none = scored down, matching engines' aggregator penalties). Tool 2 anchors per-platform scores on the measured baseline. Probe persists on `brief_data.citationProbe`. Best-effort throughout — probe failure degrades to the old path.
+
+**#353 (Stage 1 competitor crawl, Tool 1.6):** between Sonar discovery and the Opus profile build, crawl up to 4 competitor homepages via `getBrandPageContent` (parallel, error-isolated, <300-char pages dropped); one Haiku call extracts `positioning`/`topicsCovered`/`signatureClaims` from the crawled content only; the Opus prompt gets a COMPETITOR SITE CONTENT block grounding `competitiveGaps` in demonstrable publishing; persists `profile_data.competitorAnalysis`; GEO Tool 1 reads it as COMPETITOR SITE COVERAGE. Profiles scanned pre-#353 lack the key until re-scanned.
+
+### Net effect + follow-ups
+Whitespace went from "Claude's 700-character imagination" to observed engine citations + crawled competitor content. Validation on dev pending (re-scan → force analyze → check probe/coverage log lines + new fields). Tier-2 backlog recorded in WORKING-STATE: per-article JSON-LD, internal-link-aware briefs, sameAs entity strategy, crawlability probe (llms.txt/AI-bot access), freshness re-audits, off-site mention strategy.
+
+---
+
 ## 2026-06-12 — "Lost super admin" = unlinked env group · Ken Burns killed (#344)
 
 ### The env-group incident (root cause + fix)
