@@ -69,10 +69,11 @@ const icons = {
 
 const STAGES = [
   { id: 1, label: 'Reading Brain', sub: 'Patterns, mistakes, memories' },
-  { id: 2, label: 'Topical Authority Map', sub: 'Mapping content gaps + citation probability' },
-  { id: 3, label: 'GEO Opportunity Scoring', sub: 'ChatGPT · Perplexity · AI Overviews · Gemini' },
-  { id: 4, label: 'Entity & Schema Map', sub: 'Structured markup + competitor entity gaps' },
-  { id: 5, label: 'Generating GEO Brief', sub: 'H1/H2 · FAQ · GEO anchors · opportunity score' },
+  { id: 2, label: 'Live Citation Probe', sub: 'Asking the real engines — measured AI visibility' },
+  { id: 3, label: 'Topical Authority Map', sub: 'Measured whitespace · pillar clusters · information-gain angles' },
+  { id: 4, label: 'GEO Opportunity Scoring', sub: 'ChatGPT · Perplexity · AI Overviews · Gemini' },
+  { id: 5, label: 'Entity & Schema Map', sub: 'Structured markup + competitor entity gaps' },
+  { id: 6, label: 'Generating GEO Brief', sub: 'H1/H2 · FAQ · GEO anchors · opportunity score' },
 ];
 
 function GeoStrategistContent() {
@@ -309,19 +310,22 @@ function GeoStrategistContent() {
       body: JSON.stringify({ brandProfileId: selectedBrainId, force: shouldForce })
     });
 
-    const timings = [5000, 12000, 15000, 10000];
+    // Display pacing only (the real work is the fetch). The probe stage gets the
+    // longest slot — it genuinely runs 8 buyer questions across up to 4 live
+    // engines, which is most of the wall-clock since #351.
+    const timings = [5000, 45000, 15000, 12000, 10000];
     for (let i = 0; i < timings.length; i++) {
       setCurrentStage(i + 1);
       await new Promise(r => setTimeout(r, timings[i]));
       setCompletedStages(prev => [...prev, i + 1]);
     }
-    setCurrentStage(5);
+    setCurrentStage(6);
 
     try {
       const res = await analyzePromise;
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Analysis failed');
-      setCompletedStages([1,2,3,4,5]);
+      setCompletedStages([1,2,3,4,5,6]);
       setCurrentStage(0);
       console.log('[GEO DEBUG] topicalAuthorityMap[0]:', JSON.stringify(data.data?.topicalAuthorityMap?.[0]));
       console.log('[GEO DEBUG] geoOpportunities[0]:', JSON.stringify(data.data?.geoOpportunities?.[0]));
@@ -342,7 +346,7 @@ function GeoStrategistContent() {
           <div className="geo-eyebrow">Stage 2</div>
           <h2 className="geo-title">GEO Strategist</h2>
           <p className="geo-description">
-            Maps topical authority gaps, scores GEO citation opportunities across AI platforms, and generates a structured brief ready for Stage 3.
+            Probes the live AI engines to measure who actually gets cited today, maps topical authority gaps grounded in that evidence (plus crawled competitor coverage), scores opportunities per platform, and builds briefs from the topics you cherry-pick.
           </p>
         </div>
         {result && (
