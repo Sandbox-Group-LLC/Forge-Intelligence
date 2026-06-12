@@ -1,3 +1,29 @@
+## 2026-06-12 (cont. 2) — Full-pipeline audit: fetched ≠ applied (#359, #361, #363, #365)
+
+The afternoon extended the morning's "measured, not modeled" arc into a stage-by-stage audit of the whole pipeline with one question per stage: it loads the upstream research, but does it APPLY it? Every audited consumer failed, each with the same three failure shapes: data loaded-but-never-prompted, data truncated to uselessness (the 400-char-slice idiom copied everywhere), and data never loaded at all.
+
+### #359 — Tool 3 Entity & Schema Mapper
+Left out of #351/#353 entirely. Still truncated competitive gaps to 400 chars; never saw the citation probe even though its core output (`competitorCiting`) is exactly what the probe measures; never saw crawled competitor coverage; topic context was 8 of Tool 2's per-platform rows (~2 topics) with Tool 1's gaps absent. Fixed: full gaps with cluster + informationGainAngle (top 10), Tool 2 rows widened to 12, both measured blocks injected with grounding rules (observed who-AI-cites-instead domains set `competitorCiting` before inference; competitor entities derive from measured positioning/claims; entity priorities align to pillar clusters). Output schema unchanged.
+
+### #361 — Stage 3 Authenticity Enricher (the leakiest stage)
+Trace verdict: brain_patterns/brain_mistakes loaded and passed to ZERO prompts (the README's Brain-First claim was false for Stage 3); the full geo brief was spread into `geoBrief` and only h1/h2s/title/faqStructure used; competitorAnalysis/strategicMoats/businessProfile never loaded; the E-E-A-T Confidence Scorer judged authenticity from 1,200 chars of evidence total; voice/personas/SME signals capped at 400 chars each. One agent over-claim corrected during verification: the `assignedAuthor` snapshot DOES flow on the batch cherry-pick path (write at server.js:8597 confirmed) — only the `from-topic` route lacked it. Fixed: five context blocks (probe, topic angle from the matched raw gap, competitor coverage, moats-as-trust-signals, brain) injected across Tools 2-4 with targeting instructions; caps lifted ~3-4×; `from-topic` gained `assignedAuthorId` + snapshot embedding.
+
+### #363 — Stage 4 writer + Compliance + Precog
+- **Writer:** citationProbe lived inside `trimTo(geoBrief, 4000)` — a character-level truncation that could randomly eat it; competitorAnalysis/strategicMoats never extracted. Three explicit blocks now ("write the piece the incumbent sources would have to cite"; "write what they demonstrably cannot say"; moats as trust signals). `territoriesBlock` reads the RAW topical gaps (normalizeGeoData drops cluster + informationGainAngle) and renders each territory's pillar + information-gain angle as a delivery requirement.
+- **Compliance:** judged factual claims in total isolation — could neither clear owner-verified claims (false-positive flags) nor catch contradictions of Factual Ground (the severe direction). Now two-way ground truth; verbatim-excerpt + section-isolation rules explicitly preserved.
+- **Precog:** the Strategic Geo Opportunity Match queried only `strategic_injection%` rows, so articles from cherry-picked Strategist topics scored 0 on the dimension by construction. Candidates now include `status IN ('selected','briefed')`. Same 0-7 scale — no re-base, precog_outcomes history comparable.
+
+### #365 — Precog measured-visibility, phase 1 (shadow)
+The full measured-visibility dimension would re-base Precog's 0-100 scale and break accuracy-history comparability, so it ships score-neutral: `breakdown.measuredVisibilityShadow` (0-10, `includedInScore:false`, model `measured-visibility-v1`) = invisibleQuestionOverlap (0-5) + brandVisibilityGap (0-3) + validatedWhitespaceWithProbe (0-2), computed from the brand-level citationProbe on every score. Phase 2: correlate shadow scores against precog_outcomes + geo_citations once enough scored articles have outcomes. Phase 3: promote as an explicit v3.0 model with a model_version stamp, only if the data says it predicts.
+
+### Session-infrastructure note
+Mid-arc, this session's native GitHub MCP lost auth, and its freshly-minted OAuth authorize URLs served a *retired Google Drive server's* turndown page (clean repro across two client registrations; Brian reported to Anthropic). PRs #359-#363 shipped through the Composio GitHub connection instead; the native server later self-healed and #365 went through it with webhook subscription restored.
+
+### Remaining unaudited
+Stage 6 Publishing, and the Stage 7→8 seam — specifically whether Brain pattern extraction consumes the citation tracker's measured results, i.e. whether "what got cited" feeds "what we learned."
+
+---
+
 ## 2026-06-12 (cont.) — GEO overhaul: measured whitespace (#348, #349, #351, #353)
 
 All merged to `development` the same day. Two reviews drove four PRs.
