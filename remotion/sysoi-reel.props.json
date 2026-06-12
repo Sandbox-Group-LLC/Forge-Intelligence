@@ -1,0 +1,85 @@
+{
+  "brand": {
+    "name": "SYSOI",
+    "logo": "sysoi-logo.svg",
+    "colors": {
+      "bg": "#0B0D10",
+      "card": "#14171C",
+      "accent": "#F5B454",
+      "accent2": "#C98E36",
+      "emphasis": "#F2EFE8",
+      "secondary": "#B8BCC4",
+      "muted": "#9098A4",
+      "border": "#1F2329",
+      "error": "#F47272",
+      "success": "#5FE3B5",
+      "onAccent": "#1A1208"
+    }
+  },
+  "theme": "kinetic",
+  "orientation": "landscape",
+  "music": { "src": "audio/sysoi-music.wav" },
+  "scenes": [
+    {
+      "id": "hook", "type": "hook", "durationInFrames": 282, "audio": "01-hook.mp3",
+      "eyebrow": "EVERY KIND OF EVENT",
+      "headline": "You run every kind of event.",
+      "emphasis": "No tool sees the whole picture."
+    },
+    {
+      "id": "orbit", "type": "orbit", "durationInFrames": 240, "audio": "02-orbit.mp3",
+      "centerLabel": "SYSOI",
+      "facets": ["Registration", "Webinars", "CRM", "Spreadsheets", "Lead Capture", "Marketing"],
+      "caption": "The system of intelligence", "captionEmphasis": "on top."
+    },
+    {
+      "id": "northstar", "type": "screens", "durationInFrames": 237, "audio": "03-northstar.mp3",
+      "motion": "dynamic",
+      "eyebrow": "North-Star · The Event Brain",
+      "headline": "Define the event", "headlineEmphasis": "once.",
+      "shots": ["shots/01-northstar.png"], "urlLabel": "sysoi.ai/app"
+    },
+    {
+      "id": "records", "type": "screens", "durationInFrames": 245, "audio": "04-records.mp3",
+      "motion": "dynamic",
+      "eyebrow": "Records · The Golden Record",
+      "headline": "Every person.", "headlineEmphasis": "One record.",
+      "shots": ["shots/02-records.png"], "urlLabel": "sysoi.ai/app"
+    },
+    {
+      "id": "consistency", "type": "screens", "durationInFrames": 171, "audio": "05-consistency.mp3",
+      "motion": "dynamic",
+      "eyebrow": "Consistency Engine",
+      "headline": "Forensic,", "headlineEmphasis": "by design.",
+      "shots": ["shots/04-consistency.png"], "urlLabel": "sysoi.ai/app"
+    },
+    {
+      "id": "readiness", "type": "screens", "durationInFrames": 204, "audio": "06-readiness.mp3",
+      "motion": "dynamic",
+      "eyebrow": "Readiness · CRM Handoff",
+      "headline": "Hot leads,", "headlineEmphasis": "with receipts.",
+      "stat": { "value": "$190K", "label": "pipeline attributed to the event" },
+      "shots": ["shots/05-readiness.png"], "urlLabel": "sysoi.ai/app"
+    },
+    {
+      "id": "pillars", "type": "screens", "durationInFrames": 201, "audio": "07-pillars.mp3",
+      "motion": "dynamic",
+      "eyebrow": "The Whole Lifecycle",
+      "headline": "Seven pillars.", "headlineEmphasis": "One brain.",
+      "shots": ["shots/03-marquee.png", "shots/06-dispatch.png", "shots/07-coda.png"],
+      "urlLabel": "sysoi.ai/app"
+    },
+    {
+      "id": "pipeline", "type": "pipeline", "durationInFrames": 131, "audio": "08-pipeline.mp3",
+      "headline": "Pipeline is", "headlineEmphasis": "the proof.",
+      "stages": ["Lead", "Registered", "Checked in", "Meeting", "Opportunity"],
+      "highlightLast": true
+    },
+    {
+      "id": "cta", "type": "cta", "durationInFrames": 196, "audio": "09-cta.mp3",
+      "title": "SYSOI",
+      "sub": "One record. Every person. Every event.",
+      "cta": "sysoi.ai"
+    }
+  ]
+}

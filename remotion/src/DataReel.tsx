@@ -16,6 +16,7 @@ const DEFAULT_COLORS = {
   bg: "#EDF1FF", card: "#FFFFFF", accent: "#3563FF", accent2: "#7a93ff",
   emphasis: "#0F172A", secondary: "#475569", muted: "#94A3B8",
   error: "#DC2626", success: "#0EA572", border: "#E2E8F0",
+  onAccent: "#FFFFFF",
 };
 type Palette = typeof DEFAULT_COLORS;
 
@@ -81,6 +82,10 @@ const useHeadline = () => {
 const audioSrc = (a?: string) =>
   !a ? null : /^https?:\/\//.test(a) ? a : staticFile(`audio/${a}`);
 
+// Generic asset (screenshot / logo / music): full URL used as-is, anything
+// else resolved from public/ via staticFile — same convention as audio.
+const assetSrc = (a: string) => (/^https?:\/\//.test(a) ? a : staticFile(a));
+
 const Diamond: React.FC<{ size?: number }> = ({ size = 40 }) => {
   const { C } = React.useContext(Ctx);
   const { k } = useL();
@@ -97,7 +102,7 @@ const Diamond: React.FC<{ size?: number }> = ({ size = 40 }) => {
 const BrandMark: React.FC<{ size?: number }> = ({ size = 36 }) => {
   const { brand, L } = React.useContext(Ctx);
   const { k } = L;
-  if (brand.logo) return <Img src={brand.logo} style={{ height: size * k, width: "auto", objectFit: "contain" }} />;
+  if (brand.logo) return <Img src={assetSrc(brand.logo)} style={{ height: size * k, width: "auto", objectFit: "contain" }} />;
   if (/forge/i.test(brand.name)) return <Diamond size={size} />;
   return null;
 };
@@ -210,7 +215,7 @@ const OrbitView: React.FC<{ s: OrbitScene }> = ({ s }) => {
           background: `radial-gradient(circle at 35% 30%, ${C.accent2}, ${C.accent})`,
           boxShadow: `0 0 ${90 * k}px rgba(53,99,255,0.45)`, display: "flex", alignItems: "center", justifyContent: "center",
         }}>
-          <span style={{ color: "#fff", fontSize: 38 * k, fontWeight: 800, textAlign: "center", lineHeight: 1.1 }}>
+          <span style={{ color: C.onAccent, fontSize: 38 * k, fontWeight: 800, textAlign: "center", lineHeight: 1.1 }}>
             {s.centerLabel.split("\n").map((l, i) => <React.Fragment key={i}>{i > 0 && <br />}{l}</React.Fragment>)}
           </span>
         </div>
@@ -262,7 +267,7 @@ const PipelineView: React.FC<{ s: PipelineScene }> = ({ s }) => {
                 <div style={{
                   transform: `scale(${interpolate(lit, [0, 1], [0.7, 1])})`, opacity: Math.min(1, lit),
                   width: node, height: node, borderRadius: 24 * k, flexShrink: 0,
-                  background: isLast ? C.accent : C.card, color: isLast ? "#fff" : C.emphasis,
+                  background: isLast ? C.accent : C.card, color: isLast ? C.onAccent : C.emphasis,
                   border: `2px solid ${isLast ? C.accent : C.border}`,
                   display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center",
                   fontSize: 26 * k, fontWeight: 700, padding: 8 * k,
@@ -362,13 +367,16 @@ const ScreensView: React.FC<{ s: ScreensScene }> = ({ s }) => {
   const { k, portrait } = useL();
   const hl = useHeadline();
   const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
   const head = useRise(0);
   const rise = useRise(8, 40);
   const shots = Array.isArray(s.shots) ? s.shots.filter(Boolean) : [];
   const dur = s.durationInFrames || 1;
+  const dynamic = s.motion === "dynamic";
 
-  // Crossfade across multiple shots: equal slices, ~14f dissolve.
   const seg = shots.length > 1 ? dur / shots.length : dur;
+
+  // static mode — crossfade across multiple shots: equal slices, ~14f dissolve.
   const shotOpacity = (i: number) => {
     if (shots.length <= 1) return 1;
     const start = i * seg;
@@ -379,6 +387,34 @@ const ScreensView: React.FC<{ s: ScreensScene }> = ({ s }) => {
       : 1;
     return Math.min(inOp, outOp);
   };
+
+  // dynamic mode — shot i slides OVER the previous one (spring from the right),
+  // and each shot gets one hard punch-in zoom mid-segment: a 6-frame snap to a
+  // focal region that then HOLDS. A cut with momentum — explicitly not a drift.
+  const slideIn = (i: number) =>
+    i <= 0 ? 1 : spring({ frame: frame - i * seg, fps, config: { damping: 17, stiffness: 150, mass: 0.9 } });
+  const FOCI = ["68% 24%", "30% 68%", "66% 70%", "32% 26%"]; // alternate focal corners
+  const punch = (i: number) => {
+    const local = frame - i * seg;
+    const at = seg * 0.48;
+    return interpolate(local, [at, at + 6], [1, 1.16], {
+      extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic),
+    });
+  };
+
+  // card entrance — dynamic: 3D fly-in (perspective tilt settling flat);
+  // static: the original rise.
+  const flyS = spring({ frame: frame - 6, fps, config: { damping: 15, stiffness: 130, mass: 0.9 } });
+  const fly = dynamic
+    ? {
+        opacity: Math.min(1, flyS),
+        transform: `perspective(${1800 * k}px) rotateX(${interpolate(flyS, [0, 1], [24, 0])}deg) translateY(${interpolate(flyS, [0, 1], [160 * k, 0])}px) scale(${interpolate(flyS, [0, 1], [0.9, 1])})`,
+        transformOrigin: "center bottom",
+      }
+    : rise;
+
+  // one sheen sweep across the card right after the fly-in lands (dynamic only)
+  const sheenX = interpolate(frame, [16, 46], [-60, 160], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
 
   const frameW = (portrait ? 1500 : 1480) * k;
   const dot = (c: string) => <span style={{ width: 14 * k, height: 14 * k, borderRadius: 999, background: c, display: "inline-block" }} />;
@@ -400,7 +436,7 @@ const ScreensView: React.FC<{ s: ScreensScene }> = ({ s }) => {
         )}
         {shots.length > 0 && (
           <div style={{
-            ...rise, width: frameW, borderRadius: 20 * k, overflow: "hidden",
+            ...fly, width: frameW, borderRadius: 20 * k, overflow: "hidden",
             background: C.card, border: `2px solid ${C.border}`,
             boxShadow: `0 ${36 * k}px ${90 * k}px rgba(15,23,42,0.30)`,
           }}>
@@ -411,15 +447,39 @@ const ScreensView: React.FC<{ s: ScreensScene }> = ({ s }) => {
                 <div style={{ marginLeft: 16 * k, flex: 1, maxWidth: 520 * k, height: 30 * k, borderRadius: 999, background: C.card, border: `2px solid ${C.border}`, display: "flex", alignItems: "center", padding: `0 ${18 * k}px`, fontSize: 22 * k, color: C.muted, fontWeight: 600, overflow: "hidden", whiteSpace: "nowrap" }}>{s.urlLabel}</div>
               )}
             </div>
-            {/* static viewport; cover-crop a constant 16:9 window so the page top reads */}
+            {/* viewport; cover-crop a constant 16:9 window so the page top reads.
+                static = held still + crossfade · dynamic = slide-over + punch-in */}
             <div style={{ position: "relative", width: "100%", aspectRatio: "16 / 9", overflow: "hidden", background: C.card }}>
-              {shots.map((src, i) => (
-                <Img key={i} src={src} style={{
-                  position: "absolute", inset: 0, width: "100%", height: "100%",
-                  objectFit: "cover", objectPosition: "center top",
-                  opacity: shotOpacity(i),
+              {shots.map((src, i) => {
+                if (!dynamic) {
+                  return (
+                    <Img key={i} src={assetSrc(src)} style={{
+                      position: "absolute", inset: 0, width: "100%", height: "100%",
+                      objectFit: "cover", objectPosition: "center top",
+                      opacity: shotOpacity(i),
+                    }} />
+                  );
+                }
+                const sIn = slideIn(i);
+                const nIn = i < shots.length - 1 ? slideIn(i + 1) : 0;
+                return (
+                  <Img key={i} src={assetSrc(src)} style={{
+                    position: "absolute", inset: 0, width: "100%", height: "100%",
+                    objectFit: "cover", objectPosition: "center top",
+                    transform: `translateX(${interpolate(Math.min(1, sIn), [0, 1], [106, 0]) - Math.min(1, nIn) * 16}%) scale(${punch(i)})`,
+                    transformOrigin: FOCI[i % FOCI.length],
+                    opacity: Math.min(1, sIn) * (1 - Math.min(1, nIn) * 0.5),
+                  }} />
+                );
+              })}
+              {dynamic && (
+                <div style={{
+                  position: "absolute", top: 0, bottom: 0, left: 0, width: "34%",
+                  transform: `translateX(${sheenX * 3}%) skewX(-18deg)`,
+                  background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.09), transparent)",
+                  pointerEvents: "none",
                 }} />
-              ))}
+              )}
             </div>
           </div>
         )}
@@ -439,7 +499,7 @@ const CtaView: React.FC<{ s: CtaScene }> = ({ s }) => {
         <div style={a}><BrandMark size={96} /></div>
         <div style={{ ...b, ...hl, fontSize: 96 * k, color: C.emphasis, margin: `${34 * k}px 0 ${26 * k}px` }}>{s.title}</div>
         {s.sub && <div style={{ ...b, fontSize: 50 * k, color: C.secondary, fontWeight: 500, marginBottom: 44 * k }}>{s.sub}</div>}
-        <div style={{ ...c, fontSize: 46 * k, fontWeight: 700, color: "#fff", background: C.accent, borderRadius: 18 * k, padding: `${24 * k}px ${52 * k}px`, display: "inline-block" }}>{s.cta}</div>
+        <div style={{ ...c, fontSize: 46 * k, fontWeight: 700, color: C.onAccent, background: C.accent, borderRadius: 18 * k, padding: `${24 * k}px ${52 * k}px`, display: "inline-block" }}>{s.cta}</div>
       </div>
     </Stage>
   );
@@ -542,7 +602,7 @@ const StepsView: React.FC<{ s: StepsScene }> = ({ s }) => {
           const r = useRise(20 + i * 16);
           return (
             <div key={i} style={{ ...r, display: "flex", gap: 28 * k, alignItems: "center", marginBottom: 30 * k }}>
-              <div style={{ flexShrink: 0, width: 72 * k, height: 72 * k, borderRadius: "50%", background: C.accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36 * k, fontWeight: 800 }}>{i + 1}</div>
+              <div style={{ flexShrink: 0, width: 72 * k, height: 72 * k, borderRadius: "50%", background: C.accent, color: C.onAccent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36 * k, fontWeight: 800 }}>{i + 1}</div>
               <div>
                 <div style={{ fontSize: 40 * k, fontWeight: 700, color: C.emphasis }}>{st.title}</div>
                 {st.detail && <div style={{ fontSize: 30 * k, color: C.secondary, marginTop: 6 * k }}>{st.detail}</div>}
@@ -614,7 +674,7 @@ const StatementView: React.FC<{ s: StatementScene }> = ({ s }) => {
   return (
     <AbsoluteFill style={{ background: `linear-gradient(135deg, ${C.accent}, ${C.accent2})`, fontFamily: font, justifyContent: "center", alignItems: "center", padding: 120 * k }}>
       {src && <Audio src={src} />}
-      <div style={{ ...a, ...hl, fontSize: 120 * k, color: "#fff", textAlign: "center", lineHeight: 1.05, maxWidth: 1500 * k }}>
+      <div style={{ ...a, ...hl, fontSize: 120 * k, color: C.onAccent, textAlign: "center", lineHeight: 1.05, maxWidth: 1500 * k }}>
         {s.headline}{s.emphasis && <><br /><span style={{ opacity: 0.82 }}>{s.emphasis}</span></>}
       </div>
     </AbsoluteFill>
@@ -650,7 +710,7 @@ const ChecklistView: React.FC<{ s: ChecklistScene }> = ({ s }) => {
           const r = useRise(20 + i * 12);
           return (
             <div key={i} style={{ ...r, display: "flex", gap: 22 * k, alignItems: "center", marginBottom: 26 * k, fontSize: 42 * k, color: C.emphasis, fontWeight: 600 }}>
-              <span style={{ flexShrink: 0, width: 52 * k, height: 52 * k, borderRadius: "50%", background: C.accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 * k, fontWeight: 800 }}>✓</span>
+              <span style={{ flexShrink: 0, width: 52 * k, height: 52 * k, borderRadius: "50%", background: C.accent, color: C.onAccent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 * k, fontWeight: 800 }}>✓</span>
               {it}
             </div>
           );
@@ -760,7 +820,7 @@ export const DataReel: React.FC<VideoProps> = ({ brand, scenes, fontFamily, musi
       <AbsoluteFill style={{ background: C.bg }}>
         {music?.src && (
           <Audio
-            src={music.src}
+            src={assetSrc(music.src)}
             loop
             volume={(f) => musicVolumeAt(f, scenes)}
           />
