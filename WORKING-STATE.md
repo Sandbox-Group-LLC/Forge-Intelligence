@@ -10,6 +10,22 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
+### 2026-06-12 (cont.) — GEO overhaul: measured whitespace, not priors
+
+All merged to `development`. Sprung from a gap analysis against an external GEO skill (Princeton KDD 2024) + a depth trace of the competitive-intel pipeline (verdict: whitespace was pure LLM inference over 700 chars of cached Stage 1 data; competitor sites never crawled; geoProbe unused by the Strategist).
+
+- **#348 citability mechanics + engine-aware scoring** — Stage 4 system prompt gained a "Citability mechanics (GEO)" section (statistical/factual anchors, real-people-only expert quotes via Factual Ground authors, definition blocks, 40-55 word direct answers under question H2s, numbered steps); Tool 2 scores each platform per-engine (ChatGPT authority · Perplexity freshness/community · AI Overviews E-E-A-T long-tail · Gemini brand-domain) instead of a uniform rubric.
+- **#349 pipeline description refreshed** — canonical 8-stage copy now lives as a standing "do not archive" section at the bottom of this file.
+- **#351 Tool 1 measured citations** — `/analyze` Step 1.5 probes the 4 real engines (`coldScan`) with 8 generated brand-free buyer questions; Tool 1 receives visibility %, per-engine rates, who-AI-cites-instead, and the invisible questions as ground truth. Truncation killed (400/300 → 4000/2000/1500 chars). Gaps now carry `cluster` (pillar grouping) + `informationGainAngle` (no original angle = scored down) — both additive. Tool 2 anchors on the measured baseline; probe persists on `brief_data.citationProbe`. Best-effort: no engine keys → old inference-only path.
+- **#353 competitor crawl (Stage 1 Tool 1.6)** — up to 4 competitor homepages crawled via `getBrandPageContent`, Haiku extracts measured positioning/topics/claims, Opus grounds `competitiveGaps` in it, persists `profile_data.competitorAnalysis`; GEO Tool 1 reads it as COMPETITOR SITE COVERAGE (measured outranks inferred).
+
+#### What's next (GEO)
+- **Validate on dev:** re-scan a brand (fills `competitorAnalysis`), then `force: true` analyze — expect `[GEO] Probe: visibility N% …` + `[Context Hub] Tool 1.6: analyzed N/M…` log lines, `cluster`/`informationGainAngle` on gaps, `citationProbe` on the brief row. Existing brands need a re-scan before competitor coverage appears.
+- Cost note: uncached analyze +1 Sonnet call + ≤8×4 engine probes (~one public cold-scan); Stage 1 re-scan +15-25s.
+- Tier-2 backlog from the review: per-article JSON-LD at publish · internal-link/cluster awareness in Stage 2.1 briefs · sameAs entity strategy · site crawlability (llms.txt / AI-bot access) probe · freshness re-audit loop · off-site mention strategy (Ahrefs: brand mentions ~3× backlinks for AI visibility).
+
+---
+
 ### 2026-06-12 — Env-group incident root-caused · Ken Burns killed
 
 - **"Lost super admin" root-caused — it was the env group, not Clerk.** Brian's leaked-key rotation (2026-06-10 18:55) replaced the Render env group with "Forge Intelligence Environment Group Updated" but left it **linked to zero services**; the 18:56 redeploys booted Production/Development without `NEON_DATABASE_URL` or the Clerk keys. `/api/auth/me` computed `isSuperAdmin: true` from the JWT, then 500'd on the DB query → the FE's `useActiveBrand` defaulted `isSuperAdmin` to false. Brian relinked the group; live `SELECT 1` via the relay confirmed recovery. Lesson: **Render service-level env vars override group vars** — both services carried stale pre-rotation copies (old `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, X/LinkedIn/HubSpot secrets) that were silently shadowing the rotated group. Brian deleted them; post-check is clean (service level now holds only the intentional per-env keys: `BASE_URL`, `BASE_DOMAIN`, `DATA_DIR`, dev's `GSC_REDIRECT_URI`).
