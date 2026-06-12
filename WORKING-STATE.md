@@ -10,25 +10,19 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
-### 2026-06-12 (cont. 2) — SYSOI product reel · DataReel round-trip hardening (#347, merged)
+### 2026-06-12 (cont. 2) — Full-pipeline audit: every stage reads the measured layer
 
-Built the 60s SYSOI product video **with DataReel rendered locally** (no Lambda), which forced template gaps closed — **#347 merged to `development`**:
+All merged to `development` same day. Continued the stage-by-stage "is it fetching AND applying?" audit through the whole pipeline; every stage failed it; every stage fixed. (Shipped via the Composio GitHub connection for part of the arc — this session's native GitHub MCP auth broke mid-day, served a Google Drive turndown page from its OAuth flow [reported to Anthropic], then self-healed.)
 
-- **`ScreensScene.motion: "static" | "dynamic"`** — default unchanged (static, per #344's no-Ken-Burns rule). `dynamic` = 3D fly-in, one hard 6-frame punch-in per shot that holds, slide-over spring transitions. Brian's review killed an earlier sheen-sweep ("diminishes the product").
-- **`ScreensScene.shotAspect`** — viewport matches the capture's native ratio (SYSOI captures are 2940×1414 ≈ 2.08:1; the hardcoded 16:9 cropped both edges). Dynamic card: wider (1640) + brand-accent outer glow.
-- **`brand.wordmark`** — full lockup image replaces the TYPED brand name in the Stage corner + CTA title (system font butchers custom wordmarks).
-- **`assetSrc()`** — `shots`/`logo`/`music.src` accept bare filenames via `staticFile()` (audio's convention); https URLs pass through, Lambda path untouched.
-- **`onAccent` palette key** — dark-ink text on light accents (SYSOI amber); replaces hardcoded white on CTA button / statement / pipeline highlight / orbit core / steps / checklist.
-- **PipelineView** — rounded squares → auto-width pills with accent outer glow (the squares clipped their labels).
-- **VO via Composio ElevenLabs** (key wasn't in the SYSOI session env): Charlie/`verse`, stability 0.35 / style 0.6, mp3_44100_128 → exact seconds = bytes/16000. **Music**: `scripts/sysoi-music.mjs`, original CC0 driving bed (122 BPM, sidechained).
-- `sysoi-reel.props.json` + `public/shots`/`audio` committed = reproducible example. Rendered both cuts (16:9 1907f/63.6s + 9:16 portrait — zero layout changes needed); Brian approved. Renders gitignored (`remotion/.gitignore`: `out/`, generated wav).
-- **Audio-silent false alarm**: the mp4's AAC track was healthy (max −6.8 dB via `@ffmpeg-installer/ffmpeg` volumedetect — npm-packaged binary, no system ffmpeg); chat inline preview plays muted.
+- **#359 Tool 3 (Entity & Schema Mapper)** — was blind to all of #351/#353: 400-char truncation, no probe (despite `competitorCiting` being literally what the probe measures), no crawl, ~2 topics of context. Now gets full gaps (w/ cluster + info-gain), both measured blocks, grounding rules (observed cited domains drive `competitorCiting`).
+- **#361 Stage 3 (Authenticity Enricher)** — the leakiest stage: brain tables loaded but reached ZERO prompts; E-E-A-T scorer judged authenticity from 1,200 chars total; probe/crawl/moats invisible. Five context blocks injected across Tools 2-4 (brain finally applied; injections target who-AI-cites-instead + the topic's info-gain angle; authoritativeness scored vs crawled competitor claims); caps lifted ~3-4×; `from-topic` route gained `assignedAuthorId` parity (batch path was verified NOT broken).
+- **#363 Stage 4 + Compliance + Precog** — writer: `citationProbe` was inside the char-level `trimTo(geoBrief,4000)` (random truncation), crawl/moats never extracted → three explicit blocks ("write the piece the incumbents would have to cite" / "write what they demonstrably cannot say"); territories now carry cluster + info-gain angle from the RAW gaps (the normalized map drops both). Compliance: Factual Ground as two-way ground truth (verified claims un-flagged; contradictions = RED naming the violated fact). Precog: geo-match dimension only saw `strategic_injection%` rows — **cherry-picked Strategist topics scored 0 by construction**; now includes `selected`/`briefed` (same 0-7 scale, no re-base).
+- **#365 Precog shadow dimension (phase 1)** — `measuredVisibilityShadow` (0-10, `includedInScore:false`): invisible-question overlap + brand visibility gap + validated-whitespace-with-probe, from the brand-level citationProbe. Score byte-identical to v2; signal accumulates per scored article. **Phase 2 = issue #368** (correlate shadow vs `precog_outcomes` + `geo_citations`; analysis-only, target **week of 2026-07-13**, prerequisite ~15+ outcome-bearing articles). **Phase 3 = issue #369** (promote as explicit v3.0 model with `model_version` stamp + segmented accuracy tracking; target **week of 2026-07-27**, hard-gated on #368's verdict — not-predictive closes it as not-planned).
 
 #### What's next
-- **Redeploy `forge-reels`** so Lambda picks up #347's template changes (same footgun as #334/#344 — see the deploy warning below).
-- Decide where the rendered mp4s live (SYSOI repo `marketing/`?) — currently container-only.
-- Backend storyboard agent doesn't emit `motion`/`shotAspect`/`wordmark` yet — wire when a productized reel should use them.
-- Stale remote branch `feat/datareel-dynamic-screens` was accidentally recreated by a post-merge docs push (this branch supersedes it) — delete it.
+- **Dev validation across the arc:** re-scan a brand → force GEO analyze → build brief → enrich → generate → compliance → precog-score; check each stage's new blocks/log lines land (validation steps per PR body).
+- **Phase 2 precog correlation** once enough scored articles have outcomes (relay analysis, no deploy).
+- Unaudited remainder: Stage 6 Publishing · Stage 7→8 (does Brain pattern extraction see the citation tracker's measured results? "what got cited" should feed "what we learned").
 
 ---
 
