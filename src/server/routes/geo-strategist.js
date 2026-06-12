@@ -10,6 +10,7 @@ import { anthropic } from '../llm.js';
 import { extractJSON } from '../llm-json.js';
 import { requireAuth } from '../auth.js';
 import { normalizeGeoData } from '../geo.js';
+import { coldScan, extractDomain } from '../geoProbe.js';
 
 const router = express.Router();
 
@@ -150,6 +151,55 @@ ${factualGround.whatWeDo ? `- What this brand does: ${String(factualGround.whatW
 ${strategicMoats.map(m => `- ${m.capability}${m.rationale ? ` (${String(m.rationale).slice(0, 120)})` : ''}`).join('\n')}`
       : '';
 
+    // ── Step 1.5: Measured citation probe (best-effort) ──────────────────────
+    // Whitespace used to be pure LLM inference over the cached Stage 1 profile.
+    // Probe the REAL engines with brand-free buyer questions before mapping
+    // topical gaps, so Tool 1 reasons over observed citations — which questions
+    // the brand is invisible on, and who AI cites instead — rather than priors.
+    // Best-effort by design: no engine keys, a probe outage, or a question-gen
+    // failure all degrade cleanly to the old inference-only path.
+    let citationProbe = null;
+    try {
+      const brandDomain = extractDomain(profile.brand_url || '');
+      if (brandDomain) {
+        const qRes = await anthropic.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 900,
+          messages: [{ role: 'user', content: `Write 8 natural questions a buyer would type into ChatGPT or Perplexity when researching the category this brand sells into — the questions where the brand would WANT to be recommended. Do NOT mention the brand name in any question (we are measuring unprompted visibility). Keep each question under 110 characters.
+
+BRAND: ${profile.brand_name} (${profile.brand_url})
+PERSONAS: ${JSON.stringify(personas).slice(0, 1200)}
+COMPETITOR-OWNED TOPICS: ${JSON.stringify(competitorTopics).slice(0, 800)}
+${topicFocus ? 'FOCUS AREA: ' + topicFocus : ''}
+
+Return ONLY a raw JSON array of strings. No markdown, no explanation.` }]
+        });
+        const probeQuestions = (JSON.parse(extractJSON(qRes.content[0].text, 'array') || '[]'))
+          .filter(q => typeof q === 'string' && q.trim()).slice(0, 8);
+        if (probeQuestions.length) {
+          citationProbe = await coldScan({ brandName: profile.brand_name, brandDomain, questions: probeQuestions });
+          console.log(`[GEO] Probe: visibility ${citationProbe.visibility}% over ${probeQuestions.length} questions (${citationProbe.enginesProbed.join(',')})`);
+        }
+      }
+    } catch (e) {
+      console.log('[GEO] Citation probe skipped:', e.message);
+    }
+    // A question is "invisible" only when at least one engine answered AND none
+    // cited or mentioned the brand — engine errors are not evidence of absence.
+    const invisibleQuestions = citationProbe
+      ? citationProbe.perQuestion.filter(r => {
+          const checked = Object.values(r.engines).filter(s => s !== 'error');
+          return checked.length > 0 && !checked.some(s => s === 'cited' || s === 'mentioned');
+        }).map(r => r.question)
+      : [];
+    const citationProbeBlock = citationProbe ? `
+
+MEASURED AI VISIBILITY (live probe of the real engines, run minutes ago — treat as ground truth over any modeled assumption):
+- Brand appeared in ${citationProbe.visibility}% of ${citationProbe.totalChecks} engine answers (engines: ${citationProbe.enginesProbed.join(', ')})
+- Per engine: ${Object.entries(citationProbe.byEngine).map(([id, v]) => `${id} ${v.available ? v.pct + '%' : 'not measured'}`).join(' · ')}
+- WHO AI CITES INSTEAD (domains actually answering this category today): ${citationProbe.sources.slice(0, 10).map(s => `${s.domain} (${s.mentions})`).join(', ') || 'none captured'}
+- Buyer questions where the brand was INVISIBLE on every engine that answered (strongest whitespace evidence): ${invisibleQuestions.length ? invisibleQuestions.map(q => `"${q}"`).join(' | ') : 'none — the brand surfaced somewhere on every question'}` : '';
+
     // ── Tool 1: Topical Authority Mapper ─────────────────────────────────────
     console.log('[GEO] Tool 1: Topical Authority Mapper...');
     const topicalRes = await anthropic.messages.create({
@@ -158,16 +208,22 @@ ${strategicMoats.map(m => `- ${m.capability}${m.rationale ? ` (${String(m.ration
       messages: [{ role: 'user', content: `You are the Topical Authority Mapper for Forge Intelligence GEO Strategist.
 
 BRAND: ${profile.brand_name} (${profile.brand_url})
-PERSONAS: ${JSON.stringify(personas).slice(0, 400)}
-COMPETITOR TOPICS: ${JSON.stringify(competitorTopics).slice(0, 400)}
-WHITESPACE: ${whitespace.slice(0, 300)}
-${topicFocus ? 'FOCUS: ' + topicFocus : ''}${factualGroundBlock}${strategicMoatsBlock}
+PERSONAS: ${JSON.stringify(personas).slice(0, 1500)}
+COMPETITOR TOPICS: ${JSON.stringify(competitorTopics).slice(0, 4000)}
+WHITESPACE: ${whitespace.slice(0, 2000)}
+${topicFocus ? 'FOCUS: ' + topicFocus : ''}${factualGroundBlock}${strategicMoatsBlock}${citationProbeBlock}
 
 Identify 8-12 topical gaps where this brand has low AI citation probability vs competitors. Topics must be consistent with the USER-VERIFIED FACTS above and must NOT fall inside the STRATEGIC MOATS (those are intentional exclusions, not opportunities).
 
-YOU MUST return a raw JSON array using EXACTLY these field names: topic, geoCitationScore, owner, rationale.
+When MEASURED AI VISIBILITY is present, it outranks every inferred signal: the invisible buyer questions are the strongest gap evidence (derive topics directly from them where they fit the brand), and the "who AI cites instead" domains are the real topic owners — use the actual cited domain as the owner when you have no stronger candidate.
+
+Group the gaps into 2-4 clusters. A cluster is the pillar a future content hub builds around (one pillar piece + supporting articles); related gaps share a cluster name. AI engines cite domains with clustered depth at a multiple of the rate of isolated one-off posts, so the clustering IS the strategy, not labeling.
+
+For each gap, also state the information-gain angle: the unique data, first-hand experience, named methodology, or proprietary POV THIS brand can add that an aggregator could not (ground it in the USER-VERIFIED FACTS and methodology when present). Engines increasingly penalize repackaged content — a topical gap the brand cannot say anything original about is a weak opportunity, and its geoCitationScore must reflect that.
+
+YOU MUST return a raw JSON array using EXACTLY these field names: topic, geoCitationScore, owner, rationale, cluster, informationGainAngle.
 Example:
-[{"topic":"AI PC and Edge Inference","geoCitationScore":85,"owner":"NVIDIA","rationale":"NVIDIA dominates this topic across AI platforms"},{"topic":"Open Ecosystem Software","geoCitationScore":72,"owner":null,"rationale":"Unclaimed whitespace with high intent"}]
+[{"topic":"AI PC and Edge Inference","geoCitationScore":85,"owner":"NVIDIA","rationale":"NVIDIA dominates this topic across AI platforms","cluster":"Edge AI Infrastructure","informationGainAngle":"First-party latency benchmarks from the brand's own deployments"},{"topic":"Open Ecosystem Software","geoCitationScore":72,"owner":null,"rationale":"Unclaimed whitespace with high intent","cluster":"Edge AI Infrastructure","informationGainAngle":"The brand's published interop methodology, named verbatim"}]
 
 Return ONLY the raw JSON array. No markdown. No backticks. No explanation. No other keys.` }]
     });
@@ -197,7 +253,8 @@ TOPICAL GAPS: ${JSON.stringify(
     .slice(0, 10)
     .map(({ _score, ...rest }) => rest)
 )}
-WHITESPACE: ${whitespace.slice(0, 300)}
+WHITESPACE: ${whitespace.slice(0, 1000)}${citationProbe ? `
+MEASURED BASELINE (live probe, ground truth): brand currently appears in ${citationProbe.visibility}% of engine answers — per engine: ${Object.entries(citationProbe.byEngine).map(([id, v]) => `${id} ${v.available ? v.pct + '%' : 'not measured'}`).join(' · ')}. Anchor your scores on this reality: an engine where the brand already surfaces supports higher scores; an engine where it is fully absent today needs stronger justification for a high score.` : ''}
 
 For each topic gap, score citation probability 0-100 across all 4 AI platforms. Score each platform against what that engine actually rewards, not a uniform rubric:
 - ChatGPT: favors established authority and entity recognition (Wikipedia-grade sources dominate its citations). Score high when the topic lets the brand make authoritative, fact-dense claims in a space without an entrenched encyclopedic authority; score low where a Wikipedia-tier source already owns the answer.
@@ -389,7 +446,7 @@ Return ONLY valid JSON array:
     const nextVersion = versionResult.rows[0].max_v + 1;
     const id = randomUUID();
     const { topicalAuthorityMap, geoOpportunities: geoOpportunitiesNorm, entitySchemaMap, geoBrief } = normalizeGeoData(briefData, topicalMap, geoOpportunities, entitySchema, profile);
-    const fullBriefData = { ...briefData, topicalMap, geoOpportunities, entitySchema, topicalAuthorityMap, geoOpportunitiesNorm, entitySchemaMap, geoBrief };
+    const fullBriefData = { ...briefData, topicalMap, geoOpportunities, entitySchema, topicalAuthorityMap, geoOpportunitiesNorm, entitySchemaMap, geoBrief, citationProbe };
     const opportunityScore = briefData.overallOpportunityScore || 0;
 
     // Nuke stale GEO briefs — re-run means old data is superseded
