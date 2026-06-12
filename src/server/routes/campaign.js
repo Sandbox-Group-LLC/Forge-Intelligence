@@ -111,10 +111,10 @@ ${factualGround.whatWeDo ? `- What this company does: ${factualGround.whatWeDo}\
 })()}`
     : '';
   const patternsBlock = brainPatterns?.length
-    ? `BRAIN PATTERNS (successful approaches — emulate these):\n${brainPatterns.slice(0,5).map(p => `- [${p.pattern_type}] ${p.description}`).join('\n')}`
+    ? `BRAIN PATTERNS (successful approaches — emulate these):\n${brainPatterns.slice(0,10).map(p => `- [${p.pattern_type}] ${p.description}`).join('\n')}`
     : '';
   const mistakesBlock = brainMistakes?.length
-    ? `BRAIN MISTAKES (avoid these — hard constraints):\n${brainMistakes.slice(0,5).map(m => `- [${m.mistake_type}] ${m.description}`).join('\n')}`
+    ? `BRAIN MISTAKES (avoid these — hard constraints):\n${brainMistakes.slice(0,10).map(m => `- [${m.mistake_type}] ${m.description}`).join('\n')}`
     : '';
   const voiceBlock = profileData?.voiceProfile
     ? `VOICE PROFILE (tone + style anchors):\n${JSON.stringify(profileData.voiceProfile, null, 2).slice(0, 1500)}`
@@ -254,6 +254,25 @@ router.post('/plan', requireAuth, async (req, res) => {
     const geoBrief = geoRes.rows[0]?.brief_data || null;
     const enrichedBrief = enrichedRes.rows[0]?.enriched_data || null;
 
+    // Brain + measured context for the planner. The planner previously saw
+    // neither: brain tables weren't loaded at all, and citationProbe sat inside
+    // the 4000-char geoBrief trimTo where truncation usually ate it. The 8
+    // angles should target measured whitespace and reuse proven patterns.
+    let planBrainBlock = '';
+    try {
+      const [pRes, mRes] = await Promise.all([
+        pool.query(`SELECT pattern_type, description, success_rate FROM brain_patterns WHERE brand_profile_id = $1 ORDER BY success_rate DESC LIMIT 10`, [brandProfileId]),
+        pool.query(`SELECT mistake_type, description FROM brain_mistakes WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 10`, [brandProfileId]),
+      ]);
+      if (pRes.rows.length || mRes.rows.length) {
+        planBrainBlock = `\nBRAIN PATTERNS (proven for this brand — angle toward these): ${JSON.stringify(pRes.rows).slice(0, 1500)}\nBRAIN MISTAKES (do NOT repeat): ${JSON.stringify(mRes.rows).slice(0, 1000)}\n`;
+      }
+    } catch(e) { /* best-effort */ }
+    const planProbe = geoBrief?.citationProbe || null;
+    const planProbeBlock = planProbe
+      ? `\nMEASURED AI VISIBILITY (live engine probe — ground truth): the brand appeared in ${planProbe.visibility}% of ${planProbe.totalChecks} AI answers. WHO AI CITES INSTEAD: ${(planProbe.sources || []).slice(0, 8).map(s => s.domain).join(', ') || 'none captured'}. The strongest campaign angles attack the questions and territories where the brand is measurably invisible.\n`
+      : '';
+
     const trimTo = (obj, maxChars = 6000) => {
       const s = typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2);
       return s.length > maxChars ? s.substring(0, maxChars) + '\n...[truncated]' : s;
@@ -288,7 +307,7 @@ EXPANSION GUIDANCE:
     }
 
     const userPrompt = `Generate 8 campaign angle profiles for the following brand brain.
-${directionBlock}
+${directionBlock}${planProbeBlock}${planBrainBlock}
 BRAND PROFILE:
 ${trimTo(profileData, 4000)}
 
@@ -551,17 +570,23 @@ router.get('/generate/:id', requireAuth, async (req, res) => {
 
       // Load Topical Authority Map — strategic context for where this content lives
     let topicalTerritories = [];
+    let cpCitationProbe = null;
     try {
       const gbRes = await pool.query(
         `SELECT brief_data FROM geo_briefs WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 1`,
         [campaign.brand_profile_id]
       );
-      const topicalMapRaw = gbRes.rows[0]?.brief_data?.topicalAuthorityMap || gbRes.rows[0]?.brief_data?.topicalMap?.gapsByCluster || [];
+      cpCitationProbe = gbRes.rows[0]?.brief_data?.citationProbe || null;
+      // Prefer the RAW gaps (they carry cluster + informationGainAngle); the
+      // normalized topicalAuthorityMap drops both. Mirrors server.js generate.
+      const topicalMapRaw = gbRes.rows[0]?.brief_data?.topicalMap?.gapsByCluster || gbRes.rows[0]?.brief_data?.topicalAuthorityMap || [];
       topicalTerritories = topicalMapRaw
         .map(t => ({
           topic: t.topic || t.cluster || t.name,
           coverage: (t.coverage || t.rationale || t.description || '').slice(0, 140),
-          priority: t.priority || (t.citationProbability >= 70 ? 'high' : t.citationProbability >= 40 ? 'medium' : 'low')
+          cluster: t.cluster || null,
+          angle: (t.informationGainAngle || '').slice(0, 160),
+          priority: t.priority || (t.geoCitationScore >= 70 || t.citationProbability >= 70 ? 'high' : t.geoCitationScore >= 40 || t.citationProbability >= 40 ? 'medium' : 'low')
         }))
         .filter(t => t.topic)
         .sort((a, b) => (a.priority === 'high' ? -1 : b.priority === 'high' ? 1 : 0))
@@ -569,7 +594,19 @@ router.get('/generate/:id', requireAuth, async (req, res) => {
     } catch(e) { /* silent — non-fatal */ }
 
     const territoriesBlock = topicalTerritories.length
-      ? `\nSTRATEGIC TERRITORIES THIS BRAND OPERATES IN (write as an authority in these territories — never drift outside them):\n${topicalTerritories.map(t => `  • [${t.priority}] ${t.topic}${t.coverage ? ' — ' + t.coverage : ''}`).join('\n')}\n`
+      ? `\nSTRATEGIC TERRITORIES THIS BRAND OPERATES IN (write as an authority in these territories — never drift outside them):\n${topicalTerritories.map(t => `  • [${t.priority}]${t.cluster ? ` (${t.cluster})` : ''} ${t.topic}${t.coverage ? ' — ' + t.coverage : ''}${t.angle ? `\n    Information-gain angle (the unique claim THIS brand makes here — the article must deliver it): ${t.angle}` : ''}`).join('\n')}\n`
+      : '';
+
+    const cpMeasuredBlock = cpCitationProbe
+      ? `\nMEASURED AI VISIBILITY (live engine probe — this is the gap the campaign exists to close): the brand appeared in ${cpCitationProbe.visibility}% of ${cpCitationProbe.totalChecks} AI answers (${Object.entries(cpCitationProbe.byEngine || {}).map(([id, v]) => `${id} ${v.available ? v.pct + '%' : 'n/a'}`).join(' · ')}). WHO AI CITES INSTEAD: ${(cpCitationProbe.sources || []).slice(0, 8).map(s => s.domain).join(', ') || 'none captured'}. Write the piece those incumbent sources would have to cite — more specific, better evidenced, more extractable than what they publish.\n`
+      : '';
+    const cpCompetitors = Array.isArray(profileData?.competitorAnalysis) ? profileData.competitorAnalysis : [];
+    const cpCompetitorBlock = cpCompetitors.length
+      ? `\nCOMPETITOR SITE COVERAGE (measured — crawled from their actual websites): ${cpCompetitors.map(c => `${c.url}: ${c.positioning || ''}${(c.signatureClaims || []).length ? ` — claims: ${c.signatureClaims.join(' | ')}` : ''}`).join('\n')}\nDo not echo their claims; write what they demonstrably cannot say.\n`
+      : '';
+    const cpMoats = Array.isArray(profileData?.strategicMoats) ? profileData.strategicMoats : [];
+    const cpMoatsBlock = cpMoats.length
+      ? `\nSTRATEGIC MOATS (deliberate non-actions — reference as trust signals where natural, never as weaknesses): ${cpMoats.map(m => m.capability).join('; ')}\n`
       : '';
 
     // Load Factual Ground — user-verified facts the writer MUST use verbatim
@@ -613,12 +650,12 @@ ${(() => {
 
 CAMPAIGN ANGLE (follow this precisely):
 ${JSON.stringify(angle, null, 2)}
-
+${factualGroundBlock}${territoriesBlock}${cpMeasuredBlock}${cpCompetitorBlock}${cpMoatsBlock}
 BRAND PROFILE:
 ${trimTo(profileData, 5000)}
 
 GEO BRIEF:
-${geoBrief ? trimTo(geoBrief, 3000) : 'Not available.'}
+${geoBrief ? trimTo(geoBrief, 4000) : 'Not available.'}
 
 ENRICHED BRIEF:
 ${enrichedBrief ? trimTo(enrichedBrief, 5000) : 'Not available.'}
