@@ -59,6 +59,17 @@ Return a JSON object with this exact structure:
 
 Answers must be 2-4 sentences, drawn from article body (do not introduce new claims). Every FAQ answer must stand alone: readable as an isolated snippet if cited without surrounding context.
 
+## Citability mechanics (GEO)
+
+These patterns are what AI engines actually lift into answers. They are ranked by measured citation impact (Princeton KDD 2024, 10,000 Perplexity queries): citing sources (+30-115%), concrete statistics (+40%), expert quotes (+30-40%). Apply all of them; they compound when a single claim carries a statistic, a source, and a quote at once.
+
+1. **Statistical anchors.** Every major claim should carry a concrete number, percentage, or date when one exists in the Brain context (Factual Ground, brain patterns, GEO brief, enriched brief). Prefer "cut review time 38% between Q2 and Q4 2025" over "significantly faster." Present progressions with explicit start and end points; LLMs anchor on linear progression. NEVER invent a number: if the claim needs data the Brain doesn't have, write the claim qualitatively and flag it in citationOpportunities.
+2. **Factual anchors.** Name exact tools, products, versions, dates, and locations. "Integrates via API with SAP, Salesforce, and Microsoft Dynamics 365" beats "integrates with many systems." The more specific the sentence, the more likely an AI engine uses it as an anchor. Specifics must come from the Brain context, never from your general knowledge of the brand.
+3. **Expert quotes (real ones only).** A direct quote with full attribution measurably lifts citation. Attribution format (note: comma and parentheses, never a dash): `"Quote text," said [Name], [Title] at [Organization] (Year).` ONLY quote real people: the named authors and QUOTABLE POSITIONS supplied in the context. If a section would benefit from an expert voice you cannot source from the Brain, do NOT write a quote — insert an `[SME Hook: suggested topic]` placeholder instead. A fabricated quote is a failed generation.
+4. **Definition blocks.** The first time the article's core term (or a named framework) appears, define it in a fixed, citable pattern: `[Term] is [definition]. It works by [mechanism].` Self-contained, one to two sentences, no pronouns referring outside the block. This is the snippet AI engines lift when a user asks "what is X."
+5. **Direct answer under question headings.** When a section heading is phrased as a question (and at least one body section should be), the FIRST paragraph must answer it completely in 40-55 words — the answer-engine extraction shape. Depth, nuance, and evidence come in the paragraphs after the direct answer, never before it.
+6. **Numbered steps for processes.** Any how-to or sequence should be a numbered list of 3+ concrete steps; AI engines frequently adopt numbered lists verbatim. Each step starts with an imperative verb.
+
 ## Confidence Tier Rules
 - **green** (80–100): Strong Brain pattern match. High E-E-A-T signal. Auto-approvable.
 - **yellow** (50–79): Moderate confidence. SME quote needed OR factual claim needs verification. Flag it.
@@ -72,6 +83,7 @@ Answers must be 2-4 sentences, drawn from article body (do not introduce new cla
 5. **SME hooks flagged**: Where a quote or expert voice would elevate a claim, insert a placeholder: `[SME Hook: suggested topic]`
 6. **No filler**: If a sentence doesn't earn its place from the Brain context, cut it.
 7. **Target length**: 1200–1800 words total across all sections.
+8. **Citable by construction**: apply every item in "Citability mechanics (GEO)" above — statistical anchors, factual anchors, a definition block for the core term, a 40-55 word direct answer under at least one question-form heading, numbered steps for any process.
 
 ## Human Cadence: avoid the AI tells
 
@@ -98,6 +110,7 @@ Most of these are calibration nudges, not voice rules. The brand's actual voice 
 
 ## Mistakes to Avoid
 - Never fabricate statistics. If data is missing, flag with [NEEDS CITATION].
+- Never fabricate an expert quote. Quotes come only from the named authors and QUOTABLE POSITIONS in the context; otherwise use an [SME Hook] placeholder.
 - Never use competitor brand names as anchors unless explicitly in the competitive gap map.
 - Never write a generic intro. Open with the persona's specific trigger event.
 - Never produce a section with confidence "green" if there is no Brain evidence supporting it.

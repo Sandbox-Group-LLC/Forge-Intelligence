@@ -9,10 +9,18 @@ export type Brand = {
     bg: string; card: string; accent: string; accent2: string;
     emphasis: string; secondary: string; muted: string;
     error: string; success: string; border: string;
+    // Text on accent-filled surfaces (CTA button, statement gradient, pipeline
+    // highlight). Defaults to white; a LIGHT accent (e.g. amber) overrides
+    // with a dark ink so the type stays readable.
+    onAccent: string;
   }>;
   // Measured logo URL (S3/og:image/favicon). When present it replaces the
   // Forge diamond in the lockup + closing card.
   logo?: string;
+  // Full lockup (mark + wordmark) image. When present it REPLACES the
+  // typed brand name in the corner slot and the CTA title — for brands whose
+  // wordmark is custom-drawn type that a system font would butcher.
+  wordmark?: string;
 };
 
 type SceneBase = {
@@ -89,8 +97,17 @@ export type ScreensScene = SceneBase & {
   headline: string;
   headlineEmphasis?: string;
   stat?: { value: string; label: string };
-  shots: string[];      // S3 URLs (filled by the backend)
+  // Full https URLs (S3, filled by the backend) or bare filenames resolved via
+  // staticFile() for local renders — same convention as SceneBase.audio.
+  shots: string[];
   urlLabel?: string;    // address-bar text, e.g. "acme.com"
+  // "static" (default) = held still, crossfade between shots.
+  // "dynamic" = 3D fly-in entrance, a hard punch-in zoom per shot (a cut, not
+  // a drift — explicitly NOT Ken Burns), slide-over transitions between shots.
+  motion?: "static" | "dynamic";
+  // Viewport aspect ratio (CSS aspect-ratio syntax). Default "16 / 9". Set to
+  // the capture's native ratio (e.g. "2940 / 1414") so nothing crops.
+  shotAspect?: string;
 };
 
 // ── Expanded scene deck (more variety, less recycling) ──────────────────────

@@ -16,6 +16,7 @@ const DEFAULT_COLORS = {
   bg: "#EDF1FF", card: "#FFFFFF", accent: "#3563FF", accent2: "#7a93ff",
   emphasis: "#0F172A", secondary: "#475569", muted: "#94A3B8",
   error: "#DC2626", success: "#0EA572", border: "#E2E8F0",
+  onAccent: "#FFFFFF",
 };
 type Palette = typeof DEFAULT_COLORS;
 
@@ -81,6 +82,10 @@ const useHeadline = () => {
 const audioSrc = (a?: string) =>
   !a ? null : /^https?:\/\//.test(a) ? a : staticFile(`audio/${a}`);
 
+// Generic asset (screenshot / logo / music): full URL used as-is, anything
+// else resolved from public/ via staticFile — same convention as audio.
+const assetSrc = (a: string) => (/^https?:\/\//.test(a) ? a : staticFile(a));
+
 const Diamond: React.FC<{ size?: number }> = ({ size = 40 }) => {
   const { C } = React.useContext(Ctx);
   const { k } = useL();
@@ -97,7 +102,7 @@ const Diamond: React.FC<{ size?: number }> = ({ size = 40 }) => {
 const BrandMark: React.FC<{ size?: number }> = ({ size = 36 }) => {
   const { brand, L } = React.useContext(Ctx);
   const { k } = L;
-  if (brand.logo) return <Img src={brand.logo} style={{ height: size * k, width: "auto", objectFit: "contain" }} />;
+  if (brand.logo) return <Img src={assetSrc(brand.logo)} style={{ height: size * k, width: "auto", objectFit: "contain" }} />;
   if (/forge/i.test(brand.name)) return <Diamond size={size} />;
   return null;
 };
@@ -143,7 +148,11 @@ const Stage: React.FC<{ children: React.ReactNode; audio?: string }> = ({ childr
     <AbsoluteFill style={{ background: C.bg, fontFamily: font, justifyContent: "center", alignItems: "center", padding: 120 * k, overflow: "hidden" }}>
       {src && <Audio src={src} />}
       <div style={{ position: "absolute", top: 64 * k, left: 90 * k, display: "flex", alignItems: "center", gap: 14 * k }}>
-        <BrandMark size={36} /><span style={{ fontWeight: 700, fontSize: 32 * k, color: C.emphasis }}>{brand.name}</span>
+        {brand.wordmark ? (
+          <Img src={assetSrc(brand.wordmark)} style={{ height: 44 * k, width: "auto", objectFit: "contain" }} />
+        ) : (
+          <><BrandMark size={36} /><span style={{ fontWeight: 700, fontSize: 32 * k, color: C.emphasis }}>{brand.name}</span></>
+        )}
       </div>
       <Fit pad={120 * k}>{children}</Fit>
     </AbsoluteFill>
@@ -210,7 +219,7 @@ const OrbitView: React.FC<{ s: OrbitScene }> = ({ s }) => {
           background: `radial-gradient(circle at 35% 30%, ${C.accent2}, ${C.accent})`,
           boxShadow: `0 0 ${90 * k}px rgba(53,99,255,0.45)`, display: "flex", alignItems: "center", justifyContent: "center",
         }}>
-          <span style={{ color: "#fff", fontSize: 38 * k, fontWeight: 800, textAlign: "center", lineHeight: 1.1 }}>
+          <span style={{ color: C.onAccent, fontSize: 38 * k, fontWeight: 800, textAlign: "center", lineHeight: 1.1 }}>
             {s.centerLabel.split("\n").map((l, i) => <React.Fragment key={i}>{i > 0 && <br />}{l}</React.Fragment>)}
           </span>
         </div>
@@ -246,10 +255,9 @@ const PipelineView: React.FC<{ s: PipelineScene }> = ({ s }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const head = useRise(0);
-  const node = 150 * k;
   return (
     <Stage audio={s.audio}>
-      <div style={{ width: (portrait ? 920 : 1640) * k, textAlign: "center" }}>
+      <div style={{ width: (portrait ? 920 : 1700) * k, textAlign: "center" }}>
         <div style={{ ...head, ...hl, fontSize: 70 * k, color: C.emphasis, marginBottom: 70 * k }}>
           {s.headline} {s.headlineEmphasis && <span style={{ color: C.accent }}>{s.headlineEmphasis}</span>}
         </div>
@@ -261,12 +269,13 @@ const PipelineView: React.FC<{ s: PipelineScene }> = ({ s }) => {
               <React.Fragment key={st}>
                 <div style={{
                   transform: `scale(${interpolate(lit, [0, 1], [0.7, 1])})`, opacity: Math.min(1, lit),
-                  width: node, height: node, borderRadius: 24 * k, flexShrink: 0,
-                  background: isLast ? C.accent : C.card, color: isLast ? "#fff" : C.emphasis,
-                  border: `2px solid ${isLast ? C.accent : C.border}`,
-                  display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center",
-                  fontSize: 26 * k, fontWeight: 700, padding: 8 * k,
-                  boxShadow: isLast ? `0 0 ${50 * k}px rgba(53,99,255,0.4)` : `0 ${6 * k}px ${20 * k}px rgba(15,23,42,0.06)`,
+                  borderRadius: 999, flexShrink: 0, whiteSpace: "nowrap",
+                  background: isLast ? C.accent : C.card, color: isLast ? C.onAccent : C.emphasis,
+                  border: `2px solid ${isLast ? C.accent : `${C.accent}66`}`,
+                  fontSize: 30 * k, fontWeight: 700, padding: `${20 * k}px ${40 * k}px`,
+                  boxShadow: isLast
+                    ? `0 0 ${56 * k}px ${C.accent}73, 0 0 ${16 * k}px ${C.accent}59`
+                    : `0 0 ${28 * k}px ${C.accent}33`,
                 }}>{st}</div>
                 {!portrait && i < s.stages.length - 1 && (
                   <div style={{ width: 44 * k, height: 4 * k, background: C.border, flexShrink: 0, opacity: Math.min(1, lit), borderRadius: 2 }} />
@@ -362,13 +371,16 @@ const ScreensView: React.FC<{ s: ScreensScene }> = ({ s }) => {
   const { k, portrait } = useL();
   const hl = useHeadline();
   const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
   const head = useRise(0);
   const rise = useRise(8, 40);
   const shots = Array.isArray(s.shots) ? s.shots.filter(Boolean) : [];
   const dur = s.durationInFrames || 1;
+  const dynamic = s.motion === "dynamic";
 
-  // Crossfade across multiple shots: equal slices, ~14f dissolve.
   const seg = shots.length > 1 ? dur / shots.length : dur;
+
+  // static mode — crossfade across multiple shots: equal slices, ~14f dissolve.
   const shotOpacity = (i: number) => {
     if (shots.length <= 1) return 1;
     const start = i * seg;
@@ -380,7 +392,37 @@ const ScreensView: React.FC<{ s: ScreensScene }> = ({ s }) => {
     return Math.min(inOp, outOp);
   };
 
-  const frameW = (portrait ? 1500 : 1480) * k;
+  // dynamic mode — shot i slides OVER the previous one (spring from the right),
+  // and each shot gets one hard punch-in zoom mid-segment: a 6-frame snap to a
+  // focal region that then HOLDS. A cut with momentum — explicitly not a drift.
+  const slideIn = (i: number) =>
+    i <= 0 ? 1 : spring({ frame: frame - i * seg, fps, config: { damping: 17, stiffness: 150, mass: 0.9 } });
+  const FOCI = ["68% 24%", "30% 68%", "66% 70%", "32% 26%"]; // alternate focal corners
+  const punch = (i: number) => {
+    const local = frame - i * seg;
+    const at = seg * 0.48;
+    return interpolate(local, [at, at + 6], [1, 1.16], {
+      extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic),
+    });
+  };
+
+  // card entrance — dynamic: 3D fly-in (perspective tilt settling flat);
+  // static: the original rise.
+  const flyS = spring({ frame: frame - 6, fps, config: { damping: 15, stiffness: 130, mass: 0.9 } });
+  const fly = dynamic
+    ? {
+        opacity: Math.min(1, flyS),
+        transform: `perspective(${1800 * k}px) rotateX(${interpolate(flyS, [0, 1], [24, 0])}deg) translateY(${interpolate(flyS, [0, 1], [160 * k, 0])}px) scale(${interpolate(flyS, [0, 1], [0.9, 1])})`,
+        transformOrigin: "center bottom",
+      }
+    : rise;
+
+  // dynamic gets a wider card (the punch-in earns the real estate) and a
+  // brand-accent glow so the product frame reads as the hero of the scene.
+  const frameW = (portrait ? 1500 : dynamic ? 1640 : 1480) * k;
+  const cardShadow = dynamic
+    ? `0 ${24 * k}px ${70 * k}px rgba(0,0,0,0.55), 0 0 ${64 * k}px ${C.accent}59, 0 0 ${18 * k}px ${C.accent}40`
+    : `0 ${36 * k}px ${90 * k}px rgba(15,23,42,0.30)`;
   const dot = (c: string) => <span style={{ width: 14 * k, height: 14 * k, borderRadius: 999, background: c, display: "inline-block" }} />;
 
   return (
@@ -400,9 +442,9 @@ const ScreensView: React.FC<{ s: ScreensScene }> = ({ s }) => {
         )}
         {shots.length > 0 && (
           <div style={{
-            ...rise, width: frameW, borderRadius: 20 * k, overflow: "hidden",
-            background: C.card, border: `2px solid ${C.border}`,
-            boxShadow: `0 ${36 * k}px ${90 * k}px rgba(15,23,42,0.30)`,
+            ...fly, width: frameW, borderRadius: 20 * k, overflow: "hidden",
+            background: C.card, border: `2px solid ${dynamic ? `${C.accent}55` : C.border}`,
+            boxShadow: cardShadow,
           }}>
             {/* browser chrome */}
             <div style={{ height: 50 * k, display: "flex", alignItems: "center", gap: 10 * k, padding: `0 ${22 * k}px`, background: C.bg, borderBottom: `2px solid ${C.border}` }}>
@@ -411,15 +453,32 @@ const ScreensView: React.FC<{ s: ScreensScene }> = ({ s }) => {
                 <div style={{ marginLeft: 16 * k, flex: 1, maxWidth: 520 * k, height: 30 * k, borderRadius: 999, background: C.card, border: `2px solid ${C.border}`, display: "flex", alignItems: "center", padding: `0 ${18 * k}px`, fontSize: 22 * k, color: C.muted, fontWeight: 600, overflow: "hidden", whiteSpace: "nowrap" }}>{s.urlLabel}</div>
               )}
             </div>
-            {/* static viewport; cover-crop a constant 16:9 window so the page top reads */}
-            <div style={{ position: "relative", width: "100%", aspectRatio: "16 / 9", overflow: "hidden", background: C.card }}>
-              {shots.map((src, i) => (
-                <Img key={i} src={src} style={{
-                  position: "absolute", inset: 0, width: "100%", height: "100%",
-                  objectFit: "cover", objectPosition: "center top",
-                  opacity: shotOpacity(i),
-                }} />
-              ))}
+            {/* viewport; default 16:9 cover-crop, or the capture's native ratio
+                via shotAspect so nothing clips left/right.
+                static = held still + crossfade · dynamic = slide-over + punch-in */}
+            <div style={{ position: "relative", width: "100%", aspectRatio: s.shotAspect ?? "16 / 9", overflow: "hidden", background: C.card }}>
+              {shots.map((src, i) => {
+                if (!dynamic) {
+                  return (
+                    <Img key={i} src={assetSrc(src)} style={{
+                      position: "absolute", inset: 0, width: "100%", height: "100%",
+                      objectFit: "cover", objectPosition: "center top",
+                      opacity: shotOpacity(i),
+                    }} />
+                  );
+                }
+                const sIn = slideIn(i);
+                const nIn = i < shots.length - 1 ? slideIn(i + 1) : 0;
+                return (
+                  <Img key={i} src={assetSrc(src)} style={{
+                    position: "absolute", inset: 0, width: "100%", height: "100%",
+                    objectFit: "cover", objectPosition: "center top",
+                    transform: `translateX(${interpolate(Math.min(1, sIn), [0, 1], [106, 0]) - Math.min(1, nIn) * 16}%) scale(${punch(i)})`,
+                    transformOrigin: FOCI[i % FOCI.length],
+                    opacity: Math.min(1, sIn) * (1 - Math.min(1, nIn) * 0.5),
+                  }} />
+                );
+              })}
             </div>
           </div>
         )}
@@ -429,17 +488,25 @@ const ScreensView: React.FC<{ s: ScreensScene }> = ({ s }) => {
 };
 
 const CtaView: React.FC<{ s: CtaScene }> = ({ s }) => {
-  const { C } = React.useContext(Ctx);
+  const { C, brand } = React.useContext(Ctx);
   const { k } = useL();
   const hl = useHeadline();
   const a = useRise(0), b = useRise(14), c = useRise(30);
   return (
     <Stage audio={s.audio}>
       <div style={{ textAlign: "center", maxWidth: 1500 * k }}>
-        <div style={a}><BrandMark size={96} /></div>
-        <div style={{ ...b, ...hl, fontSize: 96 * k, color: C.emphasis, margin: `${34 * k}px 0 ${26 * k}px` }}>{s.title}</div>
+        {brand.wordmark ? (
+          <div style={{ ...b, margin: `0 0 ${40 * k}px`, display: "flex", justifyContent: "center" }}>
+            <Img src={assetSrc(brand.wordmark)} style={{ width: 560 * k, height: "auto", objectFit: "contain" }} />
+          </div>
+        ) : (
+          <>
+            <div style={a}><BrandMark size={96} /></div>
+            <div style={{ ...b, ...hl, fontSize: 96 * k, color: C.emphasis, margin: `${34 * k}px 0 ${26 * k}px` }}>{s.title}</div>
+          </>
+        )}
         {s.sub && <div style={{ ...b, fontSize: 50 * k, color: C.secondary, fontWeight: 500, marginBottom: 44 * k }}>{s.sub}</div>}
-        <div style={{ ...c, fontSize: 46 * k, fontWeight: 700, color: "#fff", background: C.accent, borderRadius: 18 * k, padding: `${24 * k}px ${52 * k}px`, display: "inline-block" }}>{s.cta}</div>
+        <div style={{ ...c, fontSize: 46 * k, fontWeight: 700, color: C.onAccent, background: C.accent, borderRadius: 18 * k, padding: `${24 * k}px ${52 * k}px`, display: "inline-block" }}>{s.cta}</div>
       </div>
     </Stage>
   );
@@ -542,7 +609,7 @@ const StepsView: React.FC<{ s: StepsScene }> = ({ s }) => {
           const r = useRise(20 + i * 16);
           return (
             <div key={i} style={{ ...r, display: "flex", gap: 28 * k, alignItems: "center", marginBottom: 30 * k }}>
-              <div style={{ flexShrink: 0, width: 72 * k, height: 72 * k, borderRadius: "50%", background: C.accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36 * k, fontWeight: 800 }}>{i + 1}</div>
+              <div style={{ flexShrink: 0, width: 72 * k, height: 72 * k, borderRadius: "50%", background: C.accent, color: C.onAccent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36 * k, fontWeight: 800 }}>{i + 1}</div>
               <div>
                 <div style={{ fontSize: 40 * k, fontWeight: 700, color: C.emphasis }}>{st.title}</div>
                 {st.detail && <div style={{ fontSize: 30 * k, color: C.secondary, marginTop: 6 * k }}>{st.detail}</div>}
@@ -614,7 +681,7 @@ const StatementView: React.FC<{ s: StatementScene }> = ({ s }) => {
   return (
     <AbsoluteFill style={{ background: `linear-gradient(135deg, ${C.accent}, ${C.accent2})`, fontFamily: font, justifyContent: "center", alignItems: "center", padding: 120 * k }}>
       {src && <Audio src={src} />}
-      <div style={{ ...a, ...hl, fontSize: 120 * k, color: "#fff", textAlign: "center", lineHeight: 1.05, maxWidth: 1500 * k }}>
+      <div style={{ ...a, ...hl, fontSize: 120 * k, color: C.onAccent, textAlign: "center", lineHeight: 1.05, maxWidth: 1500 * k }}>
         {s.headline}{s.emphasis && <><br /><span style={{ opacity: 0.82 }}>{s.emphasis}</span></>}
       </div>
     </AbsoluteFill>
@@ -650,7 +717,7 @@ const ChecklistView: React.FC<{ s: ChecklistScene }> = ({ s }) => {
           const r = useRise(20 + i * 12);
           return (
             <div key={i} style={{ ...r, display: "flex", gap: 22 * k, alignItems: "center", marginBottom: 26 * k, fontSize: 42 * k, color: C.emphasis, fontWeight: 600 }}>
-              <span style={{ flexShrink: 0, width: 52 * k, height: 52 * k, borderRadius: "50%", background: C.accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 * k, fontWeight: 800 }}>✓</span>
+              <span style={{ flexShrink: 0, width: 52 * k, height: 52 * k, borderRadius: "50%", background: C.accent, color: C.onAccent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 * k, fontWeight: 800 }}>✓</span>
               {it}
             </div>
           );
@@ -760,7 +827,7 @@ export const DataReel: React.FC<VideoProps> = ({ brand, scenes, fontFamily, musi
       <AbsoluteFill style={{ background: C.bg }}>
         {music?.src && (
           <Audio
-            src={music.src}
+            src={assetSrc(music.src)}
             loop
             volume={(f) => musicVolumeAt(f, scenes)}
           />
