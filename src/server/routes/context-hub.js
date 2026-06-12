@@ -670,34 +670,85 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
 
     const message = await anthropic.messages.create({
       model: 'claude-opus-4-6',
-      max_tokens: 8192,
+      max_tokens: 16384,
       messages: [{ role: 'user', content: prompt }]
     });
+
+    // Salvage a truncated object: if the model hit the token ceiling mid-JSON,
+    // close the open strings/arrays/objects so safeParseLLM gets a parseable
+    // (if slightly trimmed) profile instead of a total failure. Walks the text
+    // tracking string state + bracket depth, drops a dangling partial key/value,
+    // and appends the missing closers. Best-effort — returns input unchanged if
+    // it can't help.
+    const closeTruncatedJson = (s) => {
+      let inStr = false, esc = false, lastComplete = -1;
+      const stack = [];
+      for (let i = 0; i < s.length; i++) {
+        const c = s[i];
+        if (inStr) {
+          if (esc) esc = false;
+          else if (c === '\\') esc = true;
+          else if (c === '"') inStr = false;
+          continue;
+        }
+        if (c === '"') inStr = true;
+        else if (c === '{' || c === '[') stack.push(c === '{' ? '}' : ']');
+        else if (c === '}' || c === ']') { stack.pop(); if (stack.length === 0) lastComplete = i; }
+        else if (c === ',' && stack.length) lastComplete = i; // safe cut point between members
+      }
+      if (!stack.length) return s; // not actually unbalanced
+      // Trim back to the last complete member, drop the trailing comma, then close.
+      let body = lastComplete >= 0 ? s.slice(0, lastComplete).replace(/,\s*$/, '') : s;
+      // Re-derive the still-open brackets for the trimmed body.
+      const open = [];
+      let str = false, e = false;
+      for (let i = 0; i < body.length; i++) {
+        const c = body[i];
+        if (str) { if (e) e = false; else if (c === '\\') e = true; else if (c === '"') str = false; continue; }
+        if (c === '"') str = true;
+        else if (c === '{' || c === '[') open.push(c === '{' ? '}' : ']');
+        else if (c === '}' || c === ']') open.pop();
+      }
+      return body + open.reverse().join('');
+    };
 
     let profileData;
     for (let attempt = 0; attempt < 2; attempt++) {
       const msg = attempt === 0 ? message : await anthropic.messages.create({
         model: 'claude-opus-4-6',
-        max_tokens: 8192,
+        max_tokens: 16384,
         messages: [{ role: 'user', content: prompt }]
       });
+      if (msg.stop_reason === 'max_tokens') {
+        console.warn(`[Context Hub] Opus hit max_tokens (attempt ${attempt}) — output truncated, attempting salvage`);
+      }
       const raw = msg.content[0].text;
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) { if (attempt === 1) throw new Error('Claude returned no valid JSON'); continue; }
+      // On truncation the greedy match can miss the (absent) closing brace, or
+      // grab a partial; fall back to the raw text so the salvage path can run.
+      const candidate = jsonMatch ? jsonMatch[0] : (raw.trimStart().startsWith('{') ? raw : null);
+      if (!candidate) { if (attempt === 1) throw new Error('Claude returned no valid JSON'); continue; }
       try {
-        profileData = safeParseLLM(jsonMatch[0], 'object', 'context-hub');
+        profileData = safeParseLLM(candidate, 'object', 'context-hub');
         break;
       } catch(parseErr) {
         try {
-          const fixed = jsonMatch[0].replace(/:\s*"([\s\S]*?)"/g, (m, val) => ': "' + val.replace(/\n/g, ' ').replace(/\r/g, ' ') + '"');
+          const fixed = candidate.replace(/:\s*"([\s\S]*?)"/g, (m, val) => ': "' + val.replace(/\n/g, ' ').replace(/\r/g, ' ') + '"');
           profileData = JSON.parse(fixed);
           break;
         } catch(fixErr) {
-          if (attempt === 0) {
-            console.log('[Context Hub] JSON parse failed, retrying Claude call...');
-            continue;
+          // Truncation salvage: close open structures, then parse.
+          try {
+            profileData = safeParseLLM(closeTruncatedJson(candidate), 'object', 'context-hub-salvage');
+            console.warn('[Context Hub] Recovered a truncated profile via salvage');
+            break;
+          } catch(salvageErr) {
+            if (attempt === 0) {
+              console.log('[Context Hub] JSON parse failed, retrying Claude call...');
+              continue;
+            }
+            throw fixErr;
           }
-          throw fixErr;
         }
       }
     }
