@@ -4435,3 +4435,42 @@ Isolated and scanned all 4 recurring bug patterns across the entire codebase:
 1. "The Bottleneck Isn't Production. It's Intelligence." — 1,696 words, 100% auto-approved
 2. "Is Your Content Team Actually AI Ready? The Five-Dimension Framework" — 2,250 words, 88% confidence, 1 factual claim CYA flag
 
+
+---
+
+## 2026-06-12 — SYSOI product reel + DataReel template hardening (PR #347)
+
+Brian asked for a 60s SYSOI product video built with the Forge DataReel tooling (not the
+product-video-creation skill). Rendered locally in-sandbox (`npx remotion render` against
+`remotion/src/index.ts`, no Lambda) — the local round-trip exposed and closed real template gaps:
+
+**Template (remotion/src):**
+- `ScreensScene.motion: "static" | "dynamic"` — opt-in motion for product screenshots: 3D
+  perspective fly-in, one hard 6-frame punch-in zoom per shot that then HOLDS (a cut, not a
+  drift — Ken Burns stays dead per #344), slide-over spring transitions between shots. A
+  sheen-sweep shipped in round 1 and was cut in Brian's review ("diminishes the product").
+- `ScreensScene.shotAspect` — viewport takes the capture's native aspect ratio. SYSOI's
+  dashboard captures are 2940×1414 (≈2.08:1); the hardcoded 16:9 cover-crop cut both edges.
+  Dynamic cards widened to 1640 with a brand-accent outer glow + amber-tinted border.
+- `brand.wordmark` — full lockup image replaces the typed brand name (Stage corner + CTA).
+- `assetSrc()` — bare filenames for `shots`/`logo`/`music.src` resolve via `staticFile()`;
+  full https URLs pass through, so the Lambda/S3 backend path is byte-identical.
+- `onAccent` palette key (default #FFFFFF) — replaces six hardcoded white-on-accent spots;
+  light accents (SYSOI amber #F5B454) set a dark ink (#1A1208).
+- `PipelineView` — fixed-size rounded squares (labels clipped) → auto-width glowing pills;
+  the highlighted stage glows strongest.
+
+**Production pipeline lessons:**
+- ElevenLabs via the Composio toolkit when the raw key isn't in the env. mp3_44100_128 is
+  CBR → exact clip seconds = bytes/16000 (Forge backend's own trick) → scene
+  `durationInFrames` = VO frames + tail, no overlap, no measurement pass.
+- Original CC0 music authored in node (`scripts/sysoi-music.mjs`, 122 BPM, four-on-floor,
+  sidechain pump) — zero licensing surface, regenerates from source.
+- "No audio" reports against rendered mp4s: probe before re-encoding. `@ffmpeg-installer/ffmpeg`
+  (binaries ship inside the npm package — works without system ffmpeg) + volumedetect proved
+  the track was healthy (max −6.8 dB); the chat inline player just mutes.
+- Portrait was free: `orientation: "portrait"` re-rendered 9:16 with zero layout edits.
+
+**Artifacts:** PR #347 (draft → development) carries the template changes + the reproducible
+SYSOI example (props + shots + VO mp3s; renders and the generated wav gitignored). Both mp4s
+delivered to Brian (approved); not yet committed to any repo.
