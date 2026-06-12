@@ -10,6 +10,19 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
+### 2026-06-12 — Env-group incident root-caused · Ken Burns killed
+
+- **"Lost super admin" root-caused — it was the env group, not Clerk.** Brian's leaked-key rotation (2026-06-10 18:55) replaced the Render env group with "Forge Intelligence Environment Group Updated" but left it **linked to zero services**; the 18:56 redeploys booted Production/Development without `NEON_DATABASE_URL` or the Clerk keys. `/api/auth/me` computed `isSuperAdmin: true` from the JWT, then 500'd on the DB query → the FE's `useActiveBrand` defaulted `isSuperAdmin` to false. Brian relinked the group; live `SELECT 1` via the relay confirmed recovery. Lesson: **Render service-level env vars override group vars** — both services carried stale pre-rotation copies (old `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, X/LinkedIn/HubSpot secrets) that were silently shadowing the rotated group. Brian deleted them; post-check is clean (service level now holds only the intentional per-env keys: `BASE_URL`, `BASE_DOMAIN`, `DATA_DIR`, dev's `GSC_REDIRECT_URI`).
+- **#344 Ken Burns killed** — `ScreensView` in `remotion/src/DataReel.tsx` pushed every product screenshot scale 1.05→1.13 with an upward drift; it read as filler and kept the UI soft. Screenshots now hold static in the browser chrome; multi-shot crossfade unchanged. Merged to `development`.
+- Side observation: the **SYSOI brand profile** was re-tethered 2026-06-10 from Brian's sandbox-xm Clerk user to `user_3Ebb…` = brian@sysoi.ai (separate account, created 2026-06-03). Not a bug — just know it moved.
+
+#### What's next
+- **⚠️ Run `cd remotion && npm run deploy-site`** (needs `REMOTION_AWS_*`) — #344 changed the template; the live `forge-reels` Lambda site keeps the zoom until this redeploy. Same footgun as #334.
+- **Rotate `ADMIN_RELAY_PASSWORD`** — it was NOT part of the rotation (group value == old value) and it surfaced in session tool logs. Single-key update in the env group.
+- (Carried) Activate the bootstrap hooks · automate `deploy-site` via GH Action on `remotion/**` · drop `framesPerLambda: 400` after the AWS concurrency increase · verify ElevenLabs via `/api/video/tts-check`.
+
+---
+
 ### 2026-06-11 — Arc production envelope · web bootstrap · forge-reels deploy
 
 - **#339 arc production envelope** — `videoArcs` pitched concepts the renderer can't make (human VO, live footage, talking-head/behind-the-scenes shoots). Storyboard was always safe (bounded by the 18 archetypes); the leak was the arc-idea prompt. Added a PRODUCTION ENVELOPE block: every concept must be achievable with animated text/data scenes + synthetic AI voiceover + optional uploaded screenshots + music. Filmed angles get recast (testimonial → on-screen pull-quote, demo → screenshots+callouts).

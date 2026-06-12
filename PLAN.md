@@ -1,3 +1,17 @@
+## 2026-06-12 — "Lost super admin" = unlinked env group · Ken Burns killed (#344)
+
+### The env-group incident (root cause + fix)
+Brian reported super admin gone for brian@sandbox-xm.com. Investigation ruled out the obvious suspects in order: `SUPER_ADMIN_IDS` unchanged on every branch (his ID `user_3BtC7nusm7CShN7EdUYaaLZcDwp` still listed); Clerk user intact (confirmed live against the Clerk Backend API — same ID, signed in minutes earlier); frontend Clerk instance unchanged (hard-coded `pk_live` fallback in `main.tsx`). Actual cause: the 2026-06-10 18:55 leaked-key rotation replaced the Render env group ("Forge Intelligence Environment Group Updated", `evg-d8kr62jeo5us73apping`) but left it **linked to zero services**; redeploys at 18:56 booted Production and Development with only their partial service-level vars — no `NEON_DATABASE_URL`, no Clerk keys. Proof: live `POST /api/admin/relay` with `SELECT 1` returned 500 (the prod dyno could run no SQL at all). Failure mechanism for the symptom: `/api/auth/me` computes `isSuperAdmin` from the JWT (true), then crashes on the `brand_profiles` query → 500 → `useActiveBrand` never sets `isSuperAdmin` → UI reads as revoked while sign-in still works.
+
+Fix: Brian relinked the group to both services; redeploys went live and `SELECT 1` returned 200. Follow-on hardening in the same session: **Render service-level vars override env-group vars**, and both services carried stale pre-rotation copies (Production had 14 differing values incl. `ANTHROPIC_API_KEY`, `ELEVENLABS_API_KEY`, `GITHUB_TOKEN`, `HUBSPOT_SECRET_TOKEN`, `LINKEDIN_CLIENT_SECRET`, the four `X_OAUTH1*`) that were silently defeating the rotation. Brian deleted the stale secrets, keeping the intentional per-env overrides (`BASE_URL`, `BASE_DOMAIN`, `DATA_DIR`, redirect URIs). Post-check clean on both services. Outstanding: `ADMIN_RELAY_PASSWORD` was never rotated (group value == pre-incident value) and appeared in session tool logs — rotate it.
+
+Side observation: the SYSOI brand profile was re-tethered 2026-06-10 from the sandbox-xm Clerk user to `user_3Ebb…` = brian@sysoi.ai (separate account created 2026-06-03). Intentional-looking, recorded for the record.
+
+### Ken Burns killed (#344)
+`ScreensView` (`remotion/src/DataReel.tsx`) applied a slow push to every product screenshot — scale 1.05→1.13 + -3% upward drift over the scene. Brian hated it: filler motion that kept the product UI soft for the whole shot. Removed the interpolations and the `transform`; screenshots hold static in the browser chrome, multi-shot crossfade untouched. `types.ts` comment synced. Merged to `development`. **Template change → not live until `cd remotion && npm run deploy-site`** (the #334 footgun, again).
+
+---
+
 ## 2026-06-11 — Arc production envelope, Claude-web bootstrap, forge-reels deploy + key incident
 
 All merged to `development`.
