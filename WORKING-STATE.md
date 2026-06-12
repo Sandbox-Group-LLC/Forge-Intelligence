@@ -10,6 +10,28 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
+### 2026-06-12 (cont. 2) — SYSOI product reel · DataReel round-trip hardening (#347, merged)
+
+Built the 60s SYSOI product video **with DataReel rendered locally** (no Lambda), which forced template gaps closed — **#347 merged to `development`**:
+
+- **`ScreensScene.motion: "static" | "dynamic"`** — default unchanged (static, per #344's no-Ken-Burns rule). `dynamic` = 3D fly-in, one hard 6-frame punch-in per shot that holds, slide-over spring transitions. Brian's review killed an earlier sheen-sweep ("diminishes the product").
+- **`ScreensScene.shotAspect`** — viewport matches the capture's native ratio (SYSOI captures are 2940×1414 ≈ 2.08:1; the hardcoded 16:9 cropped both edges). Dynamic card: wider (1640) + brand-accent outer glow.
+- **`brand.wordmark`** — full lockup image replaces the TYPED brand name in the Stage corner + CTA title (system font butchers custom wordmarks).
+- **`assetSrc()`** — `shots`/`logo`/`music.src` accept bare filenames via `staticFile()` (audio's convention); https URLs pass through, Lambda path untouched.
+- **`onAccent` palette key** — dark-ink text on light accents (SYSOI amber); replaces hardcoded white on CTA button / statement / pipeline highlight / orbit core / steps / checklist.
+- **PipelineView** — rounded squares → auto-width pills with accent outer glow (the squares clipped their labels).
+- **VO via Composio ElevenLabs** (key wasn't in the SYSOI session env): Charlie/`verse`, stability 0.35 / style 0.6, mp3_44100_128 → exact seconds = bytes/16000. **Music**: `scripts/sysoi-music.mjs`, original CC0 driving bed (122 BPM, sidechained).
+- `sysoi-reel.props.json` + `public/shots`/`audio` committed = reproducible example. Rendered both cuts (16:9 1907f/63.6s + 9:16 portrait — zero layout changes needed); Brian approved. Renders gitignored (`remotion/.gitignore`: `out/`, generated wav).
+- **Audio-silent false alarm**: the mp4's AAC track was healthy (max −6.8 dB via `@ffmpeg-installer/ffmpeg` volumedetect — npm-packaged binary, no system ffmpeg); chat inline preview plays muted.
+
+#### What's next
+- **Redeploy `forge-reels`** so Lambda picks up #347's template changes (same footgun as #334/#344 — see the deploy warning below).
+- Decide where the rendered mp4s live (SYSOI repo `marketing/`?) — currently container-only.
+- Backend storyboard agent doesn't emit `motion`/`shotAspect`/`wordmark` yet — wire when a productized reel should use them.
+- Stale remote branch `feat/datareel-dynamic-screens` was accidentally recreated by a post-merge docs push (this branch supersedes it) — delete it.
+
+---
+
 ### 2026-06-12 (cont.) — GEO overhaul: measured whitespace, not priors
 
 All merged to `development`. Sprung from a gap analysis against an external GEO skill (Princeton KDD 2024) + a depth trace of the competitive-intel pipeline (verdict: whitespace was pure LLM inference over 700 chars of cached Stage 1 data; competitor sites never crawled; geoProbe unused by the Strategist).
