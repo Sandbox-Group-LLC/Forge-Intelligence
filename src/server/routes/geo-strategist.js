@@ -290,10 +290,13 @@ Return ONLY a raw JSON array (no markdown, no explanation):
       messages: [{ role: 'user', content: `You are the Entity & Schema Mapper for Forge Intelligence.
 
 BRAND: ${profile.brand_name}
-COMPETITIVE GAPS: ${JSON.stringify(competitorTopics).slice(0, 400)}
-TOP GEO OPPORTUNITIES: ${JSON.stringify(geoOpportunities.slice(0, 8))}${factualGround?.competitors?.length ? `\nVERIFIED COMPETITORS (use these, do not include entities from different companies with similar names): ${(Array.isArray(factualGround.competitors) ? factualGround.competitors : [factualGround.competitors]).slice(0, 8).join(', ')}` : ''}
+COMPETITIVE GAPS: ${JSON.stringify(competitorTopics).slice(0, 2000)}
+TOPICAL GAPS (Tool 1 — includes pillar cluster + information-gain angle per gap): ${JSON.stringify((topicalMap.gapsByCluster || []).slice(0, 10))}
+TOP GEO OPPORTUNITIES (Tool 2 per-platform scores): ${JSON.stringify(geoOpportunities.slice(0, 12))}${factualGround?.competitors?.length ? `\nVERIFIED COMPETITORS (use these, do not include entities from different companies with similar names): ${(Array.isArray(factualGround.competitors) ? factualGround.competitors : [factualGround.competitors]).slice(0, 8).join(', ')}` : ''}${competitorCoverageBlock}${citationProbeBlock}
 
 Identify entities needing structured markup for AI citation. Flag competitor entities this brand is NOT being cited for.
+
+Ground the flags in the measured data when present: the MEASURED AI VISIBILITY "who AI cites instead" domains are the sources actually being cited today — set competitorCiting:true from observed citations before inferred ones, and prioritize entities that would let the brand contest the invisible buyer questions. When COMPETITOR SITE COVERAGE is present, derive competitor entities from their measured positioning and signature claims, not prior knowledge of those companies. Prefer entities that reinforce the Tool 1 pillar clusters so the schema work compounds the same content hubs.
 
 Return ONLY valid JSON array:
 [{"entity":"string","schemaTypes":["Article"],"competitorCiting":false,"priority":"high|medium|low","rationale":"string"}]` }]
