@@ -7473,8 +7473,10 @@ app.get('/sitemap.xml', async (req, res) => {
   const urls = [
     { loc: 'https://forgeintelligence.ai/',               priority: '1.0',  changefreq: 'weekly',  lastmod: now },
     { loc: 'https://forgeintelligence.ai/product',        priority: '0.9',  changefreq: 'weekly',  lastmod: now },
+    { loc: 'https://forgeintelligence.ai/scan',           priority: '0.8',  changefreq: 'monthly', lastmod: now },
     { loc: 'https://forgeintelligence.ai/about',          priority: '0.85', changefreq: 'monthly', lastmod: now },
     { loc: 'https://forgeintelligence.ai/faq',            priority: '0.85', changefreq: 'monthly', lastmod: now },
+    { loc: 'https://forgeintelligence.ai/articles',       priority: '0.8',  changefreq: 'weekly',  lastmod: now },
     { loc: 'https://forgeintelligence.ai/docs',           priority: '0.7',  changefreq: 'monthly', lastmod: now },
     { loc: 'https://forgeintelligence.ai/privacy',        priority: '0.3',  changefreq: 'yearly',  lastmod: now },
     { loc: 'https://forgeintelligence.ai/terms',          priority: '0.3',  changefreq: 'yearly',  lastmod: now },
@@ -7505,6 +7507,9 @@ app.get('/sitemap.xml', async (req, res) => {
       // Mismatch causes Google Search Console to flag "Duplicate without user-selected canonical"
       // because the published/shared URLs and the sitemap point at different paths.
       const brandSlug = (brand.brand_url || brand.brand_name || 'brand').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
+      // The brand's article-library index — article details were in the sitemap
+      // but their listing page wasn't.
+      urls.push({ loc: `https://forgeintelligence.ai/articles/${brandSlug}`, priority: '0.75', changefreq: 'weekly', lastmod: now });
       const articlesRes = await pool.query(
         `SELECT title, created_at, updated_at FROM generated_content_${safeId} WHERE compliance_status IN ('approved', 'ready') ORDER BY created_at DESC LIMIT 500`
       ).catch(() => ({ rows: [] }));
