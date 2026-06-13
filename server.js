@@ -5794,7 +5794,8 @@ pool.query(`CREATE TABLE IF NOT EXISTS agent_activity_log (
 )`).catch(() => {});
 
 // GET /api/admin/activity — recent agent activity log
-app.get('/api/admin/activity', async (req, res) => {
+app.get('/api/admin/activity', requireAuth, async (req, res) => {
+  if (!SUPER_ADMIN_IDS.includes(req.userId)) return res.status(403).json({ error: 'Forbidden' });
   const limit = parseInt(req.query.limit) || 50;
   const offset = parseInt(req.query.offset) || 0;
   const agentFilter = req.query.agent || null;
@@ -5820,6 +5821,7 @@ app.get('/api/admin/activity', async (req, res) => {
 // GET /api/admin/stats — platform-wide stats
 // GET /api/admin/mission-control — full platform dashboard data
 app.get('/api/admin/mission-control', requireAuth, async (req, res) => {
+  if (!SUPER_ADMIN_IDS.includes(req.userId)) return res.status(403).json({ error: 'Forbidden' });
   try {
     const [
       brandsRes, activityRes, agentBreakdownRes, brainPatternsRes,
@@ -5942,7 +5944,8 @@ app.get('/api/admin/mission-control', requireAuth, async (req, res) => {
   }
 });
 
-app.get('/api/admin/stats', async (req, res) => {
+app.get('/api/admin/stats', requireAuth, async (req, res) => {
+  if (!SUPER_ADMIN_IDS.includes(req.userId)) return res.status(403).json({ error: 'Forbidden' });
   try {
     const [brands, activity, content, queue] = await Promise.all([
       pool.query('SELECT COUNT(*) FROM brand_profiles'),
@@ -6300,6 +6303,10 @@ app.post('/api/admin/backfill-linkedin-zernio-ids', async (req, res) => {
 });
 
 app.post('/api/admin/seed-brain', async (req, res) => {
+  // Gated by the master relay password (fails closed if no body parser ran:
+  // undefined !== password). Creates brand profiles + provisions tables, so it
+  // must never be reachable unauthenticated.
+  if (req.body?.adminPassword !== process.env.ADMIN_RELAY_PASSWORD) return res.status(403).json({ error: 'Forbidden' });
   const { url, brandName } = req.body;
   if (!url) return res.status(400).json({ error: 'url required' });
   try {
@@ -7390,9 +7397,8 @@ app.post('/api/admin/mark-unpublished', async (req, res) => {
 
 // POST /api/admin/reset-brand-paid — dev only, resets is_paid for testing
 app.post('/api/admin/reset-brand-paid', async (req, res) => {
-  if (process.env.NODE_ENV === 'production' && !req.body.adminPassword === process.env.ADMIN_RELAY_PASSWORD) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
+  // (Removed a dead precedence-buggy NODE_ENV-gated check — `!x === y` always
+  // evaluated false. The unconditional password gate below is the real guard.)
   const { brandProfileId, adminPassword } = req.body;
   if (adminPassword !== process.env.ADMIN_RELAY_PASSWORD) return res.status(403).json({ error: 'Forbidden' });
   try {
