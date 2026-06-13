@@ -32,7 +32,7 @@ Adapted from the GDPR implementation playbook (community skill, `gdpr-data-handl
 - ✅ Encryption in transit (TLS everywhere — Render/Neon)
 - 🟡 Encryption at rest for PII — Neon encrypts at rest at the platform level; **no app-level field encryption** on PII (author bios, contact emails). Acceptable for many buyers; enterprise/regulated may ask for more. **[legal]/buyer-driven**
 - ✅ Access controls — Clerk JWT + RLS + ownership checks (3-layer, per privacy §5)
-- 🟡 **Audit logging** — fragmented (relay console lines, `agent_activity_log`, brain trails). **No unified audit log yet** → spec below; this is the #25 substrate.
+- ✅ **Audit logging** — unified `audit_log` table + `recordAudit()` + Settings → Audit Log (read/filter/CSV-export, super-admin only); shipped #388. Live write seams: relay queries, brand mutations, exports. _Pending follow-ons:_ read-view logging + DSAR seams.
 
 ### Breach Response
 - ⬜ Breach detection mechanisms
@@ -96,7 +96,7 @@ This is the audit subsystem only — table, helper+seams, read/export API, page.
 
 ## #25 decomposition (recommended sub-issues)
 
-1. **Audit log subsystem** (spec above) — BUILD FIRST, the substrate.
+1. **Audit log subsystem** (spec above) — ✅ **BUILT (#388)**, the substrate. Follow-ons: read-view logging + DSAR write seams.
 2. **GDPR DSAR endpoints** (export/delete/rectify across the personal-data tables) — BUILD, writes to the audit log.
 3. **AI-content transparency** (Art. 50 marker on articles) — BUILD, small, time-boxed to Aug 2026.
 4. **DPA + sub-processor page + RoPA** — DOCUMENT (the procurement artifacts).
@@ -107,6 +107,9 @@ This is the audit subsystem only — table, helper+seams, read/export API, page.
 ---
 
 ## Change log
+
+### 2026-06-13 — Audit log subsystem shipped (#388)
+Sub-issue #1 built: `src/server/audit.js` (`audit_log` table, self-creating, never auto-purged; `recordAudit()` best-effort writer) + `GET /api/admin/audit-log` (filter/paginate/CSV) + `.../actions` + the Settings → Audit Log page, all strict super-admin gated. v1 write seams: `relay.query`, `brand.reset_paid`, `brand.seed`, and the CSV export self-logs. This is the substrate every later GDPR feature writes into. Deferred: read-view logging (noise) and DSAR seams (endpoints not built yet — sub-issue #2).
 
 ### 2026-06-13 — Dead cold-outreach feature + its PII removed (#384)
 The `outreach_contacts` table flagged above as "the hottest spot" is **gone**. It was a one-time April cold-email experiment (126 real contacts loaded Apr 10–11, dormant since, owned by no one); outreach now runs through HubSpot. Brian CSV-exported the contacts + log for historical records, then authorized full removal: the `/api/outreach/*` routes + cold `/unsubscribe` deleted from `server.js`, the `outreach_contacts` + `outreach_log` DDLs removed from `init-schema.sql`, route snapshot regenerated, and both tables DROPPED from prod Neon (126 + 78 rows). Prod carried an `outreach_log_contact_id_fkey` not in the committed schema — **schema-drift flag** for the eventual fresh-DB setup. Net: a documented-PII liability eliminated rather than governed.
