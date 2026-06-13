@@ -466,34 +466,6 @@ CREATE TABLE IF NOT EXISTS hubspot_sync_log (
   synced_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS outreach_contacts (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  first_name TEXT NOT NULL,
-  last_name TEXT,
-  email TEXT NOT NULL,
-  company TEXT,
-  title TEXT,
-  notes TEXT,
-  status TEXT NOT NULL DEFAULT 'pending',
-  sent_at TIMESTAMPTZ,
-  opened_at TIMESTAMPTZ,
-  replied_at TIMESTAMPTZ,
-  unsubscribed_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS outreach_log (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  contact_id UUID,
-  email TEXT NOT NULL,
-  subject TEXT,
-  resend_id TEXT,
-  status TEXT,
-  error_message TEXT,
-  sent_at TIMESTAMPTZ DEFAULT NOW()
-);
-
 -- ── User Alerts & Support Tickets ────────────────────────────────────────────
 -- Surfaced through the topbar bell. Alerts are user-scoped (clerk_user_id).
 -- short_message is the only field shown to users; raw_message is admin-only.
