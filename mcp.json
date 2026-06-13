@@ -1,10 +1,10 @@
 {
   "mcpServers": {
     "composio": {
-      "type": "streamableHttp",
+      "type": "http",
       "url": "https://connect.composio.dev/mcp",
       "headers": {
-        "x-consumer-api-key": "${env:COMPOSIO_API_KEY}"
+        "x-consumer-api-key": "${COMPOSIO_API_KEY}"
       }
     }
   }
