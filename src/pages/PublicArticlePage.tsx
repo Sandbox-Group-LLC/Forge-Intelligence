@@ -401,6 +401,11 @@ export default function PublicArticlePage() {
               </div>
               <a href={`/articles/${brandSlug}`} className="pa-back-link">← More articles</a>
             </div>
+            {/* EU AI Act Art. 50 — visible AI-content disclosure for human readers
+                (the machine-readable IPTC marker rides in the SSR JSON-LD). */}
+            <p className="pa-ai-disclosure" style={{ fontSize: 12, color: '#94A3B8', marginTop: 14, fontStyle: 'italic' }}>
+              This article was created with AI assistance and reviewed for accuracy before publication.
+            </p>
           </footer>
 
         </article>
