@@ -1770,6 +1770,11 @@ app.get('/articles/:brandSlug/:articleSlug', async (req, res) => {
         "wordCount": wordCount,
         "timeRequired": `PT${readMinutes}M`,
         "inLanguage": "en-US",
+        // EU AI Act Art. 50 — machine-readable AI-content marker (IPTC DigitalSourceType
+        // vocabulary, the de-facto standard Google/IPTC recognize). "composite" = an
+        // AI-generated draft under human editorial review (the Compliance Gate), which
+        // is both accurate and the Art. 50 deployer framing.
+        "digitalSourceType": "https://cv.iptc.org/newscodes/digitalsourcetype/compositeWithTrainedAlgorithmicMedia",
         ...(articleKeywords.length ? { "keywords": articleKeywords } : {}),
         ...(articleAbout.length ? { "about": articleAbout } : {}),
       };
