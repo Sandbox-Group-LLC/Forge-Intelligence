@@ -32,6 +32,8 @@ import DataRequestsPage from './pages/DataRequestsPage';
 import TopicQueuePage from './pages/TopicQueuePage';
 import ReviewPage from './pages/ReviewPage';
 import PrivacyPage from './pages/PrivacyPage';
+import SubProcessorsPage from './pages/SubProcessorsPage';
+import DpaPage from './pages/DpaPage';
 import TermsPage from './pages/TermsPage';
 import DocsPage from './pages/DocsPage';
 import AcceptableUsePage from './pages/AcceptableUsePage';
@@ -113,6 +115,8 @@ createRoot(document.getElementById('root')!).render(
         {/* Marketing site */}
         <Route path="/" element={<Landing />} />
         <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/subprocessors" element={<SubProcessorsPage />} />
+        <Route path="/dpa" element={<DpaPage />} />
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/acceptable-use" element={<AcceptableUsePage />} />
         <Route path="/docs" element={<DocsPage />} />
