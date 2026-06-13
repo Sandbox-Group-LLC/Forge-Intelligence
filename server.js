@@ -8100,6 +8100,122 @@ app.get('/api/admin/audit-log/actions', requireAuth, async (req, res) => {
   }
 });
 
+// ── DSAR — Data Subject Access / Erasure (GDPR Art. 15/17/20, issue #25) ──────
+// Super-admin-operated for now (not self-service). Covers Forge's reachable
+// third-party-PII surface: reviewers (email+name), support_tickets (email), and
+// Factual Ground authors (name/linkedin, JSONB on brand_profiles). Names buried
+// in free text (competitorAnalysis, personas, article bodies) are NOT
+// key-erasable and are returned as a manual-review note rather than silently
+// missed. Every call writes to the audit log (DSAR is the first real writer).
+const DSAR_UNREACHED_NOTE = 'Free-text surfaces (competitor analysis, personas, generated article bodies) are not key-searchable and require manual review if the subject may appear there.';
+
+async function dsarFind(email, name) {
+  const e = (email || '').trim().toLowerCase();
+  const n = (name || '').trim().toLowerCase();
+  const out = { reviewers: [], supportTickets: [], factualGroundAuthors: [] };
+
+  if (e || n) {
+    const rv = await pool.query(
+      `SELECT id, brand_profile_id, name, email, title, created_at FROM reviewers
+       WHERE ($1 <> '' AND lower(email) = $1) OR ($2 <> '' AND lower(name) = $2)`,
+      [e, n]
+    ).catch(() => ({ rows: [] }));
+    out.reviewers = rv.rows;
+  }
+  if (e) {
+    const st = await pool.query(
+      `SELECT id, brand_profile_id, user_email, subject, status, created_at FROM support_tickets WHERE lower(user_email) = $1`,
+      [e]
+    ).catch(() => ({ rows: [] }));
+    out.supportTickets = st.rows;
+  }
+  // Factual Ground authors: scan brands with an authors array, match by name or linkedin.
+  const br = await pool.query(
+    `SELECT id, brand_name, settings->'factualGround'->'authors' AS authors
+     FROM brand_profiles WHERE jsonb_typeof(settings->'factualGround'->'authors') = 'array'`
+  ).catch(() => ({ rows: [] }));
+  for (const row of br.rows) {
+    const authors = Array.isArray(row.authors) ? row.authors : [];
+    const matches = authors.filter(a =>
+      (n && (a.name || '').trim().toLowerCase() === n) ||
+      (e && (a.linkedinUrl || '').toLowerCase().includes(e)) // rare, but check
+    );
+    if (matches.length) out.factualGroundAuthors.push({ brand_profile_id: row.id, brand_name: row.brand_name, matches });
+  }
+  return out;
+}
+
+app.post('/api/admin/dsar/lookup', requireAuth, express.json(), async (req, res) => {
+  if (!SUPER_ADMIN_IDS.includes(req.userId)) return res.status(403).json({ error: 'Forbidden' });
+  const { email, name } = req.body || {};
+  if (!email && !name) return res.status(400).json({ error: 'email or name required' });
+  try {
+    const found = await dsarFind(email, name);
+    const counts = {
+      reviewers: found.reviewers.length,
+      supportTickets: found.supportTickets.length,
+      factualGroundAuthors: found.factualGroundAuthors.reduce((s, b) => s + b.matches.length, 0),
+    };
+    recordAudit({ req, action: 'dsar.access', targetType: 'person', targetId: (email || name),
+      summary: `DSAR lookup — ${counts.reviewers} reviewer(s), ${counts.supportTickets} ticket(s), ${counts.factualGroundAuthors} author(s)`,
+      metadata: { email: email || null, name: name || null, counts } });
+    res.json({ success: true, subject: { email: email || null, name: name || null }, counts, data: found, note: DSAR_UNREACHED_NOTE });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+app.post('/api/admin/dsar/erase', requireAuth, express.json(), async (req, res) => {
+  if (!SUPER_ADMIN_IDS.includes(req.userId)) return res.status(403).json({ error: 'Forbidden' });
+  const { email, name, confirm } = req.body || {};
+  if (!email && !name) return res.status(400).json({ error: 'email or name required' });
+  if (confirm !== true) return res.status(400).json({ error: 'confirm:true required (run lookup first)' });
+  const e = (email || '').trim().toLowerCase();
+  const n = (name || '').trim().toLowerCase();
+  try {
+    const result = { reviewersDeleted: 0, supportTicketsRedacted: 0, authorsRemoved: 0, brandsTouched: [] };
+
+    const rv = await pool.query(
+      `DELETE FROM reviewers WHERE ($1 <> '' AND lower(email) = $1) OR ($2 <> '' AND lower(name) = $2) RETURNING id`,
+      [e, n]
+    );
+    result.reviewersDeleted = rv.rowCount;
+
+    if (e) {
+      const st = await pool.query(
+        `UPDATE support_tickets SET user_email = NULL, subject = '[erased per DSAR]', body = '[erased per DSAR]'
+         WHERE lower(user_email) = $1 RETURNING id`,
+        [e]
+      );
+      result.supportTicketsRedacted = st.rowCount;
+    }
+
+    // Remove matching authors from each brand's factualGround.authors JSONB.
+    const br = await pool.query(
+      `SELECT id, settings->'factualGround'->'authors' AS authors
+       FROM brand_profiles WHERE jsonb_typeof(settings->'factualGround'->'authors') = 'array'`
+    );
+    for (const row of br.rows) {
+      const authors = Array.isArray(row.authors) ? row.authors : [];
+      const kept = authors.filter(a => !(
+        (n && (a.name || '').trim().toLowerCase() === n) ||
+        (e && (a.linkedinUrl || '').toLowerCase().includes(e))
+      ));
+      if (kept.length !== authors.length) {
+        await pool.query(
+          `UPDATE brand_profiles SET settings = jsonb_set(settings, '{factualGround,authors}', $2::jsonb), updated_at = NOW() WHERE id = $1`,
+          [row.id, JSON.stringify(kept)]
+        );
+        result.authorsRemoved += (authors.length - kept.length);
+        result.brandsTouched.push(row.id);
+      }
+    }
+
+    recordAudit({ req, action: 'dsar.erase', targetType: 'person', targetId: (email || name),
+      summary: `DSAR erasure — ${result.reviewersDeleted} reviewer(s) deleted, ${result.supportTicketsRedacted} ticket(s) redacted, ${result.authorsRemoved} author(s) removed`,
+      metadata: { email: email || null, name: name || null, result } });
+    res.json({ success: true, subject: { email: email || null, name: name || null }, result, note: DSAR_UNREACHED_NOTE });
+  } catch (e2) { res.status(500).json({ success: false, error: e2.message }); }
+});
+
 // ── Zernio Test Endpoints (dev-only) ──────────────────────────────────────────
 // Three diagnostic endpoints that exercise the Zernio social media API with
 // per-stage signal. Reject on production host so we can't accidentally fire

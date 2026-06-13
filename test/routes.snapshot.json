@@ -115,6 +115,8 @@
   "POST /api/admin/backfill-facebook-zernio-ids",
   "POST /api/admin/backfill-linkedin-zernio-ids",
   "POST /api/admin/digest/send/:brandProfileId",
+  "POST /api/admin/dsar/erase",
+  "POST /api/admin/dsar/lookup",
   "POST /api/admin/indexnow/backfill",
   "POST /api/admin/indexnow/submit",
   "POST /api/admin/mark-unpublished",
