@@ -11,9 +11,9 @@ Working tracker for Forge Intelligence's security + data-protection posture, anc
 Adapted from the GDPR implementation playbook (community skill, `gdpr-data-handling`), annotated with Forge's real status. Status key: ✅ done · 🟡 partial · ⬜ todo · ⛔ N/A (with reason).
 
 ### Legal Basis
-- ⬜ **[legal]** Documented legal basis (Art. 6) for each processing activity — esp. the outreach/reviewer contact emails (the B2B legitimate-interest grey zone)
+- ⬜ **[legal]** Documented legal basis (Art. 6) for each processing activity — esp. the `reviewers` / email-campaign contact emails (the B2B legitimate-interest grey zone)
 - ⬜ Consent mechanisms meet GDPR requirements (see "Consent" below — currently no consent layer; the LinkedIn Insight Tag is the only third-party tracker and is disclosed)
-- ⬜ **[legal]** Legitimate-interest assessments completed (outreach contacts, competitor-crawl personal data)
+- ⬜ **[legal]** Legitimate-interest assessments completed (competitor-crawl personal data; `reviewers`)
 
 ### Transparency
 - ✅ Privacy policy clear and accessible (`/privacy`, PrivacyPage.tsx; refreshed 2026-06-12 #357 — added Jina/Bright Data/OpenAI/Gemini/ValueSERP processors)
@@ -60,7 +60,7 @@ Issue #25 conflates three regimes with very different cost and applicability:
 
 ## Forge's actual personal-data surface (from the 2026-06-12 pipeline audit)
 
-- **Personal data (the GDPR-sensitive set):** Factual Ground `authors` (name/title/bio/LinkedIn), `competitorAnalysis` crawl (can surface named execs), `reviewers` / `outreach_contacts` / email-campaign recipient emails (third-party PII — the hottest spot).
+- **Personal data (the GDPR-sensitive set):** Factual Ground `authors` (name/title/bio/LinkedIn), `competitorAnalysis` crawl (can surface named execs), `reviewers` / email-campaign recipient emails (third-party PII — the hottest spot). _(`outreach_contacts` was here — removed 2026-06-13, #384; see change log.)_
 - **Deliberately NOT personal data (a design win):** the GEO citation probe sends *brand-free buyer questions* (constraint written into #351); "who AI cites instead" is domains, not people. Forge's newest subsystem is clean by construction — state this in any compliance doc.
 - **Not personal data:** brain patterns/mistakes (derived from content performance), citation-tracker results (domains).
 
@@ -81,7 +81,7 @@ Single page under **Settings → Audit Log**, super-admin-gated (same as Mission
 `recordAudit({ req, action, targetType, targetId, brandProfileId, summary, metadata })` — best-effort, try/catch, never throws/blocks (the `raiseAnomaly`/`void notifyX` discipline). `actor_clerk_user_id` = `req.userId` (always); `actor_email` best-effort (JWT carries only `sub`, so resolve from the users table or Clerk; don't block on it).
 
 ### Write seams (the personal-data + privileged surfaces)
-DSAR export/delete · admin relay query (persist the truncated-SQL line it already console-logs) · Mission Control access · CRM/handoff PII pushes · reads/writes of `reviewers`/`outreach_contacts`/email recipients/Factual Ground authors · brand deletion/reset · **audit-log export itself** (self-documenting).
+DSAR export/delete · admin relay query (persist the truncated-SQL line it already console-logs) · Mission Control access · CRM/handoff PII pushes · reads/writes of `reviewers`/email recipients/Factual Ground authors · brand deletion/reset · **audit-log export itself** (self-documenting).
 
 ### Read/export API — `GET /api/admin/audit-log`
 Strict gate. Filters: `actor`, `action`, `targetType`, `brandProfileId`, `from`, `to`, `limit` (≤500), `offset`, `format=csv`. CSV = the compliance evidence artifact (`Content-Disposition: attachment`); the export call writes its own `audit_log.export` row.
@@ -107,6 +107,9 @@ This is the audit subsystem only — table, helper+seams, read/export API, page.
 ---
 
 ## Change log
+
+### 2026-06-13 — Dead cold-outreach feature + its PII removed (#384)
+The `outreach_contacts` table flagged above as "the hottest spot" is **gone**. It was a one-time April cold-email experiment (126 real contacts loaded Apr 10–11, dormant since, owned by no one); outreach now runs through HubSpot. Brian CSV-exported the contacts + log for historical records, then authorized full removal: the `/api/outreach/*` routes + cold `/unsubscribe` deleted from `server.js`, the `outreach_contacts` + `outreach_log` DDLs removed from `init-schema.sql`, route snapshot regenerated, and both tables DROPPED from prod Neon (126 + 78 rows). Prod carried an `outreach_log_contact_id_fkey` not in the committed schema — **schema-drift flag** for the eventual fresh-DB setup. Net: a documented-PII liability eliminated rather than governed.
 
 ### 2026-06-13 — Admin-auth hardening + this doc
 First concrete security item. Audited all 22 `/api/admin/*` routes; password-gated utilities (relay, backfills, api-keys, indexnow, digest, scrape-log, facebook/diag, mark-unpublished) are correctly gated. Fixed five gaps (PR pending):
