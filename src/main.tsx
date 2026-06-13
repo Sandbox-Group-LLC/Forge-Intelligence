@@ -27,6 +27,7 @@ import BrandSettingsPage from './pages/BrandSettingsPage';
 import ContentLibraryPage from './pages/ContentLibraryPage';
 import ContentImportPage from './pages/ContentImportPage';
 import AdminPage from './pages/AdminPage';
+import AuditLogPage from './pages/AuditLogPage';
 import TopicQueuePage from './pages/TopicQueuePage';
 import ReviewPage from './pages/ReviewPage';
 import PrivacyPage from './pages/PrivacyPage';
@@ -150,6 +151,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/app/content-library" element={<AppProvider><ContentLibraryPage /></AppProvider>} />
         <Route path="/app/content-import" element={<AppProvider><ContentImportPage /></AppProvider>} />
         <Route path="/app/mc" element={<AppProvider><AdminPage /></AppProvider>} />
+        <Route path="/app/audit-log" element={<AppProvider><AuditLogPage /></AppProvider>} />
         <Route path="/app/topic-queue" element={<AppProvider><TopicQueuePage /></AppProvider>} />
         <Route path="/app/brand-settings" element={<AppProvider><BrandSettingsPage /></AppProvider>} />
 
