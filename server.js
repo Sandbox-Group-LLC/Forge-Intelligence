@@ -15,6 +15,7 @@ import { forgeScrape, getBrandPageContent, discoverSubpages, _forgeScrapeRateLim
 import { anthropic, dateContext } from './src/server/llm.js';
 import { CITATION_ENGINES, isCited, findCitedSection, urlHasDomain, coldScan, extractDomain } from './src/server/geoProbe.js';
 import { installLogCapture, logBuffer, logSSEClients, errorAggregates } from './src/server/logging.js';
+import { recordAudit } from './src/server/audit.js';
 import {
   LOVABLE_UUID_RE, LOVABLE_URL_SAFE_LIMIT, LOVABLE_MAX_PROMPT_CHARS, LOVABLE_SUPPORTED_APP_TYPES,
   lovableSafeJoin, lovableHasData, lovableFormatVoice, lovableFormatPersonas, lovableFormatWhitespace,
@@ -6344,6 +6345,8 @@ app.post('/api/admin/seed-brain', async (req, res) => {
     });
     const contextData = await contextRes.json().catch(() => ({}));
 
+    recordAudit({ req, actorLabel: 'admin-relay-password', action: 'brand.seed', targetType: 'brand', targetId: brandProfileId, brandProfileId,
+      summary: `Seeded brand ${brandName || url}`, metadata: { url } });
     res.json({
       success: true,
       brandProfileId,
@@ -7410,6 +7413,8 @@ app.post('/api/admin/reset-brand-paid', async (req, res) => {
       `DELETE FROM promo_redemptions WHERE brand_profile_id = $1`,
       [brandProfileId]
     );
+    recordAudit({ req, actorLabel: 'admin-relay-password', action: 'brand.reset_paid', targetType: 'brand', targetId: brandProfileId, brandProfileId,
+      summary: 'Brand reset to free tier + promo redemptions cleared' });
     res.json({ success: true, message: 'Brand reset to free tier + promo redemptions cleared' });
   } catch(e) {
     res.status(500).json({ error: e.message });
@@ -8033,8 +8038,64 @@ app.post('/api/admin/relay', express.json({ limit: '500kb' }), async (req, res) 
   }
   try {
     const result = await pool.query(query, values || []);
+    recordAudit({ req, actorLabel: 'admin-relay-password', action: 'relay.query', targetType: 'relay',
+      summary: `Relay query (${result.rowCount} rows)`, metadata: { sqlPreview: String(query || '').slice(0, 500), rowCount: result.rowCount } });
     return res.json({ success: true, rows: result.rows, rowCount: result.rowCount });
   } catch(e) {
+    recordAudit({ req, actorLabel: 'admin-relay-password', action: 'relay.query', targetType: 'relay',
+      summary: `Relay query FAILED`, metadata: { sqlPreview: String(query || '').slice(0, 500), error: e.message } });
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ── Audit Log (Settings → Audit Log) ──────────────────────────────────────────
+// Super-admin-only read + CSV export of the security/GDPR evidence trail.
+// Strict gate (the logs/stream pattern), never the client-only MC hide.
+app.get('/api/admin/audit-log', requireAuth, async (req, res) => {
+  if (!SUPER_ADMIN_IDS.includes(req.userId)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const { actor, action, targetType, brandProfileId, from, to, format } = req.query;
+    const limit = Math.min(parseInt(req.query.limit) || 100, 500);
+    const offset = parseInt(req.query.offset) || 0;
+    const where = []; const params = []; let i = 1;
+    if (actor) { where.push(`(actor_clerk_user_id = $${i} OR actor_email = $${i})`); params.push(actor); i++; }
+    if (action) { where.push(`action = $${i}`); params.push(action); i++; }
+    if (targetType) { where.push(`target_type = $${i}`); params.push(targetType); i++; }
+    if (brandProfileId) { where.push(`brand_profile_id = $${i}`); params.push(brandProfileId); i++; }
+    if (from) { where.push(`created_at >= $${i}`); params.push(from); i++; }
+    if (to) { where.push(`created_at <= $${i}`); params.push(to); i++; }
+    const wh = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    if (format === 'csv') {
+      const cols = ['created_at','actor_clerk_user_id','actor_email','action','target_type','target_id','brand_profile_id','summary','ip'];
+      const r = await pool.query(`SELECT ${cols.join(', ')} FROM audit_log ${wh} ORDER BY created_at DESC LIMIT 5000`, params);
+      const esc = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+      const csv = [cols.join(',')].concat(r.rows.map(row => cols.map(c => esc(row[c])).join(','))).join('\n');
+      // Exporting the audit log is itself an audited event.
+      recordAudit({ req, action: 'audit_log.export', targetType: 'audit_log',
+        summary: `Exported ${r.rows.length} audit rows (CSV)`, metadata: { filters: { actor, action, targetType, brandProfileId, from, to }, rowCount: r.rows.length } });
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="audit-log-${new Date().toISOString().slice(0, 10)}.csv"`);
+      return res.send(csv);
+    }
+
+    const [rowsRes, countRes] = await Promise.all([
+      pool.query(`SELECT * FROM audit_log ${wh} ORDER BY created_at DESC LIMIT $${i} OFFSET $${i + 1}`, [...params, limit, offset]),
+      pool.query(`SELECT COUNT(*)::int AS n FROM audit_log ${wh}`, params),
+    ]);
+    res.json({ success: true, rows: rowsRes.rows, total: countRes.rows[0].n, limit, offset });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /api/admin/audit-log/actions — distinct action vocab for the filter dropdown.
+app.get('/api/admin/audit-log/actions', requireAuth, async (req, res) => {
+  if (!SUPER_ADMIN_IDS.includes(req.userId)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const r = await pool.query(`SELECT DISTINCT action FROM audit_log ORDER BY action`);
+    res.json({ success: true, actions: r.rows.map(x => x.action) });
+  } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
 });

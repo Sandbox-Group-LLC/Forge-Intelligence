@@ -10,6 +10,8 @@
   "GET /${INDEXNOW_KEY}.txt",
   "GET /api/admin/activity",
   "GET /api/admin/api-keys",
+  "GET /api/admin/audit-log",
+  "GET /api/admin/audit-log/actions",
   "GET /api/admin/deploys",
   "GET /api/admin/facebook/diag",
   "GET /api/admin/logs/errors",
