@@ -230,6 +230,7 @@ const settingsNavItems = [
   { id: 'integrations',   label: 'Integrations',   icon: 'plug',     href: '/app/integrations' },
   { id: 'admin',          label: 'Mission Control', icon: 'cpu',     href: '/app/mc' },
   { id: 'audit-log',      label: 'Audit Log',       icon: 'fileText', href: '/app/audit-log' },
+  { id: 'data-requests',  label: 'Data Requests',   icon: 'shieldCheck', href: '/app/data-requests' },
 ] as const;
 
 const topNavItems: TopNavItem[] = [
@@ -566,7 +567,7 @@ export function Sidebar() {
               </button>
               {!sidebarCollapsed && settingsGroupOpen && (
                 <div className="nav-group-children">
-                  {settingsNavItems.filter(c => !['admin', 'audit-log'].includes(c.id) || isSuperAdmin).map(child => {
+                  {settingsNavItems.filter(c => !['admin', 'audit-log', 'data-requests'].includes(c.id) || isSuperAdmin).map(child => {
                     const childActive = path.startsWith(child.href);
                     return (
                       <a
