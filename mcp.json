@@ -4,7 +4,7 @@
       "type": "http",
       "url": "https://connect.composio.dev/mcp",
       "headers": {
-        "x-consumer-api-key": "ck_RPAIWUAHY1TogSsjahOK"
+        "x-consumer-api-key": "${env.COMPOSIO_API_KEY}"
       }
     }
   }
