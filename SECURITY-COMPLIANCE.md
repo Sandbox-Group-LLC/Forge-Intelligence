@@ -22,17 +22,17 @@ Adapted from the GDPR implementation playbook (community skill, `gdpr-data-handl
 - ⬜ **AI-content transparency (EU AI Act Art. 50, applies Aug 2026):** machine-readable "AI-generated" marker on published articles. Video skill already discloses AI voice; articles need a JSON-LD/meta marker. *Cheapest + most clearly-applicable AI Act obligation.*
 
 ### Data Subject Rights (DSAR) — must respond within 30 days
-- ⬜ Access request (Art. 15) — export a person's data across the personal-data tables
-- ⬜ Erasure request (Art. 17) — delete across the same, with legal-hold exceptions
-- ⬜ Portability export (Art. 20) — JSON machine-readable
-- ⬜ Rectification (Art. 16)
-- ⬜ 30-day deadline tracking
+- ✅ Access request (Art. 15) — `dsar.lookup` across reviewers / support tickets / Factual Ground authors (#391)
+- ✅ Erasure request (Art. 17) — `dsar.erase`: reviewers deleted, support tickets redacted (row kept as evidence), authors pulled from JSONB (#391)
+- ✅ Portability export (Art. 20) — JSON export from the Data Requests page (#391)
+- 🟡 Rectification (Art. 16) — authors editable in Brand Settings today; no unified cross-table rectify (deferred)
+- ⬜ 30-day deadline tracking (no self-service intake yet — DSAR is super-admin-operated)
 
 ### Security
 - ✅ Encryption in transit (TLS everywhere — Render/Neon)
 - 🟡 Encryption at rest for PII — Neon encrypts at rest at the platform level; **no app-level field encryption** on PII (author bios, contact emails). Acceptable for many buyers; enterprise/regulated may ask for more. **[legal]/buyer-driven**
 - ✅ Access controls — Clerk JWT + RLS + ownership checks (3-layer, per privacy §5)
-- ✅ **Audit logging** — unified `audit_log` table + `recordAudit()` + Settings → Audit Log (read/filter/CSV-export, super-admin only); shipped #388. Live write seams: relay queries, brand mutations, exports. _Pending follow-ons:_ read-view logging + DSAR seams.
+- ✅ **Audit logging** — unified `audit_log` table + `recordAudit()` + Settings → Audit Log (read/filter/CSV-export, super-admin only); shipped #388. Live write seams: relay queries, brand mutations, exports, **DSAR access/erase (#391)**. _Pending follow-ons:_ read-view logging.
 
 ### Breach Response
 - ⬜ Breach detection mechanisms
@@ -96,8 +96,8 @@ This is the audit subsystem only — table, helper+seams, read/export API, page.
 
 ## #25 decomposition (recommended sub-issues)
 
-1. **Audit log subsystem** (spec above) — ✅ **BUILT (#388)**, the substrate. Follow-ons: read-view logging + DSAR write seams.
-2. **GDPR DSAR endpoints** (export/delete/rectify across the personal-data tables) — BUILD, writes to the audit log.
+1. **Audit log subsystem** (spec above) — ✅ **BUILT (#388)**, the substrate. Follow-on: read-view logging (DSAR write seams now wired via #391).
+2. **GDPR DSAR endpoints** — ✅ **BUILT (#391)**: access/export/erase across reviewers, support tickets, and Factual Ground authors; writes to the audit log. Deferred: rectification, self-service intake, 30-day-deadline tracking.
 3. **AI-content transparency** (Art. 50 marker on articles) — BUILD, small, time-boxed to Aug 2026.
 4. **DPA + sub-processor page + RoPA** — DOCUMENT (the procurement artifacts).
 5. **EU AI Act risk-tier memo** (limited-risk, not high-risk) — DOCUMENT one page, **don't build** conformity machinery. **[legal]**
@@ -107,6 +107,9 @@ This is the audit subsystem only — table, helper+seams, read/export API, page.
 ---
 
 ## Change log
+
+### 2026-06-13 — DSAR access/export/erase shipped (#391)
+Sub-issue #2 built and is the first real writer into the audit log: `POST /api/admin/dsar/lookup` (`dsar.access`) + `POST /api/admin/dsar/erase` (`dsar.erase`, `confirm:true`-gated) across reviewers (deleted), support tickets (redacted — row kept as request evidence), and Factual Ground authors (removed from the brand JSONB); Settings → Data Requests page with JSON export (portability). Honest coverage note: free-text surfaces (competitorAnalysis/personas/article bodies) aren't key-erasable → flagged for manual review. Closes the DSAR access/erasure/portability checklist lines; rectification + 30-day-deadline tracking + self-service intake remain.
 
 ### 2026-06-13 — Audit log subsystem shipped (#388)
 Sub-issue #1 built: `src/server/audit.js` (`audit_log` table, self-creating, never auto-purged; `recordAudit()` best-effort writer) + `GET /api/admin/audit-log` (filter/paginate/CSV) + `.../actions` + the Settings → Audit Log page, all strict super-admin gated. v1 write seams: `relay.query`, `brand.reset_paid`, `brand.seed`, and the CSV export self-logs. This is the substrate every later GDPR feature writes into. Deferred: read-view logging (noise) and DSAR seams (endpoints not built yet — sub-issue #2).
