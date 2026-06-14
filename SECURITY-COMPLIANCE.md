@@ -40,13 +40,13 @@ Adapted from the GDPR implementation playbook (community skill, `gdpr-data-handl
 - ⬜ Breach documentation system
 
 ### Documentation
-- 🟡 Records of processing activities (Art. 30) — privacy policy + sub-processor list cover most; not a formal RoPA
+- 🟡 Records of processing activities (Art. 30) — DPA Annex I (processing details) + the sub-processor SSOT now cover the substance (#396); not yet a standalone RoPA document.
 - ⬜ **[legal]** DPIA (if required — judgment call)
-- ⬜ Data Processing Agreement (DPA) + signable sub-processor list (the artifact regulated buyers ask procurement for)
+- ✅ Data Processing Agreement (DPA) + sub-processor list — live shareable pages `/dpa` + `/subprocessors` and an attorney-review Word export (#396). _Binding contract language pending counsel finalization._
 - ⬜ **[legal]** EU AI Act risk-tier memo: position Forge as a *limited-risk* system (Art. 50 transparency only), **not** Annex-III high-risk. One page; it's what regulated buyers' legal teams actually want.
 
 ### Data Residency / Transfers
-- ⬜ **[legal]** International-transfer basis (SCCs / adequacy) — Forge is US-all-the-way (Render US, Neon `us-west-2`, Anthropic/OpenAI/Jina/Bright Data/ValueSERP US). EU customer data leaving the EU is a transfer question. **The real enterprise-EU-deal blocker, not "high-risk."**
+- 🟡 **[legal]** International-transfer basis (SCCs / adequacy) — now *documented* in DPA §11 + the sub-processors page transfers section (#396); Forge remains US-all-the-way (Render US, Neon `us-west-2`, Anthropic/OpenAI/Jina/Bright Data/ValueSERP US), so the SCC completion + transfer-impact assessment still need counsel sign-off. **The real enterprise-EU-deal blocker, not "high-risk."**
 
 ---
 
@@ -99,7 +99,7 @@ This is the audit subsystem only — table, helper+seams, read/export API, page.
 1. **Audit log subsystem** (spec above) — ✅ **BUILT (#388)**, the substrate. Follow-on: read-view logging (DSAR write seams now wired via #391).
 2. **GDPR DSAR endpoints** — ✅ **BUILT (#391)**: access/export/erase across reviewers, support tickets, and Factual Ground authors; writes to the audit log. Deferred: rectification, self-service intake, 30-day-deadline tracking.
 3. **AI-content transparency** (Art. 50 marker on articles) — ✅ **BUILT (#394)**: JSON-LD IPTC marker + visible footer disclosure on the Forge-controlled public render. Deferred: external-CMS body disclosure (product decision).
-4. **DPA + sub-processor page + RoPA** — DOCUMENT (the procurement artifacts).
+4. **DPA + sub-processor page + RoPA** — ✅ **BUILT (#396)**: `/dpa` + `/subprocessors` live pages, the sub-processor SSOT (privacy policy renders from it), and the attorney-review Word export. RoPA substance lives in DPA Annex I. Remaining: counsel finalizes the binding DPA terms; a standalone RoPA if desired.
 5. **EU AI Act risk-tier memo** (limited-risk, not high-risk) — DOCUMENT one page, **don't build** conformity machinery. **[legal]**
 6. **Data-residency / transfer basis** — **[legal]** assessment; the real enterprise-EU blocker.
 7. **Breach-notification runbook** — DOCUMENT.
@@ -107,6 +107,9 @@ This is the audit subsystem only — table, helper+seams, read/export API, page.
 ---
 
 ## Change log
+
+### 2026-06-13 — Shareable DPA + sub-processor pages + SSOT (#396)
+Live, no-nav pages a customer's legal team gets by URL: `/subprocessors` (Art. 28 list as a dated table, Forge sub-processors vs customer-directed integrations) and `/dpa` (standard SaaS DPA terms + Annexes, execute-by-contact). Sub-processor data centralized in `src/data/subprocessors.ts` (SSOT); Privacy Policy Section 6 now renders from it, killing the #357 drift. Footer-linked. An attorney-review Word export (DPA with the sub-processor list as Annex III, Forge-specific Annexes I/II) was delivered to Brian for counsel. Closes the DPA/sub-processor procurement-artifact line; binding contract language + transfer-mechanism completion remain with counsel.
 
 ### 2026-06-13 — AI-content transparency marker shipped (#394)
 Sub-issue #3 (EU AI Act Art. 50, the cheap time-boxed one): the public server-rendered article now emits a machine-readable IPTC `digitalSourceType = compositeWithTrainedAlgorithmicMedia` on its Article JSON-LD (the Google/IPTC-recognized AI-content signal; "composite" = AI draft under Compliance-Gate human review), and the public React article footer carries a visible reader disclosure. Closes the Transparency checklist line. Deferred: disclosure appended to externally-syndicated article bodies (HubSpot/Webflow/Ghost/WordPress/Medium) — that mutates published content and is a product decision, not a unilateral one.
