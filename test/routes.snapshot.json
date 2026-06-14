@@ -54,6 +54,7 @@
   "GET /api/email-campaign/brief-templates/:brandProfileId",
   "GET /api/email-campaign/generate/:id",
   "GET /api/email-campaign/list/:brandProfileId",
+  "GET /api/external/brand-profile",
   "GET /api/facebook/pipedream/list-pages",
   "GET /api/factual-ground/authors/:brandProfileId",
   "GET /api/geo-strategist/briefs",

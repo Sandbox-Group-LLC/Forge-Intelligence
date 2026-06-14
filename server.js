@@ -2649,6 +2649,43 @@ app.patch('/api/brand-settings/:brandProfileId', async (req, res) => {
   }
 });
 
+// External: token-gated brand-profile read by domain. Lets Mailforge (and other
+// internal Sandbox apps) pull the active brand profile for a company by its
+// domain, machine-to-machine. Gated by a shared bearer MAILFORGE_SERVICE_TOKEN
+// (constant-time compare); disabled (503) until that env var is set.
+app.get('/api/external/brand-profile', async (req, res) => {
+  const expected = process.env.MAILFORGE_SERVICE_TOKEN;
+  if (!expected) return res.status(503).json({ error: 'service token not configured' });
+  const token = (req.get('authorization') || '').replace(/^Bearer\s+/i, '');
+  const ok =
+    token.length === expected.length &&
+    timingSafeEqual(Buffer.from(token), Buffer.from(expected));
+  if (!ok) return res.status(401).json({ error: 'unauthorized' });
+
+  const raw = String(req.query.url || '').trim().toLowerCase();
+  if (!raw) return res.status(400).json({ error: 'url query param required' });
+  const domain = raw.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '');
+  if (!domain) return res.status(400).json({ error: 'invalid url' });
+
+  try {
+    const result = await pool.query(
+      `SELECT id, brand_url, brand_name, version, profile_data
+         FROM brand_profiles
+        WHERE is_active = true
+          AND rtrim(regexp_replace(lower(brand_url), '^https?://(www\\.)?', ''), '/') = $1
+        ORDER BY updated_at DESC
+        LIMIT 1`,
+      [domain]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'no active profile for domain' });
+    const r = result.rows[0];
+    const profile = { id: r.id, brandName: r.brand_name, brandUrl: r.brand_url, version: r.version, ...(r.profile_data || {}) };
+    return res.json({ profile });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/brand-profiles/list', requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
