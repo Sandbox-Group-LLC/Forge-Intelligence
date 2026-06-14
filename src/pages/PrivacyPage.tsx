@@ -1,4 +1,5 @@
 import React from 'react';
+import { subProcessors, customerDirectedRecipients } from '../data/subprocessors';
 
 const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
   <div style={styles.section}>
@@ -90,32 +91,12 @@ export default function PrivacyPage() {
           </Section>
 
           <Section title="6. Third-Party Services">
-            <P>The following services process data as part of operating the platform. Each is governed by their own privacy policy.</P>
+            <P>The following services process data as part of operating the platform; each is governed by their own privacy policy. The canonical, dated list is maintained at <a href="/subprocessors" style={styles.link}>forgeintelligence.ai/subprocessors</a>.</P>
+            <P><strong style={styles.strong}>Sub-processors</strong> (engaged by Forge to deliver the service):</P>
+            <UL items={subProcessors.map(s => `${s.name} (${s.url}) — ${s.purpose}`)} />
+            <P><strong style={styles.strong}>Customer-directed integrations</strong> (connected by you; data flows at your instruction):</P>
+            <UL items={customerDirectedRecipients.map(s => `${s.name} (${s.url}) — ${s.purpose}`)} />
             <UL items={[
-              "Clerk (clerk.com) — authentication, session management, user identity.",
-              "NeonDB (neon.tech) — primary database, serverless Postgres with Row Level Security.",
-              "Anthropic (anthropic.com) — LLM inference for all AI-powered stages. Claude Opus, Sonnet, and Haiku models. Brand voice, personas, competitive analysis, and brain data are sent as context with each request. Anthropic's API terms prohibit using API inputs for training.",
-              "Perplexity AI (perplexity.ai) — web-sourced market research, competitor analysis, source discovery via the Sonar model, and AI-visibility probing. Brand URLs, competitor URLs, market-context queries, and brand-free buyer questions are sent during brand analysis, topic mapping, and citation tracking.",
-              "Jina Reader (jina.ai) — primary web-content extraction for brand and competitor site crawls. Only publicly available page URLs are sent.",
-              "Bright Data (brightdata.com) — fallback web-content extraction (Web Unlocker and Scraping Browser) when a public page cannot be read directly. Only publicly available page URLs are sent.",
-              "OpenAI (openai.com) — AI-visibility probing only. Brand-free, category-level buyer questions are sent to measure whether ChatGPT cites your brand. No brand content, brain data, or personal data is sent to OpenAI.",
-              "Google Gemini API (Google LLC) — AI-visibility probing only, via Gemini with Search grounding. Same brand-free buyer questions; no personal data.",
-              "ValueSERP / SerpAPI — SERP data providers used to read Google AI Overviews for visibility measurement. Only the buyer-question search queries are sent.",
-              "fal.ai — hero image generation via Flux models. Image prompts derived from article content are sent to fal.ai.",
-              "Resend (resend.com) — transactional email delivery for account notifications, review requests, and performance digests.",
-              "PayPal (paypal.com) — one-time payment processing at $99.",
-              "Pipedream Connect (pipedream.com) — OAuth management for LinkedIn, Facebook, HubSpot, and Webflow. Raw tokens are never stored in our database.",
-              "Bitly (bitly.com) — URL shortening for social post copy. Only article URLs and UTM parameters are sent.",
-              "Render (render.com) — application hosting and deployment.",
-              "Google Search Console (Google LLC) — SEO performance data, synced on demand with your authorization via read-only API scope.",
-              "HubSpot (hubspot.com) — CRM sync on login. Email and sign-in timestamp only.",
-              "EasyCron (easycron.com) — scheduled job triggers for pattern extraction, decay monitoring, and GEO refresh.",
-              "LinkedIn API (linkedin.com) — publishing articles and post copy to your connected LinkedIn account. Engagement metrics are synced back for analytics.",
-              "X / Twitter API (x.com) — publishing tweets and syncing engagement data. OAuth 2.0 tokens are stored in our database and refreshed automatically.",
-              "Facebook Graph API (facebook.com) — publishing to connected Facebook Pages and syncing engagement metrics.",
-              "Reddit API (reddit.com) — publishing articles to subreddits you designate. OAuth tokens are obtained at publish time.",
-              "Medium API (medium.com) — publishing articles to your connected Medium account.",
-              "Ghost, WordPress, and Webflow APIs — publishing articles to your connected CMS. Connection credentials are managed via Pipedream Connect.",
               "LinkedIn Insight Tag — we embed the LinkedIn Insight Tag on our marketing pages for conversion measurement and audience analytics. This tag may set cookies and collect browsing data on forgeintelligence.ai. It is governed by LinkedIn's privacy policy. See Section 9 for details.",
             ]} />
           </Section>
