@@ -35,15 +35,15 @@ Adapted from the GDPR implementation playbook (community skill, `gdpr-data-handl
 - ✅ **Audit logging** — unified `audit_log` table + `recordAudit()` + Settings → Audit Log (read/filter/CSV-export, super-admin only); shipped #388. Live write seams: relay queries, brand mutations, exports, **DSAR access/erase (#391)**. _Pending follow-ons:_ read-view logging.
 
 ### Breach Response
-- ⬜ Breach detection mechanisms
-- ⬜ **[legal]** 72-hour authority notification process
-- ⬜ Breach documentation system
+- 🟡 Breach detection mechanisms — incident discipline + audit-log evidence capture documented in `BREACH-RUNBOOK.md`; no automated anomaly alerting yet.
+- 🟡 **[legal]** 72-hour authority notification process — documented (`BREACH-RUNBOOK.md` Steps 2–4); needs the supervisory authority + DPO/contact confirmed.
+- ✅ Breach documentation system — runbook Step 5 + incident-log discipline (Art. 33(5)); the audit log is the evidence substrate.
 
 ### Documentation
 - 🟡 Records of processing activities (Art. 30) — DPA Annex I (processing details) + the sub-processor SSOT now cover the substance (#396); not yet a standalone RoPA document.
 - ⬜ **[legal]** DPIA (if required — judgment call)
 - ✅ Data Processing Agreement (DPA) + sub-processor list — live shareable pages `/dpa` + `/subprocessors` and an attorney-review Word export (#396). _Binding contract language pending counsel finalization._
-- ⬜ **[legal]** EU AI Act risk-tier memo: position Forge as a *limited-risk* system (Art. 50 transparency only), **not** Annex-III high-risk. One page; it's what regulated buyers' legal teams actually want.
+- 🟡 **[legal]** EU AI Act risk-tier memo: drafted in `EU-AI-ACT-RISK-MEMO.md` (limited-risk position, Art. 50 only, not Annex III, deployer-not-provider for GPAI). Pending counsel sign-off + an AUP clause prohibiting high-risk decisioning use of Forge output.
 
 ### Data Residency / Transfers
 - 🟡 **[legal]** International-transfer basis (SCCs / adequacy) — now *documented* in DPA §11 + the sub-processors page transfers section (#396); Forge remains US-all-the-way (Render US, Neon `us-west-2`, Anthropic/OpenAI/Jina/Bright Data/ValueSERP US), so the SCC completion + transfer-impact assessment still need counsel sign-off. **The real enterprise-EU-deal blocker, not "high-risk."**
@@ -100,13 +100,16 @@ This is the audit subsystem only — table, helper+seams, read/export API, page.
 2. **GDPR DSAR endpoints** — ✅ **BUILT (#391)**: access/export/erase across reviewers, support tickets, and Factual Ground authors; writes to the audit log. Deferred: rectification, self-service intake, 30-day-deadline tracking.
 3. **AI-content transparency** (Art. 50 marker on articles) — ✅ **BUILT (#394)**: JSON-LD IPTC marker + visible footer disclosure on the Forge-controlled public render. Deferred: external-CMS body disclosure (product decision).
 4. **DPA + sub-processor page + RoPA** — ✅ **BUILT (#396)**: `/dpa` + `/subprocessors` live pages, the sub-processor SSOT (privacy policy renders from it), and the attorney-review Word export. RoPA substance lives in DPA Annex I. Remaining: counsel finalizes the binding DPA terms; a standalone RoPA if desired.
-5. **EU AI Act risk-tier memo** (limited-risk, not high-risk) — DOCUMENT one page, **don't build** conformity machinery. **[legal]**
+5. **EU AI Act risk-tier memo** (limited-risk, not high-risk) — 🟡 **DRAFTED** (`EU-AI-ACT-RISK-MEMO.md`); counsel sign-off pending. Did **not** build conformity machinery (correctly N/A).
 6. **Data-residency / transfer basis** — **[legal]** assessment; the real enterprise-EU blocker.
-7. **Breach-notification runbook** — DOCUMENT.
+7. **Breach-notification runbook** — 🟡 **DRAFTED** (`BREACH-RUNBOOK.md`); needs Incident Lead / DPO / supervisory authority named + the DPA processor-notification window confirmed.
 
 ---
 
 ## Change log
+
+### 2026-06-15 — Risk-tier memo + breach runbook drafted
+The two remaining #25 documents drafted for review (no code): `EU-AI-ACT-RISK-MEMO.md` (Forge = limited-risk, Art. 50 transparency only — implemented in #394 — not Annex III high-risk; deployer-not-provider for GPAI; with the buyer-due-diligence posture) and `BREACH-RUNBOOK.md` (GDPR Arts. 33–34 playbook grounded in the real stack — audit-log evidence capture, Render single-key cred rotation, Resend notification, DPA processor→controller step). Both bannered DRAFT with `[legal]`/`[confirm]` placeholders for the items only counsel/founder decide (supervisory authority, DPO/Incident-Lead, notification windows, AUP clause). This closes out everything in #25 that doesn't require counsel's own words — what remains is sign-off, not authoring.
 
 ### 2026-06-13 — Shareable DPA + sub-processor pages + SSOT (#396)
 Live, no-nav pages a customer's legal team gets by URL: `/subprocessors` (Art. 28 list as a dated table, Forge sub-processors vs customer-directed integrations) and `/dpa` (standard SaaS DPA terms + Annexes, execute-by-contact). Sub-processor data centralized in `src/data/subprocessors.ts` (SSOT); Privacy Policy Section 6 now renders from it, killing the #357 drift. Footer-linked. An attorney-review Word export (DPA with the sub-processor list as Annex III, Forge-specific Annexes I/II) was delivered to Brian for counsel. Closes the DPA/sub-processor procurement-artifact line; binding contract language + transfer-mechanism completion remain with counsel.
