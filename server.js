@@ -2686,7 +2686,69 @@ app.get('/api/external/brand-profile', async (req, res) => {
   }
 });
 
+// POST /api/external/analyze — token-gated, headless "New Analysis" for Mailforge.
+// Generates a brand profile for a domain that has none, then makes it PERMANENT
+// (drops the anonymous 24h trial expiry) and unclaimed, so it's both usable now
+// AND a ready-to-claim asset if the prospect later converts to a paid Forge
+// account (their onboarding claim flow attaches them to the existing row).
+// Reuses the Context Hub analysis pipeline (scrape + Sonar + Claude).
+app.post('/api/external/analyze', express.json({ limit: '16kb' }), async (req, res) => {
+  const expected = process.env.MAILFORGE_SERVICE_TOKEN;
+  if (!expected) return res.status(503).json({ error: 'service token not configured' });
+  const token = (req.get('authorization') || '').replace(/^Bearer\s+/i, '');
+  const ok =
+    token.length === expected.length &&
+    timingSafeEqual(Buffer.from(token), Buffer.from(expected));
+  if (!ok) return res.status(401).json({ error: 'unauthorized' });
+
+  const raw = String(req.body?.url || '').trim().toLowerCase();
+  if (!raw) return res.status(400).json({ error: 'url required' });
+  const domain = raw.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '');
+  if (!domain || !domain.includes('.')) return res.status(400).json({ error: 'invalid url' });
+
+  const matchDomain = `rtrim(regexp_replace(lower(brand_url), '^https?://(www\\.)?', ''), '/') = $1`;
+  const shapeProfile = (r) => ({ id: r.id, brandName: r.brand_name, brandUrl: r.brand_url, version: r.version, ...(r.profile_data || {}) });
+
+  try {
+    // Already have a real (non-empty) active profile? Return it — never re-scan
+    // a domain we already know (no double spend). Ensure it's permanent.
+    const existing = await pool.query(
+      `SELECT id, brand_url, brand_name, version, profile_data FROM brand_profiles
+        WHERE is_active = true AND profile_data <> '{}'::jsonb AND ${matchDomain}
+        ORDER BY updated_at DESC LIMIT 1`,
+      [domain]
+    );
+    if (existing.rows.length) {
+      await pool.query(`UPDATE brand_profiles SET expires_at = NULL WHERE id = $1`, [existing.rows[0].id]);
+      return res.json({ profile: shapeProfile(existing.rows[0]), generated: false });
+    }
+
+    // Run the full pipeline (same internal call seed-brain uses).
+    const analyzeRes = await fetch(`https://${req.headers.host}/api/context-hub/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ brandUrl: `https://${domain}`, saveToBrain: true, checkBrainFirst: true })
+    });
+    const out = await analyzeRes.json().catch(() => ({}));
+    if (!analyzeRes.ok || !out.success || !out.data?.id) {
+      const code = analyzeRes.status === 409 ? 409 : 502;
+      return res.status(code).json({ error: out.error || out.message || 'analysis failed', reason: out.reason });
+    }
+
+    // Make it permanent + unclaimed (drop the 24h anonymous trial expiry).
+    await pool.query(`UPDATE brand_profiles SET expires_at = NULL WHERE id = $1`, [out.data.id]);
+    const fresh = await pool.query(
+      `SELECT id, brand_url, brand_name, version, profile_data FROM brand_profiles WHERE id = $1`,
+      [out.data.id]
+    );
+    return res.json({ profile: shapeProfile(fresh.rows[0]), generated: true });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/brand-profiles/list', requireAuth, async (req, res) => {
+
   try {
     const result = await pool.query(
       `SELECT id, brand_url, brand_name, profile_data FROM brand_profiles WHERE is_active = true ORDER BY updated_at DESC`
