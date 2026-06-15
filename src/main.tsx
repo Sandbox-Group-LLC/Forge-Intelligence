@@ -37,6 +37,7 @@ import DpaPage from './pages/DpaPage';
 import TermsPage from './pages/TermsPage';
 import DocsPage from './pages/DocsPage';
 import AcceptableUsePage from './pages/AcceptableUsePage';
+import TldrPage from './pages/TldrPage';
 import EmailCampaignPage from './pages/EmailCampaignPage';
 import QuickStartPage from './pages/QuickStartPage';
 import AiVisibilityScanPage from './pages/AiVisibilityScanPage';
@@ -119,6 +120,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/dpa" element={<DpaPage />} />
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/acceptable-use" element={<AcceptableUsePage />} />
+        <Route path="/tldr" element={<TldrPage />} />
         <Route path="/docs" element={<DocsPage />} />
         <Route path="/docs/:slug" element={<DocsPage />} />
         <Route path="/product" element={<Product />} />
