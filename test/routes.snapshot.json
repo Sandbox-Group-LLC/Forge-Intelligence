@@ -166,6 +166,7 @@
   "POST /api/email-campaign/email/:id/dismiss-flag-as-false-positive",
   "POST /api/email-campaign/email/:id/resolve-flag",
   "POST /api/email-campaign/save-brief-template",
+  "POST /api/external/analyze",
   "POST /api/facebook/pipedream/select-page",
   "POST /api/forge-scrape",
   "POST /api/forge/prompt-pack/lovable",
