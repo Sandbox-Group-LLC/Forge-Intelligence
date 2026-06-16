@@ -4096,6 +4096,8 @@ ${mistakesRes.rows.length > 0 ? trimTo(mistakesRes.rows, 1500) : 'No mistakes lo
 
 CRITICAL: Factual Ground (if present above) is the source of truth for any claim about this company — use it verbatim and never contradict it. Brain patterns reinforce proven angles. Brain mistakes are what to avoid. These are real signals from published content performance — treat them as hard constraints on tone, angle, and format.
 
+GROUNDING (closed-world — applies even if Factual Ground is empty): ground every concrete claim about this company in the Brand Profile, Factual Ground, and briefs above. Do NOT introduce specifics that do not appear there — this includes prices or fees, named competitor products, named methodologies/models/frameworks, statistics or percentages, customer names, case studies, dates, credentials, or product/feature names. If a specific is not provided in the context above, omit it or speak generally — never invent one to sound authoritative. Never state a price as a bare number: always include its terms (what it covers and its conditions). Do not name, rank, compare against, or disparage specific competitor products.
+
 Return ONLY valid JSON matching the specified output format. No markdown, no code fences, no commentary.`;
 
     send('chunk', 'Brain loaded. Building article...');
