@@ -667,6 +667,8 @@ BRAIN MISTAKES:
 ${trimTo(mistakesRes.rows, 1500)}
 
 IMPORTANT: Use the angle profile above to lock the persona, funnel position, content type, and E-E-A-T focus.
+
+GROUNDING (closed-world — applies even if Factual Ground is empty): ground every concrete claim about this company in the Brand Profile, Factual Ground, and briefs above. Do NOT introduce specifics that do not appear there — this includes prices or fees, named competitor products, named methodologies/models/frameworks, statistics or percentages, customer names, case studies, dates, credentials, or product/feature names. If a specific is not provided in the context above, omit it or speak generally — never invent one to sound authoritative. Never state a price as a bare number: always include its terms (what it covers and its conditions). Do not name, rank, compare against, or disparage specific competitor products.
 Return ONLY valid JSON matching the content generator output format.`;
 
       let fullText = '';
