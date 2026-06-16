@@ -124,25 +124,39 @@ const useRise = (delay = 0, dist = 50) => {
 // (scrollWidth/Height, unaffected by the children's entrance transforms) and
 // shrinks if needed.
 //
-// The frame is held by delayRender until the scale is MEASURED AND COMMITTED —
-// continueRender fires in a separate effect gated on `scale`, NOT in the same
-// effect as setScale. Releasing in the same tick let renderMedia screenshot the
-// pre-scale (scale=1) frame on some frames and the scaled frame on others, so
-// the headline flickered between full and fitted size frame-to-frame (the
-// "shaking" glitch — most visible on the first scene's long headline).
+// The "shaking" glitch was a per-WORKER measurement race, not a release-timing
+// one. renderMedia/Lambda render frames across several concurrent browser
+// workers; consecutive frames land on alternating workers. A cold worker can
+// measure `scrollWidth` against not-yet-settled font layout and get a width a
+// hair different from a warm worker's — so the fitted scale differs per worker,
+// and the headline scales slightly bigger/smaller on ALTERNATING frames (the
+// vibration). Two defenses, both needed:
+//   1. Measure only AFTER `document.fonts.ready`, so every worker measures the
+//      same final glyph metrics (kills the cold-vs-warm split at the source).
+//   2. Quantize the fitted scale to 1% steps, so any residual sub-pixel width
+//      difference collapses to the SAME scale on every worker and every frame.
+// continueRender still fires only once the scale is committed.
 const Fit: React.FC<{ children: React.ReactNode; pad: number }> = ({ children, pad }) => {
   const { width, height } = useVideoConfig();
   const ref = React.useRef<HTMLDivElement>(null);
   const [scale, setScale] = React.useState<number | null>(null);
   const [handle] = React.useState(() => delayRender("fit-measure"));
   React.useEffect(() => {
-    const el = ref.current;
-    const s = el ? Math.min(1, (width - pad * 2) / el.scrollWidth, (height - pad * 2) / el.scrollHeight) : 1;
-    setScale(s > 0 && s < 0.999 ? s : 1);
-  }, [width, height, pad]);
-  React.useEffect(() => {
-    if (scale !== null) continueRender(handle);
-  }, [scale, handle]);
+    let done = false;
+    const measure = () => {
+      if (done) return;
+      done = true;
+      const el = ref.current;
+      const raw = el ? Math.min(1, (width - pad * 2) / el.scrollWidth, (height - pad * 2) / el.scrollHeight) : 1;
+      const s = raw >= 0.99 ? 1 : Math.round(raw * 100) / 100;
+      setScale(s);
+      continueRender(handle);
+    };
+    const fonts = (document as Document & { fonts?: { status: string; ready: Promise<unknown> } }).fonts;
+    if (fonts && fonts.status !== "loaded") void fonts.ready.then(measure);
+    else measure();
+    return () => { done = true; };
+  }, [width, height, pad, handle]);
   return (
     <div style={{ transform: `scale(${scale ?? 1})`, transformOrigin: "center center", display: "flex", justifyContent: "center", alignItems: "center" }}>
       <div ref={ref}>{children}</div>
