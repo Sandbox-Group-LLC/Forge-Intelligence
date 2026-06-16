@@ -10,6 +10,16 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
+### 2026-06-16 — Closed-world grounding guardrail (anti-confabulation)
+
+A published SYSOI article (`field-event-attribution…`) recommended an attribution model SYSOI doesn't offer (W-shaped), named a competitor (Cometly), and dumped pricing without terms. Root cause traced: the article faithfully echoed a **polluted brand profile** (`profile_data.voiceProfile` literally said *"openly names competitors, publishes real prices"*; pricing baked in bare), while the strong **Factual Ground** guardrail was **NULL for SYSOI** (so inert), and even when present it only says "don't *contradict*" — not closed-world.
+
+- **Fix (this PR):** added an **unconditional closed-world GROUNDING rule** to both generation user-prompts (`server.js` content-generator + `src/server/routes/campaign.js`): ground every concrete claim in Brand Profile / Factual Ground / briefs; do NOT introduce prices, named competitors, named methodologies/models, stats, customers, case studies, dates, credentials, or product names not present; never a bare price (always with terms); never name/disparage competitor products. Applies even when Factual Ground is empty (the SYSOI case).
+- **Done out-of-band (DB):** SYSOI brand `profile_data` de-polluted (competitor-naming voice directive removed; pricing now carries terms). The live article + Forge source `article_json` were corrected to SYSOI's real models (multi-touch time-decay 180d + last-touch).
+- **Next:** populate SYSOI's `settings.factualGround` (now that it'll be obeyed); confirm the facts-UI writes to `factualGround` for every brand; consider a pre-publish fact-gate on the `compliance/precog` path.
+
+---
+
 ### 2026-06-12 (cont. 3) — Evening: docs race fixed, Opus truncation, UI copy, generation-surface sweep
 
 All merged to `development` same evening.
