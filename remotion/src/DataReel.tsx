@@ -113,28 +113,38 @@ const useRise = (delay = 0, dist = 50) => {
   const { k } = useL();
   const T = useT();
   const s = spring({ frame: frame - delay, fps, config: T.springCfg });
-  return { opacity: Math.min(1, s), transform: `translateY(${interpolate(s, [0, 1], [dist * k, 0])}px)` };
+  // Round to whole pixels: a fractional translateY on text re-rasterizes the
+  // glyphs at sub-pixel positions each frame inside Fit's scale() wrapper, which
+  // shimmers. Whole-pixel steps are visually identical and jitter-free.
+  return { opacity: Math.min(1, s), transform: `translateY(${Math.round(interpolate(s, [0, 1], [dist * k, 0]))}px)` };
 };
 
 // Scale scene content DOWN to fit the safe area, so a long headline or a deck
 // scene with many items can never render out of frame. Measures natural size
-// (scrollWidth/Height, unaffected by the transform) once and shrinks if needed;
-// delayRender holds the frame until the measurement lands on Lambda.
+// (scrollWidth/Height, unaffected by the children's entrance transforms) and
+// shrinks if needed.
+//
+// The frame is held by delayRender until the scale is MEASURED AND COMMITTED —
+// continueRender fires in a separate effect gated on `scale`, NOT in the same
+// effect as setScale. Releasing in the same tick let renderMedia screenshot the
+// pre-scale (scale=1) frame on some frames and the scaled frame on others, so
+// the headline flickered between full and fitted size frame-to-frame (the
+// "shaking" glitch — most visible on the first scene's long headline).
 const Fit: React.FC<{ children: React.ReactNode; pad: number }> = ({ children, pad }) => {
   const { width, height } = useVideoConfig();
   const ref = React.useRef<HTMLDivElement>(null);
-  const [scale, setScale] = React.useState(1);
+  const [scale, setScale] = React.useState<number | null>(null);
   const [handle] = React.useState(() => delayRender("fit-measure"));
   React.useEffect(() => {
     const el = ref.current;
-    if (el) {
-      const s = Math.min(1, (width - pad * 2) / el.scrollWidth, (height - pad * 2) / el.scrollHeight);
-      if (s > 0 && s < 0.999) setScale(s);
-    }
-    continueRender(handle);
-  }, [handle, width, height, pad]);
+    const s = el ? Math.min(1, (width - pad * 2) / el.scrollWidth, (height - pad * 2) / el.scrollHeight) : 1;
+    setScale(s > 0 && s < 0.999 ? s : 1);
+  }, [width, height, pad]);
+  React.useEffect(() => {
+    if (scale !== null) continueRender(handle);
+  }, [scale, handle]);
   return (
-    <div style={{ transform: `scale(${scale})`, transformOrigin: "center center", display: "flex", justifyContent: "center", alignItems: "center" }}>
+    <div style={{ transform: `scale(${scale ?? 1})`, transformOrigin: "center center", display: "flex", justifyContent: "center", alignItems: "center" }}>
       <div ref={ref}>{children}</div>
     </div>
   );

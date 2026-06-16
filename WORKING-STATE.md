@@ -10,6 +10,14 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
+### 2026-06-16 (later) — Remotion: fix first-scene "shaking" copy (Fit render race)
+
+The product-video copy shook / read as a rendering glitch on the first scene. Root cause in `remotion/src/DataReel.tsx`'s `Fit` component: it called `continueRender` in the **same effect** as `setScale`, so `renderMedia` screenshotted the pre-scale (`scale=1`) frame on some frames and the fitted (`scale<1`) frame on others → the headline flickered between full and fitted size frame-to-frame. Worst on scene 1 because its long headline is the one `Fit` actually scales down.
+
+- **Fix:** initialize `scale` to `null` and release the frame in a **separate effect gated on `scale`** — the delayRender holds until the scale is measured AND committed, so every captured frame is at the final scale. Also rounded `useRise`'s entrance `translateY` to whole pixels (sub-pixel text inside `Fit`'s `scale()` shimmers). `npx tsc --noEmit` clean. No behavior change for already-fitting scenes.
+
+---
+
 ### 2026-06-16 — Closed-world grounding guardrail (anti-confabulation)
 
 A published SYSOI article (`field-event-attribution…`) recommended an attribution model SYSOI doesn't offer (W-shaped), named a competitor (Cometly), and dumped pricing without terms. Root cause traced: the article faithfully echoed a **polluted brand profile** (`profile_data.voiceProfile` literally said *"openly names competitors, publishes real prices"*; pricing baked in bare), while the strong **Factual Ground** guardrail was **NULL for SYSOI** (so inert), and even when present it only says "don't *contradict*" — not closed-world.
