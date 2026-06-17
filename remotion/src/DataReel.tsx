@@ -113,28 +113,52 @@ const useRise = (delay = 0, dist = 50) => {
   const { k } = useL();
   const T = useT();
   const s = spring({ frame: frame - delay, fps, config: T.springCfg });
-  return { opacity: Math.min(1, s), transform: `translateY(${interpolate(s, [0, 1], [dist * k, 0])}px)` };
+  // Round to whole pixels: a fractional translateY on text re-rasterizes the
+  // glyphs at sub-pixel positions each frame inside Fit's scale() wrapper, which
+  // shimmers. Whole-pixel steps are visually identical and jitter-free.
+  return { opacity: Math.min(1, s), transform: `translateY(${Math.round(interpolate(s, [0, 1], [dist * k, 0]))}px)` };
 };
 
 // Scale scene content DOWN to fit the safe area, so a long headline or a deck
 // scene with many items can never render out of frame. Measures natural size
-// (scrollWidth/Height, unaffected by the transform) once and shrinks if needed;
-// delayRender holds the frame until the measurement lands on Lambda.
+// (scrollWidth/Height, unaffected by the children's entrance transforms) and
+// shrinks if needed.
+//
+// The "shaking" glitch was a per-WORKER measurement race, not a release-timing
+// one. renderMedia/Lambda render frames across several concurrent browser
+// workers; consecutive frames land on alternating workers. A cold worker can
+// measure `scrollWidth` against not-yet-settled font layout and get a width a
+// hair different from a warm worker's — so the fitted scale differs per worker,
+// and the headline scales slightly bigger/smaller on ALTERNATING frames (the
+// vibration). Two defenses, both needed:
+//   1. Measure only AFTER `document.fonts.ready`, so every worker measures the
+//      same final glyph metrics (kills the cold-vs-warm split at the source).
+//   2. Quantize the fitted scale to 1% steps, so any residual sub-pixel width
+//      difference collapses to the SAME scale on every worker and every frame.
+// continueRender still fires only once the scale is committed.
 const Fit: React.FC<{ children: React.ReactNode; pad: number }> = ({ children, pad }) => {
   const { width, height } = useVideoConfig();
   const ref = React.useRef<HTMLDivElement>(null);
-  const [scale, setScale] = React.useState(1);
+  const [scale, setScale] = React.useState<number | null>(null);
   const [handle] = React.useState(() => delayRender("fit-measure"));
   React.useEffect(() => {
-    const el = ref.current;
-    if (el) {
-      const s = Math.min(1, (width - pad * 2) / el.scrollWidth, (height - pad * 2) / el.scrollHeight);
-      if (s > 0 && s < 0.999) setScale(s);
-    }
-    continueRender(handle);
-  }, [handle, width, height, pad]);
+    let done = false;
+    const measure = () => {
+      if (done) return;
+      done = true;
+      const el = ref.current;
+      const raw = el ? Math.min(1, (width - pad * 2) / el.scrollWidth, (height - pad * 2) / el.scrollHeight) : 1;
+      const s = raw >= 0.99 ? 1 : Math.round(raw * 100) / 100;
+      setScale(s);
+      continueRender(handle);
+    };
+    const fonts = (document as Document & { fonts?: { status: string; ready: Promise<unknown> } }).fonts;
+    if (fonts && fonts.status !== "loaded") void fonts.ready.then(measure);
+    else measure();
+    return () => { done = true; };
+  }, [width, height, pad, handle]);
   return (
-    <div style={{ transform: `scale(${scale})`, transformOrigin: "center center", display: "flex", justifyContent: "center", alignItems: "center" }}>
+    <div style={{ transform: `scale(${scale ?? 1})`, transformOrigin: "center center", display: "flex", justifyContent: "center", alignItems: "center" }}>
       <div ref={ref}>{children}</div>
     </div>
   );
