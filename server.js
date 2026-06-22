@@ -7092,14 +7092,17 @@ app.get('/api/admin/deploys', requireAuth, async (req, res) => {
 // SECURITY: the capture happens client-side, so we CANNOT trust the browser's
 // word that money moved. We re-fetch the order from PayPal server-side and
 // confirm it's COMPLETED for >= $99 before unlocking. Without this, anyone could
-// POST a brandProfileId here and unlock for free. Requires PAYPAL_CLIENT_SECRET
-// (the client id falls back to the public one used by the SDK).
+// POST a brandProfileId here and unlock for free. Reads the REST app secret from
+// PAYPAL_API_KEY (the existing Forge env-group var; PAYPAL_CLIENT_SECRET also
+// accepted) + PAYPAL_CLIENT_ID; the client id falls back to the public SDK one.
 const PAYPAL_API_BASE = 'https://api-m.paypal.com';
 const PAYPAL_CLIENT_ID_FALLBACK = 'AV1QAbjyqG1YTRCWKXzWjZr1Ls7uNLRnk5SzoC-ajEb3rZaq5h58SCUoi9lcZgd9OCvJrM2WchL1om6l';
 
 async function verifyPayPalOrder(orderId, minAmount) {
   const clientId = process.env.PAYPAL_CLIENT_ID || PAYPAL_CLIENT_ID_FALLBACK;
-  const secret = process.env.PAYPAL_CLIENT_SECRET;
+  // The REST app secret is stored in the Forge env group as PAYPAL_API_KEY;
+  // PAYPAL_CLIENT_SECRET is accepted too if it's ever added under that name.
+  const secret = process.env.PAYPAL_CLIENT_SECRET || process.env.PAYPAL_API_KEY;
   if (!clientId || !secret) return { ok: false, reason: 'paypal_not_configured' };
   try {
     const basic = Buffer.from(`${clientId}:${secret}`).toString('base64');
