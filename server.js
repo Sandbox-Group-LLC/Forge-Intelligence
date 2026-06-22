@@ -6690,6 +6690,10 @@ pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS expires_at TIMES
 pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS is_paid BOOLEAN DEFAULT false`).catch(() => {});
     await pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS clerk_user_id TEXT`).catch(() => {});
   await pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS trial_started_at TIMESTAMPTZ`).catch(() => {});
+  // paid_at: set when a PayPal capture / promo is verified. The payment/auth
+  // redesign uses this as the "paid, may create a Clerk account" stamp — distinct
+  // from is_paid (which the Clerk-account tether flips). NULL = unpaid preview.
+  await pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`).catch(() => {});
   await pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS welcome_email_sent_at TIMESTAMPTZ`).catch(() => {});
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_bp_clerk ON brand_profiles(clerk_user_id)`).catch(() => {});
 pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS onboard_session_id TEXT`).catch(() => {});
@@ -7412,6 +7416,14 @@ app.post('/api/promo/validate', softAuth, async (req, res) => {
       `UPDATE brand_profiles SET is_paid = true, expires_at = NULL, updated_at = NOW() WHERE id = $1`,
       [brandProfileId]
     );
+    // Log the redemption (audit trail; the table existed but was never written to).
+    // UNIQUE(code, brand_profile_id) makes a repeat redemption of the same code on
+    // the same brand a no-op.
+    await pool.query(
+      `INSERT INTO promo_redemptions (code, brand_profile_id) VALUES ($1, $2)
+       ON CONFLICT (code, brand_profile_id) DO NOTHING`,
+      [normalised, brandProfileId]
+    ).catch((e) => console.warn('[PROMO] redemption log failed:', e.message));
     console.log(`[PROMO] ${normalised} applied to brand ${brandProfileId} — ${promo.description}`);
   } else if (promo.discount === 100) {
     console.warn(`[PROMO] ${normalised} validated but no brandProfileId found — is_paid NOT set`);
