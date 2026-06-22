@@ -7617,6 +7617,61 @@ app.post('/api/admin/reset-brand-paid', async (req, res) => {
   }
 });
 
+// POST /api/cron/sweep-expired-previews — the 24h reaper.
+// Hard-deletes anonymous unpaid PREVIEW brands once their 24h window lapses, plus
+// their per-brand generated_content_<id> table — so a scan-and-abandon leaves no
+// data behind. Meant to be hit on a schedule (Render Cron Job) with the admin
+// password. Body: { adminPassword, dryRun?, limit? }.
+//
+// SAFE BY CONSTRUCTION — it ONLY touches brands that are ALL of:
+//   • unclaimed   (clerk_user_id IS NULL)
+//   • unpaid      (paid_at IS NULL AND is_paid = false)  ← paid brands are never reaped
+//   • expired     (expires_at < NOW())
+// A paid or claimed brand can never match, so the worst-case blast radius is an
+// abandoned anonymous preview. Use dryRun:true to preview the candidate set first.
+app.post('/api/cron/sweep-expired-previews', async (req, res) => {
+  const { adminPassword, dryRun, limit } = req.body || {};
+  if (adminPassword !== process.env.ADMIN_RELAY_PASSWORD) return res.status(403).json({ error: 'Forbidden' });
+  const batch = Math.min(Math.max(parseInt(limit, 10) || 500, 1), 2000);
+  try {
+    const candidates = await pool.query(
+      `SELECT id, brand_url FROM brand_profiles
+       WHERE is_active = true
+         AND clerk_user_id IS NULL
+         AND paid_at IS NULL
+         AND is_paid = false
+         AND expires_at IS NOT NULL
+         AND expires_at < NOW()
+       ORDER BY expires_at ASC
+       LIMIT $1`,
+      [batch]
+    );
+    if (dryRun) {
+      return res.json({ success: true, dryRun: true, candidates: candidates.rows.length, sample: candidates.rows.slice(0, 20) });
+    }
+    let deleted = 0;
+    const errors = [];
+    for (const row of candidates.rows) {
+      // safeId is the brand's own UUID with dashes→underscores (matches how the
+      // per-brand table was created); UUID-derived, so safe to interpolate.
+      const safeId = row.id.replace(/-/g, '_');
+      try {
+        await pool.query(`DROP TABLE IF EXISTS generated_content_${safeId}`);
+        await pool.query(`DELETE FROM promo_redemptions WHERE brand_profile_id = $1`, [row.id]).catch(() => {});
+        await pool.query(`DELETE FROM brand_profiles WHERE id = $1`, [row.id]);
+        deleted++;
+      } catch (e) {
+        errors.push({ id: row.id, error: e.message });
+        console.error('[REAPER] failed to delete expired preview', row.id, e.message);
+      }
+    }
+    console.log(`[REAPER] swept ${deleted}/${candidates.rows.length} expired previews (${errors.length} errors)`);
+    res.json({ success: true, deleted, attempted: candidates.rows.length, errors });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 
 
 
