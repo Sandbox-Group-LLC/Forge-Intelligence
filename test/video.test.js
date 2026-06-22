@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { videoConfigured, framesForVoiceover } from '../src/server/video.js';
+import { videoConfigured, framesForVoiceover, guardRefineInstruction } from '../src/server/video.js';
 
 describe('videoConfigured', () => {
   const KEYS = [
@@ -42,5 +42,18 @@ describe('framesForVoiceover', () => {
   it('handles empty/undefined safely', () => {
     expect(framesForVoiceover('')).toBeGreaterThanOrEqual(66);
     expect(framesForVoiceover(undefined)).toBeGreaterThanOrEqual(66);
+  });
+});
+
+describe('guardRefineInstruction (deterministic short-circuits)', () => {
+  it('rejects empty / whitespace input before any model call', async () => {
+    expect(await guardRefineInstruction('')).toEqual({ allowed: false, reason: 'empty' });
+    expect(await guardRefineInstruction('   ')).toEqual({ allowed: false, reason: 'empty' });
+    expect(await guardRefineInstruction(null)).toEqual({ allowed: false, reason: 'empty' });
+  });
+
+  it('rejects over-long input (>400 chars) before any model call', async () => {
+    const long = 'a'.repeat(401);
+    expect(await guardRefineInstruction(long)).toEqual({ allowed: false, reason: 'too_long' });
   });
 });
