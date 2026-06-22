@@ -212,6 +212,7 @@
   "POST /api/topic-ideas",
   "POST /api/topic-ideas/bulk",
   "POST /api/utils/shorten-url",
+  "POST /api/video/:id/refine",
   "POST /api/video/arcs",
   "POST /api/video/generate",
   "POST /api/video/upload-shot",

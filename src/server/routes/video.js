@@ -11,6 +11,7 @@ import {
   resolveDirection, presignMusicBed, synthesizeScenes, normalizeTargetSeconds,
   renderReel, getReelProgress, videoArcs, presignShotKeys, MAX_USER_SHOTS,
   ttsHealth, pronunciationsFor, VOICES, MUSIC_BEDS, THEMES, LENGTH_BUDGETS,
+  refineStoryboard, guardRefineInstruction, screensEnabled,
 } from '../video.js';
 
 async function ensureVideosTable() {
@@ -31,6 +32,15 @@ async function ensureVideosTable() {
   // CREATE IF NOT EXISTS won't add columns to a pre-existing table — backfill.
   await pool.query(`ALTER TABLE generated_videos ADD COLUMN IF NOT EXISTS orientation TEXT DEFAULT 'landscape'`);
   await pool.query(`ALTER TABLE generated_videos ADD COLUMN IF NOT EXISTS direction JSONB`);
+  // Refine support: storyboard = the voiceover-bearing draft (never overwritten
+  // by synthesize, so a touch-up can edit it); target_seconds + screenshot_keys
+  // let a refine re-render with the same length + uploads; parent_id /
+  // refine_instruction record the edit lineage.
+  await pool.query(`ALTER TABLE generated_videos ADD COLUMN IF NOT EXISTS storyboard JSONB`);
+  await pool.query(`ALTER TABLE generated_videos ADD COLUMN IF NOT EXISTS target_seconds INTEGER DEFAULT 30`);
+  await pool.query(`ALTER TABLE generated_videos ADD COLUMN IF NOT EXISTS screenshot_keys JSONB`);
+  await pool.query(`ALTER TABLE generated_videos ADD COLUMN IF NOT EXISTS parent_id TEXT`);
+  await pool.query(`ALTER TABLE generated_videos ADD COLUMN IF NOT EXISTS refine_instruction TEXT`);
 }
 ensureVideosTable().catch(e => console.error('[VIDEO] table init failed:', e.message));
 
@@ -43,6 +53,31 @@ async function setStatus(id, fields) {
   );
 }
 
+// Shared back half of every job: a voiceover-bearing draft -> TTS -> Lambda
+// render. Persists `storyboard` (the VO-bearing draft, kept for refine) once,
+// then the synthesized (VO-stripped) scenes for the render. Used by both the
+// initial generate and the refine path.
+async function synthAndRender(id, brand, draft, direction, { orientation, siteUrl, uploadedShots, pronunciations }) {
+  await setStatus(id, {
+    status: 'voicing',
+    scenes: JSON.stringify(draft),
+    storyboard: JSON.stringify(draft),
+    direction: JSON.stringify(direction),
+  });
+  // uploadedShots (user's product screenshots) are the primary source for
+  // "screens" beats; siteUrl auto-capture is the fallback (gated by
+  // VIDEO_SCREENS_ENABLED).
+  const scenes = await synthesizeScenes(draft, id, direction, { siteUrl, orientation, uploadedShots, pronunciations });
+  const musicSrc = direction.musicBed === 'none' ? null : await presignMusicBed(direction.musicBed);
+  await setStatus(id, { status: 'rendering', scenes: JSON.stringify(scenes) });
+  const { renderId, bucketName } = await renderReel({
+    brand, scenes, orientation,
+    music: musicSrc ? { src: musicSrc } : null,
+    theme: direction.theme,
+  });
+  await setStatus(id, { render_id: renderId, bucket_name: bucketName });
+}
+
 // Background pipeline — not awaited by the request.
 async function runJob(id, brief, brand, orientation, brandContext, directionOverrides, targetSeconds, siteUrl, uploadedShots, pronunciations) {
   try {
@@ -53,22 +88,28 @@ async function runJob(id, brief, brand, orientation, brandContext, directionOver
     // Agent proposes the creative direction from the brand brain; user
     // overrides win; unknown ids fall back to safe defaults.
     const direction = resolveDirection(agentPick, directionOverrides);
-    await setStatus(id, { status: 'voicing', scenes: JSON.stringify(draft), direction: JSON.stringify(direction) });
-    // uploadedShots (user's product screenshots) are the primary source for
-    // "screens" beats; siteUrl auto-capture is the fallback (gated by
-    // VIDEO_SCREENS_ENABLED).
-    const scenes = await synthesizeScenes(draft, id, direction, { siteUrl, orientation, uploadedShots, pronunciations });
-
-    const musicSrc = direction.musicBed === 'none' ? null : await presignMusicBed(direction.musicBed);
-    await setStatus(id, { status: 'rendering', scenes: JSON.stringify(scenes) });
-    const { renderId, bucketName } = await renderReel({
-      brand, scenes, orientation,
-      music: musicSrc ? { src: musicSrc } : null,
-      theme: direction.theme,
-    });
-    await setStatus(id, { render_id: renderId, bucket_name: bucketName });
+    await synthAndRender(id, brand, draft, direction, { orientation, siteUrl, uploadedShots, pronunciations });
   } catch (e) {
     console.error('[VIDEO] job failed:', id, e.message);
+    await setStatus(id, { status: 'error', error: e.message }).catch(() => {});
+  }
+}
+
+// Refine pipeline — edit a parent's stored storyboard with one guarded
+// instruction, then re-voice + re-render. The guardrail already passed in the
+// route; here the contract backstop holds: refineStoryboard can only emit a
+// storyboard, validated before it ever reaches TTS/render.
+async function runRefineJob(id, parentStoryboard, parentDirection, instruction, brand, orientation, brandContext, targetSeconds, siteUrl, uploadedShots, pronunciations, allowScreens) {
+  try {
+    await setStatus(id, { status: 'storyboarding' });
+    const { scenes: draft, direction: refinedPick } = await refineStoryboard({
+      storyboard: parentStoryboard, direction: parentDirection, instruction,
+      brandName: brand.name, brandContext, targetSeconds, allowScreens,
+    });
+    const direction = resolveDirection(refinedPick, {});
+    await synthAndRender(id, brand, draft, direction, { orientation, siteUrl, uploadedShots, pronunciations });
+  } catch (e) {
+    console.error('[VIDEO] refine job failed:', id, e.message);
     await setStatus(id, { status: 'error', error: e.message }).catch(() => {});
   }
 }
@@ -109,8 +150,9 @@ router.post('/generate', async (req, res) => {
     const uploadedShots = await presignShotKeys(screenshotKeys, brandProfileId);
 
     const ins = await pool.query(
-      `INSERT INTO generated_videos (brand_profile_id, brief, status, orientation) VALUES ($1, $2, 'queued', $3) RETURNING id`,
-      [brandProfileId, brief, orientation]
+      `INSERT INTO generated_videos (brand_profile_id, brief, status, orientation, target_seconds, screenshot_keys)
+       VALUES ($1, $2, 'queued', $3, $4, $5) RETURNING id`,
+      [brandProfileId, brief, orientation, targetSeconds, JSON.stringify(screenshotKeys)]
     );
     const id = ins.rows[0].id;
     runJob(id, brief, brand, orientation, brandContext, directionOverrides, targetSeconds, row.brand_url, uploadedShots, pronunciations); // fire-and-forget
@@ -161,6 +203,66 @@ router.get('/options', (_req, res) => {
   });
 });
 
+// POST /api/video/:id/refine { instruction } — a guarded touch-up. Edits the
+// parent's stored storyboard with ONE plain-language change and renders a NEW
+// video (the parent is preserved). The instruction passes a strict intent
+// filter first (guardRefineInstruction) so the box can't be abused as a general
+// assistant. Registered before GET /:id (different method, but keep it close).
+router.post('/:id/refine', async (req, res) => {
+  try {
+    const instruction = typeof req.body?.instruction === 'string' ? req.body.instruction.trim() : '';
+    if (!instruction) return res.status(400).json({ error: 'Describe the change you want.', code: 'empty' });
+    if (!videoConfigured()) return res.status(503).json({ error: 'Video rendering is not configured (REMOTION_* env vars missing)' });
+
+    const pr = await pool.query(`SELECT * FROM generated_videos WHERE id = $1`, [req.params.id]);
+    const parent = pr.rows[0];
+    if (!parent) return res.status(404).json({ error: 'Not found' });
+    if (!(await verifyBrandAccess(parent.brand_profile_id, req.userId))) return res.status(403).json({ error: 'Access denied' });
+
+    const storyboard = parent.storyboard; // JSONB -> parsed array
+    if (!Array.isArray(storyboard) || storyboard.length === 0) {
+      return res.status(409).json({ error: 'This video can’t be refined (it predates the refine feature). Generate a new one to enable edits.', code: 'no_storyboard' });
+    }
+
+    // ── Strict guardrail — classify intent before any expensive work ──
+    const verdict = await guardRefineInstruction(instruction);
+    if (!verdict.allowed) {
+      const msg = verdict.reason === 'too_long'
+        ? 'Keep your change under 400 characters.'
+        : verdict.reason === 'guard_error'
+          ? 'Couldn’t check that request just now — please try again.'
+          : 'I can only edit this video — its script, voice, music, style, pacing, length, or call to action. Try something like “make the hook punchier” or “use a calmer voice.”';
+      return res.status(400).json({ error: msg, code: 'rejected' });
+    }
+
+    const r = await pool.query(
+      `SELECT brand_name, profile_data, logo_url, brand_url FROM brand_profiles WHERE id = $1`, [parent.brand_profile_id]
+    );
+    const row = r.rows[0] || {};
+    const brand = buildBrand(row.brand_name || 'Forge Intelligence', row.profile_data, row.logo_url);
+    const brandContext = brandContextFor(row.profile_data);
+    const pronunciations = pronunciationsFor(row.profile_data) || {};
+    const targetSeconds = normalizeTargetSeconds(parent.target_seconds);
+    // Re-presign the parent's uploaded shots (scoped to this brand's prefix) so
+    // a "screens" beat re-renders with the same product images.
+    const screenshotKeys = Array.isArray(parent.screenshot_keys) ? parent.screenshot_keys.slice(0, MAX_USER_SHOTS) : [];
+    const uploadedShots = await presignShotKeys(screenshotKeys, parent.brand_profile_id);
+    const allowScreens = screensEnabled() || uploadedShots.length > 0 || storyboard.some(s => s && s.type === 'screens');
+
+    const ins = await pool.query(
+      `INSERT INTO generated_videos (brand_profile_id, brief, status, orientation, target_seconds, screenshot_keys, parent_id, refine_instruction)
+       VALUES ($1, $2, 'queued', $3, $4, $5, $6, $7) RETURNING id`,
+      [parent.brand_profile_id, parent.brief, parent.orientation, targetSeconds, JSON.stringify(screenshotKeys), parent.id, instruction]
+    );
+    const id = ins.rows[0].id;
+    runRefineJob(id, storyboard, parent.direction, instruction, brand, parent.orientation, brandContext, targetSeconds, row.brand_url, uploadedShots, pronunciations, allowScreens); // fire-and-forget
+    res.status(202).json({ id, status: 'queued' });
+  } catch (e) {
+    console.error('[VIDEO] refine error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/video/:id — poll. Advances a 'rendering' job via getRenderProgress.
 router.get('/:id', async (req, res) => {
   try {
@@ -190,6 +292,7 @@ router.get('/:id', async (req, res) => {
       id: row.id, status: row.status, progress,
       outputUrl: row.output_url || null, error: row.error || null,
       scenes: row.scenes || null, direction: row.direction || null,
+      parentId: row.parent_id || null, refineInstruction: row.refine_instruction || null,
       createdAt: row.created_at,
     });
   } catch (e) {
