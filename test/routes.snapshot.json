@@ -159,6 +159,7 @@
   "POST /api/content/regenerate-image/:contentId",
   "POST /api/content/topic-check",
   "POST /api/context-hub/analyze",
+  "POST /api/cron/sweep-expired-previews",
   "POST /api/digest/send-all",
   "POST /api/digest/send/:brandProfileId",
   "POST /api/domain/check",
