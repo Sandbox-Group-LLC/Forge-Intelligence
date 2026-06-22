@@ -62,6 +62,11 @@ function VideoGeneratorContent() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recent, setRecent] = useState<RecentVideo[]>([]);
+  const [refineText, setRefineText] = useState('');
+  const [refineBusy, setRefineBusy] = useState(false);
+  const [refineError, setRefineError] = useState<string | null>(null);
+  const [refineMode, setRefineMode] = useState(false);
+  const [lineage, setLineage] = useState<{ id: string; outputUrl: string }[]>([]);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   let brains: Brain[] = historyEntries.map(e => ({ id: e.id, brandName: e.brandName, brandUrl: e.brandUrl }));
@@ -148,9 +153,35 @@ function VideoGeneratorContent() {
     return out;
   }
 
+  // Guarded touch-up: send one plain-language change to the current finished
+  // video. The server runs a strict intent filter; an off-topic ask comes back
+  // as a friendly rejection (code: 'rejected') shown inline. On success we
+  // preserve the current render in `lineage` and swap to polling the new job.
+  async function refine() {
+    if (!job || job.status !== 'done' || !job.outputUrl || !refineText.trim() || !authToken) return;
+    setRefineBusy(true); setRefineError(null);
+    try {
+      const r = await fetch(`/api/video/${job.id}/refine`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ instruction: refineText.trim() }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || `Request failed (${r.status})`);
+      setLineage(prev => [{ id: job.id, outputUrl: job.outputUrl! }, ...prev]);
+      setRefineText(''); setRefineMode(true); setBusy(true);
+      setJob({ id: d.id, status: d.status, progress: null, outputUrl: null, error: null });
+    } catch (e: any) {
+      setRefineError(e.message);
+    } finally {
+      setRefineBusy(false);
+    }
+  }
+
   async function generate() {
     if (!selectedBrainId || !brief.trim() || !authToken) return;
     setBusy(true); setError(null); setJob(null);
+    setRefineMode(false); setRefineError(null); setRefineText(''); setLineage([]);
     try {
       const pronunciations = parseSayItLike(sayItLike);
       const r = await fetch('/api/video/generate', {
@@ -197,6 +228,9 @@ function VideoGeneratorContent() {
   const pct = job ? Math.round(
     (STAGE[job.status].base + (job.status === 'rendering' && job.progress ? job.progress * 0.5 : 0)) * 100
   ) : 0;
+  const stageLabel = job
+    ? (refineMode && job.status === 'storyboarding' ? 'Applying your changes…' : STAGE[job.status].label)
+    : '';
 
   return (
     <div className="vg-wrap">
@@ -341,7 +375,7 @@ function VideoGeneratorContent() {
         <div className="vg-job">
           {job.status !== 'done' && job.status !== 'error' && (
             <>
-              <div className="vg-stage">{STAGE[job.status].label}</div>
+              <div className="vg-stage">{stageLabel}</div>
               <div className="vg-bar"><div className="vg-bar-fill" style={{ width: `${pct}%` }} /></div>
               <div className="vg-pct">{pct}%</div>
             </>
@@ -358,6 +392,44 @@ function VideoGeneratorContent() {
               <a className="vg-download" href={job.outputUrl} target="_blank" rel="noreferrer"><Download /> Download MP4</a>
             </div>
           )}
+
+          {job.status === 'done' && job.outputUrl && (
+            <div className="vg-refine">
+              <label className="vg-label" style={{ marginBottom: 4 }}>Not quite right? Make one change</label>
+              <p className="vg-refine-hint">
+                Describe an edit to <strong>this</strong> video — its script, voice, music, style, pacing, length, or call to action.
+                Off-topic requests are declined. e.g. “make the hook punchier”, “use a calmer voice”, “drop the music”.
+              </p>
+              <textarea
+                className="vg-textarea"
+                placeholder="e.g. Tighten the opening line and end with ‘Book a demo.’"
+                value={refineText}
+                onChange={e => { setRefineText(e.target.value); if (refineError) setRefineError(null); }}
+                rows={2}
+                maxLength={400}
+              />
+              <button className="vg-btn" onClick={refine} disabled={refineBusy || !refineText.trim()}>
+                {refineBusy ? 'Submitting…' : 'Refine video'}
+              </button>
+              {refineError && <div className="vg-error">{refineError}</div>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {lineage.length > 0 && (
+        <div className="vg-lineage">
+          <h2 className="vg-lineage-title">Earlier versions this session</h2>
+          <div className="vg-lineage-grid">
+            {lineage.map((v, i) => (
+              <div key={v.id} className="vg-lineage-item">
+                <video className="vg-lineage-video" src={v.outputUrl} controls />
+                <a className="vg-download" href={v.outputUrl} target="_blank" rel="noreferrer">
+                  <Download /> v{lineage.length - i}
+                </a>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
