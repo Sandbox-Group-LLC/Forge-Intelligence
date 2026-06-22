@@ -132,14 +132,14 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
         <h2 className="gate-title">
           {trialExpired
             ? 'Your 7-day trial ended'
-            : (isSignedIn ? `${featureName} is locked` : 'Start your free 7-day trial')}
+            : (isSignedIn ? `${featureName} is locked` : 'Unlock the full suite')}
         </h2>
         <p className="gate-desc">
           {trialExpired
             ? 'Your full-access trial wrapped — keep going with the full Forge Intelligence suite for a one-time $99. Your brain stays exactly as you left it.'
             : (isSignedIn
                 ? 'Unlock the full Forge Intelligence suite — GEO Strategy, Content Generation, Publishing, Performance, and more — for a one-time $99.'
-                : `Sign up free to unlock the full Forge Intelligence suite for 7 days — ${featureName}, all stages, no payment required. Your brain stays saved.`)}
+                : `Unlock the full Forge Intelligence suite — ${featureName}, all stages — for a one-time $99. You'll create your account right after payment. Your brain stays saved.`)}
         </p>
 
         <ul className="gate-features">
@@ -155,38 +155,9 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
           ))}
         </ul>
 
-        {!isSignedIn && !trialExpired && (
-          <button
-            type="button"
-            onClick={() => {
-              if (brandProfileId) localStorage.setItem('forge_pending_brand_id', brandProfileId);
-              window.location.href = `${CLERK_SIGNUP_URL}?redirect_url=${encodeURIComponent(window.location.href)}`;
-            }}
-            style={{
-              width: '100%',
-              padding: '14px 20px',
-              background: '#3563FF',
-              border: 'none',
-              borderRadius: 10,
-              color: '#FFFFFF',
-              fontSize: '0.95rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              marginBottom: 8,
-              letterSpacing: '0.01em',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-            }}
-          >
-            Start your free 7-day trial →
-          </button>
-        )}
         <div className="gate-price-row">
           <span className="gate-price">$99</span>
-          <span className="gate-price-note">{!isSignedIn && !trialExpired ? 'or skip the trial — unlock permanently' : 'one-time · full suite · brain saved permanently'}</span>
+          <span className="gate-price-note">one-time · full suite · brain saved permanently</span>
         </div>
 
         {/* Promo code — persistent, always visible so users know it's available */}
@@ -226,7 +197,7 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
         {ppError && <div className="gate-error">{ppError}</div>}
         <div id="forge-gate-paypal" />
 
-        <p className="gate-caption">{!isSignedIn && !trialExpired ? 'Your free brand brief stays. Sign up unlocks 7 days of full access.' : 'Your free brand brief stays. Payment unlocks all features.'}</p>
+        <p className="gate-caption">Your free brand brief stays. Payment unlocks all features.</p>
         <p style={{ marginTop: 14, fontSize: '0.7rem', color: '#64748B', textAlign: 'center', lineHeight: 1.6 }}>
           By clicking "Pay Now," you agree to our{" "}
           <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: '#7C8DB5', textDecoration: 'underline' }}>Terms of Service</a>{" "}and{" "}
