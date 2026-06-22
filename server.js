@@ -6690,6 +6690,10 @@ pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS expires_at TIMES
 pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS is_paid BOOLEAN DEFAULT false`).catch(() => {});
     await pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS clerk_user_id TEXT`).catch(() => {});
   await pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS trial_started_at TIMESTAMPTZ`).catch(() => {});
+  // paid_at: set when a PayPal capture / promo is verified. The payment/auth
+  // redesign uses this as the "paid, may create a Clerk account" stamp — distinct
+  // from is_paid (which the Clerk-account tether flips). NULL = unpaid preview.
+  await pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`).catch(() => {});
   await pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS welcome_email_sent_at TIMESTAMPTZ`).catch(() => {});
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_bp_clerk ON brand_profiles(clerk_user_id)`).catch(() => {});
 pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS onboard_session_id TEXT`).catch(() => {});
@@ -7092,14 +7096,17 @@ app.get('/api/admin/deploys', requireAuth, async (req, res) => {
 // SECURITY: the capture happens client-side, so we CANNOT trust the browser's
 // word that money moved. We re-fetch the order from PayPal server-side and
 // confirm it's COMPLETED for >= $99 before unlocking. Without this, anyone could
-// POST a brandProfileId here and unlock for free. Requires PAYPAL_CLIENT_SECRET
-// (the client id falls back to the public one used by the SDK).
+// POST a brandProfileId here and unlock for free. Reads the REST app secret from
+// PAYPAL_API_KEY (the existing Forge env-group var; PAYPAL_CLIENT_SECRET also
+// accepted) + PAYPAL_CLIENT_ID; the client id falls back to the public SDK one.
 const PAYPAL_API_BASE = 'https://api-m.paypal.com';
 const PAYPAL_CLIENT_ID_FALLBACK = 'AV1QAbjyqG1YTRCWKXzWjZr1Ls7uNLRnk5SzoC-ajEb3rZaq5h58SCUoi9lcZgd9OCvJrM2WchL1om6l';
 
 async function verifyPayPalOrder(orderId, minAmount) {
   const clientId = process.env.PAYPAL_CLIENT_ID || PAYPAL_CLIENT_ID_FALLBACK;
-  const secret = process.env.PAYPAL_CLIENT_SECRET;
+  // The REST app secret is stored in the Forge env group as PAYPAL_API_KEY;
+  // PAYPAL_CLIENT_SECRET is accepted too if it's ever added under that name.
+  const secret = process.env.PAYPAL_CLIENT_SECRET || process.env.PAYPAL_API_KEY;
   if (!clientId || !secret) return { ok: false, reason: 'paypal_not_configured' };
   try {
     const basic = Buffer.from(`${clientId}:${secret}`).toString('base64');
@@ -7409,6 +7416,14 @@ app.post('/api/promo/validate', softAuth, async (req, res) => {
       `UPDATE brand_profiles SET is_paid = true, expires_at = NULL, updated_at = NOW() WHERE id = $1`,
       [brandProfileId]
     );
+    // Log the redemption (audit trail; the table existed but was never written to).
+    // UNIQUE(code, brand_profile_id) makes a repeat redemption of the same code on
+    // the same brand a no-op.
+    await pool.query(
+      `INSERT INTO promo_redemptions (code, brand_profile_id) VALUES ($1, $2)
+       ON CONFLICT (code, brand_profile_id) DO NOTHING`,
+      [normalised, brandProfileId]
+    ).catch((e) => console.warn('[PROMO] redemption log failed:', e.message));
     console.log(`[PROMO] ${normalised} applied to brand ${brandProfileId} — ${promo.description}`);
   } else if (promo.discount === 100) {
     console.warn(`[PROMO] ${normalised} validated but no brandProfileId found — is_paid NOT set`);
