@@ -7088,21 +7088,86 @@ app.get('/api/admin/deploys', requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/onboard/paypal-success — called after PayPal payment confirmed
-// Removes expiry, marks as paid, unlocks all stages
+// POST /api/onboard/paypal-success — called after a PayPal payment.
+// SECURITY: the capture happens client-side, so we CANNOT trust the browser's
+// word that money moved. We re-fetch the order from PayPal server-side and
+// confirm it's COMPLETED for >= $99 before unlocking. Without this, anyone could
+// POST a brandProfileId here and unlock for free. Requires PAYPAL_CLIENT_SECRET
+// (the client id falls back to the public one used by the SDK).
+const PAYPAL_API_BASE = 'https://api-m.paypal.com';
+const PAYPAL_CLIENT_ID_FALLBACK = 'AV1QAbjyqG1YTRCWKXzWjZr1Ls7uNLRnk5SzoC-ajEb3rZaq5h58SCUoi9lcZgd9OCvJrM2WchL1om6l';
+
+async function verifyPayPalOrder(orderId, minAmount) {
+  const clientId = process.env.PAYPAL_CLIENT_ID || PAYPAL_CLIENT_ID_FALLBACK;
+  const secret = process.env.PAYPAL_CLIENT_SECRET;
+  if (!clientId || !secret) return { ok: false, reason: 'paypal_not_configured' };
+  try {
+    const basic = Buffer.from(`${clientId}:${secret}`).toString('base64');
+    const tokRes = await fetch(`${PAYPAL_API_BASE}/v1/oauth2/token`, {
+      method: 'POST',
+      headers: { Authorization: `Basic ${basic}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'grant_type=client_credentials',
+    });
+    if (!tokRes.ok) return { ok: false, reason: 'token_failed' };
+    const { access_token } = await tokRes.json();
+    const ordRes = await fetch(`${PAYPAL_API_BASE}/v2/checkout/orders/${encodeURIComponent(orderId)}`, {
+      headers: { Authorization: `Bearer ${access_token}`, 'Content-Type': 'application/json' },
+    });
+    if (!ordRes.ok) return { ok: false, reason: 'order_fetch_failed' };
+    const order = await ordRes.json();
+    const cap = order?.purchase_units?.[0]?.payments?.captures?.[0];
+    const amount = parseFloat(cap?.amount?.value ?? '0');
+    if (order?.status !== 'COMPLETED' || cap?.status !== 'COMPLETED') {
+      return { ok: false, reason: 'not_completed' };
+    }
+    if (!(amount >= minAmount)) return { ok: false, reason: 'amount_short', amount };
+    return { ok: true, captureId: cap.id, amount, currency: cap?.amount?.currency_code || 'USD' };
+  } catch (e) {
+    console.error('[PAYPAL] verify error:', e.message);
+    return { ok: false, reason: 'verify_exception' };
+  }
+}
+
 app.post('/api/onboard/paypal-success', async (req, res) => {
   const { brandProfileId, orderId } = req.body;
   if (!brandProfileId) return res.status(400).json({ error: 'brandProfileId required' });
+  if (!orderId || typeof orderId !== 'string') {
+    return res.status(400).json({ error: 'orderId required' });
+  }
   try {
+    // Replay guard: a given PayPal order can only ever unlock ONE brand profile.
+    const prior = await pool.query(
+      `SELECT brand_profile_id FROM payment_events WHERE order_id = $1 LIMIT 1`,
+      [orderId]
+    );
+    if (prior.rows.length && prior.rows[0].brand_profile_id !== brandProfileId) {
+      console.warn('[PAYPAL] order reuse blocked — order:', orderId, 'already on', prior.rows[0].brand_profile_id);
+      return res.status(409).json({ error: 'This payment has already been used.' });
+    }
+    if (prior.rows.length && prior.rows[0].brand_profile_id === brandProfileId) {
+      // Idempotent re-post (e.g. a network retry) for the same brand — already unlocked.
+      return res.json({ success: true, unlocked: true, idempotent: true });
+    }
+
+    // The load-bearing check: confirm PayPal actually captured >= $99 for this order.
+    const verified = await verifyPayPalOrder(orderId, 99);
+    if (!verified.ok) {
+      console.warn('[PAYPAL] verification failed — order:', orderId, 'reason:', verified.reason);
+      const msg = verified.reason === 'paypal_not_configured'
+        ? 'Payment verification is temporarily unavailable. Please contact support.'
+        : 'We could not verify this payment. If you were charged, contact support and we will sort it out.';
+      return res.status(402).json({ error: msg, reason: verified.reason });
+    }
+
     await pool.query(
       `UPDATE brand_profiles SET is_paid = true, expires_at = NULL, updated_at = NOW() WHERE id = $1`,
       [brandProfileId]
     );
     await pool.query(
-      `INSERT INTO payment_events (brand_profile_id, order_id, amount, currency, source) VALUES ($1, $2, 99.00, 'USD', 'paypal')`,
-      [brandProfileId, orderId || null]
+      `INSERT INTO payment_events (brand_profile_id, order_id, amount, currency, source) VALUES ($1, $2, $3, $4, 'paypal')`,
+      [brandProfileId, verified.captureId || orderId, verified.amount, verified.currency]
     ).catch(() => {});
-    console.log('[PAYPAL] Payment confirmed — brandProfileId:', brandProfileId, 'orderId:', orderId);
+    console.log('[PAYPAL] Payment VERIFIED — brandProfileId:', brandProfileId, 'capture:', verified.captureId, '$' + verified.amount);
     res.json({ success: true, unlocked: true });
   } catch(e) {
     res.status(500).json({ success: false, error: e.message });
