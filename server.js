@@ -6694,6 +6694,10 @@ pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS is_paid BOOLEAN 
   // redesign uses this as the "paid, may create a Clerk account" stamp — distinct
   // from is_paid (which the Clerk-account tether flips). NULL = unpaid preview.
   await pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`).catch(() => {});
+  // One-time backfill (idempotent): existing paid brands predate paid_at, so stamp
+  // them — otherwise the new tether gate (paid_at IS NOT NULL) would block a
+  // pre-deploy payer who hasn't claimed yet, and the 24h reaper would be ambiguous.
+  await pool.query(`UPDATE brand_profiles SET paid_at = COALESCE(paid_at, updated_at, NOW()) WHERE is_paid = true AND paid_at IS NULL`).catch(() => {});
   await pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS welcome_email_sent_at TIMESTAMPTZ`).catch(() => {});
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_bp_clerk ON brand_profiles(clerk_user_id)`).catch(() => {});
 pool.query(`ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS onboard_session_id TEXT`).catch(() => {});
@@ -7166,8 +7170,11 @@ app.post('/api/onboard/paypal-success', async (req, res) => {
       return res.status(402).json({ error: msg, reason: verified.reason });
     }
 
+    // Payment verified → stamp paid_at (NOT is_paid). is_paid is flipped only when
+    // the buyer creates their Clerk account (the tether in /api/auth/me), so there's
+    // no access without an account. paid_at also exempts the brand from the 24h reaper.
     await pool.query(
-      `UPDATE brand_profiles SET is_paid = true, expires_at = NULL, updated_at = NOW() WHERE id = $1`,
+      `UPDATE brand_profiles SET paid_at = COALESCE(paid_at, NOW()), updated_at = NOW() WHERE id = $1`,
       [brandProfileId]
     );
     await pool.query(
@@ -7261,13 +7268,16 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
         [req.userId]
       );
       if (!existing.rows.length) {
+        // Tether ONLY a paid brand (paid_at set by PayPal/promo), and flip is_paid
+        // here — account creation is what grants access. An unpaid brand no-ops, so
+        // a Clerk account with no paid brand simply gets nothing.
         const tether1Res = await pool.query(
-          `UPDATE brand_profiles SET clerk_user_id = $1, trial_started_at = COALESCE(trial_started_at, NOW()), updated_at = NOW() WHERE id = $2 AND (clerk_user_id IS NULL) RETURNING brand_name`,
+          `UPDATE brand_profiles SET clerk_user_id = $1, is_paid = true, expires_at = NULL, updated_at = NOW() WHERE id = $2 AND clerk_user_id IS NULL AND paid_at IS NOT NULL RETURNING brand_name`,
           [req.userId, brandId]
         );
         if (tether1Res.rows.length > 0) {
-          console.log(`[AUTH] Tethered brand ${brandId} to user ${req.userId} (trial timer started)`);
-          // Fire-and-forget: trial welcome email (idempotency-guarded inside)
+          console.log(`[AUTH] Tethered PAID brand ${brandId} to user ${req.userId} — is_paid set`);
+          // Fire-and-forget: welcome email (idempotency-guarded inside)
           sendTrialWelcomeEmail(req.userId, tether1Res.rows[0].brand_name).catch(() => {});
         }
       }
@@ -7331,17 +7341,17 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
     // No tethered brand — only tether if brand_id explicitly provided (from GateModal/onboard flow)
     if (!result.rows.length && brandId) {
       const candidate = await pool.query(
-        `SELECT * FROM brand_profiles WHERE id = $1 AND (clerk_user_id IS NULL OR clerk_user_id = $2) AND is_active = true LIMIT 1`,
+        `SELECT * FROM brand_profiles WHERE id = $1 AND (clerk_user_id IS NULL OR clerk_user_id = $2) AND is_active = true AND paid_at IS NOT NULL LIMIT 1`,
         [brandId, req.userId]
       );
       if (candidate.rows.length) {
         await pool.query(
-          `UPDATE brand_profiles SET clerk_user_id = $1, trial_started_at = COALESCE(trial_started_at, NOW()), updated_at = NOW() WHERE id = $2`,
+          `UPDATE brand_profiles SET clerk_user_id = $1, is_paid = true, expires_at = NULL, updated_at = NOW() WHERE id = $2`,
           [req.userId, candidate.rows[0].id]
         );
         result = candidate;
-        console.log(`[AUTH] Tethered brand ${candidate.rows[0].id} to user ${req.userId} (trial timer started, explicit brand_id)`);
-        // Fire-and-forget: trial welcome email (idempotency-guarded inside)
+        console.log(`[AUTH] Tethered PAID brand ${candidate.rows[0].id} to user ${req.userId} — is_paid set`);
+        // Fire-and-forget: welcome email (idempotency-guarded inside)
         sendTrialWelcomeEmail(req.userId, candidate.rows[0].brand_name).catch(() => {});
       }
     }
@@ -7356,12 +7366,11 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
         id: b.id,
         brandName: b.brand_name || b.brand_url,
         brandUrl: b.brand_url,
-        // isPaid reflects EFFECTIVE access: true if paid OR trial active.
-        // FE pages keep checking isPaid via useApp() and get the right answer
-        // for both 'permanently paid' and 'trial-active' states.
-        isPaid: (b.is_paid || trialState.active) || false,
+        // Access = is_paid only. The old free-app trial (trialState.active) is
+        // removed: app access now requires a $99 payment (or promo) + a Clerk account.
+        isPaid: b.is_paid || false,
       })),
-      isPaid: isSuperAdmin || result.rows[0]?.is_paid || trialState.active || false,
+      isPaid: isSuperAdmin || result.rows[0]?.is_paid || false,
       trial: {
         active: trialState.active,
         eligible: trialState.eligible,
@@ -7410,10 +7419,11 @@ app.post('/api/promo/validate', softAuth, async (req, res) => {
   // No global fallback — brandProfileId must come from frontend or auth token
   // Without it, the promo validates but is_paid does NOT flip (logged as warning)
 
-  // Apply — mark brand as paid
+  // Apply — stamp paid_at (comped). Like PayPal, this does NOT grant access; the
+  // Clerk-account tether flips is_paid. So a promo still requires creating an account.
   if (promo.discount === 100 && brandProfileId) {
     await pool.query(
-      `UPDATE brand_profiles SET is_paid = true, expires_at = NULL, updated_at = NOW() WHERE id = $1`,
+      `UPDATE brand_profiles SET paid_at = COALESCE(paid_at, NOW()), updated_at = NOW() WHERE id = $1`,
       [brandProfileId]
     );
     // Log the redemption (audit trail; the table existed but was never written to).
