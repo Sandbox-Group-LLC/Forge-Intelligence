@@ -473,7 +473,7 @@ router.post('/dismiss-flag', async (req, res) => {
 // POST approve — save human edits, write mistakes to brain, mark approved
 router.post('/approve', async (req, res) => {
   const startTime = Date.now();
-  const { brandProfileId, contentId, reviewMode, editedSections, decisions, editedFaqs } = req.body;
+  const { brandProfileId, contentId, reviewMode, editedSections, decisions, editedFaqs, keyTakeaway } = req.body;
   if (!brandProfileId || !contentId) return res.status(400).json({ error: 'brandProfileId and contentId required' });
   try {
     const safeId = brandProfileId.replace(/-/g, '_');
@@ -538,6 +538,22 @@ router.post('/approve', async (req, res) => {
           articleJson.faqs[edit.index] = { ...faq, question: newQ, answer: newA };
         }
       });
+    }
+
+    // Apply human edit to the Key Takeaway (TL;DR). It renders at the top of every
+    // published export but was never surfaced for review — now it is. Only write on
+    // an actual change; log the correction to the brain like section/FAQ edits.
+    if (typeof keyTakeaway === 'string' && keyTakeaway !== (articleJson.keyTakeaway || '')) {
+      pool.query(
+        `INSERT INTO brain_mistakes (brand_profile_id, mistake_type, description, human_feedback, severity)
+         VALUES ($1, 'human_edit', $2, $3, 'medium')`,
+        [
+          brandProfileId,
+          `Key Takeaway (TL;DR): human reviewer edited`,
+          `Avoid: "${(articleJson.keyTakeaway || '').substring(0, 200)}" — prefer: "${keyTakeaway.substring(0, 200)}"`
+        ]
+      ).catch(e => console.error('[COMPLIANCE] keyTakeaway mistake write error:', e.message));
+      articleJson.keyTakeaway = keyTakeaway;
     }
 
     // Handle red section decisions

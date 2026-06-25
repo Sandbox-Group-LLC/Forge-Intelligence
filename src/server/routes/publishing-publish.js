@@ -22,7 +22,11 @@ import { buildGhostJWT } from '../ghost.js';
 function tldrHtmlBlock(aj) {
   const t = String(aj?.keyTakeaway || '').trim();
   if (!t) return '';
-  return `<aside class="article-tldr" style="margin:1.5em 0;padding:1.25em 1.5em;border-left:4px solid #4F46E5;background:#f5f6ff;border-radius:8px"><p style="margin:0 0 .4em;font-weight:700;text-transform:uppercase;letter-spacing:.08em;font-size:.78em;color:#4F46E5">TL;DR</p><p style="margin:0;line-height:1.6">${t.replace(/</g, '&lt;')}</p></aside>\n`;
+  // Class-only, NO inline styling. The Site Template scraper's contract is "class
+  // names + DOM structure, no styling copied" — the destination site's own
+  // .article-tldr CSS owns the look. Inline styles here override that (inline beats
+  // class selectors) and shipped an off-brand indigo box onto a dark site.
+  return `<aside class="article-tldr"><p class="article-tldr-label">TL;DR</p><p class="article-tldr-body">${t.replace(/</g, '&lt;')}</p></aside>\n`;
 }
 function tldrMarkdownBlock(aj) {
   const t = String(aj?.keyTakeaway || '').trim();

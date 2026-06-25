@@ -922,14 +922,15 @@ export default function PublishingQueuePage() {
       })),
     };
 
-    // ── TL;DR / Key Takeaway block (Frank's other recurring ask — keyTakeaway was
-    //    generated but never rendered into the export). Sits right after the
-    //    back-link, before the body. Inline-styled so it renders standalone. ──
+    // ── TL;DR / Key Takeaway block. Class-only, NO inline styling — same contract as
+    //    the Site Template scraper (class names + DOM structure, no styling copied),
+    //    so the destination site's .article-tldr CSS owns the look. The old inline
+    //    indigo shipped an off-brand box that overrode the customer's stylesheet. ──
     const tldr = String(aj.keyTakeaway || '').trim();
     const tldrHtml = tldr ? `
-      <aside class="article-tldr" style="margin:1.5em 0;padding:1.25em 1.5em;border-left:4px solid #4F46E5;background:#f5f6ff;border-radius:8px">
-        <p style="margin:0 0 .4em;font-weight:700;text-transform:uppercase;letter-spacing:.08em;font-size:.78em;color:#4F46E5">TL;DR</p>
-        <p style="margin:0;line-height:1.6">${tldr.replace(/</g, '&lt;')}</p>
+      <aside class="article-tldr">
+        <p class="article-tldr-label">TL;DR</p>
+        <p class="article-tldr-body">${tldr.replace(/</g, '&lt;')}</p>
       </aside>` : '';
 
     return `<!-- Forge Intelligence content_id: ${item.content_id} | brand_id: ${item.brand_profile_id} | exported: ${new Date().toISOString()} -->
@@ -1039,6 +1040,8 @@ ${authorFooterHtml}
       });
     } else if (field === 'metaDescription') {
       updatedArticle.article_json = { ...updatedArticle.article_json, metaDescription: value };
+    } else if (field === 'keyTakeaway') {
+      updatedArticle.article_json = { ...updatedArticle.article_json, keyTakeaway: value };
     } else if (field === 'sectionHeading' && sectionIndex !== undefined) {
       const sections = [...(updatedArticle.article_json?.sections || [])];
       sections[sectionIndex] = { ...sections[sectionIndex], heading: value };
@@ -2254,6 +2257,24 @@ return (
                       </p>
                     )
                   )}
+                  {article?.article_json?.keyTakeaway ? (
+                    editingField === 'keyTakeaway' ? (
+                      <textarea
+                        className="pq-edit-inline pq-edit-meta"
+                        defaultValue={article.article_json.keyTakeaway}
+                        autoFocus
+                        rows={3}
+                        onBlur={e => saveArticleEdit('keyTakeaway', e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Escape') setEditingField(null); }}
+                      />
+                    ) : (
+                      <aside className="article-tldr pq-editable" onClick={() => setEditingField('keyTakeaway')} title="Click to edit — this TL;DR ships at the top of every published article">
+                        <p className="article-tldr-label">TL;DR</p>
+                        <p className="article-tldr-body">{article.article_json.keyTakeaway}</p>
+                        <span className="pq-edit-hint">✎</span>
+                      </aside>
+                    )
+                  ) : null}
                   <div className="pq-preview-sections">
                     {sections.map((s: any, i: number) => (
                       <div key={i} className="pq-preview-section">
