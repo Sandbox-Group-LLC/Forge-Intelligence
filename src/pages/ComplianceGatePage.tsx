@@ -46,6 +46,7 @@ interface Article {
     overallConfidence: number;
     brainMatchScore: number;
     metaDescription?: string;
+    keyTakeaway?: string;
     faqs?: Array<{ question: string; answer: string }>;
   };
   compliance_status: ComplianceStatus;
@@ -165,6 +166,9 @@ function ComplianceGateContent() {
   // FAQ edits — parallel structure to editedSections. Each FAQ entry can have its question
   // and/or answer overridden. Empty fields default to the LLM-generated original on submit.
   const [editedFaqs, setEditedFaqs] = useState<Record<number, { question?: string; answer?: string }>>({});
+  // Key Takeaway (TL;DR) edit — null = untouched (publish the original). Surfaced for
+  // review so the TL;DR stops shipping unreviewed; the edit flows to /approve.
+  const [editedKeyTakeaway, setEditedKeyTakeaway] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [critiqueLoading, setCritiqueLoading] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
@@ -389,6 +393,7 @@ function ComplianceGateContent() {
           reviewMode: mode,
           editedSections: edits,
           editedFaqs: faqEdits,
+          ...(editedKeyTakeaway !== null ? { keyTakeaway: editedKeyTakeaway } : {}),
           decisions
         })
       });
@@ -408,6 +413,7 @@ function ComplianceGateContent() {
   const selectArticle = (article: Article) => {
     setSelectedArticle(article);
     setReport(article.compliance_report || null);
+    setEditedKeyTakeaway(null); // reset per-article so a prior article's TL;DR edit doesn't carry
     if (article.compliance_report) setStep('review');
     // Restore any in-progress edits for this article from localStorage
     try {
@@ -606,6 +612,21 @@ function ComplianceGateContent() {
                 Green sections passed AI review — shown read-only, but you can still edit them before publishing. Yellow/red sections have flags that need your decision.
               </span>
             </div>
+
+            {/* Key Takeaway (TL;DR) — surfaced for review so it stops shipping
+                unreviewed. It renders at the top of every published export. */}
+            {(selectedArticle.article_json?.keyTakeaway || editedKeyTakeaway !== null) && (
+              <div style={{ margin: '0 0 18px', padding: '14px 16px', border: '1px solid var(--color-border, #2B2F36)', borderRadius: 10, background: 'var(--color-surface-2, rgba(255,255,255,0.03))' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: 8 }}>TL;DR / Key Takeaway — review before publish</div>
+                <textarea
+                  value={editedKeyTakeaway ?? selectedArticle.article_json?.keyTakeaway ?? ''}
+                  onChange={e => setEditedKeyTakeaway(e.target.value)}
+                  rows={3}
+                  placeholder="This summary ships at the top of every published article. Edit it here before approving."
+                  style={{ width: '100%', resize: 'vertical', font: 'inherit', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--color-border, #2B2F36)', background: 'var(--color-bg, #14171C)', color: 'var(--color-text, #F2EFE8)' }}
+                />
+              </div>
+            )}
 
             {/* Sections */}
             <div className="comp-sections">
