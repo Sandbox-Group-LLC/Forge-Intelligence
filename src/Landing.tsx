@@ -161,7 +161,7 @@ export default function Landing() {
           <p style={styles.eyebrow}>Brand Intelligence · Free Analysis</p>
           <h1 style={styles.headline}>The intelligence layer behind modern marketing.</h1>
           <p style={styles.subline}>
-            Drop your URL. Forge reads your brand the way a strategist would — voice, audience, competitive gaps — and gives you the intelligence brief in under 10 minutes. Free.
+            Drop your URL. Forge reads your brand the way a strategist would (voice, audience, competitive gaps) and gives you the intelligence brief in under 10 minutes. Free.
             <br /><br />
             Then unlock the full Forge pipeline free for 7 days. No credit card. Your brand profile stays saved when the trial ends.
           </p>
@@ -335,7 +335,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '16px 20px',
     background: 'rgba(53,99,255,0.08)',
     border: '1px solid rgba(53,99,255,0.2)',
-    borderRadius: '12px',
+    borderRadius: '6px',
   },
   returningDot: {
     width: '8px', height: '8px', borderRadius: '50%',

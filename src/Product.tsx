@@ -20,8 +20,8 @@ const CheckIcon = () => (
 );
 
 const stages = [
-  { num: 1, name: 'Context Hub', desc: 'Brand voice, personas, competitive gaps — extracted from your site and your competitors\' sites in minutes, not months' },
-  { num: 2, name: 'GEO Strategy', desc: 'Citation gaps measured live against ChatGPT, Perplexity, Gemini, and Google AI Overviews — who AI cites today, and where you\'re invisible' },
+  { num: 1, name: 'Context Hub', desc: 'Brand voice, personas, competitive gaps, extracted from your site and your competitors\' sites in minutes, not months' },
+  { num: 2, name: 'GEO Strategy', desc: 'Citation gaps measured live against ChatGPT, Perplexity, Gemini, and Google AI Overviews: who AI cites today, and where you\'re invisible' },
   { num: 3, name: 'Authenticity', desc: 'E-E-A-T signals, SME hooks, first-person experience injection' },
   { num: 4, name: 'Generation', desc: 'Brain-informed content with confidence scoring per section' },
   { num: 5, name: 'Compliance', desc: 'Human gate with auto-learning from every edit' },
@@ -34,7 +34,7 @@ const personas = [
   {
     name: 'Strategic Sarah',
     role: 'VP of Marketing',
-    pain: 'Another AI tool promising magic — will this actually understand our brand\'s specific positioning, or just create more cleanup work?',
+    pain: 'Another AI tool promising magic. Will this actually understand our brand\'s specific positioning, or just create more cleanup work?',
     outcome: 'Scale content operations without proportional headcount growth. Own differentiated positioning before competitors claim key narratives.',
   },
   {
@@ -60,23 +60,23 @@ const gaps = [
   {
     title: 'Brand Context That Compounds',
     claim: 'Competitors require repeated context input or shallow brand profiles.',
-    ours: 'Deep contextual memory that compounds over time — largely unclaimed territory in the market.',
+    ours: 'Deep contextual memory that compounds over time, largely unclaimed territory in the market.',
   },
   {
     title: 'Competitive Intelligence Integration',
     claim: 'CI tools and content tools exist separately.',
-    ours: 'Competitor sites crawled, AI engines probed live — measured signals feed topic discovery and content generation directly. A significant white space.',
+    ours: 'Competitor sites crawled, AI engines probed live. Measured signals feed topic discovery and content generation directly. A significant white space.',
   },
   {
     title: 'Measured, Not Modeled',
     claim: 'Most GEO tools estimate your AI visibility from proxies.',
-    ours: 'Forge asks the actual engines. Real buyer questions, probed against ChatGPT, Perplexity, Gemini, and AI Overviews — your whitespace is observed, not imagined.',
+    ours: 'Forge asks the actual engines. Real buyer questions, probed against ChatGPT, Perplexity, Gemini, and AI Overviews. Your whitespace is observed, not imagined.',
   },
 ];
 
 const timeline = [
   { time: 'Day 1', state: 'Brain empty. Agents start from brand context only.' },
-  { time: 'Week 4', state: '10–15 patterns. Agents prefer proven structures.' },
+  { time: 'Week 4', state: '10-15 patterns. Agents prefer proven structures.' },
   { time: 'Month 3', state: '50+ patterns. Human edit rate drops 30%.' },
   { time: 'Month 6', state: 'Agents self-correct before human review.' },
   { time: 'Month 12', state: 'Brain is a proprietary asset. Switching means starting over.' },
@@ -114,9 +114,9 @@ export default function Product() {
         {/* Product Shot: Brand Profile */}
         <div style={styles.screenshotSection}>
           <div style={styles.screenshot}>
-            <img src="/1.png" alt="Forge Intelligence — Brand Profile with voice analysis and tone attributes" style={styles.screenshotImg} />
+            <img src="/1.png" alt="Forge Intelligence Brand Profile with voice analysis and tone attributes" style={styles.screenshotImg} />
           </div>
-          <p style={styles.screenshotCaption}>Your brand's voice, personas, and competitive position — extracted from your actual website in minutes.</p>
+          <p style={styles.screenshotCaption}>Your brand's voice, personas, and competitive position, extracted from your actual website in minutes.</p>
         </div>
 
         {/* The Problem */}
@@ -127,7 +127,7 @@ export default function Product() {
               Every AI content tool today solves for <strong>production volume</strong>.
             </p>
             <p style={styles.problemText}>
-              None solve for <strong style={{ color: '#3563FF' }}>compounding content intelligence</strong> — 
+              None solve for <strong style={{ color: '#3563FF' }}>compounding content intelligence</strong>,
               where the system gets measurably smarter and more commercially effective with every publish cycle.
             </p>
             <p style={styles.problemPunch}>That's the gap. That's the product.</p>
@@ -137,7 +137,7 @@ export default function Product() {
         {/* Competitive Whitespace */}
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>What We Own</h2>
-          <p style={styles.sectionSub}>Territory that's ours — not another "AI writing tool."</p>
+          <p style={styles.sectionSub}>Territory that's ours, not another "AI writing tool."</p>
           <div style={styles.gapsGrid}>
             {gaps.map((g) => (
               <div key={g.title} style={styles.gapCard}>
@@ -152,9 +152,9 @@ export default function Product() {
         {/* Product Shot: GEO Opportunity Scores */}
         <div style={styles.screenshotSection}>
           <div style={styles.screenshot}>
-            <img src="/2.png" alt="Publishing Queue — content preview with hero image and multi-channel distribution" style={styles.screenshotImg} />
+            <img src="/2.png" alt="Publishing Queue content preview with hero image and multi-channel distribution" style={styles.screenshotImg} />
           </div>
-          <p style={styles.screenshotCaption}>Preview, edit post copy, and publish to LinkedIn, X, Webflow, Ghost, or HubSpot — with UTM intelligence built in.</p>
+          <p style={styles.screenshotCaption}>Preview, edit post copy, and publish to LinkedIn, X, Webflow, Ghost, or HubSpot, with UTM intelligence built in.</p>
         </div>
 
         {/* Who This Is For */}
@@ -196,9 +196,9 @@ export default function Product() {
             Uncomment when public/4.png exists. */}
         {/* <div style={styles.screenshotSection}>
           <div style={styles.screenshot}>
-            <img src="/4.png" alt="Content Generator — brain-aware topic alignment check before generation" style={styles.screenshotImg} />
+            <img src="/4.png" alt="Content Generator: brain-aware topic alignment check before generation" style={styles.screenshotImg} />
           </div>
-          <p style={styles.screenshotCaption}>Citation probability scored across ChatGPT, Perplexity, AI Overviews, and Gemini — for every topic in your authority map.</p>
+          <p style={styles.screenshotCaption}>Citation probability scored across ChatGPT, Perplexity, AI Overviews, and Gemini, for every topic in your authority map.</p>
         </div> */}
 
         {/* The Brain */}
@@ -230,7 +230,7 @@ export default function Product() {
             Uncomment when public/5.png exists. */}
         {/* <div style={styles.screenshotSection}>
           <div style={styles.screenshot}>
-            <img src="/5.png" alt="Entity and Schema Map — competitor cited, you are not" style={styles.screenshotImg} />
+            <img src="/5.png" alt="Entity and Schema Map: competitor cited, you are not" style={styles.screenshotImg} />
           </div>
           <p style={styles.screenshotCaption}>Competitors cited. You're not. The Entity Map shows exactly where to inject structured data so AI systems find you.</p>
         </div> */}
@@ -266,9 +266,9 @@ export default function Product() {
         {/* Product Shot: Publishing Queue */}
         <div style={styles.screenshotSection}>
           <div style={styles.screenshot}>
-            <img src="/3.png" alt="GEO Opportunity Scores — ChatGPT, Perplexity, AI Overviews, Gemini citation probability" style={styles.screenshotImg} />
+            <img src="/3.png" alt="GEO Opportunity Scores: ChatGPT, Perplexity, AI Overviews, Gemini citation probability" style={styles.screenshotImg} />
           </div>
-          <p style={styles.screenshotCaption}>The Brain checks topic alignment before you spend a single token. 89% match — and it knows what mistakes to avoid.</p>
+          <p style={styles.screenshotCaption}>The Brain checks topic alignment before you spend a single token. 89% match, and it knows what mistakes to avoid.</p>
         </div>
 
         {/* Pricing */}
@@ -294,9 +294,9 @@ export default function Product() {
             Uncomment when public/6.png exists. */}
         {/* <div style={styles.screenshotSection}>
           <div style={styles.screenshot}>
-            <img src="/6.png" alt="Performance Dashboard — analytics, content decay, citation tracking" style={styles.screenshotImg} />
+            <img src="/6.png" alt="Performance Dashboard: analytics, content decay, citation tracking" style={styles.screenshotImg} />
           </div>
-          <p style={styles.screenshotCaption}>Real-time analytics across every channel. Content decay detection, citation tracking, and campaign attribution — all in one view.</p>
+          <p style={styles.screenshotCaption}>Real-time analytics across every channel. Content decay detection, citation tracking, and campaign attribution, all in one view.</p>
         </div> */}
 
         {/* CTA */}
@@ -424,7 +424,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   problemCard: {
     backgroundColor: '#1E293B',
-    borderRadius: '12px',
+    borderRadius: '6px',
     padding: '32px',
     border: '1px solid rgba(255,255,255,0.05)',
   },
@@ -447,7 +447,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   gapCard: {
     backgroundColor: '#1E293B',
-    borderRadius: '12px',
+    borderRadius: '6px',
     padding: '24px',
     border: '1px solid rgba(255,255,255,0.05)',
   },
@@ -476,7 +476,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   personaCard: {
     backgroundColor: '#1E293B',
-    borderRadius: '12px',
+    borderRadius: '6px',
     padding: '24px',
     border: '1px solid rgba(255,255,255,0.05)',
   },
@@ -515,7 +515,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '16px',
     padding: '20px',
     backgroundColor: '#1E293B',
-    borderRadius: '10px',
+    borderRadius: '6px',
     border: '1px solid rgba(255,255,255,0.05)',
   },
   stageNum: {
@@ -587,7 +587,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   moatCard: {
     backgroundColor: 'rgba(53,99,255,0.1)',
-    borderRadius: '10px',
+    borderRadius: '6px',
     padding: '24px',
     border: '1px solid rgba(53,99,255,0.2)',
     textAlign: 'center',
@@ -624,7 +624,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   pricingCard: {
     backgroundColor: '#1E293B',
-    borderRadius: '12px',
+    borderRadius: '6px',
     padding: '32px',
     border: '1px solid rgba(255,255,255,0.1)',
     textAlign: 'center',

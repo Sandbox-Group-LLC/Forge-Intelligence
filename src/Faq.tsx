@@ -23,7 +23,7 @@ const SECTIONS: Section[] = [
     faqs: [
       {
         q: "What's the difference between AI content generation and AI content intelligence?",
-        a: "AI content generation produces output. AI content intelligence builds the strategic worldview that makes the output worth producing. Generation tools take a prompt and write an article. Intelligence systems extract competitive gaps, audience blind spots, and topical whitespace first — then condition every word against that worldview. Forge inverts the order: intelligence is upstream of generation."
+        a: "AI content generation produces output. AI content intelligence builds the strategic worldview that makes the output worth producing. Generation tools take a prompt and write an article. Intelligence systems extract competitive gaps, audience blind spots, and topical whitespace first, then condition every word against that worldview. Forge inverts the order: intelligence is upstream of generation."
       },
       {
         q: "What is a Context Agent Architecture?",
@@ -31,35 +31,35 @@ const SECTIONS: Section[] = [
       },
       {
         q: "What is Generative Engine Optimization (GEO) and how is it different from SEO?",
-        a: "GEO optimizes content to be cited by AI engines like ChatGPT, Perplexity, and Gemini. SEO optimizes content to rank in search results. Different inputs, different ranking signals, different success metrics. SEO rewards keyword authority and backlinks. GEO rewards distinctive concepts, named frameworks, and citeable definitions that AI engines can attribute back to you. Same goal — visibility — different game."
+        a: "GEO optimizes content to be cited by AI engines like ChatGPT, Perplexity, and Gemini. SEO optimizes content to rank in search results. Different inputs, different ranking signals, different success metrics. SEO rewards keyword authority and backlinks. GEO rewards distinctive concepts, named frameworks, and citeable definitions that AI engines can attribute back to you. Same goal (visibility), different game."
       },
       {
         q: "What is Voice of Market and how is it different from Share of Voice?",
-        a: "Share of Voice measures how often your brand shows up versus competitors. It's a backward-looking scoreboard. Voice of Market measures the unspoken market tension no competitor has named yet — the strategic angle that hasn't been claimed. Share of voice tells you where you stand. Voice of market tells you where to attack. One is a metric. The other is an advantage."
+        a: "Share of Voice measures how often your brand shows up versus competitors. It's a backward-looking scoreboard. Voice of Market measures the unspoken market tension no competitor has named yet: the strategic angle that hasn't been claimed. Share of voice tells you where you stand. Voice of market tells you where to attack. One is a metric. The other is an advantage."
       },
       {
         q: "What does \"compounding\" mean in B2B content operations?",
-        a: "Compounding content operations get smarter every cycle through an explicit feedback loop. Performance data writes back into strategy via Brain Memory — the 8th and final agent in Forge's Context Agent Architecture. Patterns that worked become reusable templates. Mistakes get flagged and avoided. The system never starts from scratch. Every published article makes the next one easier to brief, faster to write, and more likely to convert."
+        a: "Compounding content operations get smarter every cycle through an explicit feedback loop. Performance data writes back into strategy via Brain Memory, the 8th and final agent in Forge's Context Agent Architecture. Patterns that worked become reusable templates. Mistakes get flagged and avoided. The system never starts from scratch. Every published article makes the next one easier to brief, faster to write, and more likely to convert."
       },
       {
         q: "What does it mean for an AI content tool to be stateful?",
-        a: "A stateful AI content tool remembers everything across sessions: brand voice rules, founder facts, competitive positioning, what content converted, what failed. In Forge's Context Agent Architecture this is implemented through Brain Memory — the 8th agent that writes patterns back after every cycle. Most AI tools are stateless: each session is a fresh prompt with no history. Stateful systems compound. Stateless ones repeat themselves."
+        a: "A stateful AI content tool remembers everything across sessions: brand voice rules, founder facts, competitive positioning, what content converted, what failed. In Forge's Context Agent Architecture this is implemented through Brain Memory, the 8th agent that writes patterns back after every cycle. Most AI tools are stateless: each session is a fresh prompt with no history. Stateful systems compound. Stateless ones repeat themselves."
       },
       {
         q: "What is brand brain memory in an AI content system?",
-        a: "Brand brain memory is the persistent intelligence layer that stores everything an AI content system has ever learned: voice rules, founder facts, positioning claims, performance patterns, competitive context. In Forge's Context Agent Architecture this layer is named Brain Memory — the 8th and final agent that writes patterns back after every cycle. Without it, the system restarts from zero each session. The brain is the moat — not the model."
+        a: "Brand brain memory is the persistent intelligence layer that stores everything an AI content system has ever learned: voice rules, founder facts, positioning claims, performance patterns, competitive context. In Forge's Context Agent Architecture this layer is named Brain Memory, the 8th and final agent that writes patterns back after every cycle. Without it, the system restarts from zero each session. The brain is the moat, not the model."
       },
       {
         q: "What is Brain Memory in Forge's pipeline?",
-        a: "Brain Memory is the 8th and final agent in Forge's Context Agent Architecture. After every published article, it extracts what worked (patterns) and what didn't (mistakes) from engagement data, AI citation hits, and human compliance edits — then writes both back into a per-brand brain. The next cycle's brief is conditioned by everything that happened in every prior cycle. By month 12 the brain is a proprietary asset; switching to a competitor means starting over with no learned context."
+        a: "Brain Memory is the 8th and final agent in Forge's Context Agent Architecture. After every published article, it extracts what worked (patterns) and what didn't (mistakes) from engagement data, AI citation hits, and human compliance edits, then writes both back into a per-brand brain. The next cycle's brief is conditioned by everything that happened in every prior cycle. By month 12 the brain is a proprietary asset; switching to a competitor means starting over with no learned context."
       },
       {
         q: "What does a Forge brand intelligence brief include?",
-        a: "Forge's brand intelligence brief is the output of Stages 1-3 of the pipeline: voice profile (tone, formality, signature phrases), personas with pain points and trigger events, competitive set with strategic moats and gap map, topical authority map ranked by AI citation probability, E-E-A-T injections (SME credentials, first-party evidence, author schema, FAQPage candidates), and per-section confidence scoring. It's a fully constructed competitive worldview compressed into a writeable artifact — not a topic and a few bullet points."
+        a: "Forge's brand intelligence brief is the output of Stages 1-3 of the pipeline: voice profile (tone, formality, signature phrases), personas with pain points and trigger events, competitive set with strategic moats and gap map, topical authority map ranked by AI citation probability, E-E-A-T injections (SME credentials, first-party evidence, author schema, FAQPage candidates), and per-section confidence scoring. It's a fully constructed competitive worldview compressed into a writeable artifact, not a topic and a few bullet points."
       },
       {
         q: "What is a citation heat map?",
-        a: "A citation heat map is a per-section, per-FAQ view of where AI engines actually pull from in your content corpus. It distinguishes prose authority — when engines cite specific paragraphs — from domain authority, when they cite the URL without quoting. It also surfaces FAQ ROI: which questions actually get picked up as AI answers and which ones engines ignore."
+        a: "A citation heat map is a per-section, per-FAQ view of where AI engines actually pull from in your content corpus. It distinguishes prose authority (when engines cite specific paragraphs) from domain authority, when they cite the URL without quoting. It also surfaces FAQ ROI: which questions actually get picked up as AI answers and which ones engines ignore."
       }
     ]
   },
@@ -69,7 +69,7 @@ const SECTIONS: Section[] = [
     faqs: [
       {
         q: "Why do AI content tools get worse the longer you use them?",
-        a: "Most don't get worse — they stay exactly the same. Every AI content tool is stateless. Each session starts from zero, with no memory of what worked, what failed, or what your competitive position looked like last quarter. Output gets repetitive because there's no compounding learning. Forge inverts that entirely with Brain Memory — the 8th agent in its Context Agent Architecture — writing performance patterns back into the brand profile after every cycle."
+        a: "Most don't get worse. They stay exactly the same. Every AI content tool is stateless. Each session starts from zero, with no memory of what worked, what failed, or what your competitive position looked like last quarter. Output gets repetitive because there's no compounding learning. Forge inverts that entirely with Brain Memory (the 8th agent in its Context Agent Architecture), writing performance patterns back into the brand profile after every cycle."
       },
       {
         q: "Why does AI content sound generic even when the brief is good?",
@@ -77,7 +77,7 @@ const SECTIONS: Section[] = [
       },
       {
         q: "Why isn't faster content faster ROI?",
-        a: "Content velocity only compounds when each piece adds intelligence to the next. Volume without intelligence produces faster mediocrity, not faster results. Ten articles that don't differentiate your positioning cost more than two that do — they consume editorial bandwidth, fragment topical authority, and train your audience to ignore you. Speed is a feature only after intelligence is solved."
+        a: "Content velocity only compounds when each piece adds intelligence to the next. Volume without intelligence produces faster mediocrity, not faster results. Ten articles that don't differentiate your positioning cost more than two that do: they consume editorial bandwidth, fragment topical authority, and train your audience to ignore you. Speed is a feature only after intelligence is solved."
       },
       {
         q: "What's the difference between AI content tools and AI content infrastructure?",
@@ -85,7 +85,7 @@ const SECTIONS: Section[] = [
       },
       {
         q: "What's the limit of agentic AI in content marketing?",
-        a: "Agents fail without state. Most agentic AI in content marketing chains together prompts but loses everything between sessions — every agent restarts the conversation. That's not autonomy, that's amnesia. Real agentic content systems require persistent memory across sequenced agents — the pattern Forge calls Context Agent Architecture. Without that scaffolding, agents produce coordinated mediocrity faster than humans can review it."
+        a: "Agents fail without state. Most agentic AI in content marketing chains together prompts but loses everything between sessions. Every agent restarts the conversation. That's not autonomy, that's amnesia. Real agentic content systems require persistent memory across sequenced agents, the pattern Forge calls Context Agent Architecture. Without that scaffolding, agents produce coordinated mediocrity faster than humans can review it."
       },
       {
         q: "What's the difference between content marketing and content intelligence operations?",
@@ -93,11 +93,11 @@ const SECTIONS: Section[] = [
       },
       {
         q: "Why does most AI-generated B2B content get ignored by AI engines?",
-        a: "AI engines cite content with distinctive concepts, named frameworks, and original definitions — content the engine can attribute back to a specific source. Most AI-generated B2B content has none of that. It paraphrases the same topics every competitor covers, with no original framework worth quoting. The fix isn't better prompts. It's a competitive worldview before generation, so the output contains things only your brand could have said."
+        a: "AI engines cite content with distinctive concepts, named frameworks, and original definitions, content the engine can attribute back to a specific source. Most AI-generated B2B content has none of that. It paraphrases the same topics every competitor covers, with no original framework worth quoting. The fix isn't better prompts. It's a competitive worldview before generation, so the output contains things only your brand could have said."
       },
       {
         q: "Why can't most AI content tools publish to custom-built websites?",
-        a: "Generation tools were built for a marketing-tool buying cycle: pick a tier, integrate with a fixed list of CMS platforms (WordPress, Webflow, Ghost), call it done. Custom-stack sites — Next.js, Astro, Vite, hand-rolled Express, Lovable builds — fall outside that integration matrix and get treated as edge cases. Forge ships the primitive that handles them: an authenticated webhook. Add a POST endpoint to your site, generate a Forge-issued bearer token, choose payload format (HTML, Markdown, or both), and every published article gets sent to your receiver. Your site decides storage and rendering. Copy-paste receivers for Node/Express + Postgres, Next.js App Router, and filesystem rebuilds are at /docs/my-website. Real-world setup runs under an hour per site. That's what content infrastructure looks like in practice — not another CMS picker."
+        a: "Generation tools were built for a marketing-tool buying cycle: pick a tier, integrate with a fixed list of CMS platforms (WordPress, Webflow, Ghost), call it done. Custom-stack sites (Next.js, Astro, Vite, hand-rolled Express, Lovable builds) fall outside that integration matrix and get treated as edge cases. Forge ships the primitive that handles them: an authenticated webhook. Add a POST endpoint to your site, generate a Forge-issued bearer token, choose payload format (HTML, Markdown, or both), and every published article gets sent to your receiver. Your site decides storage and rendering. Copy-paste receivers for Node/Express + Postgres, Next.js App Router, and filesystem rebuilds are at /docs/my-website. Real-world setup runs under an hour per site. That's what content infrastructure looks like in practice, not another CMS picker."
       }
     ]
   },
@@ -115,7 +115,7 @@ const SECTIONS: Section[] = [
       },
       {
         q: "When should you NOT use AI content generation?",
-        a: "When you don't have a competitive worldview to write from. AI content generation amplifies whatever you feed it — including the absence of strategy. Without competitive intelligence, audience clarity, and a defensible positioning angle, generated content sounds exactly like every competitor's generated content. The right move is to invest in intelligence first. Faster mediocrity isn't a win."
+        a: "When you don't have a competitive worldview to write from. AI content generation amplifies whatever you feed it, including the absence of strategy. Without competitive intelligence, audience clarity, and a defensible positioning angle, generated content sounds exactly like every competitor's generated content. The right move is to invest in intelligence first. Faster mediocrity isn't a win."
       },
       {
         q: "Why don't AI content tools learn from the content that converted?",
@@ -123,23 +123,23 @@ const SECTIONS: Section[] = [
       },
       {
         q: "How should mid-market B2B teams structure briefs for AI content generation?",
-        a: "The order matters. Competitive intelligence first — what gaps exist, where you have right-to-win. Topical territory second — what conversations you can claim that competitors can't. Voice rules third — how your brand sounds, what it never says. Topic and angle last. Most teams flip this: they start with the topic and bolt on context. The result is generic content with brand paint."
+        a: "The order matters. Competitive intelligence first: what gaps exist, where you have right-to-win. Topical territory second: what conversations you can claim that competitors can't. Voice rules third: how your brand sounds, what it never says. Topic and angle last. Most teams flip this: they start with the topic and bolt on context. The result is generic content with brand paint."
       },
       {
         q: "How do you assess if your B2B content team is AI-ready?",
-        a: "AI readiness for content teams isn't about whether the tools work — it's about whether your team has the upstream conditions to make AI output meaningful. Forge's five-dimension framework: brand intelligence depth, content brief discipline, performance feedback structure, voice rule clarity, and competitive worldview. Teams strong on all five get distinctive output from any AI model. Teams weak on any one dimension get generic content competitors could have written."
+        a: "AI readiness for content teams isn't about whether the tools work. It's about whether your team has the upstream conditions to make AI output meaningful. Forge's five-dimension framework: brand intelligence depth, content brief discipline, performance feedback structure, voice rule clarity, and competitive worldview. Teams strong on all five get distinctive output from any AI model. Teams weak on any one dimension get generic content competitors could have written."
       },
       {
         q: "How does Forge's 8-stage pipeline produce intelligence briefs?",
-        a: "Stages 1-3 produce the brief. Stage 1 (Context Hub) crawls the brand and the competitive set in parallel and extracts voice, personas, strategic moats. Stage 2 (GEO Strategist) maps topical authority gaps ranked by citation probability across ChatGPT, Perplexity, and Gemini. Stage 3 (Authenticity Enricher) injects E-E-A-T signals — SME credentials, first-party evidence, FAQPage schema, author schema — into the brief. Stages 4-8 then write, gate, publish, measure, and learn from the output. The brain compounds with every cycle, so the brief produced on cycle 50 is materially stronger than the brief on cycle 1."
+        a: "Stages 1-3 produce the brief. Stage 1 (Context Hub) crawls the brand and the competitive set in parallel and extracts voice, personas, strategic moats. Stage 2 (GEO Strategist) maps topical authority gaps ranked by citation probability across ChatGPT, Perplexity, and Gemini. Stage 3 (Authenticity Enricher) injects E-E-A-T signals (SME credentials, first-party evidence, FAQPage schema, author schema) into the brief. Stages 4-8 then write, gate, publish, measure, and learn from the output. The brain compounds with every cycle, so the brief produced on cycle 50 is materially stronger than the brief on cycle 1."
       },
       {
         q: "How does Forge extract competitive intelligence from a competitor website?",
-        a: "Forge's Context Hub runs a parallel crawl using Jina Reader as the primary content extractor with Bright Data Web Unlocker and Bright Data Scraping Browser as Tier 1→2 fallbacks for SPAs and bot-protected sites. Sitemap.xml-aware discovery with anchor-only link extraction keeps the crawl focused on substantive pages. The same pass that builds your brand profile maps the competitive set: voice, positioning, pricing posture, topical coverage gaps, persona language. Full competitive crawl finishes in 15-20 seconds parallel — versus the 60+ seconds the sequential approach took."
+        a: "Forge's Context Hub runs a parallel crawl using Jina Reader as the primary content extractor with Bright Data Web Unlocker and Bright Data Scraping Browser as Tier 1→2 fallbacks for SPAs and bot-protected sites. Sitemap.xml-aware discovery with anchor-only link extraction keeps the crawl focused on substantive pages. The same pass that builds your brand profile maps the competitive set: voice, positioning, pricing posture, topical coverage gaps, persona language. Full competitive crawl finishes in 15-20 seconds parallel, versus the 60+ seconds the sequential approach took."
       },
       {
         q: "Can you do B2B competitive analysis without manual research?",
-        a: "Yes — Forge's Context Hub does it as a side effect of Stage 1. The same crawl that builds your brand profile maps your competitive set: voice, positioning claims, pricing posture, topical coverage gaps, persona language, strategic moats. Output is a competitive worldview rendered in about 60 seconds, refreshed automatically every time the brand profile re-extracts. The 'competitive analysis project' that traditionally takes a senior strategist 2-3 weeks becomes a continuous background process the team never has to schedule."
+        a: "Yes. Forge's Context Hub does it as a side effect of Stage 1. The same crawl that builds your brand profile maps your competitive set: voice, positioning claims, pricing posture, topical coverage gaps, persona language, strategic moats. Output is a competitive worldview rendered in about 60 seconds, refreshed automatically every time the brand profile re-extracts. The 'competitive analysis project' that traditionally takes a senior strategist 2-3 weeks becomes a continuous background process the team never has to schedule."
       }
     ]
   }
