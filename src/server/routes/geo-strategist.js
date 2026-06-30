@@ -163,7 +163,7 @@ ${strategicMoats.map(m => `- ${m.capability}${m.rationale ? ` (${String(m.ration
       const brandDomain = extractDomain(profile.brand_url || '');
       if (brandDomain) {
         const qRes = await anthropic.messages.create({
-          model: 'claude-sonnet-4-6',
+          model: 'claude-sonnet-5',
           max_tokens: 900,
           messages: [{ role: 'user', content: `Write 8 natural questions a buyer would type into ChatGPT or Perplexity when researching the category this brand sells into — the questions where the brand would WANT to be recommended. Do NOT mention the brand name in any question (we are measuring unprompted visibility). Keep each question under 110 characters.
 
@@ -211,7 +211,7 @@ MEASURED AI VISIBILITY (live probe of the real engines, run minutes ago — trea
     // ── Tool 1: Topical Authority Mapper ─────────────────────────────────────
     console.log('[GEO] Tool 1: Topical Authority Mapper...');
     const topicalRes = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       max_tokens: 4000,
       messages: [{ role: 'user', content: `You are the Topical Authority Mapper for Forge Intelligence GEO Strategist.
 
@@ -249,7 +249,7 @@ Return ONLY the raw JSON array. No markdown. No backticks. No explanation. No ot
     // ── Tool 2: GEO Opportunity Scorer ────────────────────────────────────────
     console.log('[GEO] Tool 2: GEO Opportunity Scorer...');
     const scorerRes = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       max_tokens: 3000,
       messages: [{ role: 'user', content: `You are the GEO Opportunity Scorer for Forge Intelligence.
 
@@ -285,7 +285,7 @@ Return ONLY a raw JSON array (no markdown, no explanation):
     // ── Tool 3: Entity & Schema Mapper ────────────────────────────────────────
     console.log('[GEO] Tool 3: Entity & Schema Mapper...');
     const entityRes = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       max_tokens: 3000,
       messages: [{ role: 'user', content: `You are the Entity & Schema Mapper for Forge Intelligence.
 
