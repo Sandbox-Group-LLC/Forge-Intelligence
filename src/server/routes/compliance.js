@@ -80,7 +80,7 @@ router.post('/rewrite-section', async (req, res) => {
     }
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       max_tokens: 1024,
       messages: [{ role: 'user', content: `You are an editorial AI. Rewrite the following article section to incorporate the editorial suggestion${source ? ' AND integrate the provided citation cleanly' : ''}. Preserve the author's voice and intent. Return only the rewritten section body — no commentary, no preamble, no labels.\n\n${voiceHint}\n\nORIGINAL SECTION:\n${sectionBody}\n\nEDITORIAL SUGGESTION:\n${suggestion}${citationBlock}\n\nREWRITTEN SECTION:` }]
     });
@@ -245,7 +245,7 @@ router.post('/verify-and-rewrite', async (req, res) => {
     }
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       max_tokens: 1024,
       messages: [{ role: 'user', content: `You are an editorial AI. Rewrite the following article section to incorporate the editorial suggestion. ${mode === 'cited' ? 'A verified source has been provided — integrate it cleanly.' : 'No verified source was found — soften the claim instead of fabricating one.'} Preserve the author's voice and intent. Return only the rewritten section body — no commentary, no preamble, no labels.\n\n${voiceHint}\n\nSECTION HEADING: ${sectionHeading || 'Untitled'}\n\nORIGINAL SECTION:\n${sectionBody}\n\nFLAGGED CLAIM:\n"${claim}"\n\nEDITORIAL SUGGESTION:\n${suggestion}${citationBlock}\n\nREWRITTEN SECTION:` }]
     });
@@ -353,7 +353,7 @@ Return ONLY valid JSON in this exact structure:
         method: 'POST',
         headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
+          model: 'claude-sonnet-5',
           max_tokens: 8192,
           system: systemPrompt,
           messages: [{ role: 'user', content: userContent }]
