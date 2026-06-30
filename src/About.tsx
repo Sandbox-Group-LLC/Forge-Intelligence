@@ -15,21 +15,21 @@ const ArrowRightIcon = () => (
 
 const proofPoints = [
   {
-    date: 'May 7–8, 2026',
+    date: 'May 7-8, 2026',
     title: 'Google AI Mode citation',
-    body: 'Google AI Mode returned a definition of Forge Intelligence using Forge-coined vocabulary — context decay, Context Agent Architecture, context-first infrastructure. No paid placement. The output of a deliberate evidence chain Forge built and watched land through its own analytics.',
+    body: 'Google AI Mode returned a definition of Forge Intelligence using Forge-coined vocabulary: context decay, Context Agent Architecture, context-first infrastructure. No paid placement. The output of a deliberate evidence chain Forge built and watched land through its own analytics.',
   },
   {
     date: 'May 24, 2026',
     title: '100% Google Ads optimization score',
-    body: 'The Ads Generator’s first auto-built Search pack — headlines, descriptions, sitelinks, callouts, and match-typed keywords sourced from a single brain pass — hit a perfect 100% Google Ads optimization score on the Forge Intelligence account. Started at 99.9%, climbed to ceiling within hours of ad-rank scoring. No manual tuning.',
+    body: 'The Ads Generator’s first auto-built Search pack (headlines, descriptions, sitelinks, callouts, and match-typed keywords sourced from a single brain pass) hit a perfect 100% Google Ads optimization score on the Forge Intelligence account. Started at 99.9%, climbed to ceiling within hours of ad-rank scoring. No manual tuning.',
   },
 ];
 
 const principles = [
   {
     title: 'Intelligence is upstream of generation.',
-    body: 'AI content tools amplify whatever you feed them — including the absence of strategy. Without competitive intelligence, audience clarity, and a defensible positioning angle, generated content sounds exactly like every competitor’s generated content. Faster mediocrity isn’t a win.',
+    body: 'AI content tools amplify whatever you feed them, including the absence of strategy. Without competitive intelligence, audience clarity, and a defensible positioning angle, generated content sounds exactly like every competitor’s generated content. Faster mediocrity isn’t a win.',
   },
   {
     title: 'Architecture beats volume.',
@@ -64,7 +64,7 @@ export default function About() {
             The intelligence layer behind modern marketing.
           </h1>
           <p style={styles.subline}>
-            Forge Intelligence turns fragmented marketing activity into clear intelligence and confident action — a Context Agent Architecture built so every published asset makes the next one easier to brief, faster to write, and more likely to convert.
+            Forge Intelligence turns fragmented marketing activity into clear intelligence and confident action. It's a Context Agent Architecture built so every published asset makes the next one easier to brief, faster to write, and more likely to convert.
           </p>
         </section>
 
@@ -73,7 +73,7 @@ export default function About() {
           <h2 style={styles.sectionTitle}>Why Forge exists</h2>
           <div style={styles.problemCard}>
             <p style={styles.problemText}>
-              Every AI content tool on the market today solves for production volume. None solve for compounding content intelligence — the system getting measurably smarter and more commercially effective with every publish cycle. That’s the gap. That’s the product.
+              Every AI content tool on the market today solves for production volume. None solve for compounding content intelligence: the system getting measurably smarter and more commercially effective with every publish cycle. That’s the gap. That’s the product.
             </p>
             <p style={styles.problemPunch}>The bottleneck isn’t production. It’s intelligence.</p>
           </div>
@@ -115,12 +115,12 @@ export default function About() {
           <h2 style={styles.sectionTitle}>From the founder</h2>
           <div style={styles.founderCard}>
             <p style={styles.founderText}>
-              I spent a decade running content operations for mid-market B2B brands and agencies. The same pattern showed up every time: teams could produce content faster than they could think strategically about it. The bottleneck was never volume. It was the layer that should have been telling the team what to write, who to write for, and what evidence to bring — the layer no tool actually built.
+              I spent a decade running content operations for mid-market B2B brands and agencies. The same pattern showed up every time: teams could produce content faster than they could think strategically about it. The bottleneck was never volume. It was the layer that should have been telling the team what to write, who to write for, and what evidence to bring. No tool actually built that layer.
             </p>
             <p style={styles.founderText}>
-              Forge is the layer I wanted to buy and couldn’t. An 8-stage agent architecture that reads the brand site, maps the competitive landscape, finds the topical gaps, injects E-E-A-T proof, writes voice-matched content, runs it past a compliance gate, distributes it across the right surfaces, syncs the analytics back, and writes every pattern into a brain that compounds. Same loop your best in-house team would run — except it never sleeps, never forgets, and gets smarter every cycle.
+              Forge is the layer I wanted to buy and couldn’t. An 8-stage agent architecture that reads the brand site, maps the competitive landscape, finds the topical gaps, injects E-E-A-T proof, writes voice-matched content, runs it past a compliance gate, distributes it across the right surfaces, syncs the analytics back, and writes every pattern into a brain that compounds. Same loop your best in-house team would run, except it never sleeps, never forgets, and gets smarter every cycle.
             </p>
-            <p style={styles.founderSign}>— Brian, founder</p>
+            <p style={styles.founderSign}>Brian, founder</p>
           </div>
         </section>
 
@@ -253,7 +253,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   problemCard: {
     backgroundColor: '#1E293B',
-    borderRadius: '12px',
+    borderRadius: '6px',
     padding: '32px',
     border: '1px solid rgba(255,255,255,0.05)',
   },
@@ -276,7 +276,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   gapCard: {
     backgroundColor: '#1E293B',
-    borderRadius: '12px',
+    borderRadius: '6px',
     padding: '24px',
     border: '1px solid rgba(255,255,255,0.05)',
   },
@@ -299,7 +299,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   proofCard: {
     backgroundColor: '#1E293B',
-    borderRadius: '12px',
+    borderRadius: '6px',
     padding: '24px',
     border: '1px solid rgba(255,255,255,0.05)',
   },
@@ -325,7 +325,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   founderCard: {
     backgroundColor: '#1E293B',
-    borderRadius: '12px',
+    borderRadius: '6px',
     padding: '32px',
     border: '1px solid rgba(255,255,255,0.05)',
     maxWidth: '720px',

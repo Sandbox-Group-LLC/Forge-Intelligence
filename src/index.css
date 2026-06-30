@@ -130,7 +130,7 @@ input, textarea, select {
 .card {
   background: var(--color-bg-card);
   border: none;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-sm); /* 6px — global card radius */
   box-shadow: var(--shadow-card);
 }
 
