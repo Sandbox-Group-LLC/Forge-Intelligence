@@ -453,7 +453,7 @@ OUTPUT ONLY valid JSON matching this schema exactly. No prose before or after.
 }`;
 
     const msg = await anthropic.messages.create({
-      model: 'claude-opus-4-6',
+      model: 'claude-opus-4-8',
       max_tokens: 6000,
       messages: [{ role: 'user', content: prompt }]
     });

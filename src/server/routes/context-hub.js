@@ -209,7 +209,7 @@ Requirements: 5 toneAttributes, 2-3 personas, 0 thirdPartySignals (no website to
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const message = await anthropic.messages.create({
-          model: 'claude-opus-4-6',
+          model: 'claude-opus-4-8',
           max_tokens: 8192,
           messages: [{ role: 'user', content: prompt }]
         });
@@ -669,7 +669,7 @@ Return ONLY valid JSON (no markdown, no explanation, no newlines inside string v
 Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competitiveGaps (ACTUAL missed opportunities, not strategic non-choices), 0-4 strategicMoats (include only if the brand explicitly states what they don't do as a strategy — some brands won't have any), 4-6 strategicRecommendations, 2-4 campaignArcs (each is a narrative series the brand could publish; focus on storylines that prove a thesis, challenge industry conventions, or crystallize the brand's worldview — not topic lists. Think of each arc as a season of television: a single argument told across multiple acts with payoff in the final act), 1 businessProfile (all fields required). Use the ICP and market context provided to make personas and gaps highly specific. For visualStyle and accentColor: infer carefully from the brand website design, color palette, imagery, and overall aesthetic — these feed directly into AI hero image generation and must reflect the real brand identity. For industry, positioning, and targetPersona: be specific and commercially precise, not generic.`;
 
     const message = await anthropic.messages.create({
-      model: 'claude-opus-4-6',
+      model: 'claude-opus-4-8',
       max_tokens: 16384,
       messages: [{ role: 'user', content: prompt }]
     });
@@ -715,7 +715,7 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
     let profileData;
     for (let attempt = 0; attempt < 2; attempt++) {
       const msg = attempt === 0 ? message : await anthropic.messages.create({
-        model: 'claude-opus-4-6',
+        model: 'claude-opus-4-8',
         max_tokens: 16384,
         messages: [{ role: 'user', content: prompt }]
       });
