@@ -43,7 +43,7 @@ export function StatStrip({ stats }: { stats: Stat[] }) {
         }
         .stat-card {
           background: var(--color-bg-card, #fff);
-          border-radius: 12px;
+          border-radius: 6px;
           box-shadow: 0 0 0 1px rgba(53, 99, 255, 0.07), 0 4px 16px rgba(53, 99, 255, 0.08);
           padding: 20px;
           display: flex;

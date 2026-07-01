@@ -41,7 +41,7 @@
 .int-channel-card {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-lg);
+  border-radius: 6px;
   overflow: visible;
   transition: border-color var(--transition-fast);
 }

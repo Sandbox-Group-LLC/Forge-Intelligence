@@ -167,7 +167,7 @@
 /* ── Email Card ── */
 .ec-email-card {
   background: var(--color-bg-card); border: 1px solid var(--color-border);
-  border-radius: 10px; overflow: hidden;
+  border-radius: 6px; overflow: hidden;
 }
 .ec-email-card.open { border-color: var(--color-accent); }
 .ec-email-header {

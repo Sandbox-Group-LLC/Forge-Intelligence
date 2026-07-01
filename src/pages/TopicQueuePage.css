@@ -8,7 +8,7 @@
   align-items: flex-start;
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border-radius: 6px;
   padding: 20px 24px;
   margin-bottom: 24px;
 }
