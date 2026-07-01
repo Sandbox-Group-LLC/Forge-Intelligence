@@ -1690,7 +1690,7 @@
   max-width: 100%;
 }
 .perf-pattern-correction {
-  border-left: 3px solid #EAB308 !important;
+  border: 1px solid #EAB308 !important;
   background: rgba(234, 179, 8, 0.04) !important;
 }
 
@@ -1830,7 +1830,6 @@
 .brain-rule-card {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
-  border-left: 3px solid transparent;
   border-radius: 6px;
   padding: 16px;
   display: flex;
@@ -1839,8 +1838,8 @@
   transition: box-shadow var(--transition-fast);
 }
 .brain-rule-card:hover { box-shadow: 0 2px 8px var(--color-bg-elevated); }
-.brain-rule-avoid { border-left-color: #F59E0B; }
-.brain-rule-do { border-left-color: var(--color-accent); }
+.brain-rule-avoid { border-color: #F59E0B; }
+.brain-rule-do { border-color: var(--color-accent); }
 
 .brain-rule-header {
   display: flex;
