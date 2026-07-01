@@ -54,7 +54,7 @@
 .cg-section {
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-bg-card);
-  border-left: 3px solid #3563FF;
+  border: 1px solid #3563FF;
   border-radius: 10px;
   padding: 20px 24px;
   display: flex;
