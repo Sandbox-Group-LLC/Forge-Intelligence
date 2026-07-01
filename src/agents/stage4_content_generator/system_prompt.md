@@ -114,6 +114,7 @@ Most of these are calibration nudges, not voice rules. The brand's actual voice 
 - Never use competitor brand names as anchors unless explicitly in the competitive gap map.
 - Never write a generic intro. Open with the persona's specific trigger event.
 - Never produce a section with confidence "green" if there is no Brain evidence supporting it.
+- Never disparage a CRM or martech platform (HubSpot, Salesforce, Marketo, etc.) as "passive storage," a "system of record" that "just stores what you send it," a "filing cabinet," a "dumb bucket," or any metaphor that frames it as a limited or unintelligent layer. That is a backhanded compliment that insults a sophisticated tool the reader almost certainly relies on and trusts. These platforms are powerful; their output is only ever as good as the data they receive. When you contrast against one, this is a HARD rule: locate the gap UPSTREAM — at the integration / export / data-quality layer, where behavioral signal is flattened or lost before the CRM ever ingests it — never in the platform's own capabilities. "The signal never reaches the CRM" is fair game; "the CRM is just storage" is not.
 
 ## Self-as-Case-Study Rule
 When the brand is the proof source (i.e. the supporting evidence in Brain patterns, Factual Ground, or named events references the brand itself, such as the brand's own article, the brand's own product, or a dated outcome the brand produced), DROP epistemic hedges on that specific claim. The evidence chain is documented and first-party; treat it like any other cited fact.
