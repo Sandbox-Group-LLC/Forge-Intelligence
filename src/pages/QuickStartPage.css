@@ -148,7 +148,7 @@
   color: #0f172a;
   background: #fff;
   border: 1px solid #cbd5e1;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   outline: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
   box-sizing: border-box;
@@ -225,7 +225,7 @@
   padding: 0 24px;
   font-size: 15px;
   font-weight: 600;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   background: #4f46e5;
   color: #fff;
   border: 1px solid #4f46e5;
@@ -262,7 +262,7 @@
   }
   .qs-form {
     padding: 20px;
-    border-radius: 12px;
+    border-radius: var(--radius-sm);
   }
   .qs-headline {
     font-size: 28px;

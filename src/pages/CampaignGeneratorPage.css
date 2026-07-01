@@ -11,7 +11,7 @@
 .camp-brand-display {
   background: rgba(53, 99, 255, 0.08);
   border: 1px solid rgba(53, 99, 255, 0.2);
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   padding: 20px 32px;
   width: 100%;
 }
@@ -30,7 +30,7 @@
 .camp-plan-btn {
   display: flex; align-items: center; gap: 8px;
   background: #3563FF; color: #fff;
-  border: none; border-radius: 8px;
+  border: none; border-radius: var(--radius-sm);
   padding: 12px 32px; font-size: 15px; font-weight: 600;
   cursor: pointer; transition: background 0.2s;
 }
@@ -56,7 +56,7 @@
 .camp-generate-btn {
   display: flex; align-items: center; gap: 8px;
   background: #3563FF; color: #fff;
-  border: none; border-radius: 8px;
+  border: none; border-radius: var(--radius-sm);
   padding: 10px 24px; font-size: 14px; font-weight: 600;
   cursor: pointer; white-space: nowrap; flex-shrink: 0;
   transition: background 0.2s;
@@ -147,7 +147,7 @@
 .camp-article-reader {
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-bg-elevated);
-  border-radius: 12px; padding: 28px;
+  border-radius: var(--radius-sm); padding: 28px;
   display: flex; flex-direction: column; gap: 20px;
   margin-top: 8px;
 }
@@ -190,7 +190,7 @@
 .camp-reader-hero {
   width: 100%;
   height: 280px;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
   margin-bottom: 24px;
 }

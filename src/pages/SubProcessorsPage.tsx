@@ -73,7 +73,7 @@ const styles: Record<string, React.CSSProperties> = {
   backLink: { display: 'inline-flex', alignItems: 'center', gap: 6, color: '#64748B', textDecoration: 'none', fontSize: 14, marginBottom: 32 },
   title: { fontSize: 36, fontWeight: 700, color: '#F8FAFC', margin: '0 0 8px', letterSpacing: '-0.5px' },
   subtitle: { fontSize: 13, color: '#64748B', margin: 0 },
-  card: { backgroundColor: '#1E293B', borderRadius: 12, border: '1px solid rgba(255,255,255,0.06)', padding: '48px 52px' },
+  card: { backgroundColor: '#1E293B', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(255,255,255,0.06)', padding: '48px 52px' },
   p: { fontSize: 15, color: '#94A3B8', lineHeight: 1.75, margin: '0 0 12px' },
   note: { fontSize: 13, color: '#64748B', fontStyle: 'italic', margin: '0 0 12px' },
   h2: { fontSize: 18, fontWeight: 600, color: '#F8FAFC', margin: '36px 0 8px' },

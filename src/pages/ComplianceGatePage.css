@@ -491,7 +491,7 @@
   z-index: 50;
   width: 360px;
   padding: 16px;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-card, #1E293B);
   border: 1px solid var(--color-border, rgba(255,255,255,0.08));
   box-shadow: 0 8px 24px rgba(0,0,0,0.3);
@@ -520,7 +520,7 @@
   color: var(--color-text-secondary, #cbd5e1);
   background: color-mix(in srgb, var(--color-accent, #3563FF) 5%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-accent, #3563FF) 20%, transparent);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 }
 .comp-sections-caption strong {
   color: var(--color-text-primary, #f8fafc);
@@ -562,7 +562,7 @@
   color: var(--color-text-secondary, #94A3B8);
   background: transparent;
   border: 1px solid var(--color-border, rgba(255,255,255,0.18));
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   padding: 2px 9px;
   cursor: pointer;
   letter-spacing: 0.02em;
@@ -629,7 +629,7 @@
   z-index: 60;
   background: var(--color-bg-base, #EDF1FF);
   border: 1px solid var(--color-accent, #3563FF);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 10px 12px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
   min-width: 320px;
@@ -706,7 +706,7 @@
   color: var(--color-text-muted, #94A3B8);
   font-size: 12px;
   padding: 4px 10px;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   margin-top: 6px;
   transition: color 0.12s, border-color 0.12s;
@@ -814,7 +814,7 @@
   background: var(--color-bg-card, #fff);
   border: 1px solid var(--color-border, #e2e8f0);
   border: 1px solid var(--color-accent, #4F46E5);
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
 }
 .comp-faqs-header {
   margin-bottom: 16px;

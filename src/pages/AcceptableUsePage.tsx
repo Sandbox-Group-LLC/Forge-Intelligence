@@ -243,7 +243,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   card: {
     backgroundColor: '#1E293B',
-    borderRadius: 12,
+    borderRadius: 'var(--radius-sm)',
     border: '1px solid rgba(255,255,255,0.06)',
     padding: '48px 52px',
   },

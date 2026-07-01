@@ -174,7 +174,7 @@ export default function MyWebsiteForm({ brandProfileId, saved, onChange }: MyWeb
       {/* Token section */}
       <div className="int-form-label" style={{ marginTop: 24 }}>Bearer token</div>
       {revealedToken ? (
-        <div style={{ background: '#1a1a1a', border: '1px solid #f59e0b', borderRadius: 8, padding: 16, marginTop: 8 }}>
+        <div style={{ background: '#1a1a1a', border: '1px solid #f59e0b', borderRadius: 'var(--radius-sm)', padding: 16, marginTop: 8 }}>
           <div style={{ color: '#f59e0b', fontWeight: 600, marginBottom: 8 }}>Save this now — you won't see it again</div>
           <code style={{ display: 'block', wordBreak: 'break-all', background: '#0a0a0a', padding: 12, borderRadius: 4, fontSize: 13, color: '#e5e5e5' }}>{revealedToken}</code>
           <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>

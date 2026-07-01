@@ -18,7 +18,7 @@
   height: 34px;
   background: transparent;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
   cursor: pointer;
   font-family: inherit;
@@ -37,7 +37,7 @@
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
-  border-radius: 9px;
+  border-radius: var(--radius-sm);
   background: #ef4444;
   color: #ffffff;
   font-size: 10px;
@@ -61,7 +61,7 @@
   flex-direction: column;
   background: #1a1f2e;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
   z-index: 999;
   overflow: hidden;

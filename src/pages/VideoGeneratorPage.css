@@ -22,7 +22,7 @@
 .vg-form {
   background: #FFFFFF;
   border: 1px solid #E2E8F0;
-  border-radius: 14px;
+  border-radius: var(--radius-sm);
   padding: 24px;
   display: flex;
   flex-direction: column;
@@ -37,7 +37,7 @@
 .vg-textarea {
   width: 100%;
   border: 1px solid #E2E8F0;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   background: #F8FAFC;
   padding: 12px 14px;
   font-size: 15px;
@@ -59,7 +59,7 @@
   background: #3563FF;
   color: #fff;
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   padding: 12px 24px;
   font-size: 15px;
   font-weight: 700;
@@ -83,7 +83,7 @@
   gap: 10px;
   padding: 14px 16px;
   border: 1px solid #E2E8F0;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   background: #F8FAFC;
   color: #475569;
   font-size: 14px;
@@ -111,7 +111,7 @@
   color: #B91C1C;
   font-size: 14px;
   background: rgba(185, 28, 28, 0.06);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 10px 14px;
 }
 
@@ -120,20 +120,20 @@
   margin-top: 24px;
   background: #FFFFFF;
   border: 1px solid #E2E8F0;
-  border-radius: 14px;
+  border-radius: var(--radius-sm);
   padding: 24px;
 }
 .vg-stage { font-size: 15px; font-weight: 600; color: #0F172A; margin-bottom: 12px; }
 .vg-bar {
   height: 10px;
   background: #E2E8F0;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 .vg-bar-fill {
   height: 100%;
   background: #3563FF;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   transition: width 0.6s ease;
 }
 .vg-pct { margin-top: 8px; font-size: 13px; color: #94A3B8; text-align: right; }
@@ -143,7 +143,7 @@
   width: 100%;
   max-width: 720px;
   max-height: 70vh; /* keep a portrait 9:16 reel from running off-screen */
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   background: #000;
   box-shadow: 0 8px 30px rgba(15, 23, 42, 0.12);
 }
@@ -220,7 +220,7 @@
 .vg-arcs-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .vg-arcs-btn {
   border: 1px solid #3563FF; background: rgba(53,99,255,0.06); color: #3563FF;
-  font-size: 13px; font-weight: 700; padding: 8px 14px; border-radius: 8px; cursor: pointer;
+  font-size: 13px; font-weight: 700; padding: 8px 14px; border-radius: var(--radius-sm); cursor: pointer;
   white-space: nowrap; transition: background 0.15s;
 }
 .vg-arcs-btn:hover:not(:disabled) { background: rgba(53,99,255,0.12); }
@@ -228,7 +228,7 @@
 .vg-arcs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 22px; }
 @media (max-width: 640px) { .vg-arcs { grid-template-columns: 1fr; } }
 .vg-arc {
-  text-align: left; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px;
+  text-align: left; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: var(--radius-sm);
   padding: 14px 16px; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; font: inherit;
 }
 .vg-arc:hover { border-color: #3563FF; box-shadow: 0 0 0 3px rgba(53,99,255,0.10); }
@@ -241,7 +241,7 @@
 /* ── Product screenshot uploads ── */
 .vg-optional { font-weight: 500; color: #94A3B8; font-size: 12px; margin-left: 6px; }
 .vg-shots { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 8px; }
-.vg-shot { position: relative; width: 132px; height: 80px; border-radius: 8px; overflow: hidden; border: 1px solid #E2E8F0; background: #F8FAFC; }
+.vg-shot { position: relative; width: 132px; height: 80px; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid #E2E8F0; background: #F8FAFC; }
 .vg-shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .vg-shot-x {
   position: absolute; top: 4px; right: 4px; width: 20px; height: 20px;
@@ -249,7 +249,7 @@
   font-size: 14px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center;
 }
 .vg-shot-add {
-  width: 132px; height: 80px; border: 1.5px dashed #94A3B8; border-radius: 8px;
+  width: 132px; height: 80px; border: 1.5px dashed #94A3B8; border-radius: var(--radius-sm);
   display: flex; align-items: center; justify-content: center;
   color: #475569; font-size: 14px; font-weight: 700; cursor: pointer; background: #F8FAFC;
   transition: border-color 0.15s, color 0.15s;
@@ -277,6 +277,6 @@
 }
 .vg-lineage-item {
   display: flex; flex-direction: column; align-items: center; gap: 8px;
-  padding: 12px; border: 1px solid #E2E8F0; border-radius: 12px; background: #F8FAFC;
+  padding: 12px; border: 1px solid #E2E8F0; border-radius: var(--radius-sm); background: #F8FAFC;
 }
-.vg-lineage-video { width: 100%; border-radius: 8px; background: #000; display: block; }
+.vg-lineage-video { width: 100%; border-radius: var(--radius-sm); background: #000; display: block; }
