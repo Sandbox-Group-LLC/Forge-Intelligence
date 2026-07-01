@@ -288,6 +288,7 @@ export default function PublicArticlePage() {
         <div className="pa-hero-wrap">
           <img src={article.heroImageUrl} alt={article.title} className="pa-hero-img" />
           <div className="pa-hero-overlay" />
+          <span className="pa-hero-credit">AI illustration courtesy of fal.ai</span>
           <div className="pa-hero-content">
             {article.category && <div className="pa-eyebrow">{article.category}</div>}
             <h1 className="pa-title pa-title-over-hero">{article.title}</h1>
