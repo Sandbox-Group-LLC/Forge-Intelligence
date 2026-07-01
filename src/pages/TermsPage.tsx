@@ -139,7 +139,7 @@ export default function TermsPage() {
               <P>Customer retains all right, title, and interest in and to Customer Data. Nothing in these Terms transfers ownership of Customer Data to Forge Intelligence.</P>
             </Sub>
             <Sub title="6.2 License to Customer Data">
-              <P>Customer grants Forge Intelligence a non-exclusive, worldwide license to use, process, and store Customer Data solely to the extent necessary to provide, maintain, and improve the Service in accordance with these Terms.</P>
+              <P>Customer grants Forge Intelligence a non-exclusive, worldwide license to use, process, and store Customer Data solely to the extent necessary to provide, maintain, and improve the Service in accordance with these Terms. Forge Intelligence does not use Customer Data, including Generated Content, to train, fine-tune, or otherwise develop machine-learning or artificial-intelligence models, and the foregoing license grants no such right. Improvements to the Service made under this license are operational and do not include training generative or foundation models on Customer Data.</P>
             </Sub>
             <Sub title="6.3 Data Processing">
               <P>To the extent Forge Intelligence processes Personal Data on behalf of Customer, the parties shall enter into a Data Processing Agreement ("DPA"), which shall be incorporated into and form part of these Terms.</P>
