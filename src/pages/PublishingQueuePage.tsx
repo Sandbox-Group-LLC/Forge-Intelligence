@@ -1224,141 +1224,7 @@ ${authorFooterHtml}
   const brandName = (item: QueueItem) =>
     item.brand_name || item.brand_url || '—';
 
-  return (
-    <>
-    <AppShell pageTitle="Publishing Queue">
-      <div className="pq-page">
-        {/* Header */}
-        <div className="geo-header">
-          <div>
-            <div className="geo-eyebrow">Publishing</div>
-            <h1 className="geo-title">Publishing Queue</h1>
-            <p className="geo-description">Approved articles staged for distribution. Select channels, publish now or schedule — every publish writes to the Brain.</p>
-          </div>
-          <button className="pq-refresh-btn" onClick={loadQueue} disabled={loading}>
-            <RefreshCw /> {loading ? 'Loading...' : 'Refresh'}
-          </button>
-        </div>
-        {error && <div className="geo-error">{error}</div>}
-        {reviewUrl && (
-          <div className="pq-review-toast">
-            <span className="pq-review-link-label"><Link2 /> Review link {reviewCopied ? 'copied!' : 'ready'}:</span>
-            <a href={reviewUrl} target="_blank" rel="noopener noreferrer" className="pq-review-link">{reviewUrl}</a>
-          </div>
-        )}
-        {/* KPI strip — quick read on queue health. Stats computed from the
-            same items array the rest of the page renders, so they refresh in
-            lockstep with the list. Channels-live derived from publish_results
-            keys across all items (a channel "counts" if it's been used at
-            least once for this brand). */}
-        {items.length > 0 && (() => {
-          const inQueue = items.filter(i => i.status === 'staged' || i.status === 'scheduled').length;
-          const thirtyAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-          const published30d = items.filter(i => i.status === 'published' && i.published_at && new Date(i.published_at).getTime() >= thirtyAgo).length;
-          const failed = items.filter(i => i.status === 'failed' || i.status === 'partial').length;
-          const channelsLive = new Set(
-            items.flatMap(i => Object.keys(i.publish_results || {})).filter(k => !k.startsWith('__'))
-          ).size;
-          const stats: Stat[] = [
-            { label: 'In queue',       value: inQueue,      delta: `${items.length} total`,                       deltaTone: 'flat' },
-            { label: 'Published · 30d', value: published30d, delta: published30d > 0 ? `${published30d} this month` : 'No publishes yet', deltaTone: published30d > 0 ? 'positive' : 'flat' },
-            { label: 'Channels live',  value: channelsLive, delta: channelsLive > 0 ? 'Across this brand'        : 'Connect a channel',  deltaTone: 'flat' },
-            { label: 'Needs review',   value: failed,       delta: failed > 0 ? 'Failed or partial publishes'    : 'All clean',           deltaTone: failed > 0 ? 'negative' : 'positive' },
-          ];
-          return <StatStrip stats={stats} />;
-        })()}
-      <div className="pq-controls-row">
-        <button
-          className="pq-sort-toggle"
-          onClick={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}
-          title={sortDir === 'desc' ? 'Newest first' : 'Oldest first'}
-        >
-          {sortDir === 'desc' ? '↓ Newest first' : '↑ Oldest first'}
-        </button>
-        {archivedItems.length > 0 && (
-          <button className="pq-archive-toggle" onClick={() => setShowArchived(p => !p)}>
-            <Archive /> {showArchived ? 'Hide Archived' : `Show Archived (${archivedItems.length})`}
-          </button>
-        )}
-      </div>
-        {successMsg && <div className="int-success">{successMsg}</div>}
-
-        {/* Queue — campaign groups + standalone */}
-        {loading ? (
-          <div className="pq-empty">Loading queue...</div>
-        ) : filteredItems.length === 0 ? (
-          <div className="pq-empty">
-            {items.length === 0
-              ? 'No articles in queue yet. Approve an article in the Compliance Gate to stage it here.'
-              : 'No articles match the current filters.'}
-          </div>
-        ) : (
-          <div className="pq-list">
-
-            {/* Campaign groups */}
-            {sortedCampaignEntries.map(([campId, group]) => {
-              const hasResults = (i: any) => Object.keys(i.publish_results || {}).filter(k => !k.startsWith('__')).length > 0;
-              const publishedCount = group.items.filter(hasResults).length;
-              const nonArchived = group.items.filter(i => i.status !== 'archived');
-              const allArchived = group.items.length > 0 && nonArchived.length === 0;
-              // Show Archive Campaign when there's at least one item to archive AND no
-              // unpublished blockers among non-archived items. Already-archived items are
-              // ignored — a partially-archived campaign can still be fully archived.
-              const canArchiveAll = nonArchived.length > 0 && nonArchived.every(hasResults);
-              return (
-                <div key={campId} className="pq-campaign-group">
-                  <div className="pq-campaign-group-header">
-                    <div className="pq-campaign-group-left">
-                      <span className="pq-campaign-badge">Campaign · {campId.slice(0, 8).toUpperCase()}</span>
-                      <div>
-                        <div className="pq-campaign-group-name">{group.name}</div>
-                        <div className="pq-campaign-group-topic">{group.topic}</div>
-                      </div>
-                    </div>
-                    <div className="pq-campaign-group-right">
-                      <span className="pq-campaign-group-stats">{publishedCount}/{group.items.length} published</span>
-                      {canArchiveAll && (
-                        <button
-                          className="pq-schedule-campaign-btn pq-archive-campaign-btn"
-                          onClick={() => archiveCampaign(campId, group.name)}
-                          title="Archive entire campaign — all articles move to archived view"
-                        >
-                          <Archive />
-                          Archive
-                        </button>
-                      )}
-                      {allArchived && (
-                        <button
-                          className="pq-schedule-campaign-btn pq-unarchive-campaign-btn"
-                          onClick={() => unarchiveCampaign(campId, group.name)}
-                          title="Unarchive — restore campaign to published view"
-                        >
-                          <Archive />
-                          Unarchive
-                        </button>
-                      )}
-                      <button
-                        className="pq-schedule-campaign-btn"
-                        onClick={() => setCampaignScheduler({
-                          campId,
-                          name: group.name,
-                          items: group.items,
-                          startDate: '',
-                          publishTime: '09:00',
-                          preview: []
-                        })}
-                        title="Schedule all articles in this campaign"
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                        Schedule
-                      </button>
-                    </div>
-                  </div>
-                  {[1,2,3,4].filter(w => group.items.some(i => i.week_number === w)).map(week => (
-                    <div key={week} className="pq-campaign-week">
-                      <div className="pq-campaign-week-label">Week {week}</div>
-                      <div className="pq-campaign-week-items">
-                        {group.items.filter(i => i.week_number === week).map(item => {
+  const renderQueueItem = (item: QueueItem) => {
                           const availChannels = connectedChannels[item.brand_profile_id] || [];
                           const sel = selectedChannels[item.id] || [];
                           const isPublishing = publishing === item.id;
@@ -1745,7 +1611,143 @@ ${authorFooterHtml}
                   )}
                 </div>
               );
-                        })} {/* week items */}
+  };
+
+  return (
+    <>
+    <AppShell pageTitle="Publishing Queue">
+      <div className="pq-page">
+        {/* Header */}
+        <div className="geo-header">
+          <div>
+            <div className="geo-eyebrow">Publishing</div>
+            <h1 className="geo-title">Publishing Queue</h1>
+            <p className="geo-description">Approved articles staged for distribution. Select channels, publish now or schedule — every publish writes to the Brain.</p>
+          </div>
+          <button className="pq-refresh-btn" onClick={loadQueue} disabled={loading}>
+            <RefreshCw /> {loading ? 'Loading...' : 'Refresh'}
+          </button>
+        </div>
+        {error && <div className="geo-error">{error}</div>}
+        {reviewUrl && (
+          <div className="pq-review-toast">
+            <span className="pq-review-link-label"><Link2 /> Review link {reviewCopied ? 'copied!' : 'ready'}:</span>
+            <a href={reviewUrl} target="_blank" rel="noopener noreferrer" className="pq-review-link">{reviewUrl}</a>
+          </div>
+        )}
+        {/* KPI strip — quick read on queue health. Stats computed from the
+            same items array the rest of the page renders, so they refresh in
+            lockstep with the list. Channels-live derived from publish_results
+            keys across all items (a channel "counts" if it's been used at
+            least once for this brand). */}
+        {items.length > 0 && (() => {
+          const inQueue = items.filter(i => i.status === 'staged' || i.status === 'scheduled').length;
+          const thirtyAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+          const published30d = items.filter(i => i.status === 'published' && i.published_at && new Date(i.published_at).getTime() >= thirtyAgo).length;
+          const failed = items.filter(i => i.status === 'failed' || i.status === 'partial').length;
+          const channelsLive = new Set(
+            items.flatMap(i => Object.keys(i.publish_results || {})).filter(k => !k.startsWith('__'))
+          ).size;
+          const stats: Stat[] = [
+            { label: 'In queue',       value: inQueue,      delta: `${items.length} total`,                       deltaTone: 'flat' },
+            { label: 'Published · 30d', value: published30d, delta: published30d > 0 ? `${published30d} this month` : 'No publishes yet', deltaTone: published30d > 0 ? 'positive' : 'flat' },
+            { label: 'Channels live',  value: channelsLive, delta: channelsLive > 0 ? 'Across this brand'        : 'Connect a channel',  deltaTone: 'flat' },
+            { label: 'Needs review',   value: failed,       delta: failed > 0 ? 'Failed or partial publishes'    : 'All clean',           deltaTone: failed > 0 ? 'negative' : 'positive' },
+          ];
+          return <StatStrip stats={stats} />;
+        })()}
+      <div className="pq-controls-row">
+        <button
+          className="pq-sort-toggle"
+          onClick={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}
+          title={sortDir === 'desc' ? 'Newest first' : 'Oldest first'}
+        >
+          {sortDir === 'desc' ? '↓ Newest first' : '↑ Oldest first'}
+        </button>
+        {archivedItems.length > 0 && (
+          <button className="pq-archive-toggle" onClick={() => setShowArchived(p => !p)}>
+            <Archive /> {showArchived ? 'Hide Archived' : `Show Archived (${archivedItems.length})`}
+          </button>
+        )}
+      </div>
+        {successMsg && <div className="int-success">{successMsg}</div>}
+
+        {/* Queue — campaign groups + standalone */}
+        {loading ? (
+          <div className="pq-empty">Loading queue...</div>
+        ) : filteredItems.length === 0 ? (
+          <div className="pq-empty">
+            {items.length === 0
+              ? 'No articles in queue yet. Approve an article in the Compliance Gate to stage it here.'
+              : 'No articles match the current filters.'}
+          </div>
+        ) : (
+          <div className="pq-list">
+
+            {/* Campaign groups */}
+            {sortedCampaignEntries.map(([campId, group]) => {
+              const hasResults = (i: any) => Object.keys(i.publish_results || {}).filter(k => !k.startsWith('__')).length > 0;
+              const publishedCount = group.items.filter(hasResults).length;
+              const nonArchived = group.items.filter(i => i.status !== 'archived');
+              const allArchived = group.items.length > 0 && nonArchived.length === 0;
+              // Show Archive Campaign when there's at least one item to archive AND no
+              // unpublished blockers among non-archived items. Already-archived items are
+              // ignored — a partially-archived campaign can still be fully archived.
+              const canArchiveAll = nonArchived.length > 0 && nonArchived.every(hasResults);
+              return (
+                <div key={campId} className="pq-campaign-group">
+                  <div className="pq-campaign-group-header">
+                    <div className="pq-campaign-group-left">
+                      <span className="pq-campaign-badge">Campaign · {campId.slice(0, 8).toUpperCase()}</span>
+                      <div>
+                        <div className="pq-campaign-group-name">{group.name}</div>
+                        <div className="pq-campaign-group-topic">{group.topic}</div>
+                      </div>
+                    </div>
+                    <div className="pq-campaign-group-right">
+                      <span className="pq-campaign-group-stats">{publishedCount}/{group.items.length} published</span>
+                      {canArchiveAll && (
+                        <button
+                          className="pq-schedule-campaign-btn pq-archive-campaign-btn"
+                          onClick={() => archiveCampaign(campId, group.name)}
+                          title="Archive entire campaign — all articles move to archived view"
+                        >
+                          <Archive />
+                          Archive
+                        </button>
+                      )}
+                      {allArchived && (
+                        <button
+                          className="pq-schedule-campaign-btn pq-unarchive-campaign-btn"
+                          onClick={() => unarchiveCampaign(campId, group.name)}
+                          title="Unarchive — restore campaign to published view"
+                        >
+                          <Archive />
+                          Unarchive
+                        </button>
+                      )}
+                      <button
+                        className="pq-schedule-campaign-btn"
+                        onClick={() => setCampaignScheduler({
+                          campId,
+                          name: group.name,
+                          items: group.items,
+                          startDate: '',
+                          publishTime: '09:00',
+                          preview: []
+                        })}
+                        title="Schedule all articles in this campaign"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        Schedule
+                      </button>
+                    </div>
+                  </div>
+                  {[1,2,3,4].filter(w => group.items.some(i => i.week_number === w)).map(week => (
+                    <div key={week} className="pq-campaign-week">
+                      <div className="pq-campaign-week-label">Week {week}</div>
+                      <div className="pq-campaign-week-items">
+                        {group.items.filter(i => i.week_number === week).map(renderQueueItem)} {/* week items */}
                       </div>
                     </div>
                   ))} {/* weeks */}
@@ -1759,370 +1761,7 @@ ${authorFooterHtml}
                 {Object.keys(campaignGroups).length > 0 && (
                   <div className="pq-standalone-label">Standalone Articles</div>
                 )}
-                {standaloneItems.map(item => {
-                  const availChannels = connectedChannels[item.brand_profile_id] || [];
-                  const sel = selectedChannels[item.id] || [];
-                  const isPublishing = publishing === item.id;
-                  const isScheduling = scheduling === item.id;
-                  const results = item.publish_results || {};
-return (
-                <div key={item.id} className={`pq-item status-${item.status}`}>
-                  {item.week_number != null && (
-                    <div className="pq-campaign-meta-row">
-                      <span className="pq-campaign-meta-week">Wk {item.week_number}{item.scheduled_at ? ` · ${new Date(item.scheduled_at).toLocaleDateString('en-US', { weekday: 'long' })}` : item.publish_day ? ` · ${item.publish_day}` : ''}</span>
-                      {item.content_type && <span className="pq-campaign-meta-type">{item.content_type}</span>}
-                      {item.funnel_position && <span className={`pq-campaign-meta-funnel funnel-${(item.funnel_position||'').toLowerCase()}`}>{item.funnel_position}</span>}
-                    </div>
-                  )}
-                  {/* Row top: title + meta + status */}
-                  <div className="pq-item-top">
-                    <div className="pq-item-meta">
-                      {editingTitleId === item.id ? (
-                        <input
-                          className="pq-title-edit-input"
-                          value={editingTitleVal}
-                          onChange={e => setEditingTitleVal(e.target.value)}
-                          onBlur={() => saveTitle(item)}
-                          onKeyDown={e => { if (e.key === 'Enter') saveTitle(item); if (e.key === 'Escape') setEditingTitleId(null); }}
-                          autoFocus
-                        />
-                      ) : (
-                        <div
-                          className="pq-item-title pq-item-title-editable"
-                          title="Click to edit title"
-                          onClick={() => { setEditingTitleId(item.id); setEditingTitleVal(item.title || ''); }}
-                        >
-                          {item.title || 'Untitled Article'}
-                          <span className="pq-title-edit-hint">✎</span>
-                        </div>
-                      )}
-                      <div className="pq-item-sub">
-                        <span className="pq-brand-tag">{brandName(item)}</span>
-                        <span className="pq-dot">·</span>
-                        <span className="pq-date">{
-                          item.scheduled_at && item.status !== 'staged'
-                            ? `${item.status === 'published' || item.status === 'partial' ? 'Published' : 'Scheduled'} ${new Date(item.scheduled_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · ${new Date(item.scheduled_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
-                            : `Generated ${new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-                        }</span>
-                      </div>
-                    </div>
-                    {(() => {
-                      const ps = precogScores[item.content_id];
-                      if (!ps) return null;
-                      if (ps.tier === 'insufficient_data') return (
-                        <div className="pq-precog-badge pq-precog-insufficient" title="Not enough analytics data yet to score this article">
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                          No data yet
-                        </div>
-                      );
-                      return (
-                        <div className="pq-precog-badge" style={{ '--precog-color': ps.color } as React.CSSProperties}
-                          title={ps.prediction + (ps.recommendedActions?.length ? '\n\nSuggested: ' + ps.recommendedActions[0] : '')}>
-                          <span className="pq-precog-dot" />
-                          <span className="pq-precog-score">{ps.score}</span>
-                          <span className="pq-precog-label">Pre-cog</span>
-                        </div>
-                      );
-                    })()}
-                    <div className="pq-item-actions-top">
-
-                      <button className="pq-icon-btn" title="Smart Export" onClick={() => openExportModal(item)}>
-                        <Download />
-                      </button>
-                      <button className="pq-icon-btn" title="Preview & Edit Post" onClick={() => openContentPreview(item)}>
-                        <Eye />
-                      </button>
-
-                      <div style={{ position: 'relative' }}>
-                        <button className="pq-icon-btn" title="Send for Review"
-                          onClick={() => setReviewDropdown(reviewDropdown === item.id ? null : item.id)}>
-                          <Share />
-                        </button>
-                        {reviewDropdown === item.id && (
-                          <div className="pq-reviewer-dropdown">
-                            <div className="pq-reviewer-dropdown-title">Send for Review</div>
-                            {reviewers.length === 0 ? (
-                              <div className="pq-reviewer-empty">No reviewers — add them in Admin</div>
-                            ) : reviewers.map(rv => (
-                              <button key={rv.id} className="pq-reviewer-option"
-                                onClick={() => sendForReview(item, rv.id)}>
-                                <span className="pq-reviewer-avatar">{rv.name[0].toUpperCase()}</span>
-                                <span>
-                                  <div className="pq-reviewer-rname">{rv.name}</div>
-                                  {rv.title && <div className="pq-reviewer-rtitle">{rv.title}</div>}
-                                </span>
-                              </button>
-                            ))}
-                            <div className="pq-reviewer-divider" />
-                            <button className="pq-reviewer-option pq-reviewer-link-only"
-                              onClick={() => sendForReview(item)}>
-                              <span className="pq-reviewer-avatar"><Link2 /></span>
-                              <span><div className="pq-reviewer-rname">Copy link only</div></span>
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                      {item.status === 'archived' ? (
-                        <button className="pq-icon-btn" title="Unarchive — restore to queue" onClick={() => unarchiveItem(item)} style={{ color: '#10b981' }}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-                        </button>
-                      ) : (
-                        <button className="pq-icon-btn" title="Archive" aria-label="Archive this item" onClick={() => archiveItem(item)}>
-                          <Archive />
-                        </button>
-                      )}
-                      <button className="pq-icon-btn danger" title="Unpublish by channel" aria-label="Unpublish this content from one or more channels" onClick={() => openDeleteModal(item)}>
-                        <Unplug />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Channel selector */}
-                  <div className="pq-channel-row">
-                    <span className="pq-channel-label">Publish to:</span>
-                    <div className="pq-channel-chips">
-                      {availChannels.length === 0 ? (
-                        <span className="pq-no-channels">No channels connected — set up in Integrations</span>
-                      ) : (
-                        availChannels.map(ch => {
-                          const def = CHANNEL_LABELS[ch];
-                          const isSelected = sel.includes(ch);
-                          const result = results[ch];
-                          return (() => {
-                              const logEntry = (publishLog[item.id] || []).find(l => l.channel === ch);
-                              const liveStatus = logEntry?.live_status;
-                              const isPublished = liveStatus === 'published' || (!logEntry && result?.status === 'published');
-                              const chipClass = (() => {
-                                // If publish_results no longer carries this channel, the channel
-                                // is in pre-publish state — even if a historical publish_log row
-                                // exists from a prior publish/unpublish cycle. Treat as fresh so
-                                // the user can re-select it for publishing without fighting a
-                                // greyed-out chip.
-                                if (!result) return '';
-                                if (!logEntry) {
-                                  if (result?.status === 'published') return 'published';
-                                  if (result?.status === 'error') return 'error';
-                                  return '';
-                                }
-                                if (logEntry.live_status === 'published') return 'published';
-                                if (logEntry.live_status === 'deleted') return 'published-deleted';
-                                if (logEntry.live_status === 'unknown') return 'published-deleted';
-                                if (logEntry.live_status === 'error') return 'error';
-                                if (result?.status === 'error') return 'error';
-                                return result?.status === 'published' ? 'published' : '';
-                              })();
-
-                              // Published + has URL → non-interactive link to the live post.
-                              // Prefer logEntry.published_url (persisted in DB across sessions)
-                              // over result.url (in-memory only). On page load, past-session
-                              // publishes have only logEntry — falling back to result.url alone
-                              // makes the chip render as a toggle button, which is the bug.
-                              const liveUrl = logEntry?.published_url || result?.url;
-                              if (isPublished && liveUrl) {
-                                return (
-                                  <a
-                                    key={ch}
-                                    href={liveUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className={`pq-chip published`}
-                                    style={{ '--chip-color': def?.color } as React.CSSProperties}
-                                    title={`View on ${def?.label || ch}`}
-                                  >
-                                    {def?.label || ch} <ExternalLink />
-                                  </a>
-                                );
-                              }
-
-                              // Not published → toggle button for channel selection
-                              return (
-                                <button
-                                  key={ch}
-                                  className={`pq-chip ${isSelected ? 'selected' : ''} ${chipClass}`}
-                                  style={{ '--chip-color': def?.color } as React.CSSProperties}
-                                  onClick={() => toggleChannel(item.id, ch)}
-                                  title={result ? `${result.status}${result.url ? ': ' + result.url : result.error ? ': ' + result.error : ''}` : ''}
-                                >
-                                  {def?.label || ch}
-                                </button>
-                              );
-                          })();
-                        })
-                      )}
-                    </div>
-                    {ALL_CHANNELS.filter(ch => !availChannels.includes(ch)).length > 0 && availChannels.length > 0 && (
-                      <span className="pq-unconnected-hint">
-                        {ALL_CHANNELS.filter(ch => !availChannels.includes(ch)).map(ch => CHANNEL_LABELS[ch]?.label).join(', ')} not connected
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Publish actions — show for staged/failed AND for published to allow re-targeting new channels */}
-                  {(item.status !== 'published' || availChannels.some(ch => !results[ch])) && (
-                    <div className="pq-item-actions">
-                      <button
-                        className="pq-publish-now-btn"
-                        onClick={() => handlePublishNow(item)}
-                        disabled={isPublishing || sel.length === 0}
-                      >
-                        <Send /> {isPublishing ? 'Publishing...' : 'Publish Now'}
-                      </button>
-                      <div className="pq-schedule-group">
-                        <label className="pq-schedule-label" htmlFor={`pq-sched-${item.id}`}>Schedule for</label>
-                        <div className="pq-datetime-wrap">
-                          <input
-                            id={`pq-sched-${item.id}`}
-                            type="datetime-local"
-                            className="pq-datetime-input"
-                            aria-label="Pick date and time to schedule this post"
-                            value={scheduleDate[item.id] || ''}
-                            onChange={e => setScheduleDate(prev => ({ ...prev, [item.id]: e.target.value }))}
-                          />
-                          <span className="pq-datetime-tz">{Intl.DateTimeFormat().resolvedOptions().timeZone}</span>
-                        </div>
-                        <button
-                          className="pq-schedule-btn"
-                          onClick={() => handleSchedule(item)}
-                          disabled={isScheduling || !scheduleDate[item.id]}
-                        >
-                          <Clock /> {isScheduling ? 'Scheduling...' : 'Schedule'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Publish results with live status + sync + republish */}
-                  {Object.keys(results).length > 0 && (
-                    <div className="pq-results">
-                      <div className="pq-results-header">
-                        <span className="pq-results-label">Published to</span>
-                        <button
-                          className="pq-sync-btn"
-                          onClick={() => handleSync(item.id)}
-                          disabled={syncing === item.id}
-                          title="Check live status on each channel"
-                        >
-                          <RefreshCw /> {syncing === item.id ? 'Syncing...' : 'Sync Status'}
-                        </button>
-                      </div>
-                      {Object.entries(results)
-                        .filter(([ch]) => !ch.startsWith('__'))
-                        // Hide channels whose latest publish_log row is marked deleted —
-                        // the channel was unpublished via the unplug modal and shouldn't
-                        // still appear in PUBLISHED TO claiming to be live.
-                        .filter(([ch]) => {
-                          const log = (publishLog[item.id] || []).find(l => l.channel === ch);
-                          return log?.live_status !== 'deleted';
-                        })
-                        .map(([ch, res]) => {
-                        const log = (publishLog[item.id] || []).find(l => l.channel === ch);
-                        // Prefer publish log live_status (most accurate) over publish result status
-                        // If log says deleted, show deleted regardless of publish_results JSONB
-                        const liveStatus = log?.live_status ?? (res.status === 'published' ? 'published' : res.status);
-                        const isDeleted = liveStatus === 'deleted';
-                        const isUnknown = liveStatus === 'unknown';
-                        const repKey = `${item.id}:${ch}`;
-                        return (
-                        <div key={ch} className={`pq-result-row result-${liveStatus}`}>
-                          <span className="pq-result-channel">{CHANNEL_LABELS[ch]?.label || ch}</span>
-                          <span className={`pq-result-status live-${liveStatus}`}>
-                            {isDeleted ? '🗑 Deleted' : isUnknown ? '⚠ Unknown' : '✓ Live'}
-                          </span>
-                          {(() => {
-                            // Same fall-through as the channel chip: publish_results.url is only
-                            // populated by some channels (Ghost yes, X/LinkedIn no) so on reload
-                            // only Ghost would render "View post". The persisted URL for the rest
-                            // lives in publish_log.published_url — prefer that, fall back to the
-                            // in-memory result if for some reason the log row hasn't materialized.
-                            const viewUrl = log?.published_url || res.url;
-                            if (!viewUrl || isDeleted || isUnknown) return null;
-                            return (
-                              <a href={viewUrl} target="_blank" rel="noreferrer" className="pq-result-url">
-                                View post <ExternalLink />
-                              </a>
-                            );
-                          })()}
-                          {!isDeleted && !isUnknown && (() => {
-                            const bSlug = (item.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
-                            const aSlug = (item.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
-                            const cSlug = (item.campaign_name || 'forge-content').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50);
-                            const bs = brandSettings[item.brand_profile_id];
-                            const base = bs?.article_base_url?.trim()
-                              ? bs.article_base_url.replace(/\/+$/, '')
-                              : `https://${window.location.hostname}/articles/${bSlug}`;
-                            const suffix = (bs?.article_url_suffix || '').trim();
-                            const utmUrl = `${base}/${aSlug}${suffix}?utm_source=${ch}&utm_medium=social&utm_campaign=${cSlug}&utm_content=${aSlug}`;
-                            return (
-                              <button
-                                className="pq-utm-copy-btn"
-                                title="Copy UTM link"
-                                onClick={() => { navigator.clipboard.writeText(utmUrl); }}
-                              >
-                                UTM
-                              </button>
-                            );
-                          })()}
-                          {log?.last_synced_at && (
-                            <span className="pq-synced-at">synced {new Date(log.last_synced_at).toLocaleTimeString()}</span>
-                          )}
-                          {(isDeleted || isUnknown) && (
-                            <button
-                              className="pq-republish-btn"
-                              onClick={() => handleRepublish(item.id, ch)}
-                              disabled={republishing === repKey}
-                            >
-                              {republishing === repKey ? 'Republishing...' : '↺ Republish'}
-                            </button>
-                          )}
-                          {(res.status === 'error' || liveStatus === 'error') && (() => {
-                            // Auth-expired errors thrown by the publish handlers
-                            // ("X authentication expired. Please reconnect X in
-                            // Integrations." etc.) need a Reconnect link, not a
-                            // Reset & Retry button — retrying without fresh
-                            // credentials will fail the same way.
-                            const localLog = (publishLog[item.id] || []).find(l => l.channel === ch);
-                            const errMsg = localLog?.error_message || res.error || '';
-                            const isAuthError = /authentication expired|reconnect/i.test(errMsg);
-                            const label = CHANNEL_LABELS[ch]?.label || ch;
-                            if (isAuthError) {
-                              return (
-                                <>
-                                  <a className="pq-retry-btn pq-reconnect-btn" href="/app/integrations">
-                                    Reconnect {label} →
-                                  </a>
-                                  <span className="pq-result-error">Your {label} connection expired. Reconnect to publish.</span>
-                                </>
-                              );
-                            }
-                            return (
-                              <>
-                                <button
-                                  className="pq-retry-btn"
-                                  onClick={() => handleRetry(item.id, ch)}
-                                  disabled={republishing === repKey}
-                                  title="Clear error and retry"
-                                >
-                                  {republishing === repKey ? 'Resetting...' : '↺ Reset & Retry'}
-                                </button>
-                                {errMsg && (
-                                  <span className="pq-result-error" title={errMsg}>
-                                    {errMsg.length > 120 ? errMsg.slice(0, 120) + '…' : errMsg}
-                                  </span>
-                                )}
-                              </>
-                            );
-                          })()}
-                          {res.error && liveStatus !== 'error' && liveStatus !== 'published' && <span className="pq-result-error">{res.error}</span>}
-                          {res.message && liveStatus !== 'published' && !res.skipped && <span className="pq-result-msg">{res.message}</span>}
-                        </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-
-                })} {/* standalone items */}
+                {standaloneItems.map(renderQueueItem)} {/* standalone items */}
               </>
             )}
           </div>
