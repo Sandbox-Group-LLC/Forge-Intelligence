@@ -99,7 +99,7 @@
   background: var(--color-accent, #4F46E5);
   color: #fff;
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;

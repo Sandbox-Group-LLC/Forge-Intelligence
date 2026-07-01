@@ -66,7 +66,7 @@
   gap: 4px;
   padding: 12px 14px;
   border: 1px solid var(--color-border, #E2E8F0);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-subtle, #F8FAFC);
   cursor: pointer;
   text-align: left;
@@ -117,7 +117,7 @@
   padding: 14px 16px;
   background: var(--color-bg-elevated, #F8FAFC);
   border: 1px dashed var(--color-border, #E2E8F0);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-style: italic;
 }
 
@@ -129,7 +129,7 @@
   padding: 18px 20px;
   background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%);
   border: 1px solid #FCD34D;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
 }
 .sg-arc-empty-title {
   font-size: 14px;
@@ -192,7 +192,7 @@
   box-sizing: border-box;
   padding: 12px 14px;
   border: 1px solid var(--color-border, #E2E8F0);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-card, #FFFFFF);
   color: var(--color-text-primary, #0F172A);
   font-family: inherit;
@@ -234,7 +234,7 @@
   gap: 6px;
   padding: 14px 16px;
   border: 1px solid var(--color-border, #E2E8F0);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-card, #FFFFFF);
   color: var(--color-text-primary, #0F172A);
   font-family: inherit;
@@ -272,7 +272,7 @@
 /* ── Advanced panel ─────────────────────────────────────────────────────── */
 .sg-advanced {
   border: 1px solid var(--color-border, #E2E8F0);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   background: rgba(15, 23, 32, 0.02);
 }
 
@@ -359,7 +359,7 @@
   color: #fff;
   background: var(--color-accent, #3563FF);
   border: 1px solid var(--color-accent, #3563FF);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all 120ms ease;
 }
@@ -388,7 +388,7 @@
   color: var(--color-text-secondary, #475569);
   background: var(--color-bg-card, #FFFFFF);
   border: 1px solid var(--color-border, #E2E8F0);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all 120ms ease;
 }
@@ -483,7 +483,7 @@
   border: 1px solid #EF4444;
   background: rgba(239, 68, 68, 0.06);
   color: #B91C1C;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -622,7 +622,7 @@
   box-sizing: border-box;
   padding: 10px 12px;
   border: 1px solid var(--color-accent, #3563FF);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-card, #FFFFFF);
   color: var(--color-text-primary, #0F172A);
   font-family: inherit;
@@ -669,7 +669,7 @@
   font-size: 11px;
   font-weight: 500;
   padding: 3px 8px;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   letter-spacing: 0.01em;
 }
 
@@ -693,7 +693,7 @@
   color: var(--color-text-secondary, #475569);
   background: var(--color-bg-card, #FFFFFF);
   border: 1px solid var(--color-border, #E2E8F0);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all 120ms ease;
   font-family: inherit;
@@ -747,7 +747,7 @@
   padding: 10px 14px;
   background: var(--color-bg-card, #FFFFFF);
   border: 1px solid var(--color-border, #E2E8F0);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   font-family: inherit;
   font-size: 13px;
   font-weight: 600;
@@ -783,7 +783,7 @@
   gap: 12px;
   padding: 10px 14px;
   border: 1px solid var(--color-border, #E2E8F0);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-card, #FFFFFF);
 }
 
@@ -925,7 +925,7 @@
   justify-content: center;
   padding: 0;
   border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: rgba(0, 0, 0, 0.55);
   color: #fff;
   cursor: pointer;
@@ -968,7 +968,7 @@
   justify-content: center;
   padding: 0;
   border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: rgba(0, 0, 0, 0.55);
   color: #fff;
   cursor: pointer;
@@ -989,7 +989,7 @@
   width: 240px;
   padding: 12px 14px 10px;
   border: 1px solid var(--border-color, #2a2a2a);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   background: #181818;
   color: #e4e4e4;
   font-size: 13px;
@@ -1105,7 +1105,7 @@
 
 .sg-modal {
   background: var(--color-bg-card, white);
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   box-shadow: 0 20px 60px rgba(15, 23, 42, 0.2);
   width: 100%;
   max-width: 640px;

@@ -157,7 +157,7 @@
   width: 100%;
   background: #0F1720;
   border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   color: #F8FAFC;
   font-size: 0.875rem;
   font-family: inherit;
@@ -177,7 +177,7 @@
 .rv-btn {
   width: 100%;
   padding: 13px;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   border: none;
   font-size: 0.9375rem;
   font-weight: 700;
@@ -267,7 +267,7 @@
   font-style: italic;
   padding: 14px;
   background: rgba(0,0,0,0.2);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 }
 
 /* Spinner */

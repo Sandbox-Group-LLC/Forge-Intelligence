@@ -92,7 +92,7 @@
   font-size: 0.7rem;
   padding: 1px 6px;
   background: var(--color-bg-elevated);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   color: var(--color-text-muted);
 }
 

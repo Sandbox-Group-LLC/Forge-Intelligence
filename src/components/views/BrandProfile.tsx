@@ -196,7 +196,7 @@ export function BrandProfile() {
           </p>
           <button
             onClick={() => setCurrentView('new-analysis')}
-            style={{ padding: '10px 20px', background: 'var(--color-accent, #3563FF)', color: '#fff', border: 'none', borderRadius: 8, fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+            style={{ padding: '10px 20px', background: 'var(--color-accent, #3563FF)', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
           >
             Run new analysis
           </button>
@@ -228,17 +228,17 @@ export function BrandProfile() {
           </div>
         </div>
         <div className="profile-actions-wrap" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button className="profile-action-btn" onClick={handleReanalyze} disabled={reanalyzing} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
+          <button className="profile-action-btn" onClick={handleReanalyze} disabled={reanalyzing} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 'var(--radius-sm)', background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
             <span className="btn-icon-decorative"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg></span>
             {reanalyzing ? 'Re-analyzing...' : 'Re-analyze'}
           </button>
-          <button className="profile-action-btn" onClick={handleExportJSON} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
+          <button className="profile-action-btn" onClick={handleExportJSON} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 'var(--radius-sm)', background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
             <span className="btn-icon-decorative">{icons.download}</span> Export JSON
           </button>
-          <button className="profile-action-btn" onClick={() => setCurrentView('strategy')} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
+          <button className="profile-action-btn" onClick={() => setCurrentView('strategy')} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 'var(--radius-sm)', background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
             Strategy Brief →
           </button>
-          <button className="profile-action-btn profile-action-btn-primary" onClick={() => { window.location.href = `/app/geo-strategist?profileId=${brandProfile.id}`; }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, borderRadius: 8, background: '#4F46E5', color: '#fff', border: '1px solid #4F46E5', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
+          <button className="profile-action-btn profile-action-btn-primary" onClick={() => { window.location.href = `/app/geo-strategist?profileId=${brandProfile.id}`; }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, borderRadius: 'var(--radius-sm)', background: '#4F46E5', color: '#fff', border: '1px solid #4F46E5', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
             <span className="btn-icon-decorative">{icons.zap}</span> Run GEO Strategy →
           </button>
         </div>
@@ -251,7 +251,7 @@ export function BrandProfile() {
       />
 
       {brandProfile.scraperSuccess === false && (
-        <div style={{ padding: '14px 20px', marginBottom: 16, background: '#FFF7ED', border: '1px solid #FDBA74', borderRadius: 10, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+        <div style={{ padding: '14px 20px', marginBottom: 16, background: '#FFF7ED', border: '1px solid #FDBA74', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
           <span style={{ fontSize: 18, lineHeight: 1 }}>⚠️</span>
           <div>
             <div style={{ fontSize: 13, fontWeight: 600, color: '#92400E', marginBottom: 4 }}>Limited website access</div>
@@ -490,7 +490,7 @@ export function BrandProfile() {
                     textAlign: 'center',
                     background: '#f8fafc',
                     border: '1px dashed #cbd5e1',
-                    borderRadius: 12,
+                    borderRadius: 'var(--radius-sm)',
                   }}
                 >
                   <h3 style={{ margin: '0 0 8px', fontSize: 15, fontWeight: 600, color: '#0f172a' }}>

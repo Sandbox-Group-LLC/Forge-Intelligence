@@ -83,7 +83,7 @@
 .gethelp-field textarea {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 9px 11px;
   color: #ffffff;
   font-size: 0.875rem;
@@ -113,7 +113,7 @@
 .gethelp-context {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 10px 12px;
   display: flex;
   flex-direction: column;
@@ -146,7 +146,7 @@
   overflow-y: auto;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 6px;
 }
 .gethelp-alert-row {
@@ -182,7 +182,7 @@
   background: rgba(239, 68, 68, 0.12);
   border: 1px solid rgba(239, 68, 68, 0.35);
   color: #fca5a5;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 8px 12px;
   font-size: 0.78rem;
 }
@@ -196,7 +196,7 @@
 .gethelp-btn-primary,
 .gethelp-btn-secondary {
   padding: 9px 18px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 0.85rem;
   font-weight: 600;
   font-family: inherit;

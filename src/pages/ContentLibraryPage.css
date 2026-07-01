@@ -84,7 +84,7 @@
 .cl-tab-count {
   font-size: 0.7rem;
   background: rgba(255,255,255,0.15);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   padding: 1px 6px;
   font-weight: 600;
 }
@@ -517,7 +517,7 @@
   .cl-modal {
     margin: 0;
     max-height: calc(100dvh - 72px);
-    border-radius: 12px;
+    border-radius: var(--radius-sm);
   }
 
   /* Modal stats: 2-col → 1-col */

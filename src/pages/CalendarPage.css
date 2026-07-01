@@ -31,7 +31,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-elevated, rgba(255,255,255,0.04));
   border: 1px solid var(--color-border, rgba(255,255,255,0.1));
   color: var(--color-text-secondary, #94A3B8);
@@ -117,7 +117,7 @@
 .cal-filter-count {
   background: var(--color-bg-elevated, rgba(255,255,255,0.08));
   padding: 1px 7px;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   font-size: 0.7rem;
   font-weight: 700;
   color: inherit;
@@ -156,7 +156,7 @@
   gap: 4px;
   background: var(--color-border, rgba(255,255,255,0.04));
   border: 1px solid var(--color-border, rgba(255,255,255,0.08));
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   padding: 4px;
 }
 
@@ -288,7 +288,7 @@
   color: var(--color-text-muted, #94A3B8);
   background: var(--color-bg-elevated, rgba(255,255,255,0.02));
   border: 1px dashed var(--color-border, rgba(255,255,255,0.12));
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
 }
 
 /* ── Modal (item detail) ───────────────────────────────────────────────── */
@@ -306,7 +306,7 @@
 .cal-modal {
   background: #0F172A;
   border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   padding: 28px;
   max-width: 520px;
   width: 100%;
@@ -382,7 +382,7 @@
   padding: 9px 18px;
   font-size: 0.85rem;
   font-weight: 600;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   text-decoration: none;
   cursor: pointer;
   transition: background 0.15s ease;
@@ -423,6 +423,6 @@
   .cal-modal {
     margin: 0;
     max-height: calc(100dvh - 72px);
-    border-radius: 12px;
+    border-radius: var(--radius-sm);
   }
 }

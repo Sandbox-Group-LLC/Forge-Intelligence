@@ -227,7 +227,7 @@ export default function AdminPage() {
                   }}>Clear</button>
                 </div>
               </div>
-              <div style={{ maxHeight: 400, overflow: 'auto', background: '#0f172a', borderRadius: 8, padding: '8px 0', fontFamily: 'monospace', fontSize: 11 }}>
+              <div style={{ maxHeight: 400, overflow: 'auto', background: '#0f172a', borderRadius: 'var(--radius-sm)', padding: '8px 0', fontFamily: 'monospace', fontSize: 11 }}>
                 {logEntries
                   .filter(e => logFilter === 'all' || (logFilter === 'error' && e.isError) || (logFilter === 'warn' && e.isWarn))
                   .map((e, i) => (
@@ -336,7 +336,7 @@ export default function AdminPage() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '12px 0' }}>
                   {data.tableSizes.map((t, i) => (
                     <div key={i} style={{
-                      padding: '8px 14px', borderRadius: 8, fontSize: 12, fontFamily: 'monospace',
+                      padding: '8px 14px', borderRadius: 'var(--radius-sm)', fontSize: 12, fontFamily: 'monospace',
                       background: t.overThreshold ? '#FEF2F2' : 'var(--color-bg, #f8fafc)',
                       border: `1px solid ${t.overThreshold ? '#FECACA' : 'var(--color-border, #e2e8f0)'}`,
                       color: t.overThreshold ? '#B91C1C' : 'var(--color-text-secondary, #64748b)'
@@ -437,7 +437,7 @@ export default function AdminPage() {
                       const cost = p.name === 'fal.ai' ? (p.tokens * 0.003) : (p.tokens / 1000000) * p.rate;
                       return (
                         <div key={p.name} style={{
-                          padding: '14px 16px', marginBottom: 8, borderRadius: 8,
+                          padding: '14px 16px', marginBottom: 8, borderRadius: 'var(--radius-sm)',
                           background: 'var(--color-bg, #f8fafc)', border: '1px solid var(--color-border, #e2e8f0)'
                         }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
@@ -490,7 +490,7 @@ export default function AdminPage() {
                       t.category === 'feature' ? '#8b5cf6' :
                       t.category === 'question' ? '#3b82f6' : '#64748b';
                     return (
-                      <div key={t.id} style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, background: 'var(--color-bg, #f8fafc)' }}>
+                      <div key={t.id} style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg, #f8fafc)' }}>
                         <button
                           type="button"
                           onClick={() => setExpandedTicket(isOpen ? null : t.id)}

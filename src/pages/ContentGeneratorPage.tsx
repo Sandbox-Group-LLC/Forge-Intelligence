@@ -399,7 +399,7 @@ function ContentGeneratorContent() {
           </p>
         </div>
         <div className="cg-header-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button className="cg-header-btn" onClick={() => setIdeaDrawerOpen(!ideaDrawerOpen)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
+          <button className="cg-header-btn" onClick={() => setIdeaDrawerOpen(!ideaDrawerOpen)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 'var(--radius-sm)', background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
             <span className="btn-icon-decorative"><Zap size={14} /></span> {ideaDrawerOpen ? 'Close Ideas' : '+ Ideas'}
           </button>
           {article && (
@@ -543,7 +543,7 @@ function ContentGeneratorContent() {
               respects as harder than brand patterns. Mirrors the email campaign
               generator's 'Mandatories & Constraints' section. */}
           {topicPrompt.trim() && (
-            <div className="cg-advanced" style={{ marginTop: 12, border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, background: 'var(--color-bg-card, #fff)' }}>
+            <div className="cg-advanced" style={{ marginTop: 12, border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg-card, #fff)' }}>
               <button
                 type="button"
                 onClick={() => setAdvancedOpen(o => !o)}
@@ -722,13 +722,13 @@ function ContentGeneratorContent() {
           )}
 
           <div className="cg-article-actions" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
-            <button className="cg-article-btn" onClick={() => { setArticle(null); setStreamText(''); }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
+            <button className="cg-article-btn" onClick={() => { setArticle(null); setStreamText(''); }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 'var(--radius-sm)', background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
               <span className="btn-icon-decorative"><FileText size={14} /></span> Generate Another
             </button>
-            <button className="cg-article-btn cg-article-btn-primary" onClick={() => window.location.href = '/app/content-library'} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, borderRadius: 8, background: '#4F46E5', color: '#fff', border: '1px solid #4F46E5', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
+            <button className="cg-article-btn cg-article-btn-primary" onClick={() => window.location.href = '/app/content-library'} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, borderRadius: 'var(--radius-sm)', background: '#4F46E5', color: '#fff', border: '1px solid #4F46E5', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
               View in Content Library
             </button>
-            <button className="cg-article-btn cg-article-btn-success" onClick={() => window.location.href = '/app/compliance-gate'} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, borderRadius: 8, background: '#10b981', color: '#fff', border: '1px solid #10b981', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
+            <button className="cg-article-btn cg-article-btn-success" onClick={() => window.location.href = '/app/compliance-gate'} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, borderRadius: 'var(--radius-sm)', background: '#10b981', color: '#fff', border: '1px solid #10b981', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
               <span className="btn-icon-decorative"><ShieldCheck size={14} /></span> Send to Compliance Gate
             </button>
           </div>

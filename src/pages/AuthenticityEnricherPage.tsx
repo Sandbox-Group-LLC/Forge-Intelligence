@@ -361,10 +361,10 @@ function AuthenticityEnricherContent() {
               <div className="score-value" style={{ color: result.confidenceScore >= 75 ? 'var(--color-accent)' : result.confidenceScore >= 50 ? '#7C3AED' : '#EA580C' }}>{result.confidenceScore}</div>
               <div className="score-label">E-E-A-T Score</div>
             </div>
-            <button className="ae-action-btn" onClick={() => { setResult(null); }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
+            <button className="ae-action-btn" onClick={() => { setResult(null); }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 'var(--radius-sm)', background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
               Re-run Enrichment
             </button>
-            <button className="ae-action-btn ae-action-btn-primary" onClick={() => { window.location.href = result?.id ? `/app/content-generator?enrichedBriefId=${encodeURIComponent(result.id)}` : '/app/content-generator'; }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, borderRadius: 8, background: '#4F46E5', color: '#fff', border: '1px solid #4F46E5', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
+            <button className="ae-action-btn ae-action-btn-primary" onClick={() => { window.location.href = result?.id ? `/app/content-generator?enrichedBriefId=${encodeURIComponent(result.id)}` : '/app/content-generator'; }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, borderRadius: 'var(--radius-sm)', background: '#4F46E5', color: '#fff', border: '1px solid #4F46E5', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
               Continue to Content Generator →
             </button>
           </div>
@@ -372,7 +372,7 @@ function AuthenticityEnricherContent() {
       </div>
 
       {result && result.brainVersion && result.currentBrainVersion && result.brainVersion < result.currentBrainVersion && (
-        <div style={{ background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 8, padding: '10px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 'var(--radius-sm)', padding: '10px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 14 }}>⚠️</span>
           <span style={{ fontSize: 13, color: '#92400E' }}>
             These results were built on <strong>Brain v{result.brainVersion}</strong> — your brand is now on <strong>v{result.currentBrainVersion}</strong>. Re-run Enrichment for updated results.
@@ -391,7 +391,7 @@ function AuthenticityEnricherContent() {
               <div className="ae-topic-brief-row" key={tb.id} style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 background: 'var(--color-bg-card, #1a1c23)', border: '1px solid var(--color-border, #2a2d35)',
-                borderRadius: 8, padding: '10px 14px', gap: 12
+                borderRadius: 'var(--radius-sm)', padding: '10px 14px', gap: 12
               }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--color-text-primary, #e2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -503,7 +503,7 @@ function AuthenticityEnricherContent() {
                 padding: '7px 14px',
                 fontSize: 13,
                 fontWeight: 600,
-                borderRadius: 8,
+                borderRadius: 'var(--radius-sm)',
                 border: showManualForm ? '1.5px solid #D97706' : '1.5px solid transparent',
                 background: showManualForm ? '#FEF3C7' : '#D97706',
                 color: showManualForm ? '#92400E' : '#ffffff',
@@ -519,7 +519,7 @@ function AuthenticityEnricherContent() {
                   marginLeft: 2,
                   background: showManualForm ? '#D97706' : '#ffffff',
                   color: showManualForm ? '#ffffff' : '#D97706',
-                  borderRadius: 10,
+                  borderRadius: 'var(--radius-sm)',
                   padding: '1px 7px',
                   fontSize: 10,
                   fontWeight: 800,
@@ -536,7 +536,7 @@ function AuthenticityEnricherContent() {
               Corrections textarea is always rendered so users can override AI hallucinations even when the
               enricher found no explicit gaps. Gap fields render conditionally below. */}
           {showManualForm && result && (
-            <div style={{ background: '#F5B94208', border: '1px solid #F5B94230', borderRadius: '12px', padding: '20px 24px', marginBottom: '24px' }}>
+            <div style={{ background: '#F5B94208', border: '1px solid #F5B94230', borderRadius: 'var(--radius-sm)', padding: '20px 24px', marginBottom: '24px' }}>
               <div className="ae-form-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
                 <div>
                   <div className="ae-form-title-row" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
@@ -556,7 +556,7 @@ function AuthenticityEnricherContent() {
                 {result.gaps.filter(g => g.severity === 'high').map((gap, i) => {
                   const Icon = GAP_ICONS[gap.gapType] || FileText;
                   return (
-                    <div key={i} style={{ background: 'var(--color-bg-elevated, #f4f7ff)', borderRadius: '8px', padding: '14px' }}>
+                    <div key={i} style={{ background: 'var(--color-bg-elevated, #f4f7ff)', borderRadius: 'var(--radius-sm)', padding: '14px' }}>
                       <div className="ae-gap-card-header" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                         <Icon size={14} color="#3563FF" />
                         <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-primary, #1e293b)' }}>{GAP_TYPE_LABELS[gap.gapType] || gap.gapType}</span>
@@ -569,7 +569,7 @@ function AuthenticityEnricherContent() {
                             <Info size={13} />
                           </button>
                           {activeTooltip === `gap-${i}` && (
-                            <div style={{ position: 'absolute', right: 0, top: '20px', background: 'var(--color-bg-card, #ffffff)', border: '1px solid var(--color-bg-card)', borderRadius: '8px', padding: '10px 12px', width: '220px', zIndex: 10 }}>
+                            <div style={{ position: 'absolute', right: 0, top: '20px', background: 'var(--color-bg-card, #ffffff)', border: '1px solid var(--color-bg-card)', borderRadius: 'var(--radius-sm)', padding: '10px 12px', width: '220px', zIndex: 10 }}>
                               <p style={{ fontSize: '12px', color: 'var(--color-text-secondary, #475569)', margin: '0 0 6px' }}>{gap.tooltip}</p>
                               <p style={{ fontSize: '11px', color: '#3563FF', margin: 0 }}>💡 {gap.whyItMatters}</p>
                             </div>
@@ -592,7 +592,7 @@ function AuthenticityEnricherContent() {
                 })}
               </div>
               )}
-              <div style={{ background: 'var(--color-bg-elevated, #f4f7ff)', borderRadius: '8px', padding: '14px', marginTop: '12px' }}>
+              <div style={{ background: 'var(--color-bg-elevated, #f4f7ff)', borderRadius: 'var(--radius-sm)', padding: '14px', marginTop: '12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                   <AlertTriangle size={14} color="#EF4444" />
                   <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-primary, #1e293b)' }}>Corrections & Clarifications</span>
@@ -613,14 +613,14 @@ function AuthenticityEnricherContent() {
                   className="ae-form-action-btn ae-form-action-btn-primary"
                   onClick={() => runAnalysis(true)}
                   disabled={isRunning || Object.keys(manualInputs).every(k => !manualInputs[k])}
-                  style={{ background: '#3563FF', border: 'none', borderRadius: '8px', padding: '8px 20px', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+                  style={{ background: '#3563FF', border: 'none', borderRadius: 'var(--radius-sm)', padding: '8px 20px', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
                 >
                   Re-run with my inputs
                 </button>
                 <button
                   className="ae-form-action-btn"
                   onClick={() => setShowManualForm(false)}
-                  style={{ background: 'transparent', border: '1px solid var(--color-border)', borderRadius: '8px', padding: '8px 16px', color: 'var(--color-text-secondary, #475569)', fontSize: '13px', cursor: 'pointer' }}
+                  style={{ background: 'transparent', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: '8px 16px', color: 'var(--color-text-secondary, #475569)', fontSize: '13px', cursor: 'pointer' }}
                 >
                   Skip — use what you found
                 </button>
@@ -638,7 +638,7 @@ function AuthenticityEnricherContent() {
                   if (!s) return null;
                   const color = s.score >= 70 ? '#14B8A6' : s.score >= 45 ? '#F5B942' : '#EF4444';
                   return (
-                    <div key={dim} style={{ background: 'var(--color-bg-elevated, #f4f7ff)', border: '1px solid var(--color-border)', borderRadius: '12px', padding: '20px' }}>
+                    <div key={dim} style={{ background: 'var(--color-bg-elevated, #f4f7ff)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: '20px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                         <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text-primary, #1e293b)', textTransform: 'capitalize' }}>{dim}</span>
                         <span style={{ fontSize: '22px', fontWeight: 700, color }}>{s.score}</span>
@@ -665,7 +665,7 @@ function AuthenticityEnricherContent() {
                   </h3>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
                     {result.smeSignals.map((sig, i) => (
-                      <div key={i} style={{ background: 'var(--color-bg-elevated, #f4f7ff)', border: '1px solid var(--color-border)', borderRadius: '8px', padding: '12px 14px' }}>
+                      <div key={i} style={{ background: 'var(--color-bg-elevated, #f4f7ff)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: '12px 14px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
                           <span style={{ fontSize: '11px', color: '#3563FF', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{sig.type}</span>
                           <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
@@ -691,7 +691,7 @@ function AuthenticityEnricherContent() {
                   <h3 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text-muted, #94a3b8)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 12px' }}>Opening Hooks</h3>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     {result.contentHooks.map((h, i) => (
-                      <div key={i} style={{ background: 'var(--color-bg-elevated, #f4f7ff)', border: '1px solid var(--color-border)', borderRadius: '8px', padding: '14px 16px' }}>
+                      <div key={i} style={{ background: 'var(--color-bg-elevated, #f4f7ff)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: '14px 16px' }}>
                         <div style={{ display: 'flex', gap: '10px', marginBottom: '6px' }}>
                           <span style={{ fontSize: '11px', color: '#3563FF', background: '#3563FF15', padding: '2px 8px', borderRadius: '4px' }}>{h.type}</span>
                           <span style={{ fontSize: '11px', color: 'var(--color-text-secondary, #475569)' }}>→ {h.persona}</span>
@@ -708,7 +708,7 @@ function AuthenticityEnricherContent() {
                   <h3 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text-muted, #94a3b8)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 12px' }}>Section Injections — {result.injectionMap.length} mapped</h3>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     {result.injectionMap.map((inj, i) => (
-                      <div key={i} style={{ background: 'var(--color-bg-elevated, #f4f7ff)', border: '1px solid var(--color-border)', borderRadius: '8px', padding: '14px 16px' }}>
+                      <div key={i} style={{ background: 'var(--color-bg-elevated, #f4f7ff)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: '14px 16px' }}>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap' }}>
                           <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-primary, #1e293b)' }}>{typeof inj.section === 'string' ? inj.section : (inj as any).type || (inj as any).placement || 'Section'}</span>
                           <ChevronRight size={12} color="var(--color-text-secondary)" />
@@ -741,7 +741,7 @@ function AuthenticityEnricherContent() {
           {activeTab === 'brief' && (
             <div>
               {result.enrichedTitle && (
-                <div style={{ background: 'var(--color-bg-elevated, #f4f7ff)', border: '1px solid var(--color-border)', borderRadius: '12px', padding: '20px', marginBottom: '16px' }}>
+                <div style={{ background: 'var(--color-bg-elevated, #f4f7ff)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: '20px', marginBottom: '16px' }}>
                   <div style={{ fontSize: '11px', color: '#3563FF', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px' }}>Enriched Title</div>
                   <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--color-text-primary, #1e293b)', marginBottom: '8px' }}>{result.enrichedTitle}</div>
                   {result.enrichedH1 && <div style={{ fontSize: '14px', color: 'var(--color-text-muted, #94a3b8)' }}>H1: {result.enrichedH1}</div>}
@@ -749,7 +749,7 @@ function AuthenticityEnricherContent() {
               )}
 
               {result.enrichedSections && result.enrichedSections.map((sec, i) => (
-                <div key={i} style={{ background: flagBg(sec.confidenceFlag), border: `1px solid ${flagBorder(sec.confidenceFlag)}`, borderRadius: '10px', padding: '16px', marginBottom: '10px' }}>
+                <div key={i} style={{ background: flagBg(sec.confidenceFlag), border: `1px solid ${flagBorder(sec.confidenceFlag)}`, borderRadius: 'var(--radius-sm)', padding: '16px', marginBottom: '10px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
                     <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-text-primary, #1e293b)' }}>{sec.heading}</span>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -770,7 +770,7 @@ function AuthenticityEnricherContent() {
               ))}
 
               {result.humanReviewItems && result.humanReviewItems.length > 0 && (
-                <div style={{ background: '#EF444408', border: '1px solid #EF444430', borderRadius: '10px', padding: '16px', marginTop: '16px' }}>
+                <div style={{ background: '#EF444408', border: '1px solid #EF444430', borderRadius: 'var(--radius-sm)', padding: '16px', marginTop: '16px' }}>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '10px' }}>
                     <AlertTriangle size={14} color="#EF4444" />
                     <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text-primary, #1e293b)' }}>Needs Human Review</span>
@@ -789,7 +789,7 @@ function AuthenticityEnricherContent() {
           {/* Author Schema Tab */}
           {activeTab === 'author' && result.authorSchema && (
             <div>
-              <div style={{ background: 'var(--color-bg-elevated, #f4f7ff)', border: '1px solid var(--color-border)', borderRadius: '12px', padding: '24px', marginBottom: '16px' }}>
+              <div style={{ background: 'var(--color-bg-elevated, #f4f7ff)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: '24px', marginBottom: '16px' }}>
                 <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start', marginBottom: '20px' }}>
                   <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#3563FF20', border: '1px solid #3563FF40', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <User size={20} color="#3563FF" />
@@ -822,7 +822,7 @@ function AuthenticityEnricherContent() {
                 )}
               </div>
 
-              <div style={{ background: 'var(--color-bg-card, #ffffff)', border: '1px solid var(--color-bg-card)', borderRadius: '10px', padding: '16px' }}>
+              <div style={{ background: 'var(--color-bg-card, #ffffff)', border: '1px solid var(--color-bg-card)', borderRadius: 'var(--radius-sm)', padding: '16px' }}>
                 <div style={{ fontSize: '11px', color: 'var(--color-text-secondary, #475569)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '10px' }}>Schema Markup Preview</div>
                 <pre style={{ fontSize: '11px', color: 'var(--color-text-secondary, #475569)', margin: 0, overflowX: 'auto', lineHeight: 1.7 }}>
                   {JSON.stringify(result.authorSchemaMarkup || { '@context': 'https://schema.org', '@type': 'Person', ...result.authorSchema }, null, 2)}

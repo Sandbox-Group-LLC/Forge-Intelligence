@@ -52,7 +52,7 @@ export default function DocsPage() {
                       language={match[1]}
                       style={oneDark as { [key: string]: React.CSSProperties }}
                       PreTag="div"
-                      customStyle={{ borderRadius: 8, margin: '1.25rem 0', fontSize: 13 }}
+                      customStyle={{ borderRadius: 'var(--radius-sm)', margin: '1.25rem 0', fontSize: 13 }}
                     >
                       {String(children).replace(/\n$/, '')}
                     </SyntaxHighlighter>

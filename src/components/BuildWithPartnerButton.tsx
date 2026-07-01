@@ -144,7 +144,7 @@ export function BuildWithPartnerButton({
     padding: '0 18px',
     fontSize: 13,
     fontWeight: 600,
-    borderRadius: 8,
+    borderRadius: 'var(--radius-sm)',
     background: variant === 'primary' ? '#4F46E5' : '#fff',
     color: variant === 'primary' ? '#fff' : '#0F172A',
     border: variant === 'primary' ? '1px solid #4F46E5' : '1px solid #e2e8f0',
@@ -171,7 +171,7 @@ export function BuildWithPartnerButton({
         padding: '18px 20px',
         background: '#fff',
         border: '1px solid #e2e8f0',
-        borderRadius: 12,
+        borderRadius: 'var(--radius-sm)',
       }}
     >
       <style>{`@keyframes forge-spin { to { transform: rotate(360deg); } }`}</style>
@@ -240,7 +240,7 @@ export function BuildWithPartnerButton({
             padding: 14,
             background: '#F8FAFC',
             border: '1px solid #e2e8f0',
-            borderRadius: 10,
+            borderRadius: 'var(--radius-sm)',
           }}
         >
           <div style={{ fontSize: 13, color: '#0F172A', marginBottom: 8, lineHeight: 1.5 }}>
@@ -260,7 +260,7 @@ export function BuildWithPartnerButton({
               color: '#1E293B',
               background: '#fff',
               border: '1px solid #CBD5E1',
-              borderRadius: 8,
+              borderRadius: 'var(--radius-sm)',
               resize: 'vertical',
               boxSizing: 'border-box',
             }}
@@ -280,7 +280,7 @@ export function BuildWithPartnerButton({
                 border: '1px solid #4F46E5',
                 background: '#4F46E5',
                 color: '#fff',
-                borderRadius: 8,
+                borderRadius: 'var(--radius-sm)',
                 cursor: 'pointer',
                 fontFamily: 'inherit',
                 lineHeight: 1,
@@ -302,7 +302,7 @@ export function BuildWithPartnerButton({
                 border: '1px solid #e2e8f0',
                 background: '#fff',
                 color: '#0F172A',
-                borderRadius: 8,
+                borderRadius: 'var(--radius-sm)',
                 cursor: 'pointer',
                 fontFamily: 'inherit',
                 lineHeight: 1,

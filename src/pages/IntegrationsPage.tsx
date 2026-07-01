@@ -391,7 +391,7 @@ function RedditAllowedSubreddits({
   };
 
   return (
-    <div style={{ marginTop: 14, padding: 14, background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 8 }}>
+    <div style={{ marginTop: 14, padding: 14, background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 'var(--radius-sm)'}}>
       <div style={{ fontSize: 13, fontWeight: 600, color: '#9A3412', marginBottom: 4 }}>Allowed subreddits</div>
       <div style={{ fontSize: 12, color: '#7C2D12', marginBottom: 12, lineHeight: 1.5 }}>
         Add only subreddits where you have permission to post (your own communities, subs you moderate, or subs whose rules allow your content). Forge will refuse to publish to anything outside this list.

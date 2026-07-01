@@ -72,14 +72,14 @@ export default function DataRequestsPage() {
     page: { padding: '24px 28px', maxWidth: 1000, margin: '0 auto', color: '#0F172A' },
     bar: { display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', margin: '16px 0' },
     field: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: '#64748B' },
-    input: { padding: '8px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, minWidth: 240, background: '#fff' },
-    btn: { padding: '9px 18px', borderRadius: 8, border: '1px solid #3563FF', background: '#3563FF', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
-    btnGhost: { padding: '9px 18px', borderRadius: 8, border: '1px solid #E2E8F0', background: '#fff', color: '#0F172A', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
-    btnDanger: { padding: '9px 18px', borderRadius: 8, border: '1px solid #DC2626', background: '#fff', color: '#DC2626', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
-    card: { border: '1px solid #E2E8F0', borderRadius: 10, padding: 16, margin: '12px 0' },
+    input: { padding: '8px 10px', border: '1px solid #E2E8F0', borderRadius: 'var(--radius-sm)', fontSize: 13, minWidth: 240, background: '#fff' },
+    btn: { padding: '9px 18px', borderRadius: 'var(--radius-sm)', border: '1px solid #3563FF', background: '#3563FF', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+    btnGhost: { padding: '9px 18px', borderRadius: 'var(--radius-sm)', border: '1px solid #E2E8F0', background: '#fff', color: '#0F172A', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+    btnDanger: { padding: '9px 18px', borderRadius: 'var(--radius-sm)', border: '1px solid #DC2626', background: '#fff', color: '#DC2626', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+    card: { border: '1px solid #E2E8F0', borderRadius: 'var(--radius-sm)', padding: 16, margin: '12px 0' },
     h3: { fontSize: 14, fontWeight: 700, margin: '0 0 8px' },
-    note: { fontSize: 12, color: '#92400E', background: '#FEF3C7', padding: '10px 12px', borderRadius: 8, margin: '12px 0' },
-    pre: { fontFamily: 'JetBrains Mono, monospace', fontSize: 12, background: '#F8FAFC', padding: 12, borderRadius: 8, overflow: 'auto', whiteSpace: 'pre-wrap' },
+    note: { fontSize: 12, color: '#92400E', background: '#FEF3C7', padding: '10px 12px', borderRadius: 'var(--radius-sm)', margin: '12px 0' },
+    pre: { fontFamily: 'JetBrains Mono, monospace', fontSize: 12, background: '#F8FAFC', padding: 12, borderRadius: 'var(--radius-sm)', overflow: 'auto', whiteSpace: 'pre-wrap' },
   };
 
   return (

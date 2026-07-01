@@ -86,7 +86,7 @@
   justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--color-accent-muted);
   color: var(--color-accent);
   flex-shrink: 0;
@@ -152,7 +152,7 @@
   justify-content: center;
   width: 40px;
   height: 40px;
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   background: var(--color-accent-muted);
   color: var(--color-accent);
   margin-bottom: 4px;

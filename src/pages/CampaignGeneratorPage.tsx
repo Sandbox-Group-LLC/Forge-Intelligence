@@ -437,7 +437,7 @@ function CampaignGeneratorContent() {
                   </div>
                 )}
                 {!arcsLoading && campaignArcs.length === 0 && (
-                  <div style={{ fontSize: 13, color: 'var(--color-text-secondary, #475569)', padding: '10px 14px', background: 'var(--color-bg-elevated, #F4F7FF)', borderRadius: 8, marginBottom: 10 }}>
+                  <div style={{ fontSize: 13, color: 'var(--color-text-secondary, #475569)', padding: '10px 14px', background: 'var(--color-bg-elevated, #F4F7FF)', borderRadius: 'var(--radius-sm)', marginBottom: 10 }}>
                     No campaign storylines found for this brand. Rescan the brand through Context Hub to generate storylines, or describe your own campaign idea.
                   </div>
                 )}
@@ -452,7 +452,7 @@ function CampaignGeneratorContent() {
                             padding: '12px 14px',
                             background: isSelected ? 'rgba(53, 99, 255, 0.04)' : 'var(--color-bg-card, #FFFFFF)',
                             border: `1.5px solid ${isSelected ? 'var(--color-accent, #3563FF)' : 'var(--color-border, #E2E8F0)'}`,
-                            borderRadius: 8,
+                            borderRadius: 'var(--radius-sm)',
                             cursor: 'pointer',
                             boxShadow: isSelected ? '0 0 0 3px rgba(53, 99, 255, 0.1)' : 'none',
                             transition: 'all 0.15s'
@@ -551,7 +551,7 @@ function CampaignGeneratorContent() {
           <div className="camp-past-list" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {pastCampaigns.slice(0, 5).map((camp: {id:string;name:string;topic_cluster:string;status:string;completed_count:number;created_at:string}) => (
               <button className="camp-past-card" key={camp.id} onClick={() => loadCampaign(camp.id)}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--color-bg-card)', border: 'none', borderRadius: 10, boxShadow: 'var(--shadow-card)', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--color-bg-card)', border: 'none', borderRadius: 'var(--radius-sm)', boxShadow: 'var(--shadow-card)', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 2 }}>{camp.name || camp.topic_cluster}</div>
                   <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{camp.completed_count} of 8 articles · {new Date(camp.created_at).toLocaleDateString()}</div>
@@ -697,7 +697,7 @@ function CampaignGeneratorContent() {
             <button
               className="camp-footer-btn camp-footer-btn-primary"
               onClick={() => resumeGeneration(activeCampaignId)}
-              style={{ padding: '10px 24px', background: 'var(--color-accent)', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}
+              style={{ padding: '10px 24px', background: 'var(--color-accent)', border: 'none', borderRadius: 'var(--radius-sm)', color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}
             >
               {completedCount === 0 ? 'Start Generation' : `Resume Generation (${8 - completedCount} remaining)`}
             </button>
@@ -712,14 +712,14 @@ function CampaignGeneratorContent() {
                 localStorage.removeItem('forge_campaign_state');
                 setPlan(null); setArticleStatuses([]); setStep('setup');
               }}
-              style={{ padding: '10px 24px', background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)', borderRadius: 8, color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}
+              style={{ padding: '10px 24px', background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}
             >
               New Campaign
             </button>
             <button
               className="camp-footer-btn camp-footer-btn-success"
               onClick={() => window.location.href = '/app/compliance-gate'}
-              style={{ padding: '10px 24px', background: '#10b981', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}
+              style={{ padding: '10px 24px', background: '#10b981', border: 'none', borderRadius: 'var(--radius-sm)', color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}
             >
               Send All to Compliance Gate
             </button>
