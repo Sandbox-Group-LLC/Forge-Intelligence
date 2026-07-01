@@ -315,7 +315,7 @@ export async function storyboardFromBrief({ brief, brandName, brandContext = '',
     ? `\n\nThe user UPLOADED real product screenshots for this video. You MUST include exactly one "screens" beat (the backend fills in their images); write the copy for it.`
     : '';
   const msg = await anthropic.messages.create({
-    model: 'claude-sonnet-5',
+    model: 'claude-sonnet-4-6',
     max_tokens: 2500,
     messages: [{
       role: 'user',
@@ -430,7 +430,7 @@ Editing rules:
 - If the request cannot be honored as a video edit, return the original storyboard unchanged.
 - Output ONLY JSON: { "direction": {...}, "scenes": [ ... ] }`;
   const msg = await anthropic.messages.create({
-    model: 'claude-sonnet-5', max_tokens: 3000,
+    model: 'claude-sonnet-4-6', max_tokens: 3000,
     messages: [{ role: 'user', content: prompt }],
   });
   const parsed = safeParseLLM(msg?.content?.[0]?.text || '');
@@ -511,7 +511,7 @@ For each concept return:
 
 Output ONLY JSON: { "arcs": [ { "id":"kebab-name", "title", "angle", "length", "orientation", "brief" } ] }`;
   const msg = await anthropic.messages.create({
-    model: 'claude-sonnet-5', max_tokens: 3000,
+    model: 'claude-sonnet-4-6', max_tokens: 3000,
     messages: [{ role: 'user', content: prompt }],
   });
   const parsed = safeParseLLM(msg?.content?.[0]?.text || '');
