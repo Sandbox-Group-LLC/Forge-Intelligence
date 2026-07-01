@@ -164,7 +164,7 @@
 .sg-input-card {
   background: var(--color-bg-card, #FFFFFF);
   border: 1px solid var(--color-border, #E2E8F0);
-  border-radius: 14px;
+  border-radius: 6px;
   padding: 24px;
   display: flex;
   flex-direction: column;
@@ -524,7 +524,7 @@
 .sg-post-card {
   background: var(--color-bg-card, #FFFFFF);
   border: 1px solid var(--color-border, #E2E8F0);
-  border-radius: 14px;
+  border-radius: 6px;
   overflow: hidden;
   display: flex;
   flex-direction: column;

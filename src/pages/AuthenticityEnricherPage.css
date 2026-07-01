@@ -254,7 +254,7 @@
 .geo-card {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-lg);
+  border-radius: 6px;
   padding: 20px;
   display: flex;
   flex-direction: column;
@@ -329,7 +329,7 @@
 .geo-brief-card {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-lg);
+  border-radius: 6px;
   padding: 32px;
   display: flex;
   flex-direction: column;
