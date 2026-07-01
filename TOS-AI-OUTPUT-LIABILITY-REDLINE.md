@@ -70,6 +70,35 @@ This is provider- and time-specific. The market has moved: several major provide
 
 ---
 
+## Fix #3 — Scope training/model-development out of the §6.2 grant
+
+### The problem
+
+Fix #1 broadened "Customer Data" to include customer-generated images/video/audio. §6.2's license to "use, process, and store Customer Data … to provide, maintain, and **improve** the Service" is standard SaaS language, but "improve" is broad enough to be read as a grant to train, fine-tune, or develop AI/ML models on that media — a right Forge does not exercise and did not intend to take.
+
+### Resolution (counsel, 2026-07-01)
+
+Confirmed Customer Data is **not** used to improve or train models — scope it out explicitly. Applied to §6.2:
+
+> Customer grants Forge Intelligence a non-exclusive, worldwide license to use, process, and store Customer Data solely to the extent necessary to provide, maintain, and improve the Service in accordance with these Terms. **Forge Intelligence does not use Customer Data, including Generated Content, to train, fine-tune, or otherwise develop machine-learning or artificial-intelligence models, and the foregoing license grants no such right. Improvements to the Service made under this license are operational and do not include training generative or foundation models on Customer Data.**
+
+The negative carve-out disambiguates "improve" so it can't be construed as a training grant, and names Generated Content directly now that media is in scope.
+
+---
+
+## Review disposition (counsel sign-off 2026-07-01)
+
+All six open items cleared by counsel; PR is good to merge:
+
+1. **Rollout mechanics** — not a liability concern; passive §15.2 acceptance fine as is. *No change.*
+2. **Prospective-only effective date** — no backdating needed (ahead of the curve); effective date stands. *No change.*
+3. **Uncapped §11.2(d)** — intended posture. *No change.*
+4. **§6.2 "improve"/train grant** — confirmed not used to train/improve models; **scoped out** (Fix #3 above).
+5. **EU Art. 50(2)/50(4) marking** — interim "AI illustration courtesy of fal.ai" credit is acceptable; proper machine-readable marking tracked as a follow-up issue, **due 8/1**.
+6. **Overall Terms** — good to go, contingent on item 5's implementation by 8/1.
+
+---
+
 ## What this memo does **not** change (still open from the review)
 
 Scoped to the two requested fixes. These remain for counsel and are **not** addressed in the redline above:
