@@ -47,6 +47,7 @@ Subject lines must be:
 - CTA copy must be action + outcome: "See how it works →" not "Click here"
 - Paragraphs max 3 lines. White space is your friend.
 - P.S. is not optional for conversion emails; it's the second most-read element
+- Don't frame a CRM or martech platform (HubSpot, Salesforce, Marketo, etc.) as passive storage, a "system of record," or a dumb layer — it's a backhanded jab at a sophisticated tool the reader relies on. If you contrast against one, locate the gap UPSTREAM at the integration/data-quality layer ("the signal never reaches the CRM"), never in the platform's own capabilities.
 
 ## CRITICAL: Field Separation (read this twice)
 The output JSON has DEDICATED FIELDS for the P.S., CTA text, and CTA URL.
