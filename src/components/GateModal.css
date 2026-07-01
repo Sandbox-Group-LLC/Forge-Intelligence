@@ -35,7 +35,7 @@
 @media (max-width: 768px) {
   .gate-modal {
     padding: 28px 24px;
-    border-radius: 12px;
+    border-radius: var(--radius-sm);
     max-height: calc(100dvh - 72px);
     /* Without overflow-y, capped content escapes the modal background — the white
        panel ends at max-height while children continue rendering beyond, bleeding

@@ -167,7 +167,7 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
           </label>
           <div style={{ display: 'flex', gap: 8 }}>
             <input
-              style={{ flex: 1, padding: '9px 14px', background: 'var(--color-bg-elevated, #F4F7FF)', border: '1px solid var(--color-border, #E2E8F0)', borderRadius: 8, color: 'var(--color-text-primary, #1E293B)', fontSize: '0.875rem', fontFamily: 'inherit', outline: 'none' }}
+              style={{ flex: 1, padding: '9px 14px', background: 'var(--color-bg-elevated, #F4F7FF)', border: '1px solid var(--color-border, #E2E8F0)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary, #1E293B)', fontSize: '0.875rem', fontFamily: 'inherit', outline: 'none' }}
               placeholder="Enter code"
               value={promoCode}
               onChange={e => { setPromoCode(e.target.value); setPromoStatus('idle'); setPromoMsg(''); }}
@@ -175,7 +175,7 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
               disabled={promoStatus === 'loading' || promoStatus === 'success'}
             />
             <button
-              style={{ padding: '9px 18px', background: '#3563FF', border: '1px solid #3563FF', borderRadius: 8, color: '#FFFFFF', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', opacity: (!promoCode.trim() || promoStatus === 'loading' || promoStatus === 'success') ? 0.45 : 1 }}
+              style={{ padding: '9px 18px', background: '#3563FF', border: '1px solid #3563FF', borderRadius: 'var(--radius-sm)', color: '#FFFFFF', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', opacity: (!promoCode.trim() || promoStatus === 'loading' || promoStatus === 'success') ? 0.45 : 1 }}
               onClick={applyPromo}
               disabled={!promoCode.trim() || promoStatus === 'loading' || promoStatus === 'success'}
             >

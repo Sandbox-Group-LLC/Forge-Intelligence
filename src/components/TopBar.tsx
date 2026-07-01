@@ -149,7 +149,7 @@ export function TopBar({ pageTitle }: { pageTitle?: string }) {
                 padding: '6px 12px',
                 background: 'rgba(99, 102, 241, 0.15)',
                 border: '1px solid rgba(99, 102, 241, 0.3)',
-                borderRadius: '8px',
+                borderRadius: 'var(--radius-sm)',
                 color: '#A5B4FC',
                 fontSize: '0.8rem',
                 fontWeight: 500,
@@ -171,7 +171,7 @@ export function TopBar({ pageTitle }: { pageTitle?: string }) {
                   right: 0,
                   background: '#1a1f2e',
                   border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '10px',
+                  borderRadius: 'var(--radius-sm)',
                   padding: '8px 0',
                   minWidth: '240px',
                   maxHeight: '320px',
@@ -237,7 +237,7 @@ export function TopBar({ pageTitle }: { pageTitle?: string }) {
         </SignedIn>
         <div className="user-area" style={{ position: 'relative' }} ref={menuRef}>
           <SignedOut>
-            <a href="https://accounts.forgeintelligence.ai/sign-in" style={{ fontSize: '0.875rem', color: '#ffffff', textDecoration: 'none', fontWeight: 600, padding: '8px 20px', background: 'var(--color-accent)', border: 'none', borderRadius: 8, display: 'inline-block' }}>
+            <a href="https://accounts.forgeintelligence.ai/sign-in" style={{ fontSize: '0.875rem', color: '#ffffff', textDecoration: 'none', fontWeight: 600, padding: '8px 20px', background: 'var(--color-accent)', border: 'none', borderRadius: 'var(--radius-sm)', display: 'inline-block' }}>
               Sign In
             </a>
           </SignedOut>
@@ -255,7 +255,7 @@ export function TopBar({ pageTitle }: { pageTitle?: string }) {
             }
           </button>
           {menuOpen && (
-            <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: '#1a1f2e', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '8px 0', minWidth: 200, zIndex: 999, boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
+            <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: '#1a1f2e', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 'var(--radius-sm)', padding: '8px 0', minWidth: 200, zIndex: 999, boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
 
             >
               <div style={{ padding: '8px 16px 10px', borderBottom: '1px solid rgba(255,255,255,0.08)', fontSize: '0.8rem', color: 'rgba(255,255,255,0.45)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

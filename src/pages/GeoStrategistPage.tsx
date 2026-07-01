@@ -355,10 +355,10 @@ function GeoStrategistContent() {
               <div className="score-value">{result.opportunityScore}</div>
               <div className="score-label">Opportunity Score</div>
             </div>
-            <button className="geo-header-btn" onClick={() => { setResult(null); setIsRerun(true); }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+            <button className="geo-header-btn" onClick={() => { setResult(null); setIsRerun(true); }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 'var(--radius-sm)', background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
               Re-run Analysis
             </button>
-            <button className="geo-header-btn geo-header-btn-primary" onClick={() => { window.location.href = '/app/authenticity-enricher'; }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, borderRadius: 8, background: '#4F46E5', color: '#fff', border: '1px solid #4F46E5', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+            <button className="geo-header-btn geo-header-btn-primary" onClick={() => { window.location.href = '/app/authenticity-enricher'; }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, borderRadius: 'var(--radius-sm)', background: '#4F46E5', color: '#fff', border: '1px solid #4F46E5', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
               Continue to Authenticity Enricher →
             </button>
           </div>
@@ -367,7 +367,7 @@ function GeoStrategistContent() {
 
 
       {result && result.brainVersion && result.currentBrainVersion && result.brainVersion < result.currentBrainVersion && (
-        <div style={{ background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 8, padding: '10px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 'var(--radius-sm)', padding: '10px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 14 }}>⚠️</span>
           <span style={{ fontSize: 13, color: '#92400E' }}>
             These results were built on <strong>Brain v{result.brainVersion}</strong> — your brand is now on <strong>v{result.currentBrainVersion}</strong>. Re-run GEO Strategy for updated results.

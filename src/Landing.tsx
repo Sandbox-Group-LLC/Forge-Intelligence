@@ -130,7 +130,7 @@ export default function Landing() {
           text-decoration: none;
           padding: 8px 16px;
           border: 1px solid rgba(255,255,255,0.12);
-          border-radius: 8px;
+          border-radius: var(--radius-sm);
           transition: all 0.2s;
         }
 
@@ -178,7 +178,7 @@ export default function Landing() {
                 A brand profile for this domain exists and is tied to another account.<br />
                 If this is your brand, sign in to access it.
               </p>
-              <a href="https://accounts.forgeintelligence.ai/sign-in" style={{ display: 'inline-block', padding: '10px 28px', background: '#3563FF', color: '#fff', borderRadius: 8, fontSize: '0.875rem', fontWeight: 600, textDecoration: 'none', marginBottom: 16 }}>
+              <a href="https://accounts.forgeintelligence.ai/sign-in" style={{ display: 'inline-block', padding: '10px 28px', background: '#3563FF', color: '#fff', borderRadius: 'var(--radius-sm)', fontSize: '0.875rem', fontWeight: 600, textDecoration: 'none', marginBottom: 16 }}>
                 Sign In to Your Account
               </a>
               <p style={{ color: '#64748B', fontSize: '0.75rem', lineHeight: 1.6 }}>
@@ -318,12 +318,12 @@ const styles: Record<string, React.CSSProperties> = {
   input: {
     flex: '1 1 220px', padding: '11px 16px',
     backgroundColor: '#1E293B', border: '1px solid rgba(255,255,255,0.1)',
-    borderRadius: '10px', color: '#F8FAFC', fontSize: '14px',
+    borderRadius: 'var(--radius-sm)', color: '#F8FAFC', fontSize: '14px',
     outline: 'none', fontFamily: 'inherit',
   },
   button: {
     padding: '11px 20px', backgroundColor: '#3563FF', border: 'none',
-    borderRadius: '10px', color: '#fff', fontSize: '14px', fontWeight: 500,
+    borderRadius: 'var(--radius-sm)', color: '#fff', fontSize: '14px', fontWeight: 500,
     fontFamily: 'inherit', whiteSpace: 'nowrap' as const, transition: 'background-color 0.15s ease',
   },
   buttonInner: { display: 'flex', alignItems: 'center', gap: '8px' },
@@ -348,12 +348,12 @@ const styles: Record<string, React.CSSProperties> = {
   resumeBtn: {
     display: 'flex', alignItems: 'center', gap: '6px',
     padding: '9px 16px', backgroundColor: '#3563FF', border: 'none',
-    borderRadius: '8px', color: '#fff', fontSize: '13px', fontWeight: 500,
+    borderRadius: 'var(--radius-sm)', color: '#fff', fontSize: '13px', fontWeight: 500,
     cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' as const,
   },
   newScanBtn: {
     padding: '9px 14px', background: 'rgba(255,255,255,0.06)',
-    border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px',
+    border: '1px solid rgba(255,255,255,0.1)', borderRadius: 'var(--radius-sm)',
     color: 'rgba(255,255,255,0.5)', fontSize: '13px',
     cursor: 'pointer', fontFamily: 'inherit',
   },

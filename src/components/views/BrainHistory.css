@@ -40,7 +40,7 @@
   font-weight: 500;
   background: var(--color-accent);
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   color: white;
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -89,7 +89,7 @@
   padding: 16px 24px;
   background: var(--color-bg-card);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
   min-width: 100px;
 }
@@ -133,7 +133,7 @@
   padding: 10px 36px 10px 14px;
   background: var(--color-bg-elevated);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   color: var(--color-text-primary);
   font-size: 13px;
   min-width: 180px;
@@ -161,7 +161,7 @@
   font-weight: 500;
   background: var(--color-accent-muted);
   border: 1px solid var(--color-accent);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   color: var(--color-accent);
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -184,7 +184,7 @@
 .brand-group {
   background: var(--color-bg-card);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
   overflow: hidden;
 }
@@ -416,7 +416,7 @@
   padding: 16px 24px;
   background: var(--color-bg-card);
   border: 1px solid var(--color-accent);
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   animation: slideUp 0.3s ease;
 }
@@ -459,7 +459,7 @@
   font-weight: 500;
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -477,7 +477,7 @@
   font-weight: 500;
   background: var(--color-accent);
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   color: white;
   cursor: pointer;
   transition: all var(--transition-fast);

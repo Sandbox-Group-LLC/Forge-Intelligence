@@ -138,7 +138,7 @@ const styles: Record<string, React.CSSProperties> = {
 
   steps: { display: 'flex', flexDirection: 'column', gap: 18, marginTop: 4 },
   step: { display: 'flex', gap: 16, alignItems: 'flex-start' },
-  stepNum: { flexShrink: 0, width: 30, height: 30, borderRadius: 8, background: 'rgba(53,99,255,0.12)', border: '1px solid rgba(53,99,255,0.3)', color: '#3563FF', fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  stepNum: { flexShrink: 0, width: 30, height: 30, borderRadius: 'var(--radius-sm)', background: 'rgba(53,99,255,0.12)', border: '1px solid rgba(53,99,255,0.3)', color: '#3563FF', fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' },
   stepTitle: { fontSize: 16, fontWeight: 600, color: '#F8FAFC', marginBottom: 4 },
   stepBody: { fontSize: 15, color: '#94A3B8', lineHeight: 1.7, margin: 0 },
 
@@ -146,8 +146,8 @@ const styles: Record<string, React.CSSProperties> = {
   ctaTitle: { fontSize: 26, fontWeight: 700, color: '#F8FAFC', margin: '0 0 10px', letterSpacing: '-0.4px' },
   ctaSub: { fontSize: 16, color: '#94A3B8', lineHeight: 1.7, margin: '0 auto 24px', maxWidth: 520 },
   ctaButtons: { display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' },
-  btnPrimary: { display: 'inline-block', background: '#3563FF', color: '#fff', fontSize: 15, fontWeight: 600, textDecoration: 'none', padding: '12px 24px', borderRadius: 10 },
-  btnSecondary: { display: 'inline-block', background: 'transparent', color: '#CBD5E1', fontSize: 15, fontWeight: 600, textDecoration: 'none', padding: '12px 24px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.14)' },
+  btnPrimary: { display: 'inline-block', background: '#3563FF', color: '#fff', fontSize: 15, fontWeight: 600, textDecoration: 'none', padding: '12px 24px', borderRadius: 'var(--radius-sm)'},
+  btnSecondary: { display: 'inline-block', background: 'transparent', color: '#CBD5E1', fontSize: 15, fontWeight: 600, textDecoration: 'none', padding: '12px 24px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(255,255,255,0.14)' },
 
   footer: { textAlign: 'center', marginTop: 40, paddingTop: 24, borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: 13, color: '#64748B', display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' },
   footerLink: { color: '#3563FF', textDecoration: 'none' },

@@ -282,7 +282,7 @@
   width: 52px;
   height: 52px;
   background: #fff;
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -316,7 +316,7 @@
   padding: 12px 22px;
   background: #3563FF;
   color: #fff;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   font-size: 0.875rem;
   font-weight: 600;
   text-decoration: none;

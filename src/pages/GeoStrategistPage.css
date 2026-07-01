@@ -375,7 +375,7 @@
   margin: 16px 0;
   background: var(--color-bg-elevated, #f8fafc);
   border: 1px solid var(--color-border, #e2e8f0);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 }
 .geo-cherry-selected {
   font-size: 0.875rem;
@@ -440,7 +440,7 @@
   text-align: center;
   background: var(--color-bg-elevated, #f8fafc);
   border: 1px dashed var(--color-border, #cbd5e1);
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
 }
 .geo-brief-empty-title {
   font-size: 1rem;
@@ -535,7 +535,7 @@
   padding: 10px 14px;
   background: var(--color-bg-elevated, #f8fafc);
   border: 1px solid var(--color-border, #e2e8f0);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 0.875rem;
   color: var(--color-text-secondary, #64748b);
 }
@@ -565,7 +565,7 @@
   margin-bottom: 12px;
   background: rgba(53, 99, 255, 0.12);
   border: 1px solid rgba(53, 99, 255, 0.15);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   letter-spacing: 0.01em;
 }
 .geo-stage-text {

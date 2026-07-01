@@ -299,13 +299,13 @@ function AdsGeneratorContent() {
           </div>
 
           {overages > 0 && (
-            <div style={{ padding: 12, background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 8, fontSize: 13, color: '#92400E' }}>
+            <div style={{ padding: 12, background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 'var(--radius-sm)', fontSize: 13, color: '#92400E' }}>
               ⚠ {overages} asset(s) exceeded the character limit. Regenerate or edit before pasting into Google Ads.
             </div>
           )}
 
           {pack.notes && (
-            <div style={{ padding: 14, background: 'var(--color-accent-muted, #eef2ff)', borderRadius: 8, fontSize: 13, color: 'var(--color-text-secondary, #475569)' }}>
+            <div style={{ padding: 14, background: 'var(--color-accent-muted, #eef2ff)', borderRadius: 'var(--radius-sm)', fontSize: 13, color: 'var(--color-text-secondary, #475569)' }}>
               <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-text-muted, #94a3b8)', marginBottom: 4 }}>Angle strategy</div>
               {pack.notes}
             </div>
@@ -492,7 +492,7 @@ function AdsGeneratorContent() {
                     padding: 10, alignItems: 'center',
                     background: 'var(--color-bg-card, #fff)',
                     border: '1px solid var(--color-border, #e2e8f0)',
-                    borderRadius: 8, cursor: 'pointer', textAlign: 'left',
+                    borderRadius: 'var(--radius-sm)', cursor: 'pointer', textAlign: 'left',
                   }}
                   title="Open this pack"
                 >
@@ -548,7 +548,7 @@ function AssetRow({ index, text, anchor, length, limit, overLimit, onCopy, copie
       display: 'grid', gridTemplateColumns: '24px 1fr auto', gap: 10, alignItems: 'flex-start',
       padding: 10, background: 'var(--color-bg-card, #fff)',
       border: overLimit ? '1px solid #FCA5A5' : '1px solid var(--color-border, #e2e8f0)',
-      borderRadius: 8,
+      borderRadius: 'var(--radius-sm)',
     }}>
       <div style={{ fontSize: 11, color: 'var(--color-text-muted, #94a3b8)', paddingTop: 2 }}>{index}</div>
       <div>
@@ -577,7 +577,7 @@ function SitelinkRow({ index, sitelink, fallbackUrl, onCopy, copied }: {
       display: 'grid', gridTemplateColumns: '24px 1fr auto', gap: 10, alignItems: 'flex-start',
       padding: 10, background: 'var(--color-bg-card, #fff)',
       border: s.overLimit ? '1px solid #FCA5A5' : '1px solid var(--color-border, #e2e8f0)',
-      borderRadius: 8,
+      borderRadius: 'var(--radius-sm)',
     }}>
       <div style={{ fontSize: 11, color: 'var(--color-text-muted, #94a3b8)', paddingTop: 2 }}>{index}</div>
       <div>
@@ -604,7 +604,7 @@ function KeywordColumn({ label, hint, keywords, wrap }: {
   label: string; hint: string; keywords: string[]; wrap: (k: string) => string;
 }) {
   return (
-    <div style={{ background: 'var(--color-bg-card, #fff)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, padding: 10 }}>
+    <div style={{ background: 'var(--color-bg-card, #fff)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 'var(--radius-sm)', padding: 10 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
         <div style={{ fontSize: 12, fontWeight: 600 }}>{label}</div>
         <div style={{ fontSize: 10, color: 'var(--color-text-muted, #94a3b8)' }}>{hint} · {keywords.length}</div>

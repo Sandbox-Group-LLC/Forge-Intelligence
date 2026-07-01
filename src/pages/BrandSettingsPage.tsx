@@ -973,14 +973,14 @@ export default function BrandSettingsPage() {
 
 
               {/* Reviewers Section */}
-              <section style={{ marginTop: 32, padding: '24px', background: 'var(--color-bg-card, #fff)', borderRadius: 12, border: '1px solid var(--color-border, #e2e8f0)' }}>
+              <section style={{ marginTop: 32, padding: '24px', background: 'var(--color-bg-card, #fff)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border, #e2e8f0)' }}>
                 <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text, #1e293b)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Reviewers</h3>
                 <p style={{ fontSize: 13, color: 'var(--color-text-secondary, #64748b)', marginBottom: 16 }}>Reviewers receive an email with a unique link to approve or request changes on articles before publishing.</p>
                 <div className="bs-reviewer-add-row" style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-                  <input className="bs-reviewer-input" style={{ flex: 1, minWidth: 120, padding: '8px 12px', fontSize: 13, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff' }} placeholder="Name" value={revName} onChange={e => setRevName(e.target.value)} />
-                  <input className="bs-reviewer-input" style={{ flex: 1, minWidth: 160, padding: '8px 12px', fontSize: 13, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff' }} placeholder="Email" type="email" value={revEmail} onChange={e => setRevEmail(e.target.value)} />
-                  <input className="bs-reviewer-input" style={{ flex: 1, minWidth: 120, padding: '8px 12px', fontSize: 13, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff' }} placeholder="Title (optional)" value={revTitle} onChange={e => setRevTitle(e.target.value)} />
-                  <button className="bs-reviewer-add-btn" onClick={addReviewer} disabled={revSaving} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, borderRadius: 8, background: 'var(--color-accent, #4F46E5)', color: '#fff', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  <input className="bs-reviewer-input" style={{ flex: 1, minWidth: 120, padding: '8px 12px', fontSize: 13, border: '1px solid #e2e8f0', borderRadius: 'var(--radius-sm)', background: '#fff' }} placeholder="Name" value={revName} onChange={e => setRevName(e.target.value)} />
+                  <input className="bs-reviewer-input" style={{ flex: 1, minWidth: 160, padding: '8px 12px', fontSize: 13, border: '1px solid #e2e8f0', borderRadius: 'var(--radius-sm)', background: '#fff' }} placeholder="Email" type="email" value={revEmail} onChange={e => setRevEmail(e.target.value)} />
+                  <input className="bs-reviewer-input" style={{ flex: 1, minWidth: 120, padding: '8px 12px', fontSize: 13, border: '1px solid #e2e8f0', borderRadius: 'var(--radius-sm)', background: '#fff' }} placeholder="Title (optional)" value={revTitle} onChange={e => setRevTitle(e.target.value)} />
+                  <button className="bs-reviewer-add-btn" onClick={addReviewer} disabled={revSaving} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, borderRadius: 'var(--radius-sm)', background: 'var(--color-accent, #4F46E5)', color: '#fff', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                     {revSaving ? 'Adding...' : '+ Add'}
                   </button>
                 </div>
@@ -988,7 +988,7 @@ export default function BrandSettingsPage() {
                 {reviewers.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {reviewers.map(r => (
-                      <div className="bs-reviewer-item" key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: 'var(--color-bg, #f8fafc)', borderRadius: 8, border: '1px solid var(--color-border, #e2e8f0)' }}>
+                      <div className="bs-reviewer-item" key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: 'var(--color-bg, #f8fafc)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border, #e2e8f0)' }}>
                         <div className="bs-reviewer-avatar" style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--color-accent, #4F46E5)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600, flexShrink: 0 }}>{r.name[0].toUpperCase()}</div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text, #1e293b)' }}>{r.name}</div>
