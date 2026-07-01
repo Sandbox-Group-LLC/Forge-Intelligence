@@ -395,7 +395,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: 6px;
   background: color-mix(in srgb, var(--color-accent) 8%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-accent) 20%, transparent);
   cursor: pointer;
@@ -695,7 +695,7 @@
   padding: 12px 14px;
   background: var(--color-bg-card, #ffffff);
   border: 1.5px solid var(--color-border, #e2e8f0);
-  border-radius: 10px;
+  border-radius: 6px;
   display: flex;
   flex-direction: column;
   gap: 6px;

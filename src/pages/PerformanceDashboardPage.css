@@ -180,7 +180,7 @@
     var(--color-bg-elevated) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
-  border-radius: var(--radius-lg);
+  border-radius: 6px;
 }
 
 /* ── KPI Cards ── */
@@ -193,7 +193,7 @@
 .perf-kpi-card {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border-radius: 6px;
   padding: 20px 20px 16px;
   display: flex;
   flex-direction: column;
@@ -278,7 +278,7 @@
 .perf-trend-card {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border-radius: 6px;
   padding: 20px 20px 12px;
   overflow: hidden;
   box-shadow: var(--shadow-sm);
@@ -469,7 +469,7 @@
 .perf-brain-card {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border-radius: 6px;
   padding: 20px;
   display: flex;
   flex-direction: column;
@@ -612,7 +612,7 @@
 .camp-analytics-card {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border-radius: 6px;
   overflow: hidden;
   box-shadow: var(--shadow-sm);
   transition: box-shadow var(--transition-normal);
@@ -1166,7 +1166,7 @@
 
 .perf-decay-card {
   padding: 14px 16px;
-  border-radius: var(--radius-md);
+  border-radius: 6px;
   border: 1px solid var(--color-border-subtle);
   background: var(--color-bg-elevated);
   display: flex;
@@ -1440,7 +1440,7 @@
 .perf-pred-card {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
+  border-radius: 6px;
   padding: 12px 16px;
   display: flex;
   flex-direction: column;
@@ -1831,7 +1831,7 @@
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
   border-left: 3px solid transparent;
-  border-radius: 10px;
+  border-radius: 6px;
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -1977,7 +1977,7 @@
 .brain-signal-card {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
-  border-radius: 10px;
+  border-radius: 6px;
   padding: 16px 18px;
   display: flex;
   flex-direction: column;
