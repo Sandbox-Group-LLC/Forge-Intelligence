@@ -1262,3 +1262,12 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* AI-generation disclosure under the fal.ai-generated square social image
+   (EU AI Act Art. 50(4) human-visible disclosure leg). */
+.sg-image-credit {
+  font-size: 10px;
+  color: var(--color-text-muted, #94A3B8);
+  letter-spacing: 0.02em;
+  padding: 4px 14px 0;
+}
