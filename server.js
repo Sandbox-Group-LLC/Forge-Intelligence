@@ -9663,7 +9663,13 @@ app.post('/api/geo/track/:brandProfileId', async (req, res) => {
       const artParams = contentId ? [contentId] : [];
       const articlesRes = await pool.query(artQuery, artParams).catch(() => ({ rows: [] }));
 
-      const fetchWithTimeout = (url, opts, ms = 30000) => {
+      // 60s default: the AI Overviews engine reads Google's server-rendered
+      // overview through ValueSERP, which blocks until Google finishes rendering
+      // it — measured ~30s, landing right on the old 30s abort and firing
+      // "operation was aborted". The other engines (Perplexity/ChatGPT/Gemini)
+      // are fast and return well before this ceiling, so a generous cap only
+      // rescues the slow SERP path without penalizing them.
+      const fetchWithTimeout = (url, opts, ms = 60000) => {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), ms);
         return fetch(url, { ...opts, signal: controller.signal }).finally(() => clearTimeout(timer));
