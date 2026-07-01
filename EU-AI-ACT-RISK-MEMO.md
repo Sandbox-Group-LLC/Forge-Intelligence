@@ -59,9 +59,3 @@ Forge is a **deployer** of general-purpose AI models (Claude, GPT) — and of th
 ## Recommended posture for buyer due-diligence
 
 When a regulated-industry prospect's legal team asks "is this a high-risk AI system / what's your AI Act conformity status," the answer is: *Forge is a limited-risk system; it meets the Art. 50 transparency obligation (machine-readable marker + disclosure); it is not an Annex III high-risk system and does not make decisions about individuals; GPAI obligations sit with the underlying model providers.* This memo + the DPA + the sub-processor list are the package.
-
-## [legal] Items for counsel
-- Confirm the Annex III analysis and the AUP prohibition on high-risk decisioning use of Forge output.
-- Confirm the deployer/provider characterization for GPAI.
-- Confirm whether any Forge feature (e.g. ICP/persona scoring of named individuals) could be read as profiling that changes the analysis.
-- Confirm Art. 50(2)/50(4) transparency for image/video/audio output (fal) — machine-readable marking + deepfake disclosure — is implemented before Aug 2026; see the synthetic-media section.
