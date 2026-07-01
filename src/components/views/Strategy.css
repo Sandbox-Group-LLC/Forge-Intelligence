@@ -111,15 +111,15 @@
 }
 
 .matrix-card.impact-high {
-  border-left: 3px solid var(--color-accent);
+  border: 1px solid var(--color-accent);
 }
 
 .matrix-card.impact-medium {
-  border-left: 3px solid var(--color-warning);
+  border: 1px solid var(--color-warning);
 }
 
 .matrix-card.impact-low {
-  border-left: 3px solid var(--color-text-muted);
+  border: 1px solid var(--color-text-muted);
 }
 
 .matrix-header {
@@ -340,11 +340,11 @@
 }
 
 .action-item.priority-high {
-  border-left: 3px solid var(--color-accent);
+  border: 1px solid var(--color-accent);
 }
 
 .action-item.priority-medium {
-  border-left: 3px solid var(--color-warning);
+  border: 1px solid var(--color-warning);
 }
 
 .action-number {
