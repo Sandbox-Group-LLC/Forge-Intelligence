@@ -103,5 +103,6 @@ Return a JSON object with this exact structure:
 - Don't pad to hit a character count. Shorter and sharper always wins.
 - Don't end every post with a question. That's an Instagram-influencer tic, not a brand voice.
 - Don't use hashtags on X unless the brand uses them. Default empty.
+- Don't frame a CRM or martech platform (HubSpot, Salesforce, Marketo, etc.) as passive storage, a "system of record," or a dumb bucket. It's a backhanded jab at a sophisticated tool the reader relies on. If you contrast against one, put the gap UPSTREAM at the integration/data layer ("the signal never reaches the CRM"), never in the platform itself ("the CRM just stores it").
 - Don't claim green confidence on a post whose body has no brain evidence behind it. Be honest about yellow/red.
 - Don't fabricate `imagePromptHint` as a literal scene. Concept first.

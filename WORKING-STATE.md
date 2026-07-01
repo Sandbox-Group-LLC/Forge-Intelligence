@@ -10,6 +10,21 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
+### 2026-06-30 — Legal: ToS AI-output-liability review (redline memo + EU AI Act refresh)
+
+Compliance review of the proposed ToS amendment `ForgeToSAmendmentAIOutputLiability.docx` against the live Terms (`src/pages/TermsPage.tsx`, Effective 2026-04-20). Core fix is sound: current §11.1 indemnifies "the Service… infringes" with carve-outs (a)–(d) that don't cleanly exclude AI output, so the amendment's new §11.1(e) (exclude Generated Content) is load-bearing. Two defects redlined; other items flagged for counsel.
+
+- **PR #447 (draft, `docs/tos-output-liability-redline`) — `TOS-AI-OUTPUT-LIABILITY-REDLINE.md`:** (1) "Generated Content" is nested inside "Customer Data" (§2) → overstates the premise (§11.1(a) already excludes Customer Data), overlaps new §11.2(d) with §11.2(a), and silently widens the §6.2 license when output expands to image/video/audio — redline de-nests while preserving Customer ownership + adds a control clause. (2) §10.4 bakes "upstream model providers themselves disclaim such warranties" into binding Terms; several providers now offer output IP indemnities, so it risks being false + a waiver of coverage Forge holds — redline makes it provider-agnostic, moves the fal recital to the memo. Open-for-counsel (unchanged): adverse-change rollout (affirmative acceptance), prospective-only effective date, uncapped §11.2(d).
+- **PR #449 (draft, `docs/eu-ai-act-av-refresh`) — `EU-AI-ACT-RISK-MEMO.md`:** adding image/video/audio surfaces Art. 50(2) machine-readable marking + Art. 50(4) deepfake disclosure the text-scoped memo didn't cover. New synthetic-media section with [eng] gaps to close before **Aug 2026** (does fal embed C2PA/Content Credentials or must Forge attach on export; extend the video pipeline's synthetic-voice disclosure to AI-generated frames). Tier unchanged (limited-risk / Art. 50).
+- **Tooling:** sandbox mounted `.git` immutable this session (stale `.git/index.lock`, no local commits) → both PRs landed via the **Composio GitHub connection**. Native GitHub MCP needs re-auth. Local tree parked on `docs/tos-output-liability-redline`; remote is source of truth.
+
+#### What's next
+- Counsel review of #447 + #449; fold the §2 + §10.4 redlines back into the amendment doc before it's published as a Terms update.
+- Verify fal + all routed model providers' current IP/indemnity terms (provider-terms register).
+- Confirm image/video Art. 50 marking ships before Aug 2026; confirm the AUP prohibits Annex III high-risk decisioning use of output.
+
+---
+
 ### 2026-06-16 (later) — Remotion: fix first-scene "shaking" copy (Fit render race)
 
 The product-video copy shook / read as a rendering glitch on the first scene. Root cause in `remotion/src/DataReel.tsx`'s `Fit` component: it called `continueRender` in the **same effect** as `setScale`, so `renderMedia` screenshotted the pre-scale (`scale=1`) frame on some frames and the fitted (`scale<1`) frame on others → the headline flickered between full and fitted size frame-to-frame. Worst on scene 1 because its long headline is the one `Fit` actually scales down.

@@ -3164,7 +3164,7 @@ Return empty arrays if not found. Be factual and accurate. When in doubt, return
     console.log('[ENRICH] Tool 2: E-E-A-T Confidence Scorer...');
 
     const scorerRes = await anthropic.messages.create({
-      model: 'claude-sonnet-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 4000,
       system: 'You are a JSON API. You must respond with valid JSON only — no markdown, no explanation, no code fences.',
       messages: [
@@ -3199,7 +3199,7 @@ Respond with this exact JSON structure:
     console.log('[ENRICH] Tool 3: Voice & Persona Injection Mapper...');
 
     const injectionRes = await anthropic.messages.create({
-      model: 'claude-sonnet-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 8096,
       system: 'You are a JSON API. You must respond with valid JSON only — no markdown, no explanation, no code fences.',
       messages: [
@@ -3229,7 +3229,7 @@ Respond with this exact JSON structure:
     console.log('[ENRICH] Tool 4: Enriched Brief Assembler...');
 
     const assemblerRes = await anthropic.messages.create({
-      model: 'claude-sonnet-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 8096,
       system: 'You are a JSON API. You must respond with valid JSON only — no markdown, no explanation, no code fences.',
       messages: [
@@ -3315,8 +3315,10 @@ Respond with this exact JSON structure:
         };
       });
       assembledBrief = {
-        enrichedTitle: geoBrief?.title || brandName,
-        enrichedH1: geoBrief?.h1 || '',
+        // Topic briefs carry .topic / .h1 (never .title), so falling straight to
+        // brandName here is what surfaced the brief as "SYSOI" instead of the idea.
+        enrichedTitle: geoBrief?.title || geoBrief?.h1 || geoBrief?.topic || brandName,
+        enrichedH1: geoBrief?.h1 || geoBrief?.topic || '',
         enrichedSections: fallbackSections,
         enrichedFAQ: (geoBrief?.faqStructure || []).slice(0,3).map(f => ({ q: f.question || f.q || '', a: f.answer || f.a || '', eeatSignal: '' })),
         overallConfidence: scorerData.overallEEATScore || 0,
@@ -3698,7 +3700,7 @@ Respond with ONLY valid JSON — no markdown, no code fences:
 }`;
 
     const pvaRes = await anthropic.messages.create({
-      model: 'claude-sonnet-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 6000,
       system: 'You are a JSON API. Respond with valid JSON only — no markdown, no explanation, no code fences.',
       messages: [{ role: 'user', content: pvaPrompt }]
@@ -3760,7 +3762,7 @@ Respond with ONLY valid JSON — no markdown, no code fences:
 }`;
 
     const flRes = await anthropic.messages.create({
-      model: 'claude-sonnet-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 6000,
       system: 'You are a JSON API. Respond with valid JSON only — no markdown, no explanation, no code fences.',
       messages: [{ role: 'user', content: faultLinesPrompt }]
@@ -4107,7 +4109,7 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
 
     let fullText = '';
     const stream = await client.messages.stream({
-      model: 'claude-sonnet-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 12000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }]
@@ -4458,7 +4460,7 @@ Return ONLY the JSON object specified in the system prompt.`;
 
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const aiRes = await client.messages.create({
-      model: 'claude-sonnet-5',
+      model: 'claude-sonnet-4-6',
       // Bumped from 3000 → 4500 to fit expanded asset pack (sitelinks + callouts
       // + keywords nearly double the JSON payload vs RSA-only).
       max_tokens: 4500,
@@ -9070,7 +9072,7 @@ app.post('/api/geo/opportunities/build-briefs', requireAuth, express.json(), asy
 
       try {
         const briefRes = await anthropic.messages.create({
-          model: 'claude-sonnet-5',
+          model: 'claude-sonnet-4-6',
           max_tokens: 6144,
           messages: [{ role: 'user', content: `${dateContext()}
 
@@ -9241,7 +9243,7 @@ app.post('/api/geo/topic-brief/from-topic', requireAuth, express.json(), async (
     //    so output shape stays identical and downstream parsers don't drift.
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const briefRes = await anthropic.messages.create({
-      model: 'claude-sonnet-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 6144,
       messages: [{ role: 'user', content: `${dateContext()}
 
@@ -9562,7 +9564,7 @@ app.post('/api/geo/cold-scan', async (req, res) => {
 
     // 2. Infer the brand name + the brand-free buyer questions their category gets asked.
     const qRes = await anthropic.messages.create({
-      model: 'claude-sonnet-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1200,
       messages: [{ role: 'user', content: `From this company's homepage, identify the brand name and write 10 natural questions a buyer or customer (B2B or consumer, whichever fits) would type into ChatGPT or Perplexity when researching this category — the questions where this company would WANT to be recommended. Do NOT mention the company's own name in any question (we are measuring unprompted visibility). Keep each question under 110 characters.
 
@@ -9661,7 +9663,13 @@ app.post('/api/geo/track/:brandProfileId', async (req, res) => {
       const artParams = contentId ? [contentId] : [];
       const articlesRes = await pool.query(artQuery, artParams).catch(() => ({ rows: [] }));
 
-      const fetchWithTimeout = (url, opts, ms = 30000) => {
+      // 60s default: the AI Overviews engine reads Google's server-rendered
+      // overview through ValueSERP, which blocks until Google finishes rendering
+      // it — measured ~30s, landing right on the old 30s abort and firing
+      // "operation was aborted". The other engines (Perplexity/ChatGPT/Gemini)
+      // are fast and return well before this ceiling, so a generous cap only
+      // rescues the slow SERP path without penalizing them.
+      const fetchWithTimeout = (url, opts, ms = 60000) => {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), ms);
         return fetch(url, { ...opts, signal: controller.signal }).finally(() => clearTimeout(timer));

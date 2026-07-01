@@ -204,7 +204,7 @@ router.get('/generate', async (req, res) => {
     // Stream from Claude
     let fullText = '';
     const stream = await anthropic.messages.stream({
-      model: 'claude-sonnet-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 4000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }]

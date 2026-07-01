@@ -254,16 +254,16 @@
 .geo-card {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-lg);
+  border-radius: 6px;
   padding: 20px;
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
-.geo-card.priority-high { border-left: 3px solid var(--color-accent); }
-.geo-card.priority-medium { border-left: 3px solid var(--color-warning); }
-.geo-card.priority-low { border-left: 3px solid var(--color-border); }
-.geo-card.competitor-gap { border-left: 3px solid var(--color-error); }
+.geo-card.priority-high { border: 1px solid var(--color-accent); }
+.geo-card.priority-medium { border: 1px solid var(--color-warning); }
+.geo-card.priority-low { border: 1px solid var(--color-border); }
+.geo-card.competitor-gap { border: 1px solid var(--color-error); }
 
 .geo-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .geo-topic { font-size: 14px; font-weight: 600; }
@@ -329,7 +329,7 @@
 .geo-brief-card {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-lg);
+  border-radius: 6px;
   padding: 32px;
   display: flex;
   flex-direction: column;

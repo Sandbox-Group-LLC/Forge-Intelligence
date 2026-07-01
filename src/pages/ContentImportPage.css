@@ -6,7 +6,7 @@
 .ci-form-card {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border-radius: 6px;
   padding: 28px 32px;
   display: flex;
   flex-direction: column;
@@ -226,7 +226,7 @@
   padding: 8px 12px;
   background: rgba(245,158,11,0.07);
   border-radius: 6px;
-  border-left: 3px solid #F59E0B;
+  border: 1px solid #F59E0B;
 }
 
 .ci-suggestions { display: flex; flex-direction: column; gap: 8px; }
@@ -238,7 +238,7 @@
   padding: 8px 12px;
   background: rgba(53,99,255,0.06);
   border-radius: 6px;
-  border-left: 3px solid var(--color-accent);
+  border: 1px solid var(--color-accent);
 }
 
 /* Actions */

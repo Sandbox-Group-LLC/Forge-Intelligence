@@ -67,7 +67,7 @@
 .mc-status-card {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 10px;
+  border-radius: 6px;
   padding: 16px 18px;
   display: flex;
   flex-direction: column;
