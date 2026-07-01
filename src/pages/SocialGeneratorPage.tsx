@@ -1019,6 +1019,10 @@ function PostCard({ post, authToken, xConnected, onUpdate }: { post: SocialPost;
         )}
       </div>
 
+      {post.image_url && (
+        <div className="sg-image-credit">AI illustration courtesy of fal.ai</div>
+      )}
+
       <div className="sg-post-body">
         {post.hook && <div className="sg-post-hook">{post.hook}</div>}
 
