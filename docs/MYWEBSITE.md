@@ -41,45 +41,32 @@ On a successful publish, Forge POSTs this JSON:
     "ogImage": "https://cdn.example.com/image.png",
     "utm": { "utm_source": "website", "utm_medium": "blog", "utm_campaign": "..." }
   },
-  "html": "<h2>First section</h2><p>...</p>\n<h2>Second section</h2><p>...</p>\n<section class=\"article-faqs\">...</section>",
-  "markdown": "## First section\n\n...\n\n## Second section\n\n...\n\n## Frequently asked questions\n\n### A question?\n\nThe answer."
+  "faqs": [{ "question": "A question?", "answer": "The answer." }],
+  "html": "<aside class=\"article-tldr\">...</aside>\n<h2>First section</h2><p>...</p>\n<section class=\"article-faqs\">...</section>",
+  "markdown": "> **TL;DR** — The one-sentence takeaway.\n\n## First section\n\n...\n\n## Frequently asked questions\n\n### A question?\n\nThe answer."
 }
 ```
 
-`html` and `markdown` are included based on your format setting (`html`, `markdown`, or `both`). Test payloads add `"test": true` so your receiver can drop them without polluting your live articles table.
+`html` and `markdown` are included based on your format setting (`html`, `markdown`, or `both`); `faqs`, `meta`, and the other fields are always present. Test payloads add `"test": true` so your receiver can drop them without polluting your live articles table.
 
-### What `html` / `markdown` actually contain (read this — it's the part that trips people up)
+### What `html` / `markdown` actually contain (the part that trips people up)
 
 They are the article **body only** — not a full document, and **not the title**:
 
-- **No outer wrapper.** `html` is a flat sequence of `<h2>heading</h2><p>body</p>` blocks. There is no `<html>`, `<head>`, or `<article>` wrapper, and no JSON-LD/schema. `markdown` is a sequence of `## heading` + paragraphs. Your template owns the `<head>`, canonical tag, OG/meta, and structured data — the webhook deliberately sends a clean body so it doesn't fight your site's layout.
-- **The title is NOT embedded in the body.** There is no `<h1>` in `html` and no `# ` H1 in `markdown`. The title lives only in the top-level `title` field. **Render the title yourself from `title`, then render the `html`/`markdown` body beneath it.** (If you render `html`/`markdown` alone, you'll correctly see no title — that's expected, not a bug.)
+- **No outer wrapper.** `html` is a flat sequence of `<h2>heading</h2><p>body</p>` blocks — no `<html>`, `<head>`, or `<article>` wrapper, and no JSON-LD/schema. `markdown` is a sequence of `## heading` + paragraphs. Your template owns the `<head>`, canonical tag, OG/meta, and structured data.
+- **The title is NOT embedded in the body.** No `<h1>` in `html`, no `# ` H1 in `markdown`. The title lives only in the top-level `title` field — render it yourself, then render the body beneath it. (Rendering `html`/`markdown` alone correctly shows no title; that's expected.)
+- **The body OPENS with a TL;DR block.** Every article generates a key takeaway, and the body leads with it — before the first `<h2>` / `##` section. In `html` it's `<aside class="article-tldr"><p class="article-tldr-label">TL;DR</p><p class="article-tldr-body">…</p></aside>`; in `markdown` it's a `> **TL;DR** — …` blockquote. The html version is **class-only, no inline styles** — your site's own `.article-tldr` CSS owns the look (style it, or `display: none` it if you don't want the box). This is the AI-citation anchor + skim aid; leaving it visible is recommended.
 
-> This is also why Forge's in-app **Smart Export** looks different: that one produces a *full* copy-paste HTML document (with `<head>`, schema, and an `<h1>`) for pasting into a CMS. The **webhook** sends a body fragment for programmatic receivers. Same article, two delivery shapes.
+> Forge's in-app **Smart Export** is different on purpose: it produces a *full* copy-paste HTML document (with `<head>`, schema, and an `<h1>`) for pasting into a CMS. The **webhook** sends a body fragment for programmatic receivers. Same article, two delivery shapes.
 
 ### FAQs (Q&A)
 
-If the article has FAQs, they ride **inside** the `html` and `markdown` body as a "Frequently asked questions" section. **There is no separate `faqs` field** — store the body as-is and the Q&A comes with it.
+FAQs arrive **two ways** — use whichever fits your receiver:
 
-- **html** — appended after the sections:
-  ```html
-  <section class="article-faqs">
-    <h2>Frequently asked questions</h2>
-    <h3>A question?</h3>
-    <p>The answer.</p>
-    <!-- ...one h3/p pair per FAQ... -->
-  </section>
-  ```
-- **markdown** — appended after the sections:
-  ```markdown
-  ## Frequently asked questions
-
-  ### A question?
-
-  The answer.
-  ```
-
-To render or style FAQs separately, parse the `.article-faqs` section (html) or split on the `## Frequently asked questions` heading (markdown). If you'd rather receive a structured `faqs: [{ "question", "answer" }]` array in the JSON instead of (or in addition to) the embedded markup, it's an easy addition — just ask.
+1. **Structured `faqs` array** (recommended for programmatic use): `[{ "question", "answer" }]`, always present (empty `[]` when the article has none). Render or store it directly — no parsing needed.
+2. **Embedded in the body**: the same FAQs are also appended inside `html`/`markdown` as a "Frequently asked questions" section, so if you just store the body as-is, the Q&A comes with it.
+   - **html:** `<section class="article-faqs"><h2>Frequently asked questions</h2><h3>Question?</h3><p>Answer.</p>...</section>`
+   - **markdown:** `## Frequently asked questions` followed by `### Question?` / answer per item.
 
 ## Authentication
 
@@ -101,7 +88,11 @@ Return **HTTP 200** on success. Optionally return JSON with a `url` field — Fo
 { "ok": true, "url": "https://yoursite.com/articles/your-slug" }
 ```
 
+If you don't return a `url`, Forge falls back to the article's Forge-hosted canonical URL for the "View on site" link — so returning your real URL is worth the one extra line.
+
 Return any non-2xx status on failure. Forge captures the first 300 chars of the response body and surfaces it in the publish log error message.
+
+**Respond fast.** Forge waits up to **30 seconds** on a real publish (**15 seconds** on a test) before treating the request as failed. If your receiver triggers a slow rebuild (static-site regeneration, git commit + deploy), acknowledge with `200` first and kick the rebuild asynchronously.
 
 ---
 
@@ -136,7 +127,7 @@ router.post('/api/forge/publish', express.json({ limit: '2mb' }), async (req, re
   }
 
   // 2. Parse the payload
-  const { slug, title, excerpt, heroImageUrl, canonical, publishedAt, meta, html, markdown, test } = req.body || {};
+  const { slug, title, excerpt, heroImageUrl, canonical, publishedAt, meta, faqs, html, markdown, test } = req.body || {};
   if (!slug || !title) return res.status(400).json({ error: 'slug and title required' });
 
   // 3. Test payloads: acknowledge but do not persist
@@ -145,20 +136,21 @@ router.post('/api/forge/publish', express.json({ limit: '2mb' }), async (req, re
   // 4. Upsert into your articles table
   await pool.query(
     `INSERT INTO articles
-       (slug, title, excerpt, hero_image, canonical_url, meta, html, markdown, published_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+       (slug, title, excerpt, hero_image, canonical_url, meta, faqs, html, markdown, published_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
      ON CONFLICT (slug) DO UPDATE SET
        title = EXCLUDED.title,
        excerpt = EXCLUDED.excerpt,
        hero_image = EXCLUDED.hero_image,
        canonical_url = EXCLUDED.canonical_url,
        meta = EXCLUDED.meta,
+       faqs = EXCLUDED.faqs,
        html = EXCLUDED.html,
        markdown = EXCLUDED.markdown,
        published_at = EXCLUDED.published_at,
        updated_at = NOW()`,
     [slug, title, excerpt || null, heroImageUrl || null, canonical || null,
-     JSON.stringify(meta || {}), html || null, markdown || null, publishedAt || null]
+     JSON.stringify(meta || {}), JSON.stringify(faqs || []), html || null, markdown || null, publishedAt || null]
   );
 
   // 5. Tell Forge where it landed
@@ -187,6 +179,7 @@ CREATE TABLE IF NOT EXISTS articles (
   hero_image    TEXT,
   canonical_url TEXT,
   meta          JSONB,
+  faqs          JSONB DEFAULT '[]',
   html          TEXT,
   markdown      TEXT,
   published_at  TIMESTAMPTZ,
@@ -219,19 +212,19 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { slug, title, excerpt, heroImageUrl, canonical, publishedAt, meta, html, markdown, test } = body;
+  const { slug, title, excerpt, heroImageUrl, canonical, publishedAt, meta, faqs, html, markdown, test } = body;
   if (!slug || !title) return NextResponse.json({ error: 'slug and title required' }, { status: 400 });
   if (test) return NextResponse.json({ ok: true, test: true });
 
   await sql`
     INSERT INTO articles
-      (slug, title, excerpt, hero_image, canonical_url, meta, html, markdown, published_at, updated_at)
+      (slug, title, excerpt, hero_image, canonical_url, meta, faqs, html, markdown, published_at, updated_at)
     VALUES
       (${slug}, ${title}, ${excerpt || null}, ${heroImageUrl || null}, ${canonical || null},
-       ${JSON.stringify(meta || {})}, ${html || null}, ${markdown || null}, ${publishedAt || null}, NOW())
+       ${JSON.stringify(meta || {})}, ${JSON.stringify(faqs || [])}, ${html || null}, ${markdown || null}, ${publishedAt || null}, NOW())
     ON CONFLICT (slug) DO UPDATE SET
       title = EXCLUDED.title, excerpt = EXCLUDED.excerpt, hero_image = EXCLUDED.hero_image,
-      canonical_url = EXCLUDED.canonical_url, meta = EXCLUDED.meta,
+      canonical_url = EXCLUDED.canonical_url, meta = EXCLUDED.meta, faqs = EXCLUDED.faqs,
       html = EXCLUDED.html, markdown = EXCLUDED.markdown,
       published_at = EXCLUDED.published_at, updated_at = NOW()
   `;
@@ -317,5 +310,7 @@ Click **Disconnect** in the Forge UI. Forge stops sending publishes to your endp
 | Publish log shows "Receiver returned HTTP N" | Your endpoint returned a non-2xx status. The response body (first 300 chars) is in the error message. |
 | Forge publishes succeed but the article doesn't appear on your site | Receiver isn't actually persisting (check DB), or your site's article route isn't reading from the right source. |
 | Article renders but the lead paragraph appears twice | Your template is rendering both `excerpt` and the first body paragraph. Either drop one in the template, or skip the body's first paragraph when `excerpt` is present. |
-| The article title is missing on your site | The title is **not** inside `html`/`markdown` — it's the top-level `title` field. Render it yourself (e.g. as your page `<h1>`) above the body. The body intentionally starts at the first `<h2>` / `##` section. |
-| FAQs / Q&A don't show up | Make sure you store and render the **full** `html`/`markdown` body, not just the first section. FAQs are appended to the body as a "Frequently asked questions" section (`<section class="article-faqs">` in html, `## Frequently asked questions` in markdown), not a separate payload field. |
+| The article title is missing on your site | The title is **not** inside `html`/`markdown` — it's the top-level `title` field. Render it yourself (e.g. as your page `<h1>`) above the body. The body intentionally starts with the TL;DR block, then the first `<h2>` / `##` section. |
+| FAQs / Q&A don't show up | Use the structured `faqs` array, or render the **full** `html`/`markdown` body (FAQs are appended as a "Frequently asked questions" section — `<section class="article-faqs">` in html, `## Frequently asked questions` in markdown — not just the first section). |
+| The TL;DR box is unstyled / looks like plain text | Expected — the `<aside class="article-tldr">` ships **without** inline styles so your stylesheet owns the look. Add `.article-tldr` / `.article-tldr-label` / `.article-tldr-body` rules to your site CSS (or `display: none` it if you don't want it). |
+| The TL;DR box shows a dark/indigo style that doesn't match my site | The article was published between **2026-06-07 and 2026-06-25**, when the block briefly shipped with inline styles (inline beats your CSS). Current publishes are class-only. Fix the stored copies by **republishing** those articles from Forge's Publishing Queue — the upsert-by-slug overwrites them with clean markup. |
