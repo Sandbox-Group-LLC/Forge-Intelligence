@@ -3,22 +3,37 @@ name: Brain Refresh
 # Re-index this repo into the shared GitNexus "Sandbox Brain" whenever production
 # (main) changes, so the central code-graph stays current without a manual run.
 #
+# CANONICAL TEMPLATE (v2, 2026-07-04) — one script for every indexed repo; the only
+# sanctioned per-repo differences are the env knobs below (EMBEDDINGS, CLONE_TOKEN)
+# and an optional nightly cron. If you change the script, roll it to ALL repos.
+#
 # Safe-by-design:
 # - Separate workflow + unique job name → no collision with any required check.
 #   Triggers on push:main only, never on pull_request, so it does not touch a
 #   merge gate.
-# - Best-effort: if the brain is down / OOM / slow, we WARN and exit 0 (brain capacity
-#   is not this repo's problem). We only fail on a definitive analyze "failed".
-# - Self-healing: the brain keeps a persistent on-disk clone and refreshes via
-#   `git pull`. Because analysis writes into that clone (skills/embeddings), the tree
-#   goes dirty and a later pull can wedge ("git pull failed"). On that signature we
-#   DELETE the brain's clone and re-analyze fresh — same recovery as
-#   scripts/refreshbrain.sh in the sandbox-brain repo.
+# - Best-effort: if the brain is down / busy / OOM / slow, we WARN and exit 0
+#   (brain capacity is not this repo's problem). We only fail on a definitive
+#   analyze "failed".
+# - Busy-safe: the brain serializes analyzes and answers 409 when one is running
+#   (e.g. two repos pushed together). We wait and re-POST for up to 15 minutes
+#   instead of failing — the wait IS the stagger.
+# - Self-healing, all three known failure modes:
+#   1) wedged clone: git pull/fetch/checkout/reset fails on the dirty persistent
+#      clone → DELETE the brain's clone and re-analyze fresh (tokened URL if
+#      CLONE_TOKEN is set — private repos whose fresh clone needs its own auth).
+#   2) docs-only repo: the analyze guard refuses to register a repo with no
+#      embeddable symbols → retry with embeddings:false.
+#   3) orphaned clone (the SYSOI.ai incident): analyze false-completes in ~1s at
+#      phase=pulling without re-registering → verify the registry, force re-index.
 #
 # Config:
 # - vars.BRAIN_URL        (optional) override the brain endpoint. Default below.
-# - secrets.BRAIN_API_KEY Bearer token for the brain's API_KEY gate. Sent only if
-#   set; add it to this repo's secrets so the refresh keeps working if the gate is on.
+# - secrets.BRAIN_API_KEY Bearer token for the brain's API_KEY gate. The gate is
+#   enabled (2026-07-03 cutover) — this secret must be present or every run 401s.
+# - env.EMBEDDINGS        'true' for code repos; 'false' only where that is a
+#   settled decision (Content-Brain).
+# - env.CLONE_TOKEN       optional; only for private repos whose wedge-heal
+#   re-clone needs auth beyond the brain's server-side credential.
 
 on:
   push:
@@ -40,28 +55,42 @@ jobs:
           API_KEY: ${{ secrets.BRAIN_API_KEY }}
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
           REPO_NAME: ${{ github.event.repository.name }}
+          EMBEDDINGS: 'true'
         run: |
           set -uo pipefail
           AUTH=()
           [ -n "${API_KEY:-}" ] && AUTH=(-H "Authorization: Bearer ${API_KEY}")
+          EMB="${EMBEDDINGS:-true}"
+          POLL_TIMEOUT=1200   # generous: a timeout is a WARN + exit 0, never a blocker
+          BUSY_WAIT=900       # total seconds to wait out 409 (another analyze running)
 
-          # analyze: POST one job + poll to a terminal state.
-          # Sets RC (0 ok | 2 failed | 3 gateway/down | 4 timeout) and ERR (detail).
+          # analyze [url] [emb] [force]: POST one job + poll to a terminal state.
+          # 409 (brain busy — analyzes are serialized) → wait 30s and re-POST,
+          # up to BUSY_WAIT. Sets RC (0 ok | 2 failed | 3 down/busy | 4 timeout) + ERR.
           analyze() {
             RC=0; ERR=""
-            local resp http body jid start el gw=0 s sh sb st ph
-            resp=$(curl -sS -m 60 -w $'\n%{http_code}' "${AUTH[@]}" \
-                   -X POST "$BRAIN/api/analyze" -H 'Content-Type: application/json' \
-                   -d "{\"url\":\"$REPO_URL\",\"embeddings\":true}" 2>&1) || { RC=3; ERR="POST unreachable"; return; }
-            http=$(printf '%s' "$resp" | tail -n1); body=$(printf '%s' "$resp" | sed '$d')
-            echo "POST $BRAIN/api/analyze ($REPO_URL) -> HTTP $http"
+            local url="${1:-$REPO_URL}" emb="${2:-$EMB}" force="${3:-false}"
+            local resp http body jid start el gw=0 s sh sb st ph pstart
+            pstart=$(date +%s)
+            while :; do
+              resp=$(curl -sS -m 60 -w $'\n%{http_code}' "${AUTH[@]}" \
+                     -X POST "$BRAIN/api/analyze" -H 'Content-Type: application/json' \
+                     -d "{\"url\":\"$url\",\"embeddings\":$emb,\"force\":$force}" 2>&1) || { RC=3; ERR="POST unreachable"; return; }
+              http=$(printf '%s' "$resp" | tail -n1); body=$(printf '%s' "$resp" | sed '$d')
+              echo "POST $BRAIN/api/analyze -> HTTP $http"
+              [ "$http" != "409" ] && break
+              el=$(( $(date +%s) - pstart ))
+              [ "$el" -ge "$BUSY_WAIT" ] && { RC=3; ERR="brain busy (409) for >${BUSY_WAIT}s"; return; }
+              echo "[busy +${el}s] another analyze is running — waiting 30s"
+              sleep 30
+            done
             case "$http" in 5*|000|"") RC=3; ERR="POST HTTP $http"; return;; esac
             jid=$(printf '%s' "$body" | grep -oE '"(jobId|id)"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed -E 's/.*:"([^"]*)"/\1/')
             [ -z "$jid" ] && { RC=2; ERR="no jobId (HTTP $http): $body"; return; }
             start=$(date +%s)
             while :; do
               el=$(( $(date +%s) - start ))
-              [ "$el" -ge 600 ] && { RC=4; ERR=">600s without finishing (likely OOM)"; return; }
+              [ "$el" -ge "$POLL_TIMEOUT" ] && { RC=4; ERR=">${POLL_TIMEOUT}s without finishing (likely OOM)"; return; }
               s=$(curl -sS -m 30 -w $'\n%{http_code}' "${AUTH[@]}" "$BRAIN/api/analyze/$jid" 2>/dev/null)
               sh=$(printf '%s' "$s" | tail -n1); sb=$(printf '%s' "$s" | sed '$d')
               case "$sh" in 502|503|504|000|"") gw=$((gw+1)); [ "$gw" -ge 3 ] && { RC=3; ERR="gateway HTTP $sh"; return; }; sleep 5; continue;; esac
@@ -77,17 +106,43 @@ jobs:
             done
           }
 
+          # registered: is REPO_NAME present in the brain's registry? (open GET)
+          registered() {
+            curl -sS -m 30 "$BRAIN/api/repos" 2>/dev/null | grep -q "\"name\"[[:space:]]*:[[:space:]]*\"$REPO_NAME\""
+          }
+
           analyze
-          # Self-heal the known wedge: a dirty persistent clone makes git
-          # pull/fetch/checkout fail. Delete the brain's clone and re-analyze fresh.
-          if [ "$RC" -eq 2 ] && printf '%s' "$ERR" | grep -qiE 'git (pull|fetch|checkout|merge)'; then
+
+          # Heal 1 — wedged clone: a dirty persistent clone makes git
+          # pull/fetch/checkout/reset fail. Delete the brain's clone, re-analyze
+          # fresh (through a tokened URL when CLONE_TOKEN is set).
+          if [ "$RC" -eq 2 ] && printf '%s' "$ERR" | grep -qiE 'git (pull|fetch|checkout|merge|reset)'; then
             echo "::warning::clone wedged for $REPO_NAME — deleting brain clone and re-cloning"
             curl -sS -m 30 "${AUTH[@]}" -X DELETE "$BRAIN/api/repo?repo=$REPO_NAME" >/dev/null 2>&1 || true
-            analyze
+            if [ -n "${CLONE_TOKEN:-}" ]; then
+              analyze "https://x-access-token:${CLONE_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+            else
+              analyze
+            fi
+          fi
+
+          # Heal 2 — docs-only repo: no embeddable symbols → the analyze guard
+          # refuses to register with embeddings:true. Retry without embeddings.
+          if [ "$RC" -eq 2 ] && printf '%s' "$ERR" | grep -qiE 'without persisted embeddings|embeddings: ?0'; then
+            echo "::warning::$REPO_NAME looks docs-only — retrying with embeddings:false"
+            analyze "" false
+          fi
+
+          # Heal 3 — orphaned clone: analyze can false-complete in ~1s at
+          # phase=pulling without re-registering (the registry entry was lost but
+          # the on-disk clone survives). Verify, and force a real re-index.
+          if [ "$RC" -eq 0 ] && ! registered; then
+            echo "::warning::$REPO_NAME completed but is NOT in the brain registry — forcing re-index"
+            analyze "" "$EMB" true
           fi
 
           case "$RC" in
             0) echo "✅ reindexed into the brain";;
-            3|4) echo "::warning::brain unavailable/slow ($ERR) — skipping (best-effort)"; exit 0;;
+            3|4) echo "::warning::brain unavailable/busy/slow ($ERR) — skipping (best-effort)"; exit 0;;
             *) echo "::error::brain analyze failed: $ERR"; exit 1;;
           esac
