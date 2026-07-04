@@ -181,6 +181,14 @@ Return ONLY valid JSON (no markdown, no explanation, no newlines inside string v
     "visualStyle": "string — conservative descriptor since there's no site to inspect",
     "accentColor": "string — descriptor like 'deep indigo' or 'neutral slate', not a guessed hex"
   },
+  "messaging": {
+    "keyMessages": ["string — 4-6 core messages, each a full sentence in the brand's voice, grounded in the Founder Brief"],
+    "valueProps": ["string — 3-5 concrete, benefit-first value propositions drawn from the brief"],
+    "taglines": ["string — 2-4 on-brand tagline candidates"],
+    "boilerplate": "string — a 2-3 sentence 'about' paragraph in the brand's own voice",
+    "elevatorPitch": "string — one first-person paragraph: how the brand pitches itself in ~20 seconds",
+    "proofPoints": ["string — specific proof (metrics, customers, awards) ONLY if present in the Founder Brief; never invent"]
+  },
   "personas": [{
     "id": "string", "name": "string", "role": "string",
     "painPoints": ["string"], "triggers": ["string"],
@@ -202,7 +210,7 @@ Return ONLY valid JSON (no markdown, no explanation, no newlines inside string v
   "discoveredCompetitors": ["string — verbatim from founder's competitors list"],
   "marketCategory": "string"
 }
-Requirements: 5 toneAttributes, 2-3 personas, 0 thirdPartySignals (no website to inspect), 3-5 competitiveGaps (real missed opportunities), 1-4 strategicMoats (one per item in 'What we do NOT do'), 4-6 strategicRecommendations, 2-4 campaignArcs, 1 businessProfile (all fields required). Ground every field in the Founder Brief.`;
+Requirements: 5 toneAttributes, 2-3 personas, 0 thirdPartySignals (no website to inspect), 3-5 competitiveGaps (real missed opportunities), 1-4 strategicMoats (one per item in 'What we do NOT do'), 4-6 strategicRecommendations, 2-4 campaignArcs, 1 businessProfile (all fields required), and the messaging block (4-6 keyMessages, 3-5 valueProps, 2-4 taglines, boilerplate, elevatorPitch, and proofPoints ONLY where the brief supports them). Ground every field in the Founder Brief.`;
 
     let profileData;
     let lastErr;
@@ -210,7 +218,7 @@ Requirements: 5 toneAttributes, 2-3 personas, 0 thirdPartySignals (no website to
       try {
         const message = await anthropic.messages.create({
           model: 'claude-opus-4-8',
-          max_tokens: 8192,
+          max_tokens: 16000,
           messages: [{ role: 'user', content: prompt }]
         });
         const raw = message.content[0].text;
@@ -645,6 +653,14 @@ Return ONLY valid JSON (no markdown, no explanation, no newlines inside string v
     "visualStyle": "string — inferred from site aesthetic, e.g. \'dark editorial minimal\', \'bright human photography\', \'technical precision grids\', \'warm organic textures\'",
     "accentColor": "string — a plain-language descriptor only (e.g. \'deep indigo\', \'warm terracotta\'). Do NOT output a hex code: the real brand hex is measured from the live site and injected separately. Never guess a hex from text."
   },
+  "messaging": {
+    "keyMessages": ["string — 4-6 core messages the brand leads with, each a full sentence in the brand's own voice"],
+    "valueProps": ["string — 3-5 concrete, benefit-first value propositions; specific, never generic"],
+    "taglines": ["string — 2-4 on-brand tagline candidates (any real tagline on the site first, then sharp alternatives)"],
+    "boilerplate": "string — a 2-3 sentence 'about' paragraph in the brand's own voice, ready to paste",
+    "elevatorPitch": "string — one first-person paragraph: how the brand would pitch itself in ~20 seconds",
+    "proofPoints": ["string — specific credibility proof pulled from real site content: metrics, named customers, awards, scale, outcomes"]
+  },
   "personas": [{
     "id": "string", "name": "string", "role": "string",
     "painPoints": ["string"], "triggers": ["string"],
@@ -666,11 +682,11 @@ Return ONLY valid JSON (no markdown, no explanation, no newlines inside string v
   "discoveredCompetitors": ["string"],
   "marketCategory": "string"
 }
-Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competitiveGaps (ACTUAL missed opportunities, not strategic non-choices), 0-4 strategicMoats (include only if the brand explicitly states what they don't do as a strategy — some brands won't have any), 4-6 strategicRecommendations, 2-4 campaignArcs (each is a narrative series the brand could publish; focus on storylines that prove a thesis, challenge industry conventions, or crystallize the brand's worldview — not topic lists. Think of each arc as a season of television: a single argument told across multiple acts with payoff in the final act), 1 businessProfile (all fields required). Use the ICP and market context provided to make personas and gaps highly specific. For visualStyle and accentColor: infer carefully from the brand website design, color palette, imagery, and overall aesthetic — these feed directly into AI hero image generation and must reflect the real brand identity. For industry, positioning, and targetPersona: be specific and commercially precise, not generic.`;
+Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competitiveGaps (ACTUAL missed opportunities, not strategic non-choices), 0-4 strategicMoats (include only if the brand explicitly states what they don't do as a strategy — some brands won't have any), 4-6 strategicRecommendations, 2-4 campaignArcs (each is a narrative series the brand could publish; focus on storylines that prove a thesis, challenge industry conventions, or crystallize the brand's worldview — not topic lists. Think of each arc as a season of television: a single argument told across multiple acts with payoff in the final act), 1 businessProfile (all fields required). Use the ICP and market context provided to make personas and gaps highly specific. For visualStyle and accentColor: infer carefully from the brand website design, color palette, imagery, and overall aesthetic — these feed directly into AI hero image generation and must reflect the real brand identity. For industry, positioning, and targetPersona: be specific and commercially precise, not generic. For the messaging block: 4-6 keyMessages, 3-5 valueProps, 2-4 taglines, a boilerplate paragraph, an elevatorPitch, and 3-6 proofPoints — extract real proof from the site and NEVER fabricate metrics, customers, or awards.`;
 
     const message = await anthropic.messages.create({
       model: 'claude-opus-4-8',
-      max_tokens: 16384,
+      max_tokens: 32000,
       messages: [{ role: 'user', content: prompt }]
     });
 
@@ -716,7 +732,7 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
     for (let attempt = 0; attempt < 2; attempt++) {
       const msg = attempt === 0 ? message : await anthropic.messages.create({
         model: 'claude-opus-4-8',
-        max_tokens: 16384,
+        max_tokens: 32000,
         messages: [{ role: 'user', content: prompt }]
       });
       if (msg.stop_reason === 'max_tokens') {
