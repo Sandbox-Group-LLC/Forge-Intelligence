@@ -9,23 +9,47 @@ import { anthropic } from './llm.js';
 
 const HERO_IMAGE_NEGATIVE_PROMPT = "airbrushed skin, smooth skin, plastic skin, waxy skin, overproduced, HDR, oversaturated, hyperreal, AI art, digital painting, 3D render, cartoon, illustration, distorted hands, extra fingers, malformed fingers, mutated anatomy, stock photo, generic corporate stock image, blurry faces in background blobbing together, text artifacts";
 
-export async function generateHeroImage(prompt) {
-  const falRes = await fetch('https://fal.run/fal-ai/ideogram/v2', {
+// Compact avoid-clause for models with NO negative_prompt param (nano-banana):
+// Gemini-family models follow natural-language "avoid" instructions, so the
+// essentials of HERO_IMAGE_NEGATIVE_PROMPT are appended to the prompt instead.
+const AVOID_CLAUSE = " Avoid: airbrushed or waxy skin, oversaturated HDR, 3D-render / illustration / cartoon look, generic corporate stock-photo aesthetic, malformed hands, any text or watermarks.";
+
+// ── Model switch ──────────────────────────────────────────────────────────────
+// FAL_IMAGE_MODEL picks the fal.ai model for BOTH hero and social generation.
+// Supported: 'fal-ai/nano-banana' (default — Gemini image; trial per Brian,
+// 2026-07) and 'fal-ai/ideogram/v2' (the previous default; flip back by
+// setting the env var — no code change needed). The two APIs differ:
+// Ideogram takes style/expand_prompt/negative_prompt; nano-banana takes none
+// of those (negatives are folded into the prompt text via AVOID_CLAUSE) but
+// supports the same aspect_ratio values and returns the same images[].url.
+const FAL_IMAGE_MODEL = process.env.FAL_IMAGE_MODEL || 'fal-ai/nano-banana';
+
+async function falImage(prompt, aspectRatio) {
+  const isIdeogram = FAL_IMAGE_MODEL.startsWith('fal-ai/ideogram');
+  const body = isIdeogram
+    ? {
+        prompt,
+        aspect_ratio: aspectRatio,
+        style: 'realistic',
+        // expand_prompt OFF: our prompt is already a carefully brand-voice-tuned
+        // sentence (buildImagePrompt, with explicit anti-AI-stock + don't-take-
+        // brand-name-literally constraints). Ideogram's MagicPrompt rewrites the
+        // prompt and can re-inject the generic/stock aesthetic we deliberately
+        // excluded, so we hand it our prompt verbatim.
+        expand_prompt: false,
+        negative_prompt: HERO_IMAGE_NEGATIVE_PROMPT,
+        num_images: 1,
+      }
+    : {
+        prompt: prompt + AVOID_CLAUSE,
+        aspect_ratio: aspectRatio,
+        num_images: 1,
+        output_format: 'jpeg',
+      };
+  const falRes = await fetch(`https://fal.run/${FAL_IMAGE_MODEL}`, {
     method: 'POST',
     headers: { 'Authorization': `Key ${process.env.FAL_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      prompt,
-      aspect_ratio: '16:9',
-      style: 'realistic',
-      // expand_prompt OFF: our prompt is already a carefully brand-voice-tuned
-      // sentence (buildImagePrompt, with explicit anti-AI-stock + don't-take-
-      // brand-name-literally constraints). Ideogram's MagicPrompt rewrites the
-      // prompt and can re-inject the generic/stock aesthetic we deliberately
-      // excluded, so we hand it our prompt verbatim.
-      expand_prompt: false,
-      negative_prompt: HERO_IMAGE_NEGATIVE_PROMPT,
-      num_images: 1
-    }),
+    body: JSON.stringify(body),
     // Cap a hung fal.ai call. Image gen runs ~10-20s; 60s is generous headroom
     // while still preventing an indefinite block on the generate/publish path.
     signal: AbortSignal.timeout(60000)
@@ -35,6 +59,10 @@ export async function generateHeroImage(prompt) {
   const imageUrl = falData?.images?.[0]?.url;
   if (!imageUrl) throw new Error('No image URL returned from fal.ai');
   return imageUrl;
+}
+
+export async function generateHeroImage(prompt) {
+  return falImage(prompt, '16:9');
 }
 
 // ── Shared: Build brand-voice-aware image prompt ─────────────────────────────
@@ -147,27 +175,7 @@ Rules:
   }
 }
 
-// fal.ai Ideogram v2 wrapper for square social images. Mirrors generateHeroImage but with 1:1.
+// Square social images — same model switch + request shape as generateHeroImage, 1:1.
 export async function generateSocialImage(prompt) {
-  const falRes = await fetch('https://fal.run/fal-ai/ideogram/v2', {
-    method: 'POST',
-    headers: { 'Authorization': `Key ${process.env.FAL_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      prompt,
-      aspect_ratio: '1:1',
-      style: 'realistic',
-      // expand_prompt OFF — see generateHeroImage. Our buildSocialImagePrompt
-      // output is already tuned; MagicPrompt would rewrite it and can undo the
-      // anti-stock / single-focal-subject constraints.
-      expand_prompt: false,
-      negative_prompt: HERO_IMAGE_NEGATIVE_PROMPT,
-      num_images: 1
-    }),
-    signal: AbortSignal.timeout(60000) // cap a hung fal.ai call (see generateHeroImage)
-  });
-  if (!falRes.ok) throw new Error(`fal.ai social ${falRes.status}: ${await falRes.text()}`);
-  const falData = await falRes.json();
-  const imageUrl = falData?.images?.[0]?.url;
-  if (!imageUrl) throw new Error('No image URL returned from fal.ai');
-  return imageUrl;
+  return falImage(prompt, '1:1');
 }
