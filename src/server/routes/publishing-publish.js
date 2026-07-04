@@ -32,6 +32,71 @@ function tldrMarkdownBlock(aj) {
   const t = String(aj?.keyTakeaway || '').trim();
   return t ? `> **TL;DR** — ${t}\n\n` : '';
 }
+
+// ── Section body → render-ready HTML (shared by every publish channel) ────────
+// Section bodies are markdown-ish plain text: \n\n paragraph breaks, single-\n
+// lines, "- "/"* "/"1. " list lines, **bold**, *italic*, [text](url). The old
+// per-channel builders wrapped the whole body in ONE <p> (or one <p> per line),
+// which flattened every list into a paragraph of dashes — every new My Website
+// receiver had to hand-write a converter to fix their first article (2026-07-04
+// bug report). This emits real <ul>/<ol> + per-line <p> with inline markup so
+// the payload lands show-ready.
+const UL_RX = /^[-*•]\s+/; // -, *, or • bullet markers
+const OL_RX = /^\d+[.)]\s+/;
+function inlineMd(t) {
+  return t
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2">$1</a>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+}
+function sectionBodyToHtml(raw) {
+  const lines = String(raw || '').split('\n').map(l => l.trim());
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (!lines[i]) { i++; continue; }
+    if (UL_RX.test(lines[i]) || OL_RX.test(lines[i])) {
+      const ordered = OL_RX.test(lines[i]);
+      const rx = ordered ? OL_RX : UL_RX;
+      const items = [];
+      // Collect the run, bridging blank lines between same-type items — the
+      // generator writes "1. …\n\n2. …" (items separated by blank lines), and
+      // breaking the run there would emit one-item lists that all render "1.".
+      while (i < lines.length) {
+        if (rx.test(lines[i])) { items.push(lines[i++].replace(rx, '')); continue; }
+        if (!lines[i]) {
+          let j = i;
+          while (j < lines.length && !lines[j]) j++;
+          if (j < lines.length && rx.test(lines[j])) { i = j; continue; }
+        }
+        break;
+      }
+      const tag = ordered ? 'ol' : 'ul';
+      out.push(`<${tag}>\n${items.map(it => `<li>${inlineMd(it)}</li>`).join('\n')}\n</${tag}>`);
+    } else {
+      out.push(`<p>${inlineMd(lines[i++])}</p>`);
+    }
+  }
+  return out.join('\n');
+}
+
+// Markdown-side companion: CommonMark lazy-continuation absorbs a "- item" line
+// that directly follows a text line into that paragraph — strict renderers on
+// receiver sites showed our lists as run-on prose. Insert the blank line the
+// generator omits, only at a text→list boundary (never between list items,
+// which would turn tight lists loose).
+function normalizeMarkdownLists(raw) {
+  const lines = String(raw || '').split('\n');
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const isList = UL_RX.test(lines[i].trim()) || OL_RX.test(lines[i].trim());
+    const prev = out.length ? out[out.length - 1].trim() : '';
+    const prevIsListOrBlank = !prev || UL_RX.test(prev) || OL_RX.test(prev);
+    if (isList && !prevIsListOrBlank) out.push('');
+    out.push(lines[i]);
+  }
+  return out.join('\n');
+}
 import { generateHeroImage } from '../images.js';
 import { pipedreamProxy } from '../pipedream.js';
 
@@ -239,7 +304,7 @@ router.post('/publish', async (req, res) => {
           const articleJson = article.article_json || {};
           const sections = articleJson.sections || [];
           const htmlContent = tldrHtmlBlock(articleJson) + sections.map(s =>
-            `${s.heading ? `<h2>${s.heading}</h2>` : ''}<p>${s.body || s.content || ''}</p>`
+            `${s.heading ? `<h2>${s.heading}</h2>\n` : ''}${sectionBodyToHtml(s.body || s.content || '')}`
           ).join('\n');
 
           const authHeader = 'Basic ' + Buffer.from(`${creds.username}:${creds.appPassword}`).toString('base64');
@@ -270,7 +335,7 @@ router.post('/publish', async (req, res) => {
           const articleJson = article.article_json || {};
           const sections = articleJson.sections || [];
           const bodyHtml = tldrHtmlBlock(articleJson) + sections.map(s =>
-            `${s.heading ? `<h2>${s.heading}</h2>` : ''}<p>${s.body || s.content || ''}</p>`
+            `${s.heading ? `<h2>${s.heading}</h2>\n` : ''}${sectionBodyToHtml(s.body || s.content || '')}`
           ).join('\n');
           const excerpt = (sections[0]?.body || sections[0]?.content || '').slice(0, 160);
           const slug = (article.title || 'article').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 60);
@@ -927,7 +992,7 @@ Output only the post text.` }]
           const articleJson = article.article_json || {};
           const sections = articleJson.sections || [];
           const htmlBody = tldrHtmlBlock(articleJson) + sections.map(s =>
-            `<h2>${s.heading || ''}</h2><p>${(s.body || '').split('\n').join('</p><p>')}</p>`
+            `<h2>${s.heading || ''}</h2>\n${sectionBodyToHtml(s.body || s.content || '')}`
           ).join('\n');
 
           const canonicalNote = `<p><em>Originally published at <a href="${utmUrl}">${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}</a></em></p>`;
@@ -981,7 +1046,7 @@ ${canonicalNote}`,
           const articleJson = article.article_json || {};
           const sections = articleJson.sections || [];
           const htmlBody = tldrHtmlBlock(articleJson) + sections.map(s =>
-            `<h2>${s.heading || ''}</h2>\n${(s.body || '').split('\n').filter(Boolean).map(p => `<p>${p}</p>`).join('\n')}`
+            `<h2>${s.heading || ''}</h2>\n${sectionBodyToHtml(s.body || s.content || '')}`
           ).join('\n\n');
           const canonicalNote = `<p><em>Originally published at <a href="${utmUrl}">${process.env.BASE_DOMAIN || 'forgeintelligence.ai'}</a></em></p>`;
           const htmlContent = `${htmlBody}\n\n${canonicalNote}`;
@@ -1032,12 +1097,12 @@ ${canonicalNote}`,
           const sections = articleJson.sections || [];
           const faqs = Array.isArray(articleJson.faqs) ? articleJson.faqs.filter(f => f?.question && f?.answer) : [];
           const htmlContent = tldrHtmlBlock(articleJson) + sections.map(s =>
-            `${s.heading ? `<h2>${s.heading}</h2>` : ''}<p>${s.body || s.content || ''}</p>`
+            `${s.heading ? `<h2>${s.heading}</h2>\n` : ''}${sectionBodyToHtml(s.body || s.content || '')}`
           ).join('\n') + (faqs.length
             ? `\n<section class="article-faqs">\n<h2>Frequently asked questions</h2>\n${faqs.map(f => `<h3>${f.question}</h3>\n<p>${f.answer}</p>`).join('\n')}\n</section>`
             : '');
           const markdownContent = tldrMarkdownBlock(articleJson) + sections.map(s =>
-            `${s.heading ? `## ${s.heading}\n\n` : ''}${s.body || s.content || ''}`
+            `${s.heading ? `## ${s.heading}\n\n` : ''}${normalizeMarkdownLists(s.body || s.content || '')}`
           ).join('\n\n') + (faqs.length
             ? `\n\n## Frequently asked questions\n\n${faqs.map(f => `### ${f.question}\n\n${f.answer}`).join('\n\n')}`
             : '');
