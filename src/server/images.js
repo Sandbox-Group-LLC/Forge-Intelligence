@@ -16,13 +16,15 @@ const AVOID_CLAUSE = " Avoid: airbrushed or waxy skin, oversaturated HDR, 3D-ren
 
 // ── Model switch ──────────────────────────────────────────────────────────────
 // FAL_IMAGE_MODEL picks the fal.ai model for BOTH hero and social generation.
-// Supported: 'fal-ai/nano-banana' (default — Gemini image; trial per Brian,
-// 2026-07) and 'fal-ai/ideogram/v2' (the previous default; flip back by
-// setting the env var — no code change needed). The two APIs differ:
-// Ideogram takes style/expand_prompt/negative_prompt; nano-banana takes none
-// of those (negatives are folded into the prompt text via AVOID_CLAUSE) but
-// supports the same aspect_ratio values and returns the same images[].url.
-const FAL_IMAGE_MODEL = process.env.FAL_IMAGE_MODEL || 'fal-ai/nano-banana';
+// Default: 'fal-ai/nano-banana-2' — Brian A/B'd v1 vs v2 on the same prompt
+// (2026-07-04): clear quality win for ~$0.04/image more. Also supported:
+// 'fal-ai/nano-banana' (v1) and 'fal-ai/ideogram/v2' (the pre-2026-07
+// default) — flip via the env var, no code change. API notes: the
+// nano-banana family takes no style/expand_prompt/negative_prompt (negatives
+// are folded into the prompt text via AVOID_CLAUSE); Ideogram keeps its
+// original params in the branch below. All three accept the same
+// aspect_ratio values and return the same images[].url shape.
+const FAL_IMAGE_MODEL = process.env.FAL_IMAGE_MODEL || 'fal-ai/nano-banana-2';
 
 async function falImage(prompt, aspectRatio) {
   const isIdeogram = FAL_IMAGE_MODEL.startsWith('fal-ai/ideogram');
