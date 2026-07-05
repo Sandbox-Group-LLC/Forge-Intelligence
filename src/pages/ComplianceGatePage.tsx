@@ -616,14 +616,14 @@ function ComplianceGateContent() {
             {/* Key Takeaway (TL;DR) — surfaced for review so it stops shipping
                 unreviewed. It renders at the top of every published export. */}
             {(selectedArticle.article_json?.keyTakeaway || editedKeyTakeaway !== null) && (
-              <div style={{ margin: '0 0 18px', padding: '14px 16px', border: '1px solid var(--color-border, #2B2F36)', borderRadius: 'var(--radius-sm)', background: 'var(--color-surface-2, rgba(255,255,255,0.03))' }}>
-                <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: 8 }}>TL;DR / Key Takeaway — review before publish</div>
+              <div className="comp-tldr">
+                <div className="comp-tldr-label">TL;DR / Key Takeaway — review before publish</div>
                 <textarea
+                  className="comp-section-edit"
                   value={editedKeyTakeaway ?? selectedArticle.article_json?.keyTakeaway ?? ''}
                   onChange={e => setEditedKeyTakeaway(e.target.value)}
                   rows={3}
                   placeholder="This summary ships at the top of every published article. Edit it here before approving."
-                  style={{ width: '100%', resize: 'vertical', font: 'inherit', padding: '8px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border, #2B2F36)', background: 'var(--color-bg, #14171C)', color: 'var(--color-text, #F2EFE8)' }}
                 />
               </div>
             )}
