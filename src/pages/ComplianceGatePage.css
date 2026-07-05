@@ -886,3 +886,22 @@
     padding: 12px;
   }
 }
+
+/* TL;DR / Key Takeaway review card — page-native theme. (Replaced inline styles
+   whose dark-theme fallbacks — #14171C bg / #F2EFE8 text — rendered a black box
+   on the light UI because the var names they referenced don't exist here.) */
+.comp-tldr {
+  margin: 0 0 18px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.comp-tldr-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary, var(--color-text-secondary));
+  padding: 12px 16px 0;
+}
