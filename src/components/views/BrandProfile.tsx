@@ -256,7 +256,7 @@ export function BrandProfile() {
           <div>
             <div style={{ fontSize: 13, fontWeight: 600, color: '#92400E', marginBottom: 4 }}>Limited website access</div>
             <div style={{ fontSize: 12, color: '#B45309', lineHeight: 1.5 }}>
-              We couldn't scrape your website content — it may be behind bot protection (Cloudflare, Akamai, etc.). This profile was built from search context only and may be less accurate.
+              We couldn't scrape your website content — it may be behind bot protection (Cloudflare, Akamai, etc.). Market-level fields were built from live web research, but the <strong>Voice Profile and Messaging are withheld</strong> — we won't invent a brand voice we haven't read.
               Use <strong>Re-analyze</strong> to retry, or provide additional context via the <strong>Audience Notes</strong> and <strong>Strategic Notes</strong> fields on the New Analysis page.
             </div>
           </div>
