@@ -476,8 +476,8 @@ router.post('/analyze', softAuth, async (req, res) => {
     const scraperSuccess = scrapedContent.length > 200;
     const siteContentSection = scraperSuccess
       ? `\n\nACTUAL WEBSITE CONTENT (scraped — use this as primary source, do NOT guess from domain name):\n${scrapedContent.slice(0, 100000)}`
-      : '';
-    if (!scraperSuccess) console.warn(`[Context Hub] ⚠️ SCRAPER FAILED for ${brandUrl} — Claude will guess from domain name + Sonar context only`);
+      : `\n\nNO WEBSITE CONTENT AVAILABLE — the site could not be scraped. You have ZERO knowledge of this brand's actual copy, tone, or claims. For every field that must be derived from the brand's own writing — voiceProfile.summary, toneAttributes, writingStyle, keyPhrases, visualStyle, and the ENTIRE messaging block (keyMessages, valueProps, taglines, boilerplate, elevatorPitch, proofPoints) — return an empty string or empty array. Do NOT invent a voice or messaging; a fabricated voice profile poisons every downstream content stage. Market-level fields (industry, positioning, targetPersona, personas, businessProfile, marketCategory, competitiveGaps) may still be inferred from the research context below.`;
+    if (!scraperSuccess) console.warn(`[Context Hub] ⚠️ SCRAPER FAILED for ${brandUrl} — voice/messaging will be withheld (insufficient data), market fields from Sonar context only`);
 
     // ── Visual capture — measure the brand's REAL accent color + logo ─────────
     // The text scrape strips all color, so accentColor used to be hallucinated
@@ -788,6 +788,32 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
     console.log(`[Context Hub] Complete — ${brandName} | Latency: ${latencyMs}ms | Competitors found: ${sonarCompetitors.length}`);
 
     profileData.scraperSuccess = scraperSuccess;
+
+    // ── Honesty enforcement: no site copy → no voice, no messaging ──────────
+    // The prompt already instructs the model to leave voice/messaging empty
+    // when the scrape failed, but enforcement is deterministic: blank every
+    // field that can only legitimately come from the brand's own writing, and
+    // stamp insufficientData so the UI can explain WHY the voice tab is empty.
+    // A fabricated voice profile is worse than none — it silently poisons the
+    // enricher, generator, and image prompts downstream. Market-level fields
+    // (industry/positioning/personas/businessProfile) survive: Sonar's live
+    // web research can ground those without reading the site.
+    if (!scraperSuccess) {
+      profileData.voiceProfile = {
+        ...(profileData.voiceProfile || {}),
+        summary: '',
+        toneAttributes: [],
+        writingStyle: '',
+        keyPhrases: [],
+        visualStyle: '',
+        insufficientData: true,
+      };
+      profileData.messaging = {
+        keyMessages: [], valueProps: [], taglines: [],
+        boilerplate: '', elevatorPitch: '', proofPoints: [],
+        insufficientData: true,
+      };
+    }
 
     // ── Inject measured visuals — overrides Claude's guessed accentColor ──────
     // accentColor/logo are now MEASURED from the live site, not inferred from

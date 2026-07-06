@@ -69,15 +69,24 @@ async function _tryUnlocker(url, { format, timeout, country, caller, metadata })
     } finally { clearTimeout(tid); }
     const responseBody = await resp.text();
     const latencyMs = Date.now() - startTime;
+    // An HTTP 200 with an empty body is a FAILURE, not a success. Bright Data
+    // occasionally returns 200/0-bytes (seen on oooagency.com 2026-07-06);
+    // logging it as success:true both lied in scrape_log and — worse —
+    // prevented forgeScrape's auto mode from escalating to the browser tier
+    // (looksLikeSpaShell('') is false), so the whole scrape died silently.
+    const bodyOk = resp.ok && responseBody.trim().length > 0;
+    const failReason = !resp.ok
+      ? `HTTP ${resp.status}: ${responseBody.slice(0, 200)}`
+      : (bodyOk ? null : `HTTP ${resp.status} but empty body`);
     await _logScrape({
       url, source: 'brightdata_unlocker',
       status_code: resp.status, body_size: responseBody.length, latency_ms: latencyMs,
-      success: resp.ok, caller,
-      metadata: { ...(metadata ?? {}), body_sample: resp.ok ? responseBody.slice(0, 15000) : undefined },
-      error: resp.ok ? null : `HTTP ${resp.status}: ${responseBody.slice(0, 200)}`,
+      success: bodyOk, caller,
+      metadata: { ...(metadata ?? {}), body_sample: bodyOk ? responseBody.slice(0, 15000) : undefined },
+      error: failReason,
     });
-    if (!resp.ok) {
-      return { success: false, status: resp.status, html: null, source: 'brightdata_unlocker', latencyMs, error: `HTTP ${resp.status}: ${responseBody.slice(0, 200)}` };
+    if (!bodyOk) {
+      return { success: false, status: resp.status, html: null, source: 'brightdata_unlocker', latencyMs, error: failReason };
     }
     return { success: true, status: resp.status, html: responseBody, source: 'brightdata_unlocker', latencyMs, error: null };
   } catch (e) {
@@ -334,7 +343,13 @@ export async function forgeScrape(url, opts = {}) {
   // skips the shell-detection branch since the body is reformatted text,
   // not HTML.
   if (format !== 'raw') return unlockerResult;
-  const needsBrowser = !unlockerResult.success || looksLikeSpaShell(unlockerResult.html);
+  // Escalate on failure, SPA shell, OR a near-empty body — a "successful"
+  // fetch under 500 chars can't contain a real page and looksLikeSpaShell
+  // returns false for empty html, so it must be checked explicitly.
+  const needsBrowser = !unlockerResult.success
+    || !unlockerResult.html
+    || unlockerResult.html.trim().length < 500
+    || looksLikeSpaShell(unlockerResult.html);
   if (!needsBrowser) return unlockerResult;
 
   console.log(`[forgeScrape] Tier 1 ${unlockerResult.success ? 'returned shell' : 'failed'} for ${url} (caller=${caller}) — escalating to Scraping Browser`);
@@ -370,6 +385,91 @@ function htmlToMarkdown(html, url) {
   } catch {
     return '';
   }
+}
+
+// ── extractEmbeddedStateText — last-chance extraction for JS-state sites ────
+// Cargo Collective, Next/Nuxt exports, and similar builders ship the entire
+// page content inside an embedded JSON blob (window.__PRELOADED_STATE__ =
+// {...} or a <script type="application/json"> tag) with almost no semantic
+// DOM — Readability extracts 0 chars even though the raw HTML holds the full
+// site copy (oooagency.com, 2026-07-06: 81KB of HTML, all of it in
+// __PRELOADED_STATE__). This walks those blobs and harvests human-prose
+// strings so the brand profile is grounded in the brand's actual copy.
+
+// Balanced-brace scan: return the JSON object literal starting at html[start]
+// (which must be '{'), respecting string literals and escapes. Null if
+// unbalanced within the cap.
+function _sliceBalancedJson(html, start, cap = 2_000_000) {
+  let depth = 0, inStr = false, esc = false;
+  const end = Math.min(html.length, start + cap);
+  for (let i = start; i < end; i++) {
+    const c = html[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === '{') depth++;
+    else if (c === '}') { depth--; if (depth === 0) return html.slice(start, i + 1); }
+  }
+  return null;
+}
+
+// Recursively collect prose-looking strings from a parsed JSON value.
+// Skips URLs/paths/colors/dates/identifiers; strips tags from HTML fragments
+// (builders store content as HTML strings inside the state).
+function _collectHumanStrings(node, out, seen, budget) {
+  if (budget.nodes-- <= 0 || budget.chars <= 0) return;
+  if (typeof node === 'string') {
+    let s = node.trim();
+    if (s.length < 20) return;
+    if (/^(https?:\/\/|\/\/|data:|#[0-9a-f]{3,8}$|[{[])/i.test(s)) return;
+    if (/^[\w.-]+\.(png|jpe?g|gif|svg|webp|css|js|woff2?)($|\?)/i.test(s)) return;
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return;                 // ISO dates
+    if (/[{}]/.test(s) && /[:;]/.test(s)) return;              // inline CSS blobs
+    if (/<[a-z][^>]*>/i.test(s)) s = s.replace(/<[^>]+>/g, ' '); // strip HTML tags
+    s = s.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+    if (s.length < 20 || !s.includes(' ')) return;              // require multi-word prose
+    if (!/[a-z]{3}/i.test(s)) return;                           // require real words
+    if (seen.has(s)) return;
+    seen.add(s);
+    out.push(s);
+    budget.chars -= s.length;
+    return;
+  }
+  if (Array.isArray(node)) { for (const v of node) _collectHumanStrings(v, out, seen, budget); return; }
+  if (node && typeof node === 'object') { for (const v of Object.values(node)) _collectHumanStrings(v, out, seen, budget); }
+}
+
+export function extractEmbeddedStateText(html) {
+  if (!html || html.length < 500) return '';
+  const out = [];
+  const seen = new Set();
+  const budget = { nodes: 50_000, chars: 30_000 };
+  try {
+    // Pattern 1: window.__PRELOADED_STATE__ = {...} / __NEXT_DATA__ = {...} etc.
+    for (const m of html.matchAll(/(?:window\.)?__[A-Z][A-Z0-9_]+__\s*=\s*/g)) {
+      const at = m.index + m[0].length;
+      if (html[at] !== '{') continue;
+      const blob = _sliceBalancedJson(html, at);
+      if (!blob || blob.length < 1000) continue;
+      try { _collectHumanStrings(JSON.parse(blob), out, seen, budget); } catch { /* not clean JSON */ }
+      if (budget.chars <= 0) break;
+    }
+    // Pattern 2: <script type="application/json"> payloads (__NEXT_DATA__ style)
+    if (budget.chars > 0) {
+      for (const m of html.matchAll(/<script[^>]*type=["']application\/json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+        const raw = m[1].trim();
+        if (raw.length < 1000 || raw[0] !== '{') continue;
+        try { _collectHumanStrings(JSON.parse(raw), out, seen, budget); } catch { /* skip */ }
+        if (budget.chars <= 0) break;
+      }
+    }
+  } catch { /* extraction is best-effort */ }
+  const text = out.join('\n').trim();
+  return text.length >= 200 ? text : '';
 }
 
 export async function getBrandPageContent(url, { caller = 'context-hub', metadata = {}, jinaTimeout = 15000 } = {}) {
@@ -425,6 +525,13 @@ export async function getBrandPageContent(url, { caller = 'context-hub', metadat
   }
   const markdown = htmlToMarkdown(fetched.html, url);
   if (markdown.length < 200) {
+    // Tier C: embedded-JSON state extraction. Cargo/Next/Nuxt-style sites keep
+    // all page copy inside a preloaded-state blob that Readability can't see.
+    const embedded = extractEmbeddedStateText(fetched.html);
+    if (embedded) {
+      console.log(`[getBrandPageContent] Readability empty for ${url} — recovered ${embedded.length} chars from embedded JSON state`);
+      return { success: true, markdown: embedded, source: `${fetched.source}+embedded_json`, latencyMs: fetched.latencyMs, error: null };
+    }
     return { success: false, markdown: null, source: fetched.source, latencyMs: fetched.latencyMs, error: `Readability extracted ${markdown.length} chars (under threshold)` };
   }
   return { success: true, markdown, source: fetched.source, latencyMs: fetched.latencyMs, error: null };
