@@ -91,6 +91,9 @@ interface EnrichResult {
   id?: string;
   brandName: string; confidenceScore: number; needsManualInput: boolean;
   brainVersion?: number; currentBrainVersion?: number;
+  // Carried inside enriched_data and spread into every result payload by the
+  // server — present when the enrichment was built from a GEO topic brief.
+  topicBriefId?: string | null;
   overallEEATScore: number; eeatScores: Record<string, EEATScore>;
   gaps: Gap[]; smeSignals: SMESignal[]; injectionMap: InjectionItem[];
   powerPhrases: string[]; contentHooks: any[]; authorSchema: any; authorSchemaMarkup?: any;
@@ -248,6 +251,21 @@ function AuthenticityEnricherContent() {
     setTimeout(() => runAnalysis(false, false), 50);
   };
 
+  // Re-run the enrichment that's currently on screen, forcing a fresh build
+  // against the CURRENT brain version. runAnalysis reads topicBriefId from the
+  // URL (and cleans it after each run), so re-target the same brief by putting
+  // its id back in the URL before kicking off the run.
+  const rerunEnrichment = () => {
+    const briefId = result?.topicBriefId;
+    if (briefId) {
+      const u = new URL(window.location.href);
+      u.searchParams.set('topicBriefId', briefId);
+      window.history.replaceState({}, '', u.toString());
+    }
+    setResult(null);
+    setTimeout(() => runAnalysis(false, true), 50);
+  };
+
   const runAnalysis = async (withManual = false, forceRefresh = false) => {
     if (!selectedBrainId) return;
     setIsRunning(true);
@@ -361,7 +379,7 @@ function AuthenticityEnricherContent() {
               <div className="score-value" style={{ color: result.confidenceScore >= 75 ? 'var(--color-accent)' : result.confidenceScore >= 50 ? '#7C3AED' : '#EA580C' }}>{result.confidenceScore}</div>
               <div className="score-label">E-E-A-T Score</div>
             </div>
-            <button className="ae-action-btn" onClick={() => { setResult(null); }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 'var(--radius-sm)', background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
+            <button className="ae-action-btn" onClick={rerunEnrichment} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 500, border: '1px solid #e2e8f0', borderRadius: 'var(--radius-sm)', background: '#fff', color: '#64748b', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
               Re-run Enrichment
             </button>
             <button className="ae-action-btn ae-action-btn-primary" onClick={() => { window.location.href = result?.id ? `/app/content-generator?enrichedBriefId=${encodeURIComponent(result.id)}` : '/app/content-generator'; }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600, borderRadius: 'var(--radius-sm)', background: '#4F46E5', color: '#fff', border: '1px solid #4F46E5', cursor: 'pointer', textDecoration: 'none', lineHeight: 1, boxSizing: 'border-box', margin: 0, fontFamily: 'inherit' }}>
