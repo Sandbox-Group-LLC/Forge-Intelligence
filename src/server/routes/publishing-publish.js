@@ -1201,6 +1201,13 @@ ${canonicalNote}`,
     const persistResults = Object.fromEntries(
       Object.entries(results)
         .filter(([_ch, r]) => !r.skipped)
+        // A non-published result must never clobber an existing url-bearing
+        // entry. A concurrent duplicate publish can race past the
+        // alreadyPublished check, fail (Zernio duplicate rejection → legacy
+        // 'staged' path), and its staged/error shape would otherwise merge
+        // over the good result — wiping the View-post URL for a post that IS
+        // live (the 2026-07-09 LinkedIn shadow-row bug).
+        .filter(([ch, r]) => r.status === 'published' || !(item.publish_results?.[ch]?.url))
         .map(([ch, r]) => [
           ch,
           r.status === 'published'
