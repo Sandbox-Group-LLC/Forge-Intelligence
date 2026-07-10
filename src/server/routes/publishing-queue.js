@@ -19,19 +19,30 @@ const router = express.Router();
 router.get('/sync/:queueItemId', requireAuth, async (req, res) => {
   const { queueItemId } = req.params;
   try {
-    // Only process the most recent log entry per channel — older entries are historical
+    // Only process the most representative log entry per channel. A real
+    // 'published' row always outranks a later staged/error attempt — a stray
+    // duplicate publish that lands on the "not yet authorized" path must not
+    // shadow the successful row (the shadow row is what made a live LinkedIn
+    // post lose its View-post link, 2026-07-09).
     const logRes = await pool.query(
       `SELECT DISTINCT ON (pl.channel) pl.*, pc.credentials
        FROM publish_log pl
        LEFT JOIN publishing_channels pc ON pc.brand_profile_id = pl.brand_profile_id AND pc.channel = pl.channel
        WHERE pl.queue_item_id = $1
-       ORDER BY pl.channel, pl.attempted_at DESC`,
+       ORDER BY pl.channel, (pl.status = 'published') DESC, pl.attempted_at DESC`,
       [queueItemId]
     );
     if (!logRes.rows.length) return res.json({ success: true, results: {} });
 
     const results = {};
     for (const row of logRes.rows) {
+      // A staged/error attempt never went live — there is nothing to check,
+      // and the `|| 'published'` default below would brand a non-event as
+      // Live. Report its stored state as-is and move on.
+      if (row.status !== 'published') {
+        results[row.channel] = { channel: row.channel, liveStatus: row.live_status || null };
+        continue;
+      }
       let liveStatus = row.live_status || 'published';
       const creds = row.credentials || {};
 
@@ -240,9 +251,11 @@ router.post('/republish', requireAuth, async (req, res) => {
 router.get('/log/:queueItemId', requireAuth, async (req, res) => {
   try {
     const logRes = await pool.query(
+      // Published rows outrank later staged/error attempts — same shadow-row
+      // guard as the sync endpoint (see comment there).
       `SELECT DISTINCT ON (channel) id, channel, status, live_status, published_url, error_message, attempted_at, last_synced_at
        FROM publish_log WHERE queue_item_id = $1
-       ORDER BY channel, attempted_at DESC`,
+       ORDER BY channel, (status = 'published') DESC, attempted_at DESC`,
       [req.params.queueItemId]
     );
     res.json({ success: true, log: logRes.rows });
