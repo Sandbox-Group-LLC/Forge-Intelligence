@@ -21,6 +21,22 @@ import { requireAuth } from '../auth.js';
 
 const router = express.Router();
 
+// Container-type normalizers for stored deliverable JSONB. Historically one
+// gap_map row was persisted double-encoded (data.gaps = a JSON *string*, not an
+// array — the pg driver parses the outer JSONB but leaves the inner string),
+// which crashed the frontend's gaps.map(). These recover a double-encoded value
+// and enforce the array/object contract so the API never emits a wrong type.
+const asArray = (v) => {
+  if (Array.isArray(v)) return v;
+  if (typeof v === 'string') { try { const p = JSON.parse(v); return Array.isArray(p) ? p : []; } catch { return []; } }
+  return [];
+};
+const asObject = (v) => {
+  if (v && typeof v === 'object' && !Array.isArray(v)) return v;
+  if (typeof v === 'string') { try { const p = JSON.parse(v); return (p && typeof p === 'object' && !Array.isArray(p)) ? p : null; } catch { return null; } }
+  return null;
+};
+
 router.get('/gap-map/:brandProfileId', requireAuth, async (req, res) => {
   try {
     const { brandProfileId } = req.params;
@@ -32,7 +48,7 @@ router.get('/gap-map/:brandProfileId', requireAuth, async (req, res) => {
     const profile = await pool.query('SELECT version FROM brand_profiles WHERE id = $1', [brandProfileId]);
     const currentVersion = profile.rows[0]?.version || 1;
     const stale = r.rows[0].brain_version < currentVersion;
-    res.json({ success: true, gaps: r.rows[0].data.gaps || [], cached: true, stale, updatedAt: r.rows[0].updated_at });
+    res.json({ success: true, gaps: asArray(r.rows[0].data?.gaps), cached: true, stale, updatedAt: r.rows[0].updated_at });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
@@ -66,7 +82,7 @@ router.post('/gap-map/:brandProfileId', requireAuth, async (req, res) => {
         [brandProfileId, 'gap_map']
       );
       if (cached.rows.length && cached.rows[0].brain_version >= brainVersion) {
-        send('result', { gaps: cached.rows[0].data.gaps || [], cached: true });
+        send('result', { gaps: asArray(cached.rows[0].data?.gaps), cached: true });
         return res.end();
       }
     }
@@ -214,7 +230,7 @@ router.get('/blind-spots/:brandProfileId', requireAuth, async (req, res) => {
     const profile = await pool.query('SELECT version FROM brand_profiles WHERE id = $1', [brandProfileId]);
     const currentVersion = profile.rows[0]?.version || 1;
     const stale = r.rows[0].brain_version < currentVersion;
-    res.json({ success: true, blindSpots: r.rows[0].data.blindSpots || [], cached: true, stale, updatedAt: r.rows[0].updated_at });
+    res.json({ success: true, blindSpots: asArray(r.rows[0].data?.blindSpots), cached: true, stale, updatedAt: r.rows[0].updated_at });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
@@ -247,7 +263,7 @@ router.post('/blind-spots/:brandProfileId', requireAuth, async (req, res) => {
         [brandProfileId, 'blind_spots']
       );
       if (cached.rows.length && cached.rows[0].brain_version >= brainVersion) {
-        send('result', { blindSpots: cached.rows[0].data.blindSpots || [], cached: true });
+        send('result', { blindSpots: asArray(cached.rows[0].data?.blindSpots), cached: true });
         return res.end();
       }
     }
@@ -401,7 +417,7 @@ router.get('/whitespace/:brandProfileId', requireAuth, async (req, res) => {
     const profile = await pool.query('SELECT version FROM brand_profiles WHERE id = $1', [brandProfileId]);
     const currentVersion = profile.rows[0]?.version || 1;
     const stale = r.rows[0].brain_version < currentVersion;
-    res.json({ success: true, territories: r.rows[0].data.territories || [], cached: true, stale, updatedAt: r.rows[0].updated_at });
+    res.json({ success: true, territories: asArray(r.rows[0].data?.territories), cached: true, stale, updatedAt: r.rows[0].updated_at });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
@@ -434,7 +450,7 @@ router.post('/whitespace/:brandProfileId', requireAuth, async (req, res) => {
         [brandProfileId, 'whitespace']
       );
       if (cached.rows.length && cached.rows[0].brain_version >= brainVersion) {
-        send('result', { territories: cached.rows[0].data.territories || [], cached: true });
+        send('result', { territories: asArray(cached.rows[0].data?.territories), cached: true });
         return res.end();
       }
     }
@@ -590,7 +606,7 @@ router.get('/pivot/:brandProfileId', requireAuth, async (req, res) => {
     const profile = await pool.query('SELECT version FROM brand_profiles WHERE id = $1', [brandProfileId]);
     const currentVersion = profile.rows[0]?.version || 1;
     const stale = r.rows[0].brain_version < currentVersion;
-    res.json({ success: true, pivot: r.rows[0].data.pivot || null, cached: true, stale, updatedAt: r.rows[0].updated_at });
+    res.json({ success: true, pivot: asObject(r.rows[0].data?.pivot), cached: true, stale, updatedAt: r.rows[0].updated_at });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
@@ -623,7 +639,7 @@ router.post('/pivot/:brandProfileId', requireAuth, async (req, res) => {
         [brandProfileId, 'pivot']
       );
       if (cached.rows.length && cached.rows[0].brain_version >= brainVersion) {
-        send('result', { pivot: cached.rows[0].data.pivot || null, cached: true });
+        send('result', { pivot: asObject(cached.rows[0].data?.pivot), cached: true });
         return res.end();
       }
     }
@@ -643,9 +659,9 @@ router.post('/pivot/:brandProfileId', requireAuth, async (req, res) => {
       [brandProfileId]
     );
 
-    const gapMap = (deliverables.gap_map || {}).gaps || [];
-    const blindSpots = (deliverables.blind_spots || {}).blindSpots || [];
-    const whitespace = (deliverables.whitespace || {}).territories || [];
+    const gapMap = asArray((deliverables.gap_map || {}).gaps);
+    const blindSpots = asArray((deliverables.blind_spots || {}).blindSpots);
+    const whitespace = asArray((deliverables.whitespace || {}).territories);
     const pva = pvaRes.rows.map(r => ({
       competitor: r.competitor_name,
       vulnerabilities: (r.pva_data || []).map(v => ({ severity: v.severity, claim: v.claim, vulnerability: v.vulnerability })),
@@ -868,10 +884,10 @@ router.get('/brief/:token', async (req, res) => {
       brandName: share.brand_name,
       brandUrl: share.brand_url,
       createdAt: share.created_at,
-      pivot: deliverables.pivot?.data?.pivot || null,
-      gapMap: deliverables.gap_map?.data?.gaps || [],
-      blindSpots: deliverables.blind_spots?.data?.blindSpots || [],
-      whitespace: deliverables.whitespace?.data?.territories || [],
+      pivot: asObject(deliverables.pivot?.data?.pivot),
+      gapMap: asArray(deliverables.gap_map?.data?.gaps),
+      blindSpots: asArray(deliverables.blind_spots?.data?.blindSpots),
+      whitespace: asArray(deliverables.whitespace?.data?.territories),
       competitors,
       updatedAt: biRes.rows.reduce((latest, r) => r.updated_at > latest ? r.updated_at : latest, share.created_at)
     });
@@ -932,10 +948,10 @@ router.post('/compliance/:brandProfileId', requireAuth, async (req, res) => {
       [brandProfileId]
     );
 
-    const pivot = deliverables.pivot?.pivot || null;
-    const gaps = deliverables.gap_map?.gaps || [];
-    const blindSpots = deliverables.blind_spots?.blindSpots || [];
-    const whitespace = deliverables.whitespace?.territories || [];
+    const pivot = asObject(deliverables.pivot?.pivot);
+    const gaps = asArray(deliverables.gap_map?.gaps);
+    const blindSpots = asArray(deliverables.blind_spots?.blindSpots);
+    const whitespace = asArray(deliverables.whitespace?.territories);
     const competitors = pvaRes.rows;
 
     if (!pivot && gaps.length === 0 && blindSpots.length === 0 && whitespace.length === 0) {
