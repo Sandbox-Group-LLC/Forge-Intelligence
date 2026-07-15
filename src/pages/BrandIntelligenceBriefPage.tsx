@@ -48,7 +48,7 @@ export default function BrandIntelligenceBriefPage() {
   return (
     <div className="bi-brief">
       {/* Confidential banner */}
-      <div className="bi-brief-confidential">CONFIDENTIAL — Prepared exclusively for {brief.brandName}. Do not distribute without authorization.</div>
+      <div className="bi-brief-confidential">CONFIDENTIAL. Prepared exclusively for {brief.brandName}. Do not distribute without authorization.</div>
 
       {/* Hero */}
       <header className="bi-brief-hero">

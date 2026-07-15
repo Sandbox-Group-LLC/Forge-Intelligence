@@ -22,7 +22,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: #3563ff;
+  color: var(--color-accent);
   margin-bottom: 16px;
 }
 .bi-brief-brand {
@@ -53,7 +53,7 @@
 .bi-section-num {
   font-size: 0.65rem;
   font-weight: 700;
-  color: #3563ff;
+  color: var(--color-accent);
   letter-spacing: 0.08em;
   margin-bottom: 8px;
 }
@@ -139,7 +139,7 @@
   font-style: italic;
   padding: 10px 14px;
   background: rgba(255,255,255,0.03);
-  border-left: 2px solid #3563ff;
+  border-left: 2px solid var(--color-accent);
   border-radius: 0 6px 6px 0;
   margin-bottom: 12px;
 }
@@ -204,8 +204,8 @@
   letter-spacing: 0.1em;
   margin-bottom: 6px;
 }
-.bi-pivot-from .bi-fromto-label { color: #ef4444; }
-.bi-pivot-to .bi-fromto-label { color: #14b8a6; }
+.bi-pivot-from .bi-fromto-label { color: var(--color-error); }
+.bi-pivot-to .bi-fromto-label { color: var(--color-success); }
 .bi-fromto-text {
   font-size: 0.85rem;
   color: #e2e8f0;
@@ -235,7 +235,7 @@
   padding: 16px;
   margin: 14px 0;
 }
-.bi-stop .bi-label { color: #ef4444; }
+.bi-stop .bi-label { color: var(--color-error); }
 .bi-board-slide {
   padding: 24px;
   background: linear-gradient(135deg, rgba(53, 99, 255, 0.12), rgba(20, 184, 166, 0.08));
@@ -243,7 +243,7 @@
   border-radius: 12px;
   margin-top: 20px;
 }
-.bi-board-slide .bi-label { color: #3563ff; }
+.bi-board-slide .bi-label { color: var(--color-accent); }
 .bi-board-slide p {
   font-size: 1rem;
   font-weight: 500;
@@ -267,7 +267,7 @@
   align-items: center;
   justify-content: center;
   background: rgba(53, 99, 255, 0.12);
-  color: #3563ff;
+  color: var(--color-accent);
   font-weight: 700;
   font-size: 0.78rem;
   border-radius: 50%;
@@ -289,7 +289,7 @@
 }
 .bi-move-outcome {
   font-size: 0.8rem;
-  color: #14b8a6;
+  color: var(--color-success);
   line-height: 1.45;
 }
 
@@ -325,7 +325,7 @@
 }
 .bi-ws-bar-fill {
   height: 100%;
-  background: #3563ff;
+  background: var(--color-accent);
   border-radius: 3px;
 }
 .bi-ws-bar-val {
@@ -352,7 +352,7 @@
   color: #64748b;
 }
 .bi-brief-footer-mark a {
-  color: #3563ff;
+  color: var(--color-accent);
   text-decoration: none;
   font-weight: 600;
 }
@@ -404,7 +404,7 @@
   text-transform: uppercase;
   letter-spacing: 0.1em;
   text-align: center;
-  color: #ef4444;
+  color: var(--color-error);
   background: rgba(239, 68, 68, 0.06);
   border-bottom: 1px solid rgba(239, 68, 68, 0.12);
   padding: 10px 24px;
