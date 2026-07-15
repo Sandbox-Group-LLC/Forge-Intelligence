@@ -517,7 +517,12 @@ export default function StrategyIntelPage() {
                     </button>
                   </>
                 )}
-                <button className="si-btn-share" onClick={createShareLink} disabled={sharing || !complianceReport}>
+                <button
+                  className="si-btn-share"
+                  onClick={createShareLink}
+                  disabled={sharing || !complianceReport}
+                  title={!complianceReport ? 'Run the Compliance Check first to enable a shareable brief' : 'Create a shareable board-ready brief link'}
+                >
                   <Share2 size={13} /> {sharing ? 'Creating...' : 'Share Brief'}
                 </button>
               </>
