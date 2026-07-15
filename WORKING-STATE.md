@@ -10,6 +10,25 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
+### 2026-07-15 — Brand Intelligence feature RECOVERED from git history (2 PRs) + 3 fixes
+
+**Headline: Brand Intelligence is live on `development` again.** Brian asked to "promote the Brand Intelligence page from the `strategy` branch." It turned out to be a *dead frontend* — its entire backend had been lost. Git forensics: the full 6-deliverable feature (gap-map, blind-spots, whitespace, pivot, shareable brief, compliance gate — 17 `/api/strategy/*` endpoints) was working at commit **`5b1ac6e9c6`** (Apr 19), wiped by `7fd4a9a50e` (a "sync server.js from production" wholesale overwrite), hand-restored once, then lost for good in the `1873bfb` strategy→main rebuild (which restored only STRATEGY.md + the brief frontend). STRATEGY.md still said "Built ✅"; the code was gone. Recovered verbatim from `5b1ac6e9c6` (GitHub still served the orphaned SHA).
+
+- **PR #491 (merged) — backend + schema.** New **isolated module `src/server/routes/strategy.js`** (`/api/strategy`, 15 handlers) — NOT back in the monolith, per the WHITEBOARD post-mortem (a monolith `server.js` is exactly what let a prod-sync wipe this twice; competitive-intel stays inline and falls through). Faithful port: bodies verbatim, only route registration + model (`sonnet-4-20250514`→`sonnet-4-6`) + AI-output `JSON.parse`→`extractJSON`. Two tables (`brand_intelligence`, `brand_intelligence_shares`) reconstructed from handler SQL (DDL was never committed — created ad-hoc in prod) as boot-time `CREATE TABLE IF NOT EXISTS`. Route-inventory snapshot updated.
+- **PR #492 (merged) — frontend.** Replaced dev's orphaned 2-tab `StrategyIntelPage` stub with the real **6-tab workspace** (Gap Map · PVA · Fault Lines · Blind Spots · Whitespace · Pivot + Run Compliance + Share Brief) + the token-gated public **`BrandIntelligenceBriefPage`** (`/brand-intelligence/:token`). Wiring: `/app/strategy-intel` route + Sidebar nav ("Brand Intelligence", compass icon) + TopBar titles. `tsc` clean, 199/199 tests.
+
+**Also shipped today (separate merged PRs):**
+- **#483** — Authenticity Enricher "Re-run Enrichment" was a dud (`onClick={()=>setResult(null)}` — never called runAnalysis, lost topicBriefId, no force). Now re-runs the current brief forced against the current brain version.
+- **#485** — Brand-profile hallucination on scrape failure. Bright Data 200-with-empty-body counted as success + never escalated → invented voice profiles (oooagency.com). Now: empty-body 200 → fail + escalate; embedded-JSON extraction tier for Cargo/Next-style sites; on genuine scrape failure voice/messaging are *withheld* (`insufficientData`), not fabricated.
+- **#489** — Publish "Live but no View-post link". A duplicate LinkedIn publish wrote a `staged` shadow row that outranked the real published row in the queue UI. Fixed row selection (published outranks staged), the sync live-status default, and a persistResults clobber guard; repaired the affected article's data in prod.
+
+#### What's next
+- Promote `development → main` to ship all of the above to production (Brian-gated rollup).
+- Brand Intelligence: restored but only lightly exercised historically — verify each deliverable generates + persists on dev, and Share Brief → public board doc round-trips, before promoting.
+- `brand_intelligence` had legacy orphan rows pre-wipe (per WHITEBOARD) — harmless (ON CONFLICT upserts by brand+deliverable), no cleanup needed.
+
+---
+
 ### 2026-06-30 — Legal: ToS AI-output-liability review (redline memo + EU AI Act refresh)
 
 Compliance review of the proposed ToS amendment `ForgeToSAmendmentAIOutputLiability.docx` against the live Terms (`src/pages/TermsPage.tsx`, Effective 2026-04-20). Core fix is sound: current §11.1 indemnifies "the Service… infringes" with carve-outs (a)–(d) that don't cleanly exclude AI output, so the amendment's new §11.1(e) (exclude Generated Content) is load-bearing. Two defects redlined; other items flagged for counsel.
