@@ -49,6 +49,7 @@ const viewTitles: Record<string, string> = {
   'strategy': 'Strategy',
   'brain-history': 'Brain History',
   'geo-strategist': 'GEO Strategist',
+  'strategy-intel': 'Brand Intelligence',
   'authenticity-enricher': 'Authenticity Enricher',
   'content-generator': 'Content Generator',
   'ads-generator': 'Ads Generator',
@@ -56,6 +57,7 @@ const viewTitles: Record<string, string> = {
 
 const pathTitles: Record<string, string> = {
   '/app/geo-strategist':         'GEO Strategist',
+  '/app/strategy-intel':         'Brand Intelligence',
   '/app/authenticity-enricher':  'Authenticity Enricher',
   '/app/content-generator':      'Content Generator',
   '/app/social-generator':       'Social Generator',
