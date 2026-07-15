@@ -811,7 +811,7 @@ router.post('/share/:brandProfileId', requireAuth, async (req, res) => {
     const profile = await pool.query('SELECT brand_name, brand_url FROM brand_profiles WHERE id = $1', [brandProfileId]);
     if (!profile.rows.length) return res.status(404).json({ success: false, error: 'Brand not found' });
     const { brand_name, brand_url } = profile.rows[0];
-    const token = (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, '');
+    const token = (randomUUID() + randomUUID()).replace(/-/g, '');
     await pool.query(
       'INSERT INTO brand_intelligence_shares (brand_profile_id, token, created_by, brand_name, brand_url) VALUES ($1, $2, $3, $4, $5)',
       [brandProfileId, token, req.userId || null, brand_name, brand_url]
@@ -819,6 +819,7 @@ router.post('/share/:brandProfileId', requireAuth, async (req, res) => {
     const shareUrl = `https://${req.headers.host}/brand-intelligence/${token}`;
     res.json({ success: true, token, url: shareUrl });
   } catch (e) {
+    console.error('[STRATEGY] share link creation failed:', e.message);
     res.status(500).json({ success: false, error: e.message });
   }
 });
