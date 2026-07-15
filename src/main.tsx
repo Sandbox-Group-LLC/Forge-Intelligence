@@ -17,6 +17,8 @@ import SocialGeneratorPage from './pages/SocialGeneratorPage';
 import VideoGeneratorPage from './pages/VideoGeneratorPage';
 import AdsGeneratorPage from './pages/AdsGeneratorPage';
 import ComplianceGatePage from './pages/ComplianceGatePage';
+import StrategyIntelPage from './pages/StrategyIntelPage';
+import BrandIntelligenceBriefPage from './pages/BrandIntelligenceBriefPage';
 import IntegrationsPage from './pages/IntegrationsPage';
 import PublishingQueuePage from './pages/PublishingQueuePage';
 import CalendarPage from './pages/CalendarPage';
@@ -151,6 +153,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/app/ads-generator" element={<AppProvider><AdsGeneratorPage /></AppProvider>} />
         <Route path="/app/email-campaign" element={<AppProvider><EmailCampaignPage /></AppProvider>} />
         <Route path="/app/compliance-gate" element={<AppProvider><ComplianceGatePage /></AppProvider>} />
+        <Route path="/app/strategy-intel" element={<AppProvider><StrategyIntelPage /></AppProvider>} />
         <Route path="/app/integrations" element={<AppProvider><IntegrationsPage /></AppProvider>} />
         <Route path="/app/publishing-queue" element={<AppProvider><PublishingQueuePage /></AppProvider>} />
         <Route path="/app/calendar" element={<AppProvider><CalendarPage /></AppProvider>} />
@@ -170,6 +173,8 @@ createRoot(document.getElementById('root')!).render(
 
         {/* External review page — no AppProvider, no auth */}
         <Route path="/review/:token" element={<ReviewPage />} />
+        {/* Public token-gated Brand Intelligence brief — no AppProvider, no auth (board share link) */}
+        <Route path="/brand-intelligence/:token" element={<BrandIntelligenceBriefPage />} />
 
         {/* Legacy redirects — keep old paths working during transition */}
         <Route path="/context-hub/*" element={<Navigate to="/app/context-hub" replace />} />

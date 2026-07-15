@@ -201,6 +201,7 @@ const NAV_ROUTES: Partial<Record<ViewType, string>> = {
   'video-generator':      '/app/video-generator',
   'ads-generator':        '/app/ads-generator',
   'compliance-gate':      '/app/compliance-gate',
+  'strategy-intel':       '/app/strategy-intel',
   'integrations':         '/app/integrations',
   'publishing-queue':     '/app/publishing-queue',
   'performance':          '/app/performance',
@@ -235,6 +236,7 @@ const settingsNavItems = [
 
 const topNavItems: TopNavItem[] = [
   { id: 'geo-strategist',        label: 'GEO Strategist',        icon: 'zap',        href: '/app/geo-strategist' },
+  { id: 'strategy-intel',        label: 'Brand Intelligence',    icon: 'compass',    href: '/app/strategy-intel' },
   { id: 'authenticity-enricher', label: 'Authenticity Enricher', icon: 'shieldCheck',href: '/app/authenticity-enricher' },
   { id: 'content-generator',     label: 'Content Generator',     icon: 'fileText',   href: '/app/content-generator' },
   { id: 'campaign-generator',    label: 'Campaign Generator',    icon: 'layers',     href: '/app/campaign-generator' },
