@@ -37,6 +37,7 @@ import campaignRouter from './src/server/routes/campaign.js';
 import topicIdeasRouter from './src/server/routes/topic-ideas.js';
 import precogRouter from './src/server/routes/precog.js';
 import geoStrategistRouter from './src/server/routes/geo-strategist.js';
+import strategyRouter from './src/server/routes/strategy.js';
 import analyticsRouter from './src/server/routes/analytics.js';
 import contextHubRouter from './src/server/routes/context-hub.js';
 import contentRouter from './src/server/routes/content.js';
@@ -519,6 +520,32 @@ async function initDB() {
       UNIQUE(brand_profile_id, content_id, engine, query)
     )`).catch(() => {});
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_geo_citations_brand ON geo_citations(brand_profile_id, is_cited)`).catch(() => {});
+    // Brand Intelligence deliverables (gap_map / blind_spots / whitespace / pivot / compliance)
+    // — one row per (brand, deliverable), JSONB payload. Backs src/server/routes/strategy.js.
+    // DDL was never committed originally (created ad-hoc in prod); reconstructed from the handler SQL.
+    await pool.query(`CREATE TABLE IF NOT EXISTS brand_intelligence (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      brand_profile_id TEXT NOT NULL,
+      deliverable TEXT NOT NULL,
+      data JSONB DEFAULT '{}',
+      brain_version INTEGER DEFAULT 1,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(brand_profile_id, deliverable)
+    )`).catch(() => {});
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_brand_intelligence_brand ON brand_intelligence(brand_profile_id)`).catch(() => {});
+    // Shareable brief tokens — token-gated public board document (/api/strategy/brief/:token).
+    await pool.query(`CREATE TABLE IF NOT EXISTS brand_intelligence_shares (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      brand_profile_id TEXT NOT NULL,
+      token TEXT UNIQUE NOT NULL,
+      created_by TEXT,
+      brand_name TEXT,
+      brand_url TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      revoked_at TIMESTAMPTZ
+    )`).catch(() => {});
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_bi_shares_token ON brand_intelligence_shares(token)`).catch(() => {});
 
     // api_keys — narrow-scoped authentication tokens for machine-to-machine integrations
     // (e.g., Frank/ForgeOS reporting edits back via /api/content/import). Keys are SHA-256
@@ -2866,6 +2893,9 @@ app.use('/api/email-campaign', requireAuth, emailCampaignRouter); // 9 routes ->
 // dateContext moved to src/server/llm.js
 
 app.use('/api/geo-strategist', geoStrategistRouter); // 3 routes (mixed auth, per-route) -> src/server/routes/geo-strategist.js
+// Brand Intelligence (Strategy) — 15 recovered routes (mixed auth; /brief/:token public) -> src/server/routes/strategy.js.
+// competitive-intel GET/POST stay defined inline below; the router has no /competitive-intel path so those fall through to the inline handlers.
+app.use('/api/strategy', strategyRouter);
 
 // (geo-strategist route moved to src/server/routes/geo-strategist.js)
 
