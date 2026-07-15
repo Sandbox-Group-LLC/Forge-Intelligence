@@ -21,6 +21,11 @@ import { requireAuth } from '../auth.js';
 
 const router = express.Router();
 
+// Appended to every deliverable prompt. The generated brief text was littered
+// with em-dashes (the prompts themselves modeled them); this forbids them so the
+// board-facing output reads clean, matching the rest of Forge's content rules.
+const NO_EM_DASH = '\n\nSTYLE (mandatory): Write in plain prose. Do NOT use em-dashes (the — character) anywhere in your output; use commas, colons, parentheses, or separate sentences instead.';
+
 // Container-type normalizers for stored deliverable JSONB. Historically one
 // gap_map row was persisted double-encoded (data.gaps = a JSON *string*, not an
 // array — the pg driver parses the outer JSONB but leaves the inner string),
@@ -181,7 +186,7 @@ Sort by opportunityScore descending. Be ruthlessly specific — no generic strat
     const synthesisRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 6144,
-      messages: [{ role: 'user', content: synthesisPrompt }]
+      messages: [{ role: 'user', content: synthesisPrompt + NO_EM_DASH }]
     });
 
     let gaps = [];
@@ -368,7 +373,7 @@ Sort by opportunitySize (large first). Be ruthlessly specific — name real role
     const synthesisRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 6144,
-      messages: [{ role: 'user', content: prompt }]
+      messages: [{ role: 'user', content: prompt + NO_EM_DASH }]
     });
 
     let blindSpots = [];
@@ -557,7 +562,7 @@ Sort by brandVisibility ascending (most invisible first). Be brutally specific �
     const synthesisRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 8192,
-      messages: [{ role: 'user', content: prompt }]
+      messages: [{ role: 'user', content: prompt + NO_EM_DASH }]
     });
 
     let territories = [];
@@ -767,7 +772,7 @@ Be ruthlessly specific. Name competitors. Name products. Name audiences. This is
     const synthesisRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 4096,
-      messages: [{ role: 'user', content: prompt }]
+      messages: [{ role: 'user', content: prompt + NO_EM_DASH }]
     });
 
     let pivot = null;
@@ -1069,7 +1074,7 @@ Sort findings: unverified first, then inferred, then verified. Within each tier,
     const auditRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 8192,
-      messages: [{ role: 'user', content: auditPrompt }]
+      messages: [{ role: 'user', content: auditPrompt + NO_EM_DASH }]
     });
 
     let report = null;

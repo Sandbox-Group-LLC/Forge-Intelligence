@@ -7,6 +7,9 @@ import { randomUUID, randomBytes, createHmac, createHash, timingSafeEqual } from
 import { jwtVerify } from 'jose';
 import { pool } from './src/server/db.js';
 import { extractJSON, safeParseLLM } from './src/server/llm-json.js';
+// Forbid em-dashes in Brand Intelligence PVA / Fault Lines output (matches the
+// strategy module + the rest of Forge's content style). Appended to those prompts.
+const STRATEGY_NO_EM_DASH = '\n\nSTYLE (mandatory): Write in plain prose. Do NOT use em-dashes (the — character) anywhere in your output; use commas, colons, parentheses, or separate sentences instead.';
 import { resolveUtmParams, buildUtmString } from './src/server/utm.js';
 import { truncateStr, truncateAtSentence, stripSocialMarkdown, quickStartTruncate, stripScaffoldingArtifacts, stripEmDashes } from './src/server/text.js';
 import { clerkJWKS, SUPER_ADMIN_IDS, verifyBrandAccess, requireAuth, requireApiKeyScope, softAuth, mcpAuth, hashApiKey, lookupApiKey } from './src/server/auth.js';
@@ -3733,7 +3736,7 @@ Respond with ONLY valid JSON — no markdown, no code fences:
       model: 'claude-sonnet-4-6',
       max_tokens: 6000,
       system: 'You are a JSON API. Respond with valid JSON only — no markdown, no explanation, no code fences.',
-      messages: [{ role: 'user', content: pvaPrompt }]
+      messages: [{ role: 'user', content: pvaPrompt + STRATEGY_NO_EM_DASH }]
     });
 
     // Hardened parse — the quote-dense PVA output ("quote the competitor's exact
@@ -3805,7 +3808,7 @@ Respond with ONLY valid JSON — no markdown, no code fences:
       model: 'claude-sonnet-4-6',
       max_tokens: 6000,
       system: 'You are a JSON API. Respond with valid JSON only — no markdown, no explanation, no code fences.',
-      messages: [{ role: 'user', content: faultLinesPrompt }]
+      messages: [{ role: 'user', content: faultLinesPrompt + STRATEGY_NO_EM_DASH }]
     });
 
     let faultLinesData = { competitors: [] };
