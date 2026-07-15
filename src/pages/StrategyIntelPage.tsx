@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Component } from 'react';
+import type { ReactNode } from 'react';
 import { AppShell } from '../layouts/AppShell';
 import { useApp } from '../context/AppContext';
 import { Target, Map, Eye, MessageSquare, Compass, ArrowRight, Share2 } from 'lucide-react';
@@ -97,6 +98,35 @@ const TABS: { id: TabId; label: string; icon: any; ready: boolean }[] = [
   { id: 'pivot', label: 'Positioning Pivot', icon: ArrowRight, ready: true },
 ];
 
+// Container-type coercion. The stored deliverable JSONB can be double-encoded
+// (an array/object persisted as a JSON string); the server now normalizes, but
+// coerce here too so a stale backend or a bad payload can never put a string
+// into array/object state and crash a .map()/nested access at render time.
+const toArray = (v: any): any[] => {
+  if (Array.isArray(v)) return v;
+  if (typeof v === 'string') { try { const p = JSON.parse(v); return Array.isArray(p) ? p : []; } catch { return []; } }
+  return [];
+};
+const toObj = (v: any): any => {
+  if (v && typeof v === 'object' && !Array.isArray(v)) return v;
+  if (typeof v === 'string') { try { const p = JSON.parse(v); return (p && typeof p === 'object' && !Array.isArray(p)) ? p : null; } catch { return null; } }
+  return null;
+};
+
+// Error boundary so one malformed deliverable can never blank the whole page —
+// the crash is contained to the offending tab, which shows a recoverable notice.
+class TabErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  constructor(props: { children: ReactNode }) { super(props); this.state = { failed: false }; }
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(err: any) { console.error('[StrategyIntel] tab render error:', err); }
+  render() {
+    if (this.state.failed) {
+      return <div className="si-error">This deliverable couldn't be displayed — its data may be malformed. Try Re-analyze to regenerate it.</div>;
+    }
+    return this.props.children;
+  }
+}
+
 export default function StrategyIntelPage() {
   const { setCurrentView, activeBrand, authToken } = useApp();
   const [activeTab, setActiveTab] = useState<TabId>('gap_map');
@@ -141,7 +171,7 @@ export default function StrategyIntelPage() {
       headers: { 'Authorization': `Bearer ${authToken}` }
     })
       .then(r => r.json())
-      .then(d => { if (d.success && d.competitors?.length) setCompetitors(d.competitors); })
+      .then(d => { if (d.success) { const a = toArray(d.competitors); if (a.length) setCompetitors(a); } })
       .catch(() => {});
   }, [brandProfileId, authToken]);
 
@@ -152,7 +182,7 @@ export default function StrategyIntelPage() {
       headers: { 'Authorization': `Bearer ${authToken}` }
     })
       .then(r => r.json())
-      .then(d => { if (d.success && d.gaps?.length) setGaps(d.gaps); })
+      .then(d => { if (d.success) { const a = toArray(d.gaps); if (a.length) setGaps(a); } })
       .catch(() => {});
   }, [brandProfileId, authToken]);
 
@@ -163,7 +193,7 @@ export default function StrategyIntelPage() {
       headers: { 'Authorization': `Bearer ${authToken}` }
     })
       .then(r => r.json())
-      .then(d => { if (d.success && d.blindSpots?.length) setBlindSpots(d.blindSpots); })
+      .then(d => { if (d.success) { const a = toArray(d.blindSpots); if (a.length) setBlindSpots(a); } })
       .catch(() => {});
   }, [brandProfileId, authToken]);
 
@@ -174,7 +204,7 @@ export default function StrategyIntelPage() {
       headers: { 'Authorization': `Bearer ${authToken}` }
     })
       .then(r => r.json())
-      .then(d => { if (d.success && d.territories?.length) setTerritories(d.territories); })
+      .then(d => { if (d.success) { const a = toArray(d.territories); if (a.length) setTerritories(a); } })
       .catch(() => {});
   }, [brandProfileId, authToken]);
 
@@ -196,7 +226,7 @@ export default function StrategyIntelPage() {
       headers: { 'Authorization': `Bearer ${authToken}` }
     })
       .then(r => r.json())
-      .then(d => { if (d.success && d.pivot) setPivot(d.pivot); })
+      .then(d => { if (d.success) { const o = toObj(d.pivot); if (o) setPivot(o); } })
       .catch(() => {});
   }, [brandProfileId, authToken]);
 
@@ -225,7 +255,7 @@ export default function StrategyIntelPage() {
             try {
               const evt = JSON.parse(part.slice(6));
               if (evt.type === 'progress' || evt.type === 'detail') setProgress(prev => [...prev, evt.detail]);
-              else if (evt.type === 'result') setCompetitors(evt.competitors || []);
+              else if (evt.type === 'result') setCompetitors(toArray(evt.competitors));
               else if (evt.type === 'error') throw new Error(evt.error);
             } catch (pe: any) { if (pe.message && !pe.message.includes('JSON')) throw pe; }
           }
@@ -260,7 +290,7 @@ export default function StrategyIntelPage() {
             try {
               const evt = JSON.parse(part.slice(6));
               if (evt.type === 'progress' || evt.type === 'detail') setProgress(prev => [...prev, evt.detail]);
-              else if (evt.type === 'result') setGaps(evt.gaps || []);
+              else if (evt.type === 'result') setGaps(toArray(evt.gaps));
               else if (evt.type === 'error') throw new Error(evt.error);
             } catch (pe: any) { if (pe.message && !pe.message.includes('JSON')) throw pe; }
           }
@@ -295,7 +325,7 @@ export default function StrategyIntelPage() {
             try {
               const evt = JSON.parse(part.slice(6));
               if (evt.type === 'progress' || evt.type === 'detail') setProgress(prev => [...prev, evt.detail]);
-              else if (evt.type === 'result') setBlindSpots(evt.blindSpots || []);
+              else if (evt.type === 'result') setBlindSpots(toArray(evt.blindSpots));
               else if (evt.type === 'error') throw new Error(evt.error);
             } catch (pe: any) { if (pe.message && !pe.message.includes('JSON')) throw pe; }
           }
@@ -330,7 +360,7 @@ export default function StrategyIntelPage() {
             try {
               const evt = JSON.parse(part.slice(6));
               if (evt.type === 'progress' || evt.type === 'detail') setProgress(prev => [...prev, evt.detail]);
-              else if (evt.type === 'result') setTerritories(evt.territories || []);
+              else if (evt.type === 'result') setTerritories(toArray(evt.territories));
               else if (evt.type === 'error') throw new Error(evt.error);
             } catch (pe: any) { if (pe.message && !pe.message.includes('JSON')) throw pe; }
           }
@@ -365,7 +395,7 @@ export default function StrategyIntelPage() {
             try {
               const evt = JSON.parse(part.slice(6));
               if (evt.type === 'progress' || evt.type === 'detail') setProgress(prev => [...prev, evt.detail]);
-              else if (evt.type === 'result') setPivot(evt.pivot || null);
+              else if (evt.type === 'result') setPivot(toObj(evt.pivot));
               else if (evt.type === 'error') throw new Error(evt.error);
             } catch (pe: any) { if (pe.message && !pe.message.includes('JSON')) throw pe; }
           }
@@ -578,6 +608,8 @@ export default function StrategyIntelPage() {
 
         {error && <div className="si-error">{error}</div>}
 
+        {/* Keyed by activeTab so a contained render error resets when you switch tabs. */}
+        <TabErrorBoundary key={activeTab}>
         {/* ═══ GAP MAP TAB ═══ */}
         {activeTab === 'gap_map' && !isRunning && gaps.length > 0 && (
           <div className="si-competitors">
@@ -600,22 +632,22 @@ export default function StrategyIntelPage() {
                           <div className="si-gap-label">Current State</div>
                           <div className="si-gap-text">{gap.currentState}</div>
                         </div>
-                        {gap.evidence.geo && (
+                        {gap.evidence?.geo && (
                           <div className="si-gap-section">
                             <div className="si-gap-label">GEO Signal</div>
-                            <div className="si-gap-text">{gap.evidence.geo}</div>
+                            <div className="si-gap-text">{gap.evidence?.geo}</div>
                           </div>
                         )}
-                        {gap.evidence.pva && (
+                        {gap.evidence?.pva && (
                           <div className="si-gap-section">
                             <div className="si-gap-label">Vulnerability Signal</div>
-                            <div className="si-gap-text">{gap.evidence.pva}</div>
+                            <div className="si-gap-text">{gap.evidence?.pva}</div>
                           </div>
                         )}
-                        {gap.evidence.faultLines && (
+                        {gap.evidence?.faultLines && (
                           <div className="si-gap-section">
                             <div className="si-gap-label">Messaging Signal</div>
-                            <div className="si-gap-text">{gap.evidence.faultLines}</div>
+                            <div className="si-gap-text">{gap.evidence?.faultLines}</div>
                           </div>
                         )}
                         <div className="si-gap-section">
@@ -741,22 +773,22 @@ export default function StrategyIntelPage() {
                           <div className="si-gap-label">Why the Market Is Blind</div>
                           <div className="si-gap-text">{spot.whyBlind}</div>
                         </div>
-                        {spot.evidence.competitorGap && (
+                        {spot.evidence?.competitorGap && (
                           <div className="si-gap-section">
                             <div className="si-gap-label">Competitor Gap</div>
-                            <div className="si-gap-text">{spot.evidence.competitorGap}</div>
+                            <div className="si-gap-text">{spot.evidence?.competitorGap}</div>
                           </div>
                         )}
-                        {spot.evidence.topicalSignal && (
+                        {spot.evidence?.topicalSignal && (
                           <div className="si-gap-section">
                             <div className="si-gap-label">Topical Signal</div>
-                            <div className="si-gap-text">{spot.evidence.topicalSignal}</div>
+                            <div className="si-gap-text">{spot.evidence?.topicalSignal}</div>
                           </div>
                         )}
-                        {spot.evidence.marketTrend && (
+                        {spot.evidence?.marketTrend && (
                           <div className="si-gap-section">
                             <div className="si-gap-label">Market Trend</div>
-                            <div className="si-gap-text">{spot.evidence.marketTrend}</div>
+                            <div className="si-gap-text">{spot.evidence?.marketTrend}</div>
                           </div>
                         )}
                         <div className="si-gap-section">
@@ -869,12 +901,12 @@ export default function StrategyIntelPage() {
             <div className="si-pivot-fromto">
               <div className="si-pivot-from">
                 <div className="si-pivot-fromto-label">FROM</div>
-                <div className="si-pivot-fromto-text">{pivot.fromTo.from}</div>
+                <div className="si-pivot-fromto-text">{pivot.fromTo?.from}</div>
               </div>
               <div className="si-pivot-arrow">→</div>
               <div className="si-pivot-to">
                 <div className="si-pivot-fromto-label">TO</div>
-                <div className="si-pivot-fromto-text">{pivot.fromTo.to}</div>
+                <div className="si-pivot-fromto-text">{pivot.fromTo?.to}</div>
               </div>
             </div>
 
@@ -886,34 +918,34 @@ export default function StrategyIntelPage() {
             <div className="si-pivot-evidence">
               <div className="si-gap-label">Convergence Evidence</div>
               <div className="si-pivot-evidence-grid">
-                {pivot.convergenceEvidence.gapMap && (
+                {pivot.convergenceEvidence?.gapMap && (
                   <div className="si-pivot-ev-card">
                     <div className="si-pivot-ev-dim">Gap Map</div>
-                    <div className="si-pivot-ev-text">{pivot.convergenceEvidence.gapMap}</div>
+                    <div className="si-pivot-ev-text">{pivot.convergenceEvidence?.gapMap}</div>
                   </div>
                 )}
-                {pivot.convergenceEvidence.pva && (
+                {pivot.convergenceEvidence?.pva && (
                   <div className="si-pivot-ev-card">
                     <div className="si-pivot-ev-dim">Vulnerabilities</div>
-                    <div className="si-pivot-ev-text">{pivot.convergenceEvidence.pva}</div>
+                    <div className="si-pivot-ev-text">{pivot.convergenceEvidence?.pva}</div>
                   </div>
                 )}
-                {pivot.convergenceEvidence.faultLines && (
+                {pivot.convergenceEvidence?.faultLines && (
                   <div className="si-pivot-ev-card">
                     <div className="si-pivot-ev-dim">Fault Lines</div>
-                    <div className="si-pivot-ev-text">{pivot.convergenceEvidence.faultLines}</div>
+                    <div className="si-pivot-ev-text">{pivot.convergenceEvidence?.faultLines}</div>
                   </div>
                 )}
-                {pivot.convergenceEvidence.blindSpots && (
+                {pivot.convergenceEvidence?.blindSpots && (
                   <div className="si-pivot-ev-card">
                     <div className="si-pivot-ev-dim">Blind Spots</div>
-                    <div className="si-pivot-ev-text">{pivot.convergenceEvidence.blindSpots}</div>
+                    <div className="si-pivot-ev-text">{pivot.convergenceEvidence?.blindSpots}</div>
                   </div>
                 )}
-                {pivot.convergenceEvidence.whitespace && (
+                {pivot.convergenceEvidence?.whitespace && (
                   <div className="si-pivot-ev-card">
                     <div className="si-pivot-ev-dim">Whitespace</div>
-                    <div className="si-pivot-ev-text">{pivot.convergenceEvidence.whitespace}</div>
+                    <div className="si-pivot-ev-text">{pivot.convergenceEvidence?.whitespace}</div>
                   </div>
                 )}
               </div>
@@ -921,7 +953,7 @@ export default function StrategyIntelPage() {
 
             <div className="si-pivot-moves">
               <div className="si-gap-label">Three Moves in 90 Days</div>
-              {(pivot.threeMovesIn90Days || []).map((m, i) => (
+              {(Array.isArray(pivot.threeMovesIn90Days) ? pivot.threeMovesIn90Days : []).map((m, i) => (
                 <div key={i} className="si-pivot-move">
                   <div className="si-pivot-move-num">{i + 1}</div>
                   <div className="si-pivot-move-body">
@@ -961,6 +993,7 @@ export default function StrategyIntelPage() {
             </button>
           </div>
         )}
+        </TabErrorBoundary>
       </div>
     </AppShell>
   );
