@@ -121,7 +121,7 @@ class TabErrorBoundary extends Component<{ children: ReactNode }, { failed: bool
   componentDidCatch(err: any) { console.error('[StrategyIntel] tab render error:', err); }
   render() {
     if (this.state.failed) {
-      return <div className="si-error">This deliverable couldn't be displayed — its data may be malformed. Try Re-analyze to regenerate it.</div>;
+      return <div className="si-error">This deliverable couldn't be displayed. Its data may be malformed; try Re-analyze to regenerate it.</div>;
     }
     return this.props.children;
   }
@@ -458,9 +458,11 @@ export default function StrategyIntelPage() {
     finally { setSharing(false); }
   };
 
-  const severityColor = (s: string) => s === 'high' ? '#ef4444' : s === 'medium' ? '#f5b942' : '#94a3b8';
-  const priorityColor = (p: string) => p === 'high' ? '#3563ff' : p === 'medium' ? '#8b5cf6' : '#94a3b8';
-  const scoreColor = (s: number) => s >= 75 ? '#14b8a6' : s >= 50 ? '#f5b942' : '#ef4444';
+  // Tier/score colors map to the brand token set (green/amber/red/blue), not the
+  // old off-brand teal/purple hardcodes. CSS vars resolve fine inside inline styles.
+  const severityColor = (s: string) => s === 'high' ? 'var(--color-error)' : s === 'medium' ? 'var(--color-warning)' : 'var(--color-text-muted)';
+  const priorityColor = (p: string) => p === 'high' ? 'var(--color-accent)' : p === 'medium' ? 'var(--color-warning)' : 'var(--color-text-muted)';
+  const scoreColor = (s: number) => s >= 75 ? 'var(--color-success)' : s >= 50 ? 'var(--color-warning)' : 'var(--color-error)';
 
   const runAction = activeTab === 'gap_map' ? runGapMap
     : activeTab === 'blind_spots' ? runBlindSpots
@@ -546,7 +548,7 @@ export default function StrategyIntelPage() {
                 <span className="si-compliance-stat si-compliance-verified">{complianceReport.summary?.verified || 0} Verified</span>
                 <span className="si-compliance-stat si-compliance-inferred">{complianceReport.summary?.inferred || 0} Inferred</span>
                 <span className="si-compliance-stat si-compliance-unverified">{complianceReport.summary?.unverified || 0} Unverified</span>
-                <span className="si-compliance-pass">Pass rate: {complianceReport.summary?.passRate || '—'}</span>
+                <span className="si-compliance-pass">Pass rate: {complianceReport.summary?.passRate || 'n/a'}</span>
               </div>
               <button className="si-compliance-close" onClick={() => setComplianceExpanded(false)}>×</button>
             </div>
@@ -601,13 +603,15 @@ export default function StrategyIntelPage() {
         </div>
 
         {/* Progress feed */}
-        {isRunning && (
+        {(isRunning || complianceRunning) && (
           <div className="si-progress">
-            <div className="si-progress-title">Analyzing...</div>
+            <div className="si-progress-title">
+              <span className="si-progress-spinner" />
+              {complianceRunning ? 'Running Compliance Check...' : 'Analyzing...'}
+            </div>
             {progress.map((msg, i) => (
               <div key={i} className="si-progress-line">{msg}</div>
             ))}
-            <div className="si-progress-spinner" />
           </div>
         )}
 
@@ -759,7 +763,7 @@ export default function StrategyIntelPage() {
           <div className="si-competitors">
             {blindSpots.map((spot, i) => {
               const isExpanded = expandedSpot === i;
-              const sizeColor = spot.opportunitySize === 'large' ? '#14b8a6' : spot.opportunitySize === 'medium' ? '#f5b942' : '#94a3b8';
+              const sizeColor = spot.opportunitySize === 'large' ? 'var(--color-success)' : spot.opportunitySize === 'medium' ? 'var(--color-warning)' : 'var(--color-text-muted)';
               return (
                 <div key={i} className="si-comp-card">
                   <button className="si-comp-header" onClick={() => setExpandedSpot(isExpanded ? null : i)}>
@@ -828,8 +832,8 @@ export default function StrategyIntelPage() {
           <div className="si-competitors">
             {territories.map((t, i) => {
               const isExpanded = expandedTerritory === i;
-              const visColor = t.brandVisibility <= 30 ? '#ef4444' : t.brandVisibility <= 55 ? '#f5b942' : '#94a3b8';
-              const diffColor = t.reclaimDifficulty === 'low' ? '#14b8a6' : t.reclaimDifficulty === 'medium' ? '#f5b942' : '#ef4444';
+              const visColor = t.brandVisibility <= 30 ? 'var(--color-error)' : t.brandVisibility <= 55 ? 'var(--color-warning)' : 'var(--color-text-muted)';
+              const diffColor = t.reclaimDifficulty === 'low' ? 'var(--color-success)' : t.reclaimDifficulty === 'medium' ? 'var(--color-warning)' : 'var(--color-error)';
               return (
                 <div key={i} className="si-comp-card">
                   <button className="si-comp-header" onClick={() => setExpandedTerritory(isExpanded ? null : i)}>
@@ -847,22 +851,22 @@ export default function StrategyIntelPage() {
                         <div className="si-ws-platforms">
                           <div className="si-ws-platform">
                             <span className="si-ws-plat-name">ChatGPT</span>
-                            <div className="si-ws-bar"><div className="si-ws-bar-fill" style={{ width: `${t.platformBreakdown?.chatgpt || 0}%`, background: '#14b8a6' }} /></div>
+                            <div className="si-ws-bar"><div className="si-ws-bar-fill" style={{ width: `${t.platformBreakdown?.chatgpt || 0}%` }} /></div>
                             <span className="si-ws-plat-score">{t.platformBreakdown?.chatgpt || 0}</span>
                           </div>
                           <div className="si-ws-platform">
                             <span className="si-ws-plat-name">Perplexity</span>
-                            <div className="si-ws-bar"><div className="si-ws-bar-fill" style={{ width: `${t.platformBreakdown?.perplexity || 0}%`, background: '#8b5cf6' }} /></div>
+                            <div className="si-ws-bar"><div className="si-ws-bar-fill" style={{ width: `${t.platformBreakdown?.perplexity || 0}%` }} /></div>
                             <span className="si-ws-plat-score">{t.platformBreakdown?.perplexity || 0}</span>
                           </div>
                           <div className="si-ws-platform">
                             <span className="si-ws-plat-name">Gemini</span>
-                            <div className="si-ws-bar"><div className="si-ws-bar-fill" style={{ width: `${t.platformBreakdown?.gemini || 0}%`, background: '#3563ff' }} /></div>
+                            <div className="si-ws-bar"><div className="si-ws-bar-fill" style={{ width: `${t.platformBreakdown?.gemini || 0}%` }} /></div>
                             <span className="si-ws-plat-score">{t.platformBreakdown?.gemini || 0}</span>
                           </div>
                           <div className="si-ws-platform">
                             <span className="si-ws-plat-name">AI Overviews</span>
-                            <div className="si-ws-bar"><div className="si-ws-bar-fill" style={{ width: `${t.platformBreakdown?.aiOverviews || 0}%`, background: '#f5b942' }} /></div>
+                            <div className="si-ws-bar"><div className="si-ws-bar-fill" style={{ width: `${t.platformBreakdown?.aiOverviews || 0}%` }} /></div>
                             <span className="si-ws-plat-score">{t.platformBreakdown?.aiOverviews || 0}</span>
                           </div>
                         </div>
@@ -989,8 +993,8 @@ export default function StrategyIntelPage() {
             <div className="si-empty-body">
               {activeTab === 'gap_map' && 'Forge will aggregate your GEO topical authority gaps, competitor positioning, and vulnerability data to identify undefended market positions no competitor currently owns.'}
               {activeTab === 'pivot' && 'Forge synthesizes all five intelligence dimensions to find the ONE positioning move that exploits every gap, vulnerability, blind spot, and invisible conversation simultaneously. Run the other analyses first.'}
-              {activeTab === 'whitespace' && 'Forge will map every conversation happening on ChatGPT, Perplexity, Gemini, and AI Overviews where your brand is invisible — who controls the narrative, what it costs you, and how to reclaim territory.'}
-              {activeTab === 'blind_spots' && 'Forge will analyze your personas, competitor positioning, and topical gaps to identify audience segments the entire market is ignoring — buyers nobody is speaking to that your brand can own.'}
+              {activeTab === 'whitespace' && 'Forge will map every conversation happening on ChatGPT, Perplexity, Gemini, and AI Overviews where your brand is invisible: who controls the narrative, what it costs you, and how to reclaim territory.'}
+              {activeTab === 'blind_spots' && 'Forge will analyze your personas, competitor positioning, and topical gaps to identify audience segments the entire market is ignoring: buyers nobody is speaking to that your brand can own.'}
               {(activeTab === 'pva' || activeTab === 'faultlines') && 'Forge will scrape your competitors\' public positioning pages, identify vulnerabilities in their claims, and map the exact language they use so you can differentiate against it.'}
             </div>
             <button className="si-btn-primary" onClick={() => runAction && runAction(false)}>
