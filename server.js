@@ -3736,14 +3736,24 @@ Respond with ONLY valid JSON — no markdown, no code fences:
       messages: [{ role: 'user', content: pvaPrompt }]
     });
 
+    // Hardened parse — the quote-dense PVA output ("quote the competitor's exact
+    // language") routinely contains trailing commas / smart quotes / control chars
+    // that the old raw JSON.parse rejected, silently zeroing out real findings.
+    // safeParseLLM is the same cascade the rest of server.js uses.
     let pvaData = { competitors: [] };
     try {
-      const raw = pvaRes.content[0].text;
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (jsonMatch) pvaData = JSON.parse(jsonMatch[0]);
-    } catch(e) { console.log('[STRATEGY] PVA parse warn:', e.message); }
+      const parsed = safeParseLLM(pvaRes.content[0].text, 'object', 'strategy-pva');
+      if (parsed && Array.isArray(parsed.competitors)) pvaData = parsed;
+    } catch(e) { console.warn('[STRATEGY] PVA parse failed:', e.message, '| head:', (pvaRes.content[0]?.text || '').slice(0, 300)); }
 
     const pvaCount = pvaData.competitors?.reduce((sum, c) => sum + (c.vulnerabilities?.length || 0), 0) || 0;
+    // Never fail silently: if we scraped content but got zero vulnerabilities, log
+    // the raw head + parsed competitor count so a recurrence is diagnosable (parse
+    // loss shows findings in rawHead with parsedCompetitors=0; a genuine empty model
+    // response shows empty vulnerabilities[] arrays).
+    if (pvaCount === 0 && competitorData.some(c => c.scrapedLength > 500)) {
+      console.warn(`[STRATEGY] PVA 0 vulnerabilities despite scraped content — parsedCompetitors=${pvaData.competitors?.length || 0} rawHead=${(pvaRes.content[0]?.text || '').slice(0, 400)}`);
+    }
     send('detail', { stage: 'pva', detail: `${pvaCount} vulnerabilities identified across ${pvaData.competitors?.length || 0} competitors` });
 
     // ── Tool 2: Messaging Fault Lines ──
@@ -3800,12 +3810,14 @@ Respond with ONLY valid JSON — no markdown, no code fences:
 
     let faultLinesData = { competitors: [] };
     try {
-      const raw = flRes.content[0].text;
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (jsonMatch) faultLinesData = JSON.parse(jsonMatch[0]);
-    } catch(e) { console.log('[STRATEGY] Fault Lines parse warn:', e.message); }
+      const parsed = safeParseLLM(flRes.content[0].text, 'object', 'strategy-faultlines');
+      if (parsed && Array.isArray(parsed.competitors)) faultLinesData = parsed;
+    } catch(e) { console.warn('[STRATEGY] Fault Lines parse failed:', e.message, '| head:', (flRes.content[0]?.text || '').slice(0, 300)); }
 
     const flCount = faultLinesData.competitors?.reduce((sum, c) => sum + (c.faultLines?.length || 0), 0) || 0;
+    if (flCount === 0 && competitorData.some(c => c.scrapedLength > 500)) {
+      console.warn(`[STRATEGY] Fault Lines 0 despite scraped content — parsedCompetitors=${faultLinesData.competitors?.length || 0} rawHead=${(flRes.content[0]?.text || '').slice(0, 400)}`);
+    }
     send('detail', { stage: 'faultlines', detail: `${flCount} fault lines mapped across ${faultLinesData.competitors?.length || 0} competitors` });
 
     // ── Persist per competitor ──
