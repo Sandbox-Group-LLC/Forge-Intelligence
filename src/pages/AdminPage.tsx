@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import { AppShell } from '../layouts/AppShell';
+import PromoCodesPanel from '../components/PromoCodesPanel';
 import './AdminPage.css';
 
 function fmt(n: number) {
@@ -537,6 +538,9 @@ export default function AdminPage() {
 
           </>
         ) : null}
+
+        {/* Promo code admin — self-contained (own fetch), renders regardless of mission-control load state */}
+        <PromoCodesPanel />
       </div>
     </AppShell>
   );
