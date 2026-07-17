@@ -7452,6 +7452,29 @@ pool.query(`CREATE TABLE IF NOT EXISTS promo_redemptions (
   UNIQUE(code, brand_profile_id)
 )`).catch(() => {});
 
+// Admin-managed promo codes table. Supersedes the static PROMO_CODES map (which
+// is now only a one-time seed): super admins mint/manage codes from Mission
+// Control. Validation reads this table first, then falls back to the seed map.
+pool.query(`CREATE TABLE IF NOT EXISTS promo_codes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code TEXT UNIQUE NOT NULL,
+  discount INTEGER NOT NULL DEFAULT 100,
+  description TEXT,
+  max_uses INTEGER,          -- NULL = unlimited
+  expires_at TIMESTAMPTZ,    -- NULL = never expires
+  active BOOLEAN DEFAULT true,
+  created_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+)`).then(async () => {
+  // One-time seed of the legacy static codes so cutover breaks nothing.
+  for (const [code, meta] of PROMO_CODES) {
+    await pool.query(
+      `INSERT INTO promo_codes (code, discount, description) VALUES ($1, $2, $3) ON CONFLICT (code) DO NOTHING`,
+      [code, meta.discount, meta.description]
+    ).catch(() => {});
+  }
+}).catch(() => {});
+
 // Promo codes stored server-side — never expose to client
 // PROMO_CODES moved to src/server/promo.js (imported at top).
 
@@ -7461,8 +7484,25 @@ app.post('/api/promo/validate', softAuth, async (req, res) => {
   if (!code) return res.status(400).json({ error: 'code required' });
 
   const normalised = code.trim().toUpperCase();
-  const promo = PROMO_CODES.get(normalised);
-  if (!promo) return res.json({ valid: false, message: 'Invalid promo code' });
+
+  // Look up in the admin-managed table first; fall back to the static seed map so
+  // a code always resolves (e.g. before the boot seed runs on a fresh DB).
+  let promo = null;
+  try {
+    const r = await pool.query(
+      'SELECT code, discount, description, max_uses, expires_at, active FROM promo_codes WHERE code = $1',
+      [normalised]
+    );
+    if (r.rows.length) promo = r.rows[0];
+  } catch {}
+  if (!promo) {
+    const legacy = PROMO_CODES.get(normalised);
+    if (legacy) promo = { discount: legacy.discount, description: legacy.description, max_uses: null, expires_at: null, active: true };
+  }
+  if (!promo || promo.active === false) return res.json({ valid: false, message: 'Invalid promo code' });
+  if (promo.expires_at && new Date(promo.expires_at) < new Date()) {
+    return res.json({ valid: false, message: 'This promo code has expired' });
+  }
 
   // Resolve brandProfileId — use provided, or look up from auth token
   let brandProfileId = providedId;
@@ -7475,6 +7515,20 @@ app.post('/api/promo/validate', softAuth, async (req, res) => {
   }
   // No global fallback — brandProfileId must come from frontend or auth token
   // Without it, the promo validates but is_paid does NOT flip (logged as warning)
+
+  // Usage cap: max_uses counts distinct brand redemptions. A re-redemption by the
+  // same brand is idempotent (UNIQUE), so only a genuinely-new brand hits the cap.
+  if (promo.max_uses != null && brandProfileId) {
+    const cnt = await pool.query(
+      'SELECT COUNT(*)::int AS n, COUNT(*) FILTER (WHERE brand_profile_id = $2)::int AS mine FROM promo_redemptions WHERE code = $1',
+      [normalised, brandProfileId]
+    );
+    const total = cnt.rows[0]?.n || 0;
+    const mine = cnt.rows[0]?.mine || 0;
+    if (mine === 0 && total >= promo.max_uses) {
+      return res.json({ valid: false, message: 'This promo code has reached its usage limit' });
+    }
+  }
 
   // Apply — stamp paid_at (comped). Like PayPal, this does NOT grant access; the
   // Clerk-account tether flips is_paid. So a promo still requires creating an account.
@@ -7497,6 +7551,75 @@ app.post('/api/promo/validate', softAuth, async (req, res) => {
   }
 
   res.json({ valid: true, discount: promo.discount, message: `Code applied — ${promo.description}` });
+});
+
+// ── Promo code admin (super-admin only) ─────────────────────────────────────
+// Random code: uppercase alphanumeric, ambiguous chars (O/0/I/1) removed.
+const genPromoCode = () => {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = randomBytes(8);
+  let s = '';
+  for (let i = 0; i < 8; i++) s += alphabet[bytes[i] % alphabet.length];
+  return 'FORGE' + s;
+};
+
+// List all codes with live redemption counts.
+app.get('/api/admin/promo-codes', requireAuth, async (req, res) => {
+  if (!SUPER_ADMIN_IDS.includes(req.userId)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const r = await pool.query(`
+      SELECT p.id, p.code, p.discount, p.description, p.max_uses, p.expires_at, p.active, p.created_at,
+             COALESCE(u.n, 0) AS used_count
+      FROM promo_codes p
+      LEFT JOIN (SELECT code, COUNT(*)::int AS n FROM promo_redemptions GROUP BY code) u ON u.code = p.code
+      ORDER BY p.created_at DESC`);
+    res.json({ success: true, codes: r.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Create/mint a code. Omit `code` to auto-generate a random one.
+app.post('/api/admin/promo-codes', requireAuth, async (req, res) => {
+  if (!SUPER_ADMIN_IDS.includes(req.userId)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const { code, discount, description, maxUses, expiresAt } = req.body || {};
+    const finalCode = (code && code.trim() ? code.trim() : genPromoCode()).toUpperCase().replace(/\s+/g, '');
+    if (!/^[A-Z0-9_-]{3,40}$/.test(finalCode)) {
+      return res.status(400).json({ error: 'Code must be 3-40 chars: letters, numbers, hyphen or underscore.' });
+    }
+    const disc = Number.isFinite(+discount) ? Math.max(0, Math.min(100, Math.round(+discount))) : 100;
+    const max = (maxUses === '' || maxUses == null) ? null : Math.max(1, parseInt(maxUses, 10));
+    const exp = expiresAt ? new Date(expiresAt) : null;
+    if (exp && isNaN(exp.getTime())) return res.status(400).json({ error: 'Invalid expiry date.' });
+    const r = await pool.query(
+      `INSERT INTO promo_codes (code, discount, description, max_uses, expires_at, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [finalCode, disc, description || null, max, exp, req.userId]
+    );
+    console.log(`[PROMO] super-admin ${req.userId} minted code ${finalCode} (${disc}%)`);
+    res.json({ success: true, code: r.rows[0] });
+  } catch (e) {
+    if (e.code === '23505') return res.status(409).json({ error: 'That code already exists.' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Activate / deactivate a code (deactivate is the soft "revoke").
+app.patch('/api/admin/promo-codes/:id', requireAuth, async (req, res) => {
+  if (!SUPER_ADMIN_IDS.includes(req.userId)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const r = await pool.query('UPDATE promo_codes SET active = $1 WHERE id = $2 RETURNING *', [!!req.body?.active, req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json({ success: true, code: r.rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Hard-delete a code (its redemption history in promo_redemptions is untouched).
+app.delete('/api/admin/promo-codes/:id', requireAuth, async (req, res) => {
+  if (!SUPER_ADMIN_IDS.includes(req.userId)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    await pool.query('DELETE FROM promo_codes WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 
