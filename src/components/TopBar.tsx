@@ -83,6 +83,17 @@ export function TopBar({ pageTitle }: { pageTitle?: string }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [brandMenuOpen, setBrandMenuOpen] = useState(false);
   const brandMenuRef = useRef<HTMLDivElement>(null);
+  // Super-admin picker filter: with a lot of brand profiles (API + sibling apps
+  // on the Forge engine), the list is unwieldy. Persist a "paid only" toggle.
+  const [paidOnly, setPaidOnly] = useState<boolean>(() => {
+    try { return localStorage.getItem('forge_picker_paid_only') === '1'; } catch { return false; }
+  });
+  const togglePaidOnly = () => setPaidOnly(v => {
+    const next = !v;
+    try { localStorage.setItem('forge_picker_paid_only', next ? '1' : '0'); } catch {}
+    return next;
+  });
+  const visibleBrands = paidOnly ? (allBrands || []).filter(b => b.isPaid) : (allBrands || []);
 
   const currentBrand = allBrands?.find(b => b.id === activeBrand?.id) || allBrands?.[0];
 
@@ -182,10 +193,32 @@ export function TopBar({ pageTitle }: { pageTitle?: string }) {
                   boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
                 }}
               >
-                <div style={{ padding: '8px 16px 10px', borderBottom: '1px solid rgba(255,255,255,0.08)', fontSize: '0.7rem', fontWeight: 600, color: 'rgba(99, 102, 241, 0.8)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  {allBrands.length} Brands
+                <div style={{ padding: '8px 16px 10px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'rgba(99, 102, 241, 0.8)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    {visibleBrands.length}{paidOnly ? ' Paid' : ''} Brand{visibleBrands.length === 1 ? '' : 's'}
+                  </span>
+                  <button
+                    onClick={togglePaidOnly}
+                    title="Show only paid brands"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 8px',
+                      background: paidOnly ? 'rgba(20, 184, 166, 0.2)' : 'rgba(255,255,255,0.06)',
+                      border: `1px solid ${paidOnly ? 'rgba(20, 184, 166, 0.4)' : 'rgba(255,255,255,0.12)'}`,
+                      borderRadius: 'var(--radius-sm)', color: paidOnly ? '#14B8A6' : 'rgba(255,255,255,0.55)',
+                      fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+                      cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                  >
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: paidOnly ? '#14B8A6' : 'rgba(255,255,255,0.35)' }} />
+                    Paid only
+                  </button>
                 </div>
-                {allBrands.map(b => (
+                {visibleBrands.length === 0 && (
+                  <div style={{ padding: '14px 16px', fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)' }}>
+                    No paid brands.
+                  </div>
+                )}
+                {visibleBrands.map(b => (
                   <button
                     key={b.id}
                     onClick={() => {
