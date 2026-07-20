@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import { AppShell } from '../layouts/AppShell';
 import PromoCodesPanel from '../components/PromoCodesPanel';
+import SubstackPanel from '../components/SubstackPanel';
 import './AdminPage.css';
 
 function fmt(n: number) {
@@ -541,6 +542,9 @@ export default function AdminPage() {
 
         {/* Promo code admin — self-contained (own fetch), renders regardless of mission-control load state */}
         <PromoCodesPanel />
+
+        {/* Substack read-only test harness — super-admin only (self-gates + server-gated) */}
+        <SubstackPanel />
       </div>
     </AppShell>
   );
