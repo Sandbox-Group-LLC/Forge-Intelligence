@@ -560,11 +560,13 @@
 .enrich-topic-banner {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #ffffff;
+  /* Was color:#fff (a dark-theme leftover) on a pale tint — barely legible on the
+     light theme. Accent text on accent-muted is the app's readable banner pattern. */
+  color: var(--color-accent);
   padding: 8px 14px;
   margin-bottom: 12px;
-  background: rgba(53, 99, 255, 0.12);
-  border: 1px solid rgba(53, 99, 255, 0.15);
+  background: var(--color-accent-muted);
+  border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
   letter-spacing: 0.01em;
 }
