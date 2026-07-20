@@ -32,6 +32,7 @@ import { findCitationSources } from './src/server/citations.js';
 import { normalizeGeoData } from './src/server/geo.js';
 import { buildGhostJWT } from './src/server/ghost.js';
 import { PROMO_CODES } from './src/server/promo.js';
+import { substackGet } from './src/server/substack.js';
 import complianceRouter from './src/server/routes/compliance.js';
 import emailCampaignRouter from './src/server/routes/email-campaign.js';
 import socialGeneratorRouter from './src/server/routes/social-generator.js';
@@ -7619,6 +7620,79 @@ app.delete('/api/admin/promo-codes/:id', requireAuth, async (req, res) => {
   try {
     await pool.query('DELETE FROM promo_codes WHERE id = $1', [req.params.id]);
     res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Substack read-only test harness (super-admin only, EXPERIMENTAL) ─────────
+// Substack's private API is unofficial + auth'd by a full-access connect.sid
+// session cookie. This is a super-admin surface against Sandbox's own brands,
+// NOT a customer connector. GET-only (the client refuses writes), so a test can
+// never mutate a publication. The cookie is stored write-only (never returned to
+// the client) and never logged. FI has no at-rest secret encryption, so the
+// cookie sits plaintext in this dedicated table — keep it super-admin-only and
+// rotate the cookie (sign out/in) periodically. See src/server/substack.js.
+pool.query(`CREATE TABLE IF NOT EXISTS substack_connections (
+  brand_profile_id TEXT PRIMARY KEY,
+  subdomain TEXT NOT NULL,
+  cookie TEXT,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+)`).catch(() => {});
+
+// Config status for a brand — returns subdomain + whether a cookie is stored,
+// but NEVER the cookie itself.
+app.get('/api/admin/substack/:brandProfileId', requireAuth, async (req, res) => {
+  if (!SUPER_ADMIN_IDS.includes(req.userId)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const r = await pool.query('SELECT subdomain, (cookie IS NOT NULL AND cookie <> \'\') AS has_cookie, updated_at FROM substack_connections WHERE brand_profile_id = $1', [req.params.brandProfileId]);
+    if (!r.rows.length) return res.json({ success: true, configured: false });
+    res.json({ success: true, configured: true, subdomain: r.rows[0].subdomain, hasCookie: r.rows[0].has_cookie, updatedAt: r.rows[0].updated_at });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Save/update. A blank cookie keeps the existing one (so you can edit the
+// subdomain without re-pasting); send cookie:"" explicitly-cleared via clearCookie.
+app.post('/api/admin/substack/:brandProfileId', requireAuth, async (req, res) => {
+  if (!SUPER_ADMIN_IDS.includes(req.userId)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const { subdomain, cookie, clearCookie } = req.body || {};
+    if (!subdomain || !String(subdomain).trim()) return res.status(400).json({ error: 'subdomain required' });
+    // Validate the subdomain shape via the client's normalizer (throws on bad input).
+    const { substackBaseUrl } = await import('./src/server/substack.js');
+    try { substackBaseUrl(subdomain); } catch (e) { return res.status(400).json({ error: e.message }); }
+    const sub = String(subdomain).trim();
+    if (clearCookie) {
+      await pool.query(
+        `INSERT INTO substack_connections (brand_profile_id, subdomain, cookie, updated_at) VALUES ($1,$2,NULL,NOW())
+         ON CONFLICT (brand_profile_id) DO UPDATE SET subdomain = $2, cookie = NULL, updated_at = NOW()`,
+        [req.params.brandProfileId, sub]);
+    } else if (cookie && String(cookie).trim()) {
+      await pool.query(
+        `INSERT INTO substack_connections (brand_profile_id, subdomain, cookie, updated_at) VALUES ($1,$2,$3,NOW())
+         ON CONFLICT (brand_profile_id) DO UPDATE SET subdomain = $2, cookie = $3, updated_at = NOW()`,
+        [req.params.brandProfileId, sub, String(cookie).trim()]);
+    } else {
+      await pool.query(
+        `INSERT INTO substack_connections (brand_profile_id, subdomain, updated_at) VALUES ($1,$2,NOW())
+         ON CONFLICT (brand_profile_id) DO UPDATE SET subdomain = $2, updated_at = NOW()`,
+        [req.params.brandProfileId, sub]);
+    }
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Run a GET against the private API. Body: { path, useCookie }. GET-only is
+// enforced in the client; path must be an /api/ path. This is the replay-any-
+// endpoint test surface (posts, subscriber stats, etc.).
+app.post('/api/admin/substack/:brandProfileId/get', requireAuth, async (req, res) => {
+  if (!SUPER_ADMIN_IDS.includes(req.userId)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const { path, useCookie } = req.body || {};
+    const cfg = await pool.query('SELECT subdomain, cookie FROM substack_connections WHERE brand_profile_id = $1', [req.params.brandProfileId]);
+    if (!cfg.rows.length) return res.status(400).json({ error: 'No Substack config for this brand — save a subdomain first.' });
+    if (useCookie && !cfg.rows[0].cookie) return res.status(400).json({ error: 'This request needs a cookie, but none is stored. Paste your connect.sid and save.' });
+    const result = await substackGet(cfg.rows[0].subdomain, path || '/api/v1/archive?sort=new&limit=20', useCookie ? cfg.rows[0].cookie : null);
+    console.log(`[SUBSTACK] super-admin ${req.userId} GET ${cfg.rows[0].subdomain} ${(path || '').slice(0, 80)} -> ${result.status}`);
+    res.json({ success: true, ...result });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
