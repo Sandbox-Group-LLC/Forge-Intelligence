@@ -18,7 +18,6 @@ import { requireAuth, verifyBrandAccess } from '../auth.js';
 import { stripScaffoldingArtifacts } from '../text.js';
 import { buildImagePrompt, generateHeroImage } from '../images.js';
 import { ensureGeneratedContentTable } from '../content-table.js';
-import { ANTI_AI_STYLE } from '../writing-style.js';
 
 const router = express.Router();
 
@@ -651,7 +650,7 @@ ${(() => {
 
 CAMPAIGN ANGLE (follow this precisely):
 ${JSON.stringify(angle, null, 2)}
-${factualGroundBlock}${ANTI_AI_STYLE}${territoriesBlock}${cpMeasuredBlock}${cpCompetitorBlock}${cpMoatsBlock}
+${factualGroundBlock}${territoriesBlock}${cpMeasuredBlock}${cpCompetitorBlock}${cpMoatsBlock}
 BRAND PROFILE:
 ${trimTo(profileData, 5000)}
 
