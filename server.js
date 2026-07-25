@@ -10,6 +10,36 @@ import { extractJSON, safeParseLLM } from './src/server/llm-json.js';
 // Forbid em-dashes in Brand Intelligence PVA / Fault Lines output (matches the
 // strategy module + the rest of Forge's content style). Appended to those prompts.
 const STRATEGY_NO_EM_DASH = '\n\nSTYLE (mandatory): Write in plain prose. Do NOT use em-dashes (the — character) anywhere in your output; use commas, colons, parentheses, or separate sentences instead.';
+
+// Humanizing pass for the Authenticity Enricher (Stage 3). The enricher authors
+// the prose strings — powerPhrases, content hooks, injection suggestedContent,
+// eeatInjections — that the Stage 4 writer reproduces close to verbatim. So AI
+// tells introduced here propagate into every article built from the brief, and
+// the writer is faithfully executing them rather than inventing them.
+//
+// Deliberately PHRASING-ONLY. An earlier attempt put style rules in the Stage 4
+// writer where they competed with the brief's editorial direction; a rule that
+// said "name specifics or cut the example" contradicted a brief that called for
+// an anonymized case study and the writer fabricated a person to satisfy both.
+// Nothing here may cause content to be dropped, added, or invented, and the
+// brand voice profile outranks all of it.
+const HUMANIZE_BRIEF = `
+
+HUMAN VOICE (applies to every prose string you write here):
+The brand VOICE profile above governs tone, register, and word choice. These notes only keep the
+phrasing from settling into generic AI cadence. They never override the brand voice, never reduce
+strategic substance, and never justify dropping or inventing a fact, example, or instruction.
+- Write in the brand's own idiom, not neutral marketing register.
+- Vary construction. Do not build phrase after phrase on "it is not X, it is Y" (or its variants
+  "X, not Y" and "X. Not Y."). That shape is the single most recognizable machine cadence. Use it
+  at most once across everything you write here.
+- Never emit an em dash (—). If a phrase wants one, REWRITE it. Do not drop a comma or semicolon
+  into the slot where the dash would go: that leaves a subject and verb split by an unmarked list,
+  which reads worse than the dash did.
+- Do not default every list to three items. Use the number of items that is actually true.
+- No puffery verbs: stands as, serves as, is a testament to, plays a vital/crucial/pivotal role,
+  underscores, highlights the importance of.
+- Refer to a thing by the same noun each time rather than cycling synonyms for variety.`;
 import { resolveUtmParams, buildUtmString } from './src/server/utm.js';
 import { truncateStr, truncateAtSentence, stripSocialMarkdown, quickStartTruncate, stripScaffoldingArtifacts, stripEmDashes } from './src/server/text.js';
 import { clerkJWKS, SUPER_ADMIN_IDS, verifyBrandAccess, requireAuth, requireApiKeyScope, softAuth, mcpAuth, hashApiKey, lookupApiKey } from './src/server/auth.js';
@@ -3245,6 +3275,7 @@ SME SIGNALS: ${JSON.stringify(scorerData.smeSignals || []).slice(0, 1200)}
 GEO TOPICS: ${geoBrief ? JSON.stringify((geoBrief.h2s || []).slice(0,8)) : '[]'}${probeBlock}${topicAngleBlock}${brainBlock}${manualCtx}
 
 Map E-E-A-T signals to content sections. Generate hooks. Build author schema. When MEASURED AI VISIBILITY is present, target the injections at what would make THIS brand citable where the incumbent sources are today; when a TOPIC ANGLE is present, the injections and hooks must reinforce that information-gain angle.
+${HUMANIZE_BRIEF}
 
 Respond with this exact JSON structure:
 {"voiceConsistencyScore":0,"injectionMap":[{"section":"","injectionType":"sme_quote|stat|case_study|first_person_hook|customer_voice|founding_story|award_mention|certification_reference","suggestedContent":"","persona":"","eeatDimension":"experience|expertise|authoritativeness|trustworthiness","confidence":0}],"powerPhrases":[],"authorSchema":{"name":null,"title":null,"expertise":[],"credentials":[],"sameAs":[]},"contentHooks":[{"hook":"","persona":"","type":"curiosity|pain_point|stat|story|contrarian"}]}` },
@@ -3279,6 +3310,8 @@ HIGH GAPS: ${JSON.stringify(gaps.filter(g => g.severity === 'high').map(g => g.g
 Assemble enriched brief. Flag sections green/yellow/red by confidence. Mark smeRequired where needed.
 
 CRITICAL SHAPE RULE for eeatInjections: this field is an array of PLAIN ENGLISH PROSE STRINGS ONLY — never JSON objects, never structured data. Each string is the actual text the writer should weave into the article body. Convert each relevant INJECTION above into a natural-language instruction by taking ONLY its suggestedContent field and rewriting it as a prose direction. Example: if an injection has {"type":"sme_quote","suggestedContent":"Open with a Lili Gil Valletta pull quote..."}, the eeatInjection string becomes "Open with a pull quote from Lili Gil Valletta establishing the revenue framing, followed by parenthetical credentials (UN, WEF, TED)." DO NOT copy the JSON keys, braces, or field names into the string.
+${HUMANIZE_BRIEF}
+- Headings: at most ONE section heading may lead with a count ("The Three Signals That..."). Vary the rest so the brief does not scaffold section after section on a number.
 
 Respond with this exact JSON structure:
 {"enrichedTitle":"","enrichedH1":"","enrichedSections":[{"heading":"","eeatInjections":["prose string only"],"confidenceFlag":"green|yellow|red","flagReason":null,"smeRequired":false}],"enrichedFAQ":[{"q":"","a":"","eeatSignal":""}],"overallConfidence":0,"readyForStage4":true,"humanReviewItems":[]}` },
