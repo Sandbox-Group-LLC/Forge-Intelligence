@@ -9,11 +9,7 @@ import { pool } from './src/server/db.js';
 import { extractJSON, safeParseLLM } from './src/server/llm-json.js';
 // Forbid em-dashes in Brand Intelligence PVA / Fault Lines output (matches the
 // strategy module + the rest of Forge's content style). Appended to those prompts.
-// NOTE: this deliberately does NOT say "use commas instead". Telling a model to
-// swap in a comma makes it comma-substitute without restructuring, producing
-// ungrammatical appositives (subject and verb split by an unmarked list) that
-// read worse than the dash did. Make it rewrite the sentence instead.
-const STRATEGY_NO_EM_DASH = '\n\nSTYLE (mandatory): Write in plain prose. Never emit the em-dash character (—). When a sentence wants one, REWRITE the sentence so it does not need one: split it into two sentences, or use a colon or parentheses. Do NOT simply drop a comma into the slot where the dash was, which leaves an ungrammatical sentence.';
+const STRATEGY_NO_EM_DASH = '\n\nSTYLE (mandatory): Write in plain prose. Do NOT use em-dashes (the — character) anywhere in your output; use commas, colons, parentheses, or separate sentences instead.';
 import { resolveUtmParams, buildUtmString } from './src/server/utm.js';
 import { truncateStr, truncateAtSentence, stripSocialMarkdown, quickStartTruncate, stripScaffoldingArtifacts, stripEmDashes } from './src/server/text.js';
 import { clerkJWKS, SUPER_ADMIN_IDS, verifyBrandAccess, requireAuth, requireApiKeyScope, softAuth, mcpAuth, hashApiKey, lookupApiKey } from './src/server/auth.js';
@@ -37,7 +33,6 @@ import { normalizeGeoData } from './src/server/geo.js';
 import { buildGhostJWT } from './src/server/ghost.js';
 import { PROMO_CODES } from './src/server/promo.js';
 import { substackGet } from './src/server/substack.js';
-import { ANTI_AI_STYLE } from './src/server/writing-style.js';
 import complianceRouter from './src/server/routes/compliance.js';
 import emailCampaignRouter from './src/server/routes/email-campaign.js';
 import socialGeneratorRouter from './src/server/routes/social-generator.js';
@@ -4113,7 +4108,7 @@ ${(() => {
       : '';
 
         const userPrompt = `Generate a long-form article using the following Brand Intelligence context.
-${topicPrompt ? `\nUSER TOPIC DIRECTION (write the article around this specific topic/angle — this overrides the enriched brief's default topic selection):\n"${topicPrompt}"\n` : ''}${(mandatories || constraints || audience || ctaTarget || desiredAction || wordCountTarget) ? `\nUSER MANDATORIES & CONSTRAINTS (the user-supplied non-negotiables for this article — every section must respect these. Treat as harder than brand patterns):\n${mandatories ? `- MANDATORIES (must include): ${mandatories}\n` : ''}${constraints ? `- CONSTRAINTS (must NOT do): ${constraints}\n` : ''}${audience ? `- TARGET AUDIENCE: ${audience}\n` : ''}${ctaTarget ? `- CTA TARGET URL/PATH: ${ctaTarget} — every CTA in the article should reference this destination.\n` : ''}${desiredAction ? `- DESIRED READER ACTION: ${desiredAction} — shape the article and conclusion to drive toward this specific next step.\n` : ''}${wordCountTarget ? `- TARGET LENGTH: approximately ${wordCountTarget} words. Do not pad — depth over filler.\n` : ''}` : ''}${selfAsCaseStudyBlock}${factualGroundBlock}${ANTI_AI_STYLE}${territoriesBlock}${cgMeasuredBlock}${cgCompetitorBlock}${cgMoatsBlock}
+${topicPrompt ? `\nUSER TOPIC DIRECTION (write the article around this specific topic/angle — this overrides the enriched brief's default topic selection):\n"${topicPrompt}"\n` : ''}${(mandatories || constraints || audience || ctaTarget || desiredAction || wordCountTarget) ? `\nUSER MANDATORIES & CONSTRAINTS (the user-supplied non-negotiables for this article — every section must respect these. Treat as harder than brand patterns):\n${mandatories ? `- MANDATORIES (must include): ${mandatories}\n` : ''}${constraints ? `- CONSTRAINTS (must NOT do): ${constraints}\n` : ''}${audience ? `- TARGET AUDIENCE: ${audience}\n` : ''}${ctaTarget ? `- CTA TARGET URL/PATH: ${ctaTarget} — every CTA in the article should reference this destination.\n` : ''}${desiredAction ? `- DESIRED READER ACTION: ${desiredAction} — shape the article and conclusion to drive toward this specific next step.\n` : ''}${wordCountTarget ? `- TARGET LENGTH: approximately ${wordCountTarget} words. Do not pad — depth over filler.\n` : ''}` : ''}${selfAsCaseStudyBlock}${factualGroundBlock}${territoriesBlock}${cgMeasuredBlock}${cgCompetitorBlock}${cgMoatsBlock}
 BRAND PROFILE:
 ${trimTo(profileData, 6000)}
 
