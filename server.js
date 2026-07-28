@@ -4065,7 +4065,7 @@ app.get('/api/content-generator/generate', requireAuth, async (req, res) => {
     } catch(e) { /* silent — non-fatal */ }
 
     const territoriesBlock = topicalTerritories.length
-      ? `\nSTRATEGIC TERRITORIES THIS BRAND OPERATES IN (write as an authority in these territories — never drift outside them):\n${topicalTerritories.map(t => `  • [${t.priority}]${t.cluster ? ` (${t.cluster})` : ''} ${t.topic}${t.coverage ? ' — ' + t.coverage : ''}${t.angle ? `\n    Information-gain angle (the unique claim THIS brand makes here — the article must deliver it): ${t.angle}` : ''}`).join('\n')}\n`
+      ? `\nSTRATEGIC TERRITORIES THIS BRAND OPERATES IN (POSITIONING CONTEXT — use these to frame the angle and authority of the article defined above; they are NOT a menu of topics and do NOT override the article title. Only draw on the territory that actually serves this article's topic; ignore the rest):\n${topicalTerritories.map(t => `  • [${t.priority}]${t.cluster ? ` (${t.cluster})` : ''} ${t.topic}${t.coverage ? ' — ' + t.coverage : ''}${t.angle ? `\n    Information-gain angle (the unique claim THIS brand makes here — deliver it only if it fits the article's topic): ${t.angle}` : ''}`).join('\n')}\n`
       : '';
 
     const cgMeasuredBlock = cgCitationProbe
@@ -4140,7 +4140,23 @@ ${(() => {
       ? `\nSELF-AS-CASE-STUDY DETECTED: Brain evidence or Factual Ground references "${brandName}" directly. Apply the Self-as-Case-Study Rule from the system prompt — drop epistemic hedges on first-party validated outcomes, let the architectural claim stand. Keep hedges for unverified third-party claims.\n`
       : '';
 
-        const userPrompt = `Generate a long-form article using the following Brand Intelligence context.
+    // Anchor the article to the SELECTED brief's own title. Without this, the
+    // brief title sits buried in the ENRICHED BRIEF JSON at the bottom of the
+    // prompt while the STRATEGIC TERRITORIES block shouts near the top — so for a
+    // brand whose territories ARE the subject matter (e.g. a GEO consultancy whose
+    // gap clusters are literally "topical authority"), the model wrote a meta-
+    // article about the brand's own strategy instead of the chosen topic. The
+    // explicit title anchor + subordinated territories block keep it on-brief.
+    const articleTitleAnchor = (topicPrompt || enrichedBrief?.enrichedTitle || enrichedBrief?.enrichedH1 || enrichedBrief?.topic || '').trim();
+    const articleDirectiveBlock = articleTitleAnchor
+      ? `THE ARTICLE YOU ARE WRITING — THE topic, non-negotiable:
+"${articleTitleAnchor}"
+The entire piece is about exactly this, and the title you return must match this brief. Everything below (strategic territories, measured AI visibility, competitor coverage, brand profile) is CONTEXT for HOW to write THIS article — it is NOT a list of alternative topics. Do NOT write a meta-article about the brand's own strategy, methodology, or GEO framework unless the brief above literally calls for it. Serve the topic above.
+
+`
+      : '';
+
+        const userPrompt = `${articleDirectiveBlock}Generate a long-form article using the following Brand Intelligence context.
 ${topicPrompt ? `\nUSER TOPIC DIRECTION (write the article around this specific topic/angle — this overrides the enriched brief's default topic selection):\n"${topicPrompt}"\n` : ''}${(mandatories || constraints || audience || ctaTarget || desiredAction || wordCountTarget) ? `\nUSER MANDATORIES & CONSTRAINTS (the user-supplied non-negotiables for this article — every section must respect these. Treat as harder than brand patterns):\n${mandatories ? `- MANDATORIES (must include): ${mandatories}\n` : ''}${constraints ? `- CONSTRAINTS (must NOT do): ${constraints}\n` : ''}${audience ? `- TARGET AUDIENCE: ${audience}\n` : ''}${ctaTarget ? `- CTA TARGET URL/PATH: ${ctaTarget} — every CTA in the article should reference this destination.\n` : ''}${desiredAction ? `- DESIRED READER ACTION: ${desiredAction} — shape the article and conclusion to drive toward this specific next step.\n` : ''}${wordCountTarget ? `- TARGET LENGTH: approximately ${wordCountTarget} words. Do not pad — depth over filler.\n` : ''}` : ''}${selfAsCaseStudyBlock}${factualGroundBlock}${territoriesBlock}${cgMeasuredBlock}${cgCompetitorBlock}${cgMoatsBlock}
 BRAND PROFILE:
 ${trimTo(profileData, 6000)}
