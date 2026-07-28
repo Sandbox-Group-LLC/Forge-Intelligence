@@ -1,6 +1,6 @@
 # SECURITY-COMPLIANCE.md
 
-Working tracker for Forge Intelligence's security + data-protection posture, anchored to issue **#25 (EU AI Act Compliance Layer, P0)**. Read alongside `WORKING-STATE.md` (live pointer) and `PLAN.md` (archive).
+Working tracker for Forge Intelligence's security + data-protection posture, anchored to issue **#25 (EU AI Act Compliance Layer, P0)**. Read alongside `WORKING-STATE.md` (live pointer) and `BUILD-HISTORY.md` (archive).
 
 **Not legal advice** — this is engineering-informed analysis to *prepare data and structure the work*. The Annex-III high-risk determination, lawful-basis calls, and any DPIA are decisions for counsel. Items below marked **[legal]** need a human legal gut-check before they're considered closed.
 

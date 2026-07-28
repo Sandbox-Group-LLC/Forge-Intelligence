@@ -33,7 +33,7 @@ Where the breach affects **Customer** Personal Data and Forge is the processor, 
 Record **every** breach — including those not notified — with facts, effects, and remedial action, in the incident log. This documentation is itself a compliance obligation and is what an auditor reviews.
 
 ## Step 6 — Post-incident
-Root-cause writeup (PLAN.md retrospective), guardrails to prevent recurrence (e.g. the auth-gap class fix in #383, the leaked-key rotation discipline), and update this runbook if the response surfaced gaps.
+Root-cause writeup (BUILD-HISTORY.md retrospective), guardrails to prevent recurrence (e.g. the auth-gap class fix in #383, the leaked-key rotation discipline), and update this runbook if the response surfaced gaps.
 
 ## Quick reference
 | Clock | Action |

@@ -2,7 +2,7 @@
 
 Makes a fresh web session boot **warm, gated, and self-aware** instead of cold
 and silently-missing-things. Adapted from the claude-web-bootstrap template to
-this repo: base branch `development`, reuses `WORKING-STATE.md`/`PLAN.md` as the
+this repo: base branch `development`, reuses `WORKING-STATE.md`/`BUILD-HISTORY.md` as the
 live pointer + archive, no Composio (connectors are harness-provided directly).
 
 ## What it does
