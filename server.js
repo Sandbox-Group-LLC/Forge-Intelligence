@@ -4017,12 +4017,16 @@ app.get('/api/content-generator/generate', requireAuth, async (req, res) => {
 
     // Load Enriched Brief
     let enrichedBrief = null;
+    let loadedEnrichedBriefId = null;  // the brief ACTUALLY used, for provenance
     try {
       const ebQuery = enrichedBriefId
         ? pool.query('SELECT * FROM enriched_briefs WHERE id = $1', [enrichedBriefId])
         : pool.query('SELECT * FROM enriched_briefs WHERE brand_profile_id = $1 ORDER BY version DESC LIMIT 1', [brandProfileId]);
       const ebRes = await ebQuery;
-      if (ebRes.rows.length) enrichedBrief = { ...ebRes.rows[0].enriched_data, brandName: ebRes.rows[0].brand_name };
+      if (ebRes.rows.length) {
+        enrichedBrief = { ...ebRes.rows[0].enriched_data, brandName: ebRes.rows[0].brand_name };
+        loadedEnrichedBriefId = ebRes.rows[0].id;
+      }
     } catch(e) { console.log('[CONTENT-GEN] No enriched brief:', e.message); }
 
     // ── Build prompt ─────────────────────────────────────────────────────────
@@ -4147,7 +4151,21 @@ ${(() => {
     // gap clusters are literally "topical authority"), the model wrote a meta-
     // article about the brand's own strategy instead of the chosen topic. The
     // explicit title anchor + subordinated territories block keep it on-brief.
-    const articleTitleAnchor = (topicPrompt || enrichedBrief?.enrichedTitle || enrichedBrief?.enrichedH1 || enrichedBrief?.topic || '').trim();
+    const rawTopicAnchor = (topicPrompt || enrichedBrief?.enrichedTitle || enrichedBrief?.enrichedH1 || enrichedBrief?.topic || '').trim();
+    // Guard the documented degenerate case: when a topic brief's title never
+    // propagates, Stage 3 falls enrichedTitle all the way back to the brand name
+    // (see ~server.js:3387 — "surfaced the brief as 'SYSOI' instead of the idea").
+    // An anchor equal to the brand name is NOT a topic; it re-opens the exact
+    // house-article hijack this fix exists to close. Treat it as no anchor.
+    const anchorIsBrandName = !!(rawTopicAnchor && brandName && rawTopicAnchor.toLowerCase() === String(brandName).toLowerCase());
+    const articleTitleAnchor = anchorIsBrandName ? '' : rawTopicAnchor;
+    // If the user SELECTED a brief but its resolved topic degenerated (empty or
+    // just the brand name), refuse rather than silently writing an off-topic
+    // house article. Generating with no real subject is the failure mode itself.
+    if ((enrichedBriefId || enrichedBrief) && !articleTitleAnchor) {
+      send('error', 'This brief has no usable topic — enrichment fell back to the brand name. Re-run Stage 3 enrichment for this brief, or type a topic in the field. Refusing to generate to avoid an off-topic article.');
+      return res.end();
+    }
     const articleDirectiveBlock = articleTitleAnchor
       ? `THE ARTICLE YOU ARE WRITING — THE topic, non-negotiable:
 "${articleTitleAnchor}"
@@ -4325,7 +4343,7 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
     const contentInsert = await pool.query(
       `INSERT INTO ${tableName} (brand_profile_id, enriched_brief_id, title, article_json, overall_confidence, brain_match_score, status)
        VALUES ($1, $2, $3, $4, $5, $6, 'draft') RETURNING id`,
-      [brandProfileId, enrichedBriefId || null, parsed.title, JSON.stringify(parsed),
+      [brandProfileId, enrichedBriefId || loadedEnrichedBriefId || null, parsed.title, JSON.stringify(parsed),
        parsed.overallConfidence || null, parsed.brainMatchScore || (() => {
          // Fallback: Claude dropped the field — compute from section confidences
          const sections = parsed.sections || [];
