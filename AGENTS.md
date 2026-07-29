@@ -7,7 +7,9 @@
 
 ## You are NOT sandboxed. These are your hands — you already hold them. Do not hunt for access you have.
 - **Shell · git · node · npm** — full exec, rooted in this repo.
-- **1Password** (service account, no Touch ID): `op read op://Openclaw/<ITEM>/password`. Every key you need is in the `Openclaw` vault — read it, don't grope.
+- **1Password — service account ONLY; never the interactive "front door".** Every key you need is already in the `Openclaw` vault — read it, don't grope. In the SAME shell, export the SA token FIRST, then read:
+  `export OP_SERVICE_ACCOUNT_TOKEN="$(cat ~/.openclaw/credentials/onepassword/service-account-token)"` then `op read "op://Openclaw/<ITEM>/password"`.
+  ⚠️ A bare `op read` WITHOUT that token exported silently falls back to interactive login (Touch ID / desktop app) and **hangs you headlessly — no human is here to approve it**. Never run `op signin` / `op account add` or use the desktop integration. If an `op` call stalls or asks for a person, you skipped the export — set it and retry.
 - **Render** (deploy/logs/env): key at `op://Openclaw/OPENCLAW_RENDER_API_KEY/password`. ‼️ **Never bulk-PUT a service's env-vars — a full PUT wipes the entire set.** Env authority is the project vault; Render-UI/env edits get clobbered on the next publish.
 - **Database (Neon Postgres):** inspect it the **sanctioned way — the app's admin SQL relay**, authenticated with `ADMIN_RELAY_PASSWORD` (see `capabilities.json`; `grep -rn ADMIN_RELAY_PASSWORD src/server` for the exact route). **Read-only by default.** ‼️ **NEVER pull the raw `NEON_DATABASE_URL` and connect to prod directly** — that extracts a production credential out of its boundary. The relay *is* the boundary. Writes to the DB: confirm with Brian first.
 - **OpenClaw MCP** (verify against your live tool list at boot, don't assume): `mcp__gitnexus-remote__*` (code-graph brain), `mcp__forgeos__*` (ForgeOS build/env/publish), `mcp__gibson-memory__*` (durable memory), `mcp__openclaw__*`.
