@@ -63,13 +63,15 @@ export async function streamTextWithFallback({
       try {
         const stream = await client.messages.stream({ model, max_tokens, system, messages });
         let fullText = '';
+        let stopReason = null;
         const usage = { input_tokens: 0, output_tokens: 0 };
         for await (const chunk of stream) {
           if (chunk.type === 'message_start') {
             usage.input_tokens = chunk.message?.usage?.input_tokens ?? usage.input_tokens;
             usage.output_tokens = chunk.message?.usage?.output_tokens ?? usage.output_tokens;
-          } else if (chunk.type === 'message_delta' && chunk.usage?.output_tokens != null) {
-            usage.output_tokens = chunk.usage.output_tokens; // cumulative
+          } else if (chunk.type === 'message_delta') {
+            if (chunk.usage?.output_tokens != null) usage.output_tokens = chunk.usage.output_tokens; // cumulative
+            if (chunk.delta?.stop_reason) stopReason = chunk.delta.stop_reason; // 'end_turn' | 'max_tokens' | …
           } else if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text_delta') {
             fullText += chunk.delta.text;
             emitted += chunk.delta.text.length;
@@ -77,7 +79,7 @@ export async function streamTextWithFallback({
           }
         }
         if (m > 0 || attempt > 1) log(`[LLM] recovered on ${model} (model #${m + 1}, attempt ${attempt})`);
-        return { text: fullText, model, usage };
+        return { text: fullText, model, usage, stopReason };
       } catch (err) {
         lastErr = err;
         if (emitted > 0) throw err;                 // content already streamed — no safe swap
