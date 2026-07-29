@@ -63,15 +63,21 @@ export async function streamTextWithFallback({
       try {
         const stream = await client.messages.stream({ model, max_tokens, system, messages });
         let fullText = '';
+        const usage = { input_tokens: 0, output_tokens: 0 };
         for await (const chunk of stream) {
-          if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text_delta') {
+          if (chunk.type === 'message_start') {
+            usage.input_tokens = chunk.message?.usage?.input_tokens ?? usage.input_tokens;
+            usage.output_tokens = chunk.message?.usage?.output_tokens ?? usage.output_tokens;
+          } else if (chunk.type === 'message_delta' && chunk.usage?.output_tokens != null) {
+            usage.output_tokens = chunk.usage.output_tokens; // cumulative
+          } else if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text_delta') {
             fullText += chunk.delta.text;
             emitted += chunk.delta.text.length;
             onText(chunk.delta.text);
           }
         }
         if (m > 0 || attempt > 1) log(`[LLM] recovered on ${model} (model #${m + 1}, attempt ${attempt})`);
-        return { text: fullText, model };
+        return { text: fullText, model, usage };
       } catch (err) {
         lastErr = err;
         if (emitted > 0) throw err;                 // content already streamed — no safe swap

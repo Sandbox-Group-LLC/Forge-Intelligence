@@ -4215,7 +4215,7 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
     // overload (the 529 seen 2026-07-28). Falls back only before any article text
     // has streamed, so the client never sees two models' output spliced.
     let fullText = '';
-    const { model: writerModel } = await streamTextWithFallback({
+    const { model: writerModel, usage: writerUsage } = await streamTextWithFallback({
       models: ARTICLE_WRITER_MODELS,
       max_tokens: 12000,
       system: systemPrompt,
@@ -4347,7 +4347,7 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
       `INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms)
        VALUES ($1, $2, $3, $4, $5)`,
       ['stage4_content_generator', brandProfileId, 'success',
-       (stream.usage?.input_tokens || 0) + (stream.usage?.output_tokens || 0),
+       (writerUsage?.input_tokens || 0) + (writerUsage?.output_tokens || 0),
        0]
     ).catch(() => {});
 
