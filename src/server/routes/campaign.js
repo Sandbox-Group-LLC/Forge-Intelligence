@@ -15,7 +15,7 @@ import { anthropic } from '../llm.js';
 const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 import { extractJSON, safeParseLLM } from '../llm-json.js';
 import { requireAuth, verifyBrandAccess } from '../auth.js';
-import { stripScaffoldingArtifacts } from '../text.js';
+import { finalizeArticleForStorage } from '../text.js';
 import { buildImagePrompt, generateHeroImage } from '../images.js';
 import { ensureGeneratedContentTable } from '../content-table.js';
 
@@ -711,7 +711,7 @@ Return ONLY valid JSON matching the content generator output format.`;
       // This is what connects campaign articles to publishing_queue, UTM tracking, and analytics.
       try {
         const contentTableName = await ensureGeneratedContentTable(campaign.brand_profile_id);
-        parsed = stripScaffoldingArtifacts(parsed);
+        parsed = finalizeArticleForStorage(parsed);
         const insertedContent = await pool.query(
           `INSERT INTO ${contentTableName}
             (brand_profile_id, title, article_json, overall_confidence, status, campaign_id, campaign_article_index, created_at, updated_at)
