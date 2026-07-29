@@ -9,7 +9,7 @@ import express from 'express';
 import { pool } from '../db.js';
 import { anthropic } from '../llm.js';
 import { safeParseLLM } from '../llm-json.js';
-import { stripScaffoldingArtifacts } from '../text.js';
+import { finalizeArticleForStorage } from '../text.js';
 import { verifyBrandAccess } from '../auth.js';
 import { findCitationSources } from '../citations.js';
 
@@ -560,8 +560,12 @@ router.post('/approve', async (req, res) => {
     const finalStatus = reviewMode === 'auto-ship' ? 'approved' :
       decisions && Object.values(decisions).some(d => d === 'rejected') ? 'rejected' : 'approved';
 
-    // Final safety net — strip any LLM scaffolding that slipped past human review
-    articleJson = stripScaffoldingArtifacts(articleJson);
+    // Final safety net — strip LLM scaffolding AND em dashes that slipped past
+    // human review. The human reviewer edits in this gate, so this is the LAST
+    // write before publish: enforce the no-em-dash house style here too, not just
+    // at content-gen. (Previously this path only stripped scaffolding, so any em
+    // dash a human missed shipped straight to the live article.)
+    articleJson = finalizeArticleForStorage(articleJson);
 
     await pool.query(
       `UPDATE ${tableName} SET article_json = $1, compliance_status = $2, review_mode = $3, reviewed_at = NOW(), updated_at = NOW() WHERE id = $4`,
