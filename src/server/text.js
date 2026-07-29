@@ -116,10 +116,51 @@ export function stripScaffoldingArtifacts(article) {
   };
 
   article.sections = article.sections.map(s => {
+    if (!s || typeof s !== 'object') return s; // tolerate a null/malformed section without throwing
     const updated = { ...s };
     if (typeof s.body === 'string') updated.body = cleanBody(s.body);
     if (typeof s.content === 'string') updated.content = cleanBody(s.content);
     return updated;
   });
   return article;
+}
+
+// Enforce the no-em-dash house style across a whole article object. Applies
+// stripEmDashes to every prose field the writer produces: title, metaDescription,
+// keyTakeaway, each section heading/body/content, and each FAQ question/answer.
+// (Mirrors the field set the content-gen backstop has always covered.) Non-article
+// input is returned untouched; returns a new object, does not mutate the input.
+export function stripEmDashesFromArticle(article) {
+  if (!article || typeof article !== 'object') return article;
+  const out = { ...article };
+  for (const k of ['title', 'metaDescription', 'keyTakeaway']) {
+    if (typeof out[k] === 'string') out[k] = stripEmDashes(out[k]);
+  }
+  if (Array.isArray(out.sections)) {
+    out.sections = out.sections.map(s => (s && typeof s === 'object') ? {
+      ...s,
+      ...(typeof s.heading === 'string' ? { heading: stripEmDashes(s.heading) } : {}),
+      ...(typeof s.body === 'string' ? { body: stripEmDashes(s.body) } : {}),
+      ...(typeof s.content === 'string' ? { content: stripEmDashes(s.content) } : {}),
+    } : s);
+  }
+  if (Array.isArray(out.faqs)) {
+    out.faqs = out.faqs.map(f => (f && typeof f === 'object') ? {
+      ...f,
+      ...(typeof f.question === 'string' ? { question: stripEmDashes(f.question) } : {}),
+      ...(typeof f.answer === 'string' ? { answer: stripEmDashes(f.answer) } : {}),
+    } : f);
+  }
+  return out;
+}
+
+// The single final content-safety net for EVERY article write path
+// (content-gen, campaign, compliance approve, content-import): strip LLM
+// scaffolding artifacts AND enforce the no-em-dash house style. Keeping both
+// in one function guarantees the two nets can never drift apart across call
+// sites again — the em-dash backstop previously lived ONLY on the content-gen
+// path, so campaign / import / compliance-approve writes shipped em dashes
+// straight through.
+export function finalizeArticleForStorage(article) {
+  return stripEmDashesFromArticle(stripScaffoldingArtifacts(article));
 }

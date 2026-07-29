@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { truncateStr, truncateAtSentence, stripSocialMarkdown, quickStartTruncate, stripScaffoldingArtifacts, stripEmDashes } from '../src/server/text.js';
+import { truncateStr, truncateAtSentence, stripSocialMarkdown, quickStartTruncate, stripScaffoldingArtifacts, stripEmDashes, stripEmDashesFromArticle, finalizeArticleForStorage } from '../src/server/text.js';
 
 describe('truncateStr', () => {
   it('returns null for null/undefined', () => {
@@ -123,5 +123,69 @@ describe('stripEmDashes — semicolon when the sentence already has 2+ commas', 
   it('decides per sentence (semicolon in one, comma in the next)', () => {
     expect(stripEmDashes('A, B, C — done. Quick — go.'))
       .toBe('A, B, C; done. Quick, go.');
+  });
+});
+
+// Helper: no em/en dash survives anywhere in the stored article JSON — the same
+// recursive check used to audit live articles in the DB.
+const hasWideDash = (obj) => /[—–]/.test(JSON.stringify(obj));
+
+describe('stripEmDashesFromArticle', () => {
+  it('strips em dashes from every prose field the writer produces', () => {
+    const article = {
+      title: 'The Collaboration Tax — Why Per-Seat Pricing Drags',
+      metaDescription: 'Per-seat pricing is a hidden drag — here is the math.',
+      keyTakeaway: 'Seats gate access — access gates speed.',
+      sections: [
+        { heading: 'The Setup — First', body: 'Each access workaround — waiting for a screenshot, reformatting a file, re-entering data — can cost 5 to 7 senior hours.', content: 'inline — dash' },
+      ],
+      faqs: [
+        { question: 'What is the tax — really?', answer: 'It is the overhead — measured in senior hours.' },
+      ],
+    };
+    const out = stripEmDashesFromArticle(article);
+    expect(hasWideDash(out)).toBe(false);
+    expect(out.title).toBe('The Collaboration Tax, Why Per-Seat Pricing Drags');
+    expect(out.sections[0].heading).toBe('The Setup, First');
+    expect(out.faqs[0].answer).toBe('It is the overhead, measured in senior hours.');
+  });
+
+  it('returns non-article input untouched and does not mutate the input', () => {
+    expect(stripEmDashesFromArticle(null)).toBeNull();
+    expect(stripEmDashesFromArticle('nope')).toBe('nope');
+    const input = { title: 'a — b', sections: [{ body: 'c — d' }] };
+    const snapshot = JSON.parse(JSON.stringify(input));
+    stripEmDashesFromArticle(input);
+    expect(input).toEqual(snapshot); // original object unchanged (new object returned)
+  });
+
+  it('leaves numeric ranges as hyphens, not comma splices', () => {
+    const out = stripEmDashesFromArticle({ sections: [{ body: 'the 2024–2026 window' }] });
+    expect(out.sections[0].body).toBe('the 2024-2026 window');
+  });
+});
+
+describe('finalizeArticleForStorage — the shared net for every write path', () => {
+  it('strips scaffolding AND em dashes in one pass', () => {
+    const article = {
+      title: 'Launch Playbook — Enterprise',
+      sections: [
+        { body: '[SME Hook: get an expert quote here]\n\nBoutique operators move fast — that is the edge.' },
+      ],
+      faqs: [{ question: 'Why boutique?', answer: 'Speed — and focus.' }],
+    };
+    const out = finalizeArticleForStorage(article);
+    expect(hasWideDash(out)).toBe(false);                 // em dashes gone
+    expect(out.sections[0].body).not.toMatch(/SME Hook/); // scaffolding gone
+    expect(out.sections[0].body).toContain('Boutique operators move fast');
+    expect(out.faqs[0].answer).toBe('Speed, and focus.');
+  });
+
+  it('is safe on minimal / malformed articles', () => {
+    expect(finalizeArticleForStorage(null)).toBeNull();
+    expect(finalizeArticleForStorage({ title: 'clean title' }).title).toBe('clean title');
+    // sections with a null entry must not throw
+    const out = finalizeArticleForStorage({ title: 'x — y', sections: [null, { body: 'a — b' }] });
+    expect(hasWideDash(out)).toBe(false);
   });
 });

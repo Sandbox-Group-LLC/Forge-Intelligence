@@ -41,7 +41,7 @@ strategic substance, and never justify dropping or inventing a fact, example, or
   underscores, highlights the importance of.
 - Refer to a thing by the same noun each time rather than cycling synonyms for variety.`;
 import { resolveUtmParams, buildUtmString } from './src/server/utm.js';
-import { truncateStr, truncateAtSentence, stripSocialMarkdown, quickStartTruncate, stripScaffoldingArtifacts, stripEmDashes } from './src/server/text.js';
+import { truncateStr, truncateAtSentence, stripEmDashes, finalizeArticleForStorage } from './src/server/text.js';
 import { clerkJWKS, SUPER_ADMIN_IDS, verifyBrandAccess, requireAuth, requireApiKeyScope, softAuth, mcpAuth, hashApiKey, lookupApiKey } from './src/server/auth.js';
 import { callZernio, zernioPublish, getOrCreateZernioProfile, zernioGuard } from './src/server/zernio.js';
 import { forgeScrape, getBrandPageContent, discoverSubpages, _forgeScrapeRateLimited, FORGE_SCRAPE_RATE_PER_MIN } from './src/server/scrape.js';
@@ -4310,31 +4310,11 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
       return res.end();
     }
 
-    // Strip LLM scaffolding artifacts (SME Hook, CTA, TODO, NEEDS CITATION, etc.)
-    parsed = stripScaffoldingArtifacts(parsed);
-
-    // Deterministic em-dash backstop — the prompt forbids them outright, but the
-    // model keeps emitting them, so guarantee zero ship by stripping every field.
-    if (parsed && typeof parsed === 'object') {
-      for (const k of ['title', 'metaDescription', 'keyTakeaway']) {
-        if (typeof parsed[k] === 'string') parsed[k] = stripEmDashes(parsed[k]);
-      }
-      if (Array.isArray(parsed.sections)) {
-        parsed.sections = parsed.sections.map(s => ({
-          ...s,
-          ...(typeof s.heading === 'string' ? { heading: stripEmDashes(s.heading) } : {}),
-          ...(typeof s.body === 'string' ? { body: stripEmDashes(s.body) } : {}),
-          ...(typeof s.content === 'string' ? { content: stripEmDashes(s.content) } : {}),
-        }));
-      }
-      if (Array.isArray(parsed.faqs)) {
-        parsed.faqs = parsed.faqs.map(f => ({
-          ...f,
-          ...(typeof f.question === 'string' ? { question: stripEmDashes(f.question) } : {}),
-          ...(typeof f.answer === 'string' ? { answer: stripEmDashes(f.answer) } : {}),
-        }));
-      }
-    }
+    // Final content-safety net — strip LLM scaffolding artifacts (SME Hook, CTA,
+    // TODO, NEEDS CITATION, etc.) AND enforce the no-em-dash house style. Shared
+    // with the campaign / import / compliance-approve write paths (finalizeArticleForStorage
+    // in text.js) so the two nets can never drift apart across call sites again.
+    parsed = finalizeArticleForStorage(parsed);
 
     // Guarantee the TL;DR (keyTakeaway) is never missing. It's the article's
     // required TL;DR block — rendered at the top of every publish path — and the

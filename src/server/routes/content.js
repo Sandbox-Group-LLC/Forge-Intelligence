@@ -11,7 +11,7 @@ import { pool } from '../db.js';
 import { anthropic } from '../llm.js';
 import { safeParseLLM } from '../llm-json.js';
 import { requireAuth, requireApiKeyScope } from '../auth.js';
-import { stripScaffoldingArtifacts } from '../text.js';
+import { finalizeArticleForStorage } from '../text.js';
 import { buildImagePrompt, generateHeroImage } from '../images.js';
 
 const router = express.Router();
@@ -357,7 +357,7 @@ Return ONLY valid JSON:
     // 5. Insert (net-new) or UPDATE (edit-reconciliation) into generated_content.
     //    Edit-reconciliation preserves the original article's id + queue placement
     //    so Frank's edit replaces the draft in-place rather than spawning a dup.
-    const cleanedParsed = stripScaffoldingArtifacts(parsed);
+    const cleanedParsed = finalizeArticleForStorage(parsed);
     let contentId;
     if (originalArticle) {
       // Merge cleanedParsed (which has Frank's edited sections) into the existing article_json,
