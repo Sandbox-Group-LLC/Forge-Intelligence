@@ -4210,36 +4210,33 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
 
     send('chunk', 'Brain loaded. Building article...');
 
-    // ── Stream from Claude (Sonnet 5 → Sonnet 4.6 fallback) ───────────────────
-    // Ordered model roster with bounded retry/backoff on transient Anthropic
-    // overload (the 529 seen 2026-07-28). Falls back only before any article text
-    // has streamed, so the client never sees two models' output spliced.
-    let fullText = '';
-    const { model: writerModel, usage: writerUsage } = await streamTextWithFallback({
-      models: ARTICLE_WRITER_MODELS,
-      max_tokens: 12000,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userPrompt }],
-      onText: (text) => { fullText += text; send('chunk', text.replace(/\n/g, '⏎')); },
-      log: (m) => console.log(m),
-    });
-    console.log(`[CONTENT-GEN] article written by ${writerModel}`);
-
-    // ── Parse + persist ───────────────────────────────────────────────────────
-    let parsed;
-    try {
+    // ── Stream + parse one writer pass ────────────────────────────────────────
+    // Sonnet 5 → Sonnet 4.6 fallback with bounded retry/backoff on transient
+    // Anthropic overload (the 529 seen 2026-07-28); falls back only before any
+    // article text has streamed. max_tokens is generous: Sonnet 5's full article
+    // JSON (5 scalars + sections + 4-6 faqs + authorBlock) runs long, and a hard
+    // output cut drops the schema tail (faqs onward) — the truncation seen
+    // 2026-07-29. Returns { parsed, stopReason, model, usage }; parsed is null
+    // only when the JSON is unrecoverable.
+    const runWriterPass = async () => {
+      let fullText = '';
+      const { model, usage, stopReason } = await streamTextWithFallback({
+        models: ARTICLE_WRITER_MODELS,
+        max_tokens: 16000,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
+        onText: (text) => { fullText += text; send('chunk', text.replace(/\n/g, '⏎')); },
+        log: (m) => console.log(m),
+      });
       const jsonMatch = fullText.match(/\{[\s\S]*\}/);
       const jsonStr = jsonMatch ? jsonMatch[0] : fullText;
       try {
-        parsed = JSON.parse(jsonStr);
-      } catch(e) {
-        // Claude truncated mid-JSON — robust bracket-counting recovery
+        return { parsed: JSON.parse(jsonStr), stopReason, model, usage };
+      } catch (e) {
+        // Model stopped mid-JSON (typically max_tokens) — bracket-counting recovery
         const attemptRecovery = (str) => {
-          // Strip any trailing partial token/word at the cut point
           let s = str.replace(/,\s*$/, '').replace(/:\s*$/, '').replace(/"[^"]*$/, '"');
-          // Count unclosed braces and brackets
-          let braces = 0, brackets = 0;
-          let inString = false, escape = false;
+          let braces = 0, brackets = 0, inString = false, escape = false;
           for (const ch of s) {
             if (escape) { escape = false; continue; }
             if (ch === '\\') { escape = true; continue; }
@@ -4250,38 +4247,66 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
             else if (ch === '[') brackets++;
             else if (ch === ']') brackets--;
           }
-          // Close any open arrays then objects
           s += ']'.repeat(Math.max(0, brackets));
           s += '}'.repeat(Math.max(0, braces));
           return s;
         };
         try {
-          const recovered = attemptRecovery(jsonStr);
-          parsed = JSON.parse(recovered);
+          const parsed = JSON.parse(attemptRecovery(jsonStr));
           parsed._truncated = true;
-        } catch(e2) {
-          // Last resort — try stripping to last complete top-level section
-          try {
-            const lastBrace = jsonStr.lastIndexOf('},\n');
-            if (lastBrace > 100) {
-              const trimmed = jsonStr.substring(0, lastBrace + 1) + '] }';
-              parsed = JSON.parse(trimmed);
+          return { parsed, stopReason, model, usage };
+        } catch (e2) {
+          const lastBrace = jsonStr.lastIndexOf('},\n');
+          if (lastBrace > 100) {
+            try {
+              const parsed = JSON.parse(jsonStr.substring(0, lastBrace + 1) + '] }');
               parsed._truncated = true;
-            } else {
-              send('error', 'Article generation hit a formatting issue — click Generate again and it\'ll come through clean. (The AI sometimes needs a second take.)');
-          console.error('[CONTENT-GEN] JSON parse error:', e.message);
-              return res.end();
-            }
-          } catch(e3) {
-            send('error', 'Article generation hit a formatting issue — click Generate again and it\'ll come through clean. (The AI sometimes needs a second take.)');
-          console.error('[CONTENT-GEN] JSON parse error:', e.message);
-            return res.end();
+              return { parsed, stopReason, model, usage };
+            } catch (e3) { /* fall through to null */ }
           }
+          console.error('[CONTENT-GEN] JSON parse error:', e.message);
+          return { parsed: null, stopReason, model, usage };
         }
       }
-    } catch(e) {
+    };
+
+    // A pass is incomplete if the model hit the output cap, we had to bracket-
+    // recover, or required tail fields are missing (faqs sit at the end of the
+    // schema, so they're the first casualty of a cut). Regenerate once — a fresh
+    // draw usually clears a transient over-run — then keep the better of the two.
+    const isIncomplete = (p, sr) =>
+      !p || sr === 'max_tokens' || p._truncated ||
+      !(Array.isArray(p.sections) && p.sections.length >= 3) ||
+      !(Array.isArray(p.faqs) && p.faqs.length > 0);
+
+    let pass = await runWriterPass();
+    if (isIncomplete(pass.parsed, pass.stopReason)) {
+      console.warn(`[CONTENT-GEN] pass 1 incomplete (stop=${pass.stopReason}, ` +
+        `sections=${pass.parsed?.sections?.length ?? 0}, faqs=${pass.parsed?.faqs?.length ?? 0}, ` +
+        `truncated=${!!pass.parsed?._truncated}) — regenerating once`);
+      send('chunk', '⏎⏎[First pass came back incomplete — regenerating...]⏎⏎');
+      const retry = await runWriterPass();
+      if (!isIncomplete(retry.parsed, retry.stopReason)) {
+        pass = retry;                                                   // clean retry wins
+      } else if ((retry.parsed?.sections?.length ?? 0) > (pass.parsed?.sections?.length ?? 0)) {
+        pass = retry;                                                   // both partial — keep the fuller one
+      }
+    }
+
+    const { stopReason: writerStop, model: writerModel, usage: writerUsage } = pass;
+    let parsed = pass.parsed;
+    console.log(`[CONTENT-GEN] article written by ${writerModel} (stop=${writerStop}, ` +
+      `in=${writerUsage?.input_tokens ?? 0}, out=${writerUsage?.output_tokens ?? 0})`);
+
+    if (!parsed) {
       send('error', 'Article generation hit a formatting issue — click Generate again and it\'ll come through clean. (The AI sometimes needs a second take.)');
-          console.error('[CONTENT-GEN] JSON parse error:', e.message);
+      return res.end();
+    }
+    if (isIncomplete(parsed, writerStop)) {
+      // Both passes truncated — surface honestly instead of storing a partial as "success".
+      console.error(`[CONTENT-GEN] both passes incomplete (stop=${writerStop}, ` +
+        `sections=${parsed?.sections?.length ?? 0}, faqs=${parsed?.faqs?.length ?? 0}) — refusing to store`);
+      send('error', 'The article came back incomplete twice (the model cut off before finishing all sections and FAQs). Click Generate to try again — if it keeps happening, the brief may be too large for a single pass.');
       return res.end();
     }
 
