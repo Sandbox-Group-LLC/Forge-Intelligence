@@ -41,7 +41,7 @@ strategic substance, and never justify dropping or inventing a fact, example, or
   underscores, highlights the importance of.
 - Refer to a thing by the same noun each time rather than cycling synonyms for variety.`;
 import { resolveUtmParams, buildUtmString } from './src/server/utm.js';
-import { truncateStr, truncateAtSentence, stripSocialMarkdown, quickStartTruncate, stripEmDashes, finalizeArticleForStorage } from './src/server/text.js';
+import { truncateStr, truncateAtSentence, stripEmDashes, finalizeArticleForStorage } from './src/server/text.js';
 import { clerkJWKS, SUPER_ADMIN_IDS, verifyBrandAccess, requireAuth, requireApiKeyScope, softAuth, mcpAuth, hashApiKey, lookupApiKey } from './src/server/auth.js';
 import { callZernio, zernioPublish, getOrCreateZernioProfile, zernioGuard } from './src/server/zernio.js';
 import { forgeScrape, getBrandPageContent, discoverSubpages, _forgeScrapeRateLimited, FORGE_SCRAPE_RATE_PER_MIN } from './src/server/scrape.js';
