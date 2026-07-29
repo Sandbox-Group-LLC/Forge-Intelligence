@@ -45,7 +45,7 @@ import { truncateStr, truncateAtSentence, stripSocialMarkdown, quickStartTruncat
 import { clerkJWKS, SUPER_ADMIN_IDS, verifyBrandAccess, requireAuth, requireApiKeyScope, softAuth, mcpAuth, hashApiKey, lookupApiKey } from './src/server/auth.js';
 import { callZernio, zernioPublish, getOrCreateZernioProfile, zernioGuard } from './src/server/zernio.js';
 import { forgeScrape, getBrandPageContent, discoverSubpages, _forgeScrapeRateLimited, FORGE_SCRAPE_RATE_PER_MIN } from './src/server/scrape.js';
-import { anthropic, dateContext } from './src/server/llm.js';
+import { anthropic, dateContext, streamTextWithFallback, ARTICLE_WRITER_MODELS } from './src/server/llm.js';
 import { CITATION_ENGINES, isCited, findCitedSection, urlHasDomain, coldScan, extractDomain } from './src/server/geoProbe.js';
 import { installLogCapture, logBuffer, logSSEClients, errorAggregates } from './src/server/logging.js';
 import { recordAudit } from './src/server/audit.js';
@@ -4210,24 +4210,20 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
 
     send('chunk', 'Brain loaded. Building article...');
 
-    // ── Stream from Claude ────────────────────────────────────────────────────
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
+    // ── Stream from Claude (Sonnet 5 → Sonnet 4.6 fallback) ───────────────────
+    // Ordered model roster with bounded retry/backoff on transient Anthropic
+    // overload (the 529 seen 2026-07-28). Falls back only before any article text
+    // has streamed, so the client never sees two models' output spliced.
     let fullText = '';
-    const stream = await client.messages.stream({
-      model: 'claude-sonnet-4-6',
+    const { model: writerModel } = await streamTextWithFallback({
+      models: ARTICLE_WRITER_MODELS,
       max_tokens: 12000,
       system: systemPrompt,
-      messages: [{ role: 'user', content: userPrompt }]
+      messages: [{ role: 'user', content: userPrompt }],
+      onText: (text) => { fullText += text; send('chunk', text.replace(/\n/g, '⏎')); },
+      log: (m) => console.log(m),
     });
-
-    for await (const chunk of stream) {
-      if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text_delta') {
-        const text = chunk.delta.text;
-        fullText += text;
-        send('chunk', text.replace(/\n/g, '⏎'));
-      }
-    }
+    console.log(`[CONTENT-GEN] article written by ${writerModel}`);
 
     // ── Parse + persist ───────────────────────────────────────────────────────
     let parsed;
