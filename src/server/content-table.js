@@ -33,5 +33,11 @@ export async function ensureGeneratedContentTable(brandProfileId) {
   // Campaign tracking — links articles generated via campaign generator back to their campaign
   await pool.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS campaign_id UUID`).catch(() => {});
   await pool.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS campaign_article_index INTEGER`).catch(() => {});
+  // Narrative identity — the normalized editorial contract (who is speaking, in what
+  // person, with what byline) computed at generation time. Mirrored out of
+  // article_json.narrativeIdentity into a first-class column so publishing, byline/
+  // JSON-LD rendering, and social/email generators can read it without parsing the
+  // full article blob. See src/server/narrative-identity.js.
+  await pool.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS narrative_identity JSONB`).catch(() => {});
   return tableName;
 }

@@ -750,8 +750,8 @@ Return ONLY valid JSON matching the content generator output format.`;
         parsed = finalizeArticleForStorage(parsed);
         const insertedContent = await pool.query(
           `INSERT INTO ${contentTableName}
-            (brand_profile_id, title, article_json, overall_confidence, status, campaign_id, campaign_article_index, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, 'draft', $5, $6, NOW(), NOW())
+            (brand_profile_id, title, article_json, overall_confidence, status, campaign_id, campaign_article_index, narrative_identity, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, 'draft', $5, $6, $7, NOW(), NOW())
            ON CONFLICT DO NOTHING
            RETURNING id`,
           [
@@ -760,7 +760,8 @@ Return ONLY valid JSON matching the content generator output format.`;
             JSON.stringify(parsed),
             parsed.overallConfidence || angle.estimated_confidence || 75,
             campaign.id,
-            angle.index
+            angle.index,
+            JSON.stringify(parsed.narrativeIdentity || null)
           ]
         );
         const contentId = insertedContent.rows[0]?.id;
