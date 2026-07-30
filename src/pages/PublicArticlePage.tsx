@@ -206,6 +206,8 @@ interface ArticleData {
   metaDescription?: string;
   keyTakeaway?: string;
   faqs?: ArticleFAQ[];
+  narrativeIdentity?: { speakerType?: string; speakerName?: string | null } | null;
+  byline?: { name?: string | null; title?: string | null } | null;
 }
 
 export default function PublicArticlePage() {
@@ -263,9 +265,42 @@ export default function PublicArticlePage() {
     ? new Date(article.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     : null;
 
+  // Prefer a person byline when the article's narrative identity contract names one
+  // (founder/author voice); otherwise fall back to the brand name as the speaker.
+  const isPersonSpeaker = article.narrativeIdentity?.speakerType === 'person';
+  const displayAuthorName = (isPersonSpeaker && (article.byline?.name || article.narrativeIdentity?.speakerName))
+    || article.brandName;
+  const displayAuthorTitle = isPersonSpeaker ? (article.byline?.title || null) : null;
+
   const sections = article.sections || [];
   const firstSection = sections[0];
   const restSections = sections.slice(1);
+
+  // JSON-LD Article schema — author reflects the resolved narrative-identity byline
+  // (a named person when the article's editorial contract calls for one, otherwise
+  // the brand as an Organization). Injected imperatively since this app has no
+  // head-management library; cleaned up on unmount/navigation.
+  useEffect(() => {
+    if (!article) return;
+    const authorNode = isPersonSpeaker && displayAuthorName
+      ? { '@type': 'Person', name: displayAuthorName }
+      : { '@type': 'Organization', name: article.brandName || 'Forge Intelligence' };
+    const ld = {
+      '@context': 'https://schema.org',
+      '@type': 'Article',
+      headline: article.title,
+      description: article.metaDescription || article.keyTakeaway || undefined,
+      image: article.heroImageUrl || undefined,
+      datePublished: article.createdAt || undefined,
+      author: authorNode,
+      publisher: { '@type': 'Organization', name: article.brandName || 'Forge Intelligence' },
+    };
+    const script = document.createElement('script');
+    script.type = 'application/ld+json';
+    script.text = JSON.stringify(ld);
+    document.head.appendChild(script);
+    return () => { document.head.removeChild(script); };
+  }, [article, isPersonSpeaker, displayAuthorName]);
 
   return (
     <div className="pa-page">
@@ -293,7 +328,11 @@ export default function PublicArticlePage() {
             {article.category && <div className="pa-eyebrow">{article.category}</div>}
             <h1 className="pa-title pa-title-over-hero">{article.title}</h1>
             <div className="pa-meta">
-              {article.brandName && <span className="pa-author">{article.brandName}</span>}
+              {displayAuthorName && (
+                <span className="pa-author">
+                  {displayAuthorName}{displayAuthorTitle ? `, ${displayAuthorTitle}` : ''}
+                </span>
+              )}
               <span className="pa-dot">·</span>
               <span className="pa-read-time">{readTime} min read</span>
               {publishDate && <><span className="pa-dot">·</span><span className="pa-date">{publishDate}</span></>}
@@ -305,7 +344,11 @@ export default function PublicArticlePage() {
           {article.category && <div className="pa-eyebrow">{article.category}</div>}
           <h1 className="pa-title">{article.title}</h1>
           <div className="pa-meta">
-            {article.brandName && <span className="pa-author">{article.brandName}</span>}
+            {displayAuthorName && (
+              <span className="pa-author">
+                {displayAuthorName}{displayAuthorTitle ? `, ${displayAuthorTitle}` : ''}
+              </span>
+            )}
             <span className="pa-dot">·</span>
             <span className="pa-read-time">{readTime} min read</span>
             {publishDate && <><span className="pa-dot">·</span><span className="pa-date">{publishDate}</span></>}
