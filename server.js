@@ -1029,7 +1029,8 @@ app.get('/api/articles/:brandSlug/:articleSlug', async (req, res) => {
     let bylineAuthor = null;
     if (narrativeIdentity?.speakerType === 'person' && narrativeIdentity?.bylineAuthorId) {
       try {
-        const authorsRaw = matchedBrand?.profile_data?.factualGround?.authors
+        const authorsRaw = matchedBrand?.settings?.factualGround?.authors
+          || matchedBrand?.profile_data?.factualGround?.authors
           || matchedBrand?.profile_data?.authors || [];
         bylineAuthor = (Array.isArray(authorsRaw) ? authorsRaw : [])
           .find(a => a?.id === narrativeIdentity.bylineAuthorId) || null;
