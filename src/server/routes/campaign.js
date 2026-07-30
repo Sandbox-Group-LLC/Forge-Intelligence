@@ -18,6 +18,7 @@ import { requireAuth, verifyBrandAccess } from '../auth.js';
 import { finalizeArticleForStorage } from '../text.js';
 import { buildImagePrompt, generateHeroImage } from '../images.js';
 import { ensureGeneratedContentTable } from '../content-table.js';
+import { normalizeNarrativeIdentity } from '../narrative-identity.js';
 
 const router = express.Router();
 
@@ -134,10 +135,20 @@ Output STRICT JSON matching this schema (no markdown, no commentary):
   "enrichedFAQ": [{ "q": "FAQ question this article should answer", "a": "Concise 1-2 sentence answer" }],
   "powerPhrases": ["Short, declarative phrases the writer should use verbatim — ~5 words each, specific to brand voice"],
   "contentHooks": ["Opening-paragraph hooks that would grab ${personaName}"],
-  "authorSchema": { "name": "author name from factual ground authors, or null", "jobTitle": "author job title, or null" }
+  "authorSchema": { "name": "author name from factual ground authors, or null", "jobTitle": "author job title, or null" },
+  "narrativeIdentity": {
+    "subjectType": "company|person",
+    "speakerType": "company|person",
+    "grammaticalPerson": "first_singular|first_plural|third_plural|third_singular",
+    "speakerName": "string or null",
+    "bylineAuthorId": "string or null",
+    "allowedSelfReferences": ["allowed pronouns or self-reference phrases"],
+    "personalExperienceAllowed": "boolean",
+    "notes": "short perspective guidance for the article writer"
+  }
 }
 
-Requirements: 4-6 enrichedSections, 3-5 enrichedFAQ, 4-6 powerPhrases, 2-3 contentHooks.`;
+Requirements: 4-6 enrichedSections, 3-5 enrichedFAQ, 4-6 powerPhrases, 2-3 contentHooks. The narrativeIdentity is an editorial contract, not a tone description. Do not infer first-person authorship merely because a byline exists; use company third-person defaults unless the angle explicitly calls for a person speaking.`;
 
   const userPrompt = `Produce the enriched brief for this specific campaign angle:
 
@@ -167,34 +178,21 @@ Return ONLY the JSON object.`;
   const parsed = safeParseLLM(match ? match[0] : raw, 'object', 'campaign-angle-enrichment');
 
   // Attach a safe narrativeIdentity fallback when the LLM didn't emit one.
+  // A byline alone does not change the narrator: existing brands should retain
+  // their institutional voice until a brief explicitly selects a person.
   if (!parsed.narrativeIdentity) {
-    const fgAuthor = factualGround?.authors?.length ? factualGround.authors[0] : null;
-    const assigned = parsed.authorSchema?.name
-      ? { name: parsed.authorSchema.name, id: fgAuthor?.id || null }
-      : (fgAuthor?.name ? { name: fgAuthor.name, id: fgAuthor.id || null } : null);
-    if (assigned) {
-      parsed.narrativeIdentity = {
-        subjectType: 'company',
-        speakerType: 'person',
-        grammaticalPerson: 'first_singular',
-        speakerName: assigned.name || null,
-        bylineAuthorId: assigned.id,
-        allowedSelfReferences: ['I', 'my', 'me'],
-        personalExperienceAllowed: true,
-        notes: 'Author-attributed piece: prefer first-person for personal experience; company-level claims use we/our.'
-      };
-    } else {
-      parsed.narrativeIdentity = {
-        subjectType: 'company',
-        speakerType: 'company',
-        grammaticalPerson: 'third_plural',
-        speakerName: brandName || null,
-        bylineAuthorId: null,
-        allowedSelfReferences: ['we', 'our', 'us'],
-        personalExperienceAllowed: false,
-        notes: 'Default company voice: use third-person references to the company or first-person plural for company actions.'
-      };
-    }
+    parsed.narrativeIdentity = {
+      subjectType: 'company',
+      speakerType: 'company',
+      grammaticalPerson: 'third_plural',
+      speakerName: brandName || null,
+      bylineAuthorId: parsed.authorSchema?.name && factualGround?.authors?.length
+        ? (factualGround.authors[0].id || null)
+        : null,
+      allowedSelfReferences: [],
+      personalExperienceAllowed: false,
+      notes: 'Default institutional voice. A named byline does not authorize first-person anecdotes.'
+    };
   }
 
   // Attach author schema from factualGround if the LLM didn't emit one
@@ -205,6 +203,10 @@ Return ONLY the JSON object.`;
       jobTitle: fallbackAuthor.title || null
     };
   }
+  parsed.narrativeIdentity = normalizeNarrativeIdentity(parsed.narrativeIdentity, {
+    brandName,
+    author: factualGround?.authors?.find(a => a?.name === parsed.authorSchema?.name) || factualGround?.authors?.[0] || null
+  });
 
   // Sanitize eeatInjections + smeHooks: unwrap any stringified JSON back to its suggestedContent prose.
   const unwrapLeakedJSON = (item) => {

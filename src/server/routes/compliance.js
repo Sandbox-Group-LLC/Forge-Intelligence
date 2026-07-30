@@ -11,6 +11,7 @@ import { anthropic } from '../llm.js';
 import { safeParseLLM } from '../llm-json.js';
 import { finalizeArticleForStorage } from '../text.js';
 import { verifyBrandAccess } from '../auth.js';
+import { normalizeNarrativeIdentity, lintNarrativePerspective } from '../narrative-identity.js';
 import { findCitationSources } from '../citations.js';
 
 const router = express.Router();
@@ -430,6 +431,32 @@ Return ONLY valid JSON in this exact structure:
         report.flags = report.flags.map(f => ({ ...f, sectionIndex: Math.max(0, f.sectionIndex - 1) }));
       }
     }
+
+    // Perspective lint: ensure article sections respect the stored narrativeIdentity.
+    try {
+      const articleIdentity = articleJson?.narrativeIdentity || {};
+      const normalizedIdentity = normalizeNarrativeIdentity(articleIdentity, { brandName: brand?.brand_name || '', author: fg?.authors?.find(a => a?.name === articleJson?.authorSchema?.name) || fg?.authors?.[0] || null });
+      const sections = articleJson?.sections || [];
+      report.flags = report.flags || [];
+      sections.forEach((s, i) => {
+        const text = String(s.body || s.content || '').slice(0, 5000);
+        if (!text) return;
+        const lint = lintNarrativePerspective(text, normalizedIdentity, { brandName: brand?.brand_name || '' });
+        if (!lint.ok && lint.issues?.length) {
+          lint.issues.forEach(issue => {
+            report.flags.push({
+              sectionIndex: i,
+              sectionHeading: s.heading || s.title || 'Untitled',
+              severity: issue.severity === 'red' ? 'red' : 'yellow',
+              type: 'brand_voice',
+              flaggedExcerpt: issue.phrase || '',
+              reason: issue.message || 'Perspective mismatch with narrative identity',
+              suggestion: 'Align pronouns and experience claims with the selected narrative identity.'
+            });
+          });
+        }
+      });
+    } catch (e) { console.warn('[COMPLIANCE] perspective lint failed:', e.message); }
 
     // Persist compliance report to article record
     await pool.query(
