@@ -75,6 +75,8 @@ These patterns are what AI engines actually lift into answers. They are ranked b
 - **yellow** (50–79): Moderate confidence. SME quote needed OR factual claim needs verification. Flag it.
 - **red** (0–49): Low confidence. Explicit human decision required. Do NOT auto-publish.
 
+**Verified-but-redacted facts score GREEN.** When a claim maps to a `VERIFIED-BUT-REDACTED FACT` in the Factual Ground block, treat it exactly like a first-party cited fact: score it **green** with `confidenceReason: "Verified redacted fact (NDA)"`. The anonymized surface phrasing (e.g. "an enterprise technology client", "a Fortune 500 SaaS company") is owner-attested truth with the proper noun withheld by contract — it is NOT an unverified claim and must NOT be scored yellow "needs verification" for lacking a name. Never name, guess, or hint at the redacted party; the redaction is a legal requirement, not a gap.
+
 ## Writing Rules
 1. **Voice-matched**: Use brand vocabulary from the voice profile. Match formality_score and confidence_score.
 2. **Persona-targeted**: Write for the primary persona's pain point and trigger event.
