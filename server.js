@@ -4138,6 +4138,7 @@ ${factualGround.methodology ? `METHODOLOGY / APPROACH (describe in these terms):
 ${factualGround.foundingStory ? `FOUNDING STORY (reference only these details):\n${factualGround.foundingStory}\n` : ''}
 ${factualGround.teamComposition ? `TEAM (only reference these people/roles):\n${factualGround.teamComposition}\n` : ''}
 ${factualGround.quotablePositions ? `QUOTABLE POSITIONS (use these phrases verbatim when making bold claims):\n${factualGround.quotablePositions}\n` : ''}
+${Array.isArray(factualGround.redactedFacts) && factualGround.redactedFacts.length ? `VERIFIED-BUT-REDACTED FACTS (owner-attested TRUE; the client/proper-noun is withheld by CONTRACT). Treat each as a first-party CITED fact: use the anonymized surface phrasing verbatim, drop ALL hedges on it (it is verified, not speculative), and NEVER name, guess, or hint at the underlying party — the redaction is a legal requirement, not a gap to fill:\n${factualGround.redactedFacts.map(r => `  • ${String(r.surface || '').slice(0, 300)}`).filter(s => s.trim() !== '•').join('\n')}\n` : ''}
 ${(() => {
   const assigned = enrichedBrief?.assignedAuthor;
   const authorsToUse = (assigned && assigned.name) ? [assigned] : (factualGround.authors || []);

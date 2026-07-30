@@ -162,6 +162,11 @@ function ComplianceGateContent() {
   const [editedSections, setEditedSections] = useState<Record<number, string>>({});
   const [manualEditSections, setManualEditSections] = useState<Record<number, boolean>>({});
   const [dismissedFlags, setDismissedFlags] = useState<Record<number, boolean>>({});
+  // Dismiss reason picker: which section's menu is open, per-section outcome label,
+  // and the private referent typed for a "verified but unnameable (NDA)" dismissal.
+  const [dismissMenuIdx, setDismissMenuIdx] = useState<number | null>(null);
+  const [dismissOutcome, setDismissOutcome] = useState<Record<number, string>>({});
+  const [ndaReferent, setNdaReferent] = useState<string>('');
   const [decisions, setDecisions] = useState<Record<number, 'approved' | 'rejected'>>({});
   // FAQ edits — parallel structure to editedSections. Each FAQ entry can have its question
   // and/or answer overridden. Empty fields default to the LLM-generated original on submit.
@@ -296,8 +301,21 @@ function ComplianceGateContent() {
     }
   };
 
-  const dismissFlag = async (sectionIdx: number, flag: any) => {
+  // Dismiss with a typed reason. The reason is the brain signal (see compliance.js
+  // /dismiss-flag). For 'verified_unnameable' we also pass the flagged excerpt as the
+  // public `surface` and the optional private `trueReferent` (stored write-only, never
+  // fed back to a model) so the fact is promoted to Factual Ground and stops being
+  // re-flagged and under-scored on every future article.
+  const DISMISS_REASONS: { key: string; label: string; outcome: string }[] = [
+    { key: 'verified_nameable',   label: 'Verified — can name',        outcome: 'Verified fact — Brain updated' },
+    { key: 'verified_unnameable', label: "Verified — can't name (NDA)", outcome: 'Redacted fact — added to Factual Ground' },
+    { key: 'intentional_style',   label: 'Intentional voice/style',    outcome: 'Style, not a claim — Brain updated' },
+    { key: 'actually_wrong',      label: 'Flag was right',             outcome: 'Confirmed — no change' },
+  ];
+
+  const dismissFlag = async (sectionIdx: number, flag: any, reason: string) => {
     if (!selectedArticle || !activeBrand?.id) return;
+    const meta = DISMISS_REASONS.find(r => r.key === reason);
     try {
       const token = await getToken({ template: 'jwt-template-600' });
       await fetch('/api/compliance/dismiss-flag', {
@@ -309,9 +327,15 @@ function ComplianceGateContent() {
           flagType: flag.type,
           flagReason: flag.reason,
           sectionHeading: flag.sectionHeading || '',
+          reason,
+          surface: flag.flaggedExcerpt || flag.reason || '',
+          trueReferent: reason === 'verified_unnameable' ? (ndaReferent.trim() || null) : undefined,
         })
       });
       setDismissedFlags(p => ({ ...p, [sectionIdx]: true }));
+      setDismissOutcome(p => ({ ...p, [sectionIdx]: meta?.outcome || 'Dismissed — Brain updated' }));
+      setDismissMenuIdx(null);
+      setNdaReferent('');
     } catch(e) {
       console.error('Dismiss flag error:', e);
       reportError(e, { area: 'compliance-gate' });
@@ -746,16 +770,48 @@ function ComplianceGateContent() {
                                     ? (rewriteOutcomes[idx]?.mode === 'cited' ? 'Cited & Applied' : rewriteOutcomes[idx]?.mode === 'softened' ? 'Softened & Applied' : 'Rewrite Applied')
                                     : ((flag.type === 'factual_claim' || flag.type === 'legal_risk') ? 'Soften Without Citation' : 'Accept Suggestion')}
                               </button>
-                              {!dismissedFlags[idx] && (
+                              {!dismissedFlags[idx] && dismissMenuIdx !== idx && (
                                 <button
                                   className="comp-dismiss-flag-btn"
-                                  onClick={() => dismissFlag(idx, flag)}
+                                  onClick={() => { setDismissMenuIdx(idx); setNdaReferent(''); }}
                                 >
-                                  Dismiss Flag
+                                  Dismiss Flag ▾
                                 </button>
                               )}
+                              {!dismissedFlags[idx] && dismissMenuIdx === idx && (
+                                <div className="comp-dismiss-menu" style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6, padding: 10, border: '1px solid var(--color-border)', borderRadius: 8, background: 'var(--color-surface, rgba(148,163,184,0.06))' }}>
+                                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)' }}>Why is this a false positive?</div>
+                                  {DISMISS_REASONS.map(r => (
+                                    <button
+                                      key={r.key}
+                                      className="comp-dismiss-flag-btn"
+                                      style={{ textAlign: 'left' }}
+                                      onClick={() => dismissFlag(idx, flag, r.key)}
+                                      title={r.key === 'verified_unnameable'
+                                        ? 'True and owner-attested, but the client is contractually redacted. Promotes it to Factual Ground so it stops being flagged and under-scored.'
+                                        : r.outcome}
+                                    >
+                                      {r.label}
+                                    </button>
+                                  ))}
+                                  <input
+                                    type="text"
+                                    value={ndaReferent}
+                                    onChange={e => setNdaReferent(e.target.value)}
+                                    placeholder="(optional) private note: real client — stored, never published"
+                                    style={{ marginTop: 4, padding: '6px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-bg, #fff)', color: 'var(--color-text)' }}
+                                  />
+                                  <button
+                                    className="comp-dismiss-flag-btn"
+                                    style={{ opacity: 0.7 }}
+                                    onClick={() => { setDismissMenuIdx(null); setNdaReferent(''); }}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              )}
                               {dismissedFlags[idx] && (
-                                <span className="comp-dismissed-label">Dismissed — Brain updated</span>
+                                <span className="comp-dismissed-label">{dismissOutcome[idx] || 'Dismissed — Brain updated'}</span>
                               )}
                             </div>
 
