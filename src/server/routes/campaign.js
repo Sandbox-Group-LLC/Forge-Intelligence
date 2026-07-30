@@ -186,8 +186,11 @@ Return ONLY the JSON object.`;
       speakerType: 'company',
       grammaticalPerson: 'third_plural',
       speakerName: brandName || null,
-      bylineAuthorId: parsed.authorSchema?.name && factualGround?.authors?.length
-        ? (factualGround.authors[0].id || null)
+      bylineAuthorId: (typeof parsed.authorSchema?.name === 'string' && Array.isArray(factualGround?.authors))
+        ? (factualGround.authors.find(a =>
+          typeof a?.name === 'string' &&
+          a.name.trim().toLowerCase() === parsed.authorSchema.name.trim().toLowerCase()
+        )?.id || null)
         : null,
       allowedSelfReferences: [],
       personalExperienceAllowed: false,
