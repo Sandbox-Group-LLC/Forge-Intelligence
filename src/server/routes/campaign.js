@@ -166,6 +166,37 @@ Return ONLY the JSON object.`;
   const match = raw.match(/\{[\s\S]*\}/);
   const parsed = safeParseLLM(match ? match[0] : raw, 'object', 'campaign-angle-enrichment');
 
+  // Attach a safe narrativeIdentity fallback when the LLM didn't emit one.
+  if (!parsed.narrativeIdentity) {
+    const fgAuthor = factualGround?.authors?.length ? factualGround.authors[0] : null;
+    const assigned = parsed.authorSchema?.name
+      ? { name: parsed.authorSchema.name, id: fgAuthor?.id || null }
+      : (fgAuthor?.name ? { name: fgAuthor.name, id: fgAuthor.id || null } : null);
+    if (assigned) {
+      parsed.narrativeIdentity = {
+        subjectType: 'company',
+        speakerType: 'person',
+        grammaticalPerson: 'first_singular',
+        speakerName: assigned.name || null,
+        bylineAuthorId: assigned.id,
+        allowedSelfReferences: ['I', 'my', 'me'],
+        personalExperienceAllowed: true,
+        notes: 'Author-attributed piece: prefer first-person for personal experience; company-level claims use we/our.'
+      };
+    } else {
+      parsed.narrativeIdentity = {
+        subjectType: 'company',
+        speakerType: 'company',
+        grammaticalPerson: 'third_plural',
+        speakerName: brandName || null,
+        bylineAuthorId: null,
+        allowedSelfReferences: ['we', 'our', 'us'],
+        personalExperienceAllowed: false,
+        notes: 'Default company voice: use third-person references to the company or first-person plural for company actions.'
+      };
+    }
+  }
+
   // Attach author schema from factualGround if the LLM didn't emit one
   if ((!parsed.authorSchema || !parsed.authorSchema.name) && factualGround?.authors?.length) {
     const fallbackAuthor = factualGround.authors[0];
