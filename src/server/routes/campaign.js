@@ -166,6 +166,34 @@ Return ONLY the JSON object.`;
   const match = raw.match(/\{[\s\S]*\}/);
   const parsed = safeParseLLM(match ? match[0] : raw, 'object', 'campaign-angle-enrichment');
 
+  // Attach a safe narrativeIdentity fallback when the LLM didn't emit one.
+  if (!parsed.narrativeIdentity) {
+    const assigned = parsed.authorSchema && parsed.authorSchema.name ? parsed.authorSchema : null;
+    if (assigned) {
+      parsed.narrativeIdentity = {
+        subjectType: 'company',
+        speakerType: 'person',
+        grammaticalPerson: 'first_singular',
+        speakerName: parsed.authorSchema.name || null,
+        bylineAuthorId: factualGround?.authors?.length ? (factualGround.authors[0].id || null) : null,
+        allowedSelfReferences: ['I', 'my', 'me'],
+        personalExperienceAllowed: true,
+        notes: 'Author-attributed piece: prefer first-person for personal experience; company-level claims use we/our.'
+      };
+    } else {
+      parsed.narrativeIdentity = {
+        subjectType: 'company',
+        speakerType: 'company',
+        grammaticalPerson: 'third_plural',
+        speakerName: brandName || null,
+        bylineAuthorId: null,
+        allowedSelfReferences: ['we', 'our', 'us'],
+        personalExperienceAllowed: false,
+        notes: 'Default company voice: use third-person references to the company or first-person plural for company actions.'
+      };
+    }
+  }
+
   // Attach author schema from factualGround if the LLM didn't emit one
   if ((!parsed.authorSchema || !parsed.authorSchema.name) && factualGround?.authors?.length) {
     const fallbackAuthor = factualGround.authors[0];
