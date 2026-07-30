@@ -4213,16 +4213,21 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
     // ── Stream + parse one writer pass ────────────────────────────────────────
     // Sonnet 5 → Sonnet 4.6 fallback with bounded retry/backoff on transient
     // Anthropic overload (the 529 seen 2026-07-28); falls back only before any
-    // article text has streamed. max_tokens is generous: Sonnet 5's full article
-    // JSON (5 scalars + sections + 4-6 faqs + authorBlock) runs long, and a hard
-    // output cut drops the schema tail (faqs onward) — the truncation seen
-    // 2026-07-29. Returns { parsed, stopReason, model, usage }; parsed is null
-    // only when the JSON is unrecoverable.
+    // article text has streamed. max_tokens headroom matters: the full article
+    // JSON (5 scalars + sections + 4-6 faqs + authorBlock) is genuinely large,
+    // and a hard output cut drops the schema tail (faqs onward) first. Prod logs
+    // 2026-07-29/30 show clean (stop=end_turn) drafts landing at 12.5k–15k output
+    // tokens — so the old 16k cap sat right in the working range and any slightly
+    // longer draw slammed max_tokens and truncated (two articles in a row). 32k
+    // gives ~2x headroom over the largest observed real article and is well within
+    // both Sonnet 5's and Sonnet 4.6's native 64k output ceiling (no beta header).
+    // Returns { parsed, stopReason, model, usage }; parsed is null only when the
+    // JSON is unrecoverable.
     const runWriterPass = async () => {
       let fullText = '';
       const { model, usage, stopReason } = await streamTextWithFallback({
         models: ARTICLE_WRITER_MODELS,
-        max_tokens: 16000,
+        max_tokens: 32000,
         system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }],
         onText: (text) => { fullText += text; send('chunk', text.replace(/\n/g, '⏎')); },
