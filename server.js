@@ -3998,7 +3998,7 @@ app.get('/api/assets/:filename', async function (req, res) {
 // ensureGeneratedContentTable moved to src/server/content-table.js (imported at top).
 
 app.get('/api/content-generator/generate', requireAuth, async (req, res) => {
-  const { brandProfileId, enrichedBriefId, force, topicPrompt, mandatories, constraints, audience, ctaTarget, desiredAction, wordCountTarget, writingAs } = req.query;
+  const { brandProfileId, enrichedBriefId, topicPrompt, mandatories, constraints, audience, ctaTarget, desiredAction, wordCountTarget, writingAs } = req.query;
   // writingAs: 'company' forces the institutional/company-voice contract; an author id
   // (matched against factualGround.authors[].id) forces first-person-singular as that
   // person. Omitted → falls back to the enriched brief's own narrativeIdentity/defaults.
