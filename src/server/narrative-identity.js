@@ -33,13 +33,16 @@ export function normalizeNarrativeIdentity(identity, { brandName = '', author = 
   const source = identity && typeof identity === 'object' ? identity : {};
   const explicit = Object.keys(source).length > 0;
   const authorName = asText(source.speakerName) || asText(author?.name) || null;
-  const hasExplicitPerson = VALID_SPEAKERS.has(source.speakerType) && source.speakerType === 'person';
   const grammaticalPerson = VALID_PERSONS.has(source.grammaticalPerson)
     ? source.grammaticalPerson
     : 'third_plural';
+  // Infer speaker from the grammatical person when speakerType is missing/invalid:
+  // a first-person-singular contract is an individual speaking, so it must not
+  // collapse to a 'company' speaker (which would pair company voice with I/me/my
+  // and force speakerName to the brand instead of the author).
   const speakerType = VALID_SPEAKERS.has(source.speakerType)
     ? source.speakerType
-    : (explicit && hasExplicitPerson ? 'person' : 'company');
+    : (explicit && grammaticalPerson === 'first_singular' ? 'person' : 'company');
   const subjectType = VALID_SUBJECTS.has(source.subjectType) ? source.subjectType : 'company';
   const personalExperienceAllowed = explicit
     ? boolValue(source.personalExperienceAllowed, grammaticalPerson === 'first_singular' && speakerType === 'person')
