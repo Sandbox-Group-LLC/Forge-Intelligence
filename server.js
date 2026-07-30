@@ -4396,7 +4396,7 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
     const tableName = await ensureGeneratedContentTable(brandProfileId);
     const contentInsert = await pool.query(
       `INSERT INTO ${tableName} (brand_profile_id, enriched_brief_id, title, article_json, overall_confidence, brain_match_score, status, narrative_identity)
-       VALUES ($1, $2, $3, $4, $5, $6, 'draft', $7) RETURNING id`,
+       VALUES ($1, $2, $3, $4, $5, $6, 'draft', $7::jsonb) RETURNING id`,
       [brandProfileId, enrichedBriefId || loadedEnrichedBriefId || null, parsed.title, JSON.stringify(parsed),
        parsed.overallConfidence || null, parsed.brainMatchScore || (() => {
          // Fallback: Claude dropped the field — compute from section confidences
