@@ -186,8 +186,8 @@ Return ONLY the JSON object.`;
       speakerType: 'company',
       grammaticalPerson: 'third_plural',
       speakerName: brandName || null,
-      bylineAuthorId: parsed.authorSchema?.name && factualGround?.authors?.length
-        ? (factualGround.authors[0].id || null)
+      bylineAuthorId: (parsed.authorSchema?.name && Array.isArray(factualGround?.authors))
+        ? (factualGround.authors.find(a => a?.name === parsed.authorSchema.name)?.id || null)
         : null,
       allowedSelfReferences: [],
       personalExperienceAllowed: false,
