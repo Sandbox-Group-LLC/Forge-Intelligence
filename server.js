@@ -7,6 +7,7 @@ import { randomUUID, randomBytes, createHmac, createHash, timingSafeEqual } from
 import { jwtVerify } from 'jose';
 import { pool } from './src/server/db.js';
 import { extractJSON, safeParseLLM } from './src/server/llm-json.js';
+import { normalizeNarrativeIdentity, narrativeIdentityPromptBlock } from './src/server/narrative-identity.js';
 // Forbid em-dashes in Brand Intelligence PVA / Fault Lines output (matches the
 // strategy module + the rest of Forge's content style). Appended to those prompts.
 const STRATEGY_NO_EM_DASH = '\n\nSTYLE (mandatory): Write in plain prose. Do NOT use em-dashes (the — character) anywhere in your output; use commas, colons, parentheses, or separate sentences instead.';
@@ -4167,7 +4168,16 @@ The entire piece is about exactly this, and the title you return must match this
 `
       : '';
 
-        const userPrompt = `${articleDirectiveBlock}Generate a long-form article using the following Brand Intelligence context.
+    // Build normalized narrative identity for the writer and include a concise
+    // non-negotiable identity block for the writer to follow. This prevents
+    // accidental shifts between company/author perspectives.
+    const identityAuthor = enrichedBrief?.authorSchema?.name
+      ? (factualGround?.authors || []).find(a => a.name === enrichedBrief.authorSchema.name) || null
+      : (factualGround?.authors || [])[0] || null;
+    const identityNormalized = normalizeNarrativeIdentity(enrichedBrief?.narrativeIdentity || {}, { brandName, author: identityAuthor });
+    const identityBlock = narrativeIdentityPromptBlock(identityNormalized, { brandName, author: identityAuthor });
+
+    const userPrompt = `${articleDirectiveBlock}${identityBlock}Generate a long-form article using the following Brand Intelligence context.
 ${topicPrompt ? `\nUSER TOPIC DIRECTION (write the article around this specific topic/angle — this overrides the enriched brief's default topic selection):\n"${topicPrompt}"\n` : ''}${(mandatories || constraints || audience || ctaTarget || desiredAction || wordCountTarget) ? `\nUSER MANDATORIES & CONSTRAINTS (the user-supplied non-negotiables for this article — every section must respect these. Treat as harder than brand patterns):\n${mandatories ? `- MANDATORIES (must include): ${mandatories}\n` : ''}${constraints ? `- CONSTRAINTS (must NOT do): ${constraints}\n` : ''}${audience ? `- TARGET AUDIENCE: ${audience}\n` : ''}${ctaTarget ? `- CTA TARGET URL/PATH: ${ctaTarget} — every CTA in the article should reference this destination.\n` : ''}${desiredAction ? `- DESIRED READER ACTION: ${desiredAction} — shape the article and conclusion to drive toward this specific next step.\n` : ''}${wordCountTarget ? `- TARGET LENGTH: approximately ${wordCountTarget} words. Do not pad — depth over filler.\n` : ''}` : ''}${selfAsCaseStudyBlock}${factualGroundBlock}${territoriesBlock}${cgMeasuredBlock}${cgCompetitorBlock}${cgMoatsBlock}
 BRAND PROFILE:
 ${trimTo(profileData, 6000)}
@@ -4315,10 +4325,11 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
       return res.end();
     }
 
-    // Final content-safety net — strip LLM scaffolding artifacts (SME Hook, CTA,
-    // TODO, NEEDS CITATION, etc.) AND enforce the no-em-dash house style. Shared
-    // with the campaign / import / compliance-approve write paths (finalizeArticleForStorage
-    // in text.js) so the two nets can never drift apart across call sites again.
+    // Final content-safety net — persist narrative identity to the article JSON
+    // so downstream systems (publishing, compliance, UI) see the exact editorial
+    // contract used, then strip LLM scaffolding artifacts (SME Hook, CTA,
+    // TODO, NEEDS CITATION, etc.) AND enforce the no-em-dash house style.
+    try { parsed.narrativeIdentity = identityNormalized; } catch (e) { /* non-fatal */ }
     parsed = finalizeArticleForStorage(parsed);
 
     // Guarantee the TL;DR (keyTakeaway) is never missing. It's the article's
@@ -10723,5 +10734,3 @@ app.post('/api/forge/prompt-pack/lovable', requireAuth, async (req, res) => {
 app.get('*', function (req, res) {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
-
-
