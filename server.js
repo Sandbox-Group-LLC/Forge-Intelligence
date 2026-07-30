@@ -1023,6 +1023,19 @@ app.get('/api/articles/:brandSlug/:articleSlug', async (req, res) => {
     if (!matchedArticle) return res.status(404).json({ error: 'Article not found' });
 
     const articleJson = matchedArticle.article_json || {};
+    // narrative_identity is mirrored to its own column at write time; fall back to the
+    // article_json copy for rows written before that column existed.
+    const narrativeIdentity = matchedArticle.narrative_identity || articleJson.narrativeIdentity || null;
+    let bylineAuthor = null;
+    if (narrativeIdentity?.speakerType === 'person' && narrativeIdentity?.bylineAuthorId) {
+      try {
+        const authorsRaw = matchedBrand?.settings?.factualGround?.authors
+          || matchedBrand?.profile_data?.factualGround?.authors
+          || matchedBrand?.profile_data?.authors || [];
+        bylineAuthor = (Array.isArray(authorsRaw) ? authorsRaw : [])
+          .find(a => a?.id === narrativeIdentity.bylineAuthorId) || null;
+      } catch { /* non-fatal */ }
+    }
     res.json({
       title: matchedArticle.title,
       sections: articleJson.sections || [],
@@ -1034,6 +1047,14 @@ app.get('/api/articles/:brandSlug/:articleSlug', async (req, res) => {
       faqs: Array.isArray(articleJson.faqs) ? articleJson.faqs : [],
       brandName: matchedBrand?.brand_name || matchedBrand?.profile_data?.voice_profile?.brand_name || brandSlug,
       createdAt: matchedArticle.created_at,
+      narrativeIdentity: narrativeIdentity ? {
+        speakerType: narrativeIdentity.speakerType || 'company',
+        speakerName: narrativeIdentity.speakerName || null,
+      } : null,
+      byline: bylineAuthor ? {
+        name: bylineAuthor.name || narrativeIdentity.speakerName || null,
+        title: bylineAuthor.title || bylineAuthor.role || null,
+      } : null,
     });
   } catch (err) {
     console.error('[PUBLIC-ARTICLE]', err.message);
@@ -3977,7 +3998,11 @@ app.get('/api/assets/:filename', async function (req, res) {
 // ensureGeneratedContentTable moved to src/server/content-table.js (imported at top).
 
 app.get('/api/content-generator/generate', requireAuth, async (req, res) => {
-  const { brandProfileId, enrichedBriefId, force, topicPrompt, mandatories, constraints, audience, ctaTarget, desiredAction, wordCountTarget } = req.query;
+  const { brandProfileId, enrichedBriefId, topicPrompt, mandatories, constraints, audience, ctaTarget, desiredAction, wordCountTarget, writingAs } = req.query;
+  // writingAs: 'company' forces the institutional/company-voice contract; an author id
+  // (matched against factualGround.authors[].id) forces first-person-singular as that
+  // person. Omitted → falls back to the enriched brief's own narrativeIdentity/defaults.
+  const writingAsOverride = typeof writingAs === 'string' && writingAs.trim() ? writingAs.trim() : null;
   if (!brandProfileId) return res.status(400).json({ success: false, error: 'brandProfileId required' });
 
   // SSE headers
@@ -4174,8 +4199,28 @@ The entire piece is about exactly this, and the title you return must match this
     const identityAuthor = enrichedBrief?.authorSchema?.name
       ? (factualGround?.authors || []).find(a => a.name === enrichedBrief.authorSchema.name) || null
       : (factualGround?.authors || [])[0] || null;
-    const identityNormalized = normalizeNarrativeIdentity(enrichedBrief?.narrativeIdentity || {}, { brandName, author: identityAuthor });
-    const identityBlock = narrativeIdentityPromptBlock(identityNormalized, { brandName, author: identityAuthor });
+    // A UI-supplied writingAs override takes priority over the enriched brief's own
+    // narrativeIdentity: 'company' forces third-person-plural institutional voice;
+    // an author id forces first-person-singular as that specific person.
+    let identityInput = enrichedBrief?.narrativeIdentity || {};
+    let identityOverrideAuthor = identityAuthor;
+    if (writingAsOverride === 'company') {
+      identityInput = { speakerType: 'company', grammaticalPerson: 'third_plural', speakerName: brandName || null };
+    } else if (writingAsOverride) {
+      const matchedAuthor = (factualGround?.authors || []).find(a => a?.id === writingAsOverride);
+      if (matchedAuthor) {
+        identityOverrideAuthor = matchedAuthor;
+        identityInput = {
+          speakerType: 'person',
+          grammaticalPerson: 'first_singular',
+          speakerName: matchedAuthor.name || null,
+          bylineAuthorId: matchedAuthor.id,
+          personalExperienceAllowed: true,
+        };
+      }
+    }
+    const identityNormalized = normalizeNarrativeIdentity(identityInput, { brandName, author: identityOverrideAuthor });
+    const identityBlock = narrativeIdentityPromptBlock(identityNormalized, { brandName, author: identityOverrideAuthor });
 
     const userPrompt = `${articleDirectiveBlock}${identityBlock}Generate a long-form article using the following Brand Intelligence context.
 ${topicPrompt ? `\nUSER TOPIC DIRECTION (write the article around this specific topic/angle — this overrides the enriched brief's default topic selection):\n"${topicPrompt}"\n` : ''}${(mandatories || constraints || audience || ctaTarget || desiredAction || wordCountTarget) ? `\nUSER MANDATORIES & CONSTRAINTS (the user-supplied non-negotiables for this article — every section must respect these. Treat as harder than brand patterns):\n${mandatories ? `- MANDATORIES (must include): ${mandatories}\n` : ''}${constraints ? `- CONSTRAINTS (must NOT do): ${constraints}\n` : ''}${audience ? `- TARGET AUDIENCE: ${audience}\n` : ''}${ctaTarget ? `- CTA TARGET URL/PATH: ${ctaTarget} — every CTA in the article should reference this destination.\n` : ''}${desiredAction ? `- DESIRED READER ACTION: ${desiredAction} — shape the article and conclusion to drive toward this specific next step.\n` : ''}${wordCountTarget ? `- TARGET LENGTH: approximately ${wordCountTarget} words. Do not pad — depth over filler.\n` : ''}` : ''}${selfAsCaseStudyBlock}${factualGroundBlock}${territoriesBlock}${cgMeasuredBlock}${cgCompetitorBlock}${cgMoatsBlock}
@@ -4351,8 +4396,8 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
 
     const tableName = await ensureGeneratedContentTable(brandProfileId);
     const contentInsert = await pool.query(
-      `INSERT INTO ${tableName} (brand_profile_id, enriched_brief_id, title, article_json, overall_confidence, brain_match_score, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'draft') RETURNING id`,
+      `INSERT INTO ${tableName} (brand_profile_id, enriched_brief_id, title, article_json, overall_confidence, brain_match_score, status, narrative_identity)
+       VALUES ($1, $2, $3, $4, $5, $6, 'draft', $7::jsonb) RETURNING id`,
       [brandProfileId, enrichedBriefId || loadedEnrichedBriefId || null, parsed.title, JSON.stringify(parsed),
        parsed.overallConfidence || null, parsed.brainMatchScore || (() => {
          // Fallback: Claude dropped the field — compute from section confidences
@@ -4360,7 +4405,7 @@ Return ONLY valid JSON matching the specified output format. No markdown, no cod
          if (!sections.length) return null;
          const avg = sections.reduce((a, s) => a + (s.confidence || 0), 0) / sections.length;
          return Math.round(avg);
-       })()]
+       })(), JSON.stringify(parsed.narrativeIdentity || identityNormalized || null)]
     );
     const contentId = contentInsert.rows[0]?.id;
 

@@ -130,6 +130,8 @@ function ContentGeneratorContent() {
   const [ctaTarget, setCtaTarget] = useState('');
   const [desiredAction, setDesiredAction] = useState('');
   const [wordCountTarget, setWordCountTarget] = useState('');
+  const [writingAs, setWritingAs] = useState(''); // '' = brief default, 'company', or an author id
+  const [availableAuthors, setAvailableAuthors] = useState<Array<{ id: string; name: string; title?: string }>>([]);
   const [ideaDrawerOpen, setIdeaDrawerOpen] = useState(false);
   const [ideas, setIdeas] = useState<{id:string;topic:string;note:string|null;status:string;created_at:string}[]>([]);
   const [newIdea, setNewIdea] = useState('');
@@ -183,6 +185,16 @@ function ContentGeneratorContent() {
           }
         }
       })
+      .catch(() => { /* non-fatal */ });
+  }, [selectedBrainId, authToken]);
+
+  // Load the brand's Factual Ground authors so "Writing as" can offer real people,
+  // not just the company default.
+  useEffect(() => {
+    if (!selectedBrainId || !authToken) { setAvailableAuthors([]); return; }
+    fetch(`/api/factual-ground/authors/${selectedBrainId}`, { headers: { 'Authorization': `Bearer ${authToken}` } })
+      .then(r => r.json())
+      .then(d => { if (d.success) setAvailableAuthors(d.authors || []); })
       .catch(() => { /* non-fatal */ });
   }, [selectedBrainId, authToken]);
 
@@ -305,6 +317,7 @@ function ContentGeneratorContent() {
       if (desiredAction.trim()) qs.set('desiredAction', desiredAction.trim());
       if (wordCountTarget.trim()) qs.set('wordCountTarget', wordCountTarget.trim());
     }
+    if (writingAs) qs.set('writingAs', writingAs);
     if (authToken) qs.set('token', authToken);
     const es = new EventSource(`/api/content-generator/generate?${qs.toString()}`);
     streamRef.current = es;
@@ -479,6 +492,24 @@ function ContentGeneratorContent() {
               </div>
             );
           })()}
+
+          {selectedBrainId && (
+            <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary, #1a1a1a)', whiteSpace: 'nowrap' }}>Writing as</label>
+              <select
+                value={writingAs}
+                onChange={e => setWritingAs(e.target.value)}
+                title="Who is speaking in this article: the company (third-person) or a named person (first-person). Leave on Brief default to let the enriched brief's own editorial contract decide."
+                style={{ padding: '6px 10px', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 6, fontFamily: 'inherit', fontSize: 13, background: 'var(--color-bg-card, #fff)' }}
+              >
+                <option value="">Brief default</option>
+                <option value="company">Company (third-person)</option>
+                {availableAuthors.map(a => (
+                  <option key={a.id} value={a.id}>{a.name}{a.title ? ` — ${a.title}` : ''} (first-person)</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="geo-input-bar">
           <div style={{ flex: 1 }}>

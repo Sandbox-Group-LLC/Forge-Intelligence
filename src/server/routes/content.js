@@ -372,14 +372,14 @@ Return ONLY valid JSON:
         editImpactScore: parsed.editImpactScore || null,
       };
       await pool.query(
-        `UPDATE ${tableName} SET article_json = $1, title = $2, updated_at = NOW() WHERE id = $3`,
-        [JSON.stringify(mergedJson), cleanedParsed.title || originalArticle.title, originalArticle.id]
+        `UPDATE ${tableName} SET article_json = $1, title = $2, narrative_identity = COALESCE($3::jsonb, narrative_identity), updated_at = NOW() WHERE id = $4`,
+        [JSON.stringify(mergedJson), cleanedParsed.title || originalArticle.title, cleanedParsed.narrativeIdentity ? JSON.stringify(cleanedParsed.narrativeIdentity) : null, originalArticle.id]
       );
       contentId = originalArticle.id;
     } else {
       const insertRes = await pool.query(
-        `INSERT INTO ${tableName} (brand_profile_id, title, article_json, overall_confidence, brain_match_score, status, review_mode, compliance_status)
-         VALUES ($1, $2, $3, $4, $5, 'staged', 'approve-to-ship', 'pending') RETURNING id`,
+        `INSERT INTO ${tableName} (brand_profile_id, title, article_json, overall_confidence, brain_match_score, status, review_mode, compliance_status, narrative_identity)
+         VALUES ($1, $2, $3, $4, $5, 'staged', 'approve-to-ship', 'pending', $6) RETURNING id`,
         [
           brandProfileId,
           cleanedParsed.title || sourceTitle || 'Imported Article',
@@ -389,7 +389,8 @@ Return ONLY valid JSON:
             importedAt: new Date().toISOString()
           }),
           parsed.overallConfidence || 50,
-          parsed.brainMatchScore || 50
+          parsed.brainMatchScore || 50,
+          JSON.stringify(cleanedParsed.narrativeIdentity || null)
         ]
       );
       contentId = insertRes.rows[0].id;
