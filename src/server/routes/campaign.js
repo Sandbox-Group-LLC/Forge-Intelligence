@@ -168,14 +168,17 @@ Return ONLY the JSON object.`;
 
   // Attach a safe narrativeIdentity fallback when the LLM didn't emit one.
   if (!parsed.narrativeIdentity) {
-    const assigned = parsed.authorSchema && parsed.authorSchema.name ? parsed.authorSchema : null;
+    const fgAuthor = factualGround?.authors?.length ? factualGround.authors[0] : null;
+    const assigned = parsed.authorSchema?.name
+      ? { name: parsed.authorSchema.name, id: fgAuthor?.id || null }
+      : (fgAuthor?.name ? { name: fgAuthor.name, id: fgAuthor.id || null } : null);
     if (assigned) {
       parsed.narrativeIdentity = {
         subjectType: 'company',
         speakerType: 'person',
         grammaticalPerson: 'first_singular',
-        speakerName: parsed.authorSchema.name || null,
-        bylineAuthorId: factualGround?.authors?.length ? (factualGround.authors[0].id || null) : null,
+        speakerName: assigned.name || null,
+        bylineAuthorId: assigned.id,
         allowedSelfReferences: ['I', 'my', 'me'],
         personalExperienceAllowed: true,
         notes: 'Author-attributed piece: prefer first-person for personal experience; company-level claims use we/our.'
