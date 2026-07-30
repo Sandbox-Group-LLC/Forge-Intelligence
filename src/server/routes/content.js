@@ -372,8 +372,8 @@ Return ONLY valid JSON:
         editImpactScore: parsed.editImpactScore || null,
       };
       await pool.query(
-        `UPDATE ${tableName} SET article_json = $1, title = $2, narrative_identity = COALESCE($3, narrative_identity), updated_at = NOW() WHERE id = $4`,
-        [JSON.stringify(mergedJson), cleanedParsed.title || originalArticle.title, JSON.stringify(cleanedParsed.narrativeIdentity || null), originalArticle.id]
+        `UPDATE ${tableName} SET article_json = $1, title = $2, narrative_identity = COALESCE($3::jsonb, narrative_identity), updated_at = NOW() WHERE id = $4`,
+        [JSON.stringify(mergedJson), cleanedParsed.title || originalArticle.title, cleanedParsed.narrativeIdentity ? JSON.stringify(cleanedParsed.narrativeIdentity) : null, originalArticle.id]
       );
       contentId = originalArticle.id;
     } else {
