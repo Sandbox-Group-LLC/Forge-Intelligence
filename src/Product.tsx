@@ -74,6 +74,23 @@ const gaps = [
   },
 ];
 
+const intelDimensions = [
+  { name: 'Gap Map', desc: 'Topical territory competitors own and you don\'t, ranked by how winnable it is.' },
+  { name: 'Positioning Vulnerabilities', desc: 'Where your current positioning is exposed, and which competitor is positioned to exploit it.' },
+  { name: 'Fault Lines', desc: 'The structural cracks in each competitor\'s story you can pry open.' },
+  { name: 'Blind Spots', desc: 'What the whole category has stopped questioning, and you can.' },
+  { name: 'Whitespace', desc: 'Demand nobody is serving yet, measured against live competitor coverage.' },
+  { name: 'Pivot Scenarios', desc: 'Adjacent positions you could credibly take, pressure-tested before you commit.' },
+];
+
+const formats = [
+  { tag: 'Stage 4.5', name: 'Campaign Generator', desc: 'An 8-article campaign, two a week for four weeks, built from one brain.' },
+  { tag: 'Stage 4.6', name: 'Email Sequences', desc: 'Brief-driven, voice-matched email sequences. Copy each one out HubSpot-ready.' },
+  { tag: 'Stage 4.7', name: 'Google Ads Packs', desc: '15 headlines, 4 descriptions, sitelinks, callouts, and match-typed keywords. Paste into Google Ads or export CSV.' },
+  { tag: 'Short-form', name: 'Social Generator', desc: 'Four posts at four angles for X and Instagram, each with a social-tuned image.' },
+  { tag: 'Video', name: 'Video Reels', desc: 'A brief becomes a branded product reel: storyboard, voiceover, and render, all automatic.' },
+];
+
 const timeline = [
   { time: 'Day 1', state: 'Brain empty. Agents start from brand context only.' },
   { time: 'Week 4', state: '10-15 patterns. Agents prefer proven structures.' },
@@ -149,12 +166,29 @@ export default function Product() {
           </div>
         </section>
 
+        {/* Brand Intelligence */}
+        <section style={styles.section}>
+          <h2 style={styles.sectionTitle}>Brand Intelligence</h2>
+          <p style={styles.sectionSub}>Board-ready competitive intelligence across six dimensions, read from your competitors' live sites, not a survey.</p>
+          <div style={styles.gapsGrid}>
+            {intelDimensions.map((d) => (
+              <div key={d.name} style={styles.gapCard}>
+                <div style={styles.gapTitle}>{d.name}</div>
+                <p style={styles.gapOurs}>{d.desc}</p>
+              </div>
+            ))}
+          </div>
+          <p style={{ ...styles.sectionSub, marginTop: '24px', marginBottom: 0 }}>
+            Every read exports as a token-gated brief you can hand to your board, and runs through the same compliance gate as everything else Forge ships.
+          </p>
+        </section>
+
         {/* Product Shot: GEO Opportunity Scores */}
         <div style={styles.screenshotSection}>
           <div style={styles.screenshot}>
             <img src="/2.png" alt="Publishing Queue content preview with hero image and multi-channel distribution" style={styles.screenshotImg} />
           </div>
-          <p style={styles.screenshotCaption}>Preview, edit post copy, and publish to LinkedIn, X, Webflow, Ghost, or HubSpot, with UTM intelligence built in.</p>
+          <p style={styles.screenshotCaption}>Preview, edit post copy, and publish to LinkedIn, X, Facebook, WordPress, Webflow, or Ghost, with UTM intelligence built in.</p>
         </div>
 
         {/* Who This Is For */}
@@ -186,6 +220,23 @@ export default function Product() {
                 <div>
                   <div style={styles.stageName}>{s.name}</div>
                   <div style={styles.stageDesc}>{s.desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* One Brain, Every Format */}
+        <section style={styles.section}>
+          <h2 style={styles.sectionTitle}>One Brain, Every Format</h2>
+          <p style={styles.sectionSub}>The same intelligence layer that writes articles also builds campaigns, emails, ads, social, and video.</p>
+          <div style={styles.stagesGrid}>
+            {formats.map((f) => (
+              <div key={f.name} style={styles.stageCard}>
+                <div style={styles.formatTag}>{f.tag}</div>
+                <div>
+                  <div style={styles.stageName}>{f.name}</div>
+                  <div style={styles.stageDesc}>{f.desc}</div>
                 </div>
               </div>
             ))}
@@ -245,9 +296,15 @@ export default function Product() {
               'Competitor Site Crawl',
               'Live AI Citation Probe (4 engines)',
               'Competitive Gap Analysis',
+              'Brand Intelligence (6 dimensions)',
               'GEO Strategy Brief',
               'E-E-A-T Enrichment',
               'AI Content Generation',
+              'Campaign Generator',
+              'Email Sequences',
+              'Google Ads Packs',
+              'Social Post Generator',
+              'Video Reels',
               'Confidence Scoring',
               'Compliance Gate',
               'Multi-Channel Publishing',
@@ -275,17 +332,11 @@ export default function Product() {
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>Pricing</h2>
           <div style={styles.pricingGrid}>
-            <div style={styles.pricingCard}>
+            <div style={{ ...styles.pricingCard, borderColor: '#3563FF' }}>
               <div style={styles.pricingLabel}>SMB</div>
               <div style={styles.pricingPrice}>$99</div>
-              <div style={styles.pricingTerm}>one-time</div>
-              <p style={styles.pricingDesc}>Full 8-stage pipeline. One brand. Forever.</p>
-            </div>
-            <div style={{ ...styles.pricingCard, borderColor: '#3563FF' }}>
-              <div style={styles.pricingLabel}>Agency</div>
-              <div style={styles.pricingPrice}>$499</div>
-              <div style={styles.pricingTerm}>/month</div>
-              <p style={styles.pricingDesc}>Multi-brand. Each brain learns independently.</p>
+              <div style={styles.pricingTerm}>one-time · lifetime access</div>
+              <p style={styles.pricingDesc}>Full 8-stage pipeline plus every generator. One brand, forever.</p>
             </div>
           </div>
         </section>
@@ -536,6 +587,17 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 600,
     color: '#F8FAFC',
     marginBottom: '4px',
+  },
+  formatTag: {
+    padding: '4px 8px',
+    borderRadius: 'var(--radius-sm)',
+    backgroundColor: 'rgba(53,99,255,0.15)',
+    color: '#3563FF',
+    fontSize: '11px',
+    fontWeight: 600,
+    whiteSpace: 'nowrap',
+    height: 'fit-content',
+    flexShrink: 0,
   },
   stageDesc: {
     fontSize: '13px',
