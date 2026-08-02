@@ -10,6 +10,12 @@
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: var(--space-3) var(--space-5);
 }
+/* Section headers: drop the kicker/eyebrow above each headline and add
+   breathing room below the headline before the section content. Scoped to
+   .fi-sectionhead so the hero and CTA-band eyebrows are untouched. */
+[data-forge-ds] .fi-sectionhead .fi-eyebrow { display: none; }
+[data-forge-ds] .fi-sectionhead { margin-bottom: var(--space-12); }
+
 /* Hero accent phrase — blue→teal gradient text on the <em> inside a title. */
 [data-forge-ds] .fi-hero__title em {
   font-style: normal;
