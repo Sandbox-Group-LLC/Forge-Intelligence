@@ -265,7 +265,17 @@ export default function Product() {
           title="Brand Intelligence"
           description="Board-ready competitive intelligence across six dimensions, read from your competitors' live sites, not a survey."
         />
-        <div className="fi-grid-cards">
+        <Reveal>
+          <ScreenFrame url="forgeintelligence.ai/app/strategy-intel" label="Positioning Pivot">
+            <img
+              src="/brand-intelligence.png"
+              alt="Brand Intelligence Positioning Pivot: the from/to positioning move synthesized across six dimensions"
+              style={{ width: '100%', display: 'block' }}
+            />
+          </ScreenFrame>
+          <Caption>The Positioning Pivot: all six dimensions synthesized into one board-ready move, with the FROM/TO shift spelled out.</Caption>
+        </Reveal>
+        <div className="fi-grid-cards" style={{ marginTop: 'var(--space-10)' }}>
           {intelDimensions.map((d, i) => (
             <Reveal key={d.name} delay={i * 60}>
               <FeatureCard icon={d.icon} title={d.name}>
