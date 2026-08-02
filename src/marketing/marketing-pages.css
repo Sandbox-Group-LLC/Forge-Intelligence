@@ -16,6 +16,10 @@
 [data-forge-ds] .fi-sectionhead .fi-eyebrow { display: none; }
 [data-forge-ds] .fi-sectionhead { margin-bottom: var(--space-12); }
 
+/* Pipeline: center the number + label under each rail dot (the dot is
+   centered on the rail; the labels default to left-aligned). */
+[data-forge-ds] .fi-pipe__stage { align-items: center; text-align: center; }
+
 /* Hero accent phrase — blue→teal gradient text on the <em> inside a title. */
 [data-forge-ds] .fi-hero__title em {
   font-style: normal;
