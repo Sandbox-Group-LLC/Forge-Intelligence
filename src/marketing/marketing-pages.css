@@ -1,0 +1,30 @@
+/* Page-level grid helpers for the marketing surface. Scoped under
+   [data-forge-ds] so nothing reaches the light in-app UI. */
+[data-forge-ds] .fi-grid-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-5);
+}
+[data-forge-ds] .fi-grid-checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-3) var(--space-5);
+}
+/* Section headers: drop the kicker/eyebrow above each headline and add
+   breathing room below the headline before the section content. Scoped to
+   .fi-sectionhead so the hero and CTA-band eyebrows are untouched. */
+[data-forge-ds] .fi-sectionhead .fi-eyebrow { display: none; }
+[data-forge-ds] .fi-sectionhead { margin-bottom: var(--space-12); }
+
+/* Pipeline: center the number + label under each rail dot (the dot is
+   centered on the rail; the labels default to left-aligned). */
+[data-forge-ds] .fi-pipe__stage { align-items: center; text-align: center; }
+
+/* Hero accent phrase — blue→teal gradient text on the <em> inside a title. */
+[data-forge-ds] .fi-hero__title em {
+  font-style: normal;
+  background: linear-gradient(120deg, var(--fi-blue-400), var(--fi-teal-400, #2DD4BF));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}

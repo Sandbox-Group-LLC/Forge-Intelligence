@@ -905,16 +905,19 @@ export default function StrategyIntelPage() {
         {/* ═══ POSITIONING PIVOT TAB ═══ */}
         {activeTab === 'pivot' && !isRunning && pivot && (
           <div className="si-pivot">
-            <div className="si-pivot-statement">{pivot.pivotStatement}</div>
+            <div className="si-pivot-statement">
+              <div className="si-pivot-statement-eyebrow">The Positioning Pivot</div>
+              <div className="si-pivot-statement-text">{pivot.pivotStatement}</div>
+            </div>
 
             <div className="si-pivot-fromto">
               <div className="si-pivot-from">
-                <div className="si-pivot-fromto-label">FROM</div>
+                <div className="si-pivot-fromto-label">FROM · Today</div>
                 <div className="si-pivot-fromto-text">{pivot.fromTo?.from}</div>
               </div>
-              <div className="si-pivot-arrow">→</div>
+              <div className="si-pivot-arrow" aria-hidden="true">→</div>
               <div className="si-pivot-to">
-                <div className="si-pivot-fromto-label">TO</div>
+                <div className="si-pivot-fromto-label">TO · The move</div>
                 <div className="si-pivot-fromto-text">{pivot.fromTo?.to}</div>
               </div>
             </div>

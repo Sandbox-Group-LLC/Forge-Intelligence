@@ -44,6 +44,8 @@ import EmailCampaignPage from './pages/EmailCampaignPage';
 import QuickStartPage from './pages/QuickStartPage';
 import AiVisibilityScanPage from './pages/AiVisibilityScanPage';
 import './index.css';
+import './ds/styles.css';
+import './marketing/marketing-pages.css';
 
 
 

@@ -1,33 +1,32 @@
-import { Link } from 'react-router-dom';
+import { useState } from 'react';
+import type { ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { MarketingShell, Section } from './marketing/MarketingShell';
+import { Hero } from './ds/components/marketing/Hero';
+import { SectionHeader } from './ds/components/marketing/SectionHeader';
+import { Pipeline } from './ds/components/marketing/Pipeline';
+import { BrainTimeline } from './ds/components/marketing/BrainTimeline';
+import { CTABand } from './ds/components/marketing/CTABand';
+import { ScreenFrame } from './ds/components/marketing/ScreenFrame';
+import { Reveal } from './ds/components/marketing/Reveal';
+import { Card } from './ds/components/cards/Card';
+import { FeatureCard } from './ds/components/cards/FeatureCard';
+import { PricingCard } from './ds/components/cards/PricingCard';
+import { Button } from './ds/components/core/Button';
+import { Badge } from './ds/components/core/Badge';
+import { Icon } from './ds/components/brand/Icon';
 
-const DiamondIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <polygon points="12 2 22 12 12 22 2 12" />
-  </svg>
-);
-
-const ArrowRightIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M5 12h14" />
-    <path d="m12 5 7 7-7 7" />
-  </svg>
-);
-
-const CheckIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="20 6 9 17 4 12" />
-  </svg>
-);
+// ── Content (copy is unchanged from the shipped page) ────────────────────────
 
 const stages = [
-  { num: 1, name: 'Context Hub', desc: 'Brand voice, personas, competitive gaps, extracted from your site and your competitors\' sites in minutes, not months' },
-  { num: 2, name: 'GEO Strategy', desc: 'Citation gaps measured live against ChatGPT, Perplexity, Gemini, and Google AI Overviews: who AI cites today, and where you\'re invisible' },
-  { num: 3, name: 'Authenticity', desc: 'E-E-A-T signals, SME hooks, first-person experience injection' },
-  { num: 4, name: 'Generation', desc: 'Brain-informed content with confidence scoring per section' },
-  { num: 5, name: 'Compliance', desc: 'Human gate with auto-learning from every edit' },
-  { num: 6, name: 'Publishing', desc: 'Multi-channel distribution with UTM intelligence' },
-  { num: 7, name: 'Performance', desc: 'Analytics sync, decay monitoring, citation tracking' },
-  { num: 8, name: 'Feedback Loop', desc: 'Patterns extracted, mistakes crystallized, brain compounds' },
+  { num: 1, name: 'Context Hub', icon: 'radar', desc: 'Brand voice, personas, competitive gaps, extracted from your site and your competitors\' sites in minutes, not months' },
+  { num: 2, name: 'GEO Strategy', icon: 'crosshair', desc: 'Citation gaps measured live against ChatGPT, Perplexity, Gemini, and Google AI Overviews: who AI cites today, and where you\'re invisible' },
+  { num: 3, name: 'Authenticity', icon: 'shield', desc: 'E-E-A-T signals, SME hooks, first-person experience injection' },
+  { num: 4, name: 'Generation', icon: 'pen-tool', desc: 'Brain-informed content with confidence scoring per section' },
+  { num: 5, name: 'Compliance', icon: 'circle-check', desc: 'Human gate with auto-learning from every edit' },
+  { num: 6, name: 'Publishing', icon: 'globe', desc: 'Multi-channel distribution with UTM intelligence' },
+  { num: 7, name: 'Performance', icon: 'gauge', desc: 'Analytics sync, decay monitoring, citation tracking' },
+  { num: 8, name: 'Feedback Loop', icon: 'repeat', desc: 'Patterns extracted, mistakes crystallized, brain compounds' },
 ];
 
 const personas = [
@@ -53,21 +52,25 @@ const personas = [
 
 const gaps = [
   {
+    icon: 'layers',
     title: 'Pipeline Transparency',
     claim: 'Most AI content tools are black boxes.',
     ours: 'Forge\'s explicit 8-stage pipeline creates transparent, auditable intelligence generation that enterprises can trust.',
   },
   {
+    icon: 'brain',
     title: 'Brand Context That Compounds',
     claim: 'Competitors require repeated context input or shallow brand profiles.',
     ours: 'Deep contextual memory that compounds over time, largely unclaimed territory in the market.',
   },
   {
+    icon: 'network',
     title: 'Competitive Intelligence Integration',
     claim: 'CI tools and content tools exist separately.',
     ours: 'Competitor sites crawled, AI engines probed live. Measured signals feed topic discovery and content generation directly. A significant white space.',
   },
   {
+    icon: 'gauge',
     title: 'Measured, Not Modeled',
     claim: 'Most GEO tools estimate your AI visibility from proxies.',
     ours: 'Forge asks the actual engines. Real buyer questions, probed against ChatGPT, Perplexity, Gemini, and AI Overviews. Your whitespace is observed, not imagined.',
@@ -75,711 +78,320 @@ const gaps = [
 ];
 
 const intelDimensions = [
-  { name: 'Gap Map', desc: 'Topical territory competitors own and you don\'t, ranked by how winnable it is.' },
-  { name: 'Positioning Vulnerabilities', desc: 'Where your current positioning is exposed, and which competitor is positioned to exploit it.' },
-  { name: 'Fault Lines', desc: 'The structural cracks in each competitor\'s story you can pry open.' },
-  { name: 'Blind Spots', desc: 'What the whole category has stopped questioning, and you can.' },
-  { name: 'Whitespace', desc: 'Demand nobody is serving yet, measured against live competitor coverage.' },
-  { name: 'Pivot Scenarios', desc: 'Adjacent positions you could credibly take, pressure-tested before you commit.' },
+  { icon: 'crosshair', name: 'Gap Map', desc: 'Topical territory competitors own and you don\'t, ranked by how winnable it is.' },
+  { icon: 'shield', name: 'Positioning Vulnerabilities', desc: 'Where your current positioning is exposed, and which competitor is positioned to exploit it.' },
+  { icon: 'git-branch', name: 'Fault Lines', desc: 'The structural cracks in each competitor\'s story you can pry open.' },
+  { icon: 'scan-line', name: 'Blind Spots', desc: 'What the whole category has stopped questioning, and you can.' },
+  { icon: 'target', name: 'Whitespace', desc: 'Demand nobody is serving yet, measured against live competitor coverage.' },
+  { icon: 'repeat', name: 'Pivot Scenarios', desc: 'Adjacent positions you could credibly take, pressure-tested before you commit.' },
 ];
 
 const formats = [
-  { tag: 'Stage 4.5', name: 'Campaign Generator', desc: 'An 8-article campaign, two a week for four weeks, built from one brain.' },
-  { tag: 'Stage 4.6', name: 'Email Sequences', desc: 'Brief-driven, voice-matched email sequences. Copy each one out HubSpot-ready.' },
-  { tag: 'Stage 4.7', name: 'Google Ads Packs', desc: '15 headlines, 4 descriptions, sitelinks, callouts, and match-typed keywords. Paste into Google Ads or export CSV.' },
-  { tag: 'Short-form', name: 'Social Generator', desc: 'Four posts at four angles for X and Instagram, each with a social-tuned image.' },
-  { tag: 'Video', name: 'Video Reels', desc: 'A brief becomes a branded product reel: storyboard, voiceover, and render, all automatic.' },
+  { icon: 'layers', tag: 'Stage 4.5', name: 'Campaign Generator', desc: 'An 8-article campaign, two a week for four weeks, built from one brain.' },
+  { icon: 'message-square', tag: 'Stage 4.6', name: 'Email Sequences', desc: 'Brief-driven, voice-matched email sequences. Copy each one out HubSpot-ready.' },
+  { icon: 'chart-column', tag: 'Stage 4.7', name: 'Google Ads Packs', desc: '15 headlines, 4 descriptions, sitelinks, callouts, and match-typed keywords. Paste into Google Ads or export CSV.' },
+  { icon: 'sparkles', tag: 'Short-form', name: 'Social Generator', desc: 'Four posts at four angles for X and Instagram, each with a social-tuned image.' },
+  { icon: 'pen-tool', tag: 'Video', name: 'Video Reels', desc: 'A brief becomes a branded product reel: storyboard, voiceover, and render, all automatic.' },
 ];
 
 const timeline = [
-  { time: 'Day 1', state: 'Brain empty. Agents start from brand context only.' },
-  { time: 'Week 4', state: '10-15 patterns. Agents prefer proven structures.' },
-  { time: 'Month 3', state: '50+ patterns. Human edit rate drops 30%.' },
-  { time: 'Month 6', state: 'Agents self-correct before human review.' },
-  { time: 'Month 12', state: 'Brain is a proprietary asset. Switching means starting over.' },
+  { when: 'Day 1', state: 'Brain empty. Agents start from brand context only.', depth: 8 },
+  { when: 'Week 4', state: '10-15 patterns. Agents prefer proven structures.', depth: 28 },
+  { when: 'Month 3', state: '50+ patterns. Human edit rate drops 30%.', depth: 55 },
+  { when: 'Month 6', state: 'Agents self-correct before human review.', depth: 78 },
+  { when: 'Month 12', state: 'Brain is a proprietary asset. Switching means starting over.', depth: 96 },
 ];
 
-export default function Product() {
+const included = [
+  'Brand Intelligence Profile',
+  'Persona Pain Point Mapping',
+  'Competitor Site Crawl',
+  'Live AI Citation Probe (4 engines)',
+  'Competitive Gap Analysis',
+  'Brand Intelligence (6 dimensions)',
+  'GEO Strategy Brief',
+  'E-E-A-T Enrichment',
+  'AI Content Generation',
+  'Campaign Generator',
+  'Email Sequences',
+  'Google Ads Packs',
+  'Social Post Generator',
+  'Video Reels',
+  'Confidence Scoring',
+  'Compliance Gate',
+  'Multi-Channel Publishing',
+  'Performance Dashboard',
+  'Pattern Learning',
+  'Decay Monitoring',
+];
+
+function Caption({ children }: { children: ReactNode }) {
   return (
-    <div style={styles.root}>
-      <div style={styles.gridOverlay} aria-hidden="true" />
-      
-      {/* Nav */}
-      <nav style={styles.nav}>
-        <Link to="/" style={styles.wordmark}>
-          <span style={styles.diamondWrap}><DiamondIcon /></span>
-          <span style={styles.wordmarkText}>Forge Intelligence</span>
-        </Link>
-        <Link to="/" style={styles.navCta}>
-          Try It Free <ArrowRightIcon />
-        </Link>
-      </nav>
-
-      <div style={styles.container}>
-        
-        {/* Hero */}
-        <section style={styles.hero}>
-          <p style={styles.eyebrow}>Brand Intelligence Infrastructure</p>
-          <h1 style={styles.headline}>
-            The only member of your content team who will tell you when the strategy is wrong.
-          </h1>
-          <p style={styles.subline}>
-            Not opinion. Pattern recognition from your own data. No feelings, no politics, no 47-slide deck to justify it.
-          </p>
-        </section>
-
-        {/* Product Shot: Brand Profile */}
-        <div style={styles.screenshotSection}>
-          <div style={styles.screenshot}>
-            <img src="/1.png" alt="Forge Intelligence Brand Profile with voice analysis and tone attributes" style={styles.screenshotImg} />
-          </div>
-          <p style={styles.screenshotCaption}>Your brand's voice, personas, and competitive position, extracted from your actual website in minutes.</p>
-        </div>
-
-        {/* The Problem */}
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>The Gap Nobody's Filling</h2>
-          <div style={styles.problemCard}>
-            <p style={styles.problemText}>
-              Every AI content tool today solves for <strong>production volume</strong>.
-            </p>
-            <p style={styles.problemText}>
-              None solve for <strong style={{ color: '#3563FF' }}>compounding content intelligence</strong>,
-              where the system gets measurably smarter and more commercially effective with every publish cycle.
-            </p>
-            <p style={styles.problemPunch}>That's the gap. That's the product.</p>
-          </div>
-        </section>
-
-        {/* Competitive Whitespace */}
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>What We Own</h2>
-          <p style={styles.sectionSub}>Territory that's ours, not another "AI writing tool."</p>
-          <div style={styles.gapsGrid}>
-            {gaps.map((g) => (
-              <div key={g.title} style={styles.gapCard}>
-                <div style={styles.gapTitle}>{g.title}</div>
-                <p style={styles.gapClaim}>{g.claim}</p>
-                <p style={styles.gapOurs}>{g.ours}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Brand Intelligence */}
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>Brand Intelligence</h2>
-          <p style={styles.sectionSub}>Board-ready competitive intelligence across six dimensions, read from your competitors' live sites, not a survey.</p>
-          <div style={styles.gapsGrid}>
-            {intelDimensions.map((d) => (
-              <div key={d.name} style={styles.gapCard}>
-                <div style={styles.gapTitle}>{d.name}</div>
-                <p style={styles.gapOurs}>{d.desc}</p>
-              </div>
-            ))}
-          </div>
-          <p style={{ ...styles.sectionSub, marginTop: '24px', marginBottom: 0 }}>
-            Every read exports as a token-gated brief you can hand to your board, and runs through the same compliance gate as everything else Forge ships.
-          </p>
-        </section>
-
-        {/* Product Shot: GEO Opportunity Scores */}
-        <div style={styles.screenshotSection}>
-          <div style={styles.screenshot}>
-            <img src="/2.png" alt="Publishing Queue content preview with hero image and multi-channel distribution" style={styles.screenshotImg} />
-          </div>
-          <p style={styles.screenshotCaption}>Preview, edit post copy, and publish to LinkedIn, X, Facebook, WordPress, Webflow, or Ghost, with UTM intelligence built in.</p>
-        </div>
-
-        {/* Who This Is For */}
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>Built For Skeptics</h2>
-          <p style={styles.sectionSub}>We know what you're thinking. We thought it too.</p>
-          <div style={styles.personaGrid}>
-            {personas.map((p) => (
-              <div key={p.name} style={styles.personaCard}>
-                <div style={styles.personaHeader}>
-                  <div style={styles.personaName}>{p.name}</div>
-                  <div style={styles.personaRole}>{p.role}</div>
-                </div>
-                <p style={styles.personaPain}>"{p.pain}"</p>
-                <p style={styles.personaOutcome}>{p.outcome}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* 8-Stage Pipeline */}
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>The 8-Stage Pipeline</h2>
-          <p style={styles.sectionSub}>From URL to revenue attribution in one connected system.</p>
-          <div style={styles.stagesGrid}>
-            {stages.map((s) => (
-              <div key={s.num} style={styles.stageCard}>
-                <div style={styles.stageNum}>{s.num}</div>
-                <div>
-                  <div style={styles.stageName}>{s.name}</div>
-                  <div style={styles.stageDesc}>{s.desc}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* One Brain, Every Format */}
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>One Brain, Every Format</h2>
-          <p style={styles.sectionSub}>The same intelligence layer that writes articles also builds campaigns, emails, ads, social, and video.</p>
-          <div style={styles.stagesGrid}>
-            {formats.map((f) => (
-              <div key={f.name} style={styles.stageCard}>
-                <div style={styles.formatTag}>{f.tag}</div>
-                <div>
-                  <div style={styles.stageName}>{f.name}</div>
-                  <div style={styles.stageDesc}>{f.desc}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Product Shot: Content Generator — DEFERRED, image not yet uploaded.
-            Uncomment when public/4.png exists. */}
-        {/* <div style={styles.screenshotSection}>
-          <div style={styles.screenshot}>
-            <img src="/4.png" alt="Content Generator: brain-aware topic alignment check before generation" style={styles.screenshotImg} />
-          </div>
-          <p style={styles.screenshotCaption}>Citation probability scored across ChatGPT, Perplexity, AI Overviews, and Gemini, for every topic in your authority map.</p>
-        </div> */}
-
-        {/* The Brain */}
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>The Brain: Your Unfair Advantage</h2>
-          <p style={styles.sectionSub}>
-            Every publish teaches the system. Every edit sharpens the guardrails. Every pattern compounds.
-          </p>
-          <div style={styles.timelineWrap}>
-            {timeline.map((t, i) => (
-              <div key={t.time} style={styles.timelineItem}>
-                <div style={styles.timelineDot} />
-                {i < timeline.length - 1 && <div style={styles.timelineLine} />}
-                <div style={styles.timelineContent}>
-                  <div style={styles.timelineTime}>{t.time}</div>
-                  <div style={styles.timelineState}>{t.state}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div style={styles.moatCard}>
-            <p style={styles.moatText}>
-              "After 90 days, your Client Brain is your biggest unfair advantage."
-            </p>
-          </div>
-        </section>
-
-        {/* Product Shot: Entity & Schema Map — DEFERRED, image not yet uploaded.
-            Uncomment when public/5.png exists. */}
-        {/* <div style={styles.screenshotSection}>
-          <div style={styles.screenshot}>
-            <img src="/5.png" alt="Entity and Schema Map: competitor cited, you are not" style={styles.screenshotImg} />
-          </div>
-          <p style={styles.screenshotCaption}>Competitors cited. You're not. The Entity Map shows exactly where to inject structured data so AI systems find you.</p>
-        </div> */}
-
-        {/* What's Included */}
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>What You Get</h2>
-          <div style={styles.featuresGrid}>
-            {[
-              'Brand Intelligence Profile',
-              'Persona Pain Point Mapping',
-              'Competitor Site Crawl',
-              'Live AI Citation Probe (4 engines)',
-              'Competitive Gap Analysis',
-              'Brand Intelligence (6 dimensions)',
-              'GEO Strategy Brief',
-              'E-E-A-T Enrichment',
-              'AI Content Generation',
-              'Campaign Generator',
-              'Email Sequences',
-              'Google Ads Packs',
-              'Social Post Generator',
-              'Video Reels',
-              'Confidence Scoring',
-              'Compliance Gate',
-              'Multi-Channel Publishing',
-              'Performance Dashboard',
-              'Pattern Learning',
-              'Decay Monitoring',
-            ].map((f) => (
-              <div key={f} style={styles.featureItem}>
-                <span style={styles.checkIcon}><CheckIcon /></span>
-                {f}
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Product Shot: Publishing Queue */}
-        <div style={styles.screenshotSection}>
-          <div style={styles.screenshot}>
-            <img src="/3.png" alt="GEO Opportunity Scores: ChatGPT, Perplexity, AI Overviews, Gemini citation probability" style={styles.screenshotImg} />
-          </div>
-          <p style={styles.screenshotCaption}>The Brain checks topic alignment before you spend a single token. 89% match, and it knows what mistakes to avoid.</p>
-        </div>
-
-        {/* Pricing */}
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>Pricing</h2>
-          <div style={styles.pricingGrid}>
-            <div style={{ ...styles.pricingCard, borderColor: '#3563FF' }}>
-              <div style={styles.pricingLabel}>SMB</div>
-              <div style={styles.pricingPrice}>$99</div>
-              <div style={styles.pricingTerm}>one-time · lifetime access</div>
-              <p style={styles.pricingDesc}>Full 8-stage pipeline plus every generator. One brand, forever.</p>
-            </div>
-          </div>
-        </section>
-
-        {/* Product Shot: Mission Control — DEFERRED, image not yet uploaded.
-            Uncomment when public/6.png exists. */}
-        {/* <div style={styles.screenshotSection}>
-          <div style={styles.screenshot}>
-            <img src="/6.png" alt="Performance Dashboard: analytics, content decay, citation tracking" style={styles.screenshotImg} />
-          </div>
-          <p style={styles.screenshotCaption}>Real-time analytics across every channel. Content decay detection, citation tracking, and campaign attribution, all in one view.</p>
-        </div> */}
-
-        {/* CTA */}
-        <section style={styles.ctaSection}>
-          <h2 style={styles.ctaHeadline}>See your brand understood in 7 minutes.</h2>
-          <p style={styles.ctaSub}>No account needed. Free analysis. Then decide.</p>
-          <Link to="/" style={styles.ctaButton}>
-            <span style={styles.buttonInner}>
-              Analyze My Brand Free <ArrowRightIcon />
-            </span>
-          </Link>
-        </section>
-
-        {/* Footer */}
-        <footer style={styles.footer}>
-          <span>© 2026 Forge Intelligence LLC</span>
-          <span style={styles.footerDivider}>·</span>
-          <a href="mailto:hello@forgeintelligence.ai" style={styles.footerLink}>hello@forgeintelligence.ai</a>
-        </footer>
-      </div>
-    </div>
+    <p
+      style={{
+        fontSize: 'var(--text-xs)',
+        color: 'var(--text-caption)',
+        textAlign: 'center',
+        fontStyle: 'italic',
+        marginTop: 'var(--space-3)',
+      }}
+    >
+      {children}
+    </p>
   );
 }
 
-const styles: Record<string, React.CSSProperties> = {
-  root: {
-    minHeight: '100vh',
-    backgroundColor: '#0B0F1A',
-    backgroundImage: 'radial-gradient(circle at top left, rgba(53,99,255,0.15), transparent 55%), radial-gradient(circle at bottom right, rgba(20,184,166,0.08), transparent 55%)',
-    color: '#F8FAFC',
-    fontFamily: "Inter, 'Geist', system-ui, -apple-system, sans-serif",
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  gridOverlay: {
-    position: 'fixed',
-    inset: 0,
-    backgroundImage: 'linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)',
-    backgroundSize: '48px 48px',
-    pointerEvents: 'none',
-    zIndex: 0,
-  },
-  nav: {
-    position: 'sticky',
-    top: 0,
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '16px 24px',
-    backgroundColor: 'rgba(11,15,26,0.85)',
-    backdropFilter: 'blur(12px)',
-    borderBottom: '1px solid rgba(255,255,255,0.05)',
-    zIndex: 100,
-  },
-  wordmark: { display: 'flex', alignItems: 'center', gap: '10px', color: '#F8FAFC', textDecoration: 'none' },
-  diamondWrap: { display: 'flex', alignItems: 'center', color: '#3563FF' },
-  wordmarkText: { fontSize: '18px', fontWeight: 600, letterSpacing: '-0.01em' },
-  navCta: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    padding: '8px 16px',
-    backgroundColor: '#3563FF',
-    borderRadius: 'var(--radius-sm)',
-    color: '#fff',
-    fontSize: '13px',
-    fontWeight: 500,
-    textDecoration: 'none',
-  },
-  container: {
-    position: 'relative',
-    zIndex: 1,
-    maxWidth: '900px',
-    margin: '0 auto',
-    padding: '64px 24px',
-  },
-  hero: {
-    textAlign: 'center',
-    marginBottom: '80px',
-  },
-  eyebrow: {
-    fontSize: '11px',
-    fontWeight: 500,
-    letterSpacing: '0.1em',
-    textTransform: 'uppercase',
-    color: '#3563FF',
-    marginBottom: '16px',
-  },
-  headline: {
-    fontSize: 'clamp(28px, 5vw, 44px)',
-    fontWeight: 600,
-    lineHeight: 1.2,
-    letterSpacing: '-0.025em',
-    color: '#F8FAFC',
-    margin: '0 0 20px 0',
-    maxWidth: '800px',
-    marginLeft: 'auto',
-    marginRight: 'auto',
-  },
-  subline: {
-    fontSize: '17px',
-    lineHeight: 1.7,
-    color: '#94A3B8',
-    maxWidth: '600px',
-    margin: '0 auto',
-  },
-  section: {
-    marginBottom: '80px',
-  },
-  sectionTitle: {
-    fontSize: '24px',
-    fontWeight: 600,
-    color: '#F8FAFC',
-    marginBottom: '12px',
-    textAlign: 'center',
-  },
-  sectionSub: {
-    fontSize: '15px',
-    color: '#94A3B8',
-    textAlign: 'center',
-    marginBottom: '32px',
-    maxWidth: '500px',
-    marginLeft: 'auto',
-    marginRight: 'auto',
-  },
-  problemCard: {
-    backgroundColor: '#1E293B',
-    borderRadius: '6px',
-    padding: '32px',
-    border: '1px solid rgba(255,255,255,0.05)',
-  },
-  problemText: {
-    fontSize: '17px',
-    lineHeight: 1.7,
-    color: '#CBD5E1',
-    margin: '0 0 16px 0',
-  },
-  problemPunch: {
-    fontSize: '20px',
-    fontWeight: 600,
-    color: '#14B8A6',
-    margin: 0,
-  },
-  gapsGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-    gap: '20px',
-  },
-  gapCard: {
-    backgroundColor: '#1E293B',
-    borderRadius: '6px',
-    padding: '24px',
-    border: '1px solid rgba(255,255,255,0.05)',
-  },
-  gapTitle: {
-    fontSize: '16px',
-    fontWeight: 600,
-    color: '#3563FF',
-    marginBottom: '12px',
-  },
-  gapClaim: {
-    fontSize: '14px',
-    color: '#94A3B8',
-    margin: '0 0 12px 0',
-    fontStyle: 'italic',
-  },
-  gapOurs: {
-    fontSize: '14px',
-    color: '#CBD5E1',
-    margin: 0,
-    lineHeight: 1.6,
-  },
-  personaGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-    gap: '20px',
-  },
-  personaCard: {
-    backgroundColor: '#1E293B',
-    borderRadius: '6px',
-    padding: '24px',
-    border: '1px solid rgba(255,255,255,0.05)',
-  },
-  personaHeader: {
-    marginBottom: '16px',
-  },
-  personaName: {
-    fontSize: '16px',
-    fontWeight: 600,
-    color: '#F8FAFC',
-  },
-  personaRole: {
-    fontSize: '13px',
-    color: '#64748B',
-  },
-  personaPain: {
-    fontSize: '14px',
-    color: '#F87171',
-    fontStyle: 'italic',
-    margin: '0 0 12px 0',
-    lineHeight: 1.6,
-  },
-  personaOutcome: {
-    fontSize: '14px',
-    color: '#14B8A6',
-    margin: 0,
-    lineHeight: 1.6,
-  },
-  stagesGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-    gap: '16px',
-  },
-  stageCard: {
-    display: 'flex',
-    gap: '16px',
-    padding: '20px',
-    backgroundColor: '#1E293B',
-    borderRadius: '6px',
-    border: '1px solid rgba(255,255,255,0.05)',
-  },
-  stageNum: {
-    width: '32px',
-    height: '32px',
-    borderRadius: 'var(--radius-sm)',
-    backgroundColor: '#3563FF',
-    color: '#fff',
-    fontSize: '14px',
-    fontWeight: 600,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  stageName: {
-    fontSize: '15px',
-    fontWeight: 600,
-    color: '#F8FAFC',
-    marginBottom: '4px',
-  },
-  formatTag: {
-    padding: '4px 8px',
-    borderRadius: 'var(--radius-sm)',
-    backgroundColor: 'rgba(53,99,255,0.15)',
-    color: '#3563FF',
-    fontSize: '11px',
-    fontWeight: 600,
-    whiteSpace: 'nowrap',
-    height: 'fit-content',
-    flexShrink: 0,
-  },
-  stageDesc: {
-    fontSize: '13px',
-    color: '#94A3B8',
-    lineHeight: 1.5,
-  },
-  timelineWrap: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0',
-    marginBottom: '32px',
-  },
-  timelineItem: {
-    display: 'flex',
-    gap: '20px',
-    position: 'relative',
-    paddingBottom: '24px',
-  },
-  timelineDot: {
-    width: '12px',
-    height: '12px',
-    borderRadius: '50%',
-    backgroundColor: '#3563FF',
-    flexShrink: 0,
-    marginTop: '4px',
-    zIndex: 1,
-  },
-  timelineLine: {
-    position: 'absolute',
-    left: '5px',
-    top: '16px',
-    bottom: '0',
-    width: '2px',
-    backgroundColor: 'rgba(53,99,255,0.3)',
-  },
-  timelineContent: {
-    flex: 1,
-  },
-  timelineTime: {
-    fontSize: '13px',
-    fontWeight: 600,
-    color: '#3563FF',
-    marginBottom: '4px',
-  },
-  timelineState: {
-    fontSize: '14px',
-    color: '#CBD5E1',
-    lineHeight: 1.5,
-  },
-  moatCard: {
-    backgroundColor: 'rgba(53,99,255,0.1)',
-    borderRadius: '6px',
-    padding: '24px',
-    border: '1px solid rgba(53,99,255,0.2)',
-    textAlign: 'center',
-  },
-  moatText: {
-    fontSize: '17px',
-    fontWeight: 500,
-    color: '#F8FAFC',
-    fontStyle: 'italic',
-    margin: 0,
-  },
-  featuresGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '12px',
-  },
-  featureItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    fontSize: '14px',
-    color: '#CBD5E1',
-  },
-  checkIcon: {
-    color: '#14B8A6',
-    display: 'flex',
-  },
-  pricingGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-    gap: '24px',
-    maxWidth: '600px',
-    margin: '0 auto',
-  },
-  pricingCard: {
-    backgroundColor: '#1E293B',
-    borderRadius: '6px',
-    padding: '32px',
-    border: '1px solid rgba(255,255,255,0.1)',
-    textAlign: 'center',
-  },
-  pricingLabel: {
-    fontSize: '11px',
-    fontWeight: 500,
-    letterSpacing: '0.1em',
-    textTransform: 'uppercase',
-    color: '#14B8A6',
-    marginBottom: '8px',
-  },
-  pricingPrice: {
-    fontSize: '48px',
-    fontWeight: 700,
-    color: '#F8FAFC',
-    lineHeight: 1,
-  },
-  pricingTerm: {
-    fontSize: '14px',
-    color: '#64748B',
-    marginBottom: '16px',
-  },
-  pricingDesc: {
-    fontSize: '14px',
-    color: '#94A3B8',
-    margin: 0,
-  },
-  ctaSection: {
-    textAlign: 'center',
-    padding: '48px 0',
-  },
-  ctaHeadline: {
-    fontSize: '28px',
-    fontWeight: 600,
-    color: '#F8FAFC',
-    marginBottom: '12px',
-  },
-  ctaSub: {
-    fontSize: '15px',
-    color: '#94A3B8',
-    marginBottom: '24px',
-  },
-  ctaButton: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '8px',
-    padding: '14px 28px',
-    backgroundColor: '#3563FF',
-    borderRadius: 'var(--radius-sm)',
-    color: '#fff',
-    fontSize: '15px',
-    fontWeight: 500,
-    textDecoration: 'none',
-  },
-  buttonInner: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-  },
-  screenshot: {
-    width: '100%',
-    maxWidth: 960,
-    margin: '0 auto',
-    borderRadius: 'var(--radius-sm)',
-    border: '1px solid rgba(255,255,255,0.08)',
-    boxShadow: '0 24px 64px rgba(0,0,0,0.4), 0 0 0 1px rgba(53,99,255,0.1)',
-    overflow: 'hidden' as const,
-  },
-  screenshotImg: {
-    width: '100%',
-    display: 'block',
-  },
-  screenshotCaption: {
-    fontSize: 13,
-    color: '#64748B',
-    textAlign: 'center' as const,
-    marginTop: 12,
-    fontStyle: 'italic' as const,
-  },
-  screenshotSection: {
-    padding: '20px 0 48px',
-  },
-  footer: {
-    display: 'flex',
-    justifyContent: 'center',
-    gap: '12px',
-    alignItems: 'center',
-    fontSize: '12px',
-    color: '#475569',
-    paddingTop: '48px',
-    borderTop: '1px solid rgba(255,255,255,0.05)',
-  },
-  footerDivider: { color: '#334155' },
-  footerLink: { color: '#475569', textDecoration: 'none' },
-};
+export default function Product() {
+  const navigate = useNavigate();
+  const [stage, setStage] = useState(0);
+
+  return (
+    <MarketingShell activeHref="/product">
+      {/* Hero */}
+      <Hero
+        align="center"
+        eyebrow="Brand Intelligence Infrastructure"
+        title={
+          <>
+            The only member of your content team who will tell you <em>when the strategy is wrong.</em>
+          </>
+        }
+        subtitle="Not opinion. Pattern recognition from your own data. No feelings, no politics, no 47-slide deck to justify it."
+        actions={
+          <Button variant="primary" trailingIcon="arrow-right" onClick={() => navigate('/')}>
+            Analyze my brand free
+          </Button>
+        }
+      />
+
+      {/* Product Shot: Brand Profile */}
+      <Section size="sm">
+        <Reveal>
+          <ScreenFrame url="forgeintelligence.ai" label="Brand Profile">
+            <img
+              src="/1.png"
+              alt="Forge Intelligence Brand Profile with voice analysis and tone attributes"
+              style={{ width: '100%', display: 'block' }}
+            />
+          </ScreenFrame>
+          <Caption>Your brand's voice, personas, and competitive position, extracted from your actual website in minutes.</Caption>
+        </Reveal>
+      </Section>
+
+      {/* The Problem */}
+      <Section>
+        <SectionHeader align="center" eyebrow="The gap" title="The Gap Nobody's Filling" />
+        <Reveal>
+          <Card variant="gradient" padding="lg" glow>
+            <p style={{ fontSize: 'var(--text-lg)', lineHeight: 'var(--leading-relaxed)', color: 'var(--text-body)', marginBottom: 'var(--space-4)' }}>
+              Every AI content tool today solves for <strong style={{ color: 'var(--text-primary)' }}>production volume</strong>.
+            </p>
+            <p style={{ fontSize: 'var(--text-lg)', lineHeight: 'var(--leading-relaxed)', color: 'var(--text-body)', marginBottom: 'var(--space-4)' }}>
+              None solve for <strong style={{ color: 'var(--color-accent-text)' }}>compounding content intelligence</strong>, where the system gets measurably smarter and more commercially effective with every publish cycle.
+            </p>
+            <p style={{ fontSize: 'var(--text-h4)', fontWeight: 600, color: 'var(--color-positive-text)', margin: 0 }}>
+              That's the gap. That's the product.
+            </p>
+          </Card>
+        </Reveal>
+      </Section>
+
+      {/* Competitive Whitespace */}
+      <Section>
+        <SectionHeader align="center" eyebrow="Territory" title="What We Own" description={'Territory that\'s ours, not another "AI writing tool."'} />
+        <div className="fi-grid-cards">
+          {gaps.map((g, i) => (
+            <Reveal key={g.title} delay={i * 60}>
+              <FeatureCard icon={g.icon} title={g.title}>
+                <p style={{ fontStyle: 'italic', color: 'var(--text-muted)', marginBottom: 'var(--space-2)' }}>{g.claim}</p>
+                <p style={{ color: 'var(--text-body)' }}>{g.ours}</p>
+              </FeatureCard>
+            </Reveal>
+          ))}
+        </div>
+      </Section>
+
+      {/* Product Shot: Publishing */}
+      <Section size="sm">
+        <Reveal>
+          <ScreenFrame url="forgeintelligence.ai/app/publishing" label="Publishing Queue">
+            <img
+              src="/2.png"
+              alt="Publishing Queue content preview with hero image and multi-channel distribution"
+              style={{ width: '100%', display: 'block' }}
+            />
+          </ScreenFrame>
+          <Caption>Preview, edit post copy, and publish to LinkedIn, X, Facebook, WordPress, Webflow, or Ghost, with UTM intelligence built in.</Caption>
+        </Reveal>
+      </Section>
+
+      {/* Who This Is For */}
+      <Section>
+        <SectionHeader align="center" eyebrow="Skeptics welcome" title="Built For Skeptics" description="We know what you're thinking. We thought it too." />
+        <div className="fi-grid-cards">
+          {personas.map((p, i) => (
+            <Reveal key={p.name} delay={i * 60}>
+              <Card padding="lg" interactive style={{ height: '100%' }}>
+                <div style={{ marginBottom: 'var(--space-4)' }}>
+                  <div style={{ fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--text-primary)' }}>{p.name}</div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{p.role}</div>
+                </div>
+                <p style={{ fontStyle: 'italic', color: 'var(--color-warn-text)', marginBottom: 'var(--space-3)', lineHeight: 'var(--leading-relaxed)' }}>"{p.pain}"</p>
+                <p style={{ color: 'var(--color-positive-text)', lineHeight: 'var(--leading-relaxed)' }}>{p.outcome}</p>
+              </Card>
+            </Reveal>
+          ))}
+        </div>
+      </Section>
+
+      {/* 8-Stage Pipeline */}
+      <Section id="pipeline">
+        <SectionHeader align="center" eyebrow="The system" title="The 8-Stage Pipeline" description="From URL to revenue attribution in one connected system." />
+        <Reveal>
+          <Pipeline
+            stages={stages.map((s) => ({ name: s.name, note: s.desc, icon: s.icon }))}
+            activeIndex={stage}
+            completedThrough={stage - 1}
+            onSelect={setStage}
+          />
+        </Reveal>
+      </Section>
+
+      {/* Brand Intelligence */}
+      <Section>
+        <SectionHeader
+          align="center"
+          eyebrow="Board-ready"
+          title="Brand Intelligence"
+          description="Board-ready competitive intelligence across six dimensions, read from your competitors' live sites, not a survey."
+        />
+        <Reveal>
+          <ScreenFrame url="forgeintelligence.ai/app/strategy-intel" label="Positioning Pivot">
+            <img
+              src="/brand-intelligence.png"
+              alt="Brand Intelligence Positioning Pivot: the from/to positioning move synthesized across six dimensions"
+              style={{ width: '100%', display: 'block' }}
+            />
+          </ScreenFrame>
+          <Caption>The Positioning Pivot: all six dimensions synthesized into one board-ready move, with the FROM/TO shift spelled out.</Caption>
+        </Reveal>
+        <div className="fi-grid-cards" style={{ marginTop: 'var(--space-10)' }}>
+          {intelDimensions.map((d, i) => (
+            <Reveal key={d.name} delay={i * 60}>
+              <FeatureCard icon={d.icon} title={d.name}>
+                <p style={{ color: 'var(--text-body)' }}>{d.desc}</p>
+              </FeatureCard>
+            </Reveal>
+          ))}
+        </div>
+        <Reveal>
+          <p style={{ textAlign: 'center', color: 'var(--text-muted)', maxWidth: '60ch', margin: 'var(--space-6) auto 0', lineHeight: 'var(--leading-relaxed)' }}>
+            Every read exports as a token-gated brief you can hand to your board, and runs through the same compliance gate as everything else Forge ships.
+          </p>
+        </Reveal>
+      </Section>
+
+      {/* One Brain, Every Format */}
+      <Section>
+        <SectionHeader
+          align="center"
+          eyebrow="One brain"
+          title="One Brain, Every Format"
+          description="The same intelligence layer that writes articles also builds campaigns, emails, ads, social, and video."
+        />
+        <div className="fi-grid-cards">
+          {formats.map((f, i) => (
+            <Reveal key={f.name} delay={i * 60}>
+              <FeatureCard icon={f.icon} title={f.name} badge={<Badge tone="accent">{f.tag}</Badge>}>
+                <p style={{ color: 'var(--text-body)' }}>{f.desc}</p>
+              </FeatureCard>
+            </Reveal>
+          ))}
+        </div>
+      </Section>
+
+      {/* The Brain */}
+      <Section id="method">
+        <SectionHeader
+          align="center"
+          eyebrow="Compounding"
+          title="The Brain: Your Unfair Advantage"
+          description="Every publish teaches the system. Every edit sharpens the guardrails. Every pattern compounds."
+        />
+        <Reveal>
+          <BrainTimeline
+            animate
+            entries={timeline.map((t) => ({ when: t.when, title: t.state, depth: t.depth }))}
+          />
+        </Reveal>
+        <Reveal>
+          <Card variant="quiet" padding="lg" style={{ textAlign: 'center', marginTop: 'var(--space-6)' }}>
+            <p style={{ fontSize: 'var(--text-lg)', fontWeight: 500, fontStyle: 'italic', color: 'var(--text-primary)', margin: 0 }}>
+              "After 90 days, your Client Brain is your biggest unfair advantage."
+            </p>
+          </Card>
+        </Reveal>
+      </Section>
+
+      {/* What's Included */}
+      <Section>
+        <SectionHeader align="center" eyebrow="Included" title="What You Get" />
+        <div className="fi-grid-checks">
+          {included.map((f) => (
+            <div key={f} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', color: 'var(--text-body)', fontSize: 'var(--text-sm)' }}>
+              <span style={{ color: 'var(--color-positive-text)', display: 'flex', flexShrink: 0 }}>
+                <Icon name="check" size={16} />
+              </span>
+              {f}
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      {/* Product Shot: GEO Opportunity Scores */}
+      <Section size="sm">
+        <Reveal>
+          <ScreenFrame url="forgeintelligence.ai/app/geo-strategist" label="GEO Strategy">
+            <img
+              src="/3.png"
+              alt="GEO Opportunity Scores: ChatGPT, Perplexity, AI Overviews, Gemini citation probability"
+              style={{ width: '100%', display: 'block' }}
+            />
+          </ScreenFrame>
+          <Caption>The Brain checks topic alignment before you spend a single token. 89% match, and it knows what mistakes to avoid.</Caption>
+        </Reveal>
+      </Section>
+
+      {/* Pricing */}
+      <Section>
+        <SectionHeader align="center" eyebrow="Pricing" title="Pricing" />
+        <div style={{ maxWidth: '380px', margin: '0 auto' }}>
+          <PricingCard
+            featured
+            ribbon=""
+            tier="SMB"
+            price="$99"
+            cadence="one-time · lifetime access"
+            pitch="Full 8-stage pipeline plus every generator. One brand, forever."
+            ctaLabel="Analyze my brand free"
+            onCta={() => navigate('/')}
+          />
+        </div>
+      </Section>
+
+      {/* CTA */}
+      <Section size="sm">
+        <CTABand
+          eyebrow="Free analysis"
+          title="See your brand understood in 7 minutes."
+          subtitle="No account needed. Free analysis. Then decide."
+          actions={
+            <Button variant="primary" size="lg" trailingIcon="arrow-right" onClick={() => navigate('/')}>
+              Analyze my brand free
+            </Button>
+          }
+        />
+      </Section>
+    </MarketingShell>
+  );
+}

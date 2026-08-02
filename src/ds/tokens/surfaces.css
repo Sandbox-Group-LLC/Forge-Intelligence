@@ -1,0 +1,27 @@
+[data-forge-ds]{
+  /* The canvas wash: Intelligence Blue top-left, teal bottom-right. LOCKED. */
+  --bg-wash:
+    radial-gradient(1200px 800px at 12% -8%, rgba(53,99,255,.15), transparent 60%),
+    radial-gradient(1000px 700px at 92% 108%, rgba(20,184,166,.08), transparent 62%);
+
+  /* 48px hairline grid overlay. LOCKED. */
+  --bg-grid:
+    linear-gradient(to right, var(--fi-white-02) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--fi-white-02) 1px, transparent 1px);
+  --bg-grid-size:var(--grid-unit) var(--grid-unit); /* @kind other */
+
+  /* Gradient hairline borders — painted as a background, masked to 1px */
+  --border-gradient-blue:linear-gradient(135deg,rgba(53,99,255,.55),rgba(53,99,255,.06) 40%,rgba(20,184,166,.35)); /* @kind color */
+  --border-gradient-quiet:linear-gradient(135deg,rgba(255,255,255,.14),rgba(255,255,255,.02) 55%,rgba(255,255,255,.08)); /* @kind color */
+
+  /* Section-transition rules */
+  --rule-fade:linear-gradient(90deg,transparent,var(--fi-white-08) 18%,var(--fi-white-08) 82%,transparent);
+  --rule-accent:linear-gradient(90deg,transparent,var(--fi-blue-a40),transparent);
+
+  /* Screenshot / product-frame chrome */
+  --frame-bg:linear-gradient(180deg,rgba(36,49,73,.9),rgba(15,23,42,.9));
+}
+
+/* Canvas helper — apply to the page root of any dark surface */
+.fi-canvas{background-color:var(--color-canvas);background-image:var(--bg-wash);background-repeat:no-repeat;background-attachment:fixed;color:var(--text-body)}
+.fi-grid-overlay{position:absolute;inset:0;pointer-events:none;background-image:var(--bg-grid);background-size:var(--bg-grid-size);mask-image:radial-gradient(120% 90% at 50% 0%,#000 35%,transparent 78%);-webkit-mask-image:radial-gradient(120% 90% at 50% 0%,#000 35%,transparent 78%)}
