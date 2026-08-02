@@ -1,0 +1,11 @@
+.fi-logo{display:inline-flex;align-items:center;gap:10px;color:var(--text-primary);text-decoration:none;transition:opacity var(--dur-fast) var(--ease-standard)}
+.fi-logo:hover{opacity:.82;color:var(--text-primary)}
+.fi-logo__mark{flex:none;color:var(--color-accent);filter:drop-shadow(0 0 10px rgba(53,99,255,.45))}
+.fi-logo__mark--teal{color:var(--color-positive);filter:drop-shadow(0 0 10px rgba(20,184,166,.4))}
+.fi-logo__mark--mono{color:currentColor;filter:none}
+.fi-logo__word{font-weight:var(--weight-semibold);letter-spacing:-.02em;line-height:1;white-space:nowrap}
+.fi-logo__word span{color:var(--text-muted);font-weight:var(--weight-medium)}
+.fi-icon{flex:none;display:block}
+.fi-icon-tile{display:inline-flex;align-items:center;justify-content:center;border-radius:var(--radius-sm);background:var(--color-accent-quiet);color:var(--color-accent-text);border:1px solid var(--fi-blue-a25);box-shadow:var(--inset-hairline)}
+.fi-icon-tile--teal{background:var(--color-positive-quiet);color:var(--color-positive-text);border-color:var(--fi-teal-a35)}
+.fi-icon-tile--quiet{background:var(--fi-white-04);color:var(--text-muted);border-color:var(--color-border)}
