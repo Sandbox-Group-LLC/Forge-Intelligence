@@ -81,7 +81,7 @@ function SetupGuide({ guide }: { guide: SetupGuide }) {
 }
 
 // ── Channel definitions ───────────────────────────────────────────────────────
-type ChannelId = 'wordpress' | 'webflow' | 'linkedin' | 'x' | 'facebook' | 'reddit' | 'medium' | 'ghost' | 'website';
+type ChannelId = 'wordpress' | 'webflow' | 'linkedin' | 'x' | 'facebook' | 'instagram' | 'reddit' | 'medium' | 'ghost' | 'website';
 
 interface ChannelDef {
   id: ChannelId;
@@ -202,6 +202,26 @@ const CHANNELS: ChannelDef[] = [
     },
   },
   {
+    id: 'instagram',
+    label: 'Instagram',
+    description: 'Publish the article\'s hero image with an AI-written caption to your Instagram Business account via Zernio. Instagram posts require an image — Forge uses the generated hero image. Click Connect to authorize — no manual tokens needed.',
+    color: '#E4405F',
+    logo: 'IG',
+    liveStatus: 'live',
+    oauthFlow: true,
+    credentialFields: [],
+    setupGuide: {
+      title: 'Instagram via Zernio',
+      steps: [
+        { text: 'Instagram publishing requires an Instagram Business or Creator account linked to a Facebook Page. Personal accounts can\'t post via the API.' },
+        { text: 'Click Connect above. You\'ll be redirected to Instagram/Facebook to authorize via Zernio.' },
+        { text: 'Sign in and grant posting permissions for the Instagram account you want to publish from.' },
+        { text: 'You\'ll be redirected back automatically. No tokens to copy.' },
+        { text: 'Every Instagram post is the article\'s hero image plus a caption. Instagram captions don\'t support clickable links, so the article URL appears as plain text.' },
+      ],
+    },
+  },
+  {
     id: 'reddit',
     label: 'Reddit',
     description: 'Publish to subreddits where you have permission to post. Connect via Zernio, then add the subreddits you can post in. Forge will refuse to post outside your allowlist.',
@@ -291,6 +311,7 @@ const DEFAULT_UTM: Record<ChannelId, Record<string, string>> = {
   linkedin:  { utm_source: 'linkedin', utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   x:         { utm_source: 'x',        utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   facebook:  { utm_source: 'facebook', utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
+  instagram: { utm_source: 'instagram', utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   reddit:    { utm_source: 'reddit',   utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   medium:    { utm_source: 'medium',   utm_medium: 'social', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
   ghost:     { utm_source: 'ghost',    utm_medium: 'blog',   utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' },
@@ -459,11 +480,11 @@ export default function IntegrationsPage() {
   
   const selectedBrand = activeBrand?.id || '';
   const [savedChannels, setSavedChannels] = useState<Record<ChannelId, SavedChannel | null>>({
-    wordpress: null, webflow: null, linkedin: null, x: null, facebook: null, reddit: null, medium: null, ghost: null, website: null
+    wordpress: null, webflow: null, linkedin: null, x: null, facebook: null, instagram: null, reddit: null, medium: null, ghost: null, website: null
   });
   const [expanded, setExpanded] = useState<ChannelId | null>(null);
   const [credentials, setCredentials] = useState<Record<ChannelId, Record<string, string>>>({
-    wordpress: {}, webflow: {}, linkedin: {}, x: {}, facebook: {}, reddit: {}, medium: {}, ghost: {}, website: {}
+    wordpress: {}, webflow: {}, linkedin: {}, x: {}, facebook: {}, instagram: {}, reddit: {}, medium: {}, ghost: {}, website: {}
   });
   const [utmTemplates, setUtmTemplates] = useState<Record<ChannelId, Record<string, string>>>(DEFAULT_UTM);
   const [saving, setSaving] = useState<ChannelId | null>(null);
@@ -490,7 +511,7 @@ export default function IntegrationsPage() {
       .then(d => {
         if (d.success) {
           const map: Record<ChannelId, SavedChannel | null> = {
-            wordpress: null, webflow: null, linkedin: null, x: null, facebook: null, reddit: null, medium: null, ghost: null, website: null
+            wordpress: null, webflow: null, linkedin: null, x: null, facebook: null, instagram: null, reddit: null, medium: null, ghost: null, website: null
           };
           for (const ch of d.channels) map[ch.channel as ChannelId] = ch;
           setSavedChannels(map);
@@ -527,7 +548,7 @@ export default function IntegrationsPage() {
     const channel = CHANNELS.find(c => c.id === channelId);
 
     // Zernio-powered OAuth — redirect flow with callback
-    const zernioPlatforms: Record<string, string> = { linkedin: 'linkedin', facebook: 'facebook', reddit: 'reddit' };
+    const zernioPlatforms: Record<string, string> = { linkedin: 'linkedin', facebook: 'facebook', instagram: 'instagram', reddit: 'reddit' };
     if (zernioPlatforms[channelId] && channel?.oauthFlow) {
       if (!selectedBrand) { setError('Select a Brain first'); return; }
       try {
@@ -669,7 +690,7 @@ export default function IntegrationsPage() {
       // (no picker). /api/zernio/disconnect calls Zernio's DELETE /accounts/{id}.
       // Best-effort: if this channel isn't actually Zernio, the endpoint 400s and we
       // still fall through to the local-row delete below.
-      const zernioPlatforms: Record<string, string> = { linkedin: 'linkedin', facebook: 'facebook', reddit: 'reddit' };
+      const zernioPlatforms: Record<string, string> = { linkedin: 'linkedin', facebook: 'facebook', instagram: 'instagram', reddit: 'reddit' };
       if (zernioPlatforms[channelId] && selectedBrand) {
         try {
           await fetch('/api/zernio/disconnect', {

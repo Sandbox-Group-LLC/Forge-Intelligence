@@ -848,6 +848,96 @@ Output only the post text.` }]
             results[channel] = { status: 'published', url: fbPostUrl, postId: fbData.id, utmParams };
           }
 
+        } else if (channel === 'instagram') {
+          // ── Instagram publish via Zernio — image + caption ──
+          // Instagram is NOT like the text platforms: the Graph API refuses any
+          // feed post without a media asset. Every Instagram post here is the
+          // article's hero image + a caption. The hero image is ensured at the
+          // top of this handler (generated if missing), so if it's still absent
+          // something upstream failed and we fail loudly rather than let Zernio
+          // reject a media-less post with an opaque error.
+          if (!creds.zernioAccountId) {
+            throw new Error('Instagram must be connected via Zernio. Visit /app/integrations to connect.');
+          }
+          const igImageUrl = article.hero_image_url || (article.article_json || {}).hero_image_url;
+          if (!igImageUrl) {
+            throw new Error('Instagram requires an image and none is available. Generate a hero image for this article, then republish.');
+          }
+
+          const articleUrl = forgeArticleUrl;
+          const utmUrl = `${articleUrl}${utmString ? '?' + utmString : ''}`;
+
+          // Caption. Priority: user-edited postCopy → Haiku-generated → title+URL.
+          // Instagram captions don't render clickable links, so the URL rides
+          // along as plain text (the classic "link in bio" limitation).
+          const igPostCopyOverride = (req.body.postCopy || {})[channel];
+          let igCaption;
+          if (igPostCopyOverride && igPostCopyOverride.trim()) {
+            igCaption = igPostCopyOverride.trim();
+          } else {
+            igCaption = `${article.title}\n\n${utmUrl}`;
+            try {
+              const haiku = await anthropic.messages.create({
+                model: 'claude-haiku-4-5-20251001',
+                max_tokens: 500,
+                messages: [{ role: 'user', content: `Write an Instagram caption for a B2B company promoting this article. 2-4 short lines that create curiosity without giving away the answer, then a final line pointing readers to the link. Max 5 relevant hashtags on the last line. Instagram captions do NOT support clickable links, so mention the article is linked in bio / at the URL as plain text.\n\nPlain text only — no markdown, no # headings, no **bold**.\n\nArticle title: ${article.title}\nArticle URL: ${utmUrl}\nArticle excerpt: ${(article.article_json?.sections?.[0]?.body || '').slice(0, 500)}` }]
+              });
+              igCaption = stripSocialMarkdown(haiku.content[0]?.text) || igCaption;
+            } catch (e) {
+              console.warn('[IG-ZERNIO] Haiku caption failed, using fallback:', e.message);
+            }
+          }
+
+          try {
+            // Zernio /posts with a media item — the mediaItems[].{type,url} shape
+            // is Zernio's documented image schema (same endpoint as every other
+            // platform). Zernio auto-transcodes to Instagram's requirements.
+            const zResult = await callZernio('POST', '/posts', {
+              content: igCaption,
+              publishNow: true,
+              mediaItems: [{ type: 'image', url: igImageUrl }],
+              platforms: [{ platform: 'instagram', accountId: creds.zernioAccountId }]
+            });
+
+            if (!zResult.ok) {
+              throw new Error(`Zernio instagram publish failed (${zResult.status}): ${zResult.raw?.slice(0, 300) || 'no body'}`);
+            }
+            const post = zResult.parsed?.post;
+            const platformResult = (post?.platforms || []).find(p => p.platform === 'instagram');
+            if (!platformResult || platformResult.status !== 'published') {
+              const errMsg = platformResult?.error || platformResult?.platformSpecificData?.lastError || 'Zernio did not publish';
+              throw new Error(`Instagram (Zernio): ${errMsg}`);
+            }
+
+            results[channel] = {
+              status: 'published',
+              url: platformResult.platformPostUrl,
+              postId: platformResult.platformPostId || post._id,
+              // Zernio's internal _id — needed by analytics sync for Zernio lookups.
+              zernioPostId: post._id,
+              via: 'zernio',
+              utmParams
+            };
+
+            // Write publish_log inside the dispatch (continue skips the loop-end writer).
+            await pool.query(
+              `INSERT INTO publish_log (queue_item_id, brand_profile_id, content_id, channel, status, response_data, utm_params, published_url, error_message)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+              [
+                queueItemId, item.brand_profile_id, item.content_id, channel,
+                'published',
+                JSON.stringify(results[channel]),
+                JSON.stringify(utmParams),
+                platformResult.platformPostUrl,
+                null
+              ]
+            ).catch(e => console.error('[PUBLISH] instagram zernio publish_log insert failed:', e.message));
+            continue;
+          } catch (igerr) {
+            // No fallback — Instagram publishing only works through Zernio here.
+            throw igerr;
+          }
+
         } else if (channel === 'reddit') {
           // ── Reddit publish via Zernio — brand-owned subreddits ONLY ──
           // Reddit is NOT like LinkedIn/Facebook. The destination is per-post and
