@@ -4,7 +4,7 @@
 // extraction, markdown conversion, and subpage discovery.
 import puppeteer from 'puppeteer-core';
 import { Readability } from '@mozilla/readability';
-import { JSDOM } from 'jsdom';
+import { JSDOM, VirtualConsole } from 'jsdom';
 import TurndownService from 'turndown';
 import { pool } from './db.js';
 
@@ -376,9 +376,21 @@ export async function forgeScrape(url, opts = {}) {
 // Every attempt is logged to scrape_log with caller='context-hub' for audit.
 const _turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced', emDelimiter: '_' });
 
+// jsdom's CSS parser (rrweb-cssom) chokes on modern CSS — nested rules, @layer,
+// @container, :has(), etc. — and emits noisy "Could not parse CSS stylesheet"
+// jsdomError events on the default virtual console, which forwards straight to
+// console.error and spams scrape logs. We only build the DOM for Readability
+// text extraction; CSS is irrelevant here. Swallow the CSS-parse noise while
+// still surfacing any other jsdom error.
+const _scrapeConsole = new VirtualConsole();
+_scrapeConsole.on('jsdomError', (err) => {
+  if (err && /Could not parse CSS stylesheet/.test(err.message || '')) return;
+  console.error(err);
+});
+
 function htmlToMarkdown(html, url) {
   try {
-    const dom = new JSDOM(html, { url });
+    const dom = new JSDOM(html, { url, virtualConsole: _scrapeConsole });
     const article = new Readability(dom.window.document).parse();
     if (!article?.content) return '';
     return _turndown.turndown(article.content).trim();
