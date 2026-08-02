@@ -4,6 +4,40 @@ Long-form retrospective archive (renamed from `PLAN.md`). Dated session logs, de
 
 ---
 
+## 2026-08-02 — Marketing site rebuilt on a new design system (#542, #545–#549) → promoted to prod
+
+Brian: "do a sweep on the landing page 'Product' and compare it against the working code… also use this [`ai-writing-detection`] skill to review and make copy edits." That sweep turned into a full marketing-surface rebuild on a new design system, dialed in on dev over ~17 hours, then promoted `development → main`.
+
+### The sweep (#542)
+Compared `/product` (`src/Product.tsx`) against the actual app. Findings:
+- **Factual bug:** publishing caption claimed publish-to-**HubSpot**. HubSpot is CRM contact sync + a manual "copy for HubSpot" email-template flow (`EmailCampaignPage.tsx`), **not** a CMS/publish channel. Real live channels (`IntegrationsPage.tsx` `CHANNELS`): WordPress, Webflow, LinkedIn, X, Facebook, Reddit, Ghost, Medium (legacy), self-hosted webhook. Corrected the caption.
+- **Sold a plan that doesn't exist:** the page advertised an **Agency $499/mo, multi-brand** tier. No such plan in code — only the live `$99` one-time SMB plan (`BrandSettingsPage.tsx:927`; "Coming soon — Pro $299/mo", not multi-brand). Brian: "Remove Agency for now; we will start on that soon." Removed.
+- **Undersold — whole surfaces missing:** the page never mentioned **Brand Intelligence** (the 6-dimension `StrategyIntelPage` workspace) or the content-type generators (**Campaign 4.5, Email 4.6, Google Ads 4.7, Social, Video**). Added a "Brand Intelligence" section (Gap Map · Positioning Vulnerabilities · Fault Lines · Blind Spots · Whitespace · Pivot Scenarios) and a "One Brain, Every Format" section, descriptions lifted from each page's own subtitle to avoid overclaiming.
+- **Copy pass:** ran the visible copy through the `ai-writing-detection` skill (vocab/structural/formatting checklist). No AI tells — nothing changed.
+
+### The design system (Claude Design)
+Brian asked for a prompt to give "Claude Design" a shot at a new design system that keeps the "deep blue intelligence vibe" but levels it up (dynamic cards/components/buttons). Wrote the prompt (locked the DNA: `#0B0F1A` canvas + blue/teal wash, `#3563FF`, `#1E293B` cards, Inter, diamond mark, 48px grid, 6px radius). Output was a full tokenized system (zip): CSS tokens, ~23 React components (`Hero`, `Pipeline`, `BrainTimeline`, `CitationMeter`, `GapMatrix`, `PricingCard`, cards, buttons…), plus amber=gap / rose=drift state colors and motion tokens. Brian: "It's a masterpiece… a rebuild of the landing and product page, not an adaptation. Your copy should remain the same."
+
+### Integration (#542)
+- Vendored `tokens/`, `components/`, `assets/`, `styles.css` under **`src/ds/`** (dropped `.prompt.md`/`.card.html` design-tool sidecars).
+- **Scoping was the real risk:** DS `base.css` sets `body{background:navy}` + a global reset, and its `:root` semantic tokens (`--color-accent`, `--color-border`, `--radius-sm`, `--shadow-*`) collide with the app's own `:root` tokens in `index.css`. Loaded app-wide unscoped, it would repaint the **light in-app UI**. Fix: scope everything to a **`[data-forge-ds]`** wrapper — `:root`→`[data-forge-ds]` across token files, base reset rewritten under the wrapper, `[data-theme=light]`→`[data-forge-ds][data-theme=light]`. Component CSS is all `.fi-*` class-based (inert outside the wrapper). Verified `/app/*` untouched.
+- `src/marketing/MarketingShell.tsx` — shared `.fi-canvas` + `NavBar` + `Footer`, nav routed through react-router. `src/marketing/marketing-pages.css` — scoped grid helpers + hero gradient-text.
+- `src/Product.tsx` + `src/Landing.tsx` rebuilt against the DS components. **Copy verbatim.** Landing's scan flow (domain check, claimed/returning/new states, localStorage resume, `/app/context-hub` redirect) preserved exactly. Installed deps locally to run `tsc && vite build` — 793 modules, strict, clean — before every push.
+
+### Design-review tweaks (dialed in on dev, per-screenshot)
+- **#545** — dropped the section eyebrow/kicker above each headline (`.fi-sectionhead .fi-eyebrow{display:none}`, hero/CTA eyebrows kept) + 48px below headlines.
+- **#546** — centered the pipeline stage number+label under each rail dot (`.fi-pipe__stage{align-items:center;text-align:center}`).
+- **#547** — removed the featured `PricingCard` default "Most intelligence" ribbon (`ribbon=""`).
+
+### In-app polish + product screenshot
+- **#548** — reworked `StrategyIntelPage` **Positioning Pivot** view (light in-app tokens): hero statement w/ blue→teal accent rail + eyebrow, FROM·Today → TO·The move pill cards with a circular arrow chip, shadowed section/evidence/move cards, gradient numbered badges, board-slide finale. Presentational only.
+- **#549** — wired the real pivot screenshot (`public/brand-intelligence.png`, from Brian's live Forge run) into the `/product` Brand Intelligence section via `ScreenFrame`.
+
+### Outcome & follow-up
+All six PRs merged to `development`, reviewed on dev.forgeintelligence.ai, promoted to `main` (production) by Brian 2026-08-02. **Follow-up flagged:** `src/ds/` loads app-wide → JS bundle ~1.9 MB / 573 KB gzip; code-split the marketing DS off the `/app/*` bundle so in-app users don't pay for the marketing system.
+
+---
+
 ## 2026-07-15 — Brand Intelligence recovered from git history (#491, #492) + 3 fixes (#483, #485, #489)
 
 ### #491 / #492 — Brand Intelligence: dead frontend → whole feature, recovered from a lost commit
