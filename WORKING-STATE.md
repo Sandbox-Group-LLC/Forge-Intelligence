@@ -13,6 +13,22 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
+### 2026-08-02 — Marketing site (`/` + `/product`) rebuilt on the new "deep blue intelligence" design system → promoted to prod
+
+**Headline: `/` and `/product` are fully rebuilt on a new Claude-Design design system and live in production.** Started as a content sweep of `/product` vs. the working code, became a full re-skin. Six PRs, all merged to `development`, dialed in on dev, then Brian promoted `development → main`.
+
+- **Content sweep first (in #542):** the old `/product` copy under- and mis-sold the app. Fixes: publishing caption claimed **HubSpot** (not a CMS channel — it's CRM sync + a manual email-copy flow; real channels are WordPress/Webflow/LinkedIn/X/Facebook/Reddit/Ghost/Medium per `IntegrationsPage.tsx`); removed the **Agency $499/mo** tier (doesn't exist — only the live `$99` one-time SMB plan); added the missing **Brand Intelligence (6-dimension)** and **One Brain / Every Format** (Campaign 4.5 · Email 4.6 · Ads 4.7 · Social · Video) sections. Copy passed the `ai-writing-detection` skill clean.
+- **Design system (Claude Design output) vendored under `src/ds/`** (tokens + components + assets). **Scoped to a `[data-forge-ds]` wrapper** — critical: the DS `base.css` paints `body` navy and its `:root` tokens collide with the app's `--color-*`/`--radius-*`/`--shadow-*`, so unscoped it would repaint the light in-app UI at `/app/*`. Token `:root` blocks + the base reset were rewritten under the wrapper; component CSS is all `.fi-*` class-based. `src/marketing/MarketingShell.tsx` = shared canvas/nav/footer; `src/marketing/marketing-pages.css` = scoped page helpers + review tweaks.
+- **Pages** (`src/Landing.tsx`, `src/Product.tsx`) rebuilt as re-skins — **copy unchanged**; Landing's scan flow (domain check, claimed/returning/new states, localStorage resume, redirect) preserved verbatim.
+- **Design-review tweaks (dev):** #545 drop section eyebrows + 48px below headlines · #546 center pipeline stage labels under dots · #547 remove "Most intelligence" pricing ribbon.
+- **In-app polish + screenshot:** #548 reworked `StrategyIntelPage` **Positioning Pivot** (hero statement w/ accent rail, FROM·Today → TO·The move pill cards + arrow chip, evidence/moves depth, board-slide finale — all in the app's light tokens). #549 wired the real pivot screenshot (`public/brand-intelligence.png`) into the `/product` Brand Intelligence section.
+
+**PRs:** #542 (rebuild + sweep), #545, #546, #547, #548, #549 — all merged → `development`, promoted to `main` 2026-08-02.
+
+**⚠️ Follow-up worth doing:** vendored `src/ds/` (23 components) loads app-wide, so the JS bundle grew to **~1.9 MB / 573 KB gzip** and first paint is a touch slower. **Code-split the marketing DS off the `/app/*` bundle** (dynamic import / route-level split) so in-app users don't download the marketing system. Not urgent, not broken — flagged to Brian.
+
+---
+
 ### 2026-07-15 — Brand Intelligence feature RECOVERED from git history (2 PRs) + 3 fixes
 
 **Headline: Brand Intelligence is live on `development` again.** Brian asked to "promote the Brand Intelligence page from the `strategy` branch." It turned out to be a *dead frontend* — its entire backend had been lost. Git forensics: the full 6-deliverable feature (gap-map, blind-spots, whitespace, pivot, shareable brief, compliance gate — 17 `/api/strategy/*` endpoints) was working at commit **`5b1ac6e9c6`** (Apr 19), wiped by `7fd4a9a50e` (a "sync server.js from production" wholesale overwrite), hand-restored once, then lost for good in the `1873bfb` strategy→main rebuild (which restored only STRATEGY.md + the brief frontend). STRATEGY.md still said "Built ✅"; the code was gone. Recovered verbatim from `5b1ac6e9c6` (GitHub still served the orphaned SHA).
