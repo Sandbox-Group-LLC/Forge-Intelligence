@@ -121,6 +121,7 @@ const CHANNEL_LABELS: Record<string, { label: string; color: string }> = {
   linkedin:  { label: 'LinkedIn',  color: '#0A66C2' },
   x:         { label: 'X',         color: '#E7E9EA' },
   facebook:  { label: 'Facebook',   color: '#1877F2' },
+  instagram: { label: 'Instagram',  color: '#E4405F' },
   reddit:    { label: 'Reddit',     color: '#FF4500' },
   medium:    { label: 'Medium',     color: '#A8A8A8' },
   ghost:     { label: 'Ghost',      color: '#738A94' },
@@ -466,7 +467,7 @@ export default function PublishingQueuePage() {
         .then(r => r.json())
         .then(d => {
           if (d.success) {
-            const PUBLISH_ONLY = ['wordpress','webflow','hubspot','linkedin','x','facebook','reddit','medium','ghost','website'];
+            const PUBLISH_ONLY = ['wordpress','webflow','hubspot','linkedin','x','facebook','instagram','reddit','medium','ghost','website'];
             setConnectedChannels(prev => ({
               ...prev,
               [bid]: d.channels.map((c: ConnectedChannel) => c.channel).filter((ch: string) => PUBLISH_ONLY.includes(ch))
