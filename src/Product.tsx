@@ -358,6 +358,7 @@ export default function Product() {
         <div style={{ maxWidth: '380px', margin: '0 auto' }}>
           <PricingCard
             featured
+            ribbon=""
             tier="SMB"
             price="$99"
             cadence="one-time · lifetime access"
