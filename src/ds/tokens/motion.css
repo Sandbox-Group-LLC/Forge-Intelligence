@@ -1,0 +1,32 @@
+[data-forge-ds]{
+  --dur-instant:80ms; /* @kind other */
+  --dur-fast:140ms; /* @kind other */
+  --dur-base:220ms; /* @kind other */
+  --dur-slow:400ms; /* @kind other */
+  --dur-reveal:700ms; /* @kind other */
+  --dur-count:1200ms; /* @kind other */
+  --dur-ambient:8s; /* @kind other */
+
+  --ease-out:cubic-bezier(.16,1,.3,1); /* @kind other */
+  --ease-standard:cubic-bezier(.2,0,0,1); /* @kind other */
+  --ease-in-out:cubic-bezier(.65,0,.35,1); /* @kind other */
+  --ease-linear:linear; /* @kind other */
+  --ease-pop:cubic-bezier(.34,1.4,.64,1); /* @kind other */
+
+  --stagger-step:60ms; /* @kind other */
+
+  --transition-control:color var(--dur-fast) var(--ease-standard),background-color var(--dur-fast) var(--ease-standard),border-color var(--dur-fast) var(--ease-standard),box-shadow var(--dur-base) var(--ease-out),transform var(--dur-fast) var(--ease-out); /* @kind other */
+  --transition-surface:border-color var(--dur-base) var(--ease-out),box-shadow var(--dur-base) var(--ease-out),transform var(--dur-base) var(--ease-out),background-color var(--dur-base) var(--ease-out); /* @kind other */
+}
+
+@media (prefers-reduced-motion:reduce){
+  [data-forge-ds]{
+    --dur-instant:0ms; /* @kind other */
+    --dur-fast:0ms; /* @kind other */
+    --dur-base:0ms; /* @kind other */
+    --dur-slow:0ms; /* @kind other */
+    --dur-reveal:0ms; /* @kind other */
+    --dur-count:0ms; /* @kind other */
+    --dur-ambient:0ms; /* @kind other */
+  }
+}

@@ -1,0 +1,15 @@
+/* Base reset + element defaults — SCOPED to [data-forge-ds] so the marketing
+   design system never leaks into the light in-app UI. Canvas background lives
+   on the .fi-canvas helper (surfaces.css), applied to the same page root. */
+[data-forge-ds] *,[data-forge-ds] *::before,[data-forge-ds] *::after{box-sizing:border-box}
+[data-forge-ds]{-webkit-text-size-adjust:100%;font-family:var(--font-body);font-size:var(--text-base);line-height:var(--leading-normal);color:var(--text-body);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility}
+[data-forge-ds] h1,[data-forge-ds] h2,[data-forge-ds] h3,[data-forge-ds] h4,[data-forge-ds] h5,[data-forge-ds] h6{margin:0;color:var(--text-primary);font-weight:var(--weight-semibold);letter-spacing:var(--tracking-tight);line-height:var(--leading-tight);text-wrap:balance}
+[data-forge-ds] p{margin:0;text-wrap:pretty}
+[data-forge-ds] a{color:var(--color-link);text-decoration:none;transition:color var(--dur-fast) var(--ease-standard)}
+[data-forge-ds] a:hover{color:var(--color-link-hover)}
+[data-forge-ds] a:focus-visible,[data-forge-ds] button:focus-visible,[data-forge-ds] [tabindex]:focus-visible,[data-forge-ds] input:focus-visible,[data-forge-ds] select:focus-visible,[data-forge-ds] textarea:focus-visible{outline:none;box-shadow:var(--focus-ring);border-radius:var(--radius-sm)}
+[data-forge-ds] img,[data-forge-ds] svg,[data-forge-ds] video{display:block;max-width:100%}
+[data-forge-ds] button{font:inherit;color:inherit}
+[data-forge-ds] ::selection{background:var(--fi-blue-a40);color:var(--fi-slate-50)}
+[data-forge-ds] .fi-eyebrow{font-size:var(--text-micro);font-weight:var(--weight-semibold);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;color:var(--text-caption)}
+[data-forge-ds] .fi-num{font-variant-numeric:tabular-nums lining-nums;font-feature-settings:var(--numeric-data)}

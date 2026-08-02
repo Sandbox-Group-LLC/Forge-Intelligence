@@ -1,0 +1,12 @@
+[data-forge-ds]{
+  /* 6px stays the control radius (buttons, inputs, chips) so shipped controls
+     are untouched. Larger surfaces scale up so the corner arc reads optically
+     consistent as the box grows. */
+  --radius-xs:4px;    /* meter caps, micro-tags */
+  --radius-sm:6px;    /* buttons, inputs, chips — LEGACY VALUE, do not change */
+  --radius-md:10px;   /* cards, list rows, popovers */
+  --radius-lg:14px;   /* feature panels, dialogs, pricing cards */
+  --radius-xl:20px;   /* screenshot frames, hero panels */
+  --radius-2xl:28px;  /* full-bleed product mounts */
+  --radius-full:999px;
+}

@@ -1,0 +1,106 @@
+[data-forge-ds]{
+  /* ---- Base ramps -------------------------------------------------- */
+  /* Navy canvas — deeper and bluer than slate-950 */
+  --fi-navy-950:#070A12;
+  --fi-navy-900:#0B0F1A;   /* THE canvas */
+  --fi-navy-850:#0E1421;
+  --fi-navy-800:#111827;
+
+  /* Slate (matches the shipped text ramp exactly) */
+  --fi-slate-950:#020617;
+  --fi-slate-900:#0F172A;
+  --fi-slate-800:#1E293B;  /* THE card surface */
+  --fi-slate-700:#334155;
+  --fi-slate-600:#475569;
+  --fi-slate-500:#64748B;
+  --fi-slate-400:#94A3B8;
+  --fi-slate-300:#CBD5E1;
+  --fi-slate-200:#E2E8F0;
+  --fi-slate-100:#F1F5F9;
+  --fi-slate-50:#F8FAFC;
+
+  /* Intelligence Blue */
+  --fi-blue-50:#EDF1FF;    /* app "blueberry" canvas */
+  --fi-blue-100:#DCE4FF;
+  --fi-blue-200:#BAC9FF;
+  --fi-blue-300:#8DA5FF;
+  --fi-blue-400:#5C82FF;
+  --fi-blue-500:#3563FF;   /* THE accent */
+  --fi-blue-600:#2952E0;   /* hover */
+  --fi-blue-700:#1E3FB8;
+  --fi-blue-800:#16308C;
+  --fi-blue-900:#0F2266;
+  --fi-blue-mark:#0031FF;  /* logo-mark stroke — hotter than the UI accent, mark only */
+
+  /* Teal — the spark */
+  --fi-teal-200:#99F6E4;
+  --fi-teal-300:#5EEAD4;
+  --fi-teal-400:#2DD4BF;
+  --fi-teal-500:#14B8A6;   /* THE secondary */
+  --fi-teal-600:#0D9488;
+  --fi-teal-700:#0F766E;
+  --fi-green-500:#0EA572;  /* in-app success equivalent */
+
+  /* Signal colours — gap / risk */
+  --fi-amber-400:#FBBF24;
+  --fi-amber-500:#F59E0B;
+  --fi-rose-400:#FB7185;
+  --fi-rose-500:#F43F5E;
+
+  /* ---- Alpha primitives -------------------------------------------- */
+  --fi-white-02:rgba(255,255,255,.02);
+  --fi-white-04:rgba(255,255,255,.04);
+  --fi-white-05:rgba(255,255,255,.05);
+  --fi-white-08:rgba(255,255,255,.08);
+  --fi-white-12:rgba(255,255,255,.12);
+  --fi-white-20:rgba(255,255,255,.20);
+  --fi-blue-a08:rgba(53,99,255,.08);
+  --fi-blue-a15:rgba(53,99,255,.15);
+  --fi-blue-a25:rgba(53,99,255,.25);
+  --fi-blue-a40:rgba(53,99,255,.40);
+  --fi-teal-a08:rgba(20,184,166,.08);
+  --fi-teal-a18:rgba(20,184,166,.18);
+  --fi-teal-a35:rgba(20,184,166,.35);
+
+  /* ---- Semantic roles (dark = marketing default) -------------------- */
+  --color-canvas:var(--fi-navy-900);
+  --color-canvas-deep:var(--fi-navy-950);
+  --color-surface:var(--fi-slate-800);
+  --color-surface-raised:#243149;
+  --color-surface-sunken:var(--fi-navy-850);
+  --color-surface-quiet:rgba(30,41,59,.55);
+  --color-overlay:rgba(7,10,18,.72);
+
+  --color-border-hairline:var(--fi-white-05);
+  --color-border:var(--fi-white-08);
+  --color-border-strong:var(--fi-white-12);
+  --color-border-accent:var(--fi-blue-a40);
+
+  --text-primary:var(--fi-slate-50);
+  --text-body:var(--fi-slate-300);
+  --text-muted:var(--fi-slate-400);
+  --text-caption:var(--fi-slate-500);
+  --text-footer:var(--fi-slate-600);
+  --text-on-accent:#FFFFFF;
+
+  --color-accent:var(--fi-blue-500);
+  --color-accent-hover:var(--fi-blue-600);
+  --color-accent-quiet:var(--fi-blue-a15);
+  --color-accent-text:var(--fi-blue-300);
+
+  --color-positive:var(--fi-teal-500);
+  --color-positive-text:var(--fi-teal-300);
+  --color-positive-quiet:var(--fi-teal-a18);
+  --color-warn:var(--fi-amber-500);
+  --color-warn-text:var(--fi-amber-400);
+  --color-danger:var(--fi-rose-500);
+  --color-danger-text:var(--fi-rose-400);
+
+  --color-focus-ring:var(--fi-blue-400);
+  --color-link:var(--fi-blue-300);
+  --color-link-hover:var(--fi-slate-50);
+
+  /* Track / fill for meters and charts */
+  --color-track:rgba(255,255,255,.06);
+  --color-grid-line:var(--fi-white-05);
+}

@@ -1,0 +1,20 @@
+/* Page-level grid helpers for the marketing surface. Scoped under
+   [data-forge-ds] so nothing reaches the light in-app UI. */
+[data-forge-ds] .fi-grid-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-5);
+}
+[data-forge-ds] .fi-grid-checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-3) var(--space-5);
+}
+/* Hero accent phrase — blue→teal gradient text on the <em> inside a title. */
+[data-forge-ds] .fi-hero__title em {
+  font-style: normal;
+  background: linear-gradient(120deg, var(--fi-blue-400), var(--fi-teal-400, #2DD4BF));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}

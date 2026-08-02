@@ -1,0 +1,60 @@
+/* Light "blueberry" theme — the in-app surface. Same Intelligence Blue accent.
+   Apply with <html data-theme="light"> or any [data-forge-ds][data-theme="light"] scope. */
+[data-forge-ds][data-theme="light"]{
+  --color-canvas:var(--fi-blue-50);
+  --color-canvas-deep:#E4EAFF;
+  --color-surface:#FFFFFF;
+  --color-surface-raised:#FFFFFF;
+  --color-surface-sunken:#F5F7FF;
+  --color-surface-quiet:rgba(255,255,255,.7);
+  --color-overlay:rgba(11,15,26,.45);
+
+  --color-border-hairline:rgba(15,23,42,.06);
+  --color-border:rgba(15,23,42,.1);
+  --color-border-strong:rgba(15,23,42,.16);
+  --color-border-accent:rgba(53,99,255,.4);
+
+  --text-primary:var(--fi-slate-900);
+  --text-body:#334155;
+  --text-muted:var(--fi-slate-500);
+  --text-caption:var(--fi-slate-500);
+  --text-footer:var(--fi-slate-400);
+
+  --color-accent-text:var(--fi-blue-600);
+  --color-accent-quiet:rgba(53,99,255,.1);
+  --color-positive:var(--fi-green-500);
+  --color-positive-text:#0B7F59;
+  --color-positive-quiet:rgba(14,165,114,.12);
+  --color-warn-text:#B45309;
+  --color-danger-text:#BE123C;
+
+  --color-link:var(--fi-blue-600);
+  --color-link-hover:var(--fi-blue-700);
+
+  --color-track:rgba(15,23,42,.08);
+  --color-grid-line:rgba(15,23,42,.05);
+
+  --bg-wash:
+    radial-gradient(1100px 700px at 10% -10%, rgba(53,99,255,.10), transparent 60%),
+    radial-gradient(900px 600px at 95% 106%, rgba(20,184,166,.07), transparent 62%);
+  --bg-grid:
+    linear-gradient(to right, rgba(15,23,42,.025) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15,23,42,.025) 1px, transparent 1px);
+
+  --shadow-xs:0 1px 2px rgba(15,23,42,.05);
+  --shadow-sm:0 1px 2px rgba(15,23,42,.06),0 2px 6px -2px rgba(15,23,42,.06);
+  --shadow-md:0 2px 4px -2px rgba(15,23,42,.06),0 8px 20px -6px rgba(30,63,184,.1);
+  --shadow-lg:0 4px 10px -4px rgba(15,23,42,.07),0 20px 44px -14px rgba(30,63,184,.16);
+  --shadow-xl:0 8px 18px -8px rgba(15,23,42,.08),0 40px 80px -24px rgba(30,63,184,.2);
+  --shadow-glow-blue:0 14px 40px -14px rgba(53,99,255,.32);
+  --shadow-glow-blue-lg:0 24px 70px -20px rgba(53,99,255,.34);
+  --shadow-glow-teal:0 14px 40px -14px rgba(14,165,114,.28);
+  --shadow-btn:inset 0 1px 0 rgba(255,255,255,.28),0 1px 2px rgba(15,23,42,.12);
+  --shadow-btn-hover:inset 0 1px 0 rgba(255,255,255,.34),0 8px 22px -8px rgba(53,99,255,.45);
+  --inset-hairline:inset 0 1px 0 rgba(255,255,255,.8);
+  --inset-hairline-strong:inset 0 1px 0 rgba(255,255,255,.9);
+
+  --border-gradient-blue:linear-gradient(135deg,rgba(53,99,255,.42),rgba(53,99,255,.05) 40%,rgba(14,165,114,.3)); /* @kind color */
+  --border-gradient-quiet:linear-gradient(135deg,rgba(15,23,42,.12),rgba(15,23,42,.02) 55%,rgba(15,23,42,.07)); /* @kind color */
+  --frame-bg:linear-gradient(180deg,#FFFFFF,#F5F7FF);
+}
