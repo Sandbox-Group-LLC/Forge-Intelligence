@@ -681,7 +681,7 @@ export default function PublishingQueuePage() {
     if (chData.success) {
       for (const ch of chData.channels) {
         const stored = ch.utm_template;
-        channelUtms[ch.channel] = (stored && Object.keys(stored).length > 0) ? stored : { utm_source: ch.channel, utm_medium: ['linkedin','x','facebook','reddit','medium'].includes(ch.channel) ? 'social' : 'organic', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' };
+        channelUtms[ch.channel] = (stored && Object.keys(stored).length > 0) ? stored : { utm_source: ch.channel, utm_medium: ['linkedin','x','facebook','instagram','reddit','medium'].includes(ch.channel) ? 'social' : 'organic', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' };
       }
     }
     setExportTab('html');
@@ -1091,7 +1091,7 @@ ${authorFooterHtml}
       if (chRes.success) {
         for (const ch of chRes.channels) {
           const stored = ch.utm_template;
-          channelUtmMap[ch.channel] = (stored && Object.keys(stored).length > 0) ? stored : { utm_source: ch.channel, utm_medium: ['linkedin','x','facebook','reddit','medium'].includes(ch.channel) ? 'social' : 'organic', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' };
+          channelUtmMap[ch.channel] = (stored && Object.keys(stored).length > 0) ? stored : { utm_source: ch.channel, utm_medium: ['linkedin','x','facebook','instagram','reddit','medium'].includes(ch.channel) ? 'social' : 'organic', utm_campaign: '{campaign_slug}', utm_content: '{article_slug}' };
         }
       }
 

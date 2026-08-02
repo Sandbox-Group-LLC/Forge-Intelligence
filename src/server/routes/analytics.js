@@ -981,6 +981,123 @@ router.post('/sync/:brandProfileId', async (req, res) => {
       }
     }
 
+    // ── Instagram analytics (Zernio-only) ──
+    // Instagram publishing here always routes through Zernio — the publish handler
+    // hard-fails a non-Zernio Instagram connect (no legacy Graph API path, unlike
+    // Facebook). Every Instagram post stores Zernio's internal _id as `zernioPostId`
+    // in response_data; the Zernio /analytics endpoint expects that _id, NOT the
+    // Instagram platform id. So this branch mirrors Facebook's Zernio path but with
+    // no legacy fallback.
+    if (channel === 'instagram' || channel === 'all') {
+      const igLogRes = await pool.query(
+        `SELECT pl.content_id, pl.response_data, pl.attempted_at AS published_at,
+                pl.published_url, ct.title, ct.campaign_id
+           FROM publish_log pl
+           LEFT JOIN generated_content_${safeId} ct ON ct.id::text = pl.content_id
+          WHERE pl.brand_profile_id = $1 AND pl.channel = 'instagram' AND pl.status = 'published'
+            AND (pl.live_status IS NULL OR pl.live_status != 'deleted')
+          ORDER BY pl.attempted_at DESC`,
+        [brandProfileId]
+      ).catch(() => ({ rows: [] }));
+
+      const igCredRes = await pool.query(
+        `SELECT credentials FROM publishing_channels WHERE brand_profile_id = $1 AND channel = 'instagram' AND is_active = true LIMIT 1`,
+        [brandProfileId]
+      ).catch(() => ({ rows: [] }));
+      const igCreds = igCredRes.rows[0]?.credentials || {};
+      const igIsZernio = !!igCreds.zernioAccountId && !!process.env.ZERNIO_API_KEY;
+      console.log(`[Analytics/Instagram] Found ${igLogRes.rows.length} published posts, provider=${igIsZernio ? 'zernio' : 'unsupported'}`);
+
+      for (const row of igLogRes.rows) {
+        try {
+          const rd = row.response_data || {};
+          const postId = rd.postId || rd.post_id || rd.id;
+          // Zernio's internal _id — the only id Zernio /analytics accepts.
+          const zernioPostId = rd.zernioPostId || rd.zernio_post_id || null;
+
+          if (!igIsZernio) {
+            console.log('[Analytics/Instagram] No Zernio account on Instagram channel — skipping');
+            break;
+          }
+          if (!zernioPostId) { errors.push({ contentId: row.content_id, error: 'no_zernio_post_id' }); continue; }
+
+          let impressions = 0, clicks = 0, reactions = 0, comments = 0, reposts = 0;
+          let rawData = {};
+          let dataSource = 'none';
+
+          const analyticsRes = await callZernio('GET', `/analytics?postId=${encodeURIComponent(zernioPostId)}`);
+          console.log(`[Analytics/Instagram] Zernio analytics for ${zernioPostId}: HTTP ${analyticsRes.status}`);
+
+          if (analyticsRes.status === 202) {
+            await pool.query(
+              `INSERT INTO content_analytics
+                 (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at)
+               VALUES ($1, $2, 'instagram', $3, 0, 0, 0, 0, 0, 0, 0, $4::jsonb, COALESCE($5, NOW()), NOW())
+               ON CONFLICT (content_id, channel) DO NOTHING`,
+              [brandProfileId, row.content_id, postId || zernioPostId, JSON.stringify({ pending: true }), row.published_at]
+            ).catch(e => console.error('[Analytics/Instagram] pending placeholder failed:', e.message));
+            console.log(`[Analytics/Instagram] Sync pending for ${zernioPostId} — placeholder inserted, will retry next sync`);
+            continue;
+          }
+          if (analyticsRes.status === 424 || !analyticsRes.ok) {
+            errors.push({ contentId: row.content_id, error: `zernio_analytics_${analyticsRes.status}` });
+            continue;
+          }
+
+          const analytics = analyticsRes.parsed;
+          const platforms = analytics?.post?.platforms || analytics?.platforms || [];
+          const igMetrics = platforms.find(p => p.platform === 'instagram')?.analytics
+            || analytics?.post?.analytics
+            || analytics?.analytics
+            || analytics || {};
+
+          // Instagram metric name mapping. IG surfaces reach/impressions, likes,
+          // comments, and shares; saves are IG-specific engagement with no direct
+          // column, so they fold into reposts (closest "amplification" analog) and
+          // are preserved verbatim in raw_data.
+          impressions = igMetrics.impressions || igMetrics.reach || igMetrics.views || igMetrics.impression_count || 0;
+          clicks      = igMetrics.clicks || igMetrics.link_clicks || igMetrics.website_clicks || igMetrics.profile_visits || 0;
+          reactions   = igMetrics.likes || igMetrics.reactions || igMetrics.like_count || 0;
+          comments    = igMetrics.comments || igMetrics.comment_count || 0;
+          reposts     = igMetrics.shares || igMetrics.reposts || igMetrics.saves || igMetrics.saved || 0;
+          rawData     = { zernio: analytics };
+          dataSource  = 'zernio';
+          console.log(`[Analytics/Instagram] Zernio metrics for ${zernioPostId}: ${impressions} impr, ${reactions} likes, ${comments} comments, ${reposts} shares/saves, ${clicks} clicks`);
+
+          if (dataSource === 'none') continue;
+
+          const totalEngagement = reactions + comments + reposts + clicks;
+          const ctr = impressions > 0 ? parseFloat((clicks / impressions * 100).toFixed(2)) : 0;
+          const engagementRate = impressions > 0
+            ? parseFloat((totalEngagement / impressions * 100).toFixed(2))
+            : 0;
+
+          await pool.query(
+            `INSERT INTO content_analytics
+               (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at, campaign_id)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),$14)
+             ON CONFLICT (content_id, channel) DO UPDATE SET
+               impressions      = CASE WHEN EXCLUDED.impressions > 0 THEN EXCLUDED.impressions ELSE content_analytics.impressions END,
+               clicks           = CASE WHEN EXCLUDED.impressions > 0 THEN EXCLUDED.clicks      ELSE content_analytics.clicks      END,
+               ctr              = CASE WHEN EXCLUDED.impressions > 0 THEN EXCLUDED.ctr         ELSE content_analytics.ctr         END,
+               engagement_rate  = CASE WHEN EXCLUDED.impressions > 0 THEN EXCLUDED.engagement_rate ELSE content_analytics.engagement_rate END,
+               reactions        = GREATEST(COALESCE(content_analytics.reactions, 0), EXCLUDED.reactions),
+               comments         = GREATEST(COALESCE(content_analytics.comments, 0),  EXCLUDED.comments),
+               reposts          = GREATEST(COALESCE(content_analytics.reposts, 0),   EXCLUDED.reposts),
+               raw_data         = (COALESCE(content_analytics.raw_data, '{}'::jsonb) - 'pending') || EXCLUDED.raw_data,
+               synced_at        = NOW(),
+               campaign_id      = COALESCE(EXCLUDED.campaign_id, content_analytics.campaign_id)`,
+            [brandProfileId, row.content_id, 'instagram', postId || zernioPostId,
+             impressions, clicks, reactions, comments, reposts, ctr, engagementRate,
+             JSON.stringify(rawData), row.published_at, row.campaign_id || null]
+          );
+          synced.push({ contentId: row.content_id, title: row.title, postId: zernioPostId, reactions, comments, reposts, impressions, dataSource });
+        } catch(e) {
+          errors.push({ contentId: row.content_id, error: e.message });
+        }
+      }
+    }
+
     // Ghost sync
     if (channel === 'ghost' || channel === 'all') {
       // Prefer per-brand credentials from publishing_channels, fall back to env vars
