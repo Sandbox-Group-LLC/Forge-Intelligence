@@ -17,9 +17,18 @@ on:
   push:
     branches: [main]
 
+# NOTE: cancel-in-progress is intentionally FALSE. This workflow is the required
+# merge gate ("Typecheck & Test" is a required status check on PRs into main). A
+# cancelled run reports the required context as cancelled — which is NOT success —
+# so cancelling an in-flight run leaves the rollup PR BLOCKED until a fresh run for
+# the latest SHA settles clean. Bursts of commits on development (e.g. the nightly
+# docs-log automation pushing straight to the branch) used to guillotine the gate
+# run and park the PR as "stuck". A few redundant ~45s runs are cheaper than a
+# wedged merge gate. cancel-in-progress belongs on throwaway workflows (see
+# brain-refresh.yml), not on a required check.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   test:
@@ -27,6 +36,10 @@ jobs:
     # update the branch ruleset's required-check name to match or merges block.
     name: Typecheck & Test
     runs-on: ubuntu-latest
+    # Bound a genuinely wedged run (vitest open handle, npm registry stall). Normal
+    # run is ~45s; without this a hung run sits at GitHub's 6h default and reads as
+    # "stuck". Fail fast instead.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
