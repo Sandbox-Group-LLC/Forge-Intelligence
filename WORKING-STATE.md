@@ -13,18 +13,15 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
-### 2026-08-05 — Quick Copy Phase 1 (PR #560) → awaiting merge to development
+### 2026-08-05 — Quick Copy P1+P2 merged; Phase 3 handoffs + product surface
 
-**Headline: Quick Copy is built and up as PR #560.** Brand-voiced one-offs (email replies, DMs, posts, notes) without the full pipeline. Locked with Brian: name=Quick Copy; variant picker 1–4; copy/paste only; Sonnet; P1; optional inline claim check (red underline + superscript ¹ ² ³ + notes list — not a tab).
+**#560 + #561 merged to `development`.** Brian holding a single promote to main.
 
-- **API** `/api/quick-copy` — generate (SSE), refine, check, history, CRUD. Module: `src/server/routes/quick-copy.js` + pure helpers `src/server/quick-copy.js` / `src/lib/quick-copy.js`.
-- **UI** `/app/quick-copy` — `QuickCopyPage.tsx` + Sidebar/TopBar. Paid gate. History drawer. Refine chips. Check claims stays on the same card; clipboard is always clean text.
-- **Docs** `docs/QUICK-COPY.md`. Agent prompt `src/agents/stage4_quick_copy/system_prompt.md`.
-- **Verify** unit tests + route snapshot + `tsc` clean locally. CI *Typecheck & Test* was in progress at open.
+- **P1** Quick Copy core (`/app/quick-copy`, Sonnet, variants, inline claim check)
+- **P2** Soften / Find source / recent prompts / handoff buttons
+- **P3 (this PR)** Email + Social consume sessionStorage handoffs; `/product` tile + included list; onboarding step
 
-**PR:** https://github.com/Sandbox-Group-LLC/Forge-Intelligence/pull/560 (`agent/forge-intelligence` → `development`). Brian reviews/merges.
-
-**Not in v1:** publish/queue, auto-compliance on generate, multi-email sequences, full Compliance Gate handoff.
+**Not promoting to main until Brian's batch.**
 
 ---
 

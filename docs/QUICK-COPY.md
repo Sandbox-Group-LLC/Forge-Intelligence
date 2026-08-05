@@ -58,3 +58,9 @@ Auth: `requireAuth` at mount. Brand access checked per request.
 - **Find source** — reuses `findCitationSources` (Perplexity); lists links under the flag
 - **Recent prompts** — deduped strip above the prompt box
 - **Handoffs** — "Open in Email Campaign" / "Open in Social" via sessionStorage prefill keys (`forge_quick_copy_handoff`, `forge_quick_copy_social_handoff`)
+
+## Phase 3
+
+- **Handoff consumers** — Email Campaign reads `forge_quick_copy_handoff`; Social Generator reads `forge_quick_copy_social_handoff` (one-shot sessionStorage, then clear)
+- **Product** — Quick Copy tile on `/product` formats grid + included list
+- **Onboarding** — step pointing at `/app/quick-copy`
