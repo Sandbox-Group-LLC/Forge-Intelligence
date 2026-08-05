@@ -19,3 +19,9 @@ export type AnnotatedSegment =
 export function buildAnnotatedSegments(body: string, flags: AnchoredFlag[], dismissedNs?: Set<number> | number[]): AnnotatedSegment[];
 export function cleanCopyText(body: string): string;
 export function formatConstraintBlock(opts: { format: string; platform?: string; lengthHint?: string }): string;
+export function applyExcerptRewrite(body: string, excerpt: string, replacement: string): string | null;
+export function uniqueRecentPrompts(
+  rows: Array<{ prompt?: string; format?: string; platform?: string; id?: string; createdAt?: string; created_at?: string }>,
+  limit?: number
+): Array<{ id: string | null; prompt: string; format: string | null; platform: string | null; createdAt: string | null }>;
+

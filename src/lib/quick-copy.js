@@ -160,6 +160,51 @@ export function cleanCopyText(body) {
 }
 
 /**
+ * Replace the first occurrence of `excerpt` in `body` with `replacement`.
+ * Returns null if excerpt is missing / empty (caller should 400).
+ * @param {string} body
+ * @param {string} excerpt
+ * @param {string} replacement
+ * @returns {string | null}
+ */
+export function applyExcerptRewrite(body, excerpt, replacement) {
+  if (typeof body !== 'string' || typeof excerpt !== 'string') return null;
+  if (!excerpt) return null;
+  const range = findExcerptRange(body, excerpt);
+  if (!range) return null;
+  const rep = typeof replacement === 'string' ? replacement : '';
+  return body.slice(0, range.start) + rep + body.slice(range.end);
+}
+
+/**
+ * Deduplicate recent prompts for the "reuse last prompt" strip.
+ * Newest-first input; returns unique non-empty prompts (trimmed), capped.
+ * @param {Array<{ prompt?: string, format?: string, platform?: string, id?: string, createdAt?: string }>} rows
+ * @param {number} [limit=8]
+ */
+export function uniqueRecentPrompts(rows, limit = 8) {
+  const list = Array.isArray(rows) ? rows : [];
+  const out = [];
+  const seen = new Set();
+  for (const row of list) {
+    const prompt = typeof row?.prompt === 'string' ? row.prompt.trim() : '';
+    if (!prompt) continue;
+    const key = prompt.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      id: row.id || null,
+      prompt,
+      format: row.format || null,
+      platform: row.platform || null,
+      createdAt: row.createdAt || row.created_at || null,
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/**
  * Build length / platform constraint block for the writer prompt.
  * @param {{ format: string, platform?: string, lengthHint?: string }} opts
  */

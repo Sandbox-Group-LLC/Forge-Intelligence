@@ -11,12 +11,15 @@ import { anthropic, dateContext } from '../llm.js';
 import { safeParseLLM } from '../llm-json.js';
 import { verifyBrandAccess } from '../auth.js';
 import { activeStreams } from '../streams.js';
+import { findCitationSources } from '../citations.js';
 import {
   QUICK_COPY_FORMATS,
   QUICK_COPY_PLATFORMS,
   clampVariantCount,
   anchorComplianceFlags,
   formatConstraintBlock,
+  applyExcerptRewrite,
+  uniqueRecentPrompts,
 } from '../quick-copy.js';
 
 const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -532,6 +535,233 @@ ${body}
     res.json({ success: true, compliance });
   } catch (err) {
     console.error('[QUICK-COPY] Check error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/quick-copy/:id/resolve-flag — soften or rewrite a flagged span in-place
+// action: 'soften' | 'rewrite'
+router.post('/:id/resolve-flag', async (req, res) => {
+  const {
+    flagN,
+    action = 'soften',
+    instruction = '',
+    variantIdx,
+    body: bodyOverride,
+  } = req.body || {};
+
+  if (!Number.isFinite(Number(flagN)) || Number(flagN) < 1) {
+    return res.status(400).json({ success: false, error: 'flagN (positive number) required' });
+  }
+  if (!['soften', 'rewrite'].includes(action)) {
+    return res.status(400).json({ success: false, error: 'action must be soften|rewrite' });
+  }
+
+  try {
+    await ensureQuickCopyTable();
+    const draftRes = await pool.query(`SELECT * FROM quick_copy_drafts WHERE id = $1`, [req.params.id]);
+    if (!draftRes.rows.length) return res.status(404).json({ success: false, error: 'Draft not found' });
+    const draft = draftRes.rows[0];
+    if (!(await verifyBrandAccess(draft.brand_profile_id, req.userId))) {
+      return res.status(403).json({ success: false, error: 'Access denied' });
+    }
+
+    const brain = await loadBrainContext(draft.brand_profile_id);
+    if (!brain) return res.status(404).json({ success: false, error: 'Brand profile not found' });
+
+    const variants = Array.isArray(draft.variants_json) ? [...draft.variants_json] : [];
+    const idx = Number.isInteger(variantIdx) ? variantIdx : (draft.active_variant_idx || 0);
+    const variant = variants[idx];
+    if (!variant) return res.status(400).json({ success: false, error: 'Variant not found' });
+
+    const body = (typeof bodyOverride === 'string' && bodyOverride.trim())
+      ? bodyOverride
+      : String(variant.body || '');
+    const compliance = draft.compliance_json && typeof draft.compliance_json === 'object'
+      ? draft.compliance_json
+      : null;
+    const flags = Array.isArray(compliance?.flags) ? compliance.flags : [];
+    const flag = flags.find((f) => Number(f.n) === Number(flagN));
+    if (!flag?.excerpt) {
+      return res.status(400).json({ success: false, error: `Flag ${flagN} not found — run Check claims first` });
+    }
+    if (!body.includes(flag.excerpt)) {
+      return res.status(400).json({ success: false, error: 'Flagged excerpt no longer present in body — re-check after edits' });
+    }
+
+    const defaultSoften = flag.suggestion
+      || 'Soften this claim: remove unverifiable numbers/superlatives, keep the intent, stay brand-voiced.';
+    const editInstruction = action === 'rewrite' && String(instruction || '').trim()
+      ? String(instruction).trim()
+      : defaultSoften;
+
+    const msg = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 512,
+      system: `You are a precision editor for short brand copy.
+Rewrite ONLY the selected excerpt per the instruction.
+Return ONLY the rewritten excerpt text — no quotes, no preamble, no full body.
+Preserve approximate length unless the instruction requires cutting.
+Brand: ${brain.brandName}
+Voice hint: ${trimTo(brain.voiceProfile?.summary || brain.voiceProfile || {}, 400)}`,
+      messages: [{
+        role: 'user',
+        content: `FULL COPY (context only):\n"""\n${body}\n"""\n\nEXCERPT TO REWRITE:\n"""\n${flag.excerpt}\n"""\n\nFLAG TYPE: ${flag.type || 'unknown'}\nFLAG REASON: ${flag.reason || ''}\n\nINSTRUCTION:\n${editInstruction}\n\nReturn only the rewritten excerpt:`,
+      }],
+    });
+
+    const rewritten = (msg.content?.[0]?.text || '').trim();
+    if (!rewritten) return res.status(500).json({ success: false, error: 'Empty rewrite from model' });
+
+    const nextBody = applyExcerptRewrite(body, flag.excerpt, rewritten);
+    if (nextBody == null) {
+      return res.status(400).json({ success: false, error: 'Could not apply rewrite — excerpt missing' });
+    }
+
+    const nextVariants = variants.map((v, i) => (i === idx ? { ...v, body: nextBody } : v));
+    const dismissed = Array.from(new Set([...(compliance?.dismissed || []), Number(flagN)]));
+    const nextCompliance = {
+      ...(compliance || {}),
+      checkedAt: compliance?.checkedAt || new Date().toISOString(),
+      variantIdx: idx,
+      bodySnapshot: nextBody,
+      flags,
+      dismissed,
+      lastResolve: {
+        flagN: Number(flagN),
+        action,
+        excerpt: flag.excerpt,
+        replacement: rewritten,
+        at: new Date().toISOString(),
+      },
+    };
+
+    await pool.query(
+      `UPDATE quick_copy_drafts
+          SET variants_json = $1,
+              active_variant_idx = $2,
+              compliance_json = $3,
+              status = 'edited',
+              updated_at = NOW()
+        WHERE id = $4`,
+      [JSON.stringify(nextVariants), idx, JSON.stringify(nextCompliance), draft.id]
+    );
+
+    pool.query(
+      `INSERT INTO brain_mistakes (brand_profile_id, mistake_type, description, human_feedback, severity, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
+      [
+        draft.brand_profile_id,
+        'quick_copy_flag_resolve',
+        `Flagged (${flag.type}): "${String(flag.excerpt).slice(0, 300)}"`,
+        `${action}: "${editInstruction.slice(0, 200)}" → "${rewritten.slice(0, 300)}"`,
+        flag.severity === 'red' ? 'high' : 'medium',
+      ]
+    ).catch((e) => console.error('[QUICK-COPY] brain log:', e.message));
+
+    res.json({
+      success: true,
+      variants: nextVariants,
+      activeVariantIdx: idx,
+      compliance: nextCompliance,
+      replacement: rewritten,
+      body: nextBody,
+    });
+  } catch (err) {
+    console.error('[QUICK-COPY] resolve-flag error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/quick-copy/:id/find-sources — lite citation lookup for a flagged claim
+router.post('/:id/find-sources', async (req, res) => {
+  const { flagN, claim, variantIdx } = req.body || {};
+  try {
+    await ensureQuickCopyTable();
+    const draftRes = await pool.query(`SELECT * FROM quick_copy_drafts WHERE id = $1`, [req.params.id]);
+    if (!draftRes.rows.length) return res.status(404).json({ success: false, error: 'Draft not found' });
+    const draft = draftRes.rows[0];
+    if (!(await verifyBrandAccess(draft.brand_profile_id, req.userId))) {
+      return res.status(403).json({ success: false, error: 'Access denied' });
+    }
+
+    const compliance = draft.compliance_json || {};
+    const flags = Array.isArray(compliance.flags) ? compliance.flags : [];
+    const flag = Number.isFinite(Number(flagN))
+      ? flags.find((f) => Number(f.n) === Number(flagN))
+      : null;
+
+    const claimText = (typeof claim === 'string' && claim.trim())
+      ? claim.trim()
+      : (flag?.excerpt || flag?.reason || '');
+    if (!claimText) {
+      return res.status(400).json({ success: false, error: 'claim or flagN with excerpt required' });
+    }
+
+    const variants = Array.isArray(draft.variants_json) ? draft.variants_json : [];
+    const idx = Number.isInteger(variantIdx) ? variantIdx : (draft.active_variant_idx || 0);
+    const body = variants[idx]?.body || compliance.bodySnapshot || '';
+
+    const sources = await findCitationSources({
+      claim: claimText,
+      sectionBody: body,
+      brandProfileId: draft.brand_profile_id,
+      maxResults: 3,
+    });
+
+    if (!sources?.length) {
+      return res.json({
+        success: false,
+        error: 'No credible sources found. Soften the claim or rewrite without a citation.',
+        sources: [],
+      });
+    }
+
+    res.json({
+      success: true,
+      sources: sources.map((s) => ({
+        title: s.title || s.name || null,
+        url: s.url || null,
+        domain: s.domain || null,
+        snippet: s.snippet || s.summary || null,
+      })),
+      claim: claimText,
+      flagN: flag ? Number(flag.n) : null,
+    });
+  } catch (err) {
+    console.error('[QUICK-COPY] find-sources error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/quick-copy/recent-prompts/:brandProfileId — unique recent prompts for reuse
+router.get('/recent-prompts/:brandProfileId', async (req, res) => {
+  const { brandProfileId } = req.params;
+  if (!(await verifyBrandAccess(brandProfileId, req.userId))) {
+    return res.status(403).json({ success: false, error: 'Access denied' });
+  }
+  try {
+    await ensureQuickCopyTable();
+    const r = await pool.query(
+      `SELECT id, format, platform, prompt, created_at
+         FROM quick_copy_drafts
+        WHERE brand_profile_id = $1
+        ORDER BY created_at DESC
+        LIMIT 40`,
+      [brandProfileId]
+    );
+    const prompts = uniqueRecentPrompts(
+      r.rows.map((row) => ({
+        id: row.id,
+        format: row.format,
+        platform: row.platform,
+        prompt: row.prompt,
+        createdAt: row.created_at,
+      })),
+      8
+    );
+    res.json({ success: true, prompts });
+  } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
