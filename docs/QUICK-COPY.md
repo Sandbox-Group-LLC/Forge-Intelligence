@@ -34,6 +34,7 @@ Brand-voiced one-off copy for replies, DMs, posts, and notes — without the ful
 | POST | `/:id/resolve-flag` | Soften/rewrite flagged span in-place |
 | POST | `/:id/find-sources` | Citation lookup for a flag/claim |
 | GET | `/recent-prompts/:brandProfileId` | Unique recent prompts for reuse |
+| POST | `/:id/mark-used` | Human "I used this" → weak `brain_patterns` row + `status=used` |
 
 Auth: `requireAuth` at mount. Brand access checked per request.
 
@@ -64,3 +65,9 @@ Auth: `requireAuth` at mount. Brand access checked per request.
 - **Handoff consumers** — Email Campaign reads `forge_quick_copy_handoff`; Social Generator reads `forge_quick_copy_social_handoff` (one-shot sessionStorage, then clear)
 - **Product** — Quick Copy tile on `/product` formats grid + included list
 - **Onboarding** — step pointing at `/app/quick-copy`
+
+## Phase 4
+
+- **Mark as used** — writes a weak `brain_patterns` row (`pattern_type=quick_copy_used`, `source_channel=quick_copy`, confidence ~0.25–0.55) and sets draft `status=used`
+- Idempotent: second click does not double-insert
+- Future Quick Copy gens already load top brain patterns, so used copy lightly conditions later one-offs

@@ -226,6 +226,9 @@ export default function QuickCopyPage() {
   const [resolvingFlag, setResolvingFlag] = useState<number | null>(null);
   const [sourcingFlag, setSourcingFlag] = useState<number | null>(null);
   const [flagSources, setFlagSources] = useState<Record<number, FlagSource[]>>({});
+  const [draftStatus, setDraftStatus] = useState<string>('draft');
+  const [markingUsed, setMarkingUsed] = useState(false);
+  const [usedMessage, setUsedMessage] = useState('');
 
   const active = variants[activeIdx] || null;
   const displayBody = editing ? editBody : (active?.body || '');
@@ -324,6 +327,8 @@ export default function QuickCopyPage() {
           setDraftId(parsed.id);
           setVariants(parsed.variants || []);
           setActiveIdx(0);
+          setDraftStatus('draft');
+          setUsedMessage('');
           setStatus('');
           fetchHistory();
           fetchRecentPrompts();
@@ -393,6 +398,30 @@ export default function QuickCopyPage() {
       setTimeout(() => setCopied(false), 1400);
     } catch {
       setError('Clipboard blocked — select and copy manually.');
+    }
+  };
+
+  const markUsed = async () => {
+    if (!draftId || markingUsed || draftStatus === 'used') return;
+    if (editing) await saveEdit();
+    setMarkingUsed(true);
+    setError('');
+    setUsedMessage('');
+    try {
+      const r = await fetch(`/api/quick-copy/${draftId}/mark-used`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...ah },
+        body: JSON.stringify({ variantIdx: activeIdx }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.success) throw new Error(d.error || 'Mark used failed');
+      setDraftStatus('used');
+      setUsedMessage(d.alreadyUsed ? 'Already in brain' : 'Saved to brand brain');
+      fetchHistory();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setMarkingUsed(false);
     }
   };
 
@@ -583,6 +612,8 @@ export default function QuickCopyPage() {
       setVariants(vs);
       setActiveIdx(draft.active_variant_idx || 0);
       setCompliance(draft.compliance_json || null);
+      setDraftStatus(draft.status || 'draft');
+      setUsedMessage(draft.status === 'used' ? 'Already in brain' : '');
       setEditing(false);
       setHistoryOpen(false);
     } catch (e) {
@@ -628,6 +659,7 @@ export default function QuickCopyPage() {
               <button key={h.id} type="button" className="qc-history-row" onClick={() => openHistoryItem(h.id)}>
                 <div className="qc-history-meta">
                   <span className="qc-chip-sm">{h.format.replace('_', ' ')}</span>
+                  {h.status === 'used' && <span className="qc-chip-sm">used</span>}
                   <span className="qc-muted">{new Date(h.createdAt).toLocaleString()}</span>
                 </div>
                 <div className="qc-history-prompt">{h.prompt}</div>
@@ -836,7 +868,19 @@ export default function QuickCopyPage() {
                   >
                     <Shield /> {checking ? 'Checking…' : 'Check claims'}
                   </button>
+                  <button
+                    type="button"
+                    className="qc-btn-ghost-sm"
+                    onClick={markUsed}
+                    disabled={!draftId || markingUsed || draftStatus === 'used'}
+                    title="Tell the Brain you used this copy — weak pattern write-back"
+                  >
+                    {draftStatus === 'used' ? (usedMessage || 'Used ✓') : (markingUsed ? 'Saving…' : 'Mark as used')}
+                  </button>
                 </div>
+                {usedMessage && draftStatus === 'used' && (
+                  <div className="qc-muted">{usedMessage} — future Quick Copy gens will lean on it lightly.</div>
+                )}
 
                 <div className="qc-refine">
                   <span className="qc-muted">Refine:</span>

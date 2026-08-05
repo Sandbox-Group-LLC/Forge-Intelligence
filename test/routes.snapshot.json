@@ -224,6 +224,7 @@
   "POST /api/publishing/unpublish",
   "POST /api/quick-copy/:id/check",
   "POST /api/quick-copy/:id/find-sources",
+  "POST /api/quick-copy/:id/mark-used",
   "POST /api/quick-copy/:id/refine",
   "POST /api/quick-copy/:id/resolve-flag",
   "POST /api/quick-copy/generate",
