@@ -734,6 +734,114 @@ router.post('/:id/find-sources', async (req, res) => {
   }
 });
 
+// POST /api/quick-copy/:id/mark-used — human says "I used this" → weak brain_pattern + status=used
+// Idempotent: if already used, returns existing pattern id without double-inserting.
+router.post('/:id/mark-used', async (req, res) => {
+  const { variantIdx, note = '' } = req.body || {};
+  try {
+    await ensureQuickCopyTable();
+    const draftRes = await pool.query(`SELECT * FROM quick_copy_drafts WHERE id = $1`, [req.params.id]);
+    if (!draftRes.rows.length) return res.status(404).json({ success: false, error: 'Draft not found' });
+    const draft = draftRes.rows[0];
+    if (!(await verifyBrandAccess(draft.brand_profile_id, req.userId))) {
+      return res.status(403).json({ success: false, error: 'Access denied' });
+    }
+
+    const variants = Array.isArray(draft.variants_json) ? draft.variants_json : [];
+    const idx = Number.isInteger(variantIdx) ? variantIdx : (draft.active_variant_idx || 0);
+    const variant = variants[idx] || variants[0];
+    if (!variant?.body?.trim()) {
+      return res.status(400).json({ success: false, error: 'No body on active variant to mark used' });
+    }
+
+    // Already used — return without double-writing patterns
+    if (draft.status === 'used') {
+      const existing = draft.notes && String(draft.notes).startsWith('brain_pattern:')
+        ? String(draft.notes).slice('brain_pattern:'.length)
+        : null;
+      return res.json({
+        success: true,
+        alreadyUsed: true,
+        status: 'used',
+        patternId: existing,
+        message: 'Already marked used',
+      });
+    }
+
+    const body = String(variant.body).trim();
+    const subject = variant.subject ? String(variant.subject).trim() : '';
+    const format = draft.format || 'custom';
+    const platform = draft.platform || 'generic';
+    const prompt = String(draft.prompt || '').trim();
+
+    // Weak pattern — low confidence so it informs future gens without overpowering measured ones
+    const description = [
+      `Successful Quick Copy (${format}/${platform}).`,
+      prompt ? `Ask: ${prompt.slice(0, 240)}` : null,
+      subject ? `Subject: ${subject.slice(0, 120)}` : null,
+      `Copy:\n${body.slice(0, 700)}`,
+      note && String(note).trim() ? `Human note: ${String(note).trim().slice(0, 200)}` : null,
+    ].filter(Boolean).join('\n');
+
+    const tags = JSON.stringify([
+      'source:quick_copy',
+      `format:${format}`,
+      `platform:${platform}`,
+      'human_used',
+    ]);
+
+    const conf = typeof variant.confidence === 'number'
+      ? Math.min(0.55, Math.max(0.25, variant.confidence / 100))
+      : 0.35;
+
+    const ins = await pool.query(
+      `INSERT INTO brain_patterns (
+         brand_profile_id, pattern_type, description, confidence_score, success_rate,
+         tags, source_channel, example_titles, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+       RETURNING id`,
+      [
+        draft.brand_profile_id,
+        'quick_copy_used',
+        description.slice(0, 1500),
+        conf,
+        0.5,
+        tags,
+        'quick_copy',
+        JSON.stringify([prompt.slice(0, 120) || `${format} one-off`].filter(Boolean)),
+      ]
+    );
+    const patternId = ins.rows[0]?.id || null;
+
+    await pool.query(
+      `UPDATE quick_copy_drafts
+          SET status = 'used',
+              active_variant_idx = $1,
+              notes = $2,
+              updated_at = NOW()
+        WHERE id = $3`,
+      [idx, patternId ? `brain_pattern:${patternId}` : draft.notes, draft.id]
+    );
+
+    await pool.query(
+      `INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms)
+       VALUES ($1, $2, $3, $4, $5)`,
+      ['stage4_quick_copy_mark_used', draft.brand_profile_id, 'success', 0, 0]
+    ).catch(() => {});
+
+    res.json({
+      success: true,
+      alreadyUsed: false,
+      status: 'used',
+      patternId,
+      message: 'Saved to brand brain as a weak pattern',
+    });
+  } catch (err) {
+    console.error('[QUICK-COPY] mark-used error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // GET /api/quick-copy/recent-prompts/:brandProfileId — unique recent prompts for reuse
 router.get('/recent-prompts/:brandProfileId', async (req, res) => {
   const { brandProfileId } = req.params;
