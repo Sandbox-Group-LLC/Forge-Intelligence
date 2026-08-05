@@ -56,6 +56,21 @@ interface HistoryItem {
   createdAt: string;
 }
 
+interface RecentPrompt {
+  id: string | null;
+  prompt: string;
+  format: Format | string | null;
+  platform: string | null;
+  createdAt: string | null;
+}
+
+interface FlagSource {
+  title: string | null;
+  url: string | null;
+  domain: string | null;
+  snippet: string | null;
+}
+
 const FORMATS: { id: Format; label: string; hint: string }[] = [
   { id: 'email_reply', label: 'Email reply', hint: 'Answer an inbound' },
   { id: 'cold_email', label: 'Cold email', hint: 'One-shot outreach' },
@@ -207,6 +222,10 @@ export default function QuickCopyPage() {
 
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [recentPrompts, setRecentPrompts] = useState<RecentPrompt[]>([]);
+  const [resolvingFlag, setResolvingFlag] = useState<number | null>(null);
+  const [sourcingFlag, setSourcingFlag] = useState<number | null>(null);
+  const [flagSources, setFlagSources] = useState<Record<number, FlagSource[]>>({});
 
   const active = variants[activeIdx] || null;
   const displayBody = editing ? editBody : (active?.body || '');
@@ -221,7 +240,17 @@ export default function QuickCopyPage() {
     } catch { /* non-fatal */ }
   }, [brandId, authToken]);
 
+  const fetchRecentPrompts = useCallback(async () => {
+    if (!brandId || !authToken) return;
+    try {
+      const r = await fetch(`/api/quick-copy/recent-prompts/${brandId}`, { headers: ah });
+      const d = await r.json();
+      if (d.success) setRecentPrompts(d.prompts || []);
+    } catch { /* non-fatal */ }
+  }, [brandId, authToken]);
+
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
+  useEffect(() => { fetchRecentPrompts(); }, [fetchRecentPrompts]);
 
   // Gate after hooks so hook order stays stable across paid/unpaid renders.
   if (brandLoading) return null;
@@ -297,6 +326,7 @@ export default function QuickCopyPage() {
           setActiveIdx(0);
           setStatus('');
           fetchHistory();
+          fetchRecentPrompts();
         }
       };
 
@@ -405,6 +435,108 @@ export default function QuickCopyPage() {
         body: JSON.stringify({ compliance: next }),
       });
     } catch { /* non-fatal */ }
+  };
+
+  const resolveFlag = async (n: number, action: 'soften' | 'rewrite' = 'soften') => {
+    if (!draftId || resolvingFlag != null) return;
+    if (editing) await saveEdit();
+    setResolvingFlag(n);
+    setError('');
+    try {
+      const r = await fetch(`/api/quick-copy/${draftId}/resolve-flag`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...ah },
+        body: JSON.stringify({
+          flagN: n,
+          action,
+          variantIdx: activeIdx,
+          body: editing ? editBody : active?.body,
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.success) throw new Error(d.error || 'Resolve failed');
+      setVariants(d.variants || []);
+      if (typeof d.activeVariantIdx === 'number') setActiveIdx(d.activeVariantIdx);
+      setCompliance(d.compliance || null);
+      setEditing(false);
+      setFlagSources((prev) => {
+        const next = { ...prev };
+        delete next[n];
+        return next;
+      });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setResolvingFlag(null);
+    }
+  };
+
+  const findSourcesForFlag = async (n: number) => {
+    if (!draftId || sourcingFlag != null) return;
+    setSourcingFlag(n);
+    setError('');
+    try {
+      const r = await fetch(`/api/quick-copy/${draftId}/find-sources`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...ah },
+        body: JSON.stringify({ flagN: n, variantIdx: activeIdx }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Source lookup failed');
+      if (!d.success) {
+        setFlagSources((prev) => ({ ...prev, [n]: [] }));
+        setError(d.error || 'No sources found');
+      } else {
+        setFlagSources((prev) => ({ ...prev, [n]: d.sources || [] }));
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSourcingFlag(null);
+    }
+  };
+
+  const applyRecentPrompt = (rp: RecentPrompt) => {
+    setPrompt(rp.prompt);
+    if (rp.format && FORMATS.some((f) => f.id === rp.format)) {
+      onFormatChange(rp.format as Format);
+    }
+    if (rp.platform && PLATFORMS.some((p) => p.id === rp.platform)) {
+      setPlatform(rp.platform as Platform);
+    }
+  };
+
+  const handoffToEmail = () => {
+    const body = editing ? editBody : (active?.body || '');
+    const subject = editing ? editSubject : (active?.subject || '');
+    const payload = {
+      fromQuickCopy: true,
+      prompt,
+      sourceText,
+      body,
+      subject,
+      format,
+      draftId,
+    };
+    try {
+      sessionStorage.setItem('forge_quick_copy_handoff', JSON.stringify(payload));
+    } catch { /* ignore */ }
+    window.location.href = '/app/email-campaign?from=quick-copy';
+  };
+
+  const handoffToSocial = () => {
+    const body = editing ? editBody : (active?.body || '');
+    const payload = {
+      fromQuickCopy: true,
+      topicPrompt: prompt || body.slice(0, 280),
+      body,
+      platform: platform === 'x' || platform === 'instagram' ? platform : 'x',
+      draftId,
+    };
+    try {
+      sessionStorage.setItem('forge_quick_copy_social_handoff', JSON.stringify(payload));
+    } catch { /* ignore */ }
+    window.location.href = '/app/social-generator?from=quick-copy';
   };
 
   const refine = async (direction: string) => {
@@ -579,6 +711,25 @@ export default function QuickCopyPage() {
               />
             </div>
 
+            {!!recentPrompts.length && (
+              <div className="qc-recent-prompts">
+                <div className="qc-muted">Reuse a recent prompt</div>
+                <div className="qc-recent-prompt-list">
+                  {recentPrompts.map((rp, i) => (
+                    <button
+                      key={rp.id || i}
+                      type="button"
+                      className="qc-recent-prompt"
+                      title={rp.prompt}
+                      onClick={() => applyRecentPrompt(rp)}
+                    >
+                      {rp.prompt.length > 72 ? rp.prompt.slice(0, 69) + '…' : rp.prompt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="qc-field">
               <label className="qc-label">Paste source <span className="qc-optional">(optional)</span></label>
               <textarea
@@ -702,6 +853,16 @@ export default function QuickCopyPage() {
                   ))}
                 </div>
 
+                <div className="qc-handoffs">
+                  <span className="qc-muted">Expand:</span>
+                  <button type="button" className="qc-chip-sm" onClick={handoffToEmail} disabled={!active && !editing}>
+                    Open in Email Campaign
+                  </button>
+                  <button type="button" className="qc-chip-sm" onClick={handoffToSocial} disabled={!active && !editing}>
+                    Open in Social
+                  </button>
+                </div>
+
                 {displaySubject != null && displaySubject !== '' && (
                   <div className="qc-subject-row">
                     <span className="qc-label">Subject</span>
@@ -772,10 +933,49 @@ export default function QuickCopyPage() {
                           <div className="qc-flag-excerpt">"{f.excerpt}"</div>
                           <div className="qc-flag-reason">{f.reason}</div>
                           {f.suggestion && <div className="qc-flag-suggestion">{f.suggestion}</div>}
+                          {!!flagSources[f.n]?.length && (
+                            <ul className="qc-sources">
+                              {flagSources[f.n].map((s, si) => (
+                                <li key={si}>
+                                  {s.url ? (
+                                    <a href={s.url} target="_blank" rel="noreferrer">
+                                      {s.title || s.domain || s.url}
+                                    </a>
+                                  ) : (
+                                    <span>{s.title || s.domain || 'Source'}</span>
+                                  )}
+                                  {s.snippet && <div className="qc-muted">{s.snippet}</div>}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                          {flagSources[f.n] && flagSources[f.n].length === 0 && (
+                            <div className="qc-muted">No credible sources found — soften instead.</div>
+                          )}
                         </div>
-                        <button type="button" className="qc-btn-ghost-sm" onClick={() => dismissFlag(f.n)}>
-                          Dismiss
-                        </button>
+                        <div className="qc-flag-actions">
+                          <button
+                            type="button"
+                            className="qc-btn-ghost-sm"
+                            disabled={resolvingFlag != null}
+                            onClick={() => resolveFlag(f.n, 'soften')}
+                          >
+                            {resolvingFlag === f.n ? 'Softening…' : 'Soften'}
+                          </button>
+                          {(f.type === 'factual_claim' || f.type === 'legal_risk' || f.severity === 'red') && (
+                            <button
+                              type="button"
+                              className="qc-btn-ghost-sm"
+                              disabled={sourcingFlag != null}
+                              onClick={() => findSourcesForFlag(f.n)}
+                            >
+                              {sourcingFlag === f.n ? 'Finding…' : 'Find source'}
+                            </button>
+                          )}
+                          <button type="button" className="qc-btn-ghost-sm" onClick={() => dismissFlag(f.n)}>
+                            Dismiss
+                          </button>
+                        </div>
                       </div>
                     ))}
                     <div className="qc-muted qc-copy-note">

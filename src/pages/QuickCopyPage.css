@@ -433,3 +433,46 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Phase 2 */
+.qc-recent-prompts { display: flex; flex-direction: column; gap: 6px; }
+.qc-recent-prompt-list { display: flex; flex-direction: column; gap: 6px; }
+.qc-recent-prompt {
+  text-align: left;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg, #fafafa);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.35;
+}
+.qc-recent-prompt:hover {
+  border-color: var(--color-accent);
+  color: var(--color-text-primary);
+}
+.qc-handoffs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.qc-flag-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+}
+.qc-flag-row {
+  grid-template-columns: 28px 1fr auto;
+}
+.qc-sources {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+.qc-sources a { color: var(--color-accent); text-decoration: none; }
+.qc-sources a:hover { text-decoration: underline; }

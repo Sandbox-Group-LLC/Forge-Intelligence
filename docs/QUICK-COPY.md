@@ -1,4 +1,4 @@
-# Quick Copy (P1)
+# Quick Copy
 
 Brand-voiced one-off copy for replies, DMs, posts, and notes — without the full content pipeline.
 
@@ -31,6 +31,9 @@ Brand-voiced one-off copy for replies, DMs, posts, and notes — without the ful
 | GET | `/history/:brandProfileId` | Recent drafts |
 | GET | `/:id` | Full draft |
 | DELETE | `/:id` | Remove draft |
+| POST | `/:id/resolve-flag` | Soften/rewrite flagged span in-place |
+| POST | `/:id/find-sources` | Citation lookup for a flag/claim |
+| GET | `/recent-prompts/:brandProfileId` | Unique recent prompts for reuse |
 
 Auth: `requireAuth` at mount. Brand access checked per request.
 
@@ -47,3 +50,11 @@ Auth: `requireAuth` at mount. Brand access checked per request.
 - Auto compliance on generate
 - Separate Compliance Gate tab
 - Multi-email sequences (use Email Campaign)
+
+
+## Phase 2 (fast follow)
+
+- **Soften** on a flag — Haiku rewrites only the flagged excerpt; body updates; flag dismissed; brain_mistakes logged
+- **Find source** — reuses `findCitationSources` (Perplexity); lists links under the flag
+- **Recent prompts** — deduped strip above the prompt box
+- **Handoffs** — "Open in Email Campaign" / "Open in Social" via sessionStorage prefill keys (`forge_quick_copy_handoff`, `forge_quick_copy_social_handoff`)

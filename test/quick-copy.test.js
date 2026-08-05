@@ -6,6 +6,8 @@ import {
   buildAnnotatedSegments,
   cleanCopyText,
   formatConstraintBlock,
+  applyExcerptRewrite,
+  uniqueRecentPrompts,
   QUICK_COPY_FORMATS,
 } from '../src/server/quick-copy.js';
 
@@ -109,5 +111,34 @@ describe('QUICK_COPY_FORMATS', () => {
     expect(QUICK_COPY_FORMATS).toEqual(expect.arrayContaining([
       'email_reply', 'cold_email', 'dm', 'social_post', 'comment', 'custom',
     ]));
+  });
+});
+
+describe('applyExcerptRewrite', () => {
+  it('replaces the first exact excerpt', () => {
+    expect(applyExcerptRewrite('We grew 3x pipeline fast.', '3x pipeline', 'strong pipeline growth'))
+      .toBe('We grew strong pipeline growth fast.');
+  });
+  it('returns null when excerpt missing', () => {
+    expect(applyExcerptRewrite('hello', 'goodbye', 'x')).toBeNull();
+    expect(applyExcerptRewrite(null, 'a', 'b')).toBeNull();
+  });
+});
+
+describe('uniqueRecentPrompts', () => {
+  it('dedupes case-insensitively and keeps newest-first order', () => {
+    const out = uniqueRecentPrompts([
+      { id: '1', prompt: 'Reply to pricing', format: 'email_reply' },
+      { id: '2', prompt: 'reply to pricing', format: 'email_reply' },
+      { id: '3', prompt: 'LinkedIn DM after like', format: 'dm' },
+      { id: '4', prompt: '   ' },
+    ], 8);
+    expect(out).toHaveLength(2);
+    expect(out[0].prompt).toBe('Reply to pricing');
+    expect(out[1].prompt).toBe('LinkedIn DM after like');
+  });
+  it('respects limit', () => {
+    const rows = Array.from({ length: 10 }, (_, i) => ({ prompt: `Prompt ${i}` }));
+    expect(uniqueRecentPrompts(rows, 3)).toHaveLength(3);
   });
 });
