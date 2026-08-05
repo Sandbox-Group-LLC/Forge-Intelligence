@@ -621,6 +621,30 @@ export default function QuickCopyPage() {
     }
   };
 
+  const deleteHistoryItem = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm('Delete this Quick Copy draft?')) return;
+    try {
+      const r = await fetch(`/api/quick-copy/${id}`, {
+        method: 'DELETE',
+        headers: ah,
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.success === false) throw new Error(d.error || 'Delete failed');
+      setHistory((prev) => prev.filter((h) => h.id !== id));
+      if (draftId === id) {
+        setDraftId(null);
+        setVariants([]);
+        setCompliance(null);
+        setDraftStatus('draft');
+        setUsedMessage('');
+      }
+      fetchRecentPrompts();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
   const complianceApplies =
     compliance &&
     active &&
@@ -656,15 +680,25 @@ export default function QuickCopyPage() {
           <div className="qc-history">
             {!history.length && <div className="qc-muted">No Quick Copies yet for this brand.</div>}
             {history.map((h) => (
-              <button key={h.id} type="button" className="qc-history-row" onClick={() => openHistoryItem(h.id)}>
-                <div className="qc-history-meta">
-                  <span className="qc-chip-sm">{h.format.replace('_', ' ')}</span>
-                  {h.status === 'used' && <span className="qc-chip-sm">used</span>}
-                  <span className="qc-muted">{new Date(h.createdAt).toLocaleString()}</span>
-                </div>
-                <div className="qc-history-prompt">{h.prompt}</div>
-                {h.preview && <div className="qc-history-preview">{h.preview}</div>}
-              </button>
+              <div key={h.id} className="qc-history-row-wrap">
+                <button type="button" className="qc-history-row" onClick={() => openHistoryItem(h.id)}>
+                  <div className="qc-history-meta">
+                    <span className="qc-chip-sm">{h.format.replace('_', ' ')}</span>
+                    {h.status === 'used' && <span className="qc-chip-sm">used</span>}
+                    <span className="qc-muted">{new Date(h.createdAt).toLocaleString()}</span>
+                  </div>
+                  <div className="qc-history-prompt">{h.prompt}</div>
+                  {h.preview && <div className="qc-history-preview">{h.preview}</div>}
+                </button>
+                <button
+                  type="button"
+                  className="qc-history-delete"
+                  title="Delete draft"
+                  onClick={(ev) => deleteHistoryItem(h.id, ev)}
+                >
+                  ×
+                </button>
+              </div>
             ))}
           </div>
         )}

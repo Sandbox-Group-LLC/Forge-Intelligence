@@ -50,6 +50,7 @@
 | 4 | Content Generator | ✅ LIVE | Claude Sonnet 4.6 — requires enriched brief, published briefs filtered |
 | 4.5 | Campaign Generator | ✅ LIVE | Claude Sonnet 4.6 |
 | 4.6 | Email Campaign Generator | ✅ LIVE | Mistral Large — inline edit + per-flag actions (resolve/cite/dismiss) + brain feedback loop on false-positive dismissals + render-side sanitization for P.S./CTA/proof-token leakage |
+| 4.8 | Quick Copy | ✅ LIVE (dev) | Claude Sonnet 4.6 — brand-voiced one-offs (replies/DMs/posts); variant picker; optional inline claim check; mark-as-used → weak brain_patterns; handoffs to Email/Social. See `docs/QUICK-COPY.md`. |
 | 5 | Compliance Gate | ✅ LIVE | Claude Sonnet 4.6 |
 | 6 | Publishing & Distribution | ✅ LIVE | Queue + multi-channel: LinkedIn (Zernio), X (OAuth2 — x.com migrated 2026-05-23), Facebook (Zernio + Pipedream), Reddit (Zernio), Medium, Ghost, WordPress, Webflow, **My Website (new — self-hosted webhook publisher, see `/docs/my-website`)** |
 | 7 | Performance Intelligence | ✅ LIVE | LinkedIn + X + Ghost + GSC + GEO + Facebook + Reddit. **All Zernio-routed channels (LinkedIn / Reddit / Facebook) use dual-ID sync** (zernioPostId for analytics lookup, platform URN for display); Facebook URN→_id backfill admin endpoint shipped 2026-05-22 |

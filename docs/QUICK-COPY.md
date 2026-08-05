@@ -71,3 +71,8 @@ Auth: `requireAuth` at mount. Brand access checked per request.
 - **Mark as used** — writes a weak `brain_patterns` row (`pattern_type=quick_copy_used`, `source_channel=quick_copy`, confidence ~0.25–0.55) and sets draft `status=used`
 - Idempotent: second click does not double-insert
 - Future Quick Copy gens already load top brain patterns, so used copy lightly conditions later one-offs
+
+## Phase 5 (promote polish)
+
+- History **delete** control (uses existing `DELETE /:id`)
+- README stage table row (4.8 Quick Copy)

@@ -13,13 +13,18 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
-### 2026-08-05 — Quick Copy P1+P2 merged; Phase 3 handoffs + product surface
+### 2026-08-05 — Quick Copy P1–P4 merged to development (promote-ready)
 
-**#560 + #561 merged to `development`.** Brian holding a single promote to main.
+**#560–#563 all merged to `development`.** Brian holding a single promote to main.
 
-- **P1** Quick Copy core (`/app/quick-copy`, Sonnet, variants, inline claim check)
-- **P2** Soften / Find source / recent prompts / handoff buttons
-- **P3 (this PR)** Email + Social consume sessionStorage handoffs; `/product` tile + included list; onboarding step
+| PR | Phase | What shipped |
+|----|-------|--------------|
+| #560 | P1 | Core `/app/quick-copy` + `/api/quick-copy`, Sonnet, variants 1–4, inline claim check |
+| #561 | P2 | Soften / Find source / recent prompts / handoff buttons |
+| #562 | P3 | Email+Social handoff consumers, `/product` tile, onboarding step |
+| #563 | P4 | Mark as used → weak `brain_patterns` write-back |
+
+Docs: `docs/QUICK-COPY.md`. Surface: Stage 4.8 in README when polish lands.
 
 **Not promoting to main until Brian's batch.**
 
