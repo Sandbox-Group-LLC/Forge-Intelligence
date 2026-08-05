@@ -98,6 +98,13 @@ const STEPS: Step[] = [
     cta: { label: "Generate your first article →", href: "/app/content-generator" }
   },
   {
+    id: 'quick-copy',
+    icon: <IconZap />,
+    title: "One-offs without the pipeline",
+    body: "Not every ask is an article. Quick Copy writes brand-voiced email replies, DMs, and posts from the same Brain — variant picker, copy-out, optional inline claim check. When a one-off needs to grow, hand it to Email Campaign or Social.",
+    cta: { label: "Try Quick Copy →", href: "/app/quick-copy" }
+  },
+  {
     id: 'compliance',
     icon: <IconShield />,
     title: "Every edit trains your Brain",

@@ -204,6 +204,27 @@ function SocialGeneratorContent() {
     localStorage.setItem('forge_social_platform', platform);
   }, [platform]);
 
+  // Quick Copy handoff — prefill topic + platform once.
+  const [handoffBanner, setHandoffBanner] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('forge_quick_copy_social_handoff');
+      if (!raw) return;
+      sessionStorage.removeItem('forge_quick_copy_social_handoff');
+      const data = JSON.parse(raw);
+      if (!data || !data.fromQuickCopy) return;
+      const topic = (typeof data.topicPrompt === 'string' && data.topicPrompt.trim())
+        || (typeof data.body === 'string' ? data.body.trim().slice(0, 280) : '');
+      if (topic) setTopicPrompt(topic);
+      if (data.platform === 'instagram' || data.platform === 'x') setPlatform(data.platform);
+      if (typeof data.body === 'string' && data.body.trim()) {
+        setMandatories((m) => m || `Seed angle from Quick Copy:\n${data.body.trim().slice(0, 500)}`);
+        setAdvancedOpen(true);
+      }
+      setHandoffBanner('Prefilled from Quick Copy — pick an arc, then generate.');
+    } catch { /* ignore */ }
+  }, []);
+
   // Load arcs when brand changes
   useEffect(() => {
     if (!selectedBrainId || !authToken) { setArcs([]); setArcsLoading(false); return; }
@@ -660,6 +681,12 @@ function SocialGeneratorContent() {
         </div>
       )}
 
+      {handoffBanner && (
+        <div className="sg-error" style={{ background: 'rgba(79,70,229,0.08)', borderColor: 'rgba(79,70,229,0.25)', color: 'var(--color-accent)', marginBottom: 12 }}>
+          <span>{handoffBanner}</span>
+          <button type="button" onClick={() => setHandoffBanner(null)} style={{ marginLeft: 8, background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>×</button>
+        </div>
+      )}
       {error && <div className="sg-error">{error}</div>}
 
       {posts.length > 0 && (

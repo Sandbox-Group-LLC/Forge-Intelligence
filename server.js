@@ -67,6 +67,7 @@ import { substackGet } from './src/server/substack.js';
 import complianceRouter from './src/server/routes/compliance.js';
 import emailCampaignRouter from './src/server/routes/email-campaign.js';
 import socialGeneratorRouter from './src/server/routes/social-generator.js';
+import quickCopyRouter from './src/server/routes/quick-copy.js';
 import { ensureGeneratedContentTable } from './src/server/content-table.js';
 import campaignRouter from './src/server/routes/campaign.js';
 import topicIdeasRouter from './src/server/routes/topic-ideas.js';
@@ -4795,6 +4796,8 @@ app.delete('/api/ads-generator/pack/:packId', requireAuth, async (req, res) => {
 // buildSocialImagePrompt + generateSocialImage moved to src/server/images.js (imported at top).
 
 app.use('/api/social-generator', requireAuth, socialGeneratorRouter); // 6 routes -> src/server/routes/social-generator.js
+
+app.use('/api/quick-copy', requireAuth, quickCopyRouter); // Quick Copy one-offs -> src/server/routes/quick-copy.js
 
 app.use('/api/video', requireAuth, videoRouter); // 3 routes (video generation: storyboard -> TTS -> Lambda render) -> src/server/routes/video.js
 

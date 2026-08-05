@@ -73,6 +73,7 @@ const pathTitles: Record<string, string> = {
   '/app/topic-queue':            'Topic Queue',
   '/app/mc':                  'Mission Control',
   '/app/email-campaign':         'Email Campaign',
+  '/app/quick-copy':             'Quick Copy',
   '/app/context-hub':            'New Analysis',
 };
 

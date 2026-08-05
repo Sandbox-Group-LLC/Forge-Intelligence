@@ -13,6 +13,23 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
+### 2026-08-05 — Quick Copy P1–P4 merged to development (promote-ready)
+
+**#560–#563 all merged to `development`.** Brian holding a single promote to main.
+
+| PR | Phase | What shipped |
+|----|-------|--------------|
+| #560 | P1 | Core `/app/quick-copy` + `/api/quick-copy`, Sonnet, variants 1–4, inline claim check |
+| #561 | P2 | Soften / Find source / recent prompts / handoff buttons |
+| #562 | P3 | Email+Social handoff consumers, `/product` tile, onboarding step |
+| #563 | P4 | Mark as used → weak `brain_patterns` write-back |
+
+Docs: `docs/QUICK-COPY.md`. Surface: Stage 4.8 in README when polish lands.
+
+**Not promoting to main until Brian's batch.**
+
+---
+
 ### 2026-08-02 — Marketing site (`/` + `/product`) rebuilt on the new "deep blue intelligence" design system → promoted to prod
 
 **Headline: `/` and `/product` are fully rebuilt on a new Claude-Design design system and live in production.** Started as a content sweep of `/product` vs. the working code, became a full re-skin. Six PRs, all merged to `development`, dialed in on dev, then Brian promoted `development → main`.

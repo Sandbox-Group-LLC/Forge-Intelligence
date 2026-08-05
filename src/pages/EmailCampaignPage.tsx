@@ -474,6 +474,7 @@ export default function EmailCampaignPage() {
   const esRef = useRef<EventSource | null>(null);
 
   const personas = (activeBrand as any)?.personas || [];
+  const [handoffBanner, setHandoffBanner] = useState<string | null>(null);
 
   useEffect(() => {
     if (!activeBrandId) return;
@@ -484,6 +485,36 @@ export default function EmailCampaignPage() {
       if (d.success) setTemplates(d.templates);
     }).catch(() => {});
   }, [activeBrandId]);
+
+  // Quick Copy handoff — prefill brief from sessionStorage once, then clear.
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('forge_quick_copy_handoff');
+      if (!raw) return;
+      sessionStorage.removeItem('forge_quick_copy_handoff');
+      const data = JSON.parse(raw);
+      if (!data || !data.fromQuickCopy) return;
+      const body = typeof data.body === 'string' ? data.body.trim() : '';
+      const subject = typeof data.subject === 'string' ? data.subject.trim() : '';
+      const prompt = typeof data.prompt === 'string' ? data.prompt.trim() : '';
+      const sourceText = typeof data.sourceText === 'string' ? data.sourceText.trim() : '';
+      setBrief((prev) => ({
+        ...prev,
+        campaign_type: prev.campaign_type || 'nurture',
+        business_problem: prompt || prev.business_problem,
+        smart_goal: prev.smart_goal || (prompt ? `Expand this one-off into a short sequence: ${prompt.slice(0, 160)}` : prev.smart_goal),
+        smp: prev.smp || body.slice(0, 220),
+        mandatories: [
+          prev.mandatories,
+          body ? `Seed copy from Quick Copy (keep voice; expand into sequence):\n${body.slice(0, 1200)}` : '',
+          subject ? `Preferred subject angle: ${subject}` : '',
+          sourceText ? `Original inbound/context:\n${sourceText.slice(0, 600)}` : '',
+        ].filter(Boolean).join('\n\n'),
+      }));
+      setStep('brief');
+      setHandoffBanner('Prefilled from Quick Copy — review the brief, then generate a sequence.');
+    } catch { /* ignore bad payload */ }
+  }, []);
 
   const handleGenerate = async () => {
     if (!activeBrandId) return;
@@ -756,6 +787,12 @@ export default function EmailCampaignPage() {
           </div>
         </div>
 
+        {handoffBanner && (
+          <div className="ec-error" style={{ background: 'rgba(79,70,229,0.08)', borderColor: 'rgba(79,70,229,0.25)', color: 'var(--color-accent)' }}>
+            <span>{handoffBanner}</span>
+            <button type="button" onClick={() => setHandoffBanner(null)} style={{ color: 'inherit' }}>×</button>
+          </div>
+        )}
         {error && <div className="ec-error">{error} <button onClick={() => setError('')}>✕</button></div>}
 
         {/* ── HISTORY ── */}

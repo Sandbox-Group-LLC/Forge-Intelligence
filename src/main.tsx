@@ -41,6 +41,7 @@ import DocsPage from './pages/DocsPage';
 import AcceptableUsePage from './pages/AcceptableUsePage';
 import TldrPage from './pages/TldrPage';
 import EmailCampaignPage from './pages/EmailCampaignPage';
+import QuickCopyPage from './pages/QuickCopyPage';
 import QuickStartPage from './pages/QuickStartPage';
 import AiVisibilityScanPage from './pages/AiVisibilityScanPage';
 import './index.css';
@@ -154,6 +155,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/app/video-generator" element={<AppProvider><VideoGeneratorPage /></AppProvider>} />
         <Route path="/app/ads-generator" element={<AppProvider><AdsGeneratorPage /></AppProvider>} />
         <Route path="/app/email-campaign" element={<AppProvider><EmailCampaignPage /></AppProvider>} />
+        <Route path="/app/quick-copy" element={<AppProvider><QuickCopyPage /></AppProvider>} />
         <Route path="/app/compliance-gate" element={<AppProvider><ComplianceGatePage /></AppProvider>} />
         <Route path="/app/strategy-intel" element={<AppProvider><StrategyIntelPage /></AppProvider>} />
         <Route path="/app/integrations" element={<AppProvider><IntegrationsPage /></AppProvider>} />
