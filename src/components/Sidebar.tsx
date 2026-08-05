@@ -153,6 +153,12 @@ const icons = {
     </svg>
   ),
   target: (<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>),
+  penLine: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 20h9"/>
+      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+    </svg>
+  ),
   share2: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="18" cy="5" r="3"/>
@@ -212,6 +218,7 @@ const NAV_ROUTES: Partial<Record<ViewType, string>> = {
   'strategy':             '/app/context-hub',
   'brain-history':        '/app/context-hub',
   'email-campaign':       '/app/email-campaign',
+  'quick-copy':           '/app/quick-copy',
   'content-library':      '/app/content-library',
   'content-import':       '/app/content-import',
   'topic-queue':          '/app/topic-queue',
@@ -244,6 +251,7 @@ const topNavItems: TopNavItem[] = [
   { id: 'video-generator',       label: 'Video Generator',       icon: 'film',       href: '/app/video-generator' },
   { id: 'ads-generator',         label: 'Ads Generator',          icon: 'target',     href: '/app/ads-generator' },
   { id: 'email-campaign',        label: 'Email Campaign',         icon: 'mail',       href: '/app/email-campaign' },
+  { id: 'quick-copy',            label: 'Quick Copy',             icon: 'penLine',    href: '/app/quick-copy' },
   { id: 'compliance-gate',       label: 'Compliance Gate',       icon: 'shieldCheck',href: '/app/compliance-gate' },
 
   { id: 'performance',           label: 'Performance',           icon: 'barChart2',  href: '/app/performance' },
@@ -280,7 +288,7 @@ export function Sidebar() {
     '/app/geo-strategist', '/app/authenticity-enricher', '/app/content-generator',
     '/app/campaign-generator', '/app/social-generator', '/app/ads-generator', '/app/compliance-gate', '/app/publishing-queue', '/app/calendar',
     '/app/content-library', '/app/content-import', '/app/topic-queue',
-    '/app/performance', '/app/integrations', '/app/mc', '/app/email-campaign',
+    '/app/performance', '/app/integrations', '/app/mc', '/app/email-campaign', '/app/quick-copy',
   ];
   // Never gate while auth is still resolving — brandProfileId would be undefined
   const handleGatedClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string, label: string) => {
