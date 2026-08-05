@@ -404,6 +404,12 @@
   max-height: 280px;
   overflow: auto;
 }
+.qc-history-row-wrap {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  align-items: stretch;
+}
 .qc-history-row {
   text-align: left;
   border: 1px solid transparent;
@@ -413,8 +419,25 @@
   cursor: pointer;
   font-family: inherit;
   color: inherit;
+  width: 100%;
 }
 .qc-history-row:hover { border-color: var(--color-border); }
+.qc-history-delete {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-secondary);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0 10px;
+  font-family: inherit;
+}
+.qc-history-delete:hover {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.06);
+}
 .qc-history-meta {
   display: flex;
   justify-content: space-between;
