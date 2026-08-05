@@ -13,6 +13,21 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
+### 2026-08-05 — Quick Copy Phase 1 (PR #560) → awaiting merge to development
+
+**Headline: Quick Copy is built and up as PR #560.** Brand-voiced one-offs (email replies, DMs, posts, notes) without the full pipeline. Locked with Brian: name=Quick Copy; variant picker 1–4; copy/paste only; Sonnet; P1; optional inline claim check (red underline + superscript ¹ ² ³ + notes list — not a tab).
+
+- **API** `/api/quick-copy` — generate (SSE), refine, check, history, CRUD. Module: `src/server/routes/quick-copy.js` + pure helpers `src/server/quick-copy.js` / `src/lib/quick-copy.js`.
+- **UI** `/app/quick-copy` — `QuickCopyPage.tsx` + Sidebar/TopBar. Paid gate. History drawer. Refine chips. Check claims stays on the same card; clipboard is always clean text.
+- **Docs** `docs/QUICK-COPY.md`. Agent prompt `src/agents/stage4_quick_copy/system_prompt.md`.
+- **Verify** unit tests + route snapshot + `tsc` clean locally. CI *Typecheck & Test* was in progress at open.
+
+**PR:** https://github.com/Sandbox-Group-LLC/Forge-Intelligence/pull/560 (`agent/forge-intelligence` → `development`). Brian reviews/merges.
+
+**Not in v1:** publish/queue, auto-compliance on generate, multi-email sequences, full Compliance Gate handoff.
+
+---
+
 ### 2026-08-02 — Marketing site (`/` + `/product`) rebuilt on the new "deep blue intelligence" design system → promoted to prod
 
 **Headline: `/` and `/product` are fully rebuilt on a new Claude-Design design system and live in production.** Started as a content sweep of `/product` vs. the working code, became a full re-skin. Six PRs, all merged to `development`, dialed in on dev, then Brian promoted `development → main`.
