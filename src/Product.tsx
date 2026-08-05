@@ -91,7 +91,8 @@ const formats = [
   { icon: 'message-square', tag: 'Stage 4.6', name: 'Email Sequences', desc: 'Brief-driven, voice-matched email sequences. Copy each one out HubSpot-ready.' },
   { icon: 'chart-column', tag: 'Stage 4.7', name: 'Google Ads Packs', desc: '15 headlines, 4 descriptions, sitelinks, callouts, and match-typed keywords. Paste into Google Ads or export CSV.' },
   { icon: 'sparkles', tag: 'Short-form', name: 'Social Generator', desc: 'Four posts at four angles for X and Instagram, each with a social-tuned image.' },
-  { icon: 'pen-tool', tag: 'Video', name: 'Video Reels', desc: 'A brief becomes a branded product reel: storyboard, voiceover, and render, all automatic.' },
+  { icon: 'pen-tool', tag: 'One-off', name: 'Quick Copy', desc: 'Brand-voiced replies, DMs, and posts without the full pipeline. Optional claim check inline.' },
+  { icon: 'layers', tag: 'Video', name: 'Video Reels', desc: 'A brief becomes a branded product reel: storyboard, voiceover, and render, all automatic.' },
 ];
 
 const timeline = [
@@ -116,6 +117,7 @@ const included = [
   'Email Sequences',
   'Google Ads Packs',
   'Social Post Generator',
+  'Quick Copy',
   'Video Reels',
   'Confidence Scoring',
   'Compliance Gate',
@@ -297,7 +299,7 @@ export default function Product() {
           align="center"
           eyebrow="One brain"
           title="One Brain, Every Format"
-          description="The same intelligence layer that writes articles also builds campaigns, emails, ads, social, and video."
+          description="The same intelligence layer that writes articles also builds campaigns, emails, ads, social, one-off copy, and video."
         />
         <div className="fi-grid-cards">
           {formats.map((f, i) => (
