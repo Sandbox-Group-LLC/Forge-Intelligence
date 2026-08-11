@@ -1,4 +1,9 @@
-# WORKING-STATE.md
+# WORKING-STATE
+
+> **Sonmi-451 2.0 READY (2026-08-11)** — Forge Intelligence agent factory-reset (same treatment as SYSOI). Sessions wiped; model **Grok 4.5**; live only on `agent/forge-intelligence` == `origin/development`; operating brief 2.0. Founder barely used this agent and starts real work tomorrow — board is clean. Prior rampage footgun remains documented in the brief (never raw Neon URL).
+
+---
+
 
 **Always read this first at the start of any session.** It's the single source of truth for what's currently in flight, what just shipped, and what the next move is. Updated at the end of every working session.
 
