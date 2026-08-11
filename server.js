@@ -85,6 +85,7 @@ import { pipedreamProxy } from './src/server/pipedream.js';
 import zernioRouter from './src/server/routes/zernio.js';
 import zernioAdminRouter from './src/server/routes/zernio-admin.js';
 import videoRouter from './src/server/routes/video.js';
+import thePostCardGenRouter from './src/server/routes/the-post-card-gen.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2830,6 +2831,11 @@ app.post('/api/external/analyze', express.json({ limit: '16kb' }), async (req, r
     return res.status(500).json({ error: err.message });
   }
 });
+
+
+// Dedicated The Post card-generation (M2M). Contract: The Post docs/contracts/forge-card-gen.md
+// Token: THE_POST_SERVICE_TOKEN (falls back to MAILFORGE_SERVICE_TOKEN).
+app.use('/api/external/the-post', thePostCardGenRouter);
 
 app.get('/api/brand-profiles/list', requireAuth, async (req, res) => {
 
