@@ -8,6 +8,7 @@ import { safeParseLLM } from '../llm-json.js';
 
 const router = express.Router();
 const PROMPT_VERSION = 'the-post-card-gen-v1';
+// inventory: POST /api/external/the-post/card-gen
 const MODEL = process.env.THE_POST_CARD_GEN_MODEL || 'claude-haiku-4-5-20251001';
 
 function serviceTokenOk(req) {
