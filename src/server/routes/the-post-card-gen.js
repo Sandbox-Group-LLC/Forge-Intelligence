@@ -7,7 +7,7 @@ import { anthropic } from '../llm.js';
 import { safeParseLLM } from '../llm-json.js';
 
 const router = express.Router();
-const PROMPT_VERSION = 'the-post-card-gen-v1';
+const PROMPT_VERSION = 'the-post-card-gen-v2';
 // inventory: POST /api/external/the-post/card-gen
 const MODEL = process.env.THE_POST_CARD_GEN_MODEL || 'claude-haiku-4-5-20251001';
 
@@ -86,6 +86,7 @@ router.post('/card-gen', async (req, res) => {
 
   const body = req.body || {};
   const session = body.session || {};
+  const eventContext = body.event_context || body.eventContext || null;
   const desired = Array.isArray(body.desired) && body.desired.length
     ? body.desired
     : ['title', 'summary', 'quotes', 'tags', 'qna'];
@@ -108,21 +109,64 @@ router.post('/card-gen', async (req, res) => {
     .filter(Boolean)
     .join('\n\n');
 
+  const bp = eventContext?.brand_profile || {};
+  const ns = eventContext?.north_star || {};
+  const prog = eventContext?.programming || {};
+  const pub = eventContext?.publication || {};
+  const tracks = Array.isArray(prog.tracks)
+    ? prog.tracks.map((t) => (typeof t === 'string' ? t : t?.name)).filter(Boolean)
+    : [];
+  const thinContext =
+    !ns.thesis ||
+    !(bp.name || bp.one_liner || (bp.voice && (bp.voice.tone || bp.voice.do))) ||
+    (!(tracks.length) && !prog.agenda_summary);
+
+  const contextBlock = eventContext
+    ? `EVENT CORE CONTEXT (higher priority than session fluff):
+Brand: ${clip(bp.name || '', 120)} | ${clip(bp.one_liner || '', 240)}
+Audience: ${clip(bp.audience || '', 240)}
+Voice tone: ${clip(JSON.stringify(bp.voice?.tone || []), 200)}
+Voice DO: ${clip(JSON.stringify(bp.voice?.do || []), 400)}
+Voice DONT: ${clip(JSON.stringify(bp.voice?.dont || bp.voice?.donts || []), 400)}
+Claims OK: ${clip(JSON.stringify(bp.claims_ok || []), 400)}
+Claims AVOID: ${clip(JSON.stringify(bp.claims_avoid || []), 400)}
+North Star thesis: ${clip(ns.thesis || '', 600)}
+Themes: ${clip(JSON.stringify(ns.themes || []), 300)}
+Success looks like: ${clip(ns.success_looks_like || '', 300)}
+Narrative arc: ${clip(ns.narrative_arc || '', 300)}
+Event DO NOT: ${clip(JSON.stringify(ns.do_not || []), 400)}
+Programming tracks: ${clip(JSON.stringify(tracks), 300)}
+Agenda summary: ${clip(prog.agenda_summary || '', 500)}
+Speaker notes: ${clip(prog.speaker_notes || '', 300)}
+Publication default visibility: ${clip(pub.default_visibility || '', 40)}
+Public bias: ${clip(pub.public_bias || '', 240)}
+Context completeness: ${thinContext ? 'THIN — keep confidence conservative (<0.7 unless excerpts are rich)' : 'RICH'}`
+    : 'EVENT CORE CONTEXT: (none provided — keep confidence conservative; do not invent event strategy)';
+
   const system = `You generate approval-queue content cards for post-event hubs (The Post).
 Return ONLY valid JSON with keys: title, summary, quotes, tags, qna, confidence.
+You are a packager of what happened, not a topic strategist. Do not invent sessions or agenda.
+When EVENT CORE CONTEXT is present it outranks generic session wording:
+1) Frame every summary through the North Star thesis and themes.
+2) Obey brand voice do/dont and claims_avoid absolutely.
+3) Prefer programming track taxonomy for tags when it fits.
+4) Respect publication public_bias if the card might be public-facing.
 Rules:
 - title: specific, editorial, max ~120 chars. Prefer session truth over hype.
-- summary: 1 tight paragraph (2-4 sentences) of what happened / why it matters for attendees. No fluff openers.
+- summary: 1 tight paragraph (2-4 sentences) of what happened / why it matters for attendees, on-thesis. No fluff openers.
 - quotes: 0-5 short pull quotes grounded in provided source text. Invent none if sources are thin.
 - tags: 3-8 lowercase topical tags.
 - qna: 1-4 structured {question, answer} items. Answers null if not supported by sources.
-- confidence: 0-1 reflecting source richness + factual grounding. Be honest; thin input must be <0.6.
+- confidence: 0-1 reflecting source richness + factual grounding + context completeness. Be honest; thin input or thin event context must stay lower.
 - Sentence case. No emoji. No markdown.
-- Do NOT invent speakers, stats, or claims absent from the input.
+- Do NOT invent speakers, stats, or claims absent from the input + event context.
 Desired fields: ${desired.join(', ')}.
 Prompt version: ${PROMPT_VERSION}.`;
 
   const user = `Event id: ${body.event_id || 'n/a'}
+
+${contextBlock}
+
 Session title: ${session.title || ''}
 Track: ${session.track || ''}
 Speakers: ${speakers.join(', ') || '(none)'}
@@ -167,12 +211,14 @@ Produce the JSON card now.`;
     if (!Number.isFinite(Number(parsed.confidence))) {
       out.confidence = heuristicConfidence(session, excerpts, out);
     }
+    if (thinContext && out.confidence > 0.7) out.confidence = 0.7;
 
     return res.json({
       ...out,
       model: MODEL,
       prompt_version: PROMPT_VERSION,
       usage: msg.usage || null,
+      event_context_thin: thinContext,
     });
   } catch (err) {
     console.error('[the-post/card-gen]', err.message);
