@@ -2734,18 +2734,33 @@ app.patch('/api/brand-settings/:brandProfileId', async (req, res) => {
   }
 });
 
+
+// Shared M2M auth for external brand endpoints — Mailforge + The Post tokens.
+function externalServiceTokenOk(req) {
+  const candidates = [
+    process.env.MAILFORGE_SERVICE_TOKEN,
+    process.env.THE_POST_SERVICE_TOKEN,
+  ].filter(Boolean);
+  if (!candidates.length) return { ok: false, status: 503, error: 'service token not configured' };
+  const token = (req.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
+  if (!token) return { ok: false, status: 401, error: 'unauthorized' };
+  for (const expected of candidates) {
+    if (token.length === expected.length) {
+      try {
+        if (timingSafeEqual(Buffer.from(token), Buffer.from(expected))) return { ok: true };
+      } catch { /* length race */ }
+    }
+  }
+  return { ok: false, status: 401, error: 'unauthorized' };
+}
+
 // External: token-gated brand-profile read by domain. Lets Mailforge (and other
 // internal Sandbox apps) pull the active brand profile for a company by its
-// domain, machine-to-machine. Gated by a shared bearer MAILFORGE_SERVICE_TOKEN
-// (constant-time compare); disabled (503) until that env var is set.
+// domain, machine-to-machine. Gated by MAILFORGE_SERVICE_TOKEN or THE_POST_SERVICE_TOKEN
+// (constant-time compare); disabled (503) until at least one is set.
 app.get('/api/external/brand-profile', async (req, res) => {
-  const expected = process.env.MAILFORGE_SERVICE_TOKEN;
-  if (!expected) return res.status(503).json({ error: 'service token not configured' });
-  const token = (req.get('authorization') || '').replace(/^Bearer\s+/i, '');
-  const ok =
-    token.length === expected.length &&
-    timingSafeEqual(Buffer.from(token), Buffer.from(expected));
-  if (!ok) return res.status(401).json({ error: 'unauthorized' });
+  const auth = externalServiceTokenOk(req);
+  if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
 
   const raw = String(req.query.url || '').trim().toLowerCase();
   if (!raw) return res.status(400).json({ error: 'url query param required' });
@@ -2771,20 +2786,15 @@ app.get('/api/external/brand-profile', async (req, res) => {
   }
 });
 
-// POST /api/external/analyze — token-gated, headless "New Analysis" for Mailforge.
+// POST /api/external/analyze — token-gated, headless "New Analysis" for Mailforge / The Post.
 // Generates a brand profile for a domain that has none, then makes it PERMANENT
 // (drops the anonymous 24h trial expiry) and unclaimed, so it's both usable now
 // AND a ready-to-claim asset if the prospect later converts to a paid Forge
 // account (their onboarding claim flow attaches them to the existing row).
 // Reuses the Context Hub analysis pipeline (scrape + Sonar + Claude).
 app.post('/api/external/analyze', express.json({ limit: '16kb' }), async (req, res) => {
-  const expected = process.env.MAILFORGE_SERVICE_TOKEN;
-  if (!expected) return res.status(503).json({ error: 'service token not configured' });
-  const token = (req.get('authorization') || '').replace(/^Bearer\s+/i, '');
-  const ok =
-    token.length === expected.length &&
-    timingSafeEqual(Buffer.from(token), Buffer.from(expected));
-  if (!ok) return res.status(401).json({ error: 'unauthorized' });
+  const auth = externalServiceTokenOk(req);
+  if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
 
   const raw = String(req.body?.url || '').trim().toLowerCase();
   if (!raw) return res.status(400).json({ error: 'url required' });
