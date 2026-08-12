@@ -9,6 +9,17 @@ import '../components/GateModal.css';
 type ReviewMode = 'auto-ship' | 'approve-to-ship' | 'full-review';
 type ComplianceStatus = 'pending' | 'reviewed' | 'approved' | 'rejected';
 
+const REJECT_REASON_OPTIONS: { code: string; label: string }[] = [
+  { code: 'invented_claim', label: 'Invented or unsupported claim' },
+  { code: 'wrong_voice', label: 'Off-brand voice / tone' },
+  { code: 'nda_risk', label: 'NDA / naming risk' },
+  { code: 'off_thesis', label: 'Off thesis / wrong framing' },
+  { code: 'too_salesy', label: 'Too salesy / hype' },
+  { code: 'factual_error', label: 'Factual error' },
+  { code: 'legal_risk', label: 'Legal / compliance risk' },
+  { code: 'other', label: 'Other' },
+];
+
 const IconInfo = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
@@ -168,6 +179,7 @@ function ComplianceGateContent() {
   const [dismissOutcome, setDismissOutcome] = useState<Record<number, string>>({});
   const [ndaReferent, setNdaReferent] = useState<string>('');
   const [decisions, setDecisions] = useState<Record<number, 'approved' | 'rejected'>>({});
+  const [rejectReasons, setRejectReasons] = useState<Record<number, { code: string; note?: string }>>({});
   // FAQ edits — parallel structure to editedSections. Each FAQ entry can have its question
   // and/or answer overridden. Empty fields default to the LLM-generated original on submit.
   const [editedFaqs, setEditedFaqs] = useState<Record<number, { question?: string; answer?: string }>>({});
@@ -408,6 +420,23 @@ function ComplianceGateContent() {
         ...(qa.question !== undefined ? { question: qa.question } : {}),
         ...(qa.answer !== undefined ? { answer: qa.answer } : {})
       }));
+      // Reject without typed reason is not allowed (server also enforces)
+      const rejectedIdxs = Object.entries(decisions)
+        .filter(([, v]) => v === 'rejected')
+        .map(([k]) => Number(k));
+      for (const ri of rejectedIdxs) {
+        const rr = rejectReasons[ri];
+        if (!rr?.code) {
+          setError(`Section ${ri + 1}: pick a reject reason before submitting`);
+          setSubmitLoading(false);
+          return;
+        }
+        if (rr.code === 'other' && !(rr.note || '').trim()) {
+          setError(`Section ${ri + 1}: "Other" requires a short note`);
+          setSubmitLoading(false);
+          return;
+        }
+      }
       const r = await authFetch('/api/compliance/approve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -418,7 +447,8 @@ function ComplianceGateContent() {
           editedSections: edits,
           editedFaqs: faqEdits,
           ...(editedKeyTakeaway !== null ? { keyTakeaway: editedKeyTakeaway } : {}),
-          decisions
+          decisions,
+          rejectReasons,
         })
       });
       const d = await r.json();
@@ -688,12 +718,66 @@ function ComplianceGateContent() {
                         <div className="comp-decision-btns">
                           <button
                             className={`comp-decision-btn approve ${decisions[idx] === 'approved' ? 'active' : ''}`}
-                            onClick={() => setDecisions(p => ({ ...p, [idx]: 'approved' }))}
+                            onClick={() => {
+                              setDecisions(p => ({ ...p, [idx]: 'approved' }));
+                              setRejectReasons(p => {
+                                const n = { ...p };
+                                delete n[idx];
+                                return n;
+                              });
+                            }}
                           >Approve</button>
                           <button
                             className={`comp-decision-btn reject ${decisions[idx] === 'rejected' ? 'active' : ''}`}
-                            onClick={() => setDecisions(p => ({ ...p, [idx]: 'rejected' }))}
+                            onClick={() => {
+                              setDecisions(p => ({ ...p, [idx]: 'rejected' }));
+                              setRejectReasons(p => (p[idx] ? p : { ...p, [idx]: { code: '', note: '' } }));
+                            }}
                           >Reject</button>
+                        </div>
+                      )}
+                      {decisions[idx] === 'rejected' && (
+                        <div className="comp-reject-reason" style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)' }}>
+                            Reject reason (required)
+                          </label>
+                          <select
+                            className="comp-reject-reason-select"
+                            value={rejectReasons[idx]?.code || ''}
+                            onChange={(e) => setRejectReasons(p => ({
+                              ...p,
+                              [idx]: { ...(p[idx] || {}), code: e.target.value },
+                            }))}
+                            style={{
+                              fontSize: 12,
+                              padding: '6px 8px',
+                              borderRadius: 6,
+                              border: '1px solid var(--color-border, #e5e7eb)',
+                              background: 'var(--color-surface, #fff)',
+                            }}
+                          >
+                            <option value="">Select a reason…</option>
+                            {REJECT_REASON_OPTIONS.map((o) => (
+                              <option key={o.code} value={o.code}>{o.label}</option>
+                            ))}
+                          </select>
+                          {(rejectReasons[idx]?.code === 'other' || (rejectReasons[idx]?.code && rejectReasons[idx]?.code !== '')) && (
+                            <input
+                              className="comp-reject-reason-note"
+                              placeholder={rejectReasons[idx]?.code === 'other' ? 'Brief note (required for Other)…' : 'Optional note…'}
+                              value={rejectReasons[idx]?.note || ''}
+                              onChange={(e) => setRejectReasons(p => ({
+                                ...p,
+                                [idx]: { ...(p[idx] || { code: '' }), note: e.target.value },
+                              }))}
+                              style={{
+                                fontSize: 12,
+                                padding: '6px 8px',
+                                borderRadius: 6,
+                                border: '1px solid var(--color-border, #e5e7eb)',
+                              }}
+                            />
+                          )}
                         </div>
                       )}
                     </div>

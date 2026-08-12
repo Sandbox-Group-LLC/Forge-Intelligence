@@ -14,6 +14,11 @@ import { finalizeArticleForStorage } from '../text.js';
 import { verifyBrandAccess } from '../auth.js';
 import { normalizeNarrativeIdentity, lintNarrativePerspective } from '../narrative-identity.js';
 import { findCitationSources } from '../citations.js';
+import {
+  validateRejectReasons,
+  formatRejectBrainFeedback,
+  REJECT_REASON_CODES,
+} from '../reject-reasons.js';
 
 const router = express.Router();
 
@@ -588,9 +593,30 @@ router.post('/dismiss-flag', async (req, res) => {
 // POST approve — save human edits, write mistakes to brain, mark approved
 router.post('/approve', async (req, res) => {
   const startTime = Date.now();
-  const { brandProfileId, contentId, reviewMode, editedSections, decisions, editedFaqs, keyTakeaway } = req.body;
+  const {
+    brandProfileId,
+    contentId,
+    reviewMode,
+    editedSections,
+    decisions,
+    rejectReasons,
+    editedFaqs,
+    keyTakeaway,
+  } = req.body;
   if (!brandProfileId || !contentId) return res.status(400).json({ error: 'brandProfileId and contentId required' });
   try {
+    // Hard rule: any rejected compliance section MUST carry a typed reason
+    const rejectCheck = validateRejectReasons(decisions || {}, rejectReasons || {});
+    if (!rejectCheck.ok) {
+      return res.status(400).json({
+        success: false,
+        error: rejectCheck.error,
+        code: rejectCheck.code || 'reject_reason_required',
+        sectionIndex: rejectCheck.sectionIndex,
+        allowedReasons: REJECT_REASON_CODES,
+      });
+    }
+
     const safeId = brandProfileId.replace(/-/g, '_');
     const tableName = `generated_content_${safeId}`;
 
@@ -674,6 +700,36 @@ router.post('/approve', async (req, res) => {
     // Handle red section decisions
     const finalStatus = reviewMode === 'auto-ship' ? 'approved' :
       decisions && Object.values(decisions).some(d => d === 'rejected') ? 'rejected' : 'approved';
+
+    // Write typed reject signals to brain (classy Towanda — reasons required)
+    const reportFlags = Array.isArray(article.compliance_report?.flags)
+      ? article.compliance_report.flags
+      : Array.isArray(articleJson?.compliance_report?.flags)
+        ? articleJson.compliance_report.flags
+        : [];
+    for (const rej of rejectCheck.rejected || []) {
+      const section = articleJson?.sections?.[rej.idx] || {};
+      const heading = section.heading || `section ${rej.idx}`;
+      const flag = reportFlags.find((f) => Number(f.sectionIndex) === Number(rej.idx)) || reportFlags[rej.idx];
+      const bodySnippet = String(section.body || section.content || '').slice(0, 220);
+      await pool.query(
+        `INSERT INTO brain_mistakes (brand_profile_id, mistake_type, description, human_feedback, severity)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          brandProfileId,
+          `compliance_reject:${rej.code}`,
+          `Compliance Gate REJECT on "${heading}"${bodySnippet ? `: "${bodySnippet}"` : ''}`,
+          formatRejectBrainFeedback({
+            code: rej.code,
+            label: rej.label,
+            note: rej.note,
+            flagReason: flag?.reason || '',
+            sectionHeading: heading,
+          }),
+          rej.code === 'legal_risk' || rej.code === 'nda_risk' ? 'high' : 'medium',
+        ]
+      ).catch((e) => console.error('[COMPLIANCE] reject brain write error:', e.message));
+    }
 
     // Final safety net — strip LLM scaffolding AND em dashes that slipped past
     // human review. The human reviewer edits in this gate, so this is the LAST

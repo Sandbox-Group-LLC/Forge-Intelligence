@@ -5,6 +5,13 @@ import express from 'express';
 import { timingSafeEqual } from 'crypto';
 import { anthropic } from '../llm.js';
 import { safeParseLLM } from '../llm-json.js';
+import { pool } from '../db.js';
+import {
+  validateRejectReasons,
+  formatRejectBrainFeedback,
+  REJECT_REASON_CODES,
+  REJECT_REASON_LABELS,
+} from '../reject-reasons.js';
 
 const router = express.Router();
 const PROMPT_VERSION = 'the-post-card-gen-v2';
@@ -76,6 +83,100 @@ function heuristicConfidence(session, excerpts, out) {
   return Math.max(0.15, Math.min(0.95, Math.round(c * 100) / 100));
 }
 
+
+async function loadBrandBrainForCardGen(brandProfileId, { limit = 12 } = {}) {
+  if (!brandProfileId || !pool) return { patterns: [], mistakes: [] };
+  try {
+    const [pRes, mRes] = await Promise.all([
+      pool.query(
+        `SELECT pattern_type, description, confidence_score, success_rate
+           FROM brain_patterns
+          WHERE brand_profile_id = $1
+          ORDER BY COALESCE(success_rate, 0) DESC, COALESCE(confidence_score, 0) DESC, created_at DESC
+          LIMIT $2`,
+        [brandProfileId, limit]
+      ),
+      pool.query(
+        `SELECT mistake_type, description, human_feedback, severity
+           FROM brain_mistakes
+          WHERE brand_profile_id = $1
+          ORDER BY created_at DESC
+          LIMIT $2`,
+        [brandProfileId, limit]
+      ),
+    ]);
+    return { patterns: pRes.rows || [], mistakes: mRes.rows || [] };
+  } catch (e) {
+    console.warn('[the-post/card-gen] brain load failed', e.message);
+    return { patterns: [], mistakes: [] };
+  }
+}
+
+
+function formatPreferenceExamples(pref) {
+  if (!pref || typeof pref !== 'object') return '';
+  const good = Array.isArray(pref.good) ? pref.good : [];
+  const bad = Array.isArray(pref.bad) ? pref.bad : [];
+  const edits = Array.isArray(pref.edits) ? pref.edits : [];
+  const rules = Array.isArray(pref.rules) ? pref.rules : [];
+  if (!good.length && !bad.length && !edits.length && !rules.length) return '';
+
+  const lines = [
+    'POST ORGANIZER PREFERENCES (org-scoped human judgments — highest priority after session truth):',
+    'These are from THIS client\'s approve/reject/edit history. Obey them for this generation.',
+  ];
+  if (rules.length) {
+    lines.push('Active rules:');
+    for (const r of rules.slice(0, 6)) {
+      lines.push(`- [${r.code || 'rule'}] ${clip(r.guidance || '', 200)}`);
+    }
+  }
+  if (good.length) {
+    lines.push('Write MORE like these approved cards:');
+    for (const g of good.slice(0, 5)) {
+      lines.push(`- TITLE: ${clip(g.title || '', 120)}`);
+      if (g.summary) lines.push(`  SUMMARY: ${clip(g.summary, 280)}`);
+    }
+  }
+  if (bad.length) {
+    lines.push('Do NOT write like these rejected cards:');
+    for (const b of bad.slice(0, 5)) {
+      const why = [b.reason_code, b.reason_note].filter(Boolean).join(' — ');
+      lines.push(`- TITLE: ${clip(b.title || '', 120)}${why ? ` (${clip(why, 120)})` : ''}`);
+      if (b.summary) lines.push(`  SUMMARY: ${clip(b.summary, 220)}`);
+    }
+  }
+  if (edits.length) {
+    lines.push('When you see avoid→prefer edits, match the prefer side:');
+    for (const e of edits.slice(0, 4)) {
+      lines.push(`- AVOID summary: ${clip(e.before_summary || '', 160)}`);
+      lines.push(`  PREFER summary: ${clip(e.after_summary || '', 160)}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+function formatBrainBlock(brain) {
+  const patterns = brain?.patterns || [];
+  const mistakes = brain?.mistakes || [];
+  if (!patterns.length && !mistakes.length) return '';
+  const lines = ['ACTIVE BRAND BRAIN (editorial signals — obey these):'];
+  if (patterns.length) {
+    lines.push('Patterns / writing rules (prefer):');
+    for (const p of patterns.slice(0, 8)) {
+      lines.push(`- [${p.pattern_type || 'pattern'}] ${clip(p.description || '', 220)}`);
+    }
+  }
+  if (mistakes.length) {
+    lines.push('Mistakes / rejects (avoid):');
+    for (const m of mistakes.slice(0, 10)) {
+      const fb = m.human_feedback ? ` → ${clip(m.human_feedback, 180)}` : '';
+      lines.push(`- [${m.mistake_type || 'mistake'}] ${clip(m.description || '', 160)}${fb}`);
+    }
+  }
+  return lines.join('\n');
+}
+
 router.post('/card-gen', async (req, res) => {
   const auth = serviceTokenOk(req);
   if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
@@ -91,6 +192,25 @@ router.post('/card-gen', async (req, res) => {
     ? body.desired
     : ['title', 'summary', 'quotes', 'tags', 'qna'];
   const excerpts = Array.isArray(body.source_excerpts) ? body.source_excerpts.slice(0, 8) : [];
+  const brandProfileId =
+    body.brand_profile_id ||
+    body.brandProfileId ||
+    eventContext?.brand_profile_id ||
+    eventContext?.brand_profile?.id ||
+    null;
+  // Post-owned learnings (preferred). FI brand brain is optional fallback only.
+  const preferenceExamples =
+    body.preference_examples || body.preferenceExamples || null;
+  const prefBlock = formatPreferenceExamples(preferenceExamples);
+  const useFiBrain =
+    !prefBlock &&
+    brandProfileId &&
+    String(process.env.THE_POST_USE_FI_BRAIN || '').trim() === '1';
+  const brain = useFiBrain
+    ? await loadBrandBrainForCardGen(brandProfileId)
+    : { patterns: [], mistakes: [] };
+  const brainBlock = useFiBrain ? formatBrainBlock(brain) : '';
+  const learningBlock = [prefBlock, brainBlock].filter(Boolean).join('\n\n');
 
   if (!session.title && !session.abstract && excerpts.length === 0) {
     return res.status(400).json({ error: 'session or source_excerpts required' });
@@ -160,6 +280,8 @@ Rules:
 - confidence: 0-1 reflecting source richness + factual grounding + context completeness. Be honest; thin input or thin event context must stay lower.
 - Sentence case. No emoji. No markdown.
 - Do NOT invent speakers, stats, or claims absent from the input + event context.
+- When POST ORGANIZER PREFERENCES are present: they outrank generic style; match approved examples; never repeat rejected patterns/reasons.
+- When ACTIVE BRAND BRAIN is present (legacy): follow Patterns; never repeat Mistakes/rejects.
 Desired fields: ${desired.join(', ')}.
 Prompt version: ${PROMPT_VERSION}.`;
 
@@ -175,7 +297,7 @@ Abstract/notes: ${clip(session.abstract || session.notes || '', 2500)}
 Source excerpts:
 ${excerptBlock || '(none)'}
 
-Produce the JSON card now.`;
+${learningBlock ? learningBlock + '\n\n' : ''}Produce the JSON card now.`;
 
   try {
     const msg = await anthropic.messages.create({
@@ -219,11 +341,118 @@ Produce the JSON card now.`;
       prompt_version: PROMPT_VERSION,
       usage: msg.usage || null,
       event_context_thin: thinContext,
+      preferences: preferenceExamples
+        ? {
+            good: (preferenceExamples.good || []).length,
+            bad: (preferenceExamples.bad || []).length,
+            edits: (preferenceExamples.edits || []).length,
+            rules: (preferenceExamples.rules || []).length,
+            meta: preferenceExamples.meta || null,
+          }
+        : null,
+      brain: {
+        brand_profile_id: brandProfileId || null,
+        used: !!useFiBrain,
+        patterns: (brain.patterns || []).length,
+        mistakes: (brain.mistakes || []).length,
+      },
     });
   } catch (err) {
     console.error('[the-post/card-gen]', err.message);
     return res.status(500).json({ error: err.message || 'card-gen failed' });
   }
+});
+
+
+// POST /decision — The Post (or other M2M) writes approve/reject into brand brain.
+// Reject requires a typed reason code (same taxonomy as Compliance Gate).
+router.post('/decision', async (req, res) => {
+  const auth = serviceTokenOk(req);
+  if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+
+  const body = req.body || {};
+  const brandProfileId = body.brand_profile_id || body.brandProfileId;
+  const decision = String(body.decision || '').toLowerCase();
+  if (!brandProfileId) return res.status(400).json({ error: 'brand_profile_id required' });
+  if (!['approved', 'rejected', 'approve', 'reject'].includes(decision)) {
+    return res.status(400).json({ error: 'decision must be approved|rejected' });
+  }
+  const isReject = decision === 'rejected' || decision === 'reject';
+
+  let reasonCode = body.reason_code || body.reasonCode || body.reason || '';
+  let reasonNote = body.reason_note || body.reasonNote || body.note || '';
+  if (isReject) {
+    const check = validateRejectReasons(
+      { 0: 'rejected' },
+      { 0: { code: reasonCode, note: reasonNote } }
+    );
+    if (!check.ok) {
+      return res.status(400).json({
+        error: check.error,
+        code: check.code,
+        allowedReasons: REJECT_REASON_CODES,
+      });
+    }
+    reasonCode = check.rejected[0].code;
+    reasonNote = check.rejected[0].note;
+  }
+
+  const title = clip(body.title || body.card?.title || 'card', 200);
+  const summary = clip(body.summary || body.card?.summary || '', 400);
+  const source = clip(body.source_label || body.event_id || body.eventId || 'the-post', 120);
+  const confidence = body.confidence != null ? Number(body.confidence) : null;
+
+  try {
+    if (isReject) {
+      const label = REJECT_REASON_LABELS[reasonCode] || reasonCode;
+      await pool.query(
+        `INSERT INTO brain_mistakes (brand_profile_id, mistake_type, description, human_feedback, severity)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          brandProfileId,
+          `post_reject:${reasonCode}`,
+          `The Post REJECT "${title}"${summary ? `: "${summary}"` : ''} [${source}]`,
+          formatRejectBrainFeedback({
+            code: reasonCode,
+            label,
+            note: reasonNote,
+            flagReason: confidence != null ? `model confidence ${confidence}` : '',
+            sectionHeading: title,
+          }),
+          reasonCode === 'legal_risk' || reasonCode === 'nda_risk' ? 'high' : 'medium',
+        ]
+      );
+      return res.json({ success: true, wrote: 'brain_mistakes', reason_code: reasonCode });
+    }
+
+    // approve → positive pattern (light signal)
+    await pool.query(
+      `INSERT INTO brain_patterns (brand_profile_id, pattern_type, description, confidence_score, tags)
+       VALUES ($1, $2, $3, $4, $5::jsonb)`,
+      [
+        brandProfileId,
+        'post_approved_card',
+        `Approved card style: "${title}"${summary ? ` — ${summary}` : ''}`,
+        Number.isFinite(confidence) ? confidence : 0.7,
+        JSON.stringify({ source: 'the-post', event_id: body.event_id || body.eventId || null }),
+      ]
+    );
+    return res.json({ success: true, wrote: 'brain_patterns' });
+  } catch (e) {
+    console.error('[the-post/decision]', e.message);
+    return res.status(500).json({ error: e.message || 'decision write failed' });
+  }
+});
+
+router.get('/reject-reasons', (req, res) => {
+  const auth = serviceTokenOk(req);
+  if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+  res.json({
+    reasons: REJECT_REASON_CODES.map((code) => ({
+      code,
+      label: REJECT_REASON_LABELS[code],
+    })),
+  });
 });
 
 export default router;
