@@ -112,6 +112,50 @@ async function loadBrandBrainForCardGen(brandProfileId, { limit = 12 } = {}) {
   }
 }
 
+
+function formatPreferenceExamples(pref) {
+  if (!pref || typeof pref !== 'object') return '';
+  const good = Array.isArray(pref.good) ? pref.good : [];
+  const bad = Array.isArray(pref.bad) ? pref.bad : [];
+  const edits = Array.isArray(pref.edits) ? pref.edits : [];
+  const rules = Array.isArray(pref.rules) ? pref.rules : [];
+  if (!good.length && !bad.length && !edits.length && !rules.length) return '';
+
+  const lines = [
+    'POST ORGANIZER PREFERENCES (org-scoped human judgments — highest priority after session truth):',
+    'These are from THIS client\'s approve/reject/edit history. Obey them for this generation.',
+  ];
+  if (rules.length) {
+    lines.push('Active rules:');
+    for (const r of rules.slice(0, 6)) {
+      lines.push(`- [${r.code || 'rule'}] ${clip(r.guidance || '', 200)}`);
+    }
+  }
+  if (good.length) {
+    lines.push('Write MORE like these approved cards:');
+    for (const g of good.slice(0, 5)) {
+      lines.push(`- TITLE: ${clip(g.title || '', 120)}`);
+      if (g.summary) lines.push(`  SUMMARY: ${clip(g.summary, 280)}`);
+    }
+  }
+  if (bad.length) {
+    lines.push('Do NOT write like these rejected cards:');
+    for (const b of bad.slice(0, 5)) {
+      const why = [b.reason_code, b.reason_note].filter(Boolean).join(' — ');
+      lines.push(`- TITLE: ${clip(b.title || '', 120)}${why ? ` (${clip(why, 120)})` : ''}`);
+      if (b.summary) lines.push(`  SUMMARY: ${clip(b.summary, 220)}`);
+    }
+  }
+  if (edits.length) {
+    lines.push('When you see avoid→prefer edits, match the prefer side:');
+    for (const e of edits.slice(0, 4)) {
+      lines.push(`- AVOID summary: ${clip(e.before_summary || '', 160)}`);
+      lines.push(`  PREFER summary: ${clip(e.after_summary || '', 160)}`);
+    }
+  }
+  return lines.join('\n');
+}
+
 function formatBrainBlock(brain) {
   const patterns = brain?.patterns || [];
   const mistakes = brain?.mistakes || [];
@@ -154,8 +198,19 @@ router.post('/card-gen', async (req, res) => {
     eventContext?.brand_profile_id ||
     eventContext?.brand_profile?.id ||
     null;
-  const brain = await loadBrandBrainForCardGen(brandProfileId);
-  const brainBlock = formatBrainBlock(brain);
+  // Post-owned learnings (preferred). FI brand brain is optional fallback only.
+  const preferenceExamples =
+    body.preference_examples || body.preferenceExamples || null;
+  const prefBlock = formatPreferenceExamples(preferenceExamples);
+  const useFiBrain =
+    !prefBlock &&
+    brandProfileId &&
+    String(process.env.THE_POST_USE_FI_BRAIN || '').trim() === '1';
+  const brain = useFiBrain
+    ? await loadBrandBrainForCardGen(brandProfileId)
+    : { patterns: [], mistakes: [] };
+  const brainBlock = useFiBrain ? formatBrainBlock(brain) : '';
+  const learningBlock = [prefBlock, brainBlock].filter(Boolean).join('\n\n');
 
   if (!session.title && !session.abstract && excerpts.length === 0) {
     return res.status(400).json({ error: 'session or source_excerpts required' });
@@ -225,7 +280,8 @@ Rules:
 - confidence: 0-1 reflecting source richness + factual grounding + context completeness. Be honest; thin input or thin event context must stay lower.
 - Sentence case. No emoji. No markdown.
 - Do NOT invent speakers, stats, or claims absent from the input + event context.
-- When ACTIVE BRAND BRAIN is present: follow Patterns; never repeat Mistakes/rejects (especially compliance_reject:*).
+- When POST ORGANIZER PREFERENCES are present: they outrank generic style; match approved examples; never repeat rejected patterns/reasons.
+- When ACTIVE BRAND BRAIN is present (legacy): follow Patterns; never repeat Mistakes/rejects.
 Desired fields: ${desired.join(', ')}.
 Prompt version: ${PROMPT_VERSION}.`;
 
@@ -241,7 +297,7 @@ Abstract/notes: ${clip(session.abstract || session.notes || '', 2500)}
 Source excerpts:
 ${excerptBlock || '(none)'}
 
-${brainBlock ? brainBlock + '\n\n' : ''}Produce the JSON card now.`;
+${learningBlock ? learningBlock + '\n\n' : ''}Produce the JSON card now.`;
 
   try {
     const msg = await anthropic.messages.create({
@@ -285,8 +341,18 @@ ${brainBlock ? brainBlock + '\n\n' : ''}Produce the JSON card now.`;
       prompt_version: PROMPT_VERSION,
       usage: msg.usage || null,
       event_context_thin: thinContext,
+      preferences: preferenceExamples
+        ? {
+            good: (preferenceExamples.good || []).length,
+            bad: (preferenceExamples.bad || []).length,
+            edits: (preferenceExamples.edits || []).length,
+            rules: (preferenceExamples.rules || []).length,
+            meta: preferenceExamples.meta || null,
+          }
+        : null,
       brain: {
         brand_profile_id: brandProfileId || null,
+        used: !!useFiBrain,
         patterns: (brain.patterns || []).length,
         mistakes: (brain.mistakes || []).length,
       },
