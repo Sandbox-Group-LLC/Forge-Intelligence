@@ -191,6 +191,8 @@
   "POST /api/external/analyze",
   "POST /api/external/the-post/card-gen",
   "POST /api/external/the-post/decision",
+  "POST /api/external/the-post/longform-gen",
+  "POST /api/external/the-post/topic-check",
   "POST /api/facebook/pipedream/select-page",
   "POST /api/forge-scrape",
   "POST /api/forge/prompt-pack/lovable",
