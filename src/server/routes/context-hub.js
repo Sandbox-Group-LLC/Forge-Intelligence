@@ -487,7 +487,7 @@ router.post('/analyze', softAuth, async (req, res) => {
     if (workingBaseUrl) {
       brandVisual = await captureBrandVisual(workingBaseUrl, { caller: 'context-hub', metadata: { brandUrl } }).catch(() => null);
       if (brandVisual?.success) {
-        console.log(`[Context Hub] Visual capture: accent=${brandVisual.accentColor || 'none'} logo=${brandVisual.logoUrl ? 'yes' : 'no'} palette=${brandVisual.palette?.length || 0} type=${brandVisual.typography?.headingFont || 'none'} v=${brandVisual.scrapeVersion || '?'}`);
+        console.log(`[Context Hub] Visual capture: accent=${brandVisual.accentColor || 'none'} logo=${brandVisual.logoUrl ? 'yes' : 'no'} palette=${brandVisual.palette?.length || 0} type=${brandVisual.typography?.headingFont || 'none'} fonts=${brandVisual.fonts?.length || 0} v=${brandVisual.scrapeVersion || '?'}`);
       } else {
         console.warn(`[Context Hub] Visual capture failed: ${brandVisual?.error || 'unknown'}`);
       }
@@ -820,8 +820,8 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
     // text. Store the raw capture under brandVisual and overwrite the (guessed)
     // voiceProfile.accentColor with the real hex so every downstream consumer
     // (Video Generator brand injector, hero-image gen) gets the true color.
-    if (brandVisual?.success && (brandVisual.accentColor || brandVisual.logoUrl || brandVisual.palette?.length || brandVisual.typography || brandVisual.logo)) {
-      // Additive brandVisual/2 payload — keeps legacy accentColor/bgColor/logoUrl
+    if (brandVisual?.success && (brandVisual.accentColor || brandVisual.logoUrl || brandVisual.palette?.length || brandVisual.typography || brandVisual.fonts?.length || brandVisual.logo)) {
+      // Additive brandVisual/3 payload — keeps legacy accentColor/bgColor/logoUrl; fonts[] is metadata only
       // and layers palette/typography/logo/buttonStyle/imageryStyle when measured.
       const payload = buildBrandVisualPayload(brandVisual);
       if (payload) profileData.brandVisual = payload;
