@@ -157,11 +157,113 @@ async function _tryScrapingBrowser(url, { timeout, caller, metadata }) {
 // The markdown scrape strips all color/imagery, so accentColor was being
 // hallucinated. This loads the homepage in the headless browser WITH stylesheets
 // (unlike _tryScrapingBrowser, which blocks them) and reads computed CSS to pull
-// the true accent color + logo. Heuristic but measured, not guessed:
-//   accent = most-weighted saturated color across CTAs/buttons (x3), header/nav
-//            backgrounds (x2), link text (x1); neutrals/near-black/white dropped.
-//   logo   = header/nav/logo <img> -> apple-touch-icon -> largest rel=icon -> og:image.
-// Returns { success, accentColor, bgColor, logoUrl }.
+// the true visual basics — not guessed:
+//   accent/bg   = weighted saturated colors + body background (legacy keys)
+//   palette     = 4–8 role-tagged colors from CSS vars + computed styles
+//   typography  = heading/body font families from @font-face / <link> / computed
+//   logo        = header/nav mark preferred; favicon as iconUrl; skip consent junk
+//   buttonStyle = primary CTA radius + filled|outline|pill
+//   imageryStyle= coarse photo/illustration/3d/mixed + short treatment
+// Returns { success, accentColor, bgColor, logoUrl, palette?, typography?, logo?,
+//           buttonStyle?, imageryStyle?, scrapeVersion, latencyMs }.
+// Additive only — legacy accentColor/bgColor/logoUrl always present when found.
+export const BRAND_VISUAL_SCRAPE_VERSION = 'brandVisual/2';
+
+// Pure helpers exported for unit tests (page.evaluate embeds its own copies).
+export function nearHex(a, b, maxDist = 28) {
+  if (!a || !b) return false;
+  const pa = /^#?([0-9a-f]{6})$/i.exec(String(a).trim());
+  const pb = /^#?([0-9a-f]{6})$/i.exec(String(b).trim());
+  if (!pa || !pb) return false;
+  const n = (h) => [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const [r1, g1, b1] = n(pa[1]), [r2, g2, b2] = n(pb[1]);
+  const dr = r1 - r2, dg = g1 - g2, db = b1 - b2;
+  return Math.sqrt(dr * dr + dg * dg + db * db) <= maxDist;
+}
+
+export function dedupePalette(entries, max = 8) {
+  const out = [];
+  for (const e of entries || []) {
+    if (!e?.hex) continue;
+    const hex = String(e.hex).toLowerCase();
+    if (!/^#[0-9a-f]{6}$/.test(hex)) continue;
+    const hit = out.find((x) => nearHex(x.hex, hex));
+    if (hit) {
+      // Keep higher-weight entry as representative; fill missing role from either side.
+      if ((e.weight || 0) > (hit.weight || 0)) {
+        hit.hex = hex;
+        hit.source = e.source || hit.source;
+        hit.weight = e.weight;
+        if (e.role) hit.role = e.role;
+      } else if (!hit.role && e.role) {
+        hit.role = e.role;
+      }
+      if (e.source === 'css-var' && hit.source !== 'css-var') hit.source = 'css-var';
+      continue;
+    }
+    out.push({ hex, role: e.role, source: e.source, weight: e.weight || 0 });
+  }
+  out.sort((a, b) => (b.weight || 0) - (a.weight || 0));
+  return out.slice(0, max).map(({ hex, role, source }) => ({ hex, role, source }));
+}
+
+export function pickFontFamily(stack) {
+  if (!stack || typeof stack !== 'string') return null;
+  const parts = stack.split(',').map((s) => s.trim().replace(/^["']|["']$/g, ''));
+  const generic = new Set(['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui', 'ui-sans-serif', 'ui-serif', 'ui-monospace', 'ui-rounded', 'emoji', 'math', 'fangsong', 'inherit', 'initial', 'unset', '-apple-system', 'blinkmacsystemfont']);
+  for (const p of parts) {
+    if (!p) continue;
+    if (generic.has(p.toLowerCase())) continue;
+    // Skip obvious system stacks disguised as families
+    if (/^segoe ui$/i.test(p) || /^roboto$/i.test(p) && parts.length > 3) {
+      // still a real family name — keep it
+    }
+    return p;
+  }
+  return null;
+}
+
+export function isJunkLogoUrl(url) {
+  if (!url || typeof url !== 'string') return true;
+  const u = url.toLowerCase();
+  // Consent / cookie managers, tracking pixels, tiny spacers, data URIs without svg
+  if (/cookiebot|onetrust|cookielaw|consentmanager|trustarc|quantcast|ketch\.com|osano\.com|usercentrics|didomi|iubenda|cookie-script|cookieyes|termly\.io|securiti\.ai/.test(u)) return true;
+  if (/\/pixel\.|\/spacer\.|1x1\.|tracking\.|analytics/.test(u)) return true;
+  if (u.startsWith('data:') && !u.startsWith('data:image/svg')) return true;
+  return false;
+}
+
+export function guessImageFormat(url) {
+  if (!url) return null;
+  const m = String(url).toLowerCase().match(/\.(svg|png|jpe?g|webp|gif|ico|avif)(?:[?#]|$)/);
+  if (m) return m[1] === 'jpeg' ? 'jpg' : m[1];
+  if (String(url).startsWith('data:image/svg')) return 'svg';
+  if (String(url).startsWith('data:image/png')) return 'png';
+  return null;
+}
+
+/** Build the stored brandVisual object (profile.brandVisual) from a capture result. */
+export function buildBrandVisualPayload(capture, { capturedAt = new Date().toISOString() } = {}) {
+  if (!capture?.success) return null;
+  const out = {
+    accentColor: capture.accentColor || null,
+    bgColor: capture.bgColor || null,
+    logoUrl: capture.logoUrl || null,
+    capturedAt,
+    scrapeVersion: capture.scrapeVersion || BRAND_VISUAL_SCRAPE_VERSION,
+  };
+  if (Array.isArray(capture.palette) && capture.palette.length) out.palette = capture.palette;
+  if (capture.typography && (capture.typography.headingFont || capture.typography.bodyFont)) {
+    out.typography = capture.typography;
+  }
+  if (capture.logo && (capture.logo.primaryUrl || capture.logo.iconUrl)) out.logo = capture.logo;
+  if (capture.buttonStyle && (capture.buttonStyle.radiusPx != null || capture.buttonStyle.style)) {
+    out.buttonStyle = capture.buttonStyle;
+  }
+  if (capture.imageryStyle?.style) out.imageryStyle = capture.imageryStyle;
+  return out;
+}
+
 export async function captureBrandVisual(url, { caller = 'context-hub', timeout = 30000, metadata = {} } = {}) {
   const browserAuth = process.env.BRIGHTDATA_BROWSER_AUTH;
   const startTime = Date.now();
@@ -171,7 +273,8 @@ export async function captureBrandVisual(url, { caller = 'context-hub', timeout 
     browser = await puppeteer.connect({ browserWSEndpoint: `wss://${browserAuth}@brd.superproxy.io:9222` });
     const page = await browser.newPage();
     page.setDefaultNavigationTimeout(timeout);
-    // Keep stylesheets (computed colors need them); drop only fonts/media for bandwidth.
+    // Keep stylesheets (computed colors need them). Font *files* still aborted for
+    // bandwidth — family *names* come from CSSOM / computed style, not the binary.
     await page.setRequestInterception(true);
     page.on('request', (req) => {
       const t = req.resourceType();
@@ -187,9 +290,23 @@ export async function captureBrandVisual(url, { caller = 'context-hub', timeout 
     await new Promise((r) => setTimeout(r, 2500));
     const visual = await page.evaluate(() => {
       const toRGB = (s) => {
+        if (!s || s === 'transparent' || s === 'inherit' || s === 'currentcolor') return null;
+        // hex
+        const hx = String(s).trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
+        if (hx) {
+          let h = hx[1];
+          if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+          if (h.length === 8) h = h.slice(0, 6);
+          return {
+            r: parseInt(h.slice(0, 2), 16),
+            g: parseInt(h.slice(2, 4), 16),
+            b: parseInt(h.slice(4, 6), 16),
+          };
+        }
         const m = s && s.match(/rgba?\(([^)]+)\)/);
         if (!m) return null;
-        const p = m[1].split(',').map(x => parseFloat(x));
+        const p = m[1].split(/[\s,\/]+/).map((x) => parseFloat(x)).filter((n) => !Number.isNaN(n));
+        if (p.length < 3) return null;
         if (p[3] !== undefined && p[3] < 0.5) return null; // transparent
         return { r: p[0], g: p[1], b: p[2] };
       };
@@ -199,53 +316,520 @@ export async function captureBrandVisual(url, { caller = 'context-hub', timeout 
         const s = mx === mn ? 0 : (l > 0.5 ? (mx - mn) / (2 - mx - mn) : (mx - mn) / (mx + mn));
         return { s, l };
       };
-      const hex = ({ r, g, b }) => '#' + [r, g, b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+      const hex = ({ r, g, b }) => '#' + [r, g, b].map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('');
+      const dist = (a, b) => {
+        const dr = a.r - b.r, dg = a.g - b.g, db = a.b - b.b;
+        return Math.sqrt(dr * dr + dg * dg + db * db);
+      };
+      const abs = (u) => { try { return new URL(u, location.href).href; } catch { return null; } };
+      const isJunkLogo = (u) => {
+        if (!u) return true;
+        const s = u.toLowerCase();
+        if (/cookiebot|onetrust|cookielaw|consentmanager|trustarc|quantcast|ketch\.com|osano\.com|usercentrics|didomi|iubenda|cookie-script|cookieyes|termly\.io|securiti\.ai/.test(s)) return true;
+        if (/\/pixel\.|\/spacer\.|1x1\.|tracking\.|analytics/.test(s)) return true;
+        if (s.startsWith('data:') && !s.startsWith('data:image/svg')) return true;
+        return false;
+      };
+      const fmtOf = (u) => {
+        if (!u) return null;
+        const m = u.toLowerCase().match(/\.(svg|png|jpe?g|webp|gif|ico|avif)(?:[?#]|$)/);
+        if (m) return m[1] === 'jpeg' ? 'jpg' : m[1];
+        if (u.startsWith('data:image/svg')) return 'svg';
+        if (u.startsWith('data:image/png')) return 'png';
+        return null;
+      };
+      const pickFont = (stack) => {
+        if (!stack) return null;
+        const generic = new Set(['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui', 'ui-sans-serif', 'ui-serif', 'ui-monospace', 'ui-rounded', 'emoji', 'math', 'fangsong', 'inherit', 'initial', 'unset', '-apple-system', 'blinkmacsystemfont']);
+        for (const raw of stack.split(',')) {
+          const p = raw.trim().replace(/^["']|["']$/g, '');
+          if (!p || generic.has(p.toLowerCase())) continue;
+          return p;
+        }
+        return null;
+      };
+
+      // ── legacy accent weighting (kept for accentColor key) ────────────────
       const cand = {};
-      const add = (rgb, w) => {
+      const addAccent = (rgb, w) => {
         if (!rgb) return;
         const { s, l } = sl(rgb);
-        if (s < 0.18 || l < 0.08 || l > 0.92) return; // neutral / near-black / near-white
+        if (s < 0.18 || l < 0.08 || l > 0.92) return;
         const h = hex(rgb);
         cand[h] = (cand[h] || 0) + w;
       };
-      document.querySelectorAll('button,[class*="btn"],[class*="Button"],[class*="cta"],[class*="Cta"]')
-        .forEach(el => add(toRGB(getComputedStyle(el).backgroundColor), 3));
+      document.querySelectorAll('button,[class*="btn"],[class*="Button"],[class*="cta"],[class*="Cta"],[role="button"]')
+        .forEach((el) => addAccent(toRGB(getComputedStyle(el).backgroundColor), 3));
       document.querySelectorAll('header,nav,[class*="header"],[class*="nav"]')
-        .forEach(el => add(toRGB(getComputedStyle(el).backgroundColor), 2));
-      document.querySelectorAll('a').forEach(el => add(toRGB(getComputedStyle(el).color), 1));
+        .forEach((el) => addAccent(toRGB(getComputedStyle(el).backgroundColor), 2));
+      document.querySelectorAll('a').forEach((el) => addAccent(toRGB(getComputedStyle(el).color), 1));
       let accent = null, best = 0;
       for (const [h, w] of Object.entries(cand)) if (w > best) { best = w; accent = h; }
       const bodyRgb = toRGB(getComputedStyle(document.body).backgroundColor);
-      const abs = (u) => { try { return new URL(u, location.href).href; } catch { return null; } };
-      // Logo priority: an actual logo mark first. og:image LAST — it's usually a
-      // 1200x630 social share banner, not a logo (Duolingo's came back as the
-      // share card), and it looks squished in the reel lockup.
-      let logo = null;
-      const img = document.querySelector('header img,nav img,[class*="logo"] img,img[class*="logo"],img[alt*="logo" i]');
-      if (img) logo = abs(img.getAttribute('src') || img.getAttribute('data-src'));
-      if (!logo) {
-        const touch = document.querySelector('link[rel="apple-touch-icon"],link[rel="apple-touch-icon-precomposed"]');
-        if (touch) logo = abs(touch.getAttribute('href'));
+      const bg = bodyRgb ? hex(bodyRgb) : null;
+
+      // ── palette: CSS vars + computed styles with roles ────────────────────
+      const paletteRaw = []; // {hex, role, source, weight}
+      const pushColor = (rgb, role, source, weight) => {
+        if (!rgb) return;
+        const h = hex(rgb);
+        paletteRaw.push({ hex: h, role, source, weight: weight || 1, rgb });
+      };
+
+      // CSS custom properties on :root / html / body
+      const rootEls = [document.documentElement, document.body].filter(Boolean);
+      for (const el of rootEls) {
+        const cs = getComputedStyle(el);
+        // cssText on computed style is empty in most browsers; walk stylesheets instead below.
+        // Also sample a known set of common brand tokens via getPropertyValue.
+        const tokenHints = [
+          '--color-primary', '--color-secondary', '--color-accent', '--color-background', '--color-bg',
+          '--color-text', '--color-foreground', '--color-neutral', '--brand-color', '--brand-primary',
+          '--primary', '--secondary', '--accent', '--background', '--foreground', '--text',
+          '--primary-color', '--secondary-color', '--accent-color', '--bg-color', '--text-color',
+          '--brand', '--brand-secondary', '--brand-accent', '--theme-primary', '--theme-color',
+        ];
+        for (const name of tokenHints) {
+          const v = cs.getPropertyValue(name);
+          if (!v || !v.trim()) continue;
+          const rgb = toRGB(v.trim());
+          if (!rgb) continue;
+          let role = 'accent';
+          const n = name.toLowerCase();
+          if (/primary|brand(?!-secondary|-accent)/.test(n) && !/text|bg|background|foreground/.test(n)) role = 'primary';
+          else if (/secondary/.test(n)) role = 'secondary';
+          else if (/accent/.test(n)) role = 'accent';
+          else if (/background|bg$|--bg/.test(n)) role = 'background';
+          else if (/text|foreground|fg/.test(n)) role = 'text';
+          else if (/neutral|muted|gray|grey/.test(n)) role = 'neutral';
+          pushColor(rgb, role, 'css-var', 5);
+        }
       }
-      if (!logo) {
-        // Prefer the largest declared favicon (sizes attr), skip tiny .ico defaults.
+
+      // Walk stylesheets for --*color* / --brand* / --primary* custom props
+      try {
+        for (const sheet of Array.from(document.styleSheets || [])) {
+          let rules;
+          try { rules = sheet.cssRules; } catch { continue; } // cross-origin
+          if (!rules) continue;
+          const walk = (list) => {
+            for (const rule of Array.from(list || [])) {
+              if (rule.type === 1 /* CSSRule.STYLE_RULE */ && rule.style) {
+                for (let i = 0; i < rule.style.length; i++) {
+                  const prop = rule.style[i];
+                  if (!prop || !prop.startsWith('--')) continue;
+                  if (!/(color|brand|primary|secondary|accent|background|foreground|theme|palette|ink|surface)/i.test(prop)) continue;
+                  const val = rule.style.getPropertyValue(prop);
+                  const rgb = toRGB(val);
+                  if (!rgb) continue;
+                  let role = 'accent';
+                  const n = prop.toLowerCase();
+                  if (/primary|brand(?!-secondary|-accent)/.test(n) && !/text|bg|background|foreground/.test(n)) role = 'primary';
+                  else if (/secondary/.test(n)) role = 'secondary';
+                  else if (/accent/.test(n)) role = 'accent';
+                  else if (/background|bg|surface/.test(n)) role = 'background';
+                  else if (/text|foreground|ink|fg/.test(n)) role = 'text';
+                  else if (/neutral|muted|gray|grey/.test(n)) role = 'neutral';
+                  pushColor(rgb, role, 'css-var', 4);
+                }
+              } else if (rule.cssRules) {
+                try { walk(rule.cssRules); } catch { /* noop */ }
+              }
+            }
+          };
+          walk(rules);
+        }
+      } catch { /* stylesheet walk is best-effort */ }
+
+      // Computed styles on structural / interactive elements
+      const sample = (sel, prop, role, weight) => {
+        document.querySelectorAll(sel).forEach((el, idx) => {
+          if (idx > 24) return;
+          const rgb = toRGB(getComputedStyle(el)[prop]);
+          pushColor(rgb, role, 'computed', weight);
+        });
+      };
+      sample('header,nav,[class*="header" i],[class*="nav" i]', 'backgroundColor', 'background', 3);
+      sample('button,[class*="btn" i],[class*="Button"],[class*="cta" i],[role="button"],a[class*="button" i]', 'backgroundColor', 'primary', 4);
+      sample('button,[class*="btn" i],[role="button"]', 'color', 'text', 1);
+      sample('a', 'color', 'accent', 2);
+      sample('h1,h2,.hero,[class*="hero" i]', 'color', 'text', 2);
+      sample('h1,h2,.hero,[class*="hero" i]', 'backgroundColor', 'background', 1);
+      sample('body,main', 'backgroundColor', 'background', 3);
+      sample('body,main,p', 'color', 'text', 2);
+
+      // Dedupe near-identical (RGB distance) and rank
+      const clusters = [];
+      for (const e of paletteRaw) {
+        if (!e.rgb) continue;
+        const { s, l } = sl(e.rgb);
+        // Keep near-black/white only if role is text/background/neutral
+        const isExtreme = l < 0.06 || l > 0.94;
+        const isNeutralish = s < 0.12;
+        if (isExtreme && !['text', 'background', 'neutral'].includes(e.role)) continue;
+        if (isNeutralish && !['text', 'background', 'neutral', 'secondary'].includes(e.role) && s < 0.08) {
+          e.role = e.role === 'primary' ? 'neutral' : e.role;
+        }
+        let hit = clusters.find((c) => dist(c.rgb, e.rgb) <= 28);
+        if (!hit) {
+          hit = { hex: e.hex, role: e.role, source: e.source, weight: e.weight, rgb: e.rgb };
+          clusters.push(hit);
+        } else {
+          hit.weight += e.weight;
+          // Prefer css-var source; prefer more "brand" roles
+          const roleRank = { primary: 5, accent: 4, secondary: 3, text: 2, background: 2, neutral: 1 };
+          if (e.source === 'css-var' && hit.source !== 'css-var') hit.source = 'css-var';
+          if ((roleRank[e.role] || 0) > (roleRank[hit.role] || 0)) hit.role = e.role;
+          // Prefer more saturated representative for brand roles
+          if ((roleRank[e.role] || 0) >= 3 && sl(e.rgb).s > sl(hit.rgb).s) {
+            hit.hex = e.hex; hit.rgb = e.rgb;
+          }
+        }
+      }
+      clusters.sort((a, b) => b.weight - a.weight);
+      // Ensure roles unique-ish: if two primaries, demote lower weight to secondary/accent
+      const seenRoles = new Set();
+      for (const c of clusters) {
+        if (seenRoles.has(c.role) && ['primary', 'accent', 'secondary'].includes(c.role)) {
+          c.role = c.role === 'primary' ? 'secondary' : 'neutral';
+        }
+        seenRoles.add(c.role);
+      }
+      let palette = clusters.slice(0, 8).map(({ hex: h, role, source }) => ({ hex: h, role, source }));
+      // Guarantee accent/bg represented if measured
+      if (accent && !palette.some((p) => dist(toRGB(p.hex) || { r: 0, g: 0, b: 0 }, toRGB(accent) || { r: 0, g: 0, b: 0 }) <= 28)) {
+        palette = [{ hex: accent, role: 'accent', source: 'computed' }, ...palette].slice(0, 8);
+      }
+      if (bg && !palette.some((p) => p.role === 'background')) {
+        palette = [...palette, { hex: bg, role: 'background', source: 'computed' }].slice(0, 8);
+      }
+      // Drop palette if empty after filters
+      if (!palette.length) palette = null;
+
+      // ── typography ────────────────────────────────────────────────────────
+      const faceNames = new Set();
+      try {
+        for (const sheet of Array.from(document.styleSheets || [])) {
+          let rules;
+          try { rules = sheet.cssRules; } catch { continue; }
+          for (const rule of Array.from(rules || [])) {
+            if (rule.type === 5 /* CSSRule.FONT_FACE_RULE */ && rule.style) {
+              const fam = rule.style.getPropertyValue('font-family') || rule.style.fontFamily;
+              const name = pickFont(fam);
+              if (name) faceNames.add(name);
+            }
+          }
+        }
+      } catch { /* noop */ }
+      // Google / Adobe font <link>s
+      const linkFonts = [];
+      document.querySelectorAll('link[rel="stylesheet"][href],link[href*="fonts.googleapis"],link[href*="use.typekit"],link[href*="fonts.adobe"]').forEach((l) => {
+        const href = l.getAttribute('href') || '';
+        // Google: family=Roboto:wght@400;700 | family=Open+Sans&family=Roboto
+        try {
+          const u = new URL(href, location.href);
+          if (/fonts\.googleapis\.com/.test(u.host)) {
+            const fams = u.searchParams.getAll('family');
+            for (const f of fams) {
+              const name = decodeURIComponent(f.split(':')[0]).replace(/\+/g, ' ').trim();
+              if (name) linkFonts.push(name);
+            }
+            // older ?family=Foo|Bar
+            if (!fams.length && u.searchParams.get('family')) {
+              for (const f of u.searchParams.get('family').split('|')) {
+                const name = decodeURIComponent(f.split(':')[0]).replace(/\+/g, ' ').trim();
+                if (name) linkFonts.push(name);
+              }
+            }
+          }
+          if (/typekit|fonts\.adobe/.test(u.host + u.pathname)) {
+            // can't resolve kit → family without network; skip names
+          }
+        } catch { /* noop */ }
+      });
+
+      const hEl = document.querySelector('h1') || document.querySelector('h2');
+      const pEl = document.querySelector('p') || document.body;
+      const headingStack = hEl ? getComputedStyle(hEl).fontFamily : '';
+      const bodyStack = pEl ? getComputedStyle(pEl).fontFamily : '';
+      const headingFont = pickFont(headingStack) || linkFonts[0] || [...faceNames][0] || null;
+      const bodyFont = pickFont(bodyStack) || linkFonts[1] || linkFonts[0] || [...faceNames][1] || [...faceNames][0] || null;
+      let typography = null;
+      if (headingFont || bodyFont) {
+        let source = 'computed';
+        if (linkFonts.length) source = 'link';
+        else if (faceNames.size) source = 'font-face';
+        typography = {
+          headingFont: headingFont || null,
+          bodyFont: bodyFont || null,
+          fallbackStack: (bodyStack || headingStack || '').trim() || null,
+          source,
+        };
+        if (!typography.fallbackStack) delete typography.fallbackStack;
+      }
+
+      // ── logo (richer) ─────────────────────────────────────────────────────
+      // Prefer header/nav <img> or inline SVG; skip consent-manager junk.
+      let primaryUrl = null;
+      let darkVariantUrl = null;
+      let iconUrl = null;
+      const logoImgs = Array.from(document.querySelectorAll(
+        'header img, nav img, [class*="logo" i] img, a[class*="logo" i] img, img[class*="logo" i], img[alt*="logo" i], img[alt*="brand" i]'
+      ));
+      for (const img of logoImgs) {
+        // skip if inside cookie/consent container
+        if (img.closest('[id*="cookie" i],[class*="cookie" i],[id*="consent" i],[class*="consent" i],[aria-label*="cookie" i]')) continue;
+        const src = abs(img.getAttribute('src') || img.getAttribute('data-src') || img.getAttribute('data-lazy-src') || '');
+        if (!src || isJunkLogo(src)) continue;
+        const cls = `${img.className || ''} ${img.alt || ''} ${src}`.toLowerCase();
+        if (/dark|inverted|white|mono-on-dark/.test(cls) && !darkVariantUrl) {
+          darkVariantUrl = src;
+          continue;
+        }
+        if (!primaryUrl) primaryUrl = src;
+        if (primaryUrl && darkVariantUrl) break;
+      }
+      // Inline SVG in header/nav marked as logo
+      if (!primaryUrl) {
+        const svg = document.querySelector('header svg, nav svg, [class*="logo" i] svg, a[class*="logo" i] svg');
+        if (svg && !svg.closest('[id*="cookie" i],[class*="cookie" i],[id*="consent" i],[class*="consent" i]')) {
+          try {
+            const s = new globalThis.XMLSerializer().serializeToString(svg);
+            if (s && s.length < 200000) {
+              primaryUrl = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(s)));
+            }
+          } catch { /* noop */ }
+        }
+      }
+      // Icons / favicons
+      const touch = document.querySelector('link[rel="apple-touch-icon"],link[rel="apple-touch-icon-precomposed"]');
+      if (touch) {
+        const t = abs(touch.getAttribute('href'));
+        if (t && !isJunkLogo(t)) iconUrl = t;
+      }
+      if (!iconUrl) {
         const icons = [...document.querySelectorAll('link[rel~="icon"]')]
-          .map(l => ({ href: l.getAttribute('href'), size: parseInt((l.getAttribute('sizes') || '0').split('x')[0], 10) || 0 }))
-          .filter(i => i.href)
+          .map((l) => ({ href: l.getAttribute('href'), size: parseInt((l.getAttribute('sizes') || '0').split('x')[0], 10) || 0 }))
+          .filter((i) => i.href)
           .sort((a, b) => b.size - a.size);
-        if (icons[0]) logo = abs(icons[0].href);
+        if (icons[0]) {
+          const t = abs(icons[0].href);
+          if (t && !isJunkLogo(t)) iconUrl = t;
+        }
       }
-      if (!logo) {
+      // last resort primary: icon, then og:image (often a share card — only if nothing else)
+      if (!primaryUrl && iconUrl) primaryUrl = iconUrl;
+      if (!primaryUrl) {
         const og = document.querySelector('meta[property="og:image"]');
-        if (og && og.getAttribute('content')) logo = abs(og.getAttribute('content'));
+        if (og && og.getAttribute('content')) {
+          const t = abs(og.getAttribute('content'));
+          if (t && !isJunkLogo(t)) primaryUrl = t;
+        }
       }
-      return { accent, bg: bodyRgb ? hex(bodyRgb) : null, logo };
+      // legacy logoUrl = primary preferred, else icon
+      const logo = primaryUrl || iconUrl || null;
+      const logoObj = (primaryUrl || iconUrl) ? {
+        primaryUrl: primaryUrl || iconUrl,
+        format: fmtOf(primaryUrl || iconUrl) || 'unknown',
+        ...(darkVariantUrl ? { darkVariantUrl } : {}),
+        ...(iconUrl && iconUrl !== primaryUrl ? { iconUrl } : (iconUrl ? { iconUrl } : {})),
+      } : null;
+
+      // ── buttonStyle from primary CTA ──────────────────────────────────────
+      let buttonStyle = null;
+      const ctaSelectors = [
+        'a[class*="cta" i]', 'button[class*="cta" i]',
+        'a[class*="btn-primary" i]', 'button[class*="btn-primary" i]',
+        'a[class*="primary" i]', 'button[class*="primary" i]',
+        '[class*="btn" i][class*="primary" i]',
+        'header a[class*="btn" i]', 'header button',
+        'a[class*="button" i]', 'button',
+      ];
+      let cta = null;
+      for (const sel of ctaSelectors) {
+        const els = Array.from(document.querySelectorAll(sel)).filter((el) => {
+          const r = el.getBoundingClientRect();
+          if (r.width < 40 || r.height < 20) return false;
+          if (el.closest('[id*="cookie" i],[class*="cookie" i],[id*="consent" i],[class*="consent" i]')) return false;
+          return true;
+        });
+        if (els.length) { cta = els[0]; break; }
+      }
+      if (cta) {
+        const cs = getComputedStyle(cta);
+        const br = cs.borderRadius || '0';
+        // parse first radius value → px
+        let radiusPx = null;
+        const rm = String(br).match(/([\d.]+)(px|rem|em|%)/);
+        if (rm) {
+          let v = parseFloat(rm[1]);
+          if (rm[2] === 'rem' || rm[2] === 'em') v *= 16;
+          if (rm[2] === '%') {
+            // percent of height roughly
+            v = (parseFloat(rm[1]) / 100) * (cta.getBoundingClientRect().height || 40);
+          }
+          radiusPx = Math.round(v);
+        }
+        const bgC = toRGB(cs.backgroundColor);
+        const bw = parseFloat(cs.borderTopWidth || '0') || 0;
+        const height = cta.getBoundingClientRect().height || 40;
+        let style = 'filled';
+        if (!bgC || (sl(bgC).l > 0.95 && bw >= 1) || (cs.backgroundColor === 'transparent' && bw >= 1)) style = 'outline';
+        else if (radiusPx != null && radiusPx >= height * 0.45) style = 'pill';
+        buttonStyle = { radiusPx: radiusPx != null ? radiusPx : undefined, style };
+        if (buttonStyle.radiusPx == null) delete buttonStyle.radiusPx;
+      }
+
+      // ── imageryStyle (cheap DOM heuristic, one structured line) ───────────
+      let imageryStyle = null;
+      const imgs = Array.from(document.querySelectorAll('img, picture source, video, canvas, [class*="illustration" i], [class*="hero" i] img'))
+        .slice(0, 40);
+      let photo = 0, illustration = 0, threeD = 0, total = 0;
+      for (const el of imgs) {
+        const tag = el.tagName.toLowerCase();
+        const meta = `${el.getAttribute('src') || ''} ${el.getAttribute('alt') || ''} ${el.className || ''} ${el.getAttribute('type') || ''}`.toLowerCase();
+        if (el.closest('[id*="cookie" i],[class*="cookie" i],[id*="consent" i],[class*="consent" i]')) continue;
+        if (tag === 'img' || tag === 'source') {
+          total++;
+          if (/\.svg(?:[?#]|$)/.test(meta) || /illustrat|icon|draw|vector|graphic/.test(meta)) illustration++;
+          else if (/3d|render|isometric|clay|blender|cgi/.test(meta)) threeD++;
+          else if (/photo|image|jpg|jpeg|png|webp|avif|headshot|team|office|product/.test(meta) || true) {
+            // default raster → photography-leaning unless named otherwise
+            if (/\.svg/.test(meta)) illustration++;
+            else photo++;
+          }
+        } else if (tag === 'video') { total++; photo++; }
+        else if (/illustrat/.test(meta)) { total++; illustration++; }
+        else if (/3d|isometric/.test(meta)) { total++; threeD++; }
+      }
+      // background-image on hero
+      document.querySelectorAll('[class*="hero" i],header,main').forEach((el, idx) => {
+        if (idx > 6) return;
+        const bi = getComputedStyle(el).backgroundImage || '';
+        if (bi && bi !== 'none' && /url\(/.test(bi)) {
+          total++;
+          if (/\.svg/.test(bi)) illustration++;
+          else photo++;
+        }
+      });
+      if (total > 0) {
+        const scores = [
+          ['photography', photo],
+          ['illustration', illustration],
+          ['3d', threeD],
+        ].sort((a, b) => b[1] - a[1]);
+        let style = scores[0][0];
+        const top = scores[0][1];
+        const second = scores[1][1];
+        if (top > 0 && second > 0 && second >= top * 0.5) style = 'mixed';
+        if (top === 0) style = 'mixed';
+        const treatmentParts = [];
+        if (photo) treatmentParts.push(`${photo} raster/photo`);
+        if (illustration) treatmentParts.push(`${illustration} illustration/svg`);
+        if (threeD) treatmentParts.push(`${threeD} 3d`);
+        imageryStyle = {
+          style,
+          treatment: treatmentParts.length
+            ? `Hero/content media leans ${style} (${treatmentParts.join(', ')} signals on homepage).`
+            : `Homepage media classified as ${style}.`,
+        };
+      }
+
+      return {
+        accent,
+        bg,
+        logo,
+        palette,
+        typography,
+        logoObj,
+        buttonStyle,
+        imageryStyle,
+      };
     });
     await browser.close();
     browser = null;
     const latencyMs = Date.now() - startTime;
-    await _logScrape({ url, source: 'brightdata_browser', status_code: 200, body_size: 0, latency_ms: latencyMs, success: true, caller, metadata: { ...(metadata ?? {}), kind: 'visual', visual } });
-    return { success: true, accentColor: visual.accent, bgColor: visual.bg, logoUrl: visual.logo, latencyMs };
+    const logoObj = visual.logoObj || null;
+    // Prefer non-junk primary. Legacy logoUrl is consumed by video/buildBrand which
+    // only accepts http(s) — so prefer an https mark, then https icon, then data SVG.
+    let logoUrl = visual.logo || null;
+    if (logoUrl && isJunkLogoUrl(logoUrl)) logoUrl = null;
+    const httpsPrimary = logoObj?.primaryUrl && /^https?:\/\//i.test(logoObj.primaryUrl) && !isJunkLogoUrl(logoObj.primaryUrl)
+      ? logoObj.primaryUrl : null;
+    const httpsIcon = logoObj?.iconUrl && /^https?:\/\//i.test(logoObj.iconUrl) && !isJunkLogoUrl(logoObj.iconUrl)
+      ? logoObj.iconUrl : null;
+    logoUrl = httpsPrimary || httpsIcon || logoUrl || null;
+
+    const result = {
+      success: true,
+      accentColor: visual.accent || null,
+      bgColor: visual.bg || null,
+      logoUrl,
+      scrapeVersion: BRAND_VISUAL_SCRAPE_VERSION,
+      latencyMs,
+    };
+    if (Array.isArray(visual.palette) && visual.palette.length) {
+      result.palette = dedupePalette(visual.palette, 8);
+      // Legacy accent/bg: if the CTA heuristic missed, promote from measured palette.
+      // Prefer saturated brand roles; never invent — only use palette entries we already captured.
+      if (!result.accentColor) {
+        const rank = { accent: 4, primary: 3, secondary: 2 };
+        const pick = [...result.palette]
+          .filter((p) => rank[p.role])
+          .sort((a, b) => (rank[b.role] || 0) - (rank[a.role] || 0))[0]
+          || result.palette.find((p) => p.role !== 'background' && p.role !== 'text' && p.role !== 'neutral');
+        if (pick?.hex) result.accentColor = pick.hex;
+      }
+      if (!result.bgColor) {
+        const bg = result.palette.find((p) => p.role === 'background');
+        if (bg?.hex) result.bgColor = bg.hex;
+      }
+    }
+    if (visual.typography && (visual.typography.headingFont || visual.typography.bodyFont)) {
+      result.typography = visual.typography;
+    }
+    if (logoObj && (logoObj.primaryUrl || logoObj.iconUrl)) {
+      // re-filter junk
+      const clean = { ...logoObj };
+      if (clean.primaryUrl && isJunkLogoUrl(clean.primaryUrl)) delete clean.primaryUrl;
+      if (clean.iconUrl && isJunkLogoUrl(clean.iconUrl)) delete clean.iconUrl;
+      if (clean.darkVariantUrl && isJunkLogoUrl(clean.darkVariantUrl)) delete clean.darkVariantUrl;
+      if (!clean.primaryUrl && clean.iconUrl) clean.primaryUrl = clean.iconUrl;
+      if (clean.primaryUrl) {
+        clean.format = guessImageFormat(clean.primaryUrl) || clean.format || 'unknown';
+        result.logo = clean;
+        if (!result.logoUrl) result.logoUrl = clean.primaryUrl;
+      }
+    }
+    if (visual.buttonStyle && (visual.buttonStyle.radiusPx != null || visual.buttonStyle.style)) {
+      result.buttonStyle = visual.buttonStyle;
+    }
+    if (visual.imageryStyle?.style) result.imageryStyle = visual.imageryStyle;
+
+    await _logScrape({
+      url,
+      source: 'brightdata_browser',
+      status_code: 200,
+      body_size: 0,
+      latency_ms: latencyMs,
+      success: true,
+      caller,
+      metadata: {
+        ...(metadata ?? {}),
+        kind: 'visual',
+        scrapeVersion: BRAND_VISUAL_SCRAPE_VERSION,
+        visual: {
+          accent: result.accentColor,
+          bg: result.bgColor,
+          logo: result.logoUrl,
+          paletteCount: result.palette?.length || 0,
+          hasTypography: !!result.typography,
+          hasButtonStyle: !!result.buttonStyle,
+          imageryStyle: result.imageryStyle?.style || null,
+        },
+      },
+    });
+    return result;
   } catch (e) {
     if (browser) { try { await browser.close(); } catch {} }
     await _logScrape({ url, source: 'brightdata_browser', success: false, latency_ms: Date.now() - startTime, caller, error: e.message, metadata: { ...(metadata ?? {}), kind: 'visual' } });

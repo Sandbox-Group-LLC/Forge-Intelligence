@@ -10,7 +10,7 @@ import { pool } from '../db.js';
 import { anthropic, dateContext } from '../llm.js';
 import { safeParseLLM } from '../llm-json.js';
 import { requireAuth, softAuth, verifyBrandAccess, SUPER_ADMIN_IDS } from '../auth.js';
-import { forgeScrape, getBrandPageContent, discoverSubpages, captureBrandVisual } from '../scrape.js';
+import { forgeScrape, getBrandPageContent, discoverSubpages, captureBrandVisual, buildBrandVisualPayload } from '../scrape.js';
 import { quickStartTruncate } from '../text.js';
 
 const router = express.Router();
@@ -487,7 +487,7 @@ router.post('/analyze', softAuth, async (req, res) => {
     if (workingBaseUrl) {
       brandVisual = await captureBrandVisual(workingBaseUrl, { caller: 'context-hub', metadata: { brandUrl } }).catch(() => null);
       if (brandVisual?.success) {
-        console.log(`[Context Hub] Visual capture: accent=${brandVisual.accentColor || 'none'} logo=${brandVisual.logoUrl ? 'yes' : 'no'}`);
+        console.log(`[Context Hub] Visual capture: accent=${brandVisual.accentColor || 'none'} logo=${brandVisual.logoUrl ? 'yes' : 'no'} palette=${brandVisual.palette?.length || 0} type=${brandVisual.typography?.headingFont || 'none'} v=${brandVisual.scrapeVersion || '?'}`);
       } else {
         console.warn(`[Context Hub] Visual capture failed: ${brandVisual?.error || 'unknown'}`);
       }
@@ -820,16 +820,17 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
     // text. Store the raw capture under brandVisual and overwrite the (guessed)
     // voiceProfile.accentColor with the real hex so every downstream consumer
     // (Video Generator brand injector, hero-image gen) gets the true color.
-    if (brandVisual?.success && (brandVisual.accentColor || brandVisual.logoUrl)) {
-      profileData.brandVisual = {
-        accentColor: brandVisual.accentColor || null,
-        bgColor: brandVisual.bgColor || null,
-        logoUrl: brandVisual.logoUrl || null,
-        capturedAt: new Date().toISOString(),
-      };
+    if (brandVisual?.success && (brandVisual.accentColor || brandVisual.logoUrl || brandVisual.palette?.length || brandVisual.typography || brandVisual.logo)) {
+      // Additive brandVisual/2 payload — keeps legacy accentColor/bgColor/logoUrl
+      // and layers palette/typography/logo/buttonStyle/imageryStyle when measured.
+      const payload = buildBrandVisualPayload(brandVisual);
+      if (payload) profileData.brandVisual = payload;
       if (brandVisual.accentColor) {
         profileData.voiceProfile = { ...(profileData.voiceProfile || {}), accentColor: brandVisual.accentColor };
       }
+      // Stamp profile-level scrapeVersion so old vs new rows are distinguishable
+      // without digging into brandVisual (compactBrandProfile drops brandVisual).
+      profileData.scrapeVersion = brandVisual.scrapeVersion || payload?.scrapeVersion || 'brandVisual/2';
     }
 
     // ── Stamp server-side time on every signal ────────────────────────────
