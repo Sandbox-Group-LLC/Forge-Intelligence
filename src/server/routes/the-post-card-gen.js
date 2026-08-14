@@ -455,4 +455,406 @@ router.get('/reject-reasons', (req, res) => {
   });
 });
 
+
+// ── Event longform (articles + white papers) ─────────────────────────────────
+// Contract: The Post docs/contracts/event-longform.md
+// inventory: POST /api/external/the-post/topic-check
+// inventory: POST /api/external/the-post/longform-gen
+const LONGFORM_PROMPT_VERSION = 'the-post-longform-v1';
+const LONGFORM_MODEL = process.env.THE_POST_LONGFORM_MODEL || 'claude-sonnet-4-5-20250929';
+
+function normalizeLongformKind(k) {
+  const v = String(k || 'article').toLowerCase().replace(/\s+/g, '_');
+  if (v === 'whitepaper' || v === 'white_paper' || v === 'wp') return 'white_paper';
+  return 'article';
+}
+
+function sectionsToPlain(sections) {
+  if (!Array.isArray(sections)) return '';
+  return sections
+    .map((s) => {
+      const h = clip(s?.heading || '', 200);
+      const b = String(s?.body || s?.content || '').trim();
+      return h ? `## ${h}\n\n${b}` : b;
+    })
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+function normalizeLongform(raw, { kind, topic }) {
+  const title = clip(raw?.title || topic || 'Untitled', 200);
+  const metaDescription = clip(raw?.metaDescription || raw?.meta_description || '', 160);
+  const keyTakeaway = clip(raw?.keyTakeaway || raw?.key_takeaway || raw?.summary || '', 900);
+  const sections = Array.isArray(raw?.sections)
+    ? raw.sections
+        .map((s, i) => ({
+          id: clip(s?.id || `section-${i + 1}`, 80) || `section-${i + 1}`,
+          heading: clip(s?.heading || '', 200),
+          body: String(s?.body || s?.content || '').trim(),
+          confidence: Number.isFinite(Number(s?.confidence)) ? Number(s.confidence) : null,
+          confidenceTier: clip(s?.confidenceTier || s?.confidence_tier || '', 20) || null,
+        }))
+        .filter((s) => s.body)
+        .slice(0, kind === 'white_paper' ? 14 : 10)
+    : [];
+  const faqs = Array.isArray(raw?.faqs || raw?.qna)
+    ? (raw.faqs || raw.qna)
+        .map((f) => ({
+          question: clip(f?.question || '', 240),
+          answer: f?.answer == null || f?.answer === '' ? null : clip(f.answer, 900),
+        }))
+        .filter((f) => f.question)
+        .slice(0, 8)
+    : [];
+  let overall = Number(raw?.overallConfidence ?? raw?.overall_confidence ?? raw?.confidence);
+  if (Number.isFinite(overall) && overall <= 1) overall = Math.round(overall * 100);
+  if (!Number.isFinite(overall)) {
+    const avg = sections
+      .map((s) => s.confidence)
+      .filter((n) => Number.isFinite(n));
+    overall = avg.length ? Math.round(avg.reduce((a, b) => a + b, 0) / avg.length) : 62;
+  }
+  overall = Math.max(0, Math.min(100, Math.round(overall)));
+  const brainMatch = Number(raw?.brainMatchScore ?? raw?.brain_match_score);
+  const estimatedReadTime = clip(raw?.estimatedReadTime || raw?.estimated_read_time || '', 40);
+  const authorBlock = raw?.authorBlock && typeof raw.authorBlock === 'object' ? raw.authorBlock : null;
+  const bodyMarkdown = sectionsToPlain(sections);
+  const wordCount = bodyMarkdown.split(/\s+/).filter(Boolean).length;
+  return {
+    kind,
+    title,
+    metaDescription,
+    keyTakeaway,
+    estimatedReadTime: estimatedReadTime || (wordCount ? `${Math.max(1, Math.round(wordCount / 220))} min read` : null),
+    overallConfidence: overall,
+    confidence: Math.round((overall / 100) * 100) / 100,
+    sections,
+    faqs,
+    authorBlock,
+    citationOpportunities: Array.isArray(raw?.citationOpportunities)
+      ? raw.citationOpportunities.map((c) => clip(c, 200)).filter(Boolean).slice(0, 12)
+      : [],
+    brainMatchScore: Number.isFinite(brainMatch) ? Math.max(0, Math.min(100, Math.round(brainMatch))) : null,
+    bodyMarkdown,
+    wordCount,
+  };
+}
+
+router.post('/topic-check', async (req, res) => {
+  const auth = serviceTokenOk(req);
+  if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+
+  const body = req.body || {};
+  const topic = String(body.topic || body.thesis || '').trim();
+  const brandProfileId =
+    body.brand_profile_id || body.brandProfileId || body.event_context?.brand_profile_id || null;
+  const nsThesis = body.event_context?.north_star?.thesis || body.north_star?.thesis || '';
+  if (!topic) return res.status(400).json({ error: 'topic required' });
+
+  try {
+    let patterns = [];
+    let mistakes = [];
+    if (brandProfileId) {
+      const brain = await loadBrandBrainForCardGen(brandProfileId, { limit: 8 });
+      patterns = brain.patterns || [];
+      mistakes = brain.mistakes || [];
+    }
+
+    if (!patterns.length && !mistakes.length && !nsThesis) {
+      return res.json({
+        success: true,
+        signal: 'strong',
+        confidence: 'No prior data',
+        reason:
+          'No brand brain patterns yet and no event North Star on hand. Proceed, but expect a thinner voice match until Event Brain is filled.',
+        reframe: null,
+        reframeRationale: null,
+      });
+    }
+
+    const prompt = `You are a content strategy advisor for a B2B brand writing event-tied longform for a post-event hub (The Post).
+A user wants to write about this topic:
+"${topic}"
+
+Event North Star thesis (if any):
+${nsThesis || '(none)'}
+
+Brand brain patterns (what works):
+${patterns.map((p) => `- [${p.pattern_type}] ${p.description}`).join('\n') || 'None yet'}
+
+Brand brain mistakes (what underperforms):
+${mistakes.map((m) => `- [${m.severity || 'med'}] ${m.mistake_type}: ${m.description}`).join('\n') || 'None yet'}
+
+Evaluate the topic for brand + event fit. Return ONLY JSON:
+{
+  "signal": "strong" | "caution" | "weak",
+  "confidence": "one short phrase like '92% alignment' or 'Low confidence'",
+  "reason": "2-3 sentences on fit vs brand patterns and North Star",
+  "reframe": "If caution/weak: ONLY a better topic phrase. If strong: null",
+  "reframeRationale": "If reframe set: 1-2 sentences why. Else null"
+}`;
+
+    const msg = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 450,
+      temperature: 0.2,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const text = (msg.content || [])
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n')
+      .trim();
+    let parsed = safeParseLLM(text, 'object', 'the-post-topic-check');
+    if (!parsed || typeof parsed !== 'object') {
+      const m = text.match(/\{[\s\S]*\}/);
+      if (m) {
+        try {
+          parsed = JSON.parse(m[0]);
+        } catch {
+          parsed = null;
+        }
+      }
+    }
+    if (!parsed?.signal) {
+      return res.json({
+        success: true,
+        signal: 'strong',
+        confidence: 'Check unavailable',
+        reason: 'Could not evaluate topic against brain data right now. Proceed with generation.',
+        reframe: null,
+        reframeRationale: null,
+      });
+    }
+    return res.json({
+      success: true,
+      signal: parsed.signal,
+      confidence: parsed.confidence || '',
+      reason: parsed.reason || '',
+      reframe: parsed.reframe || null,
+      reframeRationale: parsed.reframeRationale || null,
+      model: 'claude-haiku-4-5-20251001',
+    });
+  } catch (e) {
+    console.error('[the-post/topic-check]', e.message);
+    return res.json({
+      success: true,
+      signal: 'strong',
+      confidence: 'Check unavailable',
+      reason: 'Could not evaluate topic against brain data right now. Proceed with generation.',
+      reframe: null,
+      reframeRationale: null,
+    });
+  }
+});
+
+router.post('/longform-gen', async (req, res) => {
+  const auth = serviceTokenOk(req);
+  if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.status(503).json({ error: 'ANTHROPIC_API_KEY not configured' });
+  }
+
+  const body = req.body || {};
+  const kind = normalizeLongformKind(body.kind || body.subtype || 'article');
+  const topic = String(body.topic || body.thesis || body.topicPrompt || '').trim();
+  if (!topic) return res.status(400).json({ error: 'topic required' });
+
+  const eventContext = body.event_context || body.eventContext || null;
+  const brandProfileId =
+    body.brand_profile_id ||
+    body.brandProfileId ||
+    eventContext?.brand_profile_id ||
+    eventContext?.brand_profile?.id ||
+    eventContext?.brand_profile?.fi_brand_profile_id ||
+    null;
+  const mandatories = String(body.mandatories || '').trim();
+  const constraints = String(body.constraints || '').trim();
+  const audience = String(body.audience || body.target_audience || '').trim();
+  const ctaTarget = String(body.ctaTarget || body.cta_target || body.cta || '').trim();
+  const desiredAction = String(body.desiredAction || body.desired_action || '').trim();
+  const wordCountTarget = String(
+    body.wordCountTarget ||
+      body.word_count_target ||
+      (kind === 'white_paper' ? '2200' : '1400')
+  ).trim();
+  const writingAs = String(body.writingAs || body.writing_as || '').trim() || null;
+
+  const preferenceExamples = body.preference_examples || body.preferenceExamples || null;
+  const prefBlock = formatPreferenceExamples(preferenceExamples);
+
+  let profileData = {};
+  let brandName = '';
+  let factualGround = null;
+  if (brandProfileId) {
+    try {
+      const pr = await pool.query('SELECT * FROM brand_profiles WHERE id = $1', [brandProfileId]);
+      if (pr.rows[0]) {
+        profileData = pr.rows[0].profile_data || {};
+        brandName = profileData.brand_name || pr.rows[0].brand_name || '';
+        factualGround = pr.rows[0].settings?.factualGround || null;
+      }
+    } catch (e) {
+      console.warn('[the-post/longform-gen] brand load failed', e.message);
+    }
+  }
+
+  const brain = brandProfileId
+    ? await loadBrandBrainForCardGen(brandProfileId, { limit: 10 })
+    : { patterns: [], mistakes: [] };
+  const brainBlock = formatBrainBlock(brain);
+
+  const bp = eventContext?.brand_profile || {};
+  const ns = eventContext?.north_star || {};
+  const prog = eventContext?.programming || {};
+  const pub = eventContext?.publication || {};
+  if (!brandName) brandName = bp.name || '';
+
+  const lengthGuide =
+    kind === 'white_paper'
+      ? `WHITE PAPER mode: target ~${wordCountTarget || 2200} words. Structure: executive summary section first, then problem framing, framework/approach, evidence, implementation guidance, risks/limits, close. More formal, denser, fewer rhetorical flourishes than a blog article.`
+      : `ARTICLE mode: target ~${wordCountTarget || 1400} words. Hub-native longform: scannable H2s, strong keyTakeaway, practical and observational rather than generic how-to listicles.`;
+
+  const system = `You generate event-tied longform for The Post (post-event knowledge hub).
+Return ONLY valid JSON (no markdown fences) with this shape:
+{
+  "title": string,
+  "metaDescription": string (max 155 chars, complete),
+  "keyTakeaway": string (40-80 words TL;DR — mandatory),
+  "estimatedReadTime": "X min read",
+  "overallConfidence": 0-100,
+  "sections": [{"id":"slug","heading":"...","body":"...","confidence":0-100,"confidenceTier":"green|yellow|red","confidenceReason":"..."}],
+  "faqs": [{"question":"...","answer":"..."}],
+  "authorBlock": {"suggestedByline":"..."},
+  "citationOpportunities": [string],
+  "brainMatchScore": 0-100
+}
+
+${lengthGuide}
+
+Hard rules:
+- Sentence case. No emoji. ZERO em dashes (U+2014) and no en dashes used as em-dash substitutes.
+- Do not invent prices, customer names, stats, credentials, or product claims absent from context.
+- Obey brand voice do/dont and claims_avoid when provided.
+- Frame through the event North Star thesis when present — this piece lives under that event.
+- FAQs: 4-6 standalone Q&A drawn from the body.
+- keyTakeaway is mandatory and must stand alone.
+- If USER MANDATORIES/CONSTRAINTS are present they outrank style preferences.
+- Post organizer preferences (if present) outrank generic style.
+Prompt version: ${LONGFORM_PROMPT_VERSION}.`;
+
+  const fgBlock =
+    factualGround && typeof factualGround === 'object'
+      ? `FACTUAL GROUND (verbatim source of truth for company claims):
+${JSON.stringify(factualGround).slice(0, 6000)}`
+      : '';
+
+  const user = `Event id: ${body.event_id || body.eventId || 'n/a'}
+Longform kind: ${kind}
+TOPIC / THESIS (non-negotiable subject of the piece):
+"${topic}"
+
+EVENT CORE CONTEXT:
+Brand: ${clip(bp.name || brandName || '', 120)} | ${clip(bp.one_liner || '', 240)}
+Audience: ${clip(bp.audience || audience || '', 240)}
+Voice tone: ${clip(JSON.stringify(bp.voice?.tone || []), 200)}
+Voice DO: ${clip(JSON.stringify(bp.voice?.do || []), 400)}
+Voice DONT: ${clip(JSON.stringify(bp.voice?.dont || bp.voice?.donts || []), 400)}
+Claims OK: ${clip(JSON.stringify(bp.claims_ok || []), 400)}
+Claims AVOID: ${clip(JSON.stringify(bp.claims_avoid || []), 400)}
+North Star thesis: ${clip(ns.thesis || '', 700)}
+Themes: ${clip(JSON.stringify(ns.themes || []), 300)}
+Success looks like: ${clip(ns.success_looks_like || '', 300)}
+Event DO NOT: ${clip(JSON.stringify(ns.do_not || []), 400)}
+Agenda summary: ${clip(prog.agenda_summary || '', 500)}
+Publication default visibility: ${clip(pub.default_visibility || '', 40)}
+Public bias: ${clip(pub.public_bias || '', 240)}
+
+USER DIRECTION:
+${mandatories ? `MANDATORIES (must include): ${mandatories}\n` : ''}${
+    constraints ? `CONSTRAINTS (must NOT): ${constraints}\n` : ''
+  }${audience ? `TARGET AUDIENCE: ${audience}\n` : ''}${
+    ctaTarget ? `CTA TARGET: ${ctaTarget}\n` : ''
+  }${desiredAction ? `DESIRED READER ACTION: ${desiredAction}\n` : ''}${
+    writingAs ? `WRITING AS: ${writingAs}\n` : ''
+  }TARGET LENGTH: ~${wordCountTarget} words
+
+BRAND PROFILE (compact):
+${JSON.stringify(profileData || {}).slice(0, 7000)}
+
+${fgBlock}
+
+${brainBlock || 'ACTIVE BRAND BRAIN: (none)'}
+
+${prefBlock || ''}
+
+Produce the JSON longform now.`;
+
+  try {
+    const msg = await anthropic.messages.create({
+      model: LONGFORM_MODEL,
+      max_tokens: 16000,
+      temperature: 0.35,
+      system,
+      messages: [{ role: 'user', content: user }],
+    });
+    const text = (msg.content || [])
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n')
+      .trim();
+    let parsed = safeParseLLM(text, 'object', 'the-post-longform-gen');
+    if (!parsed || typeof parsed !== 'object') {
+      const m = text.match(/\{[\s\S]*\}/);
+      if (m) {
+        try {
+          parsed = JSON.parse(m[0]);
+        } catch {
+          parsed = null;
+        }
+      }
+    }
+    if (!parsed || typeof parsed !== 'object') {
+      return res.status(502).json({ error: 'model returned non-JSON', raw: clip(text, 400) });
+    }
+    const out = normalizeLongform(parsed, { kind, topic });
+    if (!out.keyTakeaway || out.sections.length < 2) {
+      return res.status(502).json({
+        error: 'longform incomplete',
+        detail: {
+          hasTakeaway: !!out.keyTakeaway,
+          sectionCount: out.sections.length,
+        },
+      });
+    }
+    return res.json({
+      success: true,
+      kind,
+      topic,
+      article: out,
+      // Card-face convenience fields for The Post queue
+      title: out.title,
+      summary: out.keyTakeaway,
+      quotes: [],
+      tags: [
+        kind === 'white_paper' ? 'white-paper' : 'article',
+        ...((ns.themes || []).slice(0, 4).map((t) => String(t).toLowerCase())),
+      ].filter(Boolean),
+      qna: out.faqs,
+      confidence: out.confidence,
+      model: LONGFORM_MODEL,
+      prompt_version: LONGFORM_PROMPT_VERSION,
+      usage: msg.usage || null,
+      brand_profile_id: brandProfileId || null,
+      brain: {
+        patterns: (brain.patterns || []).length,
+        mistakes: (brain.mistakes || []).length,
+      },
+    });
+  } catch (err) {
+    console.error('[the-post/longform-gen]', err.message);
+    return res.status(500).json({ error: err.message || 'longform-gen failed' });
+  }
+});
+
 export default router;
