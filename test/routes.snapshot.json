@@ -190,6 +190,7 @@
   "POST /api/email-campaign/save-brief-template",
   "POST /api/external/analyze",
   "POST /api/external/the-post/card-gen",
+  "POST /api/external/the-post/critique",
   "POST /api/external/the-post/decision",
   "POST /api/external/the-post/longform-gen",
   "POST /api/external/the-post/topic-check",
