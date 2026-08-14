@@ -161,13 +161,26 @@ async function _tryScrapingBrowser(url, { timeout, caller, metadata }) {
 //   accent/bg   = weighted saturated colors + body background (legacy keys)
 //   palette     = 4–8 role-tagged colors from CSS vars + computed styles
 //   typography  = heading/body font families from @font-face / <link> / computed
+//   fonts        = @font-face metadata (family/weight/url/bytes/role) — NEVER binaries
 //   logo        = header/nav mark preferred; favicon as iconUrl; skip consent junk
 //   buttonStyle = primary CTA radius + filled|outline|pill
 //   imageryStyle= coarse photo/illustration/3d/mixed + short treatment
-// Returns { success, accentColor, bgColor, logoUrl, palette?, typography?, logo?,
+// Returns { success, accentColor, bgColor, logoUrl, palette?, typography?, fonts?, logo?,
 //           buttonStyle?, imageryStyle?, scrapeVersion, latencyMs }.
 // Additive only — legacy accentColor/bgColor/logoUrl always present when found.
-export const BRAND_VISUAL_SCRAPE_VERSION = 'brandVisual/2';
+// brandVisual/3 = webfont metadata capture (fonts[]); still additive JSONB, no binaries.
+export const BRAND_VISUAL_SCRAPE_VERSION = 'brandVisual/3';
+
+// Font binaries are licensed IP — never auto-store them in JSONB/DB/repo.
+// includeFontBinaries is accepted for future object-storage archival only and is
+// ignored by the default metadata path (see probeBrandFonts).
+const FONT_FILE_RE = /\.(woff2?|ttf|otf)(?:$|[?#])/i;
+const WOFF2_MAGIC = Buffer.from('wOF2');
+const WOFF_MAGIC = Buffer.from('wOFF');
+const TTF_OTF_MAGIC_HEAD = 0x00010000;
+const OTF_MAGIC = Buffer.from('OTTO');
+const CJK_FAMILY_RE = /(?:^|[\s_-])(?:sc|tc|jp|kr|cjk|hangul|kana|hans|hant|tpj|noto\s*sans\s*(?:sc|tc|jp|kr)|source\s*han)(?:$|[\s_-])/i;
+const MONO_FAMILY_RE = /mono|menlo|consolas|courier|source\s*code|fira\s*code|jetbrains|roboto\s*mono|ibm\s*plex\s*mono/i;
 
 // Pure helpers exported for unit tests (page.evaluate embeds its own copies).
 export function nearHex(a, b, maxDist = 28) {
@@ -242,6 +255,255 @@ export function guessImageFormat(url) {
   return null;
 }
 
+/** Strip quotes/whitespace from a CSS font-family token. */
+export function normalizeFontFamilyName(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  const name = raw.trim().replace(/^['"]|['"]$/g, '').trim();
+  if (!name) return null;
+  const generic = new Set(['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui', 'ui-sans-serif', 'ui-serif', 'ui-monospace', 'ui-rounded', 'emoji', 'math', 'fangsong', 'inherit', 'initial', 'unset']);
+  if (generic.has(name.toLowerCase())) return null;
+  return name;
+}
+
+/**
+ * Parse @font-face blocks from CSS text. Captures family, weight range, style,
+ * format() hint, and resolved absolute font URL (woff2/woff/ttf/otf only).
+ * Pure — no network. Does not download binaries.
+ */
+export function parseFontFaceBlocks(cssText, baseUrl) {
+  if (!cssText || typeof cssText !== 'string') return [];
+  const faces = [];
+  const re = /@font-face\s*\{([\s\S]*?)\}/gi;
+  let m;
+  while ((m = re.exec(cssText)) !== null) {
+    const body = m[1] || '';
+    const prop = (name) => {
+      const pm = body.match(new RegExp(`${name}\s*:\s*([^;}{]+)`, 'i'));
+      return pm ? pm[1].trim() : null;
+    };
+    const family = normalizeFontFamilyName(prop('font-family'));
+    if (!family) continue;
+
+    const weightRaw = prop('font-weight') || '400';
+    // CSS Fonts 4 allows ranged weights on variable faces: "400 700"
+    const weightRange = /\d{1,4}\s+\d{1,4}/.test(weightRaw)
+      ? weightRaw.replace(/\s+/g, ' ').trim()
+      : String(parseInt(weightRaw, 10) || weightRaw).trim();
+    const isVariable = /\d{1,4}\s+\d{1,4}/.test(weightRaw)
+      || /variations?/i.test(body);
+
+    const styleRaw = (prop('font-style') || 'normal').toLowerCase();
+    const style = styleRaw === 'normal' ? undefined : styleRaw;
+
+    // Prefer woff2, then woff, then ttf/otf. Collect url()+optional format().
+    const src = prop('src') || '';
+    const srcParts = [];
+    const srcRe = /url\(([^)]+)\)(?:\s*format\(([^)]+)\))?/gi;
+    let sm;
+    while ((sm = srcRe.exec(src)) !== null) {
+      let u = sm[1].trim().replace(/^['"]|['"]$/g, '');
+      if (!u || u.startsWith('data:')) continue;
+      if (!FONT_FILE_RE.test(u)) continue;
+      let abs = u;
+      try { abs = baseUrl ? new URL(u, baseUrl).href : u; } catch { /* keep raw */ }
+      if (!/^https?:\/\//i.test(abs)) continue;
+      const fmt = sm[2] ? sm[2].trim().replace(/^['"]|['"]$/g, '') : null;
+      srcParts.push({ url: abs, formatHint: fmt });
+    }
+    if (!srcParts.length) continue;
+
+    // Prefer woff2 > woff > ttf/otf
+    const rank = (p) => {
+      const f = (p.formatHint || p.url).toLowerCase();
+      if (f.includes('woff2')) return 3;
+      if (f.includes('woff')) return 2;
+      if (f.includes('ttf') || f.includes('truetype') || f.includes('otf') || f.includes('opentype')) return 1;
+      return 0;
+    };
+    srcParts.sort((a, b) => rank(b) - rank(a));
+    const best = srcParts[0];
+    let formatHint = best.formatHint || null;
+    if (!formatHint) {
+      if (/\.woff2/i.test(best.url)) formatHint = 'woff2';
+      else if (/\.woff/i.test(best.url)) formatHint = 'woff';
+      else if (/\.ttf/i.test(best.url)) formatHint = 'truetype';
+      else if (/\.otf/i.test(best.url)) formatHint = 'opentype';
+    }
+
+    faces.push({
+      family,
+      weightRange,
+      ...(style ? { style } : {}),
+      formatHint,
+      url: best.url,
+      isVariable: !!isVariable,
+    });
+  }
+  // Dedupe identical family+weight+url
+  const seen = new Set();
+  const out = [];
+  for (const f of faces) {
+    const key = `${f.family}::${f.weightRange}::${f.url}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(f);
+  }
+  return out;
+}
+
+/**
+ * Role heuristic for a captured face.
+ * - mono: family name looks monospaced OR used on code/pre selectors
+ * - cjk-subset: CJK-ish family name OR huge subset file (>= ~1.2MB)
+ * - primary: used on Latin h1/body
+ * - unknown: everything else
+ * Never label a multi-MB CJK subset as the brand primary face.
+ */
+export function classifyFontRole(face, { headingFont = null, bodyFont = null, monoFont = null } = {}) {
+  if (!face?.family) return 'unknown';
+  const fam = String(face.family);
+  const bytes = Number(face.bytes) || 0;
+  const looksCjk = CJK_FAMILY_RE.test(fam) || bytes >= 1_200_000;
+  const looksMono = MONO_FAMILY_RE.test(fam)
+    || (monoFont && fam.toLowerCase() === String(monoFont).toLowerCase());
+
+  if (looksCjk) return 'cjk-subset';
+  if (looksMono) return 'mono';
+
+  const h = headingFont ? String(headingFont).toLowerCase() : null;
+  const b = bodyFont ? String(bodyFont).toLowerCase() : null;
+  const fl = fam.toLowerCase();
+  if ((h && fl === h) || (b && fl === b)) return 'primary';
+  // Loose match: "Adyen" face vs computed "Adyen, sans-serif" already picked
+  if (h && (fl.includes(h) || h.includes(fl))) return 'primary';
+  if (b && (fl.includes(b) || b.includes(fl))) return 'primary';
+  return 'unknown';
+}
+
+/** True if buf starts with a known font magic (woff2/woff/ttf/otf). */
+export function verifyFontMagicBytes(buf) {
+  if (!buf || !Buffer.isBuffer(buf) || buf.length < 4) return false;
+  if (buf.subarray(0, 4).equals(WOFF2_MAGIC)) return true;
+  if (buf.subarray(0, 4).equals(WOFF_MAGIC)) return true;
+  if (buf.subarray(0, 4).equals(OTF_MAGIC)) return true;
+  // sfnt / TrueType version 1.0
+  if (buf.readUInt32BE(0) === TTF_OTF_MAGIC_HEAD) return true;
+  // TrueType collection
+  if (buf.subarray(0, 4).toString('ascii') === 'ttcf') return true;
+  return false;
+}
+
+/**
+ * HEAD (or ranged GET) a font URL for byte size + magic-byte verification.
+ * Never stores the binary — only metadata. HTML error pages fail magic check.
+ */
+export async function probeFontUrl(fontUrl, { timeout = 12000, fetchImpl = fetch } = {}) {
+  const out = { url: fontUrl, bytes: null, verifiedMagicBytes: false };
+  if (!fontUrl || !/^https?:\/\//i.test(fontUrl)) return out;
+  const ac = new AbortController();
+  const tid = setTimeout(() => ac.abort(), timeout);
+  try {
+    // Prefer ranged GET so we can verify magic without a full multi-MB download.
+    // Some CDNs ignore Range; we still only read a small prefix from the body.
+    let res = await fetchImpl(fontUrl, {
+      method: 'GET',
+      headers: { Range: 'bytes=0-15', 'User-Agent': 'ForgeIntelligenceBrandVisual/3' },
+      signal: ac.signal,
+      redirect: 'follow',
+    });
+    if (!res.ok && res.status !== 206) {
+      // Fall back to HEAD for size only
+      res = await fetchImpl(fontUrl, {
+        method: 'HEAD',
+        headers: { 'User-Agent': 'ForgeIntelligenceBrandVisual/3' },
+        signal: ac.signal,
+        redirect: 'follow',
+      });
+      if (res.ok) {
+        const cl = res.headers.get('content-length');
+        if (cl && /^\d+$/.test(cl)) out.bytes = Number(cl);
+      }
+      return out;
+    }
+    const cl = res.headers.get('content-length');
+    const cr = res.headers.get('content-range'); // bytes 0-15/12345
+    if (cr) {
+      const total = /\/(\d+)\s*$/.exec(cr);
+      if (total) out.bytes = Number(total[1]);
+    } else if (cl && /^\d+$/.test(cl)) {
+      out.bytes = Number(cl);
+    }
+    // Read at most 16 bytes for magic — discard the rest.
+    const reader = res.body?.getReader?.();
+    let prefix = Buffer.alloc(0);
+    if (reader) {
+      while (prefix.length < 16) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        prefix = Buffer.concat([prefix, Buffer.from(value)]);
+        if (prefix.length >= 16) break;
+      }
+      try { await reader.cancel(); } catch { /* noop */ }
+    } else {
+      // fetch impl without streaming — arrayBuffer then slice (still not stored)
+      const ab = await res.arrayBuffer();
+      prefix = Buffer.from(ab).subarray(0, 16);
+      if (out.bytes == null) out.bytes = ab.byteLength;
+    }
+    out.verifiedMagicBytes = verifyFontMagicBytes(prefix);
+    return out;
+  } catch {
+    return out;
+  } finally {
+    clearTimeout(tid);
+  }
+}
+
+/**
+ * Probe a list of parsed faces (metadata only). Caps concurrency.
+ * includeFontBinaries is intentionally ignored — binaries are licensed IP and
+ * must never land in JSONB; gate any future archive path behind object storage.
+ */
+export async function enrichFontFaces(faces, {
+  headingFont = null,
+  bodyFont = null,
+  monoFont = null,
+  includeFontBinaries = false, // accepted + ignored: binaries are licensed IP; never store in JSONB
+  timeout = 12000,
+  fetchImpl = fetch,
+  concurrency = 4,
+} = {}) {
+  if (!Array.isArray(faces) || !faces.length) return [];
+  // Explicit no-op so the flag is part of the public API without enabling storage.
+  if (includeFontBinaries) {
+    // Future: object-storage archive only. Metadata path must stay binary-free.
+  }
+  const queue = [];
+  let i = 0;
+  async function worker() {
+    while (i < faces.length) {
+      const idx = i++;
+      const face = faces[idx];
+      const probe = await probeFontUrl(face.url, { timeout, fetchImpl });
+      const enriched = {
+        family: face.family,
+        weightRange: face.weightRange,
+        ...(face.style ? { style: face.style } : {}),
+        formatHint: face.formatHint || null,
+        url: face.url,
+        bytes: probe.bytes,
+        isVariable: !!face.isVariable,
+        verifiedMagicBytes: !!probe.verifiedMagicBytes,
+      };
+      enriched.role = classifyFontRole(enriched, { headingFont, bodyFont, monoFont });
+      queue[idx] = enriched;
+    }
+  }
+  const n = Math.min(concurrency, faces.length);
+  await Promise.all(Array.from({ length: n }, () => worker()));
+  return queue.filter(Boolean);
+}
+
 /** Build the stored brandVisual object (profile.brandVisual) from a capture result. */
 export function buildBrandVisualPayload(capture, { capturedAt = new Date().toISOString() } = {}) {
   if (!capture?.success) return null;
@@ -255,6 +517,20 @@ export function buildBrandVisualPayload(capture, { capturedAt = new Date().toISO
   if (Array.isArray(capture.palette) && capture.palette.length) out.palette = capture.palette;
   if (capture.typography && (capture.typography.headingFont || capture.typography.bodyFont)) {
     out.typography = capture.typography;
+  }
+  // Metadata only — never font binaries / base64 payloads.
+  if (Array.isArray(capture.fonts) && capture.fonts.length) {
+    out.fonts = capture.fonts.map((f) => ({
+      family: f.family,
+      weightRange: f.weightRange,
+      ...(f.style ? { style: f.style } : {}),
+      formatHint: f.formatHint ?? null,
+      url: f.url,
+      bytes: f.bytes ?? null,
+      isVariable: !!f.isVariable,
+      role: f.role || 'unknown',
+      verifiedMagicBytes: !!f.verifiedMagicBytes,
+    }));
   }
   if (capture.logo && (capture.logo.primaryUrl || capture.logo.iconUrl)) out.logo = capture.logo;
   if (capture.buttonStyle && (capture.buttonStyle.radiusPx != null || capture.buttonStyle.style)) {
@@ -506,21 +782,47 @@ export async function captureBrandVisual(url, { caller = 'context-hub', timeout 
       // Drop palette if empty after filters
       if (!palette.length) palette = null;
 
-      // ── typography ────────────────────────────────────────────────────────
+      // ── typography + webfont source harvest ───────────────────────────────
+      // Collect @font-face NAMES via CSSOM (cross-origin sheets may throw) and
+      // stylesheet hrefs / inline CSS text for Node-side regex parse + probe.
+      // Font *binaries* stay aborted at the network layer — we only want metadata.
       const faceNames = new Set();
+      const fontFaceCssChunks = []; // { base, text } — capped later
       try {
         for (const sheet of Array.from(document.styleSheets || [])) {
           let rules;
           try { rules = sheet.cssRules; } catch { continue; }
+          let faceCss = '';
           for (const rule of Array.from(rules || [])) {
-            if (rule.type === 5 /* CSSRule.FONT_FACE_RULE */ && rule.style) {
-              const fam = rule.style.getPropertyValue('font-family') || rule.style.fontFamily;
-              const name = pickFont(fam);
-              if (name) faceNames.add(name);
+            if (rule.type === 5 /* CSSRule.FONT_FACE_RULE */) {
+              if (rule.style) {
+                const fam = rule.style.getPropertyValue('font-family') || rule.style.fontFamily;
+                const name = pickFont(fam);
+                if (name) faceNames.add(name);
+              }
+              if (rule.cssText) faceCss += rule.cssText + '\n';
             }
+          }
+          if (faceCss) {
+            fontFaceCssChunks.push({ base: sheet.href || location.href, text: faceCss });
           }
         }
       } catch { /* noop */ }
+      // Inline <style> blocks (often hold @font-face on simpler sites)
+      document.querySelectorAll('style').forEach((s) => {
+        const t = s.textContent || '';
+        if (t && /@font-face/i.test(t)) {
+          fontFaceCssChunks.push({ base: location.href, text: t });
+        }
+      });
+      // Stylesheet hrefs for Node fetch (same-origin Nuxt/Vite bundles etc.)
+      const stylesheetHrefs = [];
+      document.querySelectorAll('link[rel="stylesheet"][href]').forEach((l) => {
+        try {
+          const u = new URL(l.getAttribute('href') || '', location.href).href;
+          if (/^https?:\/\//i.test(u) && !stylesheetHrefs.includes(u)) stylesheetHrefs.push(u);
+        } catch { /* noop */ }
+      });
       // Google / Adobe font <link>s
       const linkFonts = [];
       document.querySelectorAll('link[rel="stylesheet"][href],link[href*="fonts.googleapis"],link[href*="use.typekit"],link[href*="fonts.adobe"]').forEach((l) => {
@@ -550,10 +852,13 @@ export async function captureBrandVisual(url, { caller = 'context-hub', timeout 
 
       const hEl = document.querySelector('h1') || document.querySelector('h2');
       const pEl = document.querySelector('p') || document.body;
+      const monoEl = document.querySelector('code, pre, kbd, samp, [class*="mono" i]');
       const headingStack = hEl ? getComputedStyle(hEl).fontFamily : '';
       const bodyStack = pEl ? getComputedStyle(pEl).fontFamily : '';
+      const monoStack = monoEl ? getComputedStyle(monoEl).fontFamily : '';
       const headingFont = pickFont(headingStack) || linkFonts[0] || [...faceNames][0] || null;
       const bodyFont = pickFont(bodyStack) || linkFonts[1] || linkFonts[0] || [...faceNames][1] || [...faceNames][0] || null;
+      const monoFont = pickFont(monoStack) || null;
       let typography = null;
       if (headingFont || bodyFont) {
         let source = 'computed';
@@ -567,6 +872,12 @@ export async function captureBrandVisual(url, { caller = 'context-hub', timeout 
         };
         if (!typography.fallbackStack) delete typography.fallbackStack;
       }
+      // Cap CSS chunks shipped out of the page (keep @font-face sources, not whole bundles
+      // when CSSOM already gave us face rules; full bundles come from stylesheetHrefs).
+      const cssChunks = fontFaceCssChunks
+        .map((c) => ({ base: c.base, text: String(c.text || '').slice(0, 200000) }))
+        .slice(0, 30);
+      const styleHrefs = stylesheetHrefs.slice(0, 25);
 
       // ── logo (richer) ─────────────────────────────────────────────────────
       // Prefer header/nav <img> or inline SVG; skip consent-manager junk.
@@ -741,6 +1052,9 @@ export async function captureBrandVisual(url, { caller = 'context-hub', timeout 
         logo,
         palette,
         typography,
+        monoFont: monoFont || null,
+        cssChunks,
+        styleHrefs,
         logoObj,
         buttonStyle,
         imageryStyle,
@@ -788,6 +1102,74 @@ export async function captureBrandVisual(url, { caller = 'context-hub', timeout 
     if (visual.typography && (visual.typography.headingFont || visual.typography.bodyFont)) {
       result.typography = visual.typography;
     }
+    // ── webfont metadata (brandVisual/3) ────────────────────────────────────
+    // Parse @font-face from CSSOM face rules + fetched stylesheets, then HEAD/
+    // ranged-GET each font URL for bytes + magic. NEVER store binaries in JSONB.
+    try {
+      const parsed = [];
+      for (const chunk of visual.cssChunks || []) {
+        parsed.push(...parseFontFaceBlocks(chunk.text, chunk.base || url));
+      }
+      // Fetch linked stylesheets (same-origin Nuxt/Vite CSS that CSSOM may not
+      // expose fully cross-origin). Cap size/count for bandwidth.
+      const hrefs = Array.isArray(visual.styleHrefs) ? visual.styleHrefs.slice(0, 15) : [];
+      await Promise.all(hrefs.map(async (href) => {
+        try {
+          const ac = new AbortController();
+          const tid = setTimeout(() => ac.abort(), 10000);
+          let res;
+          try {
+            res = await fetch(href, {
+              headers: { 'User-Agent': 'ForgeIntelligenceBrandVisual/3', Accept: 'text/css,*/*' },
+              signal: ac.signal,
+              redirect: 'follow',
+            });
+          } finally { clearTimeout(tid); }
+          if (!res?.ok) return;
+          // Read at most ~1.5MB of CSS text — enough for face tables, not whole design systems.
+          const text = (await res.text()).slice(0, 1_500_000);
+          if (/@font-face/i.test(text)) parsed.push(...parseFontFaceBlocks(text, href));
+        } catch { /* stylesheet fetch is best-effort */ }
+      }));
+
+      // Dedupe before probe
+      const seenFace = new Set();
+      const unique = [];
+      for (const f of parsed) {
+        const key = `${f.family}::${f.weightRange}::${f.url}`;
+        if (seenFace.has(key)) continue;
+        seenFace.add(key);
+        unique.push(f);
+      }
+
+      if (unique.length) {
+        const headingFont = result.typography?.headingFont || null;
+        const bodyFont = result.typography?.bodyFont || null;
+        const monoFont = visual.monoFont || null;
+        const fonts = await enrichFontFaces(unique.slice(0, 40), {
+          headingFont,
+          bodyFont,
+          monoFont,
+          includeFontBinaries: !!metadata?.includeFontBinaries,
+          timeout: 12000,
+          concurrency: 4,
+        });
+        if (fonts.length) {
+          result.fonts = fonts;
+          // Cross-fill typography from verified primary faces when computed stack was generic
+          if (!result.typography) result.typography = {};
+          const primary = fonts.find((f) => f.role === 'primary');
+          if (primary) {
+            if (!result.typography.headingFont) result.typography.headingFont = primary.family;
+            if (!result.typography.bodyFont) result.typography.bodyFont = primary.family;
+            if (!result.typography.source) result.typography.source = 'font-face';
+          }
+          // Drop empty typography shell
+          if (!result.typography.headingFont && !result.typography.bodyFont) delete result.typography;
+        }
+      }
+    } catch { /* font harvest is additive / best-effort */ }
+
     if (logoObj && (logoObj.primaryUrl || logoObj.iconUrl)) {
       // re-filter junk
       const clean = { ...logoObj };
@@ -824,6 +1206,7 @@ export async function captureBrandVisual(url, { caller = 'context-hub', timeout 
           logo: result.logoUrl,
           paletteCount: result.palette?.length || 0,
           hasTypography: !!result.typography,
+          fontCount: result.fonts?.length || 0,
           hasButtonStyle: !!result.buttonStyle,
           imageryStyle: result.imageryStyle?.style || null,
         },
