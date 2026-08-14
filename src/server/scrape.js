@@ -414,7 +414,7 @@ export async function captureBrandVisual(url, { caller = 'context-hub', timeout 
           if (!rules) continue;
           const walk = (list) => {
             for (const rule of Array.from(list || [])) {
-              if (rule.type === CSSRule.STYLE_RULE && rule.style) {
+              if (rule.type === 1 /* CSSRule.STYLE_RULE */ && rule.style) {
                 for (let i = 0; i < rule.style.length; i++) {
                   const prop = rule.style[i];
                   if (!prop || !prop.startsWith('--')) continue;
@@ -513,7 +513,7 @@ export async function captureBrandVisual(url, { caller = 'context-hub', timeout 
           let rules;
           try { rules = sheet.cssRules; } catch { continue; }
           for (const rule of Array.from(rules || [])) {
-            if (rule.type === CSSRule.FONT_FACE_RULE && rule.style) {
+            if (rule.type === 5 /* CSSRule.FONT_FACE_RULE */ && rule.style) {
               const fam = rule.style.getPropertyValue('font-family') || rule.style.fontFamily;
               const name = pickFont(fam);
               if (name) faceNames.add(name);
@@ -594,7 +594,7 @@ export async function captureBrandVisual(url, { caller = 'context-hub', timeout 
         const svg = document.querySelector('header svg, nav svg, [class*="logo" i] svg, a[class*="logo" i] svg');
         if (svg && !svg.closest('[id*="cookie" i],[class*="cookie" i],[id*="consent" i],[class*="consent" i]')) {
           try {
-            const s = new XMLSerializer().serializeToString(svg);
+            const s = new globalThis.XMLSerializer().serializeToString(svg);
             if (s && s.length < 200000) {
               primaryUrl = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(s)));
             }
