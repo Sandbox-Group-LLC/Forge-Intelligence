@@ -374,10 +374,110 @@ router.post('/decision', async (req, res) => {
   const brandProfileId = body.brand_profile_id || body.brandProfileId;
   const decision = String(body.decision || '').toLowerCase();
   if (!brandProfileId) return res.status(400).json({ error: 'brand_profile_id required' });
-  if (!['approved', 'rejected', 'approve', 'reject'].includes(decision)) {
-    return res.status(400).json({ error: 'decision must be approved|rejected' });
+  if (!['approved', 'rejected', 'approve', 'reject', 'edited', 'dismissed'].includes(decision)) {
+    return res.status(400).json({ error: 'decision must be approved|rejected|edited|dismissed' });
   }
   const isReject = decision === 'rejected' || decision === 'reject';
+
+  // edited — operator rewrote copy in The Post review UI. Same learning write as the
+  // Compliance Gate approve-with-edits path: "Avoid old — prefer new" into brain_mistakes.
+  if (decision === 'edited') {
+    const originalText = clip(body.original_text || body.originalText || '', 400);
+    const editedText = clip(body.edited_text || body.editedText || '', 400);
+    if (!originalText || !editedText) {
+      return res.status(400).json({ error: 'edited decision requires original_text and edited_text' });
+    }
+    const heading = clip(body.section_heading || body.sectionHeading || body.title || 'untitled', 200);
+    const source = clip(body.source_label || body.event_id || body.eventId || 'the-post', 120);
+    try {
+      await pool.query(
+        `INSERT INTO brain_mistakes (brand_profile_id, mistake_type, description, human_feedback, severity)
+         VALUES ($1, 'human_edit', $2, $3, 'medium')`,
+        [
+          brandProfileId,
+          `The Post longform: section "${heading}" edited by reviewer [${source}]`,
+          `Avoid: "${originalText}" — prefer: "${editedText}"`,
+        ]
+      );
+      return res.json({ success: true, wrote: 'brain_mistakes', mistake_type: 'human_edit' });
+    } catch (e) {
+      console.error('[the-post/decision:edited]', e.message);
+      return res.status(500).json({ error: e.message || 'decision write failed' });
+    }
+  }
+
+  // dismissed — operator says a compliance flag was a false positive. Typed reasons
+  // mirror the Stage 5 dismiss-flag taxonomy; each teaches a different suppression.
+  if (decision === 'dismissed') {
+    const DISMISS_REASONS = ['verified_nameable', 'verified_unnameable', 'intentional_style'];
+    const dismissReason = String(body.reason_code || body.reasonCode || body.reason || '').trim();
+    if (!DISMISS_REASONS.includes(dismissReason)) {
+      return res.status(400).json({
+        error: `dismissed decision requires reason_code (${DISMISS_REASONS.join(', ')})`,
+        allowedReasons: DISMISS_REASONS,
+      });
+    }
+    const heading = clip(body.section_heading || body.sectionHeading || body.title || 'untitled', 200);
+    const flagType = clip(body.flag_type || body.flagType || 'unknown', 60);
+    const excerpt = clip(body.flagged_excerpt || body.flaggedExcerpt || body.surface || '', 300);
+    const note = clip(body.reason_note || body.reasonNote || body.note || '', 500);
+    const where = `The Post longform section "${heading}" flagged as ${flagType}`;
+    const signal =
+      dismissReason === 'verified_unnameable'
+        ? {
+            type: 'verified_unnameable',
+            description: `Claim in ${where} is VERIFIED but contractually unnameable (NDA/redacted) — promoted to Factual Ground redactedFacts.`,
+            feedback: `This claim is TRUE and owner-attested; only the client/proper-noun is redacted by contract. Score it high-confidence-redacted, do NOT flag it as an unverifiable factual_claim, and NEVER suggest naming the underlying party. Surface phrasing: "${excerpt}".`,
+          }
+        : dismissReason === 'verified_nameable'
+          ? {
+              type: 'verified_fact',
+              description: `Claim in ${where} is a VERIFIED, nameable fact — owner dismissed as false positive.`,
+              feedback: `Verified fact for this brand. Do NOT flag similar claims as unverifiable in future critiques. Excerpt: "${excerpt}".${note ? ` Note: ${note}` : ''}`,
+            }
+          : {
+              type: 'intentional_style',
+              description: `Flag in ${where} was a voice/style choice, not a factual claim — owner dismissed.`,
+              feedback: `This is an intentional voice/style construction, not a factual assertion. Do NOT treat or flag it as a factual_claim in future critiques for this brand.${note ? ` Note: ${note}` : ''}`,
+            };
+    try {
+      await pool.query(
+        `INSERT INTO brain_mistakes (brand_profile_id, mistake_type, description, human_feedback, severity)
+         VALUES ($1, $2, $3, $4, 'low')`,
+        [brandProfileId, signal.type, signal.description, signal.feedback]
+      );
+      // verified_unnameable also promotes to Factual Ground so Stage-4/longform
+      // generation stops scoring this claim low on every future piece.
+      let redactedFactAdded = false;
+      if (dismissReason === 'verified_unnameable' && excerpt) {
+        const brandRes = await pool.query('SELECT settings FROM brand_profiles WHERE id = $1', [brandProfileId]);
+        if (brandRes.rows.length) {
+          const settings = brandRes.rows[0].settings || {};
+          const fg = settings.factualGround || {};
+          const existing = Array.isArray(fg.redactedFacts) ? fg.redactedFacts : [];
+          const dup = existing.some(
+            (r) => String(r?.surface || '').trim().toLowerCase() === excerpt.trim().toLowerCase()
+          );
+          if (!dup) {
+            existing.push({ surface: excerpt, source: 'the-post-dismiss', addedAt: new Date().toISOString() });
+            fg.redactedFacts = existing;
+            settings.factualGround = fg;
+            await pool.query('UPDATE brand_profiles SET settings = $1 WHERE id = $2', [settings, brandProfileId]);
+            redactedFactAdded = true;
+          }
+        }
+      }
+      return res.json({
+        success: true,
+        wrote: 'brain_mistakes',
+        mistake_type: signal.type,
+        redacted_fact_added: redactedFactAdded,
+      });
+    } catch (e) {
+      console.error('[the-post/decision:dismissed]', e.message);
+      return res.status(500).json({ error: e.message || 'decision write failed' });
+    }
+  }
 
   let reasonCode = body.reason_code || body.reasonCode || body.reason || '';
   let reasonNote = body.reason_note || body.reasonNote || body.note || '';
@@ -854,6 +954,182 @@ Produce the JSON longform now.`;
   } catch (err) {
     console.error('[the-post/longform-gen]', err.message);
     return res.status(500).json({ error: err.message || 'longform-gen failed' });
+  }
+});
+
+// ── Longform compliance critique (Stage 5 reuse for The Post) ────────────────
+// Contract: The Post docs/contracts/longform-compliance.md
+// inventory: POST /api/external/the-post/critique
+const CRITIQUE_MODEL = process.env.THE_POST_CRITIQUE_MODEL || 'claude-sonnet-4-6';
+const CRITIQUE_VERSION = 'the-post-critique-v1';
+
+router.post('/critique', async (req, res) => {
+  const auth = serviceTokenOk(req);
+  if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+
+  const body = req.body || {};
+  const article = body.article || {};
+  const sections = Array.isArray(article.sections) ? article.sections : [];
+  if (!article.title || sections.length < 1) {
+    return res.status(400).json({ error: 'article with title and sections required' });
+  }
+  const kind = String(body.kind || 'article');
+  const eventContext = body.event_context || body.eventContext || {};
+  const brandProfileId = body.brand_profile_id || body.brandProfileId || null;
+
+  // Brand voice + brain + Factual Ground — same three inputs as /api/compliance/critique.
+  // Degrades gracefully with no brand_profile_id: event_context voice only, no brain/FG.
+  let brand = null;
+  let mistakes = [];
+  if (brandProfileId) {
+    try {
+      const brandRes = await pool.query('SELECT * FROM brand_profiles WHERE id = $1', [brandProfileId]);
+      brand = brandRes.rows[0] || null;
+      const mRes = await pool.query(
+        `SELECT mistake_type, human_feedback FROM brain_mistakes
+          WHERE brand_profile_id = $1 ORDER BY created_at DESC LIMIT 20`,
+        [brandProfileId]
+      );
+      mistakes = mRes.rows;
+    } catch (e) {
+      console.warn('[the-post/critique] brand load failed', e.message);
+    }
+  }
+  const bp = eventContext.brand_profile || {};
+  const brandName = brand?.profile_data?.brand_name || brand?.brand_name || bp.name || 'Unknown';
+  const voiceProfile = brand?.profile_data?.voice_profile || {
+    tone: bp.voice?.tone || [],
+    do: bp.voice?.do || [],
+    dont: bp.voice?.dont || bp.voice?.donts || [],
+  };
+
+  const fg = brand?.settings?.factualGround || null;
+  const fgBlock = fg && Object.values(fg).some((v) => v && (typeof v === 'string' ? v.trim() : Array.isArray(v) && v.length))
+    ? `\nUSER-VERIFIED FACTS (stated by the brand owner — authoritative ground truth):
+${fg.whatWeDo ? `- What this brand does: ${String(fg.whatWeDo).slice(0, 500)}\n` : ''}${fg.whatWeDontDo ? `- What this brand does NOT do: ${String(fg.whatWeDontDo).slice(0, 500)}\n` : ''}${fg.companyFacts ? `- Company facts: ${String(fg.companyFacts).slice(0, 500)}\n` : ''}${fg.methodology ? `- Methodology/frameworks: ${String(fg.methodology).slice(0, 400)}\n` : ''}${Array.isArray(fg.redactedFacts) && fg.redactedFacts.length ? `\nVERIFIED-BUT-REDACTED FACTS (owner-attested TRUE, but the client/proper-noun is withheld by contract — the anonymized surface phrasing is deliberate, not vague):\n${fg.redactedFacts.map((r) => `- "${String(r.surface || '').slice(0, 300)}"`).filter((s) => s !== '- ""').join('\n')}\n` : ''}
+How to use these facts:
+- A claim that MATCHES or is directly supported by these facts is VERIFIED — do not flag it as an unverifiable factual_claim.
+- A claim that CONTRADICTS these facts is a RED factual_claim flag — quote the contradicting excerpt and name the verified fact it violates.
+- A claim matching a VERIFIED-BUT-REDACTED fact is VERIFIED: never flag it, never treat the anonymized phrasing as hedging to fix, and NEVER suggest naming the underlying party.`
+    : '';
+
+  const nsBlock = eventContext.north_star?.thesis
+    ? `\nEvent North Star thesis (the piece should serve this): ${clip(eventContext.north_star.thesis, 500)}
+Event DO NOT: ${clip(JSON.stringify(eventContext.north_star.do_not || []), 400)}`
+    : '';
+
+  const systemPrompt = `You are a compliance and brand voice auditor for the brand "${brandName}". This is a ${kind === 'white_paper' ? 'white paper' : 'article'} generated for The Post (post-event knowledge hub) that publishes under the event brand. Analyze it and return a JSON compliance report.
+
+CRITICAL RULES:
+- ONLY flag claims, phrases, or issues EXPLICITLY present in the article text being audited. No outside sources, no inference.
+- Every flag must include a "flaggedExcerpt" containing the EXACT verbatim quote from the article that triggered it. If you cannot quote it verbatim, do not flag it.
+- SECTION ISOLATION: each flag references content from ONLY the section identified by its sectionIndex.
+- The "Known Mistakes" below are behavioral patterns to watch for, NOT evidence. Never cite one as proof a claim exists elsewhere.
+- Do not flag correct usage of the brand's own name.
+- NDA and legal exposure are the highest-priority flag types: unverifiable client names, partner names, embargoed-sounding specifics, pricing, contract terms, or regulated claims are "nda_risk" / "legal_risk" and always severity "red".
+- Never fabricate issues. A clean section gets no flags.
+
+Brand Voice Profile:
+${JSON.stringify(voiceProfile, null, 2)}
+${fgBlock}${nsBlock}
+
+Known Mistakes to Avoid:
+${mistakes.map((m) => `- ${m.mistake_type}: ${m.human_feedback}`).join('\n') || 'None recorded yet'}
+
+Return ONLY valid JSON in this exact structure:
+{
+  "overallScore": <0-100>,
+  "brandVoiceScore": <0-100>,
+  "factualConfidence": <0-100>,
+  "summary": "<2 sentence plain-language brief for the human reviewer>",
+  "flags": [
+    {
+      "sectionIndex": <zero-based index into the sections array>,
+      "sectionHeading": "<heading>",
+      "severity": "yellow" | "red",
+      "type": "brand_voice" | "factual_claim" | "legal_risk" | "nda_risk" | "sme_required",
+      "flaggedExcerpt": "<exact quote>",
+      "reason": "<why flagged>",
+      "suggestion": "<recommended fix>"
+    }
+  ]
+}`;
+
+  const auditText = sections
+    .map((s, i) => `[SECTION ${i}] heading: ${s.heading || s.title || 'Untitled'}\n${s.body || s.content || ''}`)
+    .join('\n\n---\n\n');
+
+  try {
+    const msg = await anthropic.messages.create({
+      model: CRITIQUE_MODEL,
+      max_tokens: 8192,
+      temperature: 0,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: `Article title: ${clip(article.title, 200)}\n\nArticle to audit:\n\n${auditText}` }],
+    });
+    const text = (msg.content || [])
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n')
+      .trim();
+    let parsed = safeParseLLM(text, 'object', 'the-post-critique');
+    if (!parsed || typeof parsed !== 'object') {
+      const m = text.match(/\{[\s\S]*\}/);
+      if (m) {
+        try {
+          parsed = JSON.parse(m[0]);
+        } catch {
+          parsed = null;
+        }
+      }
+    }
+    if (!parsed || typeof parsed !== 'object') {
+      return res.status(502).json({ error: 'critique model returned non-JSON', raw: clip(text, 400) });
+    }
+
+    const flags = (Array.isArray(parsed.flags) ? parsed.flags : [])
+      .map((f, i) => {
+        const idx = Number(f?.sectionIndex);
+        const type = ['brand_voice', 'factual_claim', 'legal_risk', 'nda_risk', 'sme_required'].includes(f?.type)
+          ? f.type
+          : 'brand_voice';
+        // nda/legal always block — contract rule, not model discretion
+        const severity =
+          type === 'nda_risk' || type === 'legal_risk'
+            ? 'red'
+            : f?.severity === 'red'
+              ? 'red'
+              : 'yellow';
+        return {
+          id: `f${i}`,
+          sectionIndex: Number.isFinite(idx) ? idx : 0,
+          sectionHeading: clip(f?.sectionHeading || '', 200),
+          severity,
+          type,
+          flaggedExcerpt: String(f?.flaggedExcerpt || '').slice(0, 600),
+          reason: clip(f?.reason || '', 500),
+          suggestion: clip(f?.suggestion || '', 500),
+          resolution: null,
+        };
+      })
+      .filter((f) => f.flaggedExcerpt);
+
+    return res.json({
+      success: true,
+      version: 1,
+      prompt_version: CRITIQUE_VERSION,
+      model: CRITIQUE_MODEL,
+      overallScore: Number(parsed.overallScore) || 0,
+      brandVoiceScore: Number(parsed.brandVoiceScore) || 0,
+      factualConfidence: Number(parsed.factualConfidence) || 0,
+      summary: clip(parsed.summary || '', 600),
+      flags,
+      usage: msg.usage || null,
+      brain: { brand_profile_id: brandProfileId, mistakes: mistakes.length, factual_ground: !!fg },
+    });
+  } catch (err) {
+    console.error('[the-post/critique]', err.message);
+    return res.status(500).json({ error: err.message || 'critique failed' });
   }
 });
 
