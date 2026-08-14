@@ -6,6 +6,7 @@
 // registration lines changed (app.METHOD('/api/compliance/x', requireAuth, …)
 // -> router.METHOD('/x', …)).
 import express from 'express';
+import { randomUUID } from 'crypto';
 import { pool } from '../db.js';
 import { anthropic } from '../llm.js';
 import { safeParseLLM } from '../llm-json.js';
@@ -298,10 +299,11 @@ router.post('/critique', async (req, res) => {
     const fg = brand?.settings?.factualGround || null;
     const fgBlock = fg && Object.values(fg).some(v => v && (typeof v === 'string' ? v.trim() : (Array.isArray(v) && v.length)))
       ? `\nUSER-VERIFIED FACTS (stated by the brand owner — authoritative ground truth):
-${fg.whatWeDo ? `- What this brand does: ${String(fg.whatWeDo).slice(0, 500)}\n` : ''}${fg.whatWeDontDo ? `- What this brand does NOT do: ${String(fg.whatWeDontDo).slice(0, 500)}\n` : ''}${fg.companyFacts ? `- Company facts: ${String(fg.companyFacts).slice(0, 500)}\n` : ''}${fg.foundingStory ? `- Founding story: ${String(fg.foundingStory).slice(0, 400)}\n` : ''}${fg.methodology ? `- Methodology/frameworks: ${String(fg.methodology).slice(0, 400)}\n` : ''}${Array.isArray(fg.authors) && fg.authors.length ? `- Named team: ${fg.authors.map(a => `${a.name || ''}${a.title ? ` (${a.title})` : ''}`).filter(Boolean).join(', ')}\n` : ''}
+${fg.whatWeDo ? `- What this brand does: ${String(fg.whatWeDo).slice(0, 500)}\n` : ''}${fg.whatWeDontDo ? `- What this brand does NOT do: ${String(fg.whatWeDontDo).slice(0, 500)}\n` : ''}${fg.companyFacts ? `- Company facts: ${String(fg.companyFacts).slice(0, 500)}\n` : ''}${fg.foundingStory ? `- Founding story: ${String(fg.foundingStory).slice(0, 400)}\n` : ''}${fg.methodology ? `- Methodology/frameworks: ${String(fg.methodology).slice(0, 400)}\n` : ''}${Array.isArray(fg.authors) && fg.authors.length ? `- Named team: ${fg.authors.map(a => `${a.name || ''}${a.title ? ` (${a.title})` : ''}`).filter(Boolean).join(', ')}\n` : ''}${Array.isArray(fg.redactedFacts) && fg.redactedFacts.length ? `\nVERIFIED-BUT-REDACTED FACTS (owner-attested TRUE, but the client/proper-noun is withheld by contract — the anonymized surface phrasing is deliberate, not vague):\n${fg.redactedFacts.map(r => `- "${String(r.surface || '').slice(0, 300)}"`).filter(s => s !== '- ""').join('\n')}\n` : ''}
 How to use these facts:
 - A claim in the article that MATCHES or is directly supported by these facts is VERIFIED — do not flag it as an unverifiable factual_claim.
 - A claim that CONTRADICTS these facts (wrong founder, wrong methodology, claims the brand does something listed under "does NOT do") is a RED factual_claim flag — quote the contradicting excerpt and name the verified fact it violates.
+- A claim matching a VERIFIED-BUT-REDACTED fact is VERIFIED: never flag it as an unverifiable factual_claim, never treat the anonymized phrasing ("an enterprise technology client", "a Fortune 500 SaaS company") as hedging or vagueness to fix, and NEVER suggest naming the underlying party — the redaction is a contractual requirement, not a gap.
 - These facts are context for judging claims, NOT article content — the flaggedExcerpt rule is unchanged: every excerpt must still be a verbatim quote from the article section being flagged.`
       : '';
 
@@ -476,26 +478,112 @@ Return ONLY valid JSON in this exact structure:
   }
 });
 
-// POST dismiss-flag — user dismisses a false-positive flag, writes to brain as training signal
+// POST dismiss-flag — user dismisses a flag with a typed REASON. The reason is the
+// training signal. A flat "false positive" only teaches the Stage-5 critic to stop
+// flagging; a typed reason teaches WHY, and for a verified-but-unnameable (NDA) fact it
+// promotes the fact to Factual Ground so Stage-4 generation stops scoring it low on
+// every future article in the first place — the difference between swatting the same
+// flag forever and teaching the redaction rule once.
+//
+// reason ∈ { verified_nameable | verified_unnameable | intentional_style | actually_wrong }
+// Omitted/unknown reason => legacy flat dismiss (exact prior behavior, backward compat).
+//
+// For verified_unnameable the client MAY send { surface, trueReferent, note }:
+//   surface      — the phrasing that renders (defaults to the flagged excerpt); PUBLIC.
+//   trueReferent — the private truth behind it (e.g. the real client name). WRITE-ONLY:
+//                  stored for the owner's audit trail (and the day an NDA lifts) and
+//                  NEVER read back into any LLM prompt, so the gagged proper noun can
+//                  never leak into generated copy. Only `surface` ever reaches a model.
 router.post('/dismiss-flag', async (req, res) => {
-  const { brandProfileId, contentId, flagType, flagReason, sectionHeading } = req.body;
+  const { brandProfileId, contentId, flagType, flagReason, sectionHeading, reason, surface, trueReferent, note } = req.body;
   if (!brandProfileId || !contentId) return res.status(400).json({ error: 'brandProfileId and contentId required' });
+
+  const VALID_REASONS = ['verified_nameable', 'verified_unnameable', 'intentional_style', 'actually_wrong'];
+  const dismissReason = VALID_REASONS.includes(reason) ? reason : null; // null => legacy flat dismiss
+
   try {
-    await pool.query(
-      `INSERT INTO brain_mistakes (brand_profile_id, mistake_type, description, human_feedback, severity)
-       VALUES ($1, 'false_positive_flag', $2, $3, 'low')`,
-      [
-        brandProfileId,
-        `AI incorrectly flagged section "${sectionHeading || 'untitled'}" as ${flagType || 'unknown'} — user dismissed`,
-        `False positive: ${(flagReason || '').substring(0, 500)}. Do NOT flag similar content in future critiques for this brand.`
-      ]
-    );
+    let redactedFactAdded = false;
+
+    // Typed brain signal per reason. Each teaches something different from the flat
+    // "don't flag similar" of the legacy path. `actually_wrong` writes NO suppressive
+    // signal (the flag was correct — nothing to unlearn).
+    const where = `section "${sectionHeading || 'untitled'}" flagged as ${flagType || 'unknown'}`;
+    const brainSignal = (() => {
+      switch (dismissReason) {
+        case 'verified_unnameable':
+          return {
+            type: 'verified_unnameable',
+            description: `Claim in ${where} is VERIFIED but contractually unnameable (NDA/redacted) — promoted to Factual Ground redactedFacts.`,
+            feedback: `This claim is TRUE and owner-attested; only the client/proper-noun is redacted by contract. Score it high-confidence-redacted, do NOT flag it as an unverifiable factual_claim, and NEVER suggest naming the underlying party. Surface phrasing: "${String(surface || flagReason || '').slice(0, 300)}".`
+          };
+        case 'verified_nameable':
+          return {
+            type: 'verified_fact',
+            description: `Claim in ${where} is a VERIFIED, nameable fact — owner dismissed as false positive.`,
+            feedback: `Verified fact for this brand. Do NOT flag similar claims as unverifiable in future critiques. Excerpt: "${String(flagReason || '').slice(0, 400)}".`
+          };
+        case 'intentional_style':
+          return {
+            type: 'intentional_style',
+            description: `Flag in ${where} was a voice/style choice, not a factual claim — owner dismissed.`,
+            feedback: `This is an intentional voice/style construction, not a factual assertion. Do NOT treat or flag it as a factual_claim in future critiques for this brand.`
+          };
+        case 'actually_wrong':
+          return null; // flag was correct; record activity only, no suppressive signal
+        default: // legacy flat dismiss — preserve exact prior behavior
+          return {
+            type: 'false_positive_flag',
+            description: `AI incorrectly flagged section "${sectionHeading || 'untitled'}" as ${flagType || 'unknown'} — user dismissed`,
+            feedback: `False positive: ${(flagReason || '').substring(0, 500)}. Do NOT flag similar content in future critiques for this brand.`
+          };
+      }
+    })();
+
+    if (brainSignal) {
+      await pool.query(
+        `INSERT INTO brain_mistakes (brand_profile_id, mistake_type, description, human_feedback, severity)
+         VALUES ($1, $2, $3, $4, 'low')`,
+        [brandProfileId, brainSignal.type, brainSignal.description, brainSignal.feedback]
+      );
+    }
+
+    // Verified-but-unnameable: promote to Factual Ground so Stage-4 generation stops
+    // scoring this low on every future article. Read-modify-write the settings JSONB
+    // (single-reviewer UI, so the R-M-W race is acceptable); dedupe by surface
+    // (case-insensitive). trueReferent is persisted WRITE-ONLY and never re-read here.
+    if (dismissReason === 'verified_unnameable') {
+      const surfaceText = String(surface || flagReason || '').trim();
+      if (surfaceText) {
+        const brandRes = await pool.query('SELECT settings FROM brand_profiles WHERE id = $1', [brandProfileId]);
+        const settings = brandRes.rows[0]?.settings || {};
+        const fg = settings.factualGround || {};
+        const existing = Array.isArray(fg.redactedFacts) ? fg.redactedFacts : [];
+        const dupe = existing.some(r => (r.surface || '').trim().toLowerCase() === surfaceText.toLowerCase());
+        if (!dupe) {
+          existing.push({
+            id: randomUUID(),
+            surface: surfaceText.slice(0, 600),
+            trueReferent: String(trueReferent || '').slice(0, 600) || null, // WRITE-ONLY — never fed to any prompt
+            note: String(note || '').slice(0, 300) || null,
+            sourceFlagType: flagType || null,
+            addedAt: new Date().toISOString()
+          });
+          const nextSettings = { ...settings, factualGround: { ...fg, redactedFacts: existing } };
+          await pool.query(
+            `UPDATE brand_profiles SET settings = $1::jsonb, version = COALESCE(version, 1) + 1, updated_at = NOW() WHERE id = $2`,
+            [JSON.stringify(nextSettings), brandProfileId]
+          );
+          redactedFactAdded = true;
+        }
+      }
+    }
+
     await pool.query(
       `INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms)
        VALUES ('compliance_dismiss', $1, 'success', 0, 0)`,
       [brandProfileId]
     ).catch(() => {});
-    res.json({ success: true });
+    res.json({ success: true, reason: dismissReason, redactedFactAdded });
   } catch(e) {
     console.error('[COMPLIANCE] Dismiss flag error:', e.message);
     res.status(500).json({ success: false, error: e.message });
