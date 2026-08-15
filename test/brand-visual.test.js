@@ -2,6 +2,9 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   nearHex,
   dedupePalette,
+  hexChroma,
+  refinePaletteRoles,
+  pickBrandAccent,
   pickFontFamily,
   isJunkLogoUrl,
   guessImageFormat,
@@ -29,6 +32,41 @@ describe('nearHex / dedupePalette', () => {
     expect(out[0].hex).toBe('#122334');
     expect(out[0].role).toBe('primary');
     expect(out[0].source).toBe('css-var');
+  });
+});
+
+describe('hexChroma / refinePaletteRoles / pickBrandAccent (Adyen greyscale trap)', () => {
+  // Real first brandVisual/2 shape: slate won accent, brand green buried as neutral.
+  const ADYEN_BAD = [
+    { hex: '#001222', role: 'primary', source: 'css-var' },
+    { hex: '#ffffff', role: 'background', source: 'computed' },
+    { hex: '#5c6874', role: 'accent', source: 'css-var' },
+    { hex: '#ecedef', role: 'neutral', source: 'css-var' },
+    { hex: '#d1d5d8', role: 'neutral', source: 'css-var' },
+    { hex: '#8c959d', role: 'neutral', source: 'css-var' },
+    { hex: '#2f3e4d', role: 'neutral', source: 'css-var' },
+    { hex: '#00d16a', role: 'neutral', source: 'css-var' },
+  ];
+
+  it('reports low chroma on slate and high on brand green', () => {
+    expect(hexChroma('#5c6874')).toBeLessThan(0.18);
+    expect(hexChroma('#00d16a')).toBeGreaterThan(0.35);
+    // Near-black ink must NOT look "saturated" via chroma (HSL-S trap)
+    expect(hexChroma('#001222')).toBeLessThan(0.2);
+  });
+
+  it('promotes mis-tagged vivid green to accent and demotes grey accent', () => {
+    const fixed = refinePaletteRoles(ADYEN_BAD);
+    const green = fixed.find((p) => p.hex === '#00d16a');
+    const slate = fixed.find((p) => p.hex === '#5c6874');
+    expect(green.role).toBe('accent');
+    expect(slate.role).toBe('neutral');
+  });
+
+  it('pickBrandAccent chooses green over grey CTA/heuristic', () => {
+    const fixed = refinePaletteRoles(ADYEN_BAD);
+    expect(pickBrandAccent(fixed, '#5c6874')).toBe('#00d16a');
+    expect(pickBrandAccent(fixed, null)).toBe('#00d16a');
   });
 });
 
