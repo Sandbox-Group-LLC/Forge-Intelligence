@@ -190,6 +190,7 @@
   "POST /api/email-campaign/email/:id/resolve-flag",
   "POST /api/email-campaign/save-brief-template",
   "POST /api/external/analyze",
+  "POST /api/external/the-post/apply-suggestion",
   "POST /api/external/the-post/card-gen",
   "POST /api/external/the-post/critique",
   "POST /api/external/the-post/decision",

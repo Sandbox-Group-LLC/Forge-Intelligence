@@ -1411,4 +1411,89 @@ router.put('/factual-ground', async (req, res) => {
   }
 });
 
+// ── Apply a compliance-flag suggestion (The Post review UI) ──────────────────
+// Contract: The Post docs/contracts/longform-compliance.md
+// inventory: POST /api/external/the-post/apply-suggestion
+// Minimal-diff rewrite: the writer model applies EXACTLY the critic's suggested
+// fix to one section body and touches nothing else. Same UX as FI's own
+// apply-suggestion flow.
+const APPLY_SUGGESTION_MODEL =
+  process.env.THE_POST_APPLY_SUGGESTION_MODEL || 'claude-haiku-4-5-20251001';
+
+router.post('/apply-suggestion', async (req, res) => {
+  const auth = serviceTokenOk(req);
+  if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.status(503).json({ error: 'ANTHROPIC_API_KEY not configured' });
+  }
+
+  const body = req.body || {};
+  const sectionBody = String(body.section_body || body.sectionBody || '').trim();
+  const suggestion = String(body.suggestion || '').trim();
+  if (!sectionBody || !suggestion) {
+    return res.status(400).json({ error: 'section_body and suggestion required' });
+  }
+  const heading = clip(body.section_heading || body.sectionHeading || '', 200);
+  const excerpt = clip(body.flagged_excerpt || body.flaggedExcerpt || '', 600);
+  const reason = clip(body.reason || '', 500);
+
+  const prompt = `You are applying a single editorial fix to one section of a longform article.
+
+SECTION${heading ? ` ("${heading}")` : ''}:
+${sectionBody}
+
+COMPLIANCE FLAG:
+${excerpt ? `Flagged excerpt: "${excerpt}"\n` : ''}${reason ? `Why flagged: ${reason}\n` : ''}Suggested fix: ${suggestion}
+
+Rules:
+- Apply the suggested fix. The INTENT of the fix is mandatory; adapt its exact wording only as needed to flow naturally.
+- Change NOTHING else — no restyling, no reordering, no added or removed content beyond what the fix requires.
+- Preserve paragraph breaks and formatting.
+- Sentence case. No emoji. ZERO em dashes (U+2014).
+
+Return ONLY valid JSON: {"body": "<the full revised section body>"}`;
+
+  try {
+    const msg = await anthropic.messages.create({
+      model: APPLY_SUGGESTION_MODEL,
+      max_tokens: 4096,
+      temperature: 0,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const text = (msg.content || [])
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n')
+      .trim();
+    let parsed = safeParseLLM(text, 'object', 'the-post-apply-suggestion');
+    if (!parsed || typeof parsed !== 'object') {
+      const m = text.match(/\{[\s\S]*\}/);
+      if (m) {
+        try {
+          parsed = JSON.parse(m[0]);
+        } catch {
+          parsed = null;
+        }
+      }
+    }
+    const revised = String(parsed?.body || '').trim();
+    // Sanity: non-empty, actually changed, and not a wild rewrite.
+    if (!revised || revised === sectionBody) {
+      return res.status(502).json({ error: 'apply produced no change' });
+    }
+    if (revised.length < sectionBody.length * 0.5 || revised.length > sectionBody.length * 2) {
+      return res.status(502).json({ error: 'apply produced an implausible rewrite — rejected' });
+    }
+    return res.json({
+      success: true,
+      body: revised,
+      model: APPLY_SUGGESTION_MODEL,
+      usage: msg.usage || null,
+    });
+  } catch (err) {
+    console.error('[the-post/apply-suggestion]', err.message);
+    return res.status(500).json({ error: err.message || 'apply-suggestion failed' });
+  }
+});
+
 export default router;
