@@ -562,7 +562,7 @@ router.get('/reject-reasons', (req, res) => {
 // Contract: The Post docs/contracts/event-longform.md
 // inventory: POST /api/external/the-post/topic-check
 // inventory: POST /api/external/the-post/longform-gen
-const LONGFORM_PROMPT_VERSION = 'the-post-longform-v2';
+const LONGFORM_PROMPT_VERSION = 'the-post-longform-v3';
 const LONGFORM_MODEL = process.env.THE_POST_LONGFORM_MODEL || 'claude-sonnet-4-5-20250929';
 
 function normalizeLongformKind(k) {
@@ -839,6 +839,7 @@ Hard rules:
 - Sentence case. No emoji. ZERO em dashes (U+2014) and no en dashes used as em-dash substitutes.
 - Do not invent prices, customer names, stats, credentials, or product claims absent from context.
 - ATTRIBUTE, don't genericize: when a capability, technology, or scenario you describe is covered by CLAIMS OK, the brand profile's named products/technologies, or brand voice DO phrases, name the brand's product/technology instead of describing it generically. Vendor-neutral phrasing where the brand has a named offering is a brand-voice failure. Still never introduce names or claims absent from the provided context.
+- Concrete figures (performance numbers, latencies, throughput, percentages, prices, dates) ONLY when they appear in the provided context (Factual Ground, CLAIMS OK, brand profile, event context) — and attribute them inline to that source. If no sourced figure exists, describe the capability qualitatively; never invent, approximate, or "illustrate" with a specific number.
 - Obey brand voice do/dont and claims_avoid when provided. Voice DO phrases are placement requirements, not suggestions.
 - Frame through the event North Star thesis when present — this piece lives under that event. If the North Star or brand voice calls for partnership/engagement signals, work them into section closes and the final section.
 - FAQs: 4-6 standalone Q&A drawn from the body.
@@ -1059,7 +1060,7 @@ Revise the draft to resolve EVERY flag, applying each suggested fix (adapt wordi
 // Contract: The Post docs/contracts/longform-compliance.md
 // inventory: POST /api/external/the-post/critique
 const CRITIQUE_MODEL = process.env.THE_POST_CRITIQUE_MODEL || 'claude-sonnet-4-6';
-const CRITIQUE_VERSION = 'the-post-critique-v1';
+const CRITIQUE_VERSION = 'the-post-critique-v2';
 
 // Shared critique core — used by POST /critique and by the longform-gen
 // self-critique revision pass, so writer and reviewer see the same standards.
@@ -1113,6 +1114,7 @@ CRITICAL RULES:
 - Every flag must include a "flaggedExcerpt" containing the EXACT verbatim quote from the article that triggered it. If you cannot quote it verbatim, do not flag it.
 - SECTION ISOLATION: each flag references content from ONLY the section identified by its sectionIndex.
 - The "Known Mistakes" below are behavioral patterns to watch for, NOT evidence. Never cite one as proof a claim exists elsewhere.
+- A Known Mistake is RESOLVED by its correction: if a passage already applies the corrective guidance (the required qualifier, hedge, attribution, or reframe), do NOT flag it merely for touching the same subject. Only flag a passage that repeats the original mistake WITHOUT the correction. Do not escalate an already-corrected passage with a new, stricter rationale.
 - Do not flag correct usage of the brand's own name.
 - NDA and legal exposure are the highest-priority flag types: unverifiable client names, partner names, embargoed-sounding specifics, pricing, contract terms, or regulated claims are "nda_risk" / "legal_risk" and always severity "red".
 - Never fabricate issues. A clean section gets no flags.
