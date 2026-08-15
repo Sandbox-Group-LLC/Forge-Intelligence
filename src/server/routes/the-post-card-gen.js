@@ -1265,12 +1265,17 @@ router.post('/critique', async (req, res) => {
 // source of truth the longform writer AND critic both consume). redactedFacts
 // is NOT editable here — it is populated only by the verified_unnameable
 // dismiss taxonomy, and trueReferent is write-only and must NEVER leave FI.
+// Field parity with FI's own Factual Ground form (BrandSettingsPage) —
+// everything editable there is editable here, minus brandName (identity).
 const FG_EDITABLE_FIELDS = [
   'whatWeDo',
   'whatWeDontDo',
   'companyFacts',
   'foundingStory',
   'methodology',
+  'teamComposition',
+  'quotablePositions',
+  'competitors',
   'authors',
 ];
 const FG_FIELD_MAX = 6000;
