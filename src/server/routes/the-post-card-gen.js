@@ -163,15 +163,17 @@ function formatBrainBlock(brain) {
   const lines = ['ACTIVE BRAND BRAIN (editorial signals — obey these):'];
   if (patterns.length) {
     lines.push('Patterns / writing rules (prefer):');
-    for (const p of patterns.slice(0, 8)) {
-      lines.push(`- [${p.pattern_type || 'pattern'}] ${clip(p.description || '', 220)}`);
+    for (const p of patterns.slice(0, 12)) {
+      lines.push(`- [${p.pattern_type || 'pattern'}] ${clip(p.description || '', 320)}`);
     }
   }
   if (mistakes.length) {
     lines.push('Mistakes / rejects (avoid):');
-    for (const m of mistakes.slice(0, 10)) {
-      const fb = m.human_feedback ? ` → ${clip(m.human_feedback, 180)}` : '';
-      lines.push(`- [${m.mistake_type || 'mistake'}] ${clip(m.description || '', 160)}${fb}`);
+    for (const m of mistakes.slice(0, 20)) {
+      // human_feedback carries avoid→prefer pairs up to ~830 chars; clipping it
+      // short drops the "prefer" correction, so keep the full pair intact here.
+      const fb = m.human_feedback ? ` → ${clip(m.human_feedback, 850)}` : '';
+      lines.push(`- [${m.mistake_type || 'mistake'}] ${clip(m.description || '', 300)}${fb}`);
     }
   }
   return lines.join('\n');
@@ -560,7 +562,7 @@ router.get('/reject-reasons', (req, res) => {
 // Contract: The Post docs/contracts/event-longform.md
 // inventory: POST /api/external/the-post/topic-check
 // inventory: POST /api/external/the-post/longform-gen
-const LONGFORM_PROMPT_VERSION = 'the-post-longform-v1';
+const LONGFORM_PROMPT_VERSION = 'the-post-longform-v2';
 const LONGFORM_MODEL = process.env.THE_POST_LONGFORM_MODEL || 'claude-sonnet-4-5-20250929';
 
 function normalizeLongformKind(k) {
@@ -799,8 +801,9 @@ router.post('/longform-gen', async (req, res) => {
     }
   }
 
+  // Same 20-mistake window the critique pass reads — writer/critic parity.
   const brain = brandProfileId
-    ? await loadBrandBrainForCardGen(brandProfileId, { limit: 10 })
+    ? await loadBrandBrainForCardGen(brandProfileId, { limit: 20 })
     : { patterns: [], mistakes: [] };
   const brainBlock = formatBrainBlock(brain);
 
@@ -835,8 +838,9 @@ ${lengthGuide}
 Hard rules:
 - Sentence case. No emoji. ZERO em dashes (U+2014) and no en dashes used as em-dash substitutes.
 - Do not invent prices, customer names, stats, credentials, or product claims absent from context.
-- Obey brand voice do/dont and claims_avoid when provided.
-- Frame through the event North Star thesis when present — this piece lives under that event.
+- ATTRIBUTE, don't genericize: when a capability, technology, or scenario you describe is covered by CLAIMS OK, the brand profile's named products/technologies, or brand voice DO phrases, name the brand's product/technology instead of describing it generically. Vendor-neutral phrasing where the brand has a named offering is a brand-voice failure. Still never introduce names or claims absent from the provided context.
+- Obey brand voice do/dont and claims_avoid when provided. Voice DO phrases are placement requirements, not suggestions.
+- Frame through the event North Star thesis when present — this piece lives under that event. If the North Star or brand voice calls for partnership/engagement signals, work them into section closes and the final section.
 - FAQs: 4-6 standalone Q&A drawn from the body.
 - keyTakeaway is mandatory and must stand alone.
 - If USER MANDATORIES/CONSTRAINTS are present they outrank style preferences.
@@ -857,15 +861,15 @@ TOPIC / THESIS (non-negotiable subject of the piece):
 EVENT CORE CONTEXT:
 Brand: ${clip(bp.name || brandName || '', 120)} | ${clip(bp.one_liner || '', 240)}
 Audience: ${clip(bp.audience || audience || '', 240)}
-Voice tone: ${clip(JSON.stringify(bp.voice?.tone || []), 200)}
-Voice DO: ${clip(JSON.stringify(bp.voice?.do || []), 400)}
-Voice DONT: ${clip(JSON.stringify(bp.voice?.dont || bp.voice?.donts || []), 400)}
-Claims OK: ${clip(JSON.stringify(bp.claims_ok || []), 400)}
-Claims AVOID: ${clip(JSON.stringify(bp.claims_avoid || []), 400)}
-North Star thesis: ${clip(ns.thesis || '', 700)}
-Themes: ${clip(JSON.stringify(ns.themes || []), 300)}
-Success looks like: ${clip(ns.success_looks_like || '', 300)}
-Event DO NOT: ${clip(JSON.stringify(ns.do_not || []), 400)}
+Voice tone: ${clip(JSON.stringify(bp.voice?.tone || []), 300)}
+Voice DO: ${clip(JSON.stringify(bp.voice?.do || []), 1200)}
+Voice DONT: ${clip(JSON.stringify(bp.voice?.dont || bp.voice?.donts || []), 1200)}
+Claims OK: ${clip(JSON.stringify(bp.claims_ok || []), 1200)}
+Claims AVOID: ${clip(JSON.stringify(bp.claims_avoid || []), 1200)}
+North Star thesis: ${clip(ns.thesis || '', 1000)}
+Themes: ${clip(JSON.stringify(ns.themes || []), 400)}
+Success looks like: ${clip(ns.success_looks_like || '', 400)}
+Event DO NOT: ${clip(JSON.stringify(ns.do_not || []), 800)}
 Agenda summary: ${clip(prog.agenda_summary || '', 500)}
 Publication default visibility: ${clip(pub.default_visibility || '', 40)}
 Public bias: ${clip(pub.public_bias || '', 240)}
@@ -917,7 +921,7 @@ Produce the JSON longform now.`;
     if (!parsed || typeof parsed !== 'object') {
       return res.status(502).json({ error: 'model returned non-JSON', raw: clip(text, 400) });
     }
-    const out = normalizeLongform(parsed, { kind, topic });
+    let out = normalizeLongform(parsed, { kind, topic });
     if (!out.keyTakeaway || out.sections.length < 2) {
       return res.status(502).json({
         error: 'longform incomplete',
@@ -927,6 +931,86 @@ Produce the JSON longform now.`;
         },
       });
     }
+
+    // Self-critique revision pass (default ON, disable with self_critique:false).
+    // Runs the same Stage-5 critique the human reviewer sees, then one revision
+    // pass applying the flags — so the writer benefits from the full brain/voice
+    // context the critic has, even for a brand-new org with zero edit history.
+    const selfCritique = body.self_critique !== false && body.selfCritique !== false;
+    const revision = { requested: selfCritique, ran: false, applied: false, flags_found: 0 };
+    let critiqueReport = null;
+    let revisionUsage = null;
+    if (selfCritique) {
+      try {
+        const cr = await runLongformCritique({ article: out, kind, eventContext, brandProfileId });
+        if (cr.ok) {
+          revision.ran = true;
+          critiqueReport = cr.report;
+          revision.flags_found = cr.report.flags.length;
+          if (cr.report.flags.length) {
+            const flagList = cr.report.flags
+              .map(
+                (f) =>
+                  `- [${f.severity.toUpperCase()} · ${f.type}] section "${f.sectionHeading}"\n  Flagged: "${f.flaggedExcerpt}"\n  Why: ${f.reason}\n  Fix: ${f.suggestion}`
+              )
+              .join('\n');
+            const revMsg = await anthropic.messages.create({
+              model: LONGFORM_MODEL,
+              max_tokens: 16000,
+              temperature: 0.3,
+              system,
+              messages: [
+                { role: 'user', content: user },
+                { role: 'assistant', content: text },
+                {
+                  role: 'user',
+                  content: `A brand compliance audit of your draft found these issues:
+
+${flagList}
+
+Revise the draft to resolve EVERY flag, applying each suggested fix (adapt wording to flow naturally — the intent of the fix is mandatory, its exact phrasing is not). Leave unflagged sections unchanged except where a fix requires a transition. All original hard rules still apply. Return the COMPLETE corrected JSON in the exact same shape as before — every section, not just the revised ones. Return ONLY the JSON.`,
+                },
+              ],
+            });
+            revisionUsage = revMsg.usage || null;
+            const revText = (revMsg.content || [])
+              .filter((b) => b.type === 'text')
+              .map((b) => b.text)
+              .join('\n')
+              .trim();
+            let revParsed = safeParseLLM(revText, 'object', 'the-post-longform-revise');
+            if (!revParsed || typeof revParsed !== 'object') {
+              const rm = revText.match(/\{[\s\S]*\}/);
+              if (rm) {
+                try {
+                  revParsed = JSON.parse(rm[0]);
+                } catch {
+                  revParsed = null;
+                }
+              }
+            }
+            if (revParsed && typeof revParsed === 'object') {
+              const revised = normalizeLongform(revParsed, { kind, topic });
+              // Only accept a structurally sound revision; otherwise keep the draft.
+              if (revised.keyTakeaway && revised.sections.length >= 2) {
+                out = revised;
+                revision.applied = true;
+              } else {
+                revision.error = 'revision incomplete — kept first draft';
+              }
+            } else {
+              revision.error = 'revision returned non-JSON — kept first draft';
+            }
+          }
+        } else {
+          revision.error = cr.error;
+        }
+      } catch (e) {
+        console.warn('[the-post/longform-gen] self-critique failed', e.message);
+        revision.error = e.message;
+      }
+    }
+
     return res.json({
       success: true,
       kind,
@@ -945,6 +1029,20 @@ Produce the JSON longform now.`;
       model: LONGFORM_MODEL,
       prompt_version: LONGFORM_PROMPT_VERSION,
       usage: msg.usage || null,
+      revision: {
+        ...revision,
+        critique: critiqueReport
+          ? {
+              overallScore: critiqueReport.overallScore,
+              brandVoiceScore: critiqueReport.brandVoiceScore,
+              factualConfidence: critiqueReport.factualConfidence,
+              summary: critiqueReport.summary,
+              flags: critiqueReport.flags,
+            }
+          : null,
+        usage: revisionUsage,
+        critique_usage: critiqueReport?.usage || null,
+      },
       brand_profile_id: brandProfileId || null,
       brain: {
         patterns: (brain.patterns || []).length,
@@ -963,20 +1061,10 @@ Produce the JSON longform now.`;
 const CRITIQUE_MODEL = process.env.THE_POST_CRITIQUE_MODEL || 'claude-sonnet-4-6';
 const CRITIQUE_VERSION = 'the-post-critique-v1';
 
-router.post('/critique', async (req, res) => {
-  const auth = serviceTokenOk(req);
-  if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
-
-  const body = req.body || {};
-  const article = body.article || {};
-  const sections = Array.isArray(article.sections) ? article.sections : [];
-  if (!article.title || sections.length < 1) {
-    return res.status(400).json({ error: 'article with title and sections required' });
-  }
-  const kind = String(body.kind || 'article');
-  const eventContext = body.event_context || body.eventContext || {};
-  const brandProfileId = body.brand_profile_id || body.brandProfileId || null;
-
+// Shared critique core — used by POST /critique and by the longform-gen
+// self-critique revision pass, so writer and reviewer see the same standards.
+async function runLongformCritique({ article, kind, eventContext, brandProfileId }) {
+  const sections = Array.isArray(article?.sections) ? article.sections : [];
   // Brand voice + brain + Factual Ground — same three inputs as /api/compliance/critique.
   // Degrades gracefully with no brand_profile_id: event_context voice only, no brain/FG.
   let brand = null;
@@ -1059,73 +1147,107 @@ Return ONLY valid JSON in this exact structure:
     .map((s, i) => `[SECTION ${i}] heading: ${s.heading || s.title || 'Untitled'}\n${s.body || s.content || ''}`)
     .join('\n\n---\n\n');
 
-  try {
-    const msg = await anthropic.messages.create({
-      model: CRITIQUE_MODEL,
-      max_tokens: 8192,
-      temperature: 0,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: `Article title: ${clip(article.title, 200)}\n\nArticle to audit:\n\n${auditText}` }],
-    });
-    const text = (msg.content || [])
-      .filter((b) => b.type === 'text')
-      .map((b) => b.text)
-      .join('\n')
-      .trim();
-    let parsed = safeParseLLM(text, 'object', 'the-post-critique');
-    if (!parsed || typeof parsed !== 'object') {
-      const m = text.match(/\{[\s\S]*\}/);
-      if (m) {
-        try {
-          parsed = JSON.parse(m[0]);
-        } catch {
-          parsed = null;
-        }
+  const msg = await anthropic.messages.create({
+    model: CRITIQUE_MODEL,
+    max_tokens: 8192,
+    temperature: 0,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: `Article title: ${clip(article.title, 200)}\n\nArticle to audit:\n\n${auditText}` }],
+  });
+  const text = (msg.content || [])
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text)
+    .join('\n')
+    .trim();
+  let parsed = safeParseLLM(text, 'object', 'the-post-critique');
+  if (!parsed || typeof parsed !== 'object') {
+    const m = text.match(/\{[\s\S]*\}/);
+    if (m) {
+      try {
+        parsed = JSON.parse(m[0]);
+      } catch {
+        parsed = null;
       }
     }
-    if (!parsed || typeof parsed !== 'object') {
-      return res.status(502).json({ error: 'critique model returned non-JSON', raw: clip(text, 400) });
-    }
+  }
+  if (!parsed || typeof parsed !== 'object') {
+    return { ok: false, error: 'critique model returned non-JSON', raw: clip(text, 400) };
+  }
 
-    const flags = (Array.isArray(parsed.flags) ? parsed.flags : [])
-      .map((f, i) => {
-        const idx = Number(f?.sectionIndex);
-        const type = ['brand_voice', 'factual_claim', 'legal_risk', 'nda_risk', 'sme_required'].includes(f?.type)
-          ? f.type
-          : 'brand_voice';
-        // nda/legal always block — contract rule, not model discretion
-        const severity =
-          type === 'nda_risk' || type === 'legal_risk'
+  const flags = (Array.isArray(parsed.flags) ? parsed.flags : [])
+    .map((f, i) => {
+      const idx = Number(f?.sectionIndex);
+      const type = ['brand_voice', 'factual_claim', 'legal_risk', 'nda_risk', 'sme_required'].includes(f?.type)
+        ? f.type
+        : 'brand_voice';
+      // nda/legal always block — contract rule, not model discretion
+      const severity =
+        type === 'nda_risk' || type === 'legal_risk'
+          ? 'red'
+          : f?.severity === 'red'
             ? 'red'
-            : f?.severity === 'red'
-              ? 'red'
-              : 'yellow';
-        return {
-          id: `f${i}`,
-          sectionIndex: Number.isFinite(idx) ? idx : 0,
-          sectionHeading: clip(f?.sectionHeading || '', 200),
-          severity,
-          type,
-          flaggedExcerpt: String(f?.flaggedExcerpt || '').slice(0, 600),
-          reason: clip(f?.reason || '', 500),
-          suggestion: clip(f?.suggestion || '', 500),
-          resolution: null,
-        };
-      })
-      .filter((f) => f.flaggedExcerpt);
+            : 'yellow';
+      return {
+        id: `f${i}`,
+        sectionIndex: Number.isFinite(idx) ? idx : 0,
+        sectionHeading: clip(f?.sectionHeading || '', 200),
+        severity,
+        type,
+        flaggedExcerpt: String(f?.flaggedExcerpt || '').slice(0, 600),
+        reason: clip(f?.reason || '', 500),
+        suggestion: clip(f?.suggestion || '', 500),
+        resolution: null,
+      };
+    })
+    .filter((f) => f.flaggedExcerpt);
 
-    return res.json({
-      success: true,
-      version: 1,
-      prompt_version: CRITIQUE_VERSION,
-      model: CRITIQUE_MODEL,
+  return {
+    ok: true,
+    report: {
       overallScore: Number(parsed.overallScore) || 0,
       brandVoiceScore: Number(parsed.brandVoiceScore) || 0,
       factualConfidence: Number(parsed.factualConfidence) || 0,
       summary: clip(parsed.summary || '', 600),
       flags,
       usage: msg.usage || null,
-      brain: { brand_profile_id: brandProfileId, mistakes: mistakes.length, factual_ground: !!fg },
+      mistakesCount: mistakes.length,
+      hasFactualGround: !!fg,
+    },
+  };
+}
+
+router.post('/critique', async (req, res) => {
+  const auth = serviceTokenOk(req);
+  if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+
+  const body = req.body || {};
+  const article = body.article || {};
+  const sections = Array.isArray(article.sections) ? article.sections : [];
+  if (!article.title || sections.length < 1) {
+    return res.status(400).json({ error: 'article with title and sections required' });
+  }
+  const kind = String(body.kind || 'article');
+  const eventContext = body.event_context || body.eventContext || {};
+  const brandProfileId = body.brand_profile_id || body.brandProfileId || null;
+
+  try {
+    const result = await runLongformCritique({ article, kind, eventContext, brandProfileId });
+    if (!result.ok) {
+      return res.status(502).json({ error: result.error, raw: result.raw });
+    }
+    const r = result.report;
+    return res.json({
+      success: true,
+      version: 1,
+      prompt_version: CRITIQUE_VERSION,
+      model: CRITIQUE_MODEL,
+      overallScore: r.overallScore,
+      brandVoiceScore: r.brandVoiceScore,
+      factualConfidence: r.factualConfidence,
+      summary: r.summary,
+      flags: r.flags,
+      usage: r.usage,
+      brain: { brand_profile_id: brandProfileId, mistakes: r.mistakesCount, factual_ground: r.hasFactualGround },
     });
   } catch (err) {
     console.error('[the-post/critique]', err.message);
