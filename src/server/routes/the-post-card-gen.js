@@ -89,7 +89,7 @@ async function loadBrandBrainForCardGen(brandProfileId, { limit = 12 } = {}) {
   try {
     const [pRes, mRes] = await Promise.all([
       pool.query(
-        `SELECT pattern_type, description, confidence_score, success_rate
+        `SELECT pattern_type, description, confidence_score, success_rate, created_at
            FROM brain_patterns
           WHERE brand_profile_id = $1
           ORDER BY COALESCE(success_rate, 0) DESC, COALESCE(confidence_score, 0) DESC, created_at DESC
@@ -97,7 +97,7 @@ async function loadBrandBrainForCardGen(brandProfileId, { limit = 12 } = {}) {
         [brandProfileId, limit]
       ),
       pool.query(
-        `SELECT mistake_type, description, human_feedback, severity
+        `SELECT mistake_type, description, human_feedback, severity, created_at
            FROM brain_mistakes
           WHERE brand_profile_id = $1
           ORDER BY created_at DESC
@@ -656,10 +656,15 @@ router.post('/topic-check', async (req, res) => {
   try {
     let patterns = [];
     let mistakes = [];
+    let fgUpdatedAt = null;
     if (brandProfileId) {
       const brain = await loadBrandBrainForCardGen(brandProfileId, { limit: 8 });
       patterns = brain.patterns || [];
       mistakes = brain.mistakes || [];
+      try {
+        const b = await pool.query('SELECT settings FROM brand_profiles WHERE id = $1', [brandProfileId]);
+        fgUpdatedAt = b.rows[0]?.settings?.factualGround?._updatedAt || null;
+      } catch { /* best-effort */ }
     }
 
     if (!patterns.length && !mistakes.length && !nsThesis) {
@@ -681,11 +686,19 @@ A user wants to write about this topic:
 Event North Star thesis (if any):
 ${nsThesis || '(none)'}
 
-Brand brain patterns (what works):
-${patterns.map((p) => `- [${p.pattern_type}] ${p.description}`).join('\n') || 'None yet'}
+Brand brain patterns (what works — each dated):
+${patterns.map((p) => `- [${String(p.created_at || '').slice(0, 10) || 'undated'}] [${p.pattern_type}] ${p.description}`).join('\n') || 'None yet'}
 
-Brand brain mistakes (what underperforms):
-${mistakes.map((m) => `- [${m.severity || 'med'}] ${m.mistake_type}: ${m.description}`).join('\n') || 'None yet'}
+Brand brain mistakes (what underperformed — each dated):
+${mistakes.map((m) => `- [${String(m.created_at || '').slice(0, 10) || 'undated'}] [${m.severity || 'med'}] ${m.mistake_type}: ${m.description}`).join('\n') || 'None yet'}
+
+${fgUpdatedAt ? `Factual Ground last updated: ${String(fgUpdatedAt).slice(0, 10)}. The brand's verified truth layer (facts, claims boundaries, quotable positions) now feeds both generation and compliance directly.` : 'No Factual Ground on file yet.'}
+
+How to weigh this history:
+- Recency matters. A mistake is evidence about the pipeline AT THE TIME it was recorded, not a permanent trait.
+- Mistakes recorded BEFORE the Factual Ground was last updated have largely been addressed at the root (the exact corrections now feed the writer and critic on every run) — treat them as historical context, not as a predictor for this topic.
+- Approved patterns are wins. Recent wins on similar themes outweigh older edits on those themes.
+- Only warn about execution risk when mistakes are RECENT (after the latest Factual Ground update and recent wins) or clearly unaddressed by the truth layer.
 
 Evaluate the topic for brand + event fit. Return ONLY JSON:
 {
