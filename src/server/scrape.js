@@ -194,6 +194,110 @@ export function nearHex(a, b, maxDist = 28) {
   return Math.sqrt(dr * dr + dg * dg + db * db) <= maxDist;
 }
 
+/** RGB chroma 0–1 (max-min)/255. Prefer over HSL saturation — near-black ink reports high HSL-S. */
+export function hexChroma(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+  if (!m) return 0;
+  const n = (i) => parseInt(m[1].slice(i, i + 2), 16);
+  const r = n(0), g = n(2), b = n(4);
+  return (Math.max(r, g, b) - Math.min(r, g, b)) / 255;
+}
+
+const NEUTRALISH_ROLES = new Set(['neutral', 'background', 'text', 'surface', 'border']);
+const VIVID_CHROMA = 0.35;
+const GREY_CHROMA = 0.18;
+
+/**
+ * Re-role highly chromatic swatches that the CSS-var walker mis-tagged as neutral,
+ * and demote grey "accents". Does not invent colors — only reorders roles on measured hexes.
+ * Adyen case: #00d16a filed neutral while #5c6874 (slate) won accent.
+ */
+export function refinePaletteRoles(palette) {
+  if (!Array.isArray(palette) || !palette.length) return palette || [];
+  const out = palette.map((p) => ({ ...p, hex: String(p.hex || '').toLowerCase() }));
+  const chromaOf = (p) => hexChroma(p.hex);
+
+  // Promote vivid neutrals → accent/secondary
+  const vividNeutrals = out
+    .filter((p) => NEUTRALISH_ROLES.has(String(p.role || '').toLowerCase()) && chromaOf(p) >= VIVID_CHROMA)
+    .sort((a, b) => chromaOf(b) - chromaOf(a));
+  const hasBrandAccent = out.some((p) => {
+    const r = String(p.role || '').toLowerCase();
+    return (r === 'accent' || r === 'secondary') && chromaOf(p) >= VIVID_CHROMA;
+  });
+  if (vividNeutrals.length) {
+    if (!hasBrandAccent) {
+      vividNeutrals[0].role = 'accent';
+      if (vividNeutrals[1]) vividNeutrals[1].role = 'secondary';
+    } else {
+      // already have a vivid accent; still surface the next vivid as secondary if free
+      const hasSecondary = out.some((p) => String(p.role || '').toLowerCase() === 'secondary' && chromaOf(p) >= GREY_CHROMA);
+      if (!hasSecondary) vividNeutrals[0].role = 'secondary';
+    }
+  }
+
+  // Demote grey accents when a more vivid brand color exists
+  const greysTaggedAccent = out.filter((p) => {
+    const r = String(p.role || '').toLowerCase();
+    return (r === 'accent' || r === 'secondary') && chromaOf(p) < GREY_CHROMA;
+  });
+  const vividBrand = out
+    .filter((p) => chromaOf(p) >= VIVID_CHROMA && !['background', 'text'].includes(String(p.role || '').toLowerCase()))
+    .sort((a, b) => chromaOf(b) - chromaOf(a));
+  if (greysTaggedAccent.length && vividBrand.length) {
+    for (const g of greysTaggedAccent) {
+      if (chromaOf(g) + 0.15 < chromaOf(vividBrand[0])) g.role = 'neutral';
+    }
+    // ensure top vivid keeps accent if we demoted greys
+    if (!out.some((p) => String(p.role || '').toLowerCase() === 'accent' && chromaOf(p) >= VIVID_CHROMA)) {
+      const top = vividBrand[0];
+      if (String(top.role || '').toLowerCase() !== 'primary') top.role = 'accent';
+    }
+  }
+
+  // Unique-ish brand roles again
+  const seen = new Set();
+  for (const p of out) {
+    const r = String(p.role || '').toLowerCase();
+    if (['primary', 'accent', 'secondary'].includes(r)) {
+      if (seen.has(r)) {
+        p.role = r === 'primary' ? 'secondary' : 'neutral';
+      } else {
+        seen.add(r);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Pick the brand accent hex from a measured palette + optional CTA heuristic.
+ * Prefer vivid chroma over role labels alone (labels can be wrong).
+ */
+export function pickBrandAccent(palette, heuristicAccent = null) {
+  const list = Array.isArray(palette) ? palette : [];
+  const chroma = (h) => hexChroma(h);
+  const byRole = (roles) => list.filter((p) => roles.includes(String(p.role || '').toLowerCase()));
+
+  // 1) Most vivid among accent/secondary/primary (excluding near-black primary ink when something more chromatic exists)
+  const brandish = byRole(['accent', 'secondary', 'primary'])
+    .filter((p) => chroma(p.hex) >= GREY_CHROMA)
+    .sort((a, b) => chroma(b.hex) - chroma(a.hex));
+  if (brandish.length && chroma(brandish[0].hex) >= VIVID_CHROMA) return brandish[0].hex;
+
+  // 2) Any vivid swatch in palette (role be damned)
+  const anyVivid = [...list].filter((p) => chroma(p.hex) >= VIVID_CHROMA).sort((a, b) => chroma(b.hex) - chroma(a.hex));
+  if (anyVivid.length) return anyVivid[0].hex;
+
+  // 3) Heuristic CTA color if it's more chromatic than grey
+  if (heuristicAccent && chroma(heuristicAccent) >= GREY_CHROMA) return String(heuristicAccent).toLowerCase();
+
+  // 4) Best brandish remaining, else heuristic, else null
+  if (brandish.length) return brandish[0].hex;
+  if (heuristicAccent) return String(heuristicAccent).toLowerCase();
+  return null;
+}
+
 export function dedupePalette(entries, max = 8) {
   const out = [];
   for (const e of entries || []) {
@@ -1083,16 +1187,14 @@ export async function captureBrandVisual(url, { caller = 'context-hub', timeout 
       latencyMs,
     };
     if (Array.isArray(visual.palette) && visual.palette.length) {
-      result.palette = dedupePalette(visual.palette, 8);
-      // Legacy accent/bg: if the CTA heuristic missed, promote from measured palette.
-      // Prefer saturated brand roles; never invent — only use palette entries we already captured.
-      if (!result.accentColor) {
-        const rank = { accent: 4, primary: 3, secondary: 2 };
-        const pick = [...result.palette]
-          .filter((p) => rank[p.role])
-          .sort((a, b) => (rank[b.role] || 0) - (rank[a.role] || 0))[0]
-          || result.palette.find((p) => p.role !== 'background' && p.role !== 'text' && p.role !== 'neutral');
-        if (pick?.hex) result.accentColor = pick.hex;
+      // Dedupe → re-role vivid mis-tags → pick accent by chroma (not grey CTA wins).
+      result.palette = refinePaletteRoles(dedupePalette(visual.palette, 8));
+      const picked = pickBrandAccent(result.palette, result.accentColor);
+      // Always prefer chroma-aware pick when it is clearly more brand-like than the heuristic.
+      if (picked) {
+        const heuristicGrey = !result.accentColor || hexChroma(result.accentColor) < GREY_CHROMA;
+        const pickBetter = hexChroma(picked) > hexChroma(result.accentColor || '#000000') + 0.12;
+        if (!result.accentColor || heuristicGrey || pickBetter) result.accentColor = picked;
       }
       if (!result.bgColor) {
         const bg = result.palette.find((p) => p.role === 'background');
