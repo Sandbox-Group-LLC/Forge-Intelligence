@@ -1257,4 +1257,140 @@ router.post('/critique', async (req, res) => {
   }
 });
 
+// ── Factual Ground (The Post entry point) ────────────────────────────────────
+// Contract: The Post docs/contracts/factual-ground.md
+// inventory: GET  /api/external/the-post/factual-ground
+// inventory: PUT  /api/external/the-post/factual-ground
+// The Post organizers read/write the brand's Factual Ground (the verbatim
+// source of truth the longform writer AND critic both consume). redactedFacts
+// is NOT editable here — it is populated only by the verified_unnameable
+// dismiss taxonomy, and trueReferent is write-only and must NEVER leave FI.
+const FG_EDITABLE_FIELDS = [
+  'whatWeDo',
+  'whatWeDontDo',
+  'companyFacts',
+  'foundingStory',
+  'methodology',
+  'authors',
+];
+const FG_FIELD_MAX = 6000;
+
+function fgEditableView(fg) {
+  const src = fg && typeof fg === 'object' ? fg : {};
+  const out = {};
+  for (const k of FG_EDITABLE_FIELDS) {
+    if (k === 'authors') {
+      out.authors = Array.isArray(src.authors)
+        ? src.authors.map((a) => clip(a, 200)).filter(Boolean).slice(0, 12)
+        : src.authors
+          ? [clip(src.authors, 200)]
+          : [];
+    } else {
+      out[k] = typeof src[k] === 'string' ? src[k] : '';
+    }
+  }
+  return out;
+}
+
+router.get('/factual-ground', async (req, res) => {
+  const auth = serviceTokenOk(req);
+  if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+  const brandProfileId = String(req.query.brand_profile_id || '').trim();
+  if (!brandProfileId) return res.status(400).json({ error: 'brand_profile_id required' });
+  try {
+    const r = await pool.query(
+      'SELECT id, brand_name, profile_data, settings FROM brand_profiles WHERE id = $1',
+      [brandProfileId]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'brand profile not found' });
+    const row = r.rows[0];
+    const fg = row.settings?.factualGround || {};
+    return res.json({
+      success: true,
+      brand_profile_id: row.id,
+      brand_name: row.profile_data?.brand_name || row.brand_name || '',
+      factual_ground: fgEditableView(fg),
+      // Surfaces only — trueReferent is write-only by contract and never leaves FI.
+      redacted_facts: Array.isArray(fg.redactedFacts)
+        ? fg.redactedFacts.map((rf) => ({ surface: clip(rf?.surface || '', 300) })).filter((rf) => rf.surface)
+        : [],
+      updated_at: fg._updatedAt || null,
+    });
+  } catch (e) {
+    console.error('[the-post/factual-ground:get]', e.message);
+    return res.status(500).json({ error: e.message || 'factual ground read failed' });
+  }
+});
+
+router.put('/factual-ground', async (req, res) => {
+  const auth = serviceTokenOk(req);
+  if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+  const body = req.body || {};
+  const brandProfileId = String(body.brand_profile_id || body.brandProfileId || '').trim();
+  const input = body.factual_ground || body.factualGround;
+  if (!brandProfileId) return res.status(400).json({ error: 'brand_profile_id required' });
+  if (!input || typeof input !== 'object') {
+    return res.status(400).json({ error: 'factual_ground object required' });
+  }
+
+  const sanitized = {};
+  const ignored = [];
+  for (const [k, v] of Object.entries(input)) {
+    if (!FG_EDITABLE_FIELDS.includes(k)) {
+      ignored.push(k);
+      continue;
+    }
+    if (k === 'authors') {
+      sanitized.authors = Array.isArray(v)
+        ? v.map((a) => String(a || '').trim().slice(0, 200)).filter(Boolean).slice(0, 12)
+        : String(v || '')
+            .split(/[,\n]/)
+            .map((a) => a.trim().slice(0, 200))
+            .filter(Boolean)
+            .slice(0, 12);
+    } else {
+      sanitized[k] = String(v || '').trim().slice(0, FG_FIELD_MAX);
+    }
+  }
+  if (!Object.keys(sanitized).length) {
+    return res.status(400).json({ error: 'no editable factual_ground fields in payload', ignored });
+  }
+
+  try {
+    const r = await pool.query('SELECT settings FROM brand_profiles WHERE id = $1', [brandProfileId]);
+    if (!r.rows.length) return res.status(404).json({ error: 'brand profile not found' });
+    const settings = r.rows[0].settings || {};
+    const existing = settings.factualGround || {};
+    // Merge editable fields over existing; redactedFacts is preserved verbatim
+    // and can never be set or cleared through this endpoint.
+    const nextFg = {
+      ...existing,
+      ...sanitized,
+      redactedFacts: Array.isArray(existing.redactedFacts) ? existing.redactedFacts : [],
+      _updatedAt: new Date().toISOString(),
+      _updatedBy: 'the-post',
+    };
+    const nextSettings = { ...settings, factualGround: nextFg };
+    await pool.query(
+      `UPDATE brand_profiles
+          SET settings = $1::jsonb, version = COALESCE(version, 1) + 1, updated_at = NOW()
+        WHERE id = $2`,
+      [JSON.stringify(nextSettings), brandProfileId]
+    );
+    return res.json({
+      success: true,
+      brand_profile_id: brandProfileId,
+      factual_ground: fgEditableView(nextFg),
+      redacted_facts: (nextFg.redactedFacts || [])
+        .map((rf) => ({ surface: clip(rf?.surface || '', 300) }))
+        .filter((rf) => rf.surface),
+      updated_at: nextFg._updatedAt,
+      ignored_fields: ignored,
+    });
+  } catch (e) {
+    console.error('[the-post/factual-ground:put]', e.message);
+    return res.status(500).json({ error: e.message || 'factual ground write failed' });
+  }
+});
+
 export default router;
