@@ -1447,11 +1447,13 @@ ${excerpt ? `Flagged excerpt: "${excerpt}"\n` : ''}${reason ? `Why flagged: ${re
 
 Rules:
 - Apply the suggested fix. The INTENT of the fix is mandatory; adapt its exact wording only as needed to flow naturally.
+- The flagged excerpt may be stale (the section may have been edited since the flag was raised). If the UNDERLYING ISSUE still appears ANYWHERE in the section — even partially, even reworded — fix every remaining instance.
+- Only report changed:false when the section ALREADY fully satisfies the fix and there is genuinely nothing left to change.
 - Change NOTHING else — no restyling, no reordering, no added or removed content beyond what the fix requires.
 - Preserve paragraph breaks and formatting.
 - Sentence case. No emoji. ZERO em dashes (U+2014).
 
-Return ONLY valid JSON: {"body": "<the full revised section body>"}`;
+Return ONLY valid JSON: {"changed": true|false, "body": "<the full revised section body (or the original if changed:false)>", "note": "<if changed:false, one sentence on why the fix is already satisfied>"}`;
 
   try {
     const msg = await anthropic.messages.create({
@@ -1477,9 +1479,17 @@ Return ONLY valid JSON: {"body": "<the full revised section body>"}`;
       }
     }
     const revised = String(parsed?.body || '').trim();
-    // Sanity: non-empty, actually changed, and not a wild rewrite.
-    if (!revised || revised === sectionBody) {
-      return res.status(502).json({ error: 'apply produced no change' });
+    // Already satisfied (e.g. a sibling flag's apply incidentally covered this
+    // fix): success with unchanged:true so the caller can resolve the flag
+    // instead of surfacing an error to the reviewer.
+    if (parsed?.changed === false || !revised || revised === sectionBody) {
+      return res.json({
+        success: true,
+        unchanged: true,
+        note: clip(parsed?.note || 'section already satisfies the suggested fix', 300),
+        model: APPLY_SUGGESTION_MODEL,
+        usage: msg.usage || null,
+      });
     }
     if (revised.length < sectionBody.length * 0.5 || revised.length > sectionBody.length * 2) {
       return res.status(502).json({ error: 'apply produced an implausible rewrite — rejected' });
