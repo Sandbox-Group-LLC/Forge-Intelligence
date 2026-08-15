@@ -60,6 +60,7 @@
   "GET /api/email-campaign/generate/:id",
   "GET /api/email-campaign/list/:brandProfileId",
   "GET /api/external/brand-profile",
+  "GET /api/external/the-post/factual-ground",
   "GET /api/external/the-post/reject-reasons",
   "GET /api/facebook/pipedream/list-pages",
   "GET /api/factual-ground/authors/:brandProfileId",
@@ -261,5 +262,6 @@
   "POST /api/webhooks/perplexity",
   "POST /api/zernio/connect",
   "POST /api/zernio/disconnect",
-  "POST /mcp"
+  "POST /mcp",
+  "PUT /api/external/the-post/factual-ground"
 ]
