@@ -1,0 +1,15 @@
+# Keep the build context small and keep local junk out of the image.
+node_modules
+dist
+.git
+.github
+.env
+.env.*
+*.log
+npm-debug.log*
+.DS_Store
+coverage
+test-results
+docs
+memory
+scripts/*.py
