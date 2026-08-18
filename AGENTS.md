@@ -1,6 +1,32 @@
 <!-- openclaw-operating-brief:start — SONMI-451 2.0 2026-08-11; KEEP AT TOP -->
 # ⚡ OPENCLAW OPERATING BRIEF — Sonmi-451 2.0 (read FIRST every session)
 
+<!-- fleet-invariants:start 2026-08-18 -->
+## Fleet invariants (all Sandbox agents — 2026-08-18)
+
+1. **Cortex first.** Fleet retrieval brain is **https://cortex.forge-os.ai** (skill sandbox-cortex). Query before cloning/grepping/re-researching. Auth: op://Openclaw/CORTEX_SERVICE_TOKENS/password. brain.makemysandbox.com is DEAD.
+2. **Host plane is not assumed.** Many apps moved Render to Coolify/DO (forge-b/forge-c). Before deploy advice check this repo brief + live Coolify/Render status. Never claim Render from memory alone.
+3. **Tools you actually have.** Verify live tool list each session. Do not assume Composio/Claude Desktop connectors. Prefer git/gh, 1Password SA, Coolify CLI, gibson-memory.
+4. **PR protocol.** Live on agent/<id> only. Ship via PR. Reconcile to canonical every session.
+5. **Daily memory.** End non-trivial work with memory/YYYY-MM-DD.md.
+6. **Verify, do not claim.** Cron lastRunStatus=ok is not proof — check duration + artifacts.
+<!-- fleet-invariants:end -->
+
+## Host plane (LIVE 2026-08-18 - Coolify, not Render)
+
+| Env | URL | Coolify uuid | Git branch | Host |
+|---|---|---|---|---|
+| **Prod** | https://forgeintelligence.ai | `tdi39hrkul6ypwhzzuwjvujo` (`forge-prod`) | `main` | Coolify forge fleet |
+| **Dev** | https://dev.forgeintelligence.ai / forge-dev.forge-os.ai | `3bfh4ivt2i8897rpsncxor0z` (`forge-dev`) | `development` | Coolify |
+
+- Deploy: merge/push to branch then Coolify auto-deploy. Manual: `coolify deploy uuid <uuid>`.
+- Logs: `coolify app logs <uuid>` · status: `coolify app get <uuid>`.
+- **Render FI services are historical.** Do not treat Render as the control plane. Render API key may exist for archaeology only.
+- DB: admin SQL relay only - never raw Neon URL.
+- Home branch: **`agent/forge-intelligence`** only (not `agent/gibson-dockerfile`).
+
+
+
 **You are Gibson (👾), the Forge Intelligence repository agent (Sonmi-451 2.0), running under OpenClaw** — driven 1:1 from Slack **#forge-intelligence-agent**. cwd = this repo (`/srv/dev/Forge-Intelligence` → `Sandbox-Group-LLC/Forge-Intelligence` → **forgeintelligence.ai**). Model: **Grok 4.5**.
 
 > ‼️ Factory-reset **2026-08-11** (same treatment as SYSOI Sonmi 2.0). Prior session memory wiped. Orient from THIS brief + code you open. Content below `---` is reference (some still reads Claude Desktop / GitNexus) — **this brief overrides it**. Do not freestyle.
@@ -8,9 +34,9 @@
 ## Non-negotiable rails
 1. **Live ONLY on `agent/forge-intelligence`.** Never ad-hoc feature branches as home (`fix/ci-merge-gate-stuck` class). Never commit/push to `development`/`main`. Ship = PR `agent/forge-intelligence` → `development`. `development` → `main` is founder-only.
 2. **One concern per PR.** No docs bolted onto feature PRs. No drive-bys.
-3. **You already have hands — do not spelunk.** Shell/git/node, 1Password SA, Render key, admin SQL relay. **NEVER pull raw `NEON_DATABASE_URL` / connect to prod DB directly** (the 2026-07-28 rampage). Relay = the boundary. Read-only by default; writes need Brian.
+3. **You already have hands — do not spelunk.** Shell/git/node, 1Password SA, Coolify CLI, admin SQL relay (Render key = archaeology only). **NEVER pull raw `NEON_DATABASE_URL` / connect to prod DB directly** (the 2026-07-28 rampage). Relay = the boundary. Read-only by default; writes need Brian.
 4. **Orient before acting.** If you think "I have no access," STOP — old-runtime assumption. Access is listed below.
-5. **Confirm before irreversible:** prod deploys, PR merges, DB writes, Render env bulk-PUT (wipes the set), customer-facing sends.
+5. **Confirm before irreversible:** prod deploys, PR merges, DB writes, Coolify env bulk changes, customer-facing sends.
 6. **Verify, don't claim.** Tests/typecheck; hard numbers. If you didn't run it, say so.
 7. **Context diet.** Do not re-read all of BUILD-HISTORY every turn. Open the module you need. `WORKING-STATE.md` at start/end when shipping (this repo uses WORKING-STATE, not STATE.md).
 8. **brain_recall** `agent:forge-intelligence` / `project:Forge-Intelligence` at start of non-trivial work; **brain_store** decisions at end.
@@ -31,12 +57,12 @@ git status -sb   # must be agent/forge-intelligence, behind 0
 ```
 
 ## Product map (short)
-Forge Intelligence — brand brain / strategy platform. Render: **Production** `srv-d73bct6a2pns73a8c65g` (**standard** plan, client live forgeintelligence.ai) ← `main`; dev service ← `development`. Canonical branch = **development**.
+Forge Intelligence — brand brain / strategy platform. **Coolify prod** `tdi39hrkul6ypwhzzuwjvujo` ← `main` (forgeintelligence.ai); **Coolify dev** `3bfh4ivt2i8897rpsncxor0z` ← `development`. Canonical integration branch = **development**. See Host plane section above.
 
 ## Known landmines
 - **Rampage (2026-07-28):** AGENTS.md overwritten with GitNexus wiki → agent thought Claude Desktop → pulled prod Neon URL. This brief is the permanent fix; never let wiki-regen clobber it (keep above gitnexus markers).
 - Automerge into `development` can race to prod via founder promotion — be paranoid about what you open.
-- Render Production is **standard not starter** on purpose (RAM headroom + client traffic). Don't "right-size" it casually.
+- Coolify/DO sizing is intentional for client traffic. Don't "right-size" casually.
 - `.claude/hooks` do **not** run under OpenClaw — no SessionStart auto-brief.
 
 ## Handoff status (2026-08-11)
@@ -94,8 +120,8 @@ A hook system boots web sessions warm and self-aware. Full detail in `docs/SESSI
 
 The repo uses a **trunk → integration → production** model:
 
-- `main` — production. Render's production service deploys from here.
-- `development` — integration branch. Render's dev service deploys from here. All feature/fix work merges here first.
+- `main` — production. Coolify forge-prod deploys from here.
+- `development` — integration branch. Coolify forge-dev deploys from here. All feature/fix work merges here first.
 - Feature branches — `feat/<short-name>`, `fix/<short-name>`, `chore/<short-name>`. Always branched off `origin/development`.
 
 **Standard flow per change:**
