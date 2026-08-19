@@ -32,9 +32,9 @@
 ## Hands
 - Shell · git · node · npm · `gh` — full exec in this repo.
 - 1Password SA: `export OP_SERVICE_ACCOUNT_TOKEN="$(cat ~/.openclaw/credentials/onepassword/service-account-token)"` then `op read "op://Openclaw/<ITEM>/password"`.
-- Render: `op://Openclaw/OPENCLAW_RENDER_API_KEY/password`. Never bulk-PUT env.
+- **Coolify CLI** — this app is on **Coolify / DigitalOcean forge-b**, two apps: `forge-dev` (`3bfh4ivt2i8897rpsncxor0z`, branch `development`) and `forge-prod` (`tdi39hrkul6ypwhzzuwjvujo`, branch `main`). ⚠️ **Render is gone for this app** — verified 2026-08-19, the Render API returns no service for it. `OPENCLAW_RENDER_API_KEY` is archaeology, not a control plane.
 - DB: **admin SQL relay** + `ADMIN_RELAY_PASSWORD` only — never raw Neon URL.
-- MCP: gibson-memory, gitnexus-remote, forgeos as available in your tool list.
+- MCP: `gibson-memory`, `openclaw`, `composio`, `forgeos` as available in your tool list. **`gitnexus-remote` is GONE** — archived 2026-08-15, `brain.makemysandbox.com` is dead. Retrieval is Cortex (invariant 1).
 
 ## Branch ritual (every session start)
 ```
@@ -45,7 +45,7 @@ git status -sb   # must be agent/forge-intelligence, behind 0
 ```
 
 ## Product map (short)
-Forge Intelligence — brand brain / strategy platform. Render: **Production** `srv-d73bct6a2pns73a8c65g` (**standard** plan, client live forgeintelligence.ai) ← `main`; dev service ← `development`. Canonical branch = **development**.
+Forge Intelligence — brand brain / strategy platform. **Deploy: Coolify on forge-b, NOT Render** (verified 2026-08-19; no Render service exists for this app). **Production** = app `forge-prod` `tdi39hrkul6ypwhzzuwjvujo`, branch `main`, live at **https://forgeintelligence.ai**. **Dev** = app `forge-dev` `3bfh4ivt2i8897rpsncxor0z`, branch `development`, at https://dev.forgeintelligence.ai. Both dockerfile build pack, port 3000.
 
 ## Known landmines
 - **Rampage (2026-07-28):** AGENTS.md overwritten with GitNexus wiki → agent thought Claude Desktop → pulled prod Neon URL. This brief is the permanent fix; never let wiki-regen clobber it (keep above gitnexus markers).
@@ -127,12 +127,12 @@ A hook system boots web sessions warm and self-aware. Full detail in `docs/SESSI
 The repo uses a **trunk → integration → production** model:
 
 - `main` — production. Render's production service deploys from here.
-- `development` — integration branch. Render's dev service deploys from here. All feature/fix work merges here first.
-- Feature branches — `feat/<short-name>`, `fix/<short-name>`, `chore/<short-name>`. Always branched off `origin/development`.
+- `development` — integration branch. The **Coolify `forge-dev`** app deploys from here (dev.forgeintelligence.ai). All feature/fix work merges here first.
+- ⚠️ **Feature branches: the old `feat/` / `fix/` / `chore/` naming is BLOCKED.** `repo-guard` hard-blocks creating any branch whose name does not start `agent/`. Live on **`agent/forge-intelligence`**, reconciled onto `origin/development`; if you genuinely need scratch, name it `agent/forge-intelligence-<topic>`. The `feat/*` and `fix/*` branches in this repo's history predate the rule — history, not a pattern to copy.
 
 **Standard flow per change:**
 
-1. `git fetch origin development` then `git switch -c <branch> origin/development`
+1. `git fetch origin development` then `git switch agent/forge-intelligence && git rebase origin/development` (or `git switch -c agent/forge-intelligence-<topic> origin/development` for scratch — the name **must** start `agent/`)
 2. Edit locally via `Edit` / `Write` tools (not GitHub Contents API — that's a deprecated workflow)
 3. Run type-check and / or syntax-check before commit:
    - `node --check server.js` for backend
