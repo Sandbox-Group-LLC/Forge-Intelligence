@@ -8,3 +8,4 @@ dist/
 
 # Claude Code web bootstrap — per-session ephemeral state
 .claude/.state/
+PURPOSE.md
