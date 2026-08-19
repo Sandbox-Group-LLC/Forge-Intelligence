@@ -32,7 +32,7 @@
 ## Hands
 - Shell · git · node · npm · `gh` — full exec in this repo.
 - 1Password SA: `export OP_SERVICE_ACCOUNT_TOKEN="$(cat ~/.openclaw/credentials/onepassword/service-account-token)"` then `op read "op://Openclaw/<ITEM>/password"`.
-- **Coolify CLI** — this app is on **Coolify / DigitalOcean forge-b**, two apps: `forge-dev` (`3bfh4ivt2i8897rpsncxor0z`, branch `development`) and `forge-prod` (`tdi39hrkul6ypwhzzuwjvujo`, branch `main`). ⚠️ **Render is gone for this app** — verified 2026-08-19, the Render API returns no service for it. `OPENCLAW_RENDER_API_KEY` is archaeology, not a control plane.
+- **Coolify CLI** — this app is on **Coolify / DigitalOcean forge-b**, two apps: `forge-dev` (`3bfh4ivt2i8897rpsncxor0z`, branch `development`) and `forge-prod` (`tdi39hrkul6ypwhzzuwjvujo`, branch `main`). ⚠️ **There is no Render for this app — as of 2026-08-19 it is deleted, not merely suspended.** The old service was named `Production` (`srv-d73bct6a2pns73a8c65g`), which is why a name-based search for "forge"/"intel" missed it earlier. It was verified empty (no disk, no database, all 5 env keys already on Coolify), snapshotted, then deleted; `GET` now returns 404 and the Render account holds one unrelated service. `OPENCLAW_RENDER_API_KEY` is archaeology. **Coolify is the only plane.**
 - DB: **admin SQL relay** + `ADMIN_RELAY_PASSWORD` only — never raw Neon URL.
 - MCP: `gibson-memory`, `openclaw`, `composio`, `forgeos` as available in your tool list. **`gitnexus-remote` is GONE** — archived 2026-08-15, `brain.makemysandbox.com` is dead. Retrieval is Cortex (invariant 1).
 
