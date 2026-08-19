@@ -1,0 +1,35 @@
+{
+  "_comment": "Cross-service consumer map: which external services call which FI routes. Used by .github/scripts/impact-check.mjs on every PR to answer 'does this break another service?'. Paths support a trailing * prefix-wildcard. Keep sources honest — every entry should be traceable to a real call site. Regenerate hints: grep consumer repos for /api/external.",
+  "consumers": [
+    {
+      "service": "The Post",
+      "repo": "Sandbox-Group-LLC/The-Post",
+      "paths": [
+        "/api/external/the-post/*",
+        "/api/external/brand-profile",
+        "/api/external/analyze"
+      ],
+      "sources": [
+        "lib/forge_card_gen.js",
+        "lib/factual_ground.js",
+        "lib/fi_brand.js",
+        "lib/fi_decisions.js",
+        "lib/longform.js",
+        "lib/regenerate.js"
+      ],
+      "contact": "thepost.events prod — breaks card-gen, learning loop, brand bootstrap"
+    },
+    {
+      "service": "SYSOI.ai",
+      "repo": "Sandbox-Group-LLC/SYSOI.ai",
+      "paths": [
+        "/api/external/brand-profile",
+        "/api/external/analyze"
+      ],
+      "sources": [
+        "src/lib/forgeIntel.ts"
+      ],
+      "contact": "SYSOI dossier path — breaks audience-profile build"
+    }
+  ]
+}

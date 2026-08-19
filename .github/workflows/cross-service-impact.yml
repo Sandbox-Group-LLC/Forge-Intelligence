@@ -1,0 +1,49 @@
+name: Cross-service impact
+
+# Answers "does this break another service?" on every PR automatically.
+# Producer surface = test/routes.snapshot.json (kept honest by the existing
+# route-inventory guard). Consumers = test/consumer-map.json.
+# Red X + PR comment naming the broken consumer when a route they call is
+# removed or renamed.
+
+on:
+  pull_request:
+    paths:
+      - "server.js"
+      - "src/server/**"
+      - "test/routes.snapshot.json"
+      - "test/consumer-map.json"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  impact:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch base route snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${{ github.repository }}/contents/test/routes.snapshot.json?ref=${{ github.event.pull_request.base.sha }}" \
+            -H "Accept: application/vnd.github.raw" > base.snapshot.json
+
+      - name: Impact check
+        id: check
+        run: |
+          node .github/scripts/impact-check.mjs base.snapshot.json test/routes.snapshot.json test/consumer-map.json
+
+      - name: Comment on PR
+        if: always() && steps.check.outcome != 'skipped'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f impact-report.md ]; then
+            gh pr comment ${{ github.event.pull_request.number }} \
+              --repo ${{ github.repository }} \
+              --edit-last --create-if-none \
+              --body-file impact-report.md
+          fi
