@@ -5798,6 +5798,7 @@ app.get('/auth/gsc/callback', async (req, res) => {
 // (analytics route/helper moved to src/server/routes/analytics.js)
 
 // GET /api/analytics/webflow-seo/:brandProfileId — Webflow content performance via GSC
+// GET /api/analytics/website-seo/:brandProfileId — My Website content performance via GSC
 // (analytics route/helper moved to src/server/routes/analytics.js)
 
 // GET /api/gsc/status/:brandProfileId — check connection status + verified sites
