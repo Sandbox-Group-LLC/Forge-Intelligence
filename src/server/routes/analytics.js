@@ -6,6 +6,7 @@
 // registration lines changed (app.METHOD('/api/analytics/x', …) -> router.METHOD('/x', …)).
 import express from 'express';
 import { jwtVerify } from 'jose';
+import { timingSafeEqual } from 'crypto';
 import { pool } from '../db.js';
 import { anthropic } from '../llm.js';
 import { safeParseLLM } from '../llm-json.js';
@@ -15,6 +16,77 @@ import { buildXOAuthHeader, refreshXOAuth2Token } from '../x.js';
 import { buildGhostJWT } from '../ghost.js';
 
 const router = express.Router();
+
+function safeEqualStr(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const ba = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ba.length !== bb.length) return false;
+  try { return timingSafeEqual(ba, bb); } catch { return false; }
+}
+
+function setBeaconCors(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  res.setHeader('Access-Control-Max-Age', '86400');
+}
+
+function extractBeaconKey(req) {
+  const auth = req.headers.authorization || '';
+  if (auth.startsWith('Bearer ')) return auth.slice(7).trim();
+  if (typeof req.body?.beaconKey === 'string') return req.body.beaconKey.trim();
+  if (typeof req.query?.k === 'string') return String(req.query.k).trim();
+  return '';
+}
+
+async function resolveWebsiteContent({ brandProfileId, contentId, slug, url }) {
+  if (contentId) {
+    const byId = await pool.query(
+      `SELECT content_id, published_url, attempted_at
+       FROM publish_log
+       WHERE brand_profile_id = $1 AND channel = 'website' AND status = 'published'
+         AND content_id = $2
+       ORDER BY attempted_at DESC LIMIT 1`,
+      [brandProfileId, String(contentId)]
+    ).catch(() => ({ rows: [] }));
+    if (byId.rows[0]) return byId.rows[0];
+  }
+
+  const needleUrl = typeof url === 'string' ? url.trim() : '';
+  const needleSlug = typeof slug === 'string' ? slug.trim().replace(/^\/+|\/+$/g, '') : '';
+  if (needleUrl) {
+    const byUrl = await pool.query(
+      `SELECT content_id, published_url, attempted_at
+       FROM publish_log
+       WHERE brand_profile_id = $1 AND channel = 'website' AND status = 'published'
+         AND (
+           published_url = $2
+           OR rtrim(published_url, '/') = rtrim($2, '/')
+           OR published_url ILIKE '%' || $2 || '%'
+         )
+       ORDER BY attempted_at DESC LIMIT 1`,
+      [brandProfileId, needleUrl]
+    ).catch(() => ({ rows: [] }));
+    if (byUrl.rows[0]) return byUrl.rows[0];
+  }
+  if (needleSlug) {
+    const bySlug = await pool.query(
+      `SELECT content_id, published_url, attempted_at
+       FROM publish_log
+       WHERE brand_profile_id = $1 AND channel = 'website' AND status = 'published'
+         AND (
+           published_url ILIKE '%' || $2 || '%'
+           OR response_data->>'slug' = $2
+           OR response_data->>'postId' = $2
+         )
+       ORDER BY attempted_at DESC LIMIT 1`,
+      [brandProfileId, needleSlug]
+    ).catch(() => ({ rows: [] }));
+    if (bySlug.rows[0]) return bySlug.rows[0];
+  }
+  return null;
+}
 
 router.get('/patterns/:brandProfileId', requireAuth, async (req, res) => {
   const { brandProfileId } = req.params;
@@ -394,9 +466,20 @@ router.get('/website-seo/:brandProfileId', requireAuth, async (req, res) => {
       [brandProfileId]
     ).catch(() => ({ rows: [] }));
 
+    const beaconRes = await pool.query(
+      `SELECT content_id, impressions AS pageviews, clicks, reading_time, engagement_rate, raw_data, synced_at
+       FROM content_analytics
+       WHERE brand_profile_id = $1 AND channel = 'website'`,
+      [brandProfileId]
+    ).catch(() => ({ rows: [] }));
+
     const gscByUrl = {};
     for (const row of gscRes.rows) {
       if (row.page_url) gscByUrl[row.page_url] = row;
+    }
+    const beaconByContent = {};
+    for (const row of beaconRes.rows) {
+      if (row.content_id) beaconByContent[row.content_id] = row;
     }
 
     const articles = siteRes.rows.map(row => {
@@ -406,6 +489,7 @@ router.get('/website-seo/:brandProfileId', requireAuth, async (req, res) => {
         const slug = url.replace(/\/$/, '').split('/').pop();
         gsc = Object.values(gscByUrl).find(g => g.page_url && slug && g.page_url.includes(slug)) || null;
       }
+      const beacon = beaconByContent[row.content_id] || null;
       return {
         content_id: row.content_id,
         title: row.title || 'Untitled',
@@ -417,21 +501,146 @@ router.get('/website-seo/:brandProfileId', requireAuth, async (req, res) => {
         ctr: gsc ? (gsc.ctr || 0) : 0,
         position: gsc ? (gsc.position || 0) : 0,
         hasGscData: !!gsc,
+        pageviews: beacon ? Number(beacon.pageviews || 0) : 0,
+        cta_clicks: beacon ? Number(beacon.clicks || 0) : 0,
+        reading_time: beacon ? Number(beacon.reading_time || 0) : 0,
+        avg_scroll_depth: beacon ? Number(beacon.engagement_rate || 0) : 0,
+        hasBeaconData: !!beacon,
+        beacon_synced_at: beacon?.synced_at || null,
       };
     });
 
     const withData = articles.filter(a => a.hasGscData);
+    const withBeacon = articles.filter(a => a.hasBeaconData);
     const totals = {
       published: articles.length,
       impressions: articles.reduce((s, a) => s + a.impressions, 0),
       clicks: articles.reduce((s, a) => s + a.clicks, 0),
       avgCtr: withData.length ? parseFloat((withData.reduce((s, a) => s + a.ctr, 0) / withData.length).toFixed(2)) : 0,
       avgPosition: withData.length ? parseFloat((withData.reduce((s, a) => s + a.position, 0) / withData.length).toFixed(1)) : 0,
+      pageviews: articles.reduce((s, a) => s + a.pageviews, 0),
+      ctaClicks: articles.reduce((s, a) => s + a.cta_clicks, 0),
+      avgReadingTime: withBeacon.length
+        ? Math.round(withBeacon.reduce((s, a) => s + a.reading_time, 0) / withBeacon.length)
+        : 0,
+      avgScrollDepth: withBeacon.length
+        ? parseFloat((withBeacon.reduce((s, a) => s + a.avg_scroll_depth, 0) / withBeacon.length).toFixed(1))
+        : 0,
+      beaconArticles: withBeacon.length,
     };
 
-    res.json({ success: true, articles, totals, gscConnected });
+    const websiteCred = await pool.query(
+      `SELECT credentials FROM publishing_channels
+       WHERE brand_profile_id = $1 AND channel = 'website' AND is_active = true LIMIT 1`,
+      [brandProfileId]
+    ).catch(() => ({ rows: [] }));
+    const beaconKeySet = !!(websiteCred.rows[0]?.credentials?.beaconKey);
+
+    res.json({ success: true, articles, totals, gscConnected, beaconKeySet });
   } catch(e) {
     console.error('[WEBSITE-SEO]', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// OPTIONS /api/analytics/website-beacon — CORS preflight for browser beacons
+router.options('/website-beacon', (req, res) => {
+  setBeaconCors(res);
+  return res.status(204).end();
+});
+
+// POST /api/analytics/website-beacon — first-party on-page events from customer sites
+// Auth: forge_beacon_* key (NOT the forge_pub publish token). CORS open so article
+// pages can POST cross-origin. Matches publish_log channel=website by contentId/slug/url.
+router.post('/website-beacon', async (req, res) => {
+  setBeaconCors(res);
+  try {
+    const body = req.body || {};
+    const brandProfileId = typeof body.brandProfileId === 'string' ? body.brandProfileId.trim() : '';
+    const event = typeof body.event === 'string' ? body.event.trim().toLowerCase() : 'pageview';
+    const allowed = new Set(['pageview', 'scroll', 'read_time', 'cta_click']);
+    if (!brandProfileId) return res.status(400).json({ success: false, error: 'brandProfileId required' });
+    if (!allowed.has(event)) return res.status(400).json({ success: false, error: 'invalid event' });
+
+    const provided = extractBeaconKey(req);
+    if (!provided || !provided.startsWith('forge_beacon_')) {
+      return res.status(401).json({ success: false, error: 'beacon key required' });
+    }
+
+    const credRes = await pool.query(
+      `SELECT credentials FROM publishing_channels
+       WHERE brand_profile_id = $1 AND channel = 'website' AND is_active = true LIMIT 1`,
+      [brandProfileId]
+    ).catch(() => ({ rows: [] }));
+    const creds = credRes.rows[0]?.credentials || {};
+    const stored = typeof creds.beaconKey === 'string' ? creds.beaconKey : '';
+    if (!stored || !safeEqualStr(provided, stored)) {
+      return res.status(401).json({ success: false, error: 'invalid beacon key' });
+    }
+
+    const matched = await resolveWebsiteContent({
+      brandProfileId,
+      contentId: body.contentId,
+      slug: body.slug,
+      url: body.url || body.pageUrl,
+    });
+    if (!matched?.content_id) {
+      return res.status(404).json({ success: false, error: 'no matching My Website publish' });
+    }
+
+    const pageviewsInc = event === 'pageview' ? 1 : 0;
+    const clicksInc = event === 'cta_click' ? 1 : 0;
+    let readSeconds = Number(body.readSeconds ?? body.reading_time ?? 0);
+    if (!Number.isFinite(readSeconds) || readSeconds < 0) readSeconds = 0;
+    readSeconds = Math.min(Math.round(readSeconds), 7200);
+    let scrollDepth = Number(body.scrollDepth ?? body.scroll_depth ?? 0);
+    if (!Number.isFinite(scrollDepth) || scrollDepth < 0) scrollDepth = 0;
+    scrollDepth = Math.min(Math.round(scrollDepth), 100);
+    if (event !== 'scroll' && event !== 'read_time') {
+      // keep provided values only for scroll/read_time; pageview/cta ignore noise
+      if (event === 'pageview' || event === 'cta_click') {
+        // still allow optional read/scroll piggyback on pageview payloads
+      }
+    }
+
+    const pageUrl = (typeof body.url === 'string' && body.url) || matched.published_url || null;
+    const rawPatch = {
+      source: 'website_beacon',
+      last_event: event,
+      last_url: pageUrl,
+      last_seen_at: new Date().toISOString(),
+    };
+
+    await pool.query(
+      `INSERT INTO content_analytics
+         (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts,
+          ctr, engagement_rate, reading_time, raw_data, published_at, synced_at)
+       VALUES ($1,$2,'website',$3,$4,$5,0,0,0,0,$6,$7,$8::jsonb,$9,NOW())
+       ON CONFLICT (brand_profile_id, content_id, channel)
+       DO UPDATE SET
+         impressions     = content_analytics.impressions + EXCLUDED.impressions,
+         clicks          = content_analytics.clicks + EXCLUDED.clicks,
+         reading_time    = GREATEST(COALESCE(content_analytics.reading_time, 0), EXCLUDED.reading_time),
+         engagement_rate = GREATEST(COALESCE(content_analytics.engagement_rate, 0), EXCLUDED.engagement_rate),
+         post_id         = COALESCE(EXCLUDED.post_id, content_analytics.post_id),
+         raw_data        = COALESCE(content_analytics.raw_data, '{}'::jsonb) || EXCLUDED.raw_data,
+         synced_at       = NOW()`,
+      [
+        brandProfileId,
+        matched.content_id,
+        pageUrl,
+        pageviewsInc,
+        clicksInc,
+        scrollDepth,
+        readSeconds,
+        JSON.stringify(rawPatch),
+        matched.attempted_at || null,
+      ]
+    );
+
+    res.json({ success: true, contentId: matched.content_id, event });
+  } catch (e) {
+    console.error('[WEBSITE-BEACON]', e.message);
     res.status(500).json({ success: false, error: e.message });
   }
 });
