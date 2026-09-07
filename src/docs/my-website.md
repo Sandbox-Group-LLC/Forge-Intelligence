@@ -13,6 +13,18 @@ This integration is built for teams who own their stack — custom sites on Reac
 
 Forge captures the response and surfaces a "View on site" link in the Publishing Queue.
 
+## Analytics
+
+My Website has no native analytics API (your site owns storage and rendering). Forge tracks organic search performance for these articles via **Google Search Console**:
+
+1. Connect GSC under **Integrations** (or the Performance Dashboard GSC tab).
+2. Publish articles through My Website so Forge has `channel=website` publish rows with your live URLs.
+3. Open **Performance → My Website** and hit **Sync Search Data**.
+
+Forge joins each My Website publish URL to GSC page metrics (impressions, clicks, CTR, position). Prefer returning `{ "url": "https://yoursite.com/articles/<slug>" }` from your receiver so matching hits your real public URLs — otherwise Forge falls back to the canonical article URL.
+
+GSC data usually lags 24–48 hours after publish. On-page engagement (pageviews, read time) is not part of this path yet.
+
 ## Setup in Forge
 
 1. **Brand Settings → Integrations → My Website**

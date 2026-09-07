@@ -51,12 +51,13 @@ const CHANNELS = [
   { id: 'geo',   label: 'GEO',   live: true },
   { id: 'wordpress', label: 'WordPress', live: true },
   { id: 'webflow', label: 'Webflow', live: true },
+  { id: 'website', label: 'My Website', live: true },
   { id: 'campaigns', label: 'Campaigns', live: true },
 ];
 
 const CHANNEL_COLORS: Record<string, string> = {
   linkedin: '#0A66C2', x: '#000000', ghost: '#FF1A75', facebook: '#1877F2', gsc: '#4285F4',
-  reddit: '#FF4500', wordpress: '#3858E9', webflow: '#4353FF',
+  reddit: '#FF4500', wordpress: '#3858E9', webflow: '#4353FF', website: '#6366F1',
 };
 
 // Friendly display names for the GEO citation engines (stored ids are terse).
@@ -162,6 +163,8 @@ export default function PerformanceDashboardPage() {
   const [gscSyncing, setGscSyncing] = useState(false);
   const [wfSeo, setWfSeo] = useState<any>(null);
   const [wfSeoLoading, setWfSeoLoading] = useState(false);
+  const [websiteSeo, setWebsiteSeo] = useState<any>(null);
+  const [websiteSeoLoading, setWebsiteSeoLoading] = useState(false);
   const [geoCitations, setGeoCitations] = useState<any[]>([]);
   const [geoTracking, setGeoTracking] = useState(false);
   const [geoLoaded, setGeoLoaded] = useState(false);
@@ -237,6 +240,9 @@ export default function PerformanceDashboardPage() {
     }
     if (activeChannel === 'webflow' && brandProfileId) {
       fetchWebflowSeo();
+    }
+    if (activeChannel === 'website' && brandProfileId) {
+      fetchWebsiteSeo();
     }
     if (activeChannel === 'gsc' && brandProfileId) {
       fetch(`/api/gsc/status/${brandProfileId}`, { headers: ah }).then(r => r.json()).then(d => setGscStatus(d)).catch(() => {});
@@ -365,6 +371,19 @@ export default function PerformanceDashboardPage() {
     finally { setWfSeoLoading(false); }
   };
 
+  const fetchWebsiteSeo = async () => {
+    if (!brandProfileId) return;
+    setWebsiteSeoLoading(true);
+    try {
+      const token = authTokenRef.current || authToken || '';
+      const h: Record<string,string> = token ? { 'Authorization': `Bearer ${token}` } : {};
+      const r = await fetch(`/api/analytics/website-seo/${brandProfileId}`, { headers: h });
+      const d = await r.json();
+      if (d.success) setWebsiteSeo(d);
+    } catch(e) { console.error('Website SEO fetch error:', e); reportError(e, { area: 'performance' }); }
+    finally { setWebsiteSeoLoading(false); }
+  };
+
     const handleGscSync = async () => {
     if (!brandProfileId) return;
     setGscSyncing(true);
@@ -491,7 +510,7 @@ export default function PerformanceDashboardPage() {
             <p className="geo-description">Content analytics across all channels and campaigns.</p>
           </div>
           <div className="perf-header-right">
-            {!['geo', 'gsc', 'predictions', 'patterns', 'webflow'].includes(activeChannel) && <div className="perf-sync-wrap">
+            {!['geo', 'gsc', 'predictions', 'patterns', 'webflow', 'website'].includes(activeChannel) && <div className="perf-sync-wrap">
               <div className="perf-btn-group">
               <button className={`perf-sync-btn ${syncing ? 'syncing' : ''}`} onClick={handleSync} disabled={syncing || !brandProfileId}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={syncing ? 'spin' : ''}>
@@ -538,7 +557,7 @@ export default function PerformanceDashboardPage() {
         ) : (
           <>
             {/* ── KPI Cards ── */}
-            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && activeChannel !== 'geo' && activeChannel !== 'predictions' && activeChannel !== 'patterns' && activeChannel !== 'webflow' && <div className="perf-kpis">
+            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && activeChannel !== 'geo' && activeChannel !== 'predictions' && activeChannel !== 'patterns' && activeChannel !== 'webflow' && activeChannel !== 'website' && <div className="perf-kpis">
               {(activeChannel === 'ghost' ? [
                 { label: 'Link Clicks', value: fmt(data?.totals?.clicks || 0), sub: 'Total tracked clicks', icon: 'click', spark: false },
                 { label: 'Avg Read Time', value: data?.totals?.avgReadingTime ? `${data.totals.avgReadingTime} min` : '—', sub: 'Minutes per article', icon: 'eye', spark: false },
@@ -565,7 +584,7 @@ export default function PerformanceDashboardPage() {
             </div>}
 
             {/* ── 30-Day Trend ── */}
-            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && activeChannel !== 'geo' && activeChannel !== 'predictions' && activeChannel !== 'patterns' && activeChannel !== 'webflow' && activeChannel !== 'pipeline' && <div className="perf-section">
+            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && activeChannel !== 'geo' && activeChannel !== 'predictions' && activeChannel !== 'patterns' && activeChannel !== 'webflow' && activeChannel !== 'website' && activeChannel !== 'pipeline' && <div className="perf-section">
               <div className="perf-section-header">
                 <h2 className="perf-section-title">30-Day {activeChannel === 'reddit' ? 'Views' : 'Impressions'}</h2>
                 {(data?.trend?.length ?? 0) > 0 && (
@@ -578,7 +597,7 @@ export default function PerformanceDashboardPage() {
             </div>}
 
             {/* ── Posts Table ── */}
-            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && activeChannel !== 'geo' && activeChannel !== 'predictions' && activeChannel !== 'patterns' && activeChannel !== 'webflow' && <div className="perf-section">
+            {activeChannel !== 'campaigns' && activeChannel !== 'gsc' && activeChannel !== 'geo' && activeChannel !== 'predictions' && activeChannel !== 'patterns' && activeChannel !== 'webflow' && activeChannel !== 'website' && <div className="perf-section">
               <div className="perf-section-header">
                 <h2 className="perf-section-title">Published Posts</h2>
                 <span className="perf-section-meta">{data?.posts?.length || 0} tracked</span>
@@ -884,6 +903,103 @@ export default function PerformanceDashboardPage() {
                       {wfSeo.articles.some((a: any) => !a.hasGscData) && (
                         <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 8, fontStyle: 'italic' }}>
                           Articles showing — for search data need a GSC sync after publishing. GSC data typically takes 24-48 hours to populate.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeChannel === 'website' && (
+              <div className="perf-gsc-panel">
+                {websiteSeoLoading ? (
+                  <div className="perf-empty"><p>Loading My Website SEO data...</p></div>
+                ) : !websiteSeo?.articles?.length ? (
+                  <div className="perf-empty">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                    <p>{!websiteSeo?.gscConnected
+                      ? 'Connect Google Search Console to see how your My Website articles perform in search.'
+                      : 'No articles published to My Website yet. Publish from the Publishing Queue to start tracking.'}</p>
+                    {!websiteSeo?.gscConnected && (
+                      <button className="perf-gsc-btn" onClick={handleGscConnect} disabled={!brandProfileId} style={{ marginTop: 12 }}>
+                        Connect GSC
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="perf-gsc-connected">
+                    <div className="perf-gsc-connected-header">
+                      <span className="perf-gsc-connected-label">My Website SEO Performance</span>
+                      <div className="perf-btn-group">
+                        <button className="perf-sync-btn" onClick={async () => { await handleGscSync(); await fetchWebsiteSeo(); }} disabled={gscSyncing || !brandProfileId}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={gscSyncing ? 'spin' : ''}>
+                            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
+                            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
+                          </svg>
+                          {gscSyncing ? 'Syncing GSC...' : 'Sync Search Data'}
+                        </button>
+                        <span className="perf-section-meta">{websiteSeo.articles.length} articles · {websiteSeo.gscConnected ? 'GSC connected' : 'GSC not connected'}</span>
+                      </div>
+                    </div>
+
+                    <div className="perf-kpis" style={{ marginTop: '16px' }}>
+                      {[
+                        { label: 'Published', value: String(websiteSeo.totals?.published || 0), sub: 'Articles on your site', icon: 'eye' },
+                        { label: 'Search Impressions', value: fmt(websiteSeo.totals?.impressions || 0), sub: 'Google search appearances', icon: 'eye' },
+                        { label: 'Search Clicks', value: fmt(websiteSeo.totals?.clicks || 0), sub: 'Organic traffic', icon: 'click' },
+                        { label: 'Avg CTR', value: `${websiteSeo.totals?.avgCtr || 0}%`, sub: 'Click-through rate', icon: 'trend' },
+                        { label: 'Avg Position', value: websiteSeo.totals?.avgPosition ? String(websiteSeo.totals.avgPosition) : '—', sub: 'Search ranking', icon: 'trend' },
+                      ].map(kpi => (
+                        <div key={kpi.label} className="perf-kpi-card">
+                          <div className="perf-kpi-top"><span className="perf-kpi-label">{kpi.label}</span><KpiIcon type={kpi.icon} /></div>
+                          <div className="perf-kpi-value">{kpi.value}</div>
+                          <div className="perf-kpi-sub">{kpi.sub}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div style={{ marginTop: '24px' }}>
+                      <div className="perf-section-header">
+                        <h2 className="perf-section-title">My Website Articles — Search Performance</h2>
+                        <span className="perf-section-meta">{websiteSeo.articles.filter((a: any) => a.hasGscData).length} with GSC data</span>
+                      </div>
+                      <div className="perf-table-wrap">
+                        <table className="perf-table">
+                          <thead>
+                            <tr>
+                              <th>Article</th>
+                              <th className="num">Impressions</th>
+                              <th className="num">Clicks</th>
+                              <th className="num">CTR</th>
+                              <th className="num">Position</th>
+                              <th>Published</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {websiteSeo.articles.map((a: any) => (
+                              <tr key={a.content_id}>
+                                <td className="perf-title-cell">
+                                  <div className="perf-title-cell-inner">
+                                    {a.hero_image_url && <img src={a.hero_image_url} alt="" className="perf-thumb" loading="lazy" width="40" height="28" />}
+                                    <span className="perf-post-title">
+                                      {a.url ? <a href={a.url} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>{a.title}</a> : a.title}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="num">{a.hasGscData ? fmt(a.impressions) : '—'}</td>
+                                <td className="num">{a.hasGscData ? fmt(a.clicks) : '—'}</td>
+                                <td className="num">{a.hasGscData ? `${a.ctr}%` : '—'}</td>
+                                <td className="num">{a.hasGscData ? a.position : '—'}</td>
+                                <td>{a.published_at ? new Date(a.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {websiteSeo.articles.some((a: any) => !a.hasGscData) && (
+                        <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 8, fontStyle: 'italic' }}>
+                          Articles showing — for search data need a GSC sync after publishing. GSC data typically takes 24-48 hours to populate. Matching uses the URL your receiver returned (or the Forge canonical fallback).
                         </p>
                       )}
                     </div>
