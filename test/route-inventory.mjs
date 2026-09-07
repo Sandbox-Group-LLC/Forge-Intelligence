@@ -27,7 +27,7 @@ import { dirname, resolve, join } from 'node:path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 
-const METHODS = 'get|post|put|patch|delete|all';
+const METHODS = 'get|post|put|patch|delete|all|options';
 
 // Match `<obj>.<method>('<path>'` for the given object identifiers.
 function routesFor(src, objectNames) {

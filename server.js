@@ -5181,6 +5181,29 @@ app.post('/api/integrations/website/:brandProfileId/generate-token', requireAuth
   }
 });
 
+// POST /api/integrations/website/:brandProfileId/generate-beacon-key
+// Generates a forge_beacon_<32-hex> key for the public analytics snippet.
+// Separate from forge_pub publish tokens on purpose: beacon keys are embedded
+// in browser JS (world-readable), publish tokens stay server-side only.
+app.post('/api/integrations/website/:brandProfileId/generate-beacon-key', requireAuth, async (req, res) => {
+  const { brandProfileId } = req.params;
+  if (!(await verifyBrandAccess(brandProfileId, req.userId))) return res.status(403).json({ error: 'Access denied' });
+  try {
+    const beaconKey = `forge_beacon_${randomBytes(32).toString('hex')}`;
+    await pool.query(
+      `INSERT INTO publishing_channels (brand_profile_id, channel, credentials, is_active, updated_at)
+       VALUES ($1, 'website', $2::jsonb, true, NOW())
+       ON CONFLICT (brand_profile_id, channel)
+       DO UPDATE SET credentials = publishing_channels.credentials || $2::jsonb,
+                     is_active = true, updated_at = NOW()`,
+      [brandProfileId, JSON.stringify({ beaconKey })]
+    );
+    res.json({ success: true, beaconKey, brandProfileId });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // POST /api/integrations/website/:brandProfileId/test
 // Sends a sample payload at the configured endpoint with the stored token.
 // Does NOT write to publish_log — this is for user-side validation only.
@@ -5798,7 +5821,10 @@ app.get('/auth/gsc/callback', async (req, res) => {
 // (analytics route/helper moved to src/server/routes/analytics.js)
 
 // GET /api/analytics/webflow-seo/:brandProfileId — Webflow content performance via GSC
-// GET /api/analytics/website-seo/:brandProfileId — My Website content performance via GSC
+// GET /api/analytics/website-seo/:brandProfileId — My Website content performance via GSC + beacon
+// POST /api/analytics/website-beacon — first-party pageview/read/cta ingest (CORS)
+// OPTIONS /api/analytics/website-beacon — CORS preflight
+// POST /api/integrations/website/:brandProfileId/generate-beacon-key
 // (analytics route/helper moved to src/server/routes/analytics.js)
 
 // GET /api/gsc/status/:brandProfileId — check connection status + verified sites
