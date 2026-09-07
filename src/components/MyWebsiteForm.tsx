@@ -7,6 +7,9 @@ interface SavedWebsite {
     bearerToken?: string;
     bearerTokenSet?: boolean;
     bearerTokenLast4?: string;
+    beaconKey?: string;
+    beaconKeySet?: boolean;
+    beaconKeyLast4?: string;
   };
   is_active?: boolean;
   updated_at?: string;
@@ -29,6 +32,9 @@ export default function MyWebsiteForm({ brandProfileId, saved, onChange }: MyWeb
   const [generating, setGenerating] = useState(false);
   const [revealedToken, setRevealedToken] = useState<string | null>(null);
   const [tokenSaved, setTokenSaved] = useState(false);
+  const [revealedBeacon, setRevealedBeacon] = useState<string | null>(null);
+  const [beaconSaved, setBeaconSaved] = useState(false);
+  const [generatingBeacon, setGeneratingBeacon] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; status?: number; latencyMs?: number; error?: string; responseBody?: string } | null>(null);
   const [error, setError] = useState('');
@@ -39,6 +45,9 @@ export default function MyWebsiteForm({ brandProfileId, saved, onChange }: MyWeb
   const hasToken = saved?.credentials?.bearerTokenSet ?? !!saved?.credentials?.bearerToken;
   const last4 = saved?.credentials?.bearerTokenLast4 ?? saved?.credentials?.bearerToken?.slice(-4);
   const maskedToken = hasToken ? `forge_pub_••••${last4 ?? '••••'}` : '';
+  const hasBeacon = saved?.credentials?.beaconKeySet ?? !!saved?.credentials?.beaconKey;
+  const beaconLast4 = saved?.credentials?.beaconKeyLast4 ?? saved?.credentials?.beaconKey?.slice(-4);
+  const maskedBeacon = hasBeacon ? `forge_beacon_••••${beaconLast4 ?? '••••'}` : '';
 
   const saveConfig = async () => {
     if (!endpointUrl.match(/^https?:\/\//i)) {
@@ -82,6 +91,37 @@ export default function MyWebsiteForm({ brandProfileId, saved, onChange }: MyWeb
     }
   };
 
+  const generateBeaconKey = async () => {
+    if (hasBeacon && !window.confirm('Rotating will immediately invalidate the current beacon key. Pageview tracking will stop until you update the snippet on your site. Continue?')) return;
+    setGeneratingBeacon(true); setError('');
+    try {
+      const r = await fetch(`/api/integrations/website/${brandProfileId}/generate-beacon-key`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const d = await r.json();
+      if (!r.ok || !d.success) throw new Error(d.error || 'generate failed');
+      setRevealedBeacon(d.beaconKey);
+      setBeaconSaved(false);
+      onChange();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setGeneratingBeacon(false);
+    }
+  };
+
+  const beaconSnippet = (key: string) =>
+    [
+      '<script',
+      '  src="https://forgeintelligence.ai/forge-beacon.js"',
+      `  data-brand="${brandProfileId}"`,
+      `  data-key="${key}"`,
+      '  data-slug="YOUR-ARTICLE-SLUG"',
+      '  defer',
+      '></script>',
+    ].join('\n');
+
   const runTest = async () => {
     setTesting(true); setTestResult(null);
     try {
@@ -98,8 +138,11 @@ export default function MyWebsiteForm({ brandProfileId, saved, onChange }: MyWeb
     }
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text).then(() => setTokenSaved(true));
+  const copyToClipboard = (text: string, which: 'token' | 'beacon' = 'token') => {
+    navigator.clipboard.writeText(text).then(() => {
+      if (which === 'beacon') setBeaconSaved(true);
+      else setTokenSaved(true);
+    });
   };
 
   return (
@@ -191,6 +234,37 @@ export default function MyWebsiteForm({ brandProfileId, saved, onChange }: MyWeb
           {hasToken ? <code style={{ fontSize: 13, color: '#888' }}>{maskedToken}</code> : <span style={{ color: '#888', fontSize: 13 }}>No token yet</span>}
           <button className="int-connect-btn" onClick={generateToken} disabled={generating}>
             {generating ? 'Generating…' : (hasToken ? 'Rotate token' : 'Generate token')}
+          </button>
+        </div>
+      )}
+
+      {/* Analytics beacon */}
+      <div className="int-form-label" style={{ marginTop: 24 }}>On-page analytics beacon</div>
+      <div className="int-utm-hint" style={{ marginBottom: 8 }}>
+        Optional. Separate from the publish token — safe to embed in browser JS. Tracks pageviews, scroll depth, read time, and clicks on elements with <code>data-forge-cta</code>.
+      </div>
+      {revealedBeacon ? (
+        <div style={{ background: '#1a1a1a', border: '1px solid #6366F1', borderRadius: 'var(--radius-sm)', padding: 16, marginTop: 8 }}>
+          <div style={{ color: '#a5b4fc', fontWeight: 600, marginBottom: 8 }}>Save this beacon key — you won't see it again</div>
+          <code style={{ display: 'block', wordBreak: 'break-all', background: '#0a0a0a', padding: 12, borderRadius: 4, fontSize: 13, color: '#e5e5e5' }}>{revealedBeacon}</code>
+          <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="int-connect-btn" onClick={() => copyToClipboard(revealedBeacon, 'beacon')}>
+              {beaconSaved ? 'Copied ✓' : 'Copy key'}
+            </button>
+            <button className="int-edit-btn" onClick={() => copyToClipboard(beaconSnippet(revealedBeacon), 'beacon')}>
+              Copy snippet
+            </button>
+            <button className="int-edit-btn" onClick={() => setRevealedBeacon(null)} disabled={!beaconSaved} title={beaconSaved ? 'Dismiss' : 'Copy first'}>
+              I saved it — dismiss
+            </button>
+          </div>
+          <pre style={{ background: '#0a0a0a', padding: 12, borderRadius: 4, marginTop: 12, overflow: 'auto', fontSize: 12, color: '#c7d2fe', whiteSpace: 'pre-wrap' }}>{beaconSnippet(revealedBeacon)}</pre>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          {hasBeacon ? <code style={{ fontSize: 13, color: '#888' }}>{maskedBeacon}</code> : <span style={{ color: '#888', fontSize: 13 }}>No beacon key yet</span>}
+          <button className="int-connect-btn" onClick={generateBeaconKey} disabled={generatingBeacon}>
+            {generatingBeacon ? 'Generating…' : (hasBeacon ? 'Rotate beacon key' : 'Generate beacon key')}
           </button>
         </div>
       )}

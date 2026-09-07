@@ -19,18 +19,20 @@ router.get('/channels/:brandProfileId', requireAuth, async (req, res) => {
        FROM publishing_channels WHERE brand_profile_id = $1 ORDER BY channel`,
       [brandProfileId]
     );
-    // The website channel's bearerToken is a shown-once secret — never echo it
-    // back to the browser. Replace it with a non-secret existence flag + last-4
-    // so the UI can render "configured" / a masked value without the raw token.
+    // The website channel's bearerToken + beaconKey are shown-once secrets — never
+    // echo them back to the browser. Replace with existence flags + last-4 so the
+    // UI can render "configured" / a masked value without the raw token.
     const channels = result.rows.map(row => {
       if (row.channel === 'website' && row.credentials && typeof row.credentials === 'object') {
-        const { bearerToken, ...rest } = row.credentials;
+        const { bearerToken, beaconKey, ...rest } = row.credentials;
         return {
           ...row,
           credentials: {
             ...rest,
             bearerTokenSet: !!bearerToken,
             ...(bearerToken ? { bearerTokenLast4: String(bearerToken).slice(-4) } : {}),
+            beaconKeySet: !!beaconKey,
+            ...(beaconKey ? { beaconKeyLast4: String(beaconKey).slice(-4) } : {}),
           },
         };
       }

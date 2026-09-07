@@ -950,6 +950,9 @@ export default function PerformanceDashboardPage() {
                         { label: 'Search Clicks', value: fmt(websiteSeo.totals?.clicks || 0), sub: 'Organic traffic', icon: 'click' },
                         { label: 'Avg CTR', value: `${websiteSeo.totals?.avgCtr || 0}%`, sub: 'Click-through rate', icon: 'trend' },
                         { label: 'Avg Position', value: websiteSeo.totals?.avgPosition ? String(websiteSeo.totals.avgPosition) : '—', sub: 'Search ranking', icon: 'trend' },
+                        { label: 'Pageviews', value: fmt(websiteSeo.totals?.pageviews || 0), sub: websiteSeo.beaconKeySet ? 'On-site beacon' : 'Install beacon to track', icon: 'eye' },
+                        { label: 'CTA Clicks', value: fmt(websiteSeo.totals?.ctaClicks || 0), sub: 'data-forge-cta clicks', icon: 'click' },
+                        { label: 'Avg Read Time', value: websiteSeo.totals?.avgReadingTime ? `${websiteSeo.totals.avgReadingTime}s` : '—', sub: 'Max observed seconds', icon: 'trend' },
                       ].map(kpi => (
                         <div key={kpi.label} className="perf-kpi-card">
                           <div className="perf-kpi-top"><span className="perf-kpi-label">{kpi.label}</span><KpiIcon type={kpi.icon} /></div>
@@ -961,18 +964,25 @@ export default function PerformanceDashboardPage() {
 
                     <div style={{ marginTop: '24px' }}>
                       <div className="perf-section-header">
-                        <h2 className="perf-section-title">My Website Articles — Search Performance</h2>
-                        <span className="perf-section-meta">{websiteSeo.articles.filter((a: any) => a.hasGscData).length} with GSC data</span>
+                        <h2 className="perf-section-title">My Website Articles — Search + On-page</h2>
+                        <span className="perf-section-meta">
+                          {websiteSeo.articles.filter((a: any) => a.hasGscData).length} GSC · {websiteSeo.articles.filter((a: any) => a.hasBeaconData).length} beacon
+                          {websiteSeo.beaconKeySet ? '' : ' · beacon key not set'}
+                        </span>
                       </div>
                       <div className="perf-table-wrap">
                         <table className="perf-table">
                           <thead>
                             <tr>
                               <th>Article</th>
-                              <th className="num">Impressions</th>
-                              <th className="num">Clicks</th>
+                              <th className="num">Search impr.</th>
+                              <th className="num">Search clicks</th>
                               <th className="num">CTR</th>
-                              <th className="num">Position</th>
+                              <th className="num">Pos</th>
+                              <th className="num">Pageviews</th>
+                              <th className="num">CTA</th>
+                              <th className="num">Read</th>
+                              <th className="num">Scroll</th>
                               <th>Published</th>
                             </tr>
                           </thead>
@@ -991,15 +1001,22 @@ export default function PerformanceDashboardPage() {
                                 <td className="num">{a.hasGscData ? fmt(a.clicks) : '—'}</td>
                                 <td className="num">{a.hasGscData ? `${a.ctr}%` : '—'}</td>
                                 <td className="num">{a.hasGscData ? a.position : '—'}</td>
+                                <td className="num">{a.hasBeaconData ? fmt(a.pageviews) : '—'}</td>
+                                <td className="num">{a.hasBeaconData ? fmt(a.cta_clicks) : '—'}</td>
+                                <td className="num">{a.hasBeaconData && a.reading_time ? `${a.reading_time}s` : '—'}</td>
+                                <td className="num">{a.hasBeaconData && a.avg_scroll_depth ? `${a.avg_scroll_depth}%` : '—'}</td>
                                 <td>{a.published_at ? new Date(a.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}</td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
                       </div>
-                      {websiteSeo.articles.some((a: any) => !a.hasGscData) && (
+                      {(websiteSeo.articles.some((a: any) => !a.hasGscData) || !websiteSeo.beaconKeySet) && (
                         <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 8, fontStyle: 'italic' }}>
-                          Articles showing — for search data need a GSC sync after publishing. GSC data typically takes 24-48 hours to populate. Matching uses the URL your receiver returned (or the Forge canonical fallback).
+                          {!websiteSeo.beaconKeySet
+                            ? 'On-page metrics need the forge-beacon.js snippet + a beacon key from Integrations → My Website. '
+                            : ''}
+                          GSC columns need a sync after publishing (often 24–48h lag). Matching uses the URL your receiver returned (or the Forge canonical fallback).
                         </p>
                       )}
                     </div>

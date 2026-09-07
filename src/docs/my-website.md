@@ -15,15 +15,40 @@ Forge captures the response and surfaces a "View on site" link in the Publishing
 
 ## Analytics
 
-My Website has no native analytics API (your site owns storage and rendering). Forge tracks organic search performance for these articles via **Google Search Console**:
+My Website has no native CMS analytics API (your site owns storage and rendering). Forge supports two complementary signals:
+
+### 1. Google Search Console (organic search)
 
 1. Connect GSC under **Integrations** (or the Performance Dashboard GSC tab).
 2. Publish articles through My Website so Forge has `channel=website` publish rows with your live URLs.
 3. Open **Performance → My Website** and hit **Sync Search Data**.
 
-Forge joins each My Website publish URL to GSC page metrics (impressions, clicks, CTR, position). Prefer returning `{ "url": "https://yoursite.com/articles/<slug>" }` from your receiver so matching hits your real public URLs — otherwise Forge falls back to the canonical article URL.
+Forge joins each My Website publish URL to GSC page metrics (impressions, clicks, CTR, position). Prefer returning `{ "url": "https://yoursite.com/articles/<slug>" }` from your receiver so matching hits your real public URLs — otherwise Forge falls back to the canonical article URL. GSC data usually lags 24–48 hours after publish.
 
-GSC data usually lags 24–48 hours after publish. On-page engagement (pageviews, read time) is not part of this path yet.
+### 2. First-party beacon (on-page engagement)
+
+Optional browser snippet that POSTs pageviews, scroll depth, read time, and CTA clicks into Forge.
+
+1. **Integrations → My Website → Generate beacon key** (`forge_beacon_…`). This is **not** the publish token — beacon keys are designed to live in front-end JS; publish tokens stay server-side only.
+2. Drop the snippet on article templates:
+
+```html
+<script
+  src="https://forgeintelligence.ai/forge-beacon.js"
+  data-brand="YOUR_BRAND_PROFILE_ID"
+  data-key="forge_beacon_…"
+  data-slug="the-article-slug"
+  defer
+></script>
+```
+
+Optional attributes: `data-content-id` (Forge content id), `data-api` (override API origin, default `https://forgeintelligence.ai`).
+
+3. Mark CTA buttons/links with `data-forge-cta` if you want click counts.
+
+Events land at `POST /api/analytics/website-beacon` (CORS-enabled) and upsert `content_analytics` with `channel=website`. The Performance → My Website table shows pageviews / CTA / read / scroll next to GSC columns. Matching prefers `contentId`, then `slug` / `url` against My Website `publish_log` rows.
+
+Respects `navigator.doNotTrack = 1`. Rotate the beacon key anytime from Integrations if it leaks.
 
 ## Setup in Forge
 
