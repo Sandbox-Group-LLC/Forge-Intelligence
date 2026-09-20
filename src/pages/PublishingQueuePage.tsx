@@ -4,6 +4,7 @@ import { NoBrandEmpty } from '../components/NoBrandEmpty';
 import { StatStrip, type Stat } from '../components/StatStrip';
 import GateModal from '../components/GateModal';
 import { useApp } from '../context/AppContext';
+import { toArticleSlug, withPublicArticleSlug } from '../lib/article-slug.js';
 import './PublishingQueuePage.css';
 
 // ── Icons ────────────────────────────────────────────────────────────────────
@@ -692,7 +693,11 @@ export default function PublishingQueuePage() {
 
   const buildExportUrl = (item: QueueItem, article: any, settingsOverride?: any) => {
     const brandSlug = (article?.brand_url || item.brand_url || 'brand').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
-    const articleSlug = (item.title || 'article').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    const articleSlug = withPublicArticleSlug(toArticleSlug(item.title || 'article'), {
+      brandId: item.brand_profile_id,
+      brand_url: article?.brand_url || item.brand_url,
+      brand_name: item.brand_name,
+    });
     const settings = settingsOverride || brandSettings[item.brand_profile_id];
     const articleBaseUrl = settings?.article_base_url?.trim()
       ? settings.article_base_url.replace(/\/+$/, '')
@@ -1080,7 +1085,11 @@ ${authorFooterHtml}
       const bs = bsRes.success ? bsRes.settings : null;
       const sections = article?.article_json?.sections || [];
       const articleBaseUrl = buildExportUrl(item, article, bs);
-      const articleSlug = (item.title || 'article').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      const articleSlug = withPublicArticleSlug(toArticleSlug(item.title || 'article'), {
+        brandId: item.brand_profile_id,
+        brand_url: article?.brand_url || item.brand_url,
+        brand_name: item.brand_name,
+      });
       const brandSlug = (article?.brand_url || item.brand_url || 'brand').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
       const campaignSlug = item.campaign_name
         ? item.campaign_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 50)
@@ -1535,7 +1544,11 @@ ${authorFooterHtml}
                           })()}
                           {!isDeleted && !isUnknown && (() => {
                             const bSlug = (item.brand_url || '').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
-                            const aSlug = (item.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+                            const aSlug = withPublicArticleSlug(toArticleSlug(item.title || 'article'), {
+                              brandId: item.brand_profile_id,
+                              brand_url: item.brand_url,
+                              brand_name: item.brand_name,
+                            });
                             const cSlug = (item.campaign_name || 'forge-content').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50);
                             const bs = brandSettings[item.brand_profile_id];
                             const base = bs?.article_base_url?.trim()
@@ -2142,7 +2155,11 @@ ${authorFooterHtml}
       const campaignSlug = item.campaign_name
         ? item.campaign_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 50)
         : 'forge-content';
-      const contentSlug = (item.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 60);
+      const contentSlug = withPublicArticleSlug(toArticleSlug(item.title || 'article'), {
+        brandId: item.brand_profile_id,
+        brand_url: item.brand_url,
+        brand_name: item.brand_name,
+      });
       const tabs: { key: 'html'|'markdown'|'json'|'link'; label: string }[] = [
         { key: 'html',     label: 'HTML' },
         { key: 'markdown', label: 'Markdown' },
