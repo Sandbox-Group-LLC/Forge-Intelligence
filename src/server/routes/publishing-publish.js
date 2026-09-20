@@ -10,6 +10,7 @@ import { pool } from '../db.js';
 import { anthropic } from '../llm.js';
 import { clerkJWKS, verifyBrandAccess } from '../auth.js';
 import { resolveUtmParams, buildUtmString } from '../utm.js';
+import { toArticleSlug, withPublicArticleSlug } from '../../lib/article-slug.js';
 import { stripSocialMarkdown } from '../text.js';
 import { callZernio, zernioPublish, getOrCreateZernioProfile } from '../zernio.js';
 import { buildXOAuthHeader, uploadXMedia, refreshXOAuth2Token } from '../x.js';
@@ -171,14 +172,21 @@ router.post('/publish', async (req, res) => {
     const brandRes = await pool.query('SELECT * FROM brand_profiles WHERE id = $1', [item.brand_profile_id]);
     const brand = brandRes.rows[0] || {};
     const brandSlug = (brand.brand_url || 'brand').replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/^-+|-+$/g, '');
-    const articleSlug = (article.title || 'article').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    const articleSlug = toArticleSlug(article.title);
+    // Public/UTM/canonical URLs need Mailforge's Agentcy Core namespace.
+    // The My Website webhook slug stays unsuffixed — Mailforge appends it.
+    const publicArticleSlug = withPublicArticleSlug(articleSlug, {
+      brandId: item.brand_profile_id,
+      brand_url: brand.brand_url,
+      brand_name: brand.brand_name,
+    });
     // Use BYO domain if configured, otherwise default to Forge article URL
     const articleBaseDomain = process.env.BASE_DOMAIN || 'forgeintelligence.ai';
     const articleBaseUrl = brand.article_base_url
       ? brand.article_base_url.replace(/\/+$/, '')
       : `https://${articleBaseDomain}/articles/${brandSlug}`;
     const articleUrlSuffix = (brand.article_url_suffix || '').trim();
-    const forgeArticleUrl = `${articleBaseUrl}/${articleSlug}${articleUrlSuffix}`;
+    const forgeArticleUrl = `${articleBaseUrl}/${publicArticleSlug}${articleUrlSuffix}`;
 
     // Load channel connections for this brand
     const channelsRes = await pool.query(
@@ -274,7 +282,7 @@ router.post('/publish', async (req, res) => {
             : item.campaign_id.split('-')[0];
         } catch { campaignSlug = item.campaign_id.split('-')[0]; }
       }
-      const utmCtx = { channel, brandSlug, articleSlug, campaignSlug };
+      const utmCtx = { channel, brandSlug, articleSlug: publicArticleSlug, campaignSlug };
       // Default UTM template if channel has none configured
       const defaultUtmTemplate = {
         utm_source: '{channel}',
