@@ -168,7 +168,7 @@ ${mistakesBlock}
 Return ONLY the JSON object.`;
 
   const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: 'claude-sonnet-5',
     max_tokens: 4096,
     system: systemPrompt,
     messages: [{ role: 'user', content: userPrompt }]
@@ -356,7 +356,7 @@ ${enrichedBrief ? trimTo(enrichedBrief, 4000) : 'Not available — infer from br
 Return ONLY valid JSON matching the output format. No markdown, no commentary.`;
 
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       max_tokens: 4096,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }]
@@ -709,7 +709,7 @@ Return ONLY valid JSON matching the content generator output format.`;
 
       let fullText = '';
       const stream = await anthropic.messages.stream({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-5',
         max_tokens: 16000,
         system: cgSystemPrompt,
         messages: [{ role: 'user', content: userPrompt }]

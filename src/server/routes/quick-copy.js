@@ -25,7 +25,7 @@ import {
 const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const router = express.Router();
 
-const SONNET = 'claude-sonnet-4-6';
+const SONNET = 'claude-sonnet-5';
 
 async function ensureQuickCopyTable() {
   await pool.query(`CREATE TABLE IF NOT EXISTS quick_copy_drafts (
