@@ -6,6 +6,16 @@ import Anthropic from '@anthropic-ai/sdk';
 
 export const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 1200000 }); // 20min
 
+// Opus 5.5 / Fable always think: content[0] can be a thinking block with no
+// `.text`. Collect every text block instead of assuming position 0 is prose.
+export function claudeText(message) {
+  const blocks = Array.isArray(message?.content) ? message.content : [];
+  return blocks
+    .filter((b) => b?.type === 'text' && typeof b.text === 'string')
+    .map((b) => b.text)
+    .join('\n');
+}
+
 export function dateContext() {
   const now = new Date();
   const formatted = now.toLocaleDateString('en-US', {
