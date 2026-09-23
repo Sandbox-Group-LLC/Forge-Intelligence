@@ -7,7 +7,7 @@
 import express from 'express';
 import { randomUUID } from 'crypto';
 import { pool } from '../db.js';
-import { anthropic, dateContext } from '../llm.js';
+import { anthropic, dateContext, claudeText } from '../llm.js';
 import { safeParseLLM } from '../llm-json.js';
 import { requireAuth, softAuth, verifyBrandAccess, SUPER_ADMIN_IDS } from '../auth.js';
 import { forgeScrape, getBrandPageContent, discoverSubpages, captureBrandVisual, buildBrandVisualPayload } from '../scrape.js';
@@ -217,11 +217,11 @@ Requirements: 5 toneAttributes, 2-3 personas, 0 thirdPartySignals (no website to
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const message = await anthropic.messages.create({
-          model: 'claude-opus-4-8',
+          model: 'claude-opus-5-5',
           max_tokens: 16000,
           messages: [{ role: 'user', content: prompt }]
         });
-        const raw = message.content[0].text;
+        const raw = claudeText(message);
         const jsonMatch = raw.match(/\{[\s\S]*\}/);
         if (!jsonMatch) { lastErr = new Error('Claude returned no valid JSON'); continue; }
         try {
@@ -685,7 +685,7 @@ Return ONLY valid JSON (no markdown, no explanation, no newlines inside string v
 Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competitiveGaps (ACTUAL missed opportunities, not strategic non-choices), 0-4 strategicMoats (include only if the brand explicitly states what they don't do as a strategy — some brands won't have any), 4-6 strategicRecommendations, 2-4 campaignArcs (each is a narrative series the brand could publish; focus on storylines that prove a thesis, challenge industry conventions, or crystallize the brand's worldview — not topic lists. Think of each arc as a season of television: a single argument told across multiple acts with payoff in the final act), 1 businessProfile (all fields required). Use the ICP and market context provided to make personas and gaps highly specific. For visualStyle and accentColor: infer carefully from the brand website design, color palette, imagery, and overall aesthetic — these feed directly into AI hero image generation and must reflect the real brand identity. For industry, positioning, and targetPersona: be specific and commercially precise, not generic. For the messaging block: 4-6 keyMessages, 3-5 valueProps, 2-4 taglines, a boilerplate paragraph, an elevatorPitch, and 3-6 proofPoints — extract real proof from the site and NEVER fabricate metrics, customers, or awards.`;
 
     const message = await anthropic.messages.create({
-      model: 'claude-opus-4-8',
+      model: 'claude-opus-5-5',
       max_tokens: 32000,
       messages: [{ role: 'user', content: prompt }]
     });
@@ -731,14 +731,14 @@ Requirements: 5 toneAttributes, 2-3 personas, 4-6 thirdPartySignals, 3-5 competi
     let profileData;
     for (let attempt = 0; attempt < 2; attempt++) {
       const msg = attempt === 0 ? message : await anthropic.messages.create({
-        model: 'claude-opus-4-8',
+        model: 'claude-opus-5-5',
         max_tokens: 32000,
         messages: [{ role: 'user', content: prompt }]
       });
       if (msg.stop_reason === 'max_tokens') {
         console.warn(`[Context Hub] Opus hit max_tokens (attempt ${attempt}) — output truncated, attempting salvage`);
       }
-      const raw = msg.content[0].text;
+      const raw = claudeText(msg);
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       // On truncation the greedy match can miss the (absent) closing brace, or
       // grab a partial; fall back to the raw text so the salvage path can run.
