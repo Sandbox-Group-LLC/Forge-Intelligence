@@ -8,7 +8,7 @@
 import express from 'express';
 import { randomUUID } from 'crypto';
 import { pool } from '../db.js';
-import { anthropic } from '../llm.js';
+import { anthropic, claudeText } from '../llm.js';
 import { safeParseLLM } from '../llm-json.js';
 import { finalizeArticleForStorage } from '../text.js';
 import { verifyBrandAccess } from '../auth.js';
@@ -91,7 +91,7 @@ router.post('/rewrite-section', async (req, res) => {
       max_tokens: 1024,
       messages: [{ role: 'user', content: `You are an editorial AI. Rewrite the following article section to incorporate the editorial suggestion${source ? ' AND integrate the provided citation cleanly' : ''}. Preserve the author's voice and intent. Return only the rewritten section body — no commentary, no preamble, no labels.\n\n${voiceHint}\n\nORIGINAL SECTION:\n${sectionBody}\n\nEDITORIAL SUGGESTION:\n${suggestion}${citationBlock}\n\nREWRITTEN SECTION:` }]
     });
-    const rewritten = response.content[0]?.text?.trim();
+    const rewritten = claudeText(response).trim();
     if (!rewritten) return res.status(500).json({ success: false, error: 'AI returned empty response' });
     res.json({ success: true, rewritten });
   } catch (e) {
@@ -152,7 +152,7 @@ RULES:
       messages: [{ role: 'user', content: userPrompt }],
     });
 
-    const rewrittenText = response.content[0]?.text?.trim();
+    const rewrittenText = claudeText(response).trim();
     if (!rewrittenText) return res.status(500).json({ success: false, error: 'AI returned empty response' });
 
     // Feed the brain: every user correction is a signal of what the writer got wrong
@@ -256,7 +256,7 @@ router.post('/verify-and-rewrite', async (req, res) => {
       max_tokens: 1024,
       messages: [{ role: 'user', content: `You are an editorial AI. Rewrite the following article section to incorporate the editorial suggestion. ${mode === 'cited' ? 'A verified source has been provided — integrate it cleanly.' : 'No verified source was found — soften the claim instead of fabricating one.'} Preserve the author's voice and intent. Return only the rewritten section body — no commentary, no preamble, no labels.\n\n${voiceHint}\n\nSECTION HEADING: ${sectionHeading || 'Untitled'}\n\nORIGINAL SECTION:\n${sectionBody}\n\nFLAGGED CLAIM:\n"${claim}"\n\nEDITORIAL SUGGESTION:\n${suggestion}${citationBlock}\n\nREWRITTEN SECTION:` }]
     });
-    const rewritten = response.content[0]?.text?.trim();
+    const rewritten = claudeText(response).trim();
     if (!rewritten) return res.status(500).json({ success: false, error: 'AI returned empty response' });
 
     res.json({
@@ -371,7 +371,9 @@ Return ONLY valid JSON in this exact structure:
     };
 
     let critiqueData = await callCritique();
-    let rawText = critiqueData.content?.[0]?.text || '{}';
+    // Sonnet 5 can lead with a thinking block. content[0].text is then undefined,
+    // and `|| '{}'` parsed as an empty report — the "empty response" 502.
+    let rawText = claudeText(critiqueData);
     let stopReason = critiqueData.stop_reason || 'unknown';
     if (stopReason === 'max_tokens') {
       console.warn(`[COMPLIANCE] Critique hit max_tokens ceiling on attempt 1 — response truncated. Article ${contentId} has ${(articleJson?.sections || []).length} sections / ${Math.round(JSON.stringify(articleJson).length / 1024)}kb`);
@@ -392,7 +394,7 @@ Return ONLY valid JSON in this exact structure:
 - When quoting article excerpts in flaggedExcerpt, you MAY paraphrase if the verbatim quote contains characters that would complicate escaping.
 - Validate your JSON is parseable before responding.`;
       const retryData = await callCritique(retryGuidance);
-      const retryRaw = retryData.content?.[0]?.text || '{}';
+      const retryRaw = claudeText(retryData);
       const retryStop = retryData.stop_reason || 'unknown';
       console.warn(`[COMPLIANCE] Retry stop_reason=${retryStop}, first 200: ${retryRaw.slice(0, 200).replace(/\n/g, ' ')}`);
       try {
