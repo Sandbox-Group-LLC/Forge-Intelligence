@@ -23,6 +23,14 @@ describe('extractJSON', () => {
   it('returns null for truncation it cannot repair (cut mid-structure, no value yet)', () => {
     expect(extractJSON('{"a": {"b": 1')).toBeNull();
   });
+
+  it('keeps complete objects when a JSON array is cut off mid-value', () => {
+    const raw = `[\n{"platform":"ChatGPT","topic":"Stopping staff from pasting client briefs","score":62,"quickWin":false},\n{"platform":"Perplexity","topic":"Stopping staff from pasting client briefs","score":`;
+    const out = extractJSON(raw, 'array');
+    expect(JSON.parse(out)).toEqual([
+      { platform: 'ChatGPT', topic: 'Stopping staff from pasting client briefs', score: 62, quickWin: false },
+    ]);
+  });
 });
 
 describe('safeParseLLM', () => {
