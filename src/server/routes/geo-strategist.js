@@ -253,7 +253,7 @@ Return ONLY the raw JSON array. No markdown. No backticks. No explanation. No ot
     console.log('[GEO] Tool 2: GEO Opportunity Scorer...');
     const scorerRes = await anthropic.messages.create({
       model: 'claude-sonnet-5',
-      max_tokens: 3000,
+      max_tokens: 8000,
       messages: [{ role: 'user', content: `You are the GEO Opportunity Scorer for Forge Intelligence.
 
 BRAND: ${profile.brand_name} (${profile.brand_url})
@@ -286,13 +286,29 @@ Return ONLY a raw JSON array (no markdown, no explanation):
       if (!Array.isArray(parsed)) throw new Error('Tool 2 JSON was not an array');
       geoOpportunities = parsed;
     } catch(e) { console.log('[GEO] Tool 2 parse warn:', e.message, '| raw:', scorerRaw.slice(0,200)); }
+    // Scorer output is one row per platform, so a 10-topic run is ~40 objects and
+    // Sonnet's thinking budget was truncating it. If nothing parsed, still surface
+    // Tool 1's topics — an empty cherry-pick table is the bug the user hits.
+    if (!geoOpportunities.length && Array.isArray(topicalMap.gapsByCluster)) {
+      const platforms = ['ChatGPT', 'Perplexity', 'Google AI Overviews', 'Gemini'];
+      geoOpportunities = topicalMap.gapsByCluster.flatMap(g => {
+        const topic = String(g?.topic || g?.cluster || g?.name || '').trim();
+        const score = Number(g?.geoCitationScore || g?.citationProbability || g?.score || 0);
+        if (!topic || !Number.isFinite(score)) return [];
+        const quickWin = score >= 70;
+        return platforms.map(platform => ({ platform, topic, score, quickWin }));
+      });
+      if (geoOpportunities.length) {
+        console.log(`[GEO] Tool 2 empty — filled ${geoOpportunities.length / platforms.length} topics from Tool 1 scores`);
+      }
+    }
     console.log(`[GEO] Tool 2 opportunities: ${(geoOpportunities||[]).length}`);
 
     // ── Tool 3: Entity & Schema Mapper ────────────────────────────────────────
     console.log('[GEO] Tool 3: Entity & Schema Mapper...');
     const entityRes = await anthropic.messages.create({
       model: 'claude-sonnet-5',
-      max_tokens: 3000,
+      max_tokens: 8000,
       messages: [{ role: 'user', content: `You are the Entity & Schema Mapper for Forge Intelligence.
 
 BRAND: ${profile.brand_name}
