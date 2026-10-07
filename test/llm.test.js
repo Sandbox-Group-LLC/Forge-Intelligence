@@ -16,4 +16,17 @@ describe('claudeText', () => {
     expect(claudeText({ content: [{ type: 'thinking', thinking: 'x' }] })).toBe('');
     expect(claudeText({})).toBe('');
   });
+
+  it('does not collapse a critique to {} when thinking leads', () => {
+    const message = {
+      stop_reason: 'end_turn',
+      content: [
+        { type: 'thinking', thinking: 'score the draft' },
+        { type: 'text', text: '{"overallScore":80,"summary":"Fine.","flags":[]}' },
+      ],
+    };
+    const oldRead = message.content?.[0]?.text || '{}';
+    expect(oldRead).toBe('{}');
+    expect(claudeText(message)).toContain('"overallScore":80');
+  });
 });
