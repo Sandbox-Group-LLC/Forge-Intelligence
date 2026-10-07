@@ -30,7 +30,48 @@ export function extractJSON(text, type = 'object') {
     partial += stack.reverse().join('');
     try { JSON.parse(partial); return partial; } catch(e) { /* unrecoverable */ }
   }
+  // Truncation mid-value ("score": with no number) makes the close-the-braces
+  // pass invalid, so a GEO scorer array was discarded even when earlier objects
+  // were complete. Keep every fully closed element instead.
+  if (type === 'array') {
+    const salvaged = salvageTruncatedArray(text);
+    if (salvaged) return salvaged;
+  }
   return null;
+}
+
+// Return a JSON array of every element that closed before the text ran out.
+function salvageTruncatedArray(text) {
+  const start = text.indexOf('[');
+  if (start === -1) return null;
+  let depth = 0;
+  let inStr = false;
+  let escape = false;
+  let lastGood = -1;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inStr) {
+      if (escape) { escape = false; continue; }
+      if (ch === '\\') { escape = true; continue; }
+      if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') { inStr = true; continue; }
+    if (ch === '[' || ch === '{') depth++;
+    else if (ch === ']' || ch === '}') {
+      depth--;
+      if (ch === '}' && depth === 1) lastGood = i;
+      if (ch === ']' && depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  if (lastGood < 0) return null;
+  const candidate = text.slice(start, lastGood + 1).replace(/,\s*$/, '') + ']';
+  try {
+    const parsed = JSON.parse(candidate);
+    return Array.isArray(parsed) && parsed.length ? candidate : null;
+  } catch {
+    return null;
+  }
 }
 
 // Not a library. Not an npm package. Just a dev who got tired of Claude's newlines.
