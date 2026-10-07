@@ -6,7 +6,7 @@
 import express from 'express';
 import { randomUUID } from 'crypto';
 import { pool } from '../db.js';
-import { anthropic } from '../llm.js';
+import { anthropic, claudeText } from '../llm.js';
 import { extractJSON } from '../llm-json.js';
 import { requireAuth } from '../auth.js';
 import { normalizeGeoData } from '../geo.js';
@@ -174,7 +174,7 @@ ${topicFocus ? 'FOCUS AREA: ' + topicFocus : ''}
 
 Return ONLY a raw JSON array of strings. No markdown, no explanation.` }]
         });
-        const probeQuestions = (JSON.parse(extractJSON(qRes.content[0].text, 'array') || '[]'))
+        const probeQuestions = (JSON.parse(extractJSON(claudeText(qRes), 'array') || '[]'))
           .filter(q => typeof q === 'string' && q.trim()).slice(0, 8);
         if (probeQuestions.length) {
           citationProbe = await coldScan({ brandName: profile.brand_name, brandDomain, questions: probeQuestions });
@@ -205,7 +205,7 @@ ${competitorAnalysis.map(c => `- ${c.url}: ${c.positioning || ''}\n  Publishes o
 MEASURED AI VISIBILITY (live probe of the real engines, run minutes ago — treat as ground truth over any modeled assumption):
 - Brand appeared in ${citationProbe.visibility}% of ${citationProbe.totalChecks} engine answers (engines: ${citationProbe.enginesProbed.join(', ')})
 - Per engine: ${Object.entries(citationProbe.byEngine).map(([id, v]) => `${id} ${v.available ? v.pct + '%' : 'not measured'}`).join(' · ')}
-- WHO AI CITES INSTEAD (domains actually answering this category today): ${citationProbe.sources.slice(0, 10).map(s => `${s.domain} (${s.mentions})`).join(', ') || 'none captured'}
+- WHO AI CITES INSTEAD (domains actually answering this category today): ${(citationProbe.sources || []).slice(0, 10).map(s => `${s.domain} (${s.mentions})`).join(', ') || 'none captured'}
 - Buyer questions where the brand was INVISIBLE on every engine that answered (strongest whitespace evidence): ${invisibleQuestions.length ? invisibleQuestions.map(q => `"${q}"`).join(' | ') : 'none — the brand surfaced somewhere on every question'}` : '';
 
     // ── Tool 1: Topical Authority Mapper ─────────────────────────────────────
@@ -236,13 +236,16 @@ Example:
 Return ONLY the raw JSON array. No markdown. No backticks. No explanation. No other keys.` }]
     });
     let topicalMap = { gapsByCluster: [] };
+    const topicalRaw = claudeText(topicalRes);
     try {
-      // Tool 1 returns a flat array
-      const tm = extractJSON(topicalRes.content[0].text, 'array');
+      // Tool 1 returns a flat array. Sonnet 5 can lead with a thinking block,
+      // so content[0].text is undefined — claudeText collects type:text blocks.
+      const tm = extractJSON(topicalRaw, 'array');
       if (!tm) throw new Error('No JSON array found in Tool 1 response');
       const gaps = JSON.parse(tm);
+      if (!Array.isArray(gaps)) throw new Error('Tool 1 JSON was not an array');
       topicalMap = { gapsByCluster: gaps, brandClusters: [], competitorClusters: [] };
-    } catch(e) { console.log('[GEO] Tool 1 parse warn:', e.message, '| raw:', topicalRes.content[0].text.slice(0,200)); }
+    } catch(e) { console.log('[GEO] Tool 1 parse warn:', e.message, '| raw:', topicalRaw.slice(0,200)); }
     console.log(`[GEO] Tool 1 gaps: ${topicalMap.gapsByCluster.length}`);
     if (topicalMap.gapsByCluster.length > 0) console.log("[GEO] Tool 1 sample:", JSON.stringify(topicalMap.gapsByCluster.slice(0,2)));
 
@@ -275,11 +278,14 @@ Return ONLY a raw JSON array (no markdown, no explanation):
 [{"platform":"ChatGPT","topic":"string","score":80,"quickWin":true},{"platform":"Perplexity","topic":"string","score":70,"quickWin":false},{"platform":"Google AI Overviews","topic":"string","score":65,"quickWin":false},{"platform":"Gemini","topic":"string","score":60,"quickWin":false}]` }]
     });
     let geoOpportunities = [];
+    const scorerRaw = claudeText(scorerRes);
     try {
-      const go = extractJSON(scorerRes.content[0].text, 'array');
+      const go = extractJSON(scorerRaw, 'array');
       if (!go) throw new Error('No JSON array found in Tool 2 response');
-      geoOpportunities = JSON.parse(go);
-    } catch(e) { console.log('[GEO] Tool 2 parse warn:', e.message, '| raw:', scorerRes.content[0].text.slice(0,200)); }
+      const parsed = JSON.parse(go);
+      if (!Array.isArray(parsed)) throw new Error('Tool 2 JSON was not an array');
+      geoOpportunities = parsed;
+    } catch(e) { console.log('[GEO] Tool 2 parse warn:', e.message, '| raw:', scorerRaw.slice(0,200)); }
     console.log(`[GEO] Tool 2 opportunities: ${(geoOpportunities||[]).length}`);
 
     // ── Tool 3: Entity & Schema Mapper ────────────────────────────────────────
@@ -302,11 +308,14 @@ Return ONLY valid JSON array:
 [{"entity":"string","schemaTypes":["Article"],"competitorCiting":false,"priority":"high|medium|low","rationale":"string"}]` }]
     });
     let entitySchema = [];
+    const entityRaw = claudeText(entityRes);
     try {
-      const es = extractJSON(entityRes.content[0].text, 'array');
+      const es = extractJSON(entityRaw, 'array');
       if (!es) throw new Error('No JSON array found in Tool 3 response');
-      entitySchema = JSON.parse(es);
-    } catch(e) { console.log('[GEO] Tool 3 parse warn:', e.message, '| raw:', entityRes.content[0].text.slice(0,200)); }
+      const parsed = JSON.parse(es);
+      if (!Array.isArray(parsed)) throw new Error('Tool 3 JSON was not an array');
+      entitySchema = parsed;
+    } catch(e) { console.log('[GEO] Tool 3 parse warn:', e.message, '| raw:', entityRaw.slice(0,200)); }
 
     // ── NEW ARCHITECTURE: No auto-brief. Persist opportunities for user cherry-picking. ──
     // Tool 4 (Brief Generator) moved to Stage 2.1 — runs ONLY on user-selected topics.

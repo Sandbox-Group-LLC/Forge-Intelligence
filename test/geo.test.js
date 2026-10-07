@@ -1,5 +1,24 @@
 import { describe, it, expect } from 'vitest';
 import { normalizeGeoData } from '../src/server/geo.js';
+import { claudeText } from '../src/server/llm.js';
+import { extractJSON } from '../src/server/llm-json.js';
+
+describe('GEO model text', () => {
+  it('parses a JSON array when Sonnet leads with a thinking block', () => {
+    const message = {
+      content: [
+        { type: 'thinking', thinking: 'plan the gaps' },
+        { type: 'text', text: '[{"topic":"Edge AI"}]' },
+      ],
+    };
+    // Old route read content[0].text and the catch called .slice on it,
+    // which is the "Cannot read properties of undefined (reading 'slice')" the UI shows.
+    expect(message.content[0].text).toBeUndefined();
+    const raw = claudeText(message);
+    expect(() => raw.slice(0, 200)).not.toThrow();
+    expect(JSON.parse(extractJSON(raw, 'array'))).toEqual([{ topic: 'Edge AI' }]);
+  });
+});
 
 describe('normalizeGeoData', () => {
   it('buckets topical-authority priority by score and reads many score aliases', () => {
