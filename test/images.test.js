@@ -6,6 +6,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const create = vi.fn();
 vi.mock('../src/server/llm.js', () => ({
   anthropic: { messages: { create: (...a) => create(...a) } },
+  claudeText: (message) => (Array.isArray(message?.content) ? message.content : [])
+    .filter((b) => b?.type === 'text' && typeof b.text === 'string')
+    .map((b) => b.text)
+    .join('\n'),
 }));
 
 const { buildImagePrompt, buildSocialImagePrompt } = await import('../src/server/images.js');
@@ -16,6 +20,7 @@ describe('buildImagePrompt', () => {
   it('returns the model text when the response is a text block', async () => {
     create.mockResolvedValue({ content: [{ type: 'text', text: '  a quiet workshop at dawn  ' }] });
     const out = await buildImagePrompt('My Title', { brand_name: 'Acme' }, 'body');
+    expect(create.mock.calls[0][0].model).toBe('claude-haiku-5-5');
     expect(out).toBe('a quiet workshop at dawn');
   });
 

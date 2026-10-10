@@ -8,7 +8,7 @@
 // Flow: brief -> storyboardFromBrief (Claude) -> scenes[] -> synthesizeScenes
 // (OpenAI TTS, uploaded to S3 as presigned URLs) -> renderReel (kick off) ->
 // getReelProgress (poll). The route layer (routes/video.js) drives this async.
-import { anthropic } from './llm.js';
+import { anthropic, claudeText } from './llm.js';
 import { safeParseLLM } from './llm-json.js';
 
 // New AWS accounts cap Lambda concurrency at 10. Pinning a high frames-per-lambda
@@ -375,10 +375,10 @@ ${text}
 Respond with ONLY JSON: {"allowed": true or false, "reason": "<=8 words"}`;
   try {
     const msg = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001', max_tokens: 100,
+      model: 'claude-haiku-5-5', max_tokens: 100,
       messages: [{ role: 'user', content: prompt }],
     });
-    const parsed = safeParseLLM(msg?.content?.[0]?.text || '');
+    const parsed = safeParseLLM(claudeText(msg) || '');
     if (parsed && typeof parsed.allowed === 'boolean') {
       return { allowed: parsed.allowed, reason: String(parsed.reason || '').slice(0, 80) };
     }

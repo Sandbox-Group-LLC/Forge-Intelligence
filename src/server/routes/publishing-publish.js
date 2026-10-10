@@ -7,7 +7,7 @@ import express from 'express';
 import { jwtVerify } from 'jose';
 import { createHmac } from 'crypto';
 import { pool } from '../db.js';
-import { anthropic } from '../llm.js';
+import { anthropic, claudeText } from '../llm.js';
 import { clerkJWKS, verifyBrandAccess } from '../auth.js';
 import { resolveUtmParams, buildUtmString } from '../utm.js';
 import { toArticleSlug, withPublicArticleSlug } from '../../lib/article-slug.js';
@@ -109,7 +109,7 @@ router.post('/generate-post-copy', async (req, res) => {
   const { title, headings, readMinutes, articleUrl } = req.body;
   try {
     const copyRes = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-haiku-5-5',
       max_tokens: 400,
       messages: [{ role: 'user', content: `Write a LinkedIn post designed to drive link clicks to this B2B article. Goal: make the reader feel they MUST click to get the full answer. Do NOT summarize — create a curiosity gap.
 
@@ -132,7 +132,7 @@ Hard rules:
 
 Output only the post text.` }]
     });
-    const copy = stripSocialMarkdown(copyRes.content[0]?.type === 'text' ? copyRes.content[0].text.trim() : '');
+    const copy = stripSocialMarkdown(claudeText(copyRes).trim());
     res.json({ success: true, copy });
   } catch(e) {
     res.status(500).json({ error: e.message });
@@ -207,13 +207,12 @@ router.post('/publish', async (req, res) => {
         const sections = aj.sections || [];
         const firstBody = (sections[0]?.body || sections[0]?.content || '').slice(0, 300);
         const imgPromptRes = await anthropic.messages.create({
-          model: 'claude-haiku-4-5-20251001',
+          model: 'claude-haiku-5-5',
           max_tokens: 150,
           messages: [{ role: 'user', content: `Write a Flux image generation prompt for a B2B editorial hero image for this article: "${article.title}". Context: ${firstBody}. Output only the prompt, no quotes, no preamble. Professional photography style, 16:9, no text in image.` }]
         });
-        const fluxPrompt = imgPromptRes.content[0]?.type === 'text'
-          ? imgPromptRes.content[0].text.trim()
-          : `Professional B2B editorial hero image for: ${article.title}`;
+        const fluxPrompt = claudeText(imgPromptRes).trim()
+          || `Professional B2B editorial hero image for: ${article.title}`;
 
         const imageUrl = await generateHeroImage(fluxPrompt);
         await pool.query(
@@ -404,7 +403,7 @@ router.post('/publish', async (req, res) => {
                 const sectionHeadings = sections.slice(1, 5).map(s => s.heading).filter(Boolean).join(', ');
                 try {
                   const copyRes = await anthropic.messages.create({
-                    model: 'claude-haiku-4-5-20251001',
+                    model: 'claude-haiku-5-5',
                     max_tokens: 400,
                     messages: [{ role: 'user', content: `Write a LinkedIn post designed to drive link clicks to this B2B article. Goal: make the reader feel they MUST click to get the full answer. Do NOT summarize — create a curiosity gap.
 
@@ -426,7 +425,7 @@ Hard rules:
 
 Output only the post text.` }]
                   });
-                  postText = stripSocialMarkdown(copyRes.content[0]?.type === 'text' ? copyRes.content[0].text.trim() : '');
+                  postText = stripSocialMarkdown(claudeText(copyRes).trim());
                 } catch(e) {
                   postText = `${article.title}\n\n${sections.slice(0,3).map(s => s.heading).filter(Boolean).join(' · ')}\n\nRead more: ${articleUrl}`;
                 }
@@ -493,7 +492,7 @@ Output only the post text.` }]
               const sectionHeadings = sections.slice(1, 5).map(s => s.heading).filter(Boolean).join(', ');
               try {
                 const copyRes = await anthropic.messages.create({
-                  model: 'claude-haiku-4-5-20251001',
+                  model: 'claude-haiku-5-5',
                   max_tokens: 400,
                   messages: [{ role: 'user', content: `Write a LinkedIn post designed to drive link clicks to this B2B article. Goal: make the reader feel they MUST click to get the full answer. Do NOT summarize — create a curiosity gap.
 
@@ -515,7 +514,7 @@ Hard rules:
 
 Output only the post text.` }]
                 });
-                postText = stripSocialMarkdown(copyRes.content[0]?.type === 'text' ? copyRes.content[0].text.trim() : '');
+                postText = stripSocialMarkdown(claudeText(copyRes).trim());
               } catch(e) {
                 const wordCount2 = sections.reduce((acc, s) => acc + ((s.body || s.content || '').split(' ').length), 0);
                 const readMin = Math.max(2, Math.round(wordCount2 / 200));
@@ -674,11 +673,11 @@ Output only the post text.` }]
               fbMessage = `${article.title}\n\n${utmUrl}`;
               try {
                 const haiku = await anthropic.messages.create({
-                  model: 'claude-haiku-4-5-20251001',
+                  model: 'claude-haiku-5-5',
                   max_tokens: 600,
                   messages: [{ role: 'user', content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant tags. Include the URL ${utmUrl} naturally.\n\nPlain text only — Facebook does not render markdown. Do not use # for headings or **double asterisks** for emphasis.\n\nArticle title: ${article.title}\n\nArticle excerpt: ${(article.article_json?.sections?.[0]?.body || '').slice(0, 500)}` }]
                 });
-                fbMessage = stripSocialMarkdown(haiku.content[0]?.text) || fbMessage;
+                fbMessage = stripSocialMarkdown(claudeText(haiku)) || fbMessage;
               } catch(e) {
                 console.warn('[FB-ZERNIO] Haiku post copy failed:', e.message);
               }
@@ -739,11 +738,11 @@ Output only the post text.` }]
               fbMessageWf = `${article.title}\n\n${utmUrlWf}`;
               try {
                 const haiku = await anthropic.messages.create({
-                  model: 'claude-haiku-4-5-20251001',
+                  model: 'claude-haiku-5-5',
                   max_tokens: 600,
                   messages: [{ role: 'user', content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant tags. Include the URL ${utmUrlWf} naturally.\n\nPlain text only — Facebook does not render markdown. Do not use # for headings or **double asterisks** for emphasis.\n\nArticle title: ${article.title}\n\nArticle excerpt: ${(article.article_json?.sections?.[0]?.body || '').slice(0, 500)}` }]
                 });
-                fbMessageWf = stripSocialMarkdown(haiku.content[0]?.text) || fbMessageWf;
+                fbMessageWf = stripSocialMarkdown(claudeText(haiku)) || fbMessageWf;
               } catch (e) {
                 console.warn('[FB] Haiku post copy failed:', e.message);
               }
@@ -797,14 +796,14 @@ Output only the post text.` }]
             fbMessage = `${article.title}\n\n${utmUrl}`;
             try {
               const haiku = await anthropic.messages.create({
-                model: 'claude-haiku-4-5-20251001',
+                model: 'claude-haiku-5-5',
                 max_tokens: 600,
                 messages: [{
                   role: 'user',
                   content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant tags. Include the URL on its own line at the end.\n\nPlain text only — Facebook does not render markdown. Do not use # for headings or **double asterisks** for emphasis.\n\nArticle title: ${article.title}\nArticle URL: ${utmUrl}`
                 }]
               });
-              fbMessage = stripSocialMarkdown(haiku.content[0]?.text) || fbMessage;
+              fbMessage = stripSocialMarkdown(claudeText(haiku)) || fbMessage;
             } catch (e) {
               console.warn('[FB] Haiku post copy failed, using fallback:', e.message);
             }
@@ -886,11 +885,11 @@ Output only the post text.` }]
             igCaption = `${article.title}\n\n${utmUrl}`;
             try {
               const haiku = await anthropic.messages.create({
-                model: 'claude-haiku-4-5-20251001',
+                model: 'claude-haiku-5-5',
                 max_tokens: 500,
                 messages: [{ role: 'user', content: `Write an Instagram caption for a B2B company promoting this article. 2-4 short lines that create curiosity without giving away the answer, then a final line pointing readers to the link. Max 5 relevant hashtags on the last line. Instagram captions do NOT support clickable links, so mention the article is linked in bio / at the URL as plain text.\n\nPlain text only — no markdown, no # headings, no **bold**.\n\nArticle title: ${article.title}\nArticle URL: ${utmUrl}\nArticle excerpt: ${(article.article_json?.sections?.[0]?.body || '').slice(0, 500)}` }]
               });
-              igCaption = stripSocialMarkdown(haiku.content[0]?.text) || igCaption;
+              igCaption = stripSocialMarkdown(claudeText(haiku)) || igCaption;
             } catch (e) {
               console.warn('[IG-ZERNIO] Haiku caption failed, using fallback:', e.message);
             }
@@ -999,11 +998,11 @@ Output only the post text.` }]
             const sections = articleJson.sections || [];
             try {
               const copyRes = await anthropic.messages.create({
-                model: 'claude-haiku-4-5-20251001',
+                model: 'claude-haiku-5-5',
                 max_tokens: 400,
                 messages: [{ role: 'user', content: `Write a Reddit text-post body for r/${requestedSub} promoting this article. Format: 2-3 short paragraphs that introduce the core insight without giving away the answer. End with a single line: "Full breakdown: ${utmUrl}"\n\nTone: conversational, like a practitioner sharing what they learned, NOT corporate marketing. No hashtags, no emojis, no headlines, no marketing-speak.\n\nArticle title: ${article.title}\nKey sections: ${sections.slice(1,4).map(s => s.heading).filter(Boolean).join(', ')}\n\nOutput only the post body, plain text.` }]
               });
-              redditText = copyRes.content[0]?.type === 'text' ? copyRes.content[0].text.trim() : '';
+              redditText = claudeText(copyRes).trim();
             } catch(e) {
               console.warn('[REDDIT-ZERNIO] Haiku post copy failed:', e.message);
               redditText = `${article.title}\n\n${utmUrl}`;

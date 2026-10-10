@@ -46,7 +46,7 @@ import { truncateStr, truncateAtSentence, stripEmDashes, finalizeArticleForStora
 import { clerkJWKS, SUPER_ADMIN_IDS, verifyBrandAccess, requireAuth, requireApiKeyScope, softAuth, mcpAuth, hashApiKey, lookupApiKey } from './src/server/auth.js';
 import { callZernio, zernioPublish, getOrCreateZernioProfile, zernioGuard } from './src/server/zernio.js';
 import { forgeScrape, getBrandPageContent, discoverSubpages, _forgeScrapeRateLimited, FORGE_SCRAPE_RATE_PER_MIN } from './src/server/scrape.js';
-import { anthropic, dateContext, streamTextWithFallback, ARTICLE_WRITER_MODELS } from './src/server/llm.js';
+import { anthropic, claudeText, dateContext, streamTextWithFallback, ARTICLE_WRITER_MODELS } from './src/server/llm.js';
 import { CITATION_ENGINES, isCited, findCitedSection, urlHasDomain, coldScan, extractDomain } from './src/server/geoProbe.js';
 import { installLogCapture, logBuffer, logSSEClients, errorAggregates } from './src/server/logging.js';
 import { recordAudit } from './src/server/audit.js';
@@ -1115,11 +1115,11 @@ app.post('/api/articles/:brandSlug/:articleSlug/ensure-image', async (req, res) 
     const sections = aj.sections || [];
     const firstBody = (sections[0]?.body || sections[0]?.content || '').slice(0, 300);
     const imgPromptRes = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-haiku-5-5',
       max_tokens: 150,
       messages: [{ role: 'user', content: `Write a Flux image generation prompt for a B2B editorial hero image for this article: "${article.title}". Context: ${firstBody}. Output only the prompt, no quotes, no preamble. Professional photography style, 16:9, no text in image.` }]
     });
-    const fluxPrompt = imgPromptRes.content[0]?.type === 'text' ? imgPromptRes.content[0].text.trim() : `Professional B2B editorial hero image for article about ${article.title}`;
+    const fluxPrompt = claudeText(imgPromptRes).trim() || `Professional B2B editorial hero image for article about ${article.title}`;
 
     const imageUrl = await generateHeroImage(fluxPrompt);
 
@@ -2260,11 +2260,11 @@ ARTICLE HTML (truncated to 50000 chars, scripts/styles/svg stripped):
 ${cleaned}`;
 
       const msg = await anthropic.messages.create({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-haiku-5-5',
         max_tokens: 1500,
         messages: [{ role: 'user', content: prompt }]
       });
-      const raw = msg.content[0]?.text || '';
+      const raw = claudeText(msg);
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) throw new Error('Claude returned no JSON');
       return JSON.parse(jsonMatch[0]);
@@ -2296,11 +2296,11 @@ CATALOG HTML (truncated to 50000 chars, scripts/styles/svg stripped):
 ${cleaned}`;
 
       const msg = await anthropic.messages.create({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-haiku-5-5',
         max_tokens: 800,
         messages: [{ role: 'user', content: prompt }]
       });
-      const raw = msg.content[0]?.text || '';
+      const raw = claudeText(msg);
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) throw new Error('Claude returned no JSON');
       return JSON.parse(jsonMatch[0]);
@@ -2559,10 +2559,10 @@ Return ONLY valid JSON, no explanation:
     const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 4096, messages: [{ role: 'user', content: prompt }] })
+      body: JSON.stringify({ model: 'claude-haiku-5-5', max_tokens: 4096, messages: [{ role: 'user', content: prompt }] })
     });
     const aiData = await aiRes.json();
-    const rawText = aiData.content?.[0]?.text || '{}';
+    const rawText = claudeText(aiData) || '{}';
     const clean = rawText.replace(/```json|```/g, '').trim();
     let extracted = { rules: [] };
     try { extracted = safeParseLLM(clean, 'object', 'brain-distill'); } catch(e) { console.error('[BRAIN-DISTILL] JSON parse error:', e.message, rawText.slice(0, 200)); }
@@ -10271,13 +10271,14 @@ async function runDecayMonitoring() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
                 body: JSON.stringify({
-                  model: 'claude-haiku-4-5-20251001',
+                  model: 'claude-haiku-5-5',
                   max_tokens: 120,
                   messages: [{ role: 'user', content: `Article "${row.title || 'Untitled'}" on ${row.channel} has decayed ${Math.round(decayScore * 100)}% from peak engagement. In one sentence, recommend the best action: refresh content, change headline, republish on different channel, or add internal links. Be specific and actionable.` }]
                 })
               });
               const aiData = await aiRes.json();
-              if (aiData.content?.[0]?.text) recommendedAction = aiData.content[0].text.trim();
+              const actionText = claudeText(aiData).trim();
+              if (actionText) recommendedAction = actionText;
             } catch(e) { /* use default */ }
 
             // Upsert decay alert
