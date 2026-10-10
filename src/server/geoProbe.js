@@ -5,16 +5,21 @@
 // into geo_citations across every configured engine.
 //
 // Perplexity Sonar and OpenAI web search were already wired inline in server.js;
-// this module unifies them with two new engines — Google Gemini (Search grounding)
-// and Google AI Overviews (via SerpAPI) — so all four are measured identically.
+// this module unifies them with Google Gemini (Search grounding), Google AI
+// Overviews (via ValueSERP), and Bing Copilot (via Bright Data) — so all five
+// are measured identically.
 // Each engine is gated by its own API key; a missing key disables that engine.
 
 const PROBE_TIMEOUT_MS = 30000;
 
 // Default fetch with an abort timeout. The dashboard route passes its own
-// fetchWithTimeout(url, opts, ms); both share this signature.
-function defaultFetch(url, opts = {}) {
-  return fetch(url, { ...opts, signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
+// fetchWithTimeout(url, opts, ms); both share this signature. A caller-supplied
+// signal wins so a slow engine (Copilot) can wait longer than the 30s default.
+function defaultFetch(url, opts = {}, ms = PROBE_TIMEOUT_MS) {
+  const signal = opts.signal || AbortSignal.timeout(ms);
+  const rest = { ...opts };
+  delete rest.signal;
+  return fetch(url, { ...rest, signal });
 }
 
 // ── Per-engine probes — each returns { text, urls } ──────────────────────────
@@ -121,6 +126,44 @@ export async function probeAIOverviews(query, doFetch = defaultFetch) {
   return { text, urls };
 }
 
+// Bright Data Bing Copilot Search scraper. Same account as Unlocker
+// (BRIGHTDATA_API_KEY). Sync scrape returns answer_text + sources.
+const COPILOT_DATASET_ID = 'gd_m7di5jy6s9geokz8w';
+
+export async function probeCopilot(query, doFetch = defaultFetch) {
+  const key = process.env.BRIGHTDATA_API_KEY;
+  if (!key) throw new Error('copilot: BRIGHTDATA_API_KEY missing');
+  const res = await doFetch(
+    `https://api.brightdata.com/datasets/v3/scrape?dataset_id=${COPILOT_DATASET_ID}&format=json`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify([{ url: 'https://copilot.microsoft.com/chats', prompt: query, index: 1 }]),
+      signal: AbortSignal.timeout(120000),
+    },
+    120000,
+  );
+  const data = await res.json().catch(() => null);
+  if (res.status === 202 || (data?.snapshot_id && !data?.answer_text && !Array.isArray(data))) {
+    throw new Error(`copilot ${res.status}: scraper still running (${data?.snapshot_id || 'no snapshot'})`);
+  }
+  if (!res.ok) {
+    const msg = (data && (data.error || data.message)) || res.statusText;
+    throw new Error(`copilot ${res.status}: ${msg}`);
+  }
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row || typeof row !== 'object') throw new Error('copilot: empty scraper response');
+  const text = String(row.answer_text || row.answer_text_markdown || '').trim();
+  const sources = Array.isArray(row.sources) ? row.sources : [];
+  const urls = [...new Set(sources.flatMap(s => {
+    if (typeof s === 'string') return [s];
+    if (s && typeof s === 'object') return [s.url, s.link, s.href, s.source_url].filter(Boolean);
+    return [];
+  }).concat(collectUrls(sources)))];
+  if (!text && urls.length === 0) throw new Error('copilot: empty answer');
+  return { text, urls };
+}
+
 // Engine registry. `id` is the value stored in geo_citations.engine and rendered
 // as the engine badge in the dashboard. Order is the display order.
 export const CITATION_ENGINES = [
@@ -128,6 +171,7 @@ export const CITATION_ENGINES = [
   { id: 'chatgpt',     enabled: () => !!process.env.OPENAI_API_KEY,     probe: probeOpenAI },
   { id: 'gemini',      enabled: () => !!process.env.GEMINI_API_KEY,     probe: probeGemini },
   { id: 'aiOverviews', enabled: () => !!(process.env.VALUESERP_API_KEY || process.env.SERPAPI_KEY), probe: probeAIOverviews },
+  { id: 'copilot',     enabled: () => !!process.env.BRIGHTDATA_API_KEY, probe: probeCopilot },
 ];
 
 // ── Cold-prospect scan ───────────────────────────────────────────────────────
@@ -176,7 +220,7 @@ async function mapWithConcurrency(items, limit, fn) {
 export async function coldScan({ brandName, brandDomain, questions }) {
   const engines = CITATION_ENGINES.filter(e => e.enabled());
   if (!engines.length) {
-    throw new Error('No GEO engines configured — set at least one of PERPLEXITY_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, SERPAPI_KEY. Refusing to emit modeled scores.');
+    throw new Error('No GEO engines configured — set at least one of PERPLEXITY_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, VALUESERP_API_KEY, SERPAPI_KEY, BRIGHTDATA_API_KEY. Refusing to emit modeled scores.');
   }
   const qs = (questions || []).filter(q => typeof q === 'string' && q.trim());
   // per engine: checks, cited(=visible: linked or mentioned), linked(=domain cited)

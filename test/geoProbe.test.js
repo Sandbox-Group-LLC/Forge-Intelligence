@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { urlHasDomain, isCited, findCitedSection, CITATION_ENGINES, extractDomain, aggregateSources, brandTokens, scanVisibility, probeGemini, probePerplexity, probeAIOverviews } from '../src/server/geoProbe.js';
+import { urlHasDomain, isCited, findCitedSection, CITATION_ENGINES, extractDomain, aggregateSources, brandTokens, scanVisibility, probeGemini, probePerplexity, probeAIOverviews, probeCopilot } from '../src/server/geoProbe.js';
 
 describe('probeAIOverviews — ValueSERP branch', () => {
   const fakeRes = (status, body) => ({ ok: status >= 200 && status < 300, status, statusText: 'x', json: async () => body });
@@ -178,9 +178,36 @@ describe('scanVisibility', () => {
   });
 });
 
+describe('probeCopilot', () => {
+  const fakeRes = (status, body) => ({ ok: status >= 200 && status < 300, status, statusText: 'x', json: async () => body });
+  it('reads the Copilot answer and source links from the Bright Data scraper', async () => {
+    process.env.BRIGHTDATA_API_KEY = 'bd-test';
+    try {
+      let called = '';
+      const out = await probeCopilot('who owns the category', async (url, opts) => {
+        called = url;
+        const body = JSON.parse(opts.body);
+        expect(body[0].prompt).toBe('who owns the category');
+        expect(body[0].url).toBe('https://copilot.microsoft.com/chats');
+        return fakeRes(200, [{ answer_text: 'Acme is cited for this.', sources: [{ url: 'https://acme.com/post' }, 'https://example.com'] }]);
+      });
+      expect(called).toContain('dataset_id=gd_m7di5jy6s9geokz8w');
+      expect(out.text).toContain('Acme');
+      expect(out.urls).toEqual(['https://acme.com/post', 'https://example.com']);
+    } finally { delete process.env.BRIGHTDATA_API_KEY; }
+  });
+  it('throws when the scraper is still running so the engine is excluded', async () => {
+    process.env.BRIGHTDATA_API_KEY = 'bd-test';
+    try {
+      await expect(probeCopilot('q', async () => fakeRes(202, { snapshot_id: 'sd_123' })))
+        .rejects.toThrow(/copilot 202/);
+    } finally { delete process.env.BRIGHTDATA_API_KEY; }
+  });
+});
+
 describe('CITATION_ENGINES', () => {
-  it('registers all four engines in display order', () => {
-    expect(CITATION_ENGINES.map(e => e.id)).toEqual(['perplexity', 'chatgpt', 'gemini', 'aiOverviews']);
+  it('registers all five engines in display order', () => {
+    expect(CITATION_ENGINES.map(e => e.id)).toEqual(['perplexity', 'chatgpt', 'gemini', 'aiOverviews', 'copilot']);
   });
   it('each engine has an enabled() gate and a probe() fn', () => {
     for (const e of CITATION_ENGINES) {
