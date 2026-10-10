@@ -5,7 +5,7 @@
 //   - buildSocialImagePrompt / generateSocialImage — social post, 1:1
 // Deps: the shared `anthropic` client (llm.js) + fetch/process.env (FAL_API_KEY).
 // HERO_IMAGE_NEGATIVE_PROMPT is shared by both generators and stays private.
-import { anthropic } from './llm.js';
+import { anthropic, claudeText } from './llm.js';
 
 const HERO_IMAGE_NEGATIVE_PROMPT = "airbrushed skin, smooth skin, plastic skin, waxy skin, overproduced, HDR, oversaturated, hyperreal, AI art, digital painting, 3D render, cartoon, illustration, distorted hands, extra fingers, malformed fingers, mutated anatomy, stock photo, generic corporate stock image, blurry faces in background blobbing together, text artifacts";
 
@@ -122,14 +122,13 @@ Rules:
 - Output only the prompt. No quotes, no preamble, no explanation.`;
 
   const res = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
+    model: 'claude-haiku-5-5',
     max_tokens: 200,
     messages: [{ role: 'user', content: imagePromptInstruction }]
   });
 
-  return res.content[0]?.type === 'text'
-    ? res.content[0].text.trim()
-    : `A candid documentary moment capturing the world of ${title}, natural available light, shallow depth of field`;
+  return claudeText(res).trim()
+    || `A candid documentary moment capturing the world of ${title}, natural available light, shallow depth of field`;
 }
 
 export async function buildSocialImagePrompt(post, voiceProfile = {}, brandName = '') {
@@ -164,13 +163,12 @@ Rules:
 
   try {
     const res = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-haiku-5-5',
       max_tokens: 200,
       messages: [{ role: 'user', content: instruction }]
     });
-    return res.content[0]?.type === 'text'
-      ? res.content[0].text.trim()
-      : `A clean square composition with a single focal subject illuminated by natural light, related to ${hint}, scroll-stopping social composition`;
+    return claudeText(res).trim()
+      || `A clean square composition with a single focal subject illuminated by natural light, related to ${hint}, scroll-stopping social composition`;
   } catch (e) {
     console.error('[SOCIAL-IMG-PROMPT]', e.message);
     return `A clean square composition with a single focal subject illuminated by natural light, related to ${hint}, scroll-stopping social composition`;

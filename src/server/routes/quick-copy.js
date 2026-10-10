@@ -7,7 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { pool } from '../db.js';
-import { anthropic, dateContext } from '../llm.js';
+import { anthropic, claudeText, dateContext } from '../llm.js';
 import { safeParseLLM } from '../llm-json.js';
 import { verifyBrandAccess } from '../auth.js';
 import { activeStreams } from '../streams.js';
@@ -596,7 +596,7 @@ router.post('/:id/resolve-flag', async (req, res) => {
       : defaultSoften;
 
     const msg = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-haiku-5-5',
       max_tokens: 512,
       system: `You are a precision editor for short brand copy.
 Rewrite ONLY the selected excerpt per the instruction.
@@ -610,7 +610,7 @@ Voice hint: ${trimTo(brain.voiceProfile?.summary || brain.voiceProfile || {}, 40
       }],
     });
 
-    const rewritten = (msg.content?.[0]?.text || '').trim();
+    const rewritten = claudeText(msg).trim();
     if (!rewritten) return res.status(500).json({ success: false, error: 'Empty rewrite from model' });
 
     const nextBody = applyExcerptRewrite(body, flag.excerpt, rewritten);

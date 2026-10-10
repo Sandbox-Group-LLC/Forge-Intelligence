@@ -8,7 +8,7 @@
 // Pure move: bodies verbatim, only registration lines changed.
 import express from 'express';
 import { pool } from '../db.js';
-import { anthropic } from '../llm.js';
+import { anthropic, claudeText } from '../llm.js';
 import { safeParseLLM } from '../llm-json.js';
 import { requireAuth, requireApiKeyScope } from '../auth.js';
 import { finalizeArticleForStorage } from '../text.js';
@@ -111,10 +111,10 @@ Evaluate the user's topic against this brand's performance data and return ONLY 
     const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 400, messages: [{ role: 'user', content: prompt }] })
+      body: JSON.stringify({ model: 'claude-haiku-5-5', max_tokens: 400, messages: [{ role: 'user', content: prompt }] })
     });
     const aiData = await aiRes.json();
-    const raw = aiData.content?.[0]?.text || '{}';
+    const raw = claudeText(aiData) || '{}';
     const clean = raw.replace(/```json|```/g, '').trim();
     const parsed = safeParseLLM(clean, 'object', 'topic-check');
     // Guard: if Anthropic returned an error, parsed will be empty — don't send a blank card

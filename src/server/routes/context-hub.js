@@ -576,7 +576,7 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
           .filter(c => c.markdown.length > 300);
         if (crawled.length) {
           const compRes = await anthropic.messages.create({
-            model: 'claude-haiku-4-5-20251001',
+            model: 'claude-haiku-5-5',
             max_tokens: 2000,
             messages: [{ role: 'user', content: `For each competitor website below, extract what they actually publish and how they position themselves. Base your answer ONLY on the provided content — do not use prior knowledge of these companies.
 
@@ -585,7 +585,7 @@ ${crawled.map(c => `=== ${c.url} ===\n${c.markdown.slice(0, 5000)}`).join('\n\n'
 Return ONLY a raw JSON array (no markdown), one object per site:
 [{"url":"string","positioning":"one sentence — what they sell and to whom, from their own copy","topicsCovered":["the content/messaging topics this site demonstrably covers — max 12"],"signatureClaims":["up to 3 specific claims or differentiators stated on the site"]}]` }]
           });
-          const parsed = safeParseLLM(compRes.content[0].text, 'array', 'context-hub-competitors');
+          const parsed = safeParseLLM(claudeText(compRes), 'array', 'context-hub-competitors');
           if (Array.isArray(parsed) && parsed.length) {
             competitorAnalysis = parsed;
             console.log(`[Context Hub] Tool 1.6: analyzed ${competitorAnalysis.length}/${crawlTargets.length} competitor site(s)`);

@@ -8,7 +8,7 @@ import express from 'express';
 import { jwtVerify } from 'jose';
 import { timingSafeEqual } from 'crypto';
 import { pool } from '../db.js';
-import { anthropic } from '../llm.js';
+import { anthropic, claudeText } from '../llm.js';
 import { safeParseLLM } from '../llm-json.js';
 import { requireAuth, verifyBrandAccess, clerkJWKS } from '../auth.js';
 import { callZernio } from '../zernio.js';
@@ -175,11 +175,11 @@ Extract 3-6 patterns and 2-4 mistakes. Be specific and actionable. Focus on cont
     const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 3000, messages: [{ role: 'user', content: prompt }] })
+      body: JSON.stringify({ model: 'claude-haiku-5-5', max_tokens: 3000, messages: [{ role: 'user', content: prompt }] })
     });
 
     const aiData = await aiRes.json();
-    const rawText = aiData.content?.[0]?.text || '{}';
+    const rawText = claudeText(aiData) || '{}';
     let extracted = { patterns: [], mistakes: [] };
     try {
       const clean = rawText.replace(/```json|```/g, '').trim();
