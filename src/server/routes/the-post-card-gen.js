@@ -16,7 +16,7 @@ import {
 const router = express.Router();
 const PROMPT_VERSION = 'the-post-card-gen-v2';
 // inventory: POST /api/external/the-post/card-gen
-const MODEL = process.env.THE_POST_CARD_GEN_MODEL || 'claude-haiku-4-5-20251001';
+const MODEL = process.env.THE_POST_CARD_GEN_MODEL || 'claude-haiku-5-5';
 
 function serviceTokenOk(req) {
   const expected =
@@ -710,7 +710,7 @@ Evaluate the topic for brand + event fit. Return ONLY JSON:
 }`;
 
     const msg = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-haiku-5-5',
       max_tokens: 450,
       temperature: 0.2,
       messages: [{ role: 'user', content: prompt }],
@@ -748,7 +748,7 @@ Evaluate the topic for brand + event fit. Return ONLY JSON:
       reason: parsed.reason || '',
       reframe: parsed.reframe || null,
       reframeRationale: parsed.reframeRationale || null,
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-haiku-5-5',
     });
   } catch (e) {
     console.error('[the-post/topic-check]', e.message);
@@ -1418,7 +1418,7 @@ router.put('/factual-ground', async (req, res) => {
 // fix to one section body and touches nothing else. Same UX as FI's own
 // apply-suggestion flow.
 const APPLY_SUGGESTION_MODEL =
-  process.env.THE_POST_APPLY_SUGGESTION_MODEL || 'claude-haiku-4-5-20251001';
+  process.env.THE_POST_APPLY_SUGGESTION_MODEL || 'claude-haiku-5-5';
 
 router.post('/apply-suggestion', async (req, res) => {
   const auth = serviceTokenOk(req);
