@@ -7,6 +7,7 @@ const ENGINES: { id: string; label: string }[] = [
   { id: 'chatgpt', label: 'ChatGPT' },
   { id: 'gemini', label: 'Gemini' },
   { id: 'aiOverviews', label: 'Google AI Overviews' },
+  { id: 'copilot', label: 'Copilot' },
 ];
 
 // Generic platforms vs. brands/vendors — a light, honest split for the
@@ -126,7 +127,7 @@ export default function AiVisibilityScanPage() {
               />
               <button className="avs-btn" type="submit" disabled={!url.trim()}>Run free scan</button>
             </form>
-            <div className="avs-formnote">Free · no signup · ~60 seconds · measured across all four engines</div>
+            <div className="avs-formnote">Free · no signup · ~60 seconds · measured across all five engines</div>
             {phase === 'error' && <div className="avs-err">{error}</div>}
           </div>
         )}
@@ -135,7 +136,7 @@ export default function AiVisibilityScanPage() {
           <div className="avs-loading">
             <div className="avs-spinner" />
             <div className="step">{LOADING_STEPS[stepIdx]}</div>
-            <div className="sub">Running real queries against four AI engines. This takes up to a minute.</div>
+            <div className="sub">Running real queries against five AI engines. This takes up to a minute.</div>
           </div>
         )}
 
@@ -230,7 +231,7 @@ export default function AiVisibilityScanPage() {
                 <div className="avs-cta">
                   <div>
                     <div className="t">Turn these answers in your favor.</div>
-                    <div className="s">Forge maps every buyer question to the content that earns the AI citation, and tracks your score weekly across all four engines.</div>
+                    <div className="s">Forge maps every buyer question to the content that earns the AI citation, and tracks your score weekly across all five engines.</div>
                   </div>
                   <a href="/?utm_source=ai-visibility-scan">Get your GEO plan →</a>
                 </div>

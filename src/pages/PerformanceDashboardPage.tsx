@@ -62,7 +62,7 @@ const CHANNEL_COLORS: Record<string, string> = {
 
 // Friendly display names for the GEO citation engines (stored ids are terse).
 const ENGINE_LABELS: Record<string, string> = {
-  perplexity: 'Perplexity', chatgpt: 'ChatGPT', gemini: 'Gemini', aiOverviews: 'AI Overviews',
+  perplexity: 'Perplexity', chatgpt: 'ChatGPT', gemini: 'Gemini', aiOverviews: 'AI Overviews', copilot: 'Copilot',
 };
 
 function fmt(n: number): string {
@@ -715,7 +715,7 @@ export default function PerformanceDashboardPage() {
                 <div className="perf-geo-header">
                   <div>
                     <h2 className="perf-section-title">GEO Citation Tracker</h2>
-                    <p className="perf-section-sub">Track when your content is cited by ChatGPT, Perplexity, Gemini, and Google AI Overviews. Results write to Brain patterns.</p>
+                    <p className="perf-section-sub">Track when your content is cited by ChatGPT, Perplexity, Gemini, Google AI Overviews, and Copilot. Results write to Brain patterns.</p>
                   </div>
                   <div className="perf-btn-group">
                   <button className="perf-sync-btn perf-geo-track-btn" onClick={handleGeoTrack} disabled={geoTracking || !brandProfileId}>
@@ -725,7 +725,7 @@ export default function PerformanceDashboardPage() {
                     </svg>
                     {geoTracking ? 'Tracking...' : 'Run Citation Check'}
                   </button>
-                  <span className="perf-btn-hint">Checks all four AI engines (ChatGPT, Perplexity, Gemini, Google AI Overviews) for citations of your articles — runs in background, takes ~30s</span>
+                  <span className="perf-btn-hint">Checks all five AI engines (ChatGPT, Perplexity, Gemini, Google AI Overviews, Copilot) for citations of your articles — runs in background, takes ~30s</span>
                   </div>
                 </div>
 
@@ -740,7 +740,7 @@ export default function PerformanceDashboardPage() {
                   <div className="perf-geo-empty">
                     <div className="perf-geo-empty-icon">◈</div>
                     <p className="perf-geo-empty-title">No citation data yet</p>
-                    <p className="perf-geo-empty-sub">Hit Run Citation Check above — Forge queries ChatGPT, Perplexity, Gemini, and Google AI Overviews with your article topics and tells you which engines are citing your content.</p>
+                    <p className="perf-geo-empty-sub">Hit Run Citation Check above — Forge queries ChatGPT, Perplexity, Gemini, Google AI Overviews, and Copilot with your article topics and tells you which engines are citing your content.</p>
                   </div>
                 )}
 

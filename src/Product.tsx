@@ -107,7 +107,7 @@ const included = [
   'Brand Intelligence Profile',
   'Persona Pain Point Mapping',
   'Competitor Site Crawl',
-  'Live AI Citation Probe (4 engines)',
+  'Live AI Citation Probe (5 engines)',
   'Competitive Gap Analysis',
   'Brand Intelligence (6 dimensions)',
   'GEO Strategy Brief',
