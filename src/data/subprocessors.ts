@@ -20,7 +20,7 @@ export interface SubProcessor {
   customerDirected?: boolean; // customer-connected integration vs. Forge sub-processor
 }
 
-export const SUBPROCESSORS_UPDATED = '2026-06-13';
+export const SUBPROCESSORS_UPDATED = '2026-10-10';
 
 // Forge-engaged sub-processors (deliver the core service).
 export const subProcessors: SubProcessor[] = [
@@ -30,7 +30,7 @@ export const subProcessors: SubProcessor[] = [
   { name: 'Anthropic', url: 'anthropic.com', purpose: 'LLM inference (Claude) for all AI-powered stages. API terms prohibit using inputs for model training.', dataCategories: 'Brand voice, personas, competitive analysis, brain data, article content', region: 'United States' },
   { name: 'Perplexity AI', url: 'perplexity.ai', purpose: 'Web-sourced market research, competitor analysis, source discovery, and AI-visibility probing (Sonar).', dataCategories: 'Brand/competitor URLs, market-context queries, brand-free buyer questions', region: 'United States' },
   { name: 'Jina Reader', url: 'jina.ai', purpose: 'Primary web-content extraction for brand and competitor site crawls.', dataCategories: 'Publicly available page URLs', region: 'Global' },
-  { name: 'Bright Data', url: 'brightdata.com', purpose: 'Fallback web-content extraction (Web Unlocker / Scraping Browser) when a public page cannot be read directly.', dataCategories: 'Publicly available page URLs', region: 'Global' },
+  { name: 'Bright Data', url: 'brightdata.com', purpose: 'Fallback web-content extraction (Web Unlocker / Scraping Browser) when a public page cannot be read directly, and Bing Copilot answers for AI-visibility probing.', dataCategories: 'Publicly available page URLs; brand-free buyer questions sent to Copilot', region: 'Global' },
   { name: 'OpenAI', url: 'openai.com', purpose: 'AI-visibility probing only — measuring whether ChatGPT cites a brand. No brand content or personal data is sent.', dataCategories: 'Brand-free, category-level buyer questions', region: 'United States' },
   { name: 'Google (Gemini API)', url: 'ai.google.dev', purpose: 'AI-visibility probing only, via Gemini with Search grounding.', dataCategories: 'Brand-free buyer questions', region: 'United States / Global' },
   { name: 'ValueSERP / SerpAPI', url: 'valueserp.com', purpose: 'SERP data providers used to read Google AI Overviews for visibility measurement.', dataCategories: 'Buyer-question search queries', region: 'United States' },
