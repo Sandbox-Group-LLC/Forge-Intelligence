@@ -110,7 +110,7 @@ router.post('/generate-post-copy', async (req, res) => {
   try {
     const copyRes = await anthropic.messages.create({
       model: 'claude-haiku-5-5',
-      max_tokens: 400,
+      max_tokens: 2000,
       messages: [{ role: 'user', content: `Write a LinkedIn post designed to drive link clicks to this B2B article. Goal: make the reader feel they MUST click to get the full answer. Do NOT summarize — create a curiosity gap.
 
 Article title: "${title}"
@@ -208,7 +208,7 @@ router.post('/publish', async (req, res) => {
         const firstBody = (sections[0]?.body || sections[0]?.content || '').slice(0, 300);
         const imgPromptRes = await anthropic.messages.create({
           model: 'claude-haiku-5-5',
-          max_tokens: 150,
+          max_tokens: 2000,
           messages: [{ role: 'user', content: `Write a Flux image generation prompt for a B2B editorial hero image for this article: "${article.title}". Context: ${firstBody}. Output only the prompt, no quotes, no preamble. Professional photography style, 16:9, no text in image.` }]
         });
         const fluxPrompt = claudeText(imgPromptRes).trim()
@@ -404,7 +404,7 @@ router.post('/publish', async (req, res) => {
                 try {
                   const copyRes = await anthropic.messages.create({
                     model: 'claude-haiku-5-5',
-                    max_tokens: 1200,
+                    max_tokens: 2000,
                     thinking: { type: 'disabled' },
                     output_config: { effort: 'low' },
                     messages: [{ role: 'user', content: `Write a LinkedIn post designed to drive link clicks to this B2B article. Goal: make the reader feel they MUST click to get the full answer. Do NOT summarize — create a curiosity gap.
@@ -500,7 +500,7 @@ Output only the post text.` }]
               try {
                 const copyRes = await anthropic.messages.create({
                   model: 'claude-haiku-5-5',
-                  max_tokens: 1200,
+                  max_tokens: 2000,
                   thinking: { type: 'disabled' },
                   output_config: { effort: 'low' },
                   messages: [{ role: 'user', content: `Write a LinkedIn post designed to drive link clicks to this B2B article. Goal: make the reader feel they MUST click to get the full answer. Do NOT summarize — create a curiosity gap.
@@ -684,7 +684,7 @@ Output only the post text.` }]
               try {
                 const haiku = await anthropic.messages.create({
                   model: 'claude-haiku-5-5',
-                  max_tokens: 600,
+                  max_tokens: 2000,
                   messages: [{ role: 'user', content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant tags. Include the URL ${utmUrl} naturally.\n\nPlain text only — Facebook does not render markdown. Do not use # for headings or **double asterisks** for emphasis.\n\nArticle title: ${article.title}\n\nArticle excerpt: ${(article.article_json?.sections?.[0]?.body || '').slice(0, 500)}` }]
                 });
                 fbMessage = stripSocialMarkdown(claudeText(haiku)) || fbMessage;
@@ -749,7 +749,7 @@ Output only the post text.` }]
               try {
                 const haiku = await anthropic.messages.create({
                   model: 'claude-haiku-5-5',
-                  max_tokens: 600,
+                  max_tokens: 2000,
                   messages: [{ role: 'user', content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant tags. Include the URL ${utmUrlWf} naturally.\n\nPlain text only — Facebook does not render markdown. Do not use # for headings or **double asterisks** for emphasis.\n\nArticle title: ${article.title}\n\nArticle excerpt: ${(article.article_json?.sections?.[0]?.body || '').slice(0, 500)}` }]
                 });
                 fbMessageWf = stripSocialMarkdown(claudeText(haiku)) || fbMessageWf;
@@ -807,7 +807,7 @@ Output only the post text.` }]
             try {
               const haiku = await anthropic.messages.create({
                 model: 'claude-haiku-5-5',
-                max_tokens: 600,
+                max_tokens: 2000,
                 messages: [{
                   role: 'user',
                   content: `Write a compelling Facebook post for a company page promoting this article. 2–3 short paragraphs. No hashtag spam — max 3 relevant tags. Include the URL on its own line at the end.\n\nPlain text only — Facebook does not render markdown. Do not use # for headings or **double asterisks** for emphasis.\n\nArticle title: ${article.title}\nArticle URL: ${utmUrl}`
@@ -896,7 +896,7 @@ Output only the post text.` }]
             try {
               const haiku = await anthropic.messages.create({
                 model: 'claude-haiku-5-5',
-                max_tokens: 500,
+                max_tokens: 2000,
                 messages: [{ role: 'user', content: `Write an Instagram caption for a B2B company promoting this article. 2-4 short lines that create curiosity without giving away the answer, then a final line pointing readers to the link. Max 5 relevant hashtags on the last line. Instagram captions do NOT support clickable links, so mention the article is linked in bio / at the URL as plain text.\n\nPlain text only — no markdown, no # headings, no **bold**.\n\nArticle title: ${article.title}\nArticle URL: ${utmUrl}\nArticle excerpt: ${(article.article_json?.sections?.[0]?.body || '').slice(0, 500)}` }]
               });
               igCaption = stripSocialMarkdown(claudeText(haiku)) || igCaption;
@@ -1009,7 +1009,7 @@ Output only the post text.` }]
             try {
               const copyRes = await anthropic.messages.create({
                 model: 'claude-haiku-5-5',
-                max_tokens: 400,
+                max_tokens: 2000,
                 messages: [{ role: 'user', content: `Write a Reddit text-post body for r/${requestedSub} promoting this article. Format: 2-3 short paragraphs that introduce the core insight without giving away the answer. End with a single line: "Full breakdown: ${utmUrl}"\n\nTone: conversational, like a practitioner sharing what they learned, NOT corporate marketing. No hashtags, no emojis, no headlines, no marketing-speak.\n\nArticle title: ${article.title}\nKey sections: ${sections.slice(1,4).map(s => s.heading).filter(Boolean).join(', ')}\n\nOutput only the post body, plain text.` }]
               });
               redditText = claudeText(copyRes).trim();

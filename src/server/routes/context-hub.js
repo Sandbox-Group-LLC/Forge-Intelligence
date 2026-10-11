@@ -577,7 +577,7 @@ Content themes in this market: ${(sonarJson.contentThemes || []).join(', ')}`;
         if (crawled.length) {
           const compRes = await anthropic.messages.create({
             model: 'claude-haiku-5-5',
-            max_tokens: 2000,
+            max_tokens: 4000,
             messages: [{ role: 'user', content: `For each competitor website below, extract what they actually publish and how they position themselves. Base your answer ONLY on the provided content — do not use prior knowledge of these companies.
 
 ${crawled.map(c => `=== ${c.url} ===\n${c.markdown.slice(0, 5000)}`).join('\n\n')}
