@@ -404,7 +404,9 @@ router.post('/publish', async (req, res) => {
                 try {
                   const copyRes = await anthropic.messages.create({
                     model: 'claude-haiku-5-5',
-                    max_tokens: 400,
+                    max_tokens: 1200,
+                    thinking: { type: 'disabled' },
+                    output_config: { effort: 'low' },
                     messages: [{ role: 'user', content: `Write a LinkedIn post designed to drive link clicks to this B2B article. Goal: make the reader feel they MUST click to get the full answer. Do NOT summarize — create a curiosity gap.
 
 Article title: "${article.title}"
@@ -426,6 +428,7 @@ Hard rules:
 Output only the post text.` }]
                   });
                   postText = stripSocialMarkdown(claudeText(copyRes).trim());
+                  if (!postText) throw new Error('Haiku returned no LinkedIn copy');
                 } catch(e) {
                   postText = `${article.title}\n\n${sections.slice(0,3).map(s => s.heading).filter(Boolean).join(' · ')}\n\nRead more: ${articleUrl}`;
                 }
@@ -463,20 +466,24 @@ Output only the post text.` }]
               ).catch(e => console.error('[PUBLISH] zernio publish_log insert failed:', e.message));
               continue;  // skip the legacy direct-API code below
             } catch (zerr) {
-              // Zernio failed — record the error and fall through to legacy path so we have a fallback.
-              // If creds.zernioOnly is set, throw instead of falling through.
-              if (creds.zernioOnly) {
-                throw zerr;
-              }
+              if (creds.zernioOnly) throw zerr;
+              const legacyToken = creds.accessToken || process.env.LINKEDIN_ACCESS_TOKEN;
+              const legacyUrn = creds.authorUrn || process.env.LINKEDIN_AUTHOR_URN;
+              if (!legacyToken || !legacyUrn) {
+                console.error(`[PUBLISH] Zernio LinkedIn publish failed: ${zerr.message}`);
+                results[channel] = { status: 'error', error: zerr.message, utmParams };
+              } else {
               console.warn(`[PUBLISH] Zernio LinkedIn publish failed, falling back to direct API: ${zerr.message}`);
-              // continue into legacy block below
+              }
             }
           }
 
           // ── Legacy direct LinkedIn UGC Posts API (fallback) ──
           const liToken   = creds.accessToken || process.env.LINKEDIN_ACCESS_TOKEN;
           const authorUrn = creds.authorUrn   || process.env.LINKEDIN_AUTHOR_URN;
-          if (!liToken || !authorUrn) {
+          if (results[channel]?.status === 'error') {
+            // Zernio failed and there is no direct LinkedIn token. Keep that error.
+          } else if (!liToken || !authorUrn) {
             results[channel] = { status: 'staged', message: 'LinkedIn not yet authorized — visit /app/integrations to connect', utmParams };
           } else {
             const articleJson = article.article_json || {};
@@ -493,7 +500,9 @@ Output only the post text.` }]
               try {
                 const copyRes = await anthropic.messages.create({
                   model: 'claude-haiku-5-5',
-                  max_tokens: 400,
+                  max_tokens: 1200,
+                  thinking: { type: 'disabled' },
+                  output_config: { effort: 'low' },
                   messages: [{ role: 'user', content: `Write a LinkedIn post designed to drive link clicks to this B2B article. Goal: make the reader feel they MUST click to get the full answer. Do NOT summarize — create a curiosity gap.
 
 Article title: "${article.title}"
@@ -515,6 +524,7 @@ Hard rules:
 Output only the post text.` }]
                 });
                 postText = stripSocialMarkdown(claudeText(copyRes).trim());
+                if (!postText) throw new Error('Haiku returned no LinkedIn copy');
               } catch(e) {
                 const wordCount2 = sections.reduce((acc, s) => acc + ((s.body || s.content || '').split(' ').length), 0);
                 const readMin = Math.max(2, Math.round(wordCount2 / 200));
@@ -1272,15 +1282,16 @@ ${canonicalNote}`,
 
       // Write publish log
       await pool.query(
-        `INSERT INTO publish_log (queue_item_id, brand_profile_id, content_id, channel, status, response_data, utm_params, published_url, error_message)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        `INSERT INTO publish_log (queue_item_id, brand_profile_id, content_id, channel, status, live_status, response_data, utm_params, published_url, error_message)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           queueItemId, item.brand_profile_id, item.content_id, channel,
           results[channel].status,
+          results[channel].status === 'published' ? 'published' : results[channel].status === 'error' ? 'error' : 'unknown',
           JSON.stringify(results[channel]),
           JSON.stringify(utmParams),
           results[channel].url || null,
-          results[channel].error || null
+          results[channel].error || results[channel].message || null
         ]
       );
     }

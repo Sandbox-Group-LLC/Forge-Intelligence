@@ -1518,15 +1518,26 @@ ${authorFooterHtml}
                         const log = (publishLog[item.id] || []).find(l => l.channel === ch);
                         // Prefer publish log live_status (most accurate) over publish result status
                         // If log says deleted, show deleted regardless of publish_results JSONB
-                        const liveStatus = log?.live_status ?? (res.status === 'published' ? 'published' : res.status);
+                        const resultStatus = res.status;
+                        const logStatus = log?.live_status;
+                        // live_status defaults to 'published' even when the attempt was staged.
+                        const liveStatus = (logStatus === 'published' && resultStatus && resultStatus !== 'published')
+                          ? resultStatus
+                          : (logStatus ?? resultStatus);
                         const isDeleted = liveStatus === 'deleted';
                         const isUnknown = liveStatus === 'unknown';
+                        const statusLabel = isDeleted ? 'Deleted'
+                          : isUnknown ? 'Unknown'
+                          : liveStatus === 'error' ? 'Failed'
+                          : liveStatus === 'staged' ? 'Not posted'
+                          : liveStatus === 'published' ? 'Live'
+                          : String(liveStatus || '');
                         const repKey = `${item.id}:${ch}`;
                         return (
                         <div key={ch} className={`pq-result-row result-${liveStatus}`}>
                           <span className="pq-result-channel">{CHANNEL_LABELS[ch]?.label || ch}</span>
                           <span className={`pq-result-status live-${liveStatus}`}>
-                            {isDeleted ? '🗑 Deleted' : isUnknown ? '⚠ Unknown' : '✓ Live'}
+                            {statusLabel}
                           </span>
                           {(() => {
                             // Same fall-through as the channel chip: publish_results.url is only
