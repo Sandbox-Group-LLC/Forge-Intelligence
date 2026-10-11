@@ -304,7 +304,7 @@ ${learningBlock ? learningBlock + '\n\n' : ''}Produce the JSON card now.`;
   try {
     const msg = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 1200,
+      max_tokens: 2000,
       temperature: 0.2,
       system,
       messages: [{ role: 'user', content: user }],
@@ -711,7 +711,7 @@ Evaluate the topic for brand + event fit. Return ONLY JSON:
 
     const msg = await anthropic.messages.create({
       model: 'claude-haiku-5-5',
-      max_tokens: 450,
+      max_tokens: 2000,
       temperature: 0.2,
       messages: [{ role: 'user', content: prompt }],
     });

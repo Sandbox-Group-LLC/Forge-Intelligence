@@ -1116,7 +1116,7 @@ app.post('/api/articles/:brandSlug/:articleSlug/ensure-image', async (req, res) 
     const firstBody = (sections[0]?.body || sections[0]?.content || '').slice(0, 300);
     const imgPromptRes = await anthropic.messages.create({
       model: 'claude-haiku-5-5',
-      max_tokens: 150,
+      max_tokens: 2000,
       messages: [{ role: 'user', content: `Write a Flux image generation prompt for a B2B editorial hero image for this article: "${article.title}". Context: ${firstBody}. Output only the prompt, no quotes, no preamble. Professional photography style, 16:9, no text in image.` }]
     });
     const fluxPrompt = claudeText(imgPromptRes).trim() || `Professional B2B editorial hero image for article about ${article.title}`;
@@ -2261,7 +2261,7 @@ ${cleaned}`;
 
       const msg = await anthropic.messages.create({
         model: 'claude-haiku-5-5',
-        max_tokens: 1500,
+        max_tokens: 2000,
         messages: [{ role: 'user', content: prompt }]
       });
       const raw = claudeText(msg);
@@ -2297,7 +2297,7 @@ ${cleaned}`;
 
       const msg = await anthropic.messages.create({
         model: 'claude-haiku-5-5',
-        max_tokens: 800,
+        max_tokens: 2000,
         messages: [{ role: 'user', content: prompt }]
       });
       const raw = claudeText(msg);
@@ -10272,7 +10272,7 @@ async function runDecayMonitoring() {
                 headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
                 body: JSON.stringify({
                   model: 'claude-haiku-5-5',
-                  max_tokens: 120,
+                  max_tokens: 2000,
                   messages: [{ role: 'user', content: `Article "${row.title || 'Untitled'}" on ${row.channel} has decayed ${Math.round(decayScore * 100)}% from peak engagement. In one sentence, recommend the best action: refresh content, change headline, republish on different channel, or add internal links. Be specific and actionable.` }]
                 })
               });
