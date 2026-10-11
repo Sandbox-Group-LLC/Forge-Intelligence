@@ -13,6 +13,17 @@ describe('toArticleSlug', () => {
     expect(toArticleSlug("The Audit Gap Hidden Inside Every Agency's Client Knowledge Problem"))
       .toBe('the-audit-gap-hidden-inside-every-agency-s-client-knowledge-problem');
   });
+
+  it('caps a long title at 120 so Mailforge accepts the webhook slug', () => {
+    const title = 'Agentic AI and Executive Function at Work: What It Can Hold, What It Cannot, and How Agencies Deploy It Without Losing Accountability';
+    const slug = toArticleSlug(title);
+    expect(slug.length).toBeLessThanOrEqual(120);
+    expect(slug).toMatch(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/);
+    expect(slug.startsWith('agentic-ai-and-executive-function-at-work')).toBe(true);
+    const pub = withPublicArticleSlug(slug, AGENTCY_CORE_BRAND_ID);
+    expect(pub.endsWith(AGENTCY_CORE_SLUG_SUFFIX)).toBe(true);
+    expect(pub.length).toBeLessThanOrEqual(120);
+  });
 });
 
 describe('isAgentcyCoreBrand', () => {
