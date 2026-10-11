@@ -123,7 +123,7 @@ Rules:
 
   const res = await anthropic.messages.create({
     model: 'claude-haiku-5-5',
-    max_tokens: 200,
+    max_tokens: 2000,
     messages: [{ role: 'user', content: imagePromptInstruction }]
   });
 
@@ -164,7 +164,7 @@ Rules:
   try {
     const res = await anthropic.messages.create({
       model: 'claude-haiku-5-5',
-      max_tokens: 200,
+      max_tokens: 2000,
       messages: [{ role: 'user', content: instruction }]
     });
     return claudeText(res).trim()

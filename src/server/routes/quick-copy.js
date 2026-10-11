@@ -597,7 +597,7 @@ router.post('/:id/resolve-flag', async (req, res) => {
 
     const msg = await anthropic.messages.create({
       model: 'claude-haiku-5-5',
-      max_tokens: 512,
+      max_tokens: 2000,
       system: `You are a precision editor for short brand copy.
 Rewrite ONLY the selected excerpt per the instruction.
 Return ONLY the rewritten excerpt text — no quotes, no preamble, no full body.

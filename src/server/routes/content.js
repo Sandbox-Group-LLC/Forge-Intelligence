@@ -116,7 +116,7 @@ Evaluate the user's topic against this brand's performance data and return ONLY 
         // Haiku 5.5 thinks by default and thinking counts against max_tokens.
         // The old 400-token cap could finish the thinking block and leave no JSON,
         // which parsed as {} and surfaced as "Check unavailable".
-        max_tokens: 1200,
+        max_tokens: 2000,
         thinking: { type: 'disabled' },
         output_config: { effort: 'low' },
         messages: [{ role: 'user', content: prompt }],
