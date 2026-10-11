@@ -111,14 +111,28 @@ Evaluate the user's topic against this brand's performance data and return ONLY 
     const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-haiku-5-5', max_tokens: 400, messages: [{ role: 'user', content: prompt }] })
+      body: JSON.stringify({
+        model: 'claude-haiku-5-5',
+        // Haiku 5.5 thinks by default and thinking counts against max_tokens.
+        // The old 400-token cap could finish the thinking block and leave no JSON,
+        // which parsed as {} and surfaced as "Check unavailable".
+        max_tokens: 1200,
+        thinking: { type: 'disabled' },
+        output_config: { effort: 'low' },
+        messages: [{ role: 'user', content: prompt }],
+      })
     });
     const aiData = await aiRes.json();
-    const raw = claudeText(aiData) || '{}';
+    if (!aiRes.ok || aiData.error) {
+      console.error('[TOPIC-CHECK] Anthropic error', aiRes.status, aiData.error?.message || aiData.error || '');
+      return res.json({ success: true, signal: 'strong', confidence: 'Check unavailable', reason: 'Could not evaluate topic against brain data right now. Proceed with generation.', reframe: null });
+    }
+    const raw = claudeText(aiData);
     const clean = raw.replace(/```json|```/g, '').trim();
-    const parsed = safeParseLLM(clean, 'object', 'topic-check');
+    const parsed = clean ? safeParseLLM(clean, 'object', 'topic-check') : {};
     // Guard: if Anthropic returned an error, parsed will be empty — don't send a blank card
     if (!parsed.signal) {
+      console.error('[TOPIC-CHECK] no signal', { stop: aiData.stop_reason, types: (aiData.content || []).map(b => b.type), head: raw.slice(0, 240) });
       return res.json({ success: true, signal: 'strong', confidence: 'Check unavailable', reason: 'Could not evaluate topic against brain data right now. Proceed with generation.', reframe: null });
     }
     res.json({ success: true, ...parsed });
