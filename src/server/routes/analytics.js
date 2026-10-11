@@ -11,7 +11,7 @@ import { pool } from '../db.js';
 import { anthropic, claudeText } from '../llm.js';
 import { safeParseLLM } from '../llm-json.js';
 import { requireAuth, verifyBrandAccess, clerkJWKS } from '../auth.js';
-import { callZernio } from '../zernio.js';
+import { callZernio, readZernioAnalytics } from '../zernio.js';
 import { buildXOAuthHeader, refreshXOAuth2Token } from '../x.js';
 import { buildGhostJWT } from '../ghost.js';
 
@@ -742,21 +742,45 @@ router.post('/sync/:brandProfileId', async (req, res) => {
             }
 
             const analytics = analyticsRes.parsed;
-            // Zernio analytics response shape (verified via probe): metrics live at
-            // analytics.platformAnalytics[].analytics for the LinkedIn entry, OR at
-            // analytics.analytics as the rolled-up post-level metrics.
-            const platformAnalytics = analytics?.platformAnalytics || [];
-            const liEntry = platformAnalytics.find(p => p.platform === 'linkedin');
-            const liMetrics = liEntry?.analytics
-              || analytics?.analytics
-              || analytics?.post?.analytics
-              || {};
+            const read = readZernioAnalytics(analytics, 'linkedin');
 
-            impressions = liMetrics.impressions || liMetrics.views || liMetrics.impression_count || 0;
-            clicks      = liMetrics.clicks || liMetrics.link_clicks || liMetrics.clickCount || 0;
-            reactions   = liMetrics.likes || liMetrics.reactions || liMetrics.likeCount || 0;
-            comments    = liMetrics.comments || liMetrics.replies || liMetrics.commentCount || 0;
-            reposts     = liMetrics.shares || liMetrics.reposts || liMetrics.repostCount || liMetrics.shareCount || 0;
+            // Zernio can answer 200 with no usable metrics. Storing that as zeros
+            // used to permanently mask the post: the upsert below only overwrites
+            // when EXCLUDED.impressions > 0, and it strips the 'pending' flag, so
+            // a zero row was never revisited.
+            if (read.state === 'unavailable') {
+              // Terminal — LinkedIn won't backfill org post analytics collected
+              // late. Mark it so the dashboard can distinguish "no data available"
+              // from a genuine zero, and so we stop re-requesting it every sync.
+              await pool.query(
+                `INSERT INTO content_analytics
+                   (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at)
+                 VALUES ($1, $2, 'linkedin', $3, 0, 0, 0, 0, 0, 0, 0, $4::jsonb, COALESCE($5, NOW()), NOW())
+                 ON CONFLICT (content_id, channel) DO UPDATE SET
+                   raw_data  = (COALESCE(content_analytics.raw_data, '{}'::jsonb) - 'pending') || EXCLUDED.raw_data,
+                   synced_at = NOW()`,
+                [brandProfileId, row.content_id, postId,
+                 JSON.stringify({ unavailable: true, zernioPostId, syncStatus: read.syncStatus }), row.published_at]
+              ).catch(e => console.error('[Analytics/LinkedIn] unavailable marker failed:', e.message));
+              console.log(`[Analytics/LinkedIn] Analytics unavailable for ${zernioPostId} (syncStatus=${read.syncStatus}) — marked terminal, not retrying`);
+              continue;
+            }
+            if (read.state === 'pending') {
+              // Still computing. Same placeholder as the 202 path so the article
+              // shows up in Performance Dashboard while we wait, and retries.
+              await pool.query(
+                `INSERT INTO content_analytics
+                   (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at)
+                 VALUES ($1, $2, 'linkedin', $3, 0, 0, 0, 0, 0, 0, 0, $4::jsonb, COALESCE($5, NOW()), NOW())
+                 ON CONFLICT (content_id, channel) DO NOTHING`,
+                [brandProfileId, row.content_id, postId,
+                 JSON.stringify({ pending: true, zernioPostId, syncStatus: read.syncStatus }), row.published_at]
+              ).catch(e => console.error('[Analytics/LinkedIn] pending placeholder failed:', e.message));
+              console.log(`[Analytics/LinkedIn] Sync pending for ${zernioPostId} (syncStatus=${read.syncStatus}) — will retry next sync`);
+              continue;
+            }
+
+            ({ impressions, clicks, reactions, comments, reposts } = read.metrics);
             rawData     = { zernio: analytics };
             dataSource  = 'zernio';
             console.log(`[Analytics/LinkedIn] Zernio metrics for ${zernioPostId}: ${impressions} impr, ${reactions} likes, ${comments} comments, ${reposts} shares, ${clicks} clicks`);
@@ -1081,17 +1105,40 @@ router.post('/sync/:brandProfileId', async (req, res) => {
             }
 
             const analytics = analyticsRes.parsed;
-            const platforms = analytics?.post?.platforms || analytics?.platforms || [];
-            const fbMetrics = platforms.find(p => p.platform === 'facebook')?.analytics
-              || analytics?.post?.analytics
-              || analytics?.analytics
-              || analytics || {};
+            const read = readZernioAnalytics(analytics, 'facebook');
 
-            impressions = fbMetrics.impressions || fbMetrics.views || fbMetrics.reach || fbMetrics.impression_count || 0;
-            clicks      = fbMetrics.clicks || fbMetrics.link_clicks || fbMetrics.post_clicks || 0;
-            reactions   = fbMetrics.likes || fbMetrics.reactions || fbMetrics.total_reactions || 0;
-            comments    = fbMetrics.comments || fbMetrics.comment_count || 0;
-            reposts     = fbMetrics.shares || fbMetrics.reposts || fbMetrics.share_count || 0;
+            // Same 200-with-no-metrics handling as LinkedIn. The old lookup read
+            // `post.platforms`/`platforms`, neither of which Zernio returns, then
+            // fell back to `|| analytics` — the envelope itself — so metrics were
+            // read off the wrong object level entirely.
+            if (read.state === 'unavailable') {
+              await pool.query(
+                `INSERT INTO content_analytics
+                   (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at)
+                 VALUES ($1, $2, 'facebook', $3, 0, 0, 0, 0, 0, 0, 0, $4::jsonb, COALESCE($5, NOW()), NOW())
+                 ON CONFLICT (content_id, channel) DO UPDATE SET
+                   raw_data  = (COALESCE(content_analytics.raw_data, '{}'::jsonb) - 'pending') || EXCLUDED.raw_data,
+                   synced_at = NOW()`,
+                [brandProfileId, row.content_id, postId,
+                 JSON.stringify({ unavailable: true, zernioPostId, syncStatus: read.syncStatus }), row.published_at]
+              ).catch(e => console.error('[Analytics/Facebook] unavailable marker failed:', e.message));
+              console.log(`[Analytics/Facebook] Analytics unavailable for ${zernioPostId} (syncStatus=${read.syncStatus}) — marked terminal`);
+              continue;
+            }
+            if (read.state === 'pending') {
+              await pool.query(
+                `INSERT INTO content_analytics
+                   (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at)
+                 VALUES ($1, $2, 'facebook', $3, 0, 0, 0, 0, 0, 0, 0, $4::jsonb, COALESCE($5, NOW()), NOW())
+                 ON CONFLICT (content_id, channel) DO NOTHING`,
+                [brandProfileId, row.content_id, postId,
+                 JSON.stringify({ pending: true, zernioPostId, syncStatus: read.syncStatus }), row.published_at]
+              ).catch(e => console.error('[Analytics/Facebook] pending placeholder failed:', e.message));
+              console.log(`[Analytics/Facebook] Sync pending for ${zernioPostId} — will retry next sync`);
+              continue;
+            }
+
+            ({ impressions, clicks, reactions, comments, reposts } = read.metrics);
             rawData     = { zernio: analytics };
             dataSource  = 'zernio';
             console.log(`[Analytics/Facebook] Zernio metrics for ${postId}: ${impressions} impr, ${reactions} reactions, ${comments} comments, ${reposts} shares, ${clicks} clicks`);
@@ -1207,11 +1254,40 @@ router.post('/sync/:brandProfileId', async (req, res) => {
             }
 
             const analytics = analyticsRes.parsed;
-            const platforms = analytics?.post?.platforms || analytics?.platforms || [];
-            const rdMetrics = platforms.find(p => p.platform === 'reddit')?.analytics
-              || analytics?.post?.analytics
-              || analytics?.analytics
-              || analytics || {};
+            const read = readZernioAnalytics(analytics, 'reddit');
+
+            if (read.state === 'unavailable') {
+              await pool.query(
+                `INSERT INTO content_analytics
+                   (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at)
+                 VALUES ($1, $2, 'reddit', $3, 0, 0, 0, 0, 0, 0, 0, $4::jsonb, COALESCE($5, NOW()), NOW())
+                 ON CONFLICT (content_id, channel) DO UPDATE SET
+                   raw_data  = (COALESCE(content_analytics.raw_data, '{}'::jsonb) - 'pending') || EXCLUDED.raw_data,
+                   synced_at = NOW()`,
+                [brandProfileId, row.content_id, postId,
+                 JSON.stringify({ unavailable: true, zernioPostId: postId, syncStatus: read.syncStatus }), row.published_at]
+              ).catch(e => console.error('[Analytics/Reddit] unavailable marker failed:', e.message));
+              console.log(`[Analytics/Reddit] Analytics unavailable for ${postId} (syncStatus=${read.syncStatus}) — marked terminal`);
+              continue;
+            }
+            if (read.state === 'pending') {
+              await pool.query(
+                `INSERT INTO content_analytics
+                   (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at)
+                 VALUES ($1, $2, 'reddit', $3, 0, 0, 0, 0, 0, 0, 0, $4::jsonb, COALESCE($5, NOW()), NOW())
+                 ON CONFLICT (content_id, channel) DO NOTHING`,
+                [brandProfileId, row.content_id, postId,
+                 JSON.stringify({ pending: true, zernioPostId: postId, syncStatus: read.syncStatus }), row.published_at]
+              ).catch(e => console.error('[Analytics/Reddit] pending placeholder failed:', e.message));
+              console.log(`[Analytics/Reddit] Sync pending for ${postId} — will retry next sync`);
+              continue;
+            }
+
+            // Reddit's raw entry, for the platform-specific names below. We have no
+            // live Reddit post to probe, so the upvote/crosspost aliases are left
+            // intact rather than collapsed onto the canonical LI/FB/IG key names.
+            const rdMetrics = (analytics?.platformAnalytics || [])
+              .find(p => p.platform === 'reddit')?.analytics || {};
 
             // Reddit metric name mapping. Reddit's terminology differs from LI/FB:
             //   upvotes/score → reactions (positive engagement)
@@ -1331,21 +1407,42 @@ router.post('/sync/:brandProfileId', async (req, res) => {
           }
 
           const analytics = analyticsRes.parsed;
-          const platforms = analytics?.post?.platforms || analytics?.platforms || [];
-          const igMetrics = platforms.find(p => p.platform === 'instagram')?.analytics
-            || analytics?.post?.analytics
-            || analytics?.analytics
-            || analytics || {};
+          const read = readZernioAnalytics(analytics, 'instagram');
 
-          // Instagram metric name mapping. IG surfaces reach/impressions, likes,
-          // comments, and shares; saves are IG-specific engagement with no direct
-          // column, so they fold into reposts (closest "amplification" analog) and
-          // are preserved verbatim in raw_data.
-          impressions = igMetrics.impressions || igMetrics.reach || igMetrics.views || igMetrics.impression_count || 0;
-          clicks      = igMetrics.clicks || igMetrics.link_clicks || igMetrics.website_clicks || igMetrics.profile_visits || 0;
-          reactions   = igMetrics.likes || igMetrics.reactions || igMetrics.like_count || 0;
-          comments    = igMetrics.comments || igMetrics.comment_count || 0;
-          reposts     = igMetrics.shares || igMetrics.reposts || igMetrics.saves || igMetrics.saved || 0;
+          if (read.state === 'unavailable') {
+            await pool.query(
+              `INSERT INTO content_analytics
+                 (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at)
+               VALUES ($1, $2, 'instagram', $3, 0, 0, 0, 0, 0, 0, 0, $4::jsonb, COALESCE($5, NOW()), NOW())
+               ON CONFLICT (content_id, channel) DO UPDATE SET
+                 raw_data  = (COALESCE(content_analytics.raw_data, '{}'::jsonb) - 'pending') || EXCLUDED.raw_data,
+                 synced_at = NOW()`,
+              [brandProfileId, row.content_id, postId || zernioPostId,
+               JSON.stringify({ unavailable: true, zernioPostId, syncStatus: read.syncStatus }), row.published_at]
+            ).catch(e => console.error('[Analytics/Instagram] unavailable marker failed:', e.message));
+            console.log(`[Analytics/Instagram] Analytics unavailable for ${zernioPostId} (syncStatus=${read.syncStatus}) — marked terminal`);
+            continue;
+          }
+          if (read.state === 'pending') {
+            await pool.query(
+              `INSERT INTO content_analytics
+                 (brand_profile_id, content_id, channel, post_id, impressions, clicks, reactions, comments, reposts, ctr, engagement_rate, raw_data, published_at, synced_at)
+               VALUES ($1, $2, 'instagram', $3, 0, 0, 0, 0, 0, 0, 0, $4::jsonb, COALESCE($5, NOW()), NOW())
+               ON CONFLICT (content_id, channel) DO NOTHING`,
+              [brandProfileId, row.content_id, postId || zernioPostId,
+               JSON.stringify({ pending: true, zernioPostId, syncStatus: read.syncStatus }), row.published_at]
+            ).catch(e => console.error('[Analytics/Instagram] pending placeholder failed:', e.message));
+            console.log(`[Analytics/Instagram] Sync pending for ${zernioPostId} — will retry next sync`);
+            continue;
+          }
+
+          ({ impressions, clicks, reactions, comments, reposts } = read.metrics);
+          // IG-specific: `saves` is real engagement with no dedicated column, so it
+          // folds into reposts (closest "amplification" analog) when IG reported no
+          // shares. Verified present and populated on live IG entries.
+          const igRaw = (analytics?.platformAnalytics || [])
+            .find(p => p.platform === 'instagram')?.analytics || {};
+          reposts = reposts || igRaw.saves || 0;
           rawData     = { zernio: analytics };
           dataSource  = 'zernio';
           console.log(`[Analytics/Instagram] Zernio metrics for ${zernioPostId}: ${impressions} impr, ${reactions} likes, ${comments} comments, ${reposts} shares/saves, ${clicks} clicks`);
