@@ -17,7 +17,11 @@ export function toArticleSlug(title, fallback = 'article') {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
-  return slug || fallback;
+  // Mailforge rejects the webhook slug above 120 chars (`invalid slug`)
+  // before it applies the Agentcy Core suffix. Cap here so the payload
+  // and the public URL (which re-caps around that suffix) stay in lockstep.
+  const capped = (slug || fallback).slice(0, PUBLIC_SLUG_MAX).replace(/-+$/, '');
+  return capped || fallback;
 }
 
 export function isAgentcyCoreBrand(brand) {
