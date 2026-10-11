@@ -126,3 +126,52 @@ export const getOrCreateZernioProfile = async (brandProfileId) => {
   );
   return profileId;
 };
+
+// readZernioAnalytics — resolves one platform's metrics out of a GET /analytics
+// response body. Every Zernio-backed channel in routes/analytics.js goes through
+// here so the envelope shape is decoded in exactly one place.
+//
+// Verified live 2026-10-11 against GET /v1/analytics?postId=<zernio _id>. The
+// body is:
+//   { postId, status, syncStatus, analytics, platformAnalytics: [...], ... }
+// with per-platform metrics at platformAnalytics[].analytics. There is NO
+// `platforms` key and no `post` wrapper — earlier code looked up
+// `post.platforms` / `platforms`, which never matched, so it silently fell back
+// to the envelope object and read metrics off the wrong level.
+//
+// `syncStatus` is the authoritative freshness signal, and the reason this
+// returns a state rather than a bare metrics object:
+//   'synced'      → metrics present and final
+//   'unavailable' → TERMINAL. LinkedIn does not backfill organization post
+//                   analytics that weren't collected near publish time, so the
+//                   numbers are never coming. Must not be stored as zeros and
+//                   must not be retried forever.
+//   anything else → still computing; treat as pending and retry next sync.
+//
+// Returns { state, metrics, syncStatus } where state is one of
+// 'ok' | 'pending' | 'unavailable'. metrics is null unless state === 'ok'.
+export const readZernioAnalytics = (body, platform) => {
+  const syncStatus = body?.syncStatus ?? null;
+  const entry = (body?.platformAnalytics || []).find(p => p.platform === platform);
+  // A present-but-null `analytics` means Zernio has the post but no numbers for
+  // it. Distinguish that from "key absent" only via syncStatus, below.
+  const raw = entry?.analytics ?? null;
+
+  if (syncStatus === 'unavailable') return { state: 'unavailable', metrics: null, syncStatus };
+  if (!raw) return { state: 'pending', metrics: null, syncStatus };
+
+  // Zernio returns a flat union of every platform's metric names (a LinkedIn
+  // entry still carries igReelsAvgWatchTime etc). Only the canonical keys below
+  // are ever populated, so read them directly rather than aliasing.
+  return {
+    state: 'ok',
+    syncStatus,
+    metrics: {
+      impressions: raw.impressions || 0,
+      clicks:      raw.clicks || 0,
+      reactions:   raw.likes || 0,
+      comments:    raw.comments || 0,
+      reposts:     raw.shares || 0,
+    },
+  };
+};
