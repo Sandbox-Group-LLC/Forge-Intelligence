@@ -22,6 +22,12 @@
   --frame-bg:linear-gradient(180deg,rgba(36,49,73,.9),rgba(15,23,42,.9));
 }
 
-/* Canvas helper — apply to the page root of any dark surface */
-.fi-canvas{background-color:var(--color-canvas);background-image:var(--bg-wash);background-repeat:no-repeat;background-attachment:fixed;color:var(--text-body)}
+/* Canvas helper — apply to the page root of any dark surface.
+   `background-attachment:fixed` anchors the wash to the viewport, so the
+   canvas colour must also be painted on the root element; otherwise any
+   horizontal overflow (or over-scroll) shows bare white beside the page.
+   The literal is --fi-navy-900; the token itself is scoped to [data-forge-ds]
+   and so does not resolve on html/body. */
+html:has(.fi-canvas),body:has(.fi-canvas){background-color:#0B0F1A}
+.fi-canvas{background-color:var(--color-canvas);background-image:var(--bg-wash);background-repeat:no-repeat;background-attachment:fixed;color:var(--text-body);overflow-x:clip}
 .fi-grid-overlay{position:absolute;inset:0;pointer-events:none;background-image:var(--bg-grid);background-size:var(--bg-grid-size);mask-image:radial-gradient(120% 90% at 50% 0%,#000 35%,transparent 78%);-webkit-mask-image:radial-gradient(120% 90% at 50% 0%,#000 35%,transparent 78%)}

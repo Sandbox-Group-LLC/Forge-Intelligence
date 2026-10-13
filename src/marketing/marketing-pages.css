@@ -28,3 +28,86 @@
   background-clip: text;
   color: transparent;
 }
+
+/* Landing scan form — URL field + submit. */
+[data-forge-ds] .fi-scanform__row {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+[data-forge-ds] .fi-scanform__input {
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 12px 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-family: inherit;
+}
+
+/* ---------------------------------------------------------------------------
+   Phone sizing. The desktop rhythm (96px section padding, 11px eyebrows,
+   32/40px controls) is too tight to read and too small to tap on a handset.
+   --------------------------------------------------------------------------- */
+@media (max-width: 640px) {
+  [data-forge-ds] {
+    --gutter: 20px;
+    /* pull the vertical rhythm in so sections do not feel like empty screens */
+    --section-y: var(--space-16);
+    --section-y-sm: var(--space-12);
+    --section-y-lg: var(--space-20);
+  }
+
+  /* The display clamps bottom out at 52px/36px, which on a 390px screen costs
+     most of the first viewport before any value proposition is visible. */
+  [data-forge-ds] {
+    --text-display-xl: clamp(2.25rem, calc(1.1rem + 5.2vw), 3.25rem); /* 36 → 52 */
+    --text-display: clamp(1.75rem, calc(1.1rem + 2.8vw), 2.25rem);    /* 28 → 36 */
+  }
+  [data-forge-ds] .fi-hero__title { max-width: none; }
+
+  /* 11px uppercase with 0.14em tracking is unreadable on a phone. */
+  [data-forge-ds] .fi-eyebrow,
+  [data-forge-ds] .fi-footer__coltitle {
+    font-size: 12px;
+    letter-spacing: 0.1em;
+  }
+
+  /* Buttons and footer links need a 44px touch target. */
+  [data-forge-ds] .fi-btn--sm { height: 40px; padding: 0 14px; }
+  [data-forge-ds] .fi-btn--md { height: 48px; padding: 0 18px; }
+  [data-forge-ds] .fi-btn--lg { height: 52px; }
+  /* The toggle is the only nav control on a phone — give it a real target. */
+  [data-forge-ds] .fi-iconbtn--sm { width: 44px; height: 44px; }
+  [data-forge-ds] .fi-footer__list { gap: 2px; }
+  [data-forge-ds] .fi-footer__link,
+  [data-forge-ds] .fi-footer__legal a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  /* Single column footer reads better than two cramped ones. */
+  [data-forge-ds] .fi-footer__top { grid-template-columns: 1fr; gap: var(--space-8); }
+  [data-forge-ds] .fi-footer { padding-top: var(--space-12); }
+
+  /* Cards: 280px minimum forces overflow inside a 320px viewport. */
+  [data-forge-ds] .fi-grid-cards,
+  [data-forge-ds] .fi-grid-checks { grid-template-columns: 1fr; }
+
+  /* The CTA band's desktop padding leaves almost no room for its own text. */
+  [data-forge-ds] .fi-cta { padding: var(--space-10) var(--space-5); }
+
+  /* Scan form: stack, full-width submit, and 16px on the field so iOS Safari
+     does not zoom the page in when it receives focus. */
+  [data-forge-ds] .fi-scanform__row { flex-wrap: nowrap; flex-direction: column; }
+  [data-forge-ds] .fi-scanform__input {
+    flex: 1 1 auto;
+    width: 100%;
+    font-size: 16px;
+    padding: 14px 16px;
+  }
+  [data-forge-ds] .fi-scanform .fi-btn { width: 100%; }
+}
