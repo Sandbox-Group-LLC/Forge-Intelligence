@@ -1,4 +1,6 @@
 [
+  "ALL /_ov/*",
+  "ALL /_ov/:path",
   "DELETE /api/admin/api-keys/:id",
   "DELETE /api/admin/promo-codes/:id",
   "DELETE /api/ads-generator/pack/:packId",
