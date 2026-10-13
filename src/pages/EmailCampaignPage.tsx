@@ -448,15 +448,6 @@ export default function EmailCampaignPage() {
   const activeBrandId = activeBrand?.id ?? null;
   const ah: Record<string, string> = authToken ? { Authorization: `Bearer ${authToken}` } : {};
 
-  if (brandLoading) return null;
-  if (!isPaid) {
-    return (
-      <AppShell>
-        <GateModal featureName="Email Campaign Generator" onClose={() => window.location.href = '/app/context-hub'} onUnlocked={() => {}} />
-      </AppShell>
-    );
-  }
-
   const [step, setStep] = useState<'brief' | 'generating' | 'results' | 'history'>('brief');
   const [brief, setBrief] = useState<Brief>(EMPTY_BRIEF);
   const [campaignId, setCampaignId] = useState('');
@@ -515,6 +506,18 @@ export default function EmailCampaignPage() {
       setHandoffBanner('Prefilled from Quick Copy — review the brief, then generate a sequence.');
     } catch { /* ignore bad payload */ }
   }, []);
+
+  // Guards live below every hook: when they sat above the useState calls, the
+  // brand-loading render ran fewer hooks than the loaded render — React #310,
+  // which blanks the page instead of showing the intended gate.
+  if (brandLoading) return null;
+  if (!isPaid) {
+    return (
+      <AppShell>
+        <GateModal featureName="Email Campaign Generator" onClose={() => window.location.href = '/app/context-hub'} onUnlocked={() => {}} />
+      </AppShell>
+    );
+  }
 
   const handleGenerate = async () => {
     if (!activeBrandId) return;
