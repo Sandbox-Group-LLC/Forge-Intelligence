@@ -1,15 +1,31 @@
 .fi-nav{position:sticky;top:0;z-index:60;height:var(--nav-height);display:flex;align-items:center;transition:background-color var(--dur-base) var(--ease-out),border-color var(--dur-base) var(--ease-out),backdrop-filter var(--dur-base) var(--ease-out);border-bottom:1px solid transparent}
 .fi-nav--scrolled{background:rgba(11,15,26,.72);backdrop-filter:blur(14px) saturate(160%);-webkit-backdrop-filter:blur(14px) saturate(160%);border-bottom-color:var(--color-border-hairline)}
 [data-theme="light"] .fi-nav--scrolled{background:rgba(237,241,255,.78)}
-.fi-nav__inner{width:100%;max-width:var(--container-max);margin:0 auto;padding:0 var(--gutter);display:flex;align-items:center;gap:var(--space-8)}
-.fi-nav__links{display:flex;align-items:center;gap:var(--space-1);margin-right:auto}
+.fi-nav__inner{width:100%;max-width:var(--container-max);margin:0 auto;padding:0 var(--gutter);display:flex;align-items:center;gap:var(--space-8);min-width:0}
+.fi-nav__links{display:flex;align-items:center;gap:var(--space-1);margin-right:auto;min-width:0}
 .fi-nav__link{position:relative;display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-radius:var(--radius-sm);font-size:var(--text-sm);font-weight:var(--weight-medium);color:var(--text-muted);transition:var(--transition-control)}
 .fi-nav__link:hover{color:var(--text-primary);background:var(--fi-white-05)}
 .fi-nav__link--active{color:var(--text-primary)}
 .fi-nav__link--active::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:1px;background:var(--color-accent);box-shadow:0 0 10px 1px rgba(53,99,255,.8)}
-.fi-nav__actions{display:flex;align-items:center;gap:var(--space-2)}
+.fi-nav__actions{display:flex;align-items:center;gap:var(--space-2);margin-left:auto;flex:none}
 .fi-nav__toggle{display:none}
-@media (max-width:860px){.fi-nav__links{display:none}.fi-nav__toggle{display:inline-flex}}
+/* Below the nav breakpoint the inline links collapse into the menu. The CTA and
+   sign-in go with them — keeping them inline is what pushed the action row past
+   the viewport and forced the whole page to scroll sideways. */
+@media (max-width:860px){
+  .fi-nav__links{display:none}
+  .fi-nav__toggle{display:inline-flex}
+  .fi-nav__actions>.fi-btn{display:none}
+}
+
+/* Mobile menu — the panel the toggle opens. */
+.fi-nav__panel{position:fixed;left:0;right:0;top:var(--nav-height);z-index:59;display:flex;flex-direction:column;gap:var(--space-1);padding:var(--space-4) var(--gutter) var(--space-6);background:rgba(11,15,26,.97);backdrop-filter:blur(14px) saturate(160%);-webkit-backdrop-filter:blur(14px) saturate(160%);border-bottom:1px solid var(--color-border-hairline);box-shadow:var(--shadow-xl);max-height:calc(100dvh - var(--nav-height));overflow-y:auto;overscroll-behavior:contain}
+[data-theme="light"] .fi-nav__panel{background:rgba(237,241,255,.97)}
+.fi-nav__panel .fi-nav__link{height:48px;padding:0 12px;font-size:var(--text-base)}
+.fi-nav__panel .fi-nav__link--active::after{left:12px;right:auto;width:16px;bottom:10px}
+.fi-nav__panelactions{display:flex;flex-direction:column;gap:var(--space-2);margin-top:var(--space-3);padding-top:var(--space-4);border-top:1px solid var(--color-border-hairline)}
+.fi-nav__panelactions .fi-btn{width:100%;height:48px;font-size:var(--text-sm)}
+@media (min-width:861px){.fi-nav__panel{display:none}}
 
 .fi-footer{border-top:1px solid var(--color-border-hairline);background:linear-gradient(180deg,transparent,rgba(7,10,18,.6));padding:var(--space-20) 0 var(--space-8)}
 [data-theme="light"] .fi-footer{background:linear-gradient(180deg,transparent,rgba(255,255,255,.5))}

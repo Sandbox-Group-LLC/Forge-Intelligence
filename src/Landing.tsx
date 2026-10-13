@@ -154,7 +154,7 @@ export default function Landing() {
                 <Card variant="gradient" padding="md" glow>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-positive)', flexShrink: 0, boxShadow: '0 0 8px var(--color-positive)' }} />
-                    <div style={{ flex: 1, minWidth: 160 }}>
+                    <div style={{ flex: '1 1 160px', minWidth: 0 }}>
                       <div style={{ fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {returning.brandName || returning.brandUrl}
                       </div>
@@ -169,26 +169,24 @@ export default function Landing() {
                   </div>
                 </Card>
               ) : (
-                <form onSubmit={handleSubmit}>
-                  <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+                <form onSubmit={handleSubmit} className="fi-scanform">
+                  <div className="fi-scanform__row">
                     <input
                       type="text"
+                      inputMode="url"
                       value={url}
                       onChange={e => setUrl(e.target.value)}
                       placeholder="yourcompany.com"
                       disabled={status === 'loading'}
                       autoComplete="off"
-                      autoFocus
-                      style={{
-                        flex: '1 1 220px',
-                        padding: '12px 16px',
-                        background: 'var(--color-surface)',
-                        border: '1px solid var(--color-border)',
-                        borderRadius: 'var(--radius-md)',
-                        color: 'var(--text-primary)',
-                        fontSize: 'var(--text-sm)',
-                        fontFamily: 'inherit',
-                      }}
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      aria-label="Your website URL"
+                      // Autofocus only on pointer devices: on a phone it raises the
+                      // keyboard over the hero before the headline has been read.
+                      autoFocus={typeof window !== 'undefined' && window.matchMedia('(hover: hover)').matches}
+                      className="fi-scanform__input"
                     />
                     <Button variant="primary" type="submit" loading={status === 'loading'} trailingIcon="arrow-right">
                       {status === 'loading' ? 'Analyzing...' : 'Analyze My Brand Free'}
