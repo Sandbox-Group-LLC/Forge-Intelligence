@@ -237,6 +237,44 @@ export default function PublicArticlePage() {
       .catch(() => { setNotFound(true); setLoading(false); });
   }, [brandSlug, articleSlug]);
 
+  // Prefer a person byline when the article's narrative identity contract names one
+  // (founder/author voice); otherwise fall back to the brand name as the speaker.
+  const isPersonSpeaker = article?.narrativeIdentity?.speakerType === 'person';
+  const displayAuthorName = (isPersonSpeaker && (article?.byline?.name || article?.narrativeIdentity?.speakerName))
+    || article?.brandName;
+  const displayAuthorTitle = isPersonSpeaker ? (article?.byline?.title || null) : null;
+
+  // JSON-LD Article schema — author reflects the resolved narrative-identity byline
+  // (a named person when the article's editorial contract calls for one, otherwise
+  // the brand as an Organization). Injected imperatively since this app has no
+  // head-management library; cleaned up on unmount/navigation.
+  //
+  // MUST stay above the early returns below. React counts hooks per render, so a
+  // useEffect placed after `if (loading) return ...` runs zero hooks on the
+  // loading render and one on the loaded render — "rendered more hooks than
+  // during the previous render" (React #310), which blanks the whole page.
+  useEffect(() => {
+    if (!article) return;
+    const authorNode = isPersonSpeaker && displayAuthorName
+      ? { '@type': 'Person', name: displayAuthorName }
+      : { '@type': 'Organization', name: article.brandName || 'Forge Intelligence' };
+    const ld = {
+      '@context': 'https://schema.org',
+      '@type': 'Article',
+      headline: article.title,
+      description: article.metaDescription || article.keyTakeaway || undefined,
+      image: article.heroImageUrl || undefined,
+      datePublished: article.createdAt || undefined,
+      author: authorNode,
+      publisher: { '@type': 'Organization', name: article.brandName || 'Forge Intelligence' },
+    };
+    const script = document.createElement('script');
+    script.type = 'application/ld+json';
+    script.text = JSON.stringify(ld);
+    document.head.appendChild(script);
+    return () => { document.head.removeChild(script); };
+  }, [article, isPersonSpeaker, displayAuthorName]);
+
   if (loading) return (
     <div className="pa-loading">
       <div className="pa-spinner" />
@@ -265,42 +303,9 @@ export default function PublicArticlePage() {
     ? new Date(article.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     : null;
 
-  // Prefer a person byline when the article's narrative identity contract names one
-  // (founder/author voice); otherwise fall back to the brand name as the speaker.
-  const isPersonSpeaker = article.narrativeIdentity?.speakerType === 'person';
-  const displayAuthorName = (isPersonSpeaker && (article.byline?.name || article.narrativeIdentity?.speakerName))
-    || article.brandName;
-  const displayAuthorTitle = isPersonSpeaker ? (article.byline?.title || null) : null;
-
   const sections = article.sections || [];
   const firstSection = sections[0];
   const restSections = sections.slice(1);
-
-  // JSON-LD Article schema — author reflects the resolved narrative-identity byline
-  // (a named person when the article's editorial contract calls for one, otherwise
-  // the brand as an Organization). Injected imperatively since this app has no
-  // head-management library; cleaned up on unmount/navigation.
-  useEffect(() => {
-    if (!article) return;
-    const authorNode = isPersonSpeaker && displayAuthorName
-      ? { '@type': 'Person', name: displayAuthorName }
-      : { '@type': 'Organization', name: article.brandName || 'Forge Intelligence' };
-    const ld = {
-      '@context': 'https://schema.org',
-      '@type': 'Article',
-      headline: article.title,
-      description: article.metaDescription || article.keyTakeaway || undefined,
-      image: article.heroImageUrl || undefined,
-      datePublished: article.createdAt || undefined,
-      author: authorNode,
-      publisher: { '@type': 'Organization', name: article.brandName || 'Forge Intelligence' },
-    };
-    const script = document.createElement('script');
-    script.type = 'application/ld+json';
-    script.text = JSON.stringify(ld);
-    document.head.appendChild(script);
-    return () => { document.head.removeChild(script); };
-  }, [article, isPersonSpeaker, displayAuthorName]);
 
   return (
     <div className="pa-page">

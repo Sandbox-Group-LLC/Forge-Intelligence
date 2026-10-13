@@ -184,35 +184,6 @@ export default function PublishingQueuePage() {
   const activeBrandId = activeBrand?.id ?? null;
   const ah: Record<string, string> = authToken ? { Authorization: `Bearer ${authToken}` } : {};
   
-  if (brandLoading) return null;
-  if (!activeBrand) {
-    return (
-      <AppShell pageTitle="Publishing Queue">
-        <NoBrandEmpty
-          pageName="Publishing Queue"
-          pageDescription="Your campaign articles ship from here — schedule, edit, and publish to multiple channels with one click."
-          features={[
-            'Manage drafts, scheduled posts, and published articles',
-            'Push to LinkedIn, X, Facebook, Ghost, and your own site',
-            'Track which articles converted with UTM-tagged share links',
-            'Send articles to reviewers before publishing',
-          ]}
-        />
-      </AppShell>
-    );
-  }
-  if (!isPaid) {
-    return (
-      <AppShell>
-        <GateModal 
-          featureName="Publishing Queue" 
-          onClose={() => window.location.href = '/app/context-hub'} 
-          onUnlocked={() => {}} 
-        />
-      </AppShell>
-    );
-  }
-
   const [items, setItems] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [connectedChannels, setConnectedChannels] = useState<Record<string, string[]>>({});
@@ -1230,6 +1201,38 @@ ${authorFooterHtml}
     const staged = items.filter(i => i.status !== 'archived');
     staged.forEach(item => fetchPrecogScore(item));
   }, [items]);
+
+  // Guards live below every hook: when they sat above the useState calls, the
+  // brand-loading render ran fewer hooks than the loaded render — React #310,
+  // which blanks the page instead of showing the intended empty/gate state.
+  if (brandLoading) return null;
+  if (!activeBrand) {
+    return (
+      <AppShell pageTitle="Publishing Queue">
+        <NoBrandEmpty
+          pageName="Publishing Queue"
+          pageDescription="Your campaign articles ship from here — schedule, edit, and publish to multiple channels with one click."
+          features={[
+            'Manage drafts, scheduled posts, and published articles',
+            'Push to LinkedIn, X, Facebook, Ghost, and your own site',
+            'Track which articles converted with UTM-tagged share links',
+            'Send articles to reviewers before publishing',
+          ]}
+        />
+      </AppShell>
+    );
+  }
+  if (!isPaid) {
+    return (
+      <AppShell>
+        <GateModal
+          featureName="Publishing Queue"
+          onClose={() => window.location.href = '/app/context-hub'}
+          onUnlocked={() => {}}
+        />
+      </AppShell>
+    );
+  }
 
   const brandName = (item: QueueItem) =>
     item.brand_name || item.brand_url || '—';

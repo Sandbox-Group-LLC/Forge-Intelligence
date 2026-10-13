@@ -50,35 +50,6 @@ export default function ContentLibraryPage() {
   const { isPaid, activeBrand , brandLoading } = useApp();
   const activeBrandId = activeBrand?.id ?? '';
   
-  if (brandLoading) return null;
-  if (!activeBrand) {
-    return (
-      <AppShell pageTitle="Content Library">
-        <NoBrandEmpty
-          pageName="Content Library"
-          pageDescription="Every article generated for your brand lives here — searchable, taggable, and ready to repurpose."
-          features={[
-            'Browse every article by campaign, topic, or status',
-            'See compliance scores, citation rates, and engagement signals',
-            'Filter by date, channel, or whether the piece is published',
-            'Export articles as HTML, Markdown, or JSON',
-          ]}
-        />
-      </AppShell>
-    );
-  }
-  if (!isPaid) {
-    return (
-      <AppShell>
-        <GateModal 
-          featureName="Content Library" 
-          onClose={() => window.location.href = '/app/context-hub'} 
-          onUnlocked={() => {}} 
-        />
-      </AppShell>
-    );
-  }
-
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -113,6 +84,38 @@ export default function ContentLibraryPage() {
     const t = setTimeout(() => { setPage(0); load(activeBrandId, search, statusFilter, 0); }, 350);
     return () => clearTimeout(t);
   }, [search]);
+
+  // Guards live below every hook: when they sat above the useState calls, the
+  // brand-loading render ran fewer hooks than the loaded render — React #310,
+  // which blanks the page instead of showing the intended empty/gate state.
+  if (brandLoading) return null;
+  if (!activeBrand) {
+    return (
+      <AppShell pageTitle="Content Library">
+        <NoBrandEmpty
+          pageName="Content Library"
+          pageDescription="Every article generated for your brand lives here — searchable, taggable, and ready to repurpose."
+          features={[
+            'Browse every article by campaign, topic, or status',
+            'See compliance scores, citation rates, and engagement signals',
+            'Filter by date, channel, or whether the piece is published',
+            'Export articles as HTML, Markdown, or JSON',
+          ]}
+        />
+      </AppShell>
+    );
+  }
+  if (!isPaid) {
+    return (
+      <AppShell>
+        <GateModal
+          featureName="Content Library"
+          onClose={() => window.location.href = '/app/context-hub'}
+          onUnlocked={() => {}}
+        />
+      </AppShell>
+    );
+  }
 
   const statusCounts = {
     all: total,
