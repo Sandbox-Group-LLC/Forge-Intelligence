@@ -24,6 +24,15 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   gtag('js', new Date());
   gtag('config', 'AW-18080629050');
 </script>
+<!-- Origami website visitors — company-level only (IP -> company), never the person.
+     Loads through our own /_ov proxy (src/server/routes/origami-visitors.js) so
+     ad blockers don't stop it; that proxy attaches the secret key and the real
+     client IP server-side. The publishable key below is safe in the page. -->
+<script>
+  window.origami = window.origami || function () { (origami.q = origami.q || []).push(arguments) };
+</script>
+<script async src="/_ov/o.js" data-key="og_pk_VDVKQPoZuiuoGw7Tj9gHVA" data-endpoint="/_ov"></script>
+<!-- End Origami -->
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="facebook-domain-verification" content="93h6knwwj598b62edbd56ni24leqvi" />

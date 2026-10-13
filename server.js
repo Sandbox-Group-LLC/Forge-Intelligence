@@ -77,6 +77,7 @@ import strategyRouter from './src/server/routes/strategy.js';
 import analyticsRouter from './src/server/routes/analytics.js';
 import contextHubRouter from './src/server/routes/context-hub.js';
 import contentRouter from './src/server/routes/content.js';
+import origamiVisitorsRouter from './src/server/routes/origami-visitors.js';
 import publishingQueueRouter from './src/server/routes/publishing-queue.js';
 import publishingChannelsRouter from './src/server/routes/publishing-channels.js';
 import publishingPublishRouter from './src/server/routes/publishing-publish.js';
@@ -2163,6 +2164,11 @@ app.get(['/', '/product', '/faq'], async (req, res, next) => {
     return next();
   }
 });
+
+// Origami visitor proxy — mounted before express.static so /_ov/* never falls
+// through to the SPA. Allowlists three paths and 404s the rest; see the route
+// file for why a catch-all here would be a data-deletion hole.
+app.use('/_ov', origamiVisitorsRouter);
 
 app.use(express.static(path.join(__dirname, 'dist')));
 
