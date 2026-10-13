@@ -5,6 +5,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import WelcomePage from './pages/WelcomePage';
 import { AppProvider } from './context/AppContext';
 import Landing from './Landing';
+import OrigamiIdentify from './OrigamiIdentify';
 import Product from './Product';
 import About from './About';
 import Faq from './Faq';
@@ -116,6 +117,7 @@ async function awaitBootToken(): Promise<string | null> {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_live_Y2xlcmsuZm9yZ2VpbnRlbGxpZ2VuY2UuYWkk"}>
+    <OrigamiIdentify />
     <BrowserRouter>
       <Routes>
         {/* Marketing site */}
