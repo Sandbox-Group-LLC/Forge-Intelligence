@@ -21,10 +21,6 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
   const trialExpired = trial?.eligible && !trial.active;
   const { isSignedIn, isLoaded } = useAuth();
 
-  // Never render during Clerk loading or for signed-in users — they've paid.
-  // Modal renders for: anonymous users (signup CTA), trial-expired users (PayPal),
-  // and signed-in non-trial users (existing PayPal flow). Skipped only during Clerk hydration.
-  if (!isLoaded) return null;
   const [ppLoading, setPpLoading] = useState(true);
   const [ppError, setPpError] = useState('');
   const [paid, setPaid] = useState(false);
@@ -115,6 +111,15 @@ export default function GateModal({ featureName, onClose, brandProfileId, onUnlo
       setPromoMsg('Something went wrong');
     }
   };
+
+  // Never render during Clerk loading or for signed-in users — they've paid.
+  // Modal renders for: anonymous users (signup CTA), trial-expired users (PayPal),
+  // and signed-in non-trial users (existing PayPal flow). Skipped only during Clerk hydration.
+  //
+  // This guard must stay BELOW every hook above: when it sat before the
+  // useState calls, the loading render ran one hook and the loaded render ran
+  // several — React #310, which blanks the page rather than hiding the modal.
+  if (!isLoaded) return null;
 
   if (paid) return null;
 
