@@ -76,3 +76,23 @@
 .fi-reveal{opacity:0;transform:translateY(14px);transition:opacity var(--dur-reveal) var(--ease-out),transform var(--dur-reveal) var(--ease-out)}
 .fi-reveal[data-shown="true"]{opacity:1;transform:none}
 @media (prefers-reduced-motion:reduce){.fi-reveal{opacity:1;transform:none}}
+
+/* ── Consent banner ───────────────────────────────────────────────────────────
+   Bottom-anchored, discreet: a hairline bar, not a modal. Sits at z-index 58,
+   below the nav (60) and its mobile panel (59), so an open menu is never
+   covered by it. */
+.fi-consent{position:fixed;left:0;right:0;bottom:0;z-index:58;background:rgba(11,15,26,.94);backdrop-filter:blur(14px) saturate(160%);-webkit-backdrop-filter:blur(14px) saturate(160%);border-top:1px solid var(--color-border-hairline);box-shadow:var(--shadow-xl);padding-bottom:env(safe-area-inset-bottom)}
+.fi-consent__inner{max-width:var(--container-max);margin:0 auto;padding:var(--space-4) var(--gutter);display:flex;align-items:center;justify-content:space-between;gap:var(--space-5)}
+.fi-consent__copy{margin:0;font-size:var(--text-xs);line-height:var(--leading-snug);color:var(--text-caption);max-width:72ch}
+.fi-consent__link{color:var(--color-link);text-decoration:underline;text-underline-offset:2px}
+.fi-consent__link:hover{color:var(--color-link-hover)}
+.fi-consent__actions{display:flex;align-items:center;gap:var(--space-3);flex-shrink:0}
+
+/* Phones: stack, and span the buttons. The DS `sm` button is 40px tall, under
+   the 44px touch minimum the marketing pages hold to, so raise it here only. */
+@media (max-width:640px){
+  .fi-consent__inner{flex-direction:column;align-items:stretch;gap:var(--space-4);padding:var(--space-4) var(--gutter)}
+  .fi-consent__actions{justify-content:stretch}
+  .fi-consent__actions>*{flex:1}
+  .fi-consent__actions .fi-btn{min-height:44px}
+}

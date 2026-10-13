@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { NavBar } from '../ds/components/navigation/NavBar';
 import { Footer } from '../ds/components/navigation/Footer';
+import { ConsentBanner } from '../ds/components/marketing/ConsentBanner';
 
 const SIGN_IN_URL =
   'https://accounts.forgeintelligence.ai/sign-in?redirect_url=https://forgeintelligence.ai/app/context-hub';
@@ -97,6 +98,10 @@ export function MarketingShell({
           { label: 'Terms', href: '/terms' },
         ]}
       />
+      {/* Mounted in the shell rather than on Landing alone: consent has to
+          apply to every marketing page, and the banner needs the
+          `data-forge-ds` scope above for its tokens to resolve. */}
+      <ConsentBanner />
     </div>
   );
 }
