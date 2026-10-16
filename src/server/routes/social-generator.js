@@ -278,7 +278,7 @@ router.get('/generate', async (req, res) => {
               `UPDATE generated_social_posts SET image_url = $1, image_prompt = $2, updated_at = NOW() WHERE id = $3`,
               [imageUrl, imgPrompt, p.id]
             ).catch(() => {});
-            send('image_done', JSON.stringify({ post_id: p.id, image_url: imageUrl, prompt: imgPrompt }));
+            send('image_done', JSON.stringify({ post_id: p.id, image_url: imageUrl, prompt: imgPrompt, hook: p.hook || '' }));
           } catch(imgErr) {
             console.error(`[SOCIAL-IMG] post ${p.id}:`, imgErr.message);
             send('image_error', JSON.stringify({ post_id: p.id, error: imgErr.message }));

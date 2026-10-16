@@ -18,6 +18,13 @@ This is the _current pointer_ doc — the long-form retrospective archive lives 
 
 ---
 
+## 2026-10-16 00:35 — Gibson (webchat session, for Brian)
+
+- **fal images auto-download on arrival** (the SketchUp-extension behavior, Brian 2026-10-16: "when the image comes back it automatically downloads"): the social generator's `image_done` SSE now fires a client-side download the moment each image returns — fetch to blob, named from the post's hook (`hook` added to the SSE payload), landed in the browser's Downloads folder. No button, no share sheet; the browser's own download indicator is the feedback. `downloadImageBlob` lives at module level in `SocialGeneratorPage.tsx`, deliberately separate from `handleShareImage`'s `canShare` path.
+- **Open leg (named, not built): the "default agency folder in Drive or Box."** FI has zero Drive/Box integration today (no SDKs, no credentials). The provider needs one founder decision — a Sandbox service-account folder vs per-agency OAuth. Until then the user's Downloads folder IS the destination (Brian's stated fallback), which also covers the fal-media-URL-expiry risk: the durable copy lands on the user's machine at generation time.
+- Verify: tsc clean, 273/273 vitest, eslint clean. Shipped as PR `agent/forge-intelligence` → `development`.
+
+
 ### 2026-08-05 — Quick Copy P1–P4 merged to development (promote-ready)
 
 **#560–#563 all merged to `development`.** Brian holding a single promote to main.
