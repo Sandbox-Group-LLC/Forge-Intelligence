@@ -4,28 +4,6 @@ import { useApp } from '../context/AppContext';
 import './SocialGeneratorPage.css';
 
 // ─── Lucide-style icons (1.5 stroke, currentColor — UI design directive #7) ───
-  // Auto-save leg (Brian, 2026-10-16 — the SketchUp-extension behavior):
-  // when a generated image comes back, it downloads itself to the user's
-  // Downloads folder, named from the post's hook. No button, no share
-  // sheet; the browser's own download indicator is the feedback. Deliberately
-  // separate from handleShareImage's fallback — that path already holds the
-  // blob it needs for canShare, this one fetches its own.
-  const downloadImageBlob = async (imageUrl: string, filenameSeed: string) => {
-    const imgRes = await fetch(imageUrl);
-    if (!imgRes.ok) throw new Error(`Image fetch failed (${imgRes.status})`);
-    const blob = await imgRes.blob();
-    const ext = (blob.type.split('/')[1] || 'jpg').toLowerCase();
-    const safeName = (filenameSeed || 'forge-image').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40) || 'forge-image';
-    const blobUrl = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = blobUrl;
-    a.download = `${safeName}.${ext}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-  };
-
 const Zap = ({ size = 16 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
@@ -361,15 +339,8 @@ function SocialGeneratorContent() {
     es.addEventListener('image_done', (e) => {
       try {
         const d = JSON.parse(e.data);
-        // d = { post_id, image_url, hook }
+        // d = { post_id, image_url }
         setPosts(prev => prev.map(p => p.id === d.post_id ? { ...p, image_url: d.image_url } : p));
-        // Auto-save: the image lands in the user's Downloads folder the
-        // moment it arrives (Brian, 2026-10-16 — the Sketchup-extension
-        // behavior, asked for verbatim: "when the image comes back it
-        // automatically downloads").
-        downloadImageBlob(d.image_url, d.hook || 'forge-image').catch((err: unknown) => {
-          console.error('[auto-download] failed:', err);
-        });
       } catch {}
     });
 
