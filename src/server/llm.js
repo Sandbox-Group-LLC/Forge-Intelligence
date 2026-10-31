@@ -110,3 +110,75 @@ export async function streamTextWithFallback({
   }
   throw lastErr;
 }
+
+// ── OpenAI lane (Terra) ──────────────────────────────────────────────────────
+// Streaming chat.completions for OpenAI-hosted generation models (gpt-6.1-terra).
+// Two reasoning-era gotchas, verified live 2026-10-31 against the real social-gen
+// system prompt:
+//   1. gpt-6.1-terra REJECTS Anthropic-style `max_tokens` (HTTP 400
+//      "Use 'max_completion_tokens' instead"). Cap goes in max_completion_tokens.
+//   2. Reasoning is ON by default and reasoning tokens count against the
+//      completion budget — the same disease that made Sonnet 5 thinking eat
+//      max_tokens 4000 and starve the text to zero (prod 2026-10-31). Callers
+//      that don't want hidden burn pin reasoning_effort: 'none' (measured:
+//      0 reasoning tokens vs 1221 left on default, ~2.5x faster end-to-end).
+// Stream deltas: text rides delta.content (string, sometimes null — only append
+// non-empty strings); delta.refusal carries a refusal if one is issued; usage
+// arrives on the final chunk when stream_options.include_usage is set.
+export async function streamOpenAIChat({
+  model, max_completion_tokens, reasoning_effort, system, messages,
+  onText = () => {}, timeoutMs = 120000,
+}) {
+  if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not configured');
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      max_completion_tokens,
+      ...(reasoning_effort ? { reasoning_effort } : {}),
+      stream: true,
+      stream_options: { include_usage: true },
+      messages: [
+        ...(system ? [{ role: 'system', content: system }] : []),
+        ...messages,
+      ],
+    }),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`openai ${model} ${res.status}: ${detail.slice(0, 300)}`);
+  }
+  let text = '';
+  let refusal = '';
+  let finishReason = null;
+  let usage = null;
+  let buf = '';
+  for await (const chunk of res.body) {
+    buf += new TextDecoder().decode(chunk, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf('\n')) !== -1) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line.startsWith('data: ')) continue;
+      const payload = line.slice(6);
+      if (payload === '[DONE]') return { text, refusal, finishReason, usage, model };
+      let ev; try { ev = JSON.parse(payload); } catch { continue; }
+      if (ev.usage) usage = ev.usage;
+      const c = ev.choices?.[0];
+      if (!c) continue;
+      if (c.finish_reason) finishReason = c.finish_reason;
+      const d = c.delta || {};
+      if (typeof d.content === 'string' && d.content) {
+        text += d.content;
+        onText(d.content);
+      }
+      if (typeof d.refusal === 'string' && d.refusal) refusal += d.refusal;
+    }
+  }
+  return { text, refusal, finishReason, usage, model };
+}
