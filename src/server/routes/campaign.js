@@ -19,6 +19,7 @@ import { finalizeArticleForStorage } from '../text.js';
 import { buildImagePrompt, generateHeroImage } from '../images.js';
 import { ensureGeneratedContentTable } from '../content-table.js';
 import { normalizeNarrativeIdentity } from '../narrative-identity.js';
+import { fetchLiveGround, renderGroundBlock } from '../myeline-ground.js';
 
 const router = express.Router();
 
