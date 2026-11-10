@@ -11,7 +11,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import { pool } from '../db.js';
-import { anthropic, dateContext } from '../llm.js';
+import { anthropic, dateContext, streamOpenAIChat } from '../llm.js';
 
 // ESM has no __dirname; resolve the repo root (this file lives at src/server/routes/).
 const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -201,27 +201,33 @@ router.get('/generate', async (req, res) => {
     send('chunk', 'Brain loaded. Drafting 4 posts...');
     await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms) VALUES ($1, $2, $3, $4, $5)', ['stage4_5_social_generator_start', brandProfileId, 'started', 0, 0]).catch(() => {});
 
-    // Stream from Claude
-    let fullText = '';
-    const stream = await anthropic.messages.stream({
-      model: 'claude-sonnet-5',
-      max_tokens: 4000,
+    // Stream from Terra (gpt-6.1-terra, OpenAI). Why the swap: Sonnet 5's
+    // invisible thinking counted against max_tokens 4000 and starved the text
+    // to zero — prod 2026-10-31 16:57/16:58, two empty-body safeParseLLM TOTAL
+    // FAILUREs, ~40s each, stop=max_tokens with thinking_tokens eating the
+    // whole budget (measured live against this system prompt: cap 1500 → 1499
+    // thinking / 0 text; cap 4000 → 3194 thinking / chopped fragment). Terra
+    // pins reasoning_effort 'none' so hidden reasoning can't burn the budget,
+    // and 16000 max_completion_tokens leaves headroom over the ~1-2k the posts
+    // need even if reasoning ever slips back on. NOTE: this model REJECTS
+    // Anthropic-style max_tokens — max_completion_tokens only (verified live).
+    const gen = await streamOpenAIChat({
+      model: 'gpt-6.1-terra',
+      max_completion_tokens: 16000,
+      reasoning_effort: 'none',
       system: systemPrompt,
-      messages: [{ role: 'user', content: userPrompt }]
+      messages: [{ role: 'user', content: userPrompt }],
+      onText: (t) => send('chunk', t.replace(/\n/g, '⏎')),
     });
-
-    for await (const chunk of stream) {
-      if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text_delta') {
-        fullText += chunk.delta.text;
-        send('chunk', chunk.delta.text.replace(/\n/g, '⏎'));
-      }
-    }
+    const fullText = gen.text;
 
     let parsed;
     try {
       parsed = safeParseLLM(fullText, 'object', 'social-generator');
     } catch(e) {
-      console.error('[SOCIAL-GEN] Parse failed:', e.message);
+      console.error('[SOCIAL-GEN] Parse failed:', e.message,
+        `stop=${gen.finishReason} text_len=${fullText.length} refusal=${gen.refusal ? 'yes' : 'no'}`,
+        `tokens completion=${gen.usage?.completion_tokens ?? 'n/a'} reasoning=${gen.usage?.completion_tokens_details?.reasoning_tokens ?? 'n/a'} prompt=${gen.usage?.prompt_tokens ?? 'n/a'}`);
       send('error', 'Generation hit a formatting issue — click Generate again.');
       clearInterval(keepalive); activeStreams.delete(streamKey);
       return res.end();
@@ -293,7 +299,7 @@ router.get('/generate', async (req, res) => {
 
     await pool.query('INSERT INTO agent_activity_log (agent_name, brand_profile_id, status, tokens_used, latency_ms) VALUES ($1, $2, $3, $4, $5)',
       ['stage4_5_social_generator', brandProfileId, 'success',
-       (stream.usage?.input_tokens || 0) + (stream.usage?.output_tokens || 0), 0]
+       (gen.usage?.prompt_tokens || 0) + (gen.usage?.completion_tokens || 0), 0]
     ).catch(() => {});
 
   } catch (err) {
