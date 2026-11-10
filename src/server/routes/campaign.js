@@ -103,14 +103,18 @@ router.post('/:id/unarchive', requireAuth, async (req, res) => {
   }
 });
 
-async function enrichAngleForCampaign({ angle, profileData, factualGround, brainPatterns, brainMistakes, brandName }) {
-  const fgBlock = factualGround && Object.values(factualGround).some(v => v && (typeof v === 'string' ? v.trim() : (Array.isArray(v) && v.length)))
+async function enrichAngleForCampaign({ angle, profileData, factualGround, liveGroundBlock, brainPatterns, brainMistakes, brandName }) {
+  const staticFgBlock = factualGround && Object.values(factualGround).some(v => v && (typeof v === 'string' ? v.trim() : (Array.isArray(v) && v.length)))
     ? `FACTUAL GROUND (verbatim, do not contradict):
 ${factualGround.whatWeDo ? `- What this company does: ${factualGround.whatWeDo}\n` : ''}${factualGround.whatWeDontDo ? `- What this company does NOT do: ${factualGround.whatWeDontDo}\n` : ''}${factualGround.companyFacts ? `- Company facts: ${factualGround.companyFacts}\n` : ''}${factualGround.foundingStory ? `- Founding: ${factualGround.foundingStory}\n` : ''}${factualGround.methodology ? `- Methodology: ${factualGround.methodology}\n` : ''}${(() => {
   const list = factualGround.authors || [];
   return list.length ? `- ${list.length > 1 ? 'Named authors/SMEs' : 'Assigned author'}: ${list.map(a => `${a.name} (${a.title || 'unspecified'})`).join('; ')}\n` : '';
 })()}`
     : '';
+  // LIVE ground from the brand's Myeline brain, retrieved this run: verified
+  // facts with sources. The audit lesson — mechanics must trace to these or
+  // the gap gets flagged, never invented. Absent ground changes nothing.
+  const fgBlock = (liveGroundBlock ? liveGroundBlock + '\n\n' : '') + staticFgBlock;
   const patternsBlock = brainPatterns?.length
     ? `BRAIN PATTERNS (successful approaches — emulate these):\n${brainPatterns.slice(0,10).map(p => `- [${p.pattern_type}] ${p.description}`).join('\n')}`
     : '';
@@ -589,11 +593,28 @@ router.get('/generate/:id', requireAuth, async (req, res) => {
       // inheriting a stale brief from a prior topic.
       send('article_progress', { index: angle.index, stage: 'enriching', label: 'Building per-angle intelligence brief' });
       let enrichedBrief = null;
+      // LIVE factual ground from the brand's Myeline brain — fail-soft, capped,
+      // never blocks generation when the brain or its env is absent.
+      let liveGroundBlock = '';
+      let liveGroundMeta = null;
+      try {
+        const ground = await fetchLiveGround({
+          brandName: profileData?.brandName || profileResult.rows[0].brand_name || '',
+          angleTitle: angle?.title || '',
+          keywords: (angle?.keywords || []).slice(0, 4),
+        });
+        liveGroundBlock = renderGroundBlock(ground);
+        liveGroundMeta = { ok: ground.ok, facts: ground.facts.length, reason: ground.reason };
+        console.log(`[MYELINE-GROUND] angle ${angle.index}: ${ground.ok ? ground.facts.length + ' facts' : 'unavailable (' + ground.reason + ')'}`);
+      } catch (e) {
+        console.warn('[MYELINE-GROUND] angle fetch threw (non-fatal):', e.message);
+      }
       try {
         enrichedBrief = await enrichAngleForCampaign({
           angle,
           profileData,
           factualGround: campaignFactualGround,
+          liveGroundBlock,
           brainPatterns: patternsRes.rows,
           brainMistakes: mistakesRes.rows,
           brandName: profileData?.brandName || profileResult.rows[0].brand_name || ''
